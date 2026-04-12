@@ -70,8 +70,5 @@ namespace Renderer {
     }
 
     void Update() {
-        glClearColor(.2f, .3f, .3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        SDL_GL_SwapWindow(window);
     }
 }
