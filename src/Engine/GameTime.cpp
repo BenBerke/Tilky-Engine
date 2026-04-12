@@ -11,7 +11,7 @@ namespace GameTime {
     float smoothedFPS = 0.0f;
 
     void Update() {
-        Uint64 now = SDL_GetPerformanceCounter();
+        const Uint64 now = SDL_GetPerformanceCounter();
         static Uint64 last = now;
 
         Uint64 diff = now - last;
