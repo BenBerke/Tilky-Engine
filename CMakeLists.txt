@@ -8,7 +8,8 @@ find_package(OpenGL REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(glad glad/src/glad.c)
+add_library(glad glad/src/glad.c
+        Headers/Renderer/Shader.h)
 target_include_directories(glad PUBLIC glad/include)
 target_link_libraries(glad PUBLIC OpenGL::GL)
 
