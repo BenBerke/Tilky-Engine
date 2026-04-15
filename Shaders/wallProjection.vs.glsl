@@ -5,7 +5,8 @@
 #define SCREEN_HEIGHT 960.0
 
 struct Wall {
-    vec2 start, end;
+    vec2 start;
+    vec2 end;
     vec4 color;
 };
 
@@ -13,21 +14,31 @@ layout(std430, binding = 0) readonly buffer WallBuffer {
     Wall walls[];
 };
 
-out vec4 vWallColor;
-out vec2 vDepths;
-noperspective out float vU;
+flat out vec4 vWallColor;
+
+flat out float fScreenXStart;
+flat out float fScreenXEnd;
+
+flat out float fTopYStart;
+flat out float fTopYEnd;
+flat out float fBottomYStart;
+flat out float fBottomYEnd;
+
+flat out float fSStart;
+flat out float fSEnd;
+flat out float fZLeft;
+flat out float fZRight;
 
 uniform vec2 playerPos;
 uniform float playerAngle;
 
-float degToRad(float angle){
+float degToRad(float angle) {
     return angle * (PI / 180.0);
 }
 
-vec2 rotate(vec2 p, float angle){
+vec2 rotate(vec2 p, float angle) {
     float c = cos(angle);
     float s = sin(angle);
-
     return vec2(
     p.x * c - p.y * s,
     p.x * s + p.y * c
@@ -51,6 +62,10 @@ void main() {
     vec2 viewStart = rotate(relativeStart, playerAngleInRad);
     vec2 viewEnd   = rotate(relativeEnd,   playerAngleInRad);
 
+    float wallLength = length(wall.end - wall.start);
+    float sStart = 0.0;
+    float sEnd   = wallLength;
+
     if (viewStart.y <= nearPlane && viewEnd.y <= nearPlane) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
         return;
@@ -59,11 +74,13 @@ void main() {
     if (viewStart.y <= nearPlane) {
         float t = (nearPlane - viewStart.y) / (viewEnd.y - viewStart.y);
         viewStart = mix(viewStart, viewEnd, t);
+        sStart = mix(sStart, sEnd, t);
     }
 
     if (viewEnd.y <= nearPlane) {
         float t = (nearPlane - viewEnd.y) / (viewStart.y - viewEnd.y);
         viewEnd = mix(viewEnd, viewStart, t);
+        sEnd = mix(sEnd, sStart, t);
     }
 
     float focalLength = (SCREEN_WIDTH * 0.5) / tan(halfFovInRad);
@@ -95,10 +112,19 @@ void main() {
     );
 
     vWallColor = wall.color / 255.0;
-    vDepths = vec2(viewStart.y, viewEnd.y);
 
-    float uValues[4] = float[4](0.0, 0.0, 1.0, 1.0);
-    vU = uValues[gl_VertexID];
+    fScreenXStart = screenXStart;
+    fScreenXEnd   = screenXEnd;
+
+    fTopYStart    = topYStart;
+    fTopYEnd      = topYEnd;
+    fBottomYStart = bottomYStart;
+    fBottomYEnd   = bottomYEnd;
+
+    fSStart = sStart;
+    fSEnd   = sEnd;
+    fZLeft  = viewStart.y;
+    fZRight = viewEnd.y;
 
     gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);
 }
