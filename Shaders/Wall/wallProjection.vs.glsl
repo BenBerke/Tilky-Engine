@@ -1,16 +1,17 @@
 #version 430 core
 
 #define PI 3.14159265359
-#define SCREEN_WIDTH 1080.0
+#define SCREEN_WIDTH 1680.0
 #define SCREEN_HEIGHT 960.0
 
 #define RENDER_WALL 0
 #define RENDER_FLAT 1
 
 struct Wall {
-    vec4 startEnd; // start.xy, end.xy
+    vec4 startEnd;
     vec4 color;
-    vec4 heights;  // x = floorHeight, y = ceilingHeight
+    vec4 heights;
+    vec4 data;      // x = textureIndex
 };
 
 struct FlatTriangle {
@@ -45,6 +46,9 @@ flat out float fZRight;
 
 noperspective out float vFlatInvZ;
 
+flat out int vTextureIndex;
+flat out float fWallWorldHeight;
+
 uniform vec2 playerPos;
 uniform float playerAngle;
 uniform float playerHeight;
@@ -53,7 +57,8 @@ uniform int renderMode;
 const float FOV = 90.0;
 const float halfFov = FOV * 0.5;
 const float horizonY = SCREEN_HEIGHT * 0.5;
-const float nearPlane = 0.01;
+const float wallHeight = 32.0;
+const float nearPlane = 0.1;
 
 float degToRad(float angle) {
     return angle * (PI / 180.0);
@@ -113,6 +118,8 @@ void outputDummyWallData() {
     fSEnd = 0.0;
     fZLeft = 1.0;
     fZRight = 1.0;
+    fWallWorldHeight = 1.0;
+    vTextureIndex = -1;
 }
 
 void renderFlat() {
@@ -134,6 +141,8 @@ void renderFlat() {
     vFlatInvZ = 1.0 / viewDepth;
 
     vWallColor = triangle.color / 255.0;
+    vTextureIndex = -1;
+    fWallWorldHeight = 1.0;
     outputDummyWallData();
 
     vec2 ndc = projectToNdc(point.xy, point.z);
@@ -167,6 +176,9 @@ void renderWall() {
 
     float floorHeight = wall.heights.x;
     float ceilingHeight = wall.heights.y;
+
+    vTextureIndex = int(wall.data.x);
+    fWallWorldHeight = ceilingHeight - floorHeight;
 
     float playerAngleInRad = degToRad(playerAngle);
 

@@ -5,6 +5,13 @@
 #define RENDER_WALL 0
 #define RENDER_FLAT 1
 
+#define MAX_WALL_TEXTURES 8
+
+flat in int vTextureIndex;
+flat in float fWallWorldHeight;
+
+uniform sampler2D wallTextures[MAX_WALL_TEXTURES];
+
 flat in vec4 vWallColor;
 
 flat in float fScreenXStart;
@@ -26,9 +33,32 @@ uniform int renderMode;
 
 out vec4 FragColor;
 
-const float nearPlane = 0.01;
+const float nearPlane = 0.1;
 const float farPlane = 1000.0;
 const float tileSize = 32.0;
+
+vec4 SampleWallTexture(int textureIndex, vec2 uv) {
+    switch (textureIndex) {
+        case 0:
+        return texture(wallTextures[0], uv);
+        case 1:
+        return texture(wallTextures[1], uv);
+        case 2:
+        return texture(wallTextures[2], uv);
+        case 3:
+        return texture(wallTextures[3], uv);
+        case 4:
+        return texture(wallTextures[4], uv);
+        case 5:
+        return texture(wallTextures[5], uv);
+        case 6:
+        return texture(wallTextures[6], uv);
+        case 7:
+        return texture(wallTextures[7], uv);
+        default:
+        return vec4(1.0);
+    }
+}
 
 void main() {
     if (renderMode == RENDER_FLAT) {
@@ -65,7 +95,7 @@ void main() {
     1.0
     );
 
-    gl_FragDepth = wallDepth01;
+    gl_FragDepth = max(wallDepth01 - 0.00001, 0.0);
 
     float s = mix(fSStart / fZLeft, fSEnd / fZRight, across) / invZ;
 
@@ -83,12 +113,13 @@ void main() {
     v = clamp(v, 0.0, 1.0);
 
     float u = s / tileSize;
+    float texV = (v * fWallWorldHeight) / tileSize;
 
-    float checker = mod(floor(u) + floor(v * 8.0), 2.0);
-
-    vec3 dark = vec3(0.15);
-    vec3 light = vec3(0.95);
-    vec3 checkerColor = mix(dark, light, checker);
-
-    FragColor = vec4(checkerColor * vWallColor.rgb, vWallColor.a);
+    if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
+        vec4 texColor = SampleWallTexture(vTextureIndex, vec2(u, texV));
+        FragColor = texColor * vWallColor;
+    }
+    else {
+        FragColor = vWallColor;
+    }
 }

@@ -2,6 +2,7 @@
 // Created by berke on 4/10/2026.
 //
 
+
 #include <glad/glad.h>
 #include "../../Headers/Renderer/Renderer.h"
 
@@ -19,7 +20,9 @@
 
 #include "../../Headers/Objects/Player.h"
 
-#define SCREEN_WIDTH 1080
+#include "../../Headers/Renderer/TextureManager.h"
+
+#define SCREEN_WIDTH 1680
 #define SCREEN_HEIGHT 960
 
 #define DEBUG true
@@ -64,8 +67,9 @@ namespace {
 
     struct GpuWall {
         Vector4 startEnd; // start.x, start.y, end.x, end.y
-        Vector4 color; // r, g, b, a
-        Vector4 heights; // floorHeight, ceilingHeight, unused, unused
+        Vector4 color;    // r, g, b, a
+        Vector4 heights;  // floorHeight, ceilingHeight, unused, unused
+        Vector4 data;     // textureIndex, unused, unused, unused
     };
 
     std::vector<GpuWall> gpuWalls;
@@ -91,6 +95,13 @@ namespace {
         }
 
         GpuWall gpuWall;
+
+        gpuWall.data = {
+            static_cast<float>(wall.textureIndex),
+            0.0f,
+            0.0f,
+            0.0f
+        };
 
         gpuWall.startEnd = {
             wall.start.x,
@@ -187,7 +198,7 @@ namespace {
     std::vector<GpuFlatTriangle> flatTriangles;
     std::vector<GpuFlatTriangle> visibleFlatTriangles;
 
-    constexpr float FLAT_NEAR_PLANE = 0.01f;
+    constexpr float FLAT_NEAR_PLANE = 0.1f;
 
     constexpr float DEBUG_MAP_SCALE = 200.0f;
     constexpr float DEBUG_PLAYER_HALF_SIZE = 0.01f;
@@ -653,6 +664,20 @@ namespace Renderer {
         glEnable(GL_PROGRAM_POINT_SIZE);
 
         projectionShader->use();
+        constexpr int MAX_WALL_TEXTURES = 8;
+
+        for (int i = 0; i < MAX_WALL_TEXTURES; ++i) {
+            std::string uniformName = "wallTextures[" + std::to_string(i) + "]";
+
+            GLint location = glGetUniformLocation(
+                projectionShader->ID,
+                uniformName.c_str()
+            );
+
+            if (location != -1) {
+                glUniform1i(location, i);
+            }
+        }
 
         playerPosUniform = glGetUniformLocation(projectionShader->ID, "playerPos");
         if (playerPosUniform == -1) {
@@ -740,8 +765,8 @@ namespace Renderer {
 
         // Draw floors and ceilings first
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+        glDepthFunc(GL_LESS);
         glUniform1i(renderModeUniform, RENDER_FLAT);
-
         glDrawArraysInstanced(
             GL_TRIANGLES,
             0,
@@ -750,9 +775,10 @@ namespace Renderer {
         );
 
         // Draw walls after
+        TextureManager::BindAllTextures(0);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
+        glDepthFunc(GL_LEQUAL);
         glUniform1i(renderModeUniform, RENDER_WALL);
-
         glDrawArraysInstanced(
             GL_TRIANGLE_STRIP,
             0,
@@ -791,6 +817,7 @@ namespace Renderer {
     }
 
     void Destroy() {
+        TextureManager::DestroyAll();
         glDeleteBuffers(1, &wallSSBO);
         glDeleteBuffers(1, &flatSSBO);
 

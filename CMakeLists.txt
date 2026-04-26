@@ -32,6 +32,8 @@ add_executable(Wolfy_Engine
         src/Objects/Player.cpp
         src/Renderer/MapEditor.cpp
         Headers/Objects/Sector.h
+        Headers/Renderer/TextureManager.h
+        src/Renderer/TextureManager.cpp
 )
 
 target_include_directories(Wolfy_Engine PRIVATE

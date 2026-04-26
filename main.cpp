@@ -15,169 +15,158 @@
 
 
 #include "../../Headers/Objects/Sector.h"
+#include "../../Headers/Renderer/TextureManager.h"
 
 int main() {
     if (!Renderer::Initialize()) {
         SDL_Log("Failed to initialize Renderer: %s", SDL_GetError());
         return 1;
     }
+    int brickTexture = TextureManager::CreateTexture("../Assets/Textures/wall.png");
+    int woodTexture = TextureManager::CreateTexture("../Assets/Textures/wood.png");
+    int whiteTexture = TextureManager::CreateTexture("../Assets/Textures/white.png");
+    if (brickTexture == -1 || woodTexture == -1 || whiteTexture == -1) {
+        SDL_Log("Failed to load one or more textures");
+        return 1;
+    }
+
+    // region Map
+
+    Vector4 WHITE = {255.0f, 255.0f, 255.0f, 255.0f};
+    Vector4 PORTAL_RED = {255.0f, 80.0f, 80.0f, 255.0f};
+
+    // =========================================================
+    // Main shape points
+    // =========================================================
+
+    // Sector 0: pentagon spawn room
+    constexpr Vector2 A = {-120.0f, -60.0f};
+    constexpr Vector2 B = {40.0f, -80.0f};
+    constexpr Vector2 C = {100.0f, -10.0f};
+    constexpr Vector2 D = {40.0f, 80.0f};
+    constexpr Vector2 E = {-110.0f, 60.0f};
+
+    // Sector 1: angled connector
+    constexpr Vector2 F = {170.0f, 5.0f};
+    constexpr Vector2 G = {145.0f, 105.0f};
+
+    // Sector 2: hexagon room
+    constexpr Vector2 H2 = {270.0f, 20.0f};
+    constexpr Vector2 H3 = {310.0f, 100.0f};
+    constexpr Vector2 H4 = {250.0f, 180.0f};
+    constexpr Vector2 H5 = {170.0f, 170.0f};
+
+    // Sector 3: triangle room
+    constexpr Vector2 T = {210.0f, 260.0f};
+
+    // Sector 4: raised side room
+    constexpr Vector2 R0 = {360.0f, 10.0f};
+    constexpr Vector2 R1 = {390.0f, 120.0f};
+    constexpr Vector2 R2 = {330.0f, 170.0f};
+
+    // Sector 5: sunken triangle alcove
+    constexpr Vector2 S = {-220.0f, 0.0f};
 
     const Wall walls[] = {
         // =========================================================
-        // Sector 0: Spawn room
+        // Sector 0: Pentagon spawn room
         // floor = 0, ceiling = 40
-        // Portals:
-        // - north to Sector 1
-        // - east  to Sector 3
-        // - west  to Sector 4
+        // portals:
+        //   C-D -> Sector 1
+        //   E-A -> Sector 5
         // =========================================================
 
-        // South wall
-        {{-120.0f, -100.0f}, {120.0f, -100.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
+        {A, B, WHITE, 0, -1, brickTexture},
+        {B, C, WHITE, 0, -1, brickTexture},
 
-        // North wall split around corridor portal
-        {{120.0f, 100.0f}, {30.0f, 100.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
-        {{-30.0f, 100.0f}, {-120.0f, 100.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
+        // Portal: spawn <-> angled connector
+        {C, D, PORTAL_RED, 0, 1, whiteTexture},
 
-        // East wall split around raised-room portal
-        {{120.0f, -100.0f}, {120.0f, -20.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
-        {{120.0f, 50.0f}, {120.0f, 100.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
+        {D, E, WHITE, 0, -1, brickTexture},
 
-        // West wall split around sunken-room portal
-        {{-120.0f, 100.0f}, {-120.0f, 40.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
-        {{-120.0f, -40.0f}, {-120.0f, -100.0f}, {180.0f, 180.0f, 180.0f, 255.0f}, 0, -1},
-
-        // Portal: Spawn <-> Corridor
-        // Direction east, left side is north => front = 1, back = 0
-        {{-30.0f, 100.0f}, {30.0f, 100.0f}, {255.0f, 40.0f, 40.0f, 255.0f}, 1, 0},
-
-        // Portal: Spawn <-> East raised room
-        // Direction south, left side is east => front = 3, back = 0
-        {{120.0f, 50.0f}, {120.0f, -20.0f}, {255.0f, 40.0f, 40.0f, 255.0f}, 3, 0},
-
-        // Portal: Spawn <-> West sunken room
-        // Direction north, left side is west => front = 4, back = 0
-        {{-120.0f, -40.0f}, {-120.0f, 40.0f}, {255.0f, 40.0f, 40.0f, 255.0f}, 4, 0},
+        // Portal: spawn <-> sunken alcove
+        {E, A, PORTAL_RED, 0, 5, whiteTexture},
 
 
         // =========================================================
-        // Sector 1: North corridor
+        // Sector 1: Angled connector
         // floor = 0, ceiling = 36
-        // Portals:
-        // - south to Sector 0
-        // - north to Sector 2
+        // portals:
+        //   D-C -> Sector 0
+        //   F-G -> Sector 2
         // =========================================================
 
-        // Left wall
-        {{-30.0f, 260.0f}, {-30.0f, 100.0f}, {130.0f, 160.0f, 220.0f, 255.0f}, 1, -1},
+        {C, F, WHITE, 1, -1, woodTexture},
 
-        // Right wall
-        {{30.0f, 100.0f}, {30.0f, 260.0f}, {130.0f, 160.0f, 220.0f, 255.0f}, 1, -1},
+        // Portal: connector <-> hex room
+        {F, G, PORTAL_RED, 1, 2, whiteTexture},
 
-        // Portal: Corridor <-> Central hall
-        // Direction east, left side is north => front = 2, back = 1
-        {{-30.0f, 260.0f}, {30.0f, 260.0f}, {255.0f, 40.0f, 40.0f, 255.0f}, 2, 1},
+        {G, D, WHITE, 1, -1, woodTexture},
 
 
         // =========================================================
-        // Sector 2: Central hall
-        // floor = 4, ceiling = 52
-        // Portals:
-        // - south to Sector 1
-        // - east  to Sector 5
+        // Sector 2: Hexagon room
+        // floor = 4, ceiling = 48
+        // portals:
+        //   G-F   -> Sector 1
+        //   H2-H3 -> Sector 4
+        //   H4-H5 -> Sector 3
         // =========================================================
 
-        // South wall split around corridor portal
-        {{-180.0f, 260.0f}, {-30.0f, 260.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
-        {{30.0f, 260.0f}, {180.0f, 260.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
+        {F, H2, WHITE, 2, -1, brickTexture},
 
-        // East wall split around upper-room portal
-        {{180.0f, 260.0f}, {180.0f, 320.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
-        {{180.0f, 390.0f}, {180.0f, 480.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
+        // Portal: hex room <-> raised side room
+        {H2, H3, PORTAL_RED, 2, 4, whiteTexture},
 
-        // North wall
-        {{180.0f, 480.0f}, {-180.0f, 480.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
+        {H3, H4, WHITE, 2, -1, brickTexture},
 
-        // West wall
-        {{-180.0f, 480.0f}, {-180.0f, 260.0f}, {200.0f, 140.0f, 100.0f, 255.0f}, 2, -1},
+        // Portal: hex room <-> triangle room
+        {H4, H5, PORTAL_RED, 2, 3, whiteTexture},
 
-        // Portal: Central hall <-> Upper east room
-        // Direction south, left side is east => front = 5, back = 2
-        {{180.0f, 390.0f}, {180.0f, 320.0f}, {255.0f, 40.0f, 40.0f, 255.0f}, 5, 2},
+        {H5, G, WHITE, 2, -1, brickTexture},
 
 
         // =========================================================
-        // Sector 3: East raised room
-        // floor = 8, ceiling = 56
-        // Portal:
-        // - west to Sector 0
+        // Sector 3: Triangle room
+        // floor = 8, ceiling = 52
+        // portal:
+        //   H5-H4 -> Sector 2
         // =========================================================
 
-        // South wall
-        {{120.0f, -20.0f}, {280.0f, -20.0f}, {100.0f, 220.0f, 130.0f, 255.0f}, 3, -1},
-
-        // East wall
-        {{280.0f, -20.0f}, {280.0f, 140.0f}, {100.0f, 220.0f, 130.0f, 255.0f}, 3, -1},
-
-        // North wall
-        {{280.0f, 140.0f}, {120.0f, 140.0f}, {100.0f, 220.0f, 130.0f, 255.0f}, 3, -1},
-
-        // West wall above portal
-        {{120.0f, 140.0f}, {120.0f, 50.0f}, {100.0f, 220.0f, 130.0f, 255.0f}, 3, -1},
+        {H4, T, WHITE, 3, -1, woodTexture},
+        {T, H5, WHITE, 3, -1, woodTexture},
 
 
         // =========================================================
-        // Sector 4: West sunken room
-        // floor = -4, ceiling = 36
-        // Portal:
-        // - east to Sector 0
+        // Sector 4: Raised side room
+        // floor = 12, ceiling = 60
+        // portal:
+        //   H3-H2 -> Sector 2
         // =========================================================
 
-        // South wall
-        {{-280.0f, -40.0f}, {-120.0f, -40.0f}, {120.0f, 120.0f, 200.0f, 255.0f}, 4, -1},
-
-        // East wall above portal
-        {{-120.0f, 40.0f}, {-120.0f, 120.0f}, {120.0f, 120.0f, 200.0f, 255.0f}, 4, -1},
-
-        // North wall
-        {{-120.0f, 120.0f}, {-280.0f, 120.0f}, {120.0f, 120.0f, 200.0f, 255.0f}, 4, -1},
-
-        // West wall
-        {{-280.0f, 120.0f}, {-280.0f, -40.0f}, {120.0f, 120.0f, 200.0f, 255.0f}, 4, -1},
+        {H2, R0, WHITE, 4, -1, brickTexture},
+        {R0, R1, WHITE, 4, -1, brickTexture},
+        {R1, R2, WHITE, 4, -1, brickTexture},
+        {R2, H3, WHITE, 4, -1, brickTexture},
 
 
         // =========================================================
-        // Sector 5: Upper east room
-        // floor = 8, ceiling = 60
-        // Portal:
-        // - west to Sector 2
+        // Sector 5: Sunken triangle alcove
+        // floor = -4, ceiling = 34
+        // portal:
+        //   A-E -> Sector 0
         // =========================================================
 
-        // South wall
-        {{180.0f, 300.0f}, {340.0f, 300.0f}, {220.0f, 180.0f, 110.0f, 255.0f}, 5, -1},
-
-        // East wall
-        {{340.0f, 300.0f}, {340.0f, 460.0f}, {220.0f, 180.0f, 110.0f, 255.0f}, 5, -1},
-
-        // North wall
-        {{340.0f, 460.0f}, {180.0f, 460.0f}, {220.0f, 180.0f, 110.0f, 255.0f}, 5, -1},
-
-        // West wall split around hall portal
-        {{180.0f, 320.0f}, {180.0f, 300.0f}, {220.0f, 180.0f, 110.0f, 255.0f}, 5, -1},
-        {{180.0f, 460.0f}, {180.0f, 390.0f}, {220.0f, 180.0f, 110.0f, 255.0f}, 5, -1}
+        {E, S, WHITE, 5, -1, woodTexture},
+        {S, A, WHITE, 5, -1, woodTexture},
     };
 
     const Sector sectors[] = {
         // =========================================================
-        // Sector 0: Spawn room
+        // Sector 0: Pentagon spawn room
         // =========================================================
         {
-            {
-                {-120.0f, -100.0f},
-                {120.0f, -100.0f},
-                {120.0f, 100.0f},
-                {-120.0f, 100.0f}
-            },
+            {A, B, C, D, E},
             {},
             40.0f,
             0.0f,
@@ -186,15 +175,10 @@ int main() {
         },
 
         // =========================================================
-        // Sector 1: North corridor
+        // Sector 1: Angled connector
         // =========================================================
         {
-            {
-                {-30.0f, 100.0f},
-                {30.0f, 100.0f},
-                {30.0f, 260.0f},
-                {-30.0f, 260.0f}
-            },
+            {C, F, G, D},
             {},
             36.0f,
             0.0f,
@@ -203,83 +187,76 @@ int main() {
         },
 
         // =========================================================
-        // Sector 2: Central hall
+        // Sector 2: Hexagon room
         // =========================================================
         {
-            {
-                {-180.0f, 260.0f},
-                {180.0f, 260.0f},
-                {180.0f, 480.0f},
-                {-180.0f, 480.0f}
-            },
+            {F, H2, H3, H4, H5, G},
             {},
-            52.0f,
+            48.0f,
             4.0f,
             {70.0f, 55.0f, 55.0f},
             {120.0f, 85.0f, 70.0f}
         },
 
         // =========================================================
-        // Sector 3: East raised room
+        // Sector 3: Triangle room
         // =========================================================
         {
-            {
-                {120.0f, -20.0f},
-                {280.0f, -20.0f},
-                {280.0f, 140.0f},
-                {120.0f, 140.0f}
-            },
+            {H5, H4, T},
             {},
-            56.0f,
+            52.0f,
             8.0f,
             {50.0f, 90.0f, 65.0f},
             {85.0f, 140.0f, 95.0f}
         },
 
         // =========================================================
-        // Sector 4: West sunken room
+        // Sector 4: Raised side room
         // =========================================================
         {
-            {
-                {-280.0f, -40.0f},
-                {-120.0f, -40.0f},
-                {-120.0f, 120.0f},
-                {-280.0f, 120.0f}
-            },
+            {H2, R0, R1, R2, H3},
             {},
-            36.0f,
-            -4.0f,
-            {65.0f, 75.0f, 105.0f},
-            {60.0f, 70.0f, 115.0f}
+            60.0f,
+            12.0f,
+            {90.0f, 60.0f, 110.0f},
+            {70.0f, 45.0f, 85.0f}
         },
 
         // =========================================================
-        // Sector 5: Upper east room
+        // Sector 5: Sunken triangle alcove
         // =========================================================
         {
-            {
-                {180.0f, 300.0f},
-                {340.0f, 300.0f},
-                {340.0f, 460.0f},
-                {180.0f, 460.0f}
-            },
+            {A, E, S},
             {},
-            60.0f,
-            8.0f,
-            {105.0f, 75.0f, 45.0f},
-            {135.0f, 105.0f, 70.0f}
+            34.0f,
+            -4.0f,
+            {40.0f, 55.0f, 85.0f},
+            {60.0f, 70.0f, 115.0f}
         }
     };
+    // endregion
 
-    for (const Wall &wall: walls) MapEditor::AddWall(wall);
-    for (const Sector &sector: sectors) MapEditor::AddSector(sector);
+    for (const Wall& wall : walls) {
+        MapEditor::AddWall(wall);
+    }
 
+    for (const Sector& sector : sectors) {
+        MapEditor::AddSector(sector);
+    }
+
+    Player::position = {-40.0f, 0.0f};
     Player::FindCurrentSector(MapEditor::sectors);
+
+    if (Player::currentSector == -1) {
+        SDL_Log("Player is not inside any sector");
+        return 1;
+    }
 
     if (!Renderer::CreateMap()) {
         SDL_Log("Failed to create map");
         return 1;
     }
+    // endregion
 
     static float timer = 0;
     static float timerHelper = 0;
