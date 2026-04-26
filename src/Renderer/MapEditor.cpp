@@ -6,6 +6,13 @@
 #include "../../Headers/Math/Vector/Vector2Math.h"
 
 #include <algorithm>
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_log.h>
+
+#define SCREEN_WIDTH 1680
+#define SCREEN_HEIGHT 960
+
+#define FONT_SIZE 24
 
 namespace MapEditor {
 
@@ -136,5 +143,51 @@ namespace MapEditor {
             if (sector.vertices.size() < 3) continue;
             sector.triangles = triangulate(sector.vertices);
         }
+    }
+
+    void Start() {
+        if (SDL_Init(SDL_INIT_VIDEO) == false) {
+            SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
+            return;
+        }
+        if (SDL_CreateWindowAndRenderer("Game of Life", SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer) == false) {
+            SDL_Log("Window/Renderer Error: %s\n", SDL_GetError());
+            SDL_Quit();
+            return;
+        }
+
+        if (!TTF_Init()) {
+            SDL_Log("TTF_INIT failed: %s\n", SDL_GetError());
+            SDL_Quit();
+            return;
+        }
+        font = TTF_OpenFont("../Assets/Fonts/arial.ttf", FONT_SIZE);
+        if (!font) {
+            SDL_Log("TTF_OpenFont failed: %s\n", SDL_GetError());
+            TTF_Quit();
+            SDL_Quit();
+            return;
+        }
+
+        textEngine = TTF_CreateRendererTextEngine(renderer);
+    }
+   // static TTF_Text* controls = TTF_CreateText(textEngine, font, "Left / Right arrow to step backwards / forwards. Space to auto step", 0);
+
+    void Update() {
+        SDL_SetRenderDrawColor(renderer,255, 255, 255, 255);
+        SDL_RenderClear(renderer);
+
+        SDL_SetRenderDrawColor(renderer,9, 1, 9, 255);
+       // TTF_DrawRendererText(controls, 15.0f, 50);
+
+        SDL_RenderPresent(renderer);
+    }
+
+    void Destroy() {
+        TTF_CloseFont(font);
+        TTF_Quit();
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
     }
 }

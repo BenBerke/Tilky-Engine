@@ -80,6 +80,11 @@ void main() {
 
         if (vFlatTextureIndex >= 0 && vFlatTextureIndex < MAX_WALL_TEXTURES) {
             vec4 texColor = SampleWallTexture(vFlatTextureIndex, flatUV);
+
+            if (texColor.a < 0.1) {
+                discard;
+            }
+
             FragColor = texColor * vWallColor;
         }
         else {
@@ -131,6 +136,11 @@ void main() {
 
     if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
         vec4 texColor = SampleWallTexture(vTextureIndex, vec2(u, texV));
+
+        if (texColor.a < 0.1) {
+            discard;
+        }
+
         FragColor = texColor * vWallColor;
     }
     else {

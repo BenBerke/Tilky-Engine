@@ -9,6 +9,7 @@ find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3 Headers)
 find_package(SDL3_image REQUIRED CONFIG)
 find_package(SDL3_ttf REQUIRED CONFIG)
 find_package(Freetype REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 add_library(glad STATIC
         glad/src/glad.c
@@ -47,4 +48,5 @@ target_link_libraries(Wolfy_Engine PRIVATE
         SDL3_ttf::SDL3_ttf
         Freetype::Freetype
         glad
+        nlohmann_json::nlohmann_json
 )
