@@ -14,6 +14,7 @@ namespace MapEditor {
     inline std::vector<Sector> sectors;
     void AddWall(const Wall &wall);
     void AddSector(const Sector &sector);
+    void TriangulateSectors();
 }
 
 #endif //WOLFY_ENGINE_MAPEDITOR_H

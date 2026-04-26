@@ -11,6 +11,7 @@
 struct Wall {
     Vector2 start, end;
     Vector4 color;
+    int backSector = -1, frontSector = -1;
 };
 
 #endif //WOLFY_ENGINE_WALL_H

@@ -15,6 +15,8 @@
 #include "../../Headers/Math/Matrix/Matrix4.h"
 #include "Headers/Engine/InputManager.h"
 
+#include "../../Headers/Math/Vector/Vector4.h"
+
 #define SCREEN_WIDTH 1080
 #define SCREEN_HEIGHT 960
 
@@ -32,18 +34,108 @@ std::unique_ptr<Shader> textShader;
 static FT_Library ft;
 static FT_Face face;
 
+static GLint playerHeightUniform;
+static GLint renderModeUniform;
+
+static GLuint flatSSBO = 0;
+static GLsizei flatTriangleCount = 0;
+
+constexpr int RENDER_WALL = 0;
+constexpr int RENDER_FLAT = 1;
+
+constexpr float PLAYER_HEIGHT = 16.0f;
+
 namespace {
     struct Character {
-        unsigned int textureID;  // ID handle of the glyph texture
-        Vector2   Size;       // Size of glyph
-        Vector2   Bearing;    // Offset from baseline to left/top of glyph
-        unsigned int Advance;    // Offset to advance to next glyph
+        unsigned int textureID;
+        Vector2 Size;
+        Vector2 Bearing;
+        unsigned int Advance;
     };
 
     std::map<char, Character> Characters;
-}
 
-namespace {
+    struct GpuFlatTriangle {
+        Vector4 a; // x, y, height, unused
+        Vector4 b;
+        Vector4 c;
+        Vector4 color; // r, g, b, a
+    };
+
+    struct GpuWall {
+        Vector4 startEnd; // start.x, start.y, end.x, end.y
+        Vector4 color; // r, g, b, a
+        Vector4 heights; // floorHeight, ceilingHeight, unused, unused
+    };
+
+    std::vector<GpuWall> gpuWalls;
+    static GLsizei gpuWallCount = 0;
+
+    bool IsValidSectorIndex(const int index) {
+        return index >= 0 && index < static_cast<int>(MapEditor::sectors.size());
+    }
+
+    void GetWallHeights(const Wall &wall, float &floorHeight, float &ceilingHeight) {
+        // Prefer frontSector for now.
+        // Later, for portals, you can draw separate upper/lower wall pieces.
+        int sectorIndex = -1;
+
+        if (IsValidSectorIndex(wall.frontSector)) {
+            sectorIndex = wall.frontSector;
+        } else if (IsValidSectorIndex(wall.backSector)) {
+            sectorIndex = wall.backSector;
+        }
+
+        if (sectorIndex == -1) {
+            floorHeight = 0.0f;
+            ceilingHeight = 32.0f;
+            return;
+        }
+
+        const Sector &sector = MapEditor::sectors[sectorIndex];
+
+        floorHeight = sector.floorHeight;
+        ceilingHeight = sector.ceilingHeight;
+    }
+
+    void BuildGpuWallsFromMap() {
+        gpuWalls.clear();
+
+        for (const Wall &wall: MapEditor::walls) {
+            float floorHeight = 0.0f;
+            float ceilingHeight = 32.0f;
+
+            GetWallHeights(wall, floorHeight, ceilingHeight);
+
+            GpuWall gpuWall;
+
+            gpuWall.startEnd = {
+                wall.start.x,
+                wall.start.y,
+                wall.end.x,
+                wall.end.y
+            };
+
+            gpuWall.color = wall.color;
+
+            gpuWall.heights = {
+                floorHeight,
+                ceilingHeight,
+                0.0f,
+                0.0f
+            };
+
+            gpuWalls.push_back(gpuWall);
+        }
+
+        gpuWallCount = static_cast<GLsizei>(gpuWalls.size());
+    }
+
+    std::vector<GpuFlatTriangle> flatTriangles;
+    std::vector<GpuFlatTriangle> visibleFlatTriangles;
+
+    constexpr float FLAT_NEAR_PLANE = 0.01f;
+
     constexpr float DEBUG_MAP_SCALE = 200.0f;
     constexpr float DEBUG_PLAYER_HALF_SIZE = 0.01f;
     constexpr float DEBUG_FOV_DEG = 90.0f;
@@ -53,7 +145,7 @@ namespace {
         return degrees * 3.14159265359f / 180.0f;
     }
 
-    Vector2 RotatePoint(const Vector2& p, const float angleRad) {
+    Vector2 RotatePoint(const Vector2 &p, const float angleRad) {
         const float c = std::cos(angleRad);
         const float s = std::sin(angleRad);
 
@@ -63,7 +155,7 @@ namespace {
         };
     }
 
-    Vector2 WorldToDebugNdc(const Vector2& worldPoint, const Vector2& playerPos) {
+    Vector2 WorldToDebugNdc(const Vector2 &worldPoint, const Vector2 &playerPos) {
         const Vector2 relative = {
             worldPoint.x - playerPos.x,
             worldPoint.y - playerPos.y
@@ -73,6 +165,158 @@ namespace {
             relative.x / DEBUG_MAP_SCALE,
             relative.y / DEBUG_MAP_SCALE
         };
+    }
+
+    float GetViewDepth(const Vector4 &point, const Vector2 &playerPos, const float playerAngle) {
+        const Vector2 worldPos = {
+            point.x,
+            point.y
+        };
+
+        const Vector2 relative = {
+            worldPos.x - playerPos.x,
+            worldPos.y - playerPos.y
+        };
+
+        const Vector2 view = RotatePoint(relative, DegToRad(playerAngle));
+
+        return view.y;
+    }
+
+    Vector4 LerpVector4(const Vector4 &a, const Vector4 &b, const float t) {
+        return {
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            a.z + (b.z - a.z) * t,
+            a.w + (b.w - a.w) * t
+        };
+    }
+
+    void ClipFlatTriangleAgainstNearPlane(
+        const GpuFlatTriangle &triangle,
+        const Vector2 &playerPos,
+        const float playerAngle
+    ) {
+        std::vector<Vector4> input = {
+            triangle.a,
+            triangle.b,
+            triangle.c
+        };
+
+        std::vector<Vector4> output;
+
+        for (int i = 0; i < static_cast<int>(input.size()); ++i) {
+            const Vector4 current = input[i];
+            const Vector4 next = input[(i + 1) % input.size()];
+
+            const float currentDepth = GetViewDepth(current, playerPos, playerAngle);
+            const float nextDepth = GetViewDepth(next, playerPos, playerAngle);
+
+            const bool currentInside = currentDepth >= FLAT_NEAR_PLANE;
+            const bool nextInside = nextDepth >= FLAT_NEAR_PLANE;
+
+            if (currentInside && nextInside) {
+                output.push_back(next);
+            } else if (currentInside && !nextInside) {
+                const float t = (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                output.push_back(LerpVector4(current, next, t));
+            } else if (!currentInside && nextInside) {
+                const float t = (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                output.push_back(LerpVector4(current, next, t));
+                output.push_back(next);
+            }
+        }
+
+        if (output.size() < 3) {
+            return;
+        }
+
+        if (output.size() == 3) {
+            visibleFlatTriangles.push_back({
+                output[0],
+                output[1],
+                output[2],
+                triangle.color
+            });
+        } else if (output.size() == 4) {
+            visibleFlatTriangles.push_back({
+                output[0],
+                output[1],
+                output[2],
+                triangle.color
+            });
+
+            visibleFlatTriangles.push_back({
+                output[0],
+                output[2],
+                output[3],
+                triangle.color
+            });
+        }
+    }
+
+    void BuildVisibleFlatTriangles(const Vector2 &playerPos, const float playerAngle) {
+        visibleFlatTriangles.clear();
+
+        for (const GpuFlatTriangle &triangle: flatTriangles) {
+            ClipFlatTriangleAgainstNearPlane(triangle, playerPos, playerAngle);
+        }
+
+        flatTriangleCount = static_cast<GLsizei>(visibleFlatTriangles.size());
+
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, flatSSBO);
+
+        glBufferData(
+            GL_SHADER_STORAGE_BUFFER,
+            visibleFlatTriangles.size() * sizeof(GpuFlatTriangle),
+            visibleFlatTriangles.empty() ? nullptr : visibleFlatTriangles.data(),
+            GL_DYNAMIC_DRAW
+        );
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+    }
+
+    void BuildFlatTrianglesFromSectors() {
+        flatTriangles.clear();
+        visibleFlatTriangles.clear();
+
+        for (const Sector& sector : MapEditor::sectors) {
+            const Vector4 floorColor = {
+                sector.floorColor.x,
+                sector.floorColor.y,
+                sector.floorColor.z,
+                255.0f
+            };
+
+            const Vector4 ceilingColor = {
+                sector.ceilingColor.x,
+                sector.ceilingColor.y,
+                sector.ceilingColor.z,
+                255.0f
+            };
+
+            for (const Triangle& triangle : sector.triangles) {
+                GpuFlatTriangle floorTriangle;
+
+                floorTriangle.a = {triangle.a.x, triangle.a.y, sector.floorHeight, 0.0f};
+                floorTriangle.b = {triangle.c.x, triangle.c.y, sector.floorHeight, 0.0f};
+                floorTriangle.c = {triangle.b.x, triangle.b.y, sector.floorHeight, 0.0f};
+                floorTriangle.color = floorColor;
+
+                flatTriangles.push_back(floorTriangle);
+
+                GpuFlatTriangle ceilingTriangle;
+
+                ceilingTriangle.a = {triangle.a.x, triangle.a.y, sector.ceilingHeight, 0.0f};
+                ceilingTriangle.b = {triangle.b.x, triangle.b.y, sector.ceilingHeight, 0.0f};
+                ceilingTriangle.c = {triangle.c.x, triangle.c.y, sector.ceilingHeight, 0.0f};
+                ceilingTriangle.color = ceilingColor;
+
+                flatTriangles.push_back(ceilingTriangle);
+            }
+        }
+
+        flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
     }
 }
 
@@ -138,8 +382,7 @@ namespace Renderer {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
         for (unsigned char c = 0; c < 128; c++) {
-            if (FT_Load_Char(face, c, FT_LOAD_RENDER))
-            {
+            if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
                 SDL_Log("Failed to load glyph: %c", c);
                 continue;
             }
@@ -147,7 +390,8 @@ namespace Renderer {
             unsigned int texture;
             glGenTextures(1, &texture);
             glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, face->glyph->bitmap.width, face->glyph->bitmap.rows, 0, GL_RED, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, face->glyph->bitmap.width, face->glyph->bitmap.rows, 0, GL_RED,
+                         GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer);
 
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -201,8 +445,8 @@ namespace Renderer {
 
         // --- WALL / PROJECTION SHADER ---
         projectionShader = std::make_unique<Shader>(
-            "../Shaders/wallProjection.vs.glsl",
-            "../Shaders/wallColoring.fs.glsl"
+            "../Shaders/Wall/wallProjection.vs.glsl",
+            "../Shaders/Wall/wallColoring.fs.glsl"
         );
         if (projectionShader->ID == 0) {
             SDL_Log("Projection Shader creation failed");
@@ -216,8 +460,8 @@ namespace Renderer {
         // --- DEBUG SHADER + DEBUG VAO/VBO ---
         if (DEBUG) {
             debugShader = std::make_unique<Shader>(
-                "../Shaders/debug.vs.glsl",
-                "../Shaders/debug.fs.glsl"
+                "../Shaders/Debug/debug.vs.glsl",
+                "../Shaders/Debug/debug.fs.glsl"
             );
             if (debugShader->ID == 0) {
                 SDL_Log("Debug Shader creation failed");
@@ -244,8 +488,8 @@ namespace Renderer {
 
         // --- TEXT SHADER ---
         textShader = std::make_unique<Shader>(
-            "../Shaders/glyph.vs.glsl",
-            "../Shaders/glyph.fs.glsl"
+            "../Shaders/Glyph/glyph.vs.glsl",
+            "../Shaders/Glyph/glyph.fs.glsl"
         );
         if (textShader->ID == 0) {
             SDL_Log("Text Shader creation failed");
@@ -280,8 +524,8 @@ namespace Renderer {
 
     // endregion
 
-    void RenderText(const Shader &s, const std::string& text, float x, const float y, const float scale, const Vector3 color)
-    {
+    void RenderText(const Shader &s, const std::string &text, float x, const float y, const float scale,
+                    const Vector3 color) {
         glDisable(GL_DEPTH_TEST);
         glBindVertexArray(textVAO);
         glActiveTexture(GL_TEXTURE0);
@@ -290,8 +534,7 @@ namespace Renderer {
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(textVAO);
 
-        for (char c : text)
-        {
+        for (char c: text) {
             auto [textureID, Size, Bearing, Advance] = Characters[c];
 
             const float xPos = x + Bearing.x * scale;
@@ -301,13 +544,13 @@ namespace Renderer {
             const float h = Size.y * scale;
             // update VBO for each character
             float vertices[6][4] = {
-                { xPos,     yPos + h,   0.0f, 0.0f },
-                { xPos,     yPos,       0.0f, 1.0f },
-                { xPos + w, yPos,       1.0f, 1.0f },
+                {xPos, yPos + h, 0.0f, 0.0f},
+                {xPos, yPos, 0.0f, 1.0f},
+                {xPos + w, yPos, 1.0f, 1.0f},
 
-                { xPos,     yPos + h,   0.0f, 0.0f },
-                { xPos + w, yPos,       1.0f, 1.0f },
-                { xPos + w, yPos + h,   1.0f, 0.0f }
+                {xPos, yPos + h, 0.0f, 0.0f},
+                {xPos + w, yPos, 1.0f, 1.0f},
+                {xPos + w, yPos + h, 1.0f, 0.0f}
             };
             // render glyph texture over quad
             glBindTexture(GL_TEXTURE_2D, textureID);
@@ -324,18 +567,40 @@ namespace Renderer {
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    void RenderTextRaw(const std::string& text, const float x, const float y, const float scale, const Vector3 color) {
+    void RenderTextRaw(const std::string &text, const float x, const float y, const float scale, const Vector3 color) {
         RenderText(*textShader, text, x, y, scale, color);
     }
 
     bool CreateMap() {
+        MapEditor::TriangulateSectors();
+
+        BuildFlatTrianglesFromSectors();
+        BuildGpuWallsFromMap();
+
         glGenBuffers(1, &wallSSBO);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, wallSSBO);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, MapEditor::walls.size() * sizeof(Wall), MapEditor::walls.data(), GL_DYNAMIC_DRAW);
+        glBufferData(
+            GL_SHADER_STORAGE_BUFFER,
+            gpuWalls.size() * sizeof(GpuWall),
+            gpuWalls.empty() ? nullptr : gpuWalls.data(),
+            GL_DYNAMIC_DRAW
+        );
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
+
+        glGenBuffers(1, &flatSSBO);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, flatSSBO);
+        glBufferData(
+            GL_SHADER_STORAGE_BUFFER,
+            flatTriangles.size() * sizeof(GpuFlatTriangle),
+            flatTriangles.empty() ? nullptr : flatTriangles.data(),
+            GL_DYNAMIC_DRAW
+        );
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+
         glEnable(GL_PROGRAM_POINT_SIZE);
 
-        // -- UNIFORMS--
+        projectionShader->use();
+
         playerPosUniform = glGetUniformLocation(projectionShader->ID, "playerPos");
         if (playerPosUniform == -1) {
             SDL_Log("Failed to get shader uniform location playerPos");
@@ -347,6 +612,19 @@ namespace Renderer {
             SDL_Log("Failed to get shader uniform location playerAngle");
             return false;
         }
+
+        playerHeightUniform = glGetUniformLocation(projectionShader->ID, "playerHeight");
+        if (playerHeightUniform == -1) {
+            SDL_Log("Failed to get shader uniform location playerHeight");
+            return false;
+        }
+
+        renderModeUniform = glGetUniformLocation(projectionShader->ID, "renderMode");
+        if (renderModeUniform == -1) {
+            SDL_Log("Failed to get shader uniform location renderMode");
+            return false;
+        }
+
         return true;
     }
 
@@ -354,7 +632,7 @@ namespace Renderer {
     void DrawDebugLine(const Vector2 start, const Vector2 end) {
         const float verts[] = {
             start.x, start.y,
-            end.x,   end.y
+            end.x, end.y
         };
 
         debugShader->use();
@@ -372,7 +650,7 @@ namespace Renderer {
             pos.x - sizeX, pos.y - sizeY, // bottom-left
             pos.x + sizeX, pos.y - sizeY, // bottom-right
             pos.x + sizeX, pos.y + sizeY, // top-right
-            pos.x - sizeX, pos.y + sizeY  // top-left
+            pos.x - sizeX, pos.y + sizeY // top-left
         };
 
         debugShader->use();
@@ -384,27 +662,60 @@ namespace Renderer {
 
         glDrawArrays(GL_LINE_LOOP, 0, 4);
     }
+
     // endregion
 
-    void Update(const Vector2& playerPos, const float playerAngle) {
+    void Update(const Vector2 &playerPos, const float playerAngle) {
         glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+
+        glDisable(GL_CULL_FACE);
+
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(.2f, .3f, .3f, 1.0f);
 
         projectionShader->use();
         glBindVertexArray(VAO);
 
         glUniform2f(playerPosUniform, playerPos.x, playerPos.y);
         glUniform1f(playerAngleUniform, playerAngle);
+        glUniform1f(playerHeightUniform, PLAYER_HEIGHT);
 
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(MapEditor::walls.size()));
+        // Rebuild floor/ceiling triangles after clipping them against the camera near plane.
+        // This fixes the stretching/weird movement when a flat triangle goes behind the player.
+        BuildVisibleFlatTriangles(playerPos, playerAngle);
 
-        if (!InputManager::GetKey(SDL_SCANCODE_TAB)) return;
+        // Draw floors and ceilings first
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+        glUniform1i(renderModeUniform, RENDER_FLAT);
+
+        glDrawArraysInstanced(
+            GL_TRIANGLES,
+            0,
+            3,
+            flatTriangleCount
+        );
+
+        // Draw walls after
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
+        glUniform1i(renderModeUniform, RENDER_WALL);
+
+        glDrawArraysInstanced(
+            GL_TRIANGLE_STRIP,
+            0,
+            4,
+            gpuWallCount
+        );
+
+        if (!InputManager::GetKey(SDL_SCANCODE_TAB)) {
+            return;
+        }
+
         glDisable(GL_DEPTH_TEST);
 
         DrawDebugRect({0.0f, 0.0f}, DEBUG_PLAYER_HALF_SIZE, DEBUG_PLAYER_HALF_SIZE);
 
-        for (const Wall& wall : MapEditor::walls) {
+        for (const Wall &wall: MapEditor::walls) {
             const Vector2 start = WorldToDebugNdc(wall.start, playerPos);
             const Vector2 end = WorldToDebugNdc(wall.end, playerPos);
 
@@ -414,13 +725,13 @@ namespace Renderer {
         const float halfFovRad = DegToRad(DEBUG_FOV_DEG * 0.5f);
         const float angleRad = DegToRad(playerAngle);
 
-        const Vector2 baseForward = {0.0f, DEBUG_FOV_LINE_LENGTH};
+        constexpr Vector2 baseForward = {0.0f, DEBUG_FOV_LINE_LENGTH};
 
         Vector2 leftFov = RotatePoint(baseForward, angleRad - halfFovRad);
         Vector2 rightFov = RotatePoint(baseForward, angleRad + halfFovRad);
 
-        leftFov.x *= -1;
-        rightFov.x *= -1;
+        leftFov.x *= -1.0f;
+        rightFov.x *= -1.0f;
 
         DrawDebugLine({0.0f, 0.0f}, leftFov);
         DrawDebugLine({0.0f, 0.0f}, rightFov);
@@ -428,7 +739,10 @@ namespace Renderer {
 
     void Destroy() {
         glDeleteBuffers(1, &wallSSBO);
+        glDeleteBuffers(1, &flatSSBO);
+
         glDeleteVertexArrays(1, &VAO);
+
         if (glContext) {
             SDL_GL_DestroyContext(glContext);
             glContext = nullptr;
@@ -438,6 +752,7 @@ namespace Renderer {
             SDL_DestroyWindow(window);
             window = nullptr;
         }
+
         SDL_Quit();
     }
 }
