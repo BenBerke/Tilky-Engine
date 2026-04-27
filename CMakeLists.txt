@@ -15,6 +15,7 @@ option(WOLFY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 add_library(glad STATIC
         glad/src/glad.c
+        Headers/Renderer/Renderer/RendererInternal.hpp
 )
 
 target_include_directories(glad PUBLIC
@@ -27,19 +28,47 @@ target_link_libraries(glad PUBLIC
 
 add_executable(Wolfy_Engine
         main.cpp
-        src/Renderer/Renderer.cpp
+
+        src/Renderer/TextureManager.cpp
+
+        src/Renderer/MapEditor/MapEditor.cpp
+        src/Renderer/MapEditor/MapEditorState.cpp
+        src/Renderer/MapEditor/MapEditorGeometry.cpp
+        src/Renderer/MapEditor/MapEditorDrawing.cpp
+        src/Renderer/MapEditor/MapEditorInput.cpp
+        src/Renderer/MapEditor/MapEditorUI.cpp
+        src/Renderer/MapEditor/MapEditorSaveLoad.cpp
+
         src/Engine/GameTime.cpp
         src/Engine/InputManager.cpp
         src/Objects/Player.cpp
-        src/Renderer/MapEditor.cpp
-        src/Renderer/TextureManager.cpp
+        src/Renderer/Renderer/RendererState.cpp
+        src/Renderer/Renderer/RendererMath.cpp
+        src/Renderer/Renderer/RendererInit.cpp
+        src/Renderer/Renderer/RendererText.cpp
+        src/Renderer/Renderer/RendererMapBuild.cpp
+        src/Renderer/Renderer/RendererSprites.cpp
+        src/Renderer/Renderer/RendererDebug.cpp
+        src/Renderer/Renderer/RendererUpdate.cpp
+        src/Renderer/Renderer/RendererDestroy.cpp
+)
 
-        Headers/Objects/Sector.hpp
-        Headers/Renderer/TextureManager.hpp
+target_precompile_headers(Wolfy_Engine PRIVATE
+        <vector>
+        <string>
+        <array>
+        <memory>
+        <map>
+        <algorithm>
+        <cmath>
+        <fstream>
+        <SDL3/SDL.h>
+        <nlohmann/json.hpp>
 )
 
 target_include_directories(Wolfy_Engine PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/MapEditor
 )
 
 target_link_libraries(Wolfy_Engine PRIVATE

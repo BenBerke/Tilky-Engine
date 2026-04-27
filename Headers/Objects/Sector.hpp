@@ -4,9 +4,9 @@
 
 #ifndef WOLFY_ENGINE_SECTOR_H
 #define WOLFY_ENGINE_SECTOR_H
+#include "Headers/Math/Vector/Vector3.hpp"
 
-#include "../Math/Vector/Vector2.hpp"
-#include "../Math/Vector/Vector3.hpp"
+struct Vector2;
 
 struct Triangle {
     Vector2 a, b, c;

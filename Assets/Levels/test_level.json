@@ -3,53 +3,80 @@
         {
             "id": 0,
             "position": [
-                -216.0,
-                81.0
+                -178.0,
+                59.0
             ],
             "type": 0
         }
     ],
     "sectors": [
         {
+            "ceilingHeight": 40.0,
+            "ceilingTextureIndex": 0,
             "corners": [
                 {
-                    "x": -288.0,
-                    "y": 160.0
+                    "x": -384.0,
+                    "y": 96.0
+                },
+                {
+                    "x": -96.0,
+                    "y": 224.0
                 },
                 {
                     "x": -64.0,
-                    "y": 160.0
-                },
-                {
-                    "x": -256.0,
-                    "y": -160.0
+                    "y": -96.0
                 }
             ],
+            "floorHeight": 0.0,
+            "floorTextureIndex": 0,
             "id": 0
         }
     ],
+    "textures": [
+        "../Assets/Textures/wall.png"
+    ],
     "walls": [
         {
+            "backSector": -1,
             "end": [
-                -64.0,
-                160.0
+                -96.0,
+                224.0
             ],
+            "frontSector": -1,
             "id": 0,
             "start": [
-                -288.0,
-                160.0
-            ]
+                -384.0,
+                96.0
+            ],
+            "textureIndex": 0
         },
         {
+            "backSector": -1,
             "end": [
-                -256.0,
-                -160.0
+                -64.0,
+                -96.0
             ],
+            "frontSector": -1,
             "id": 1,
             "start": [
-                -288.0,
-                160.0
-            ]
+                -96.0,
+                224.0
+            ],
+            "textureIndex": 0
+        },
+        {
+            "backSector": -1,
+            "end": [
+                -384.0,
+                96.0
+            ],
+            "frontSector": -1,
+            "id": 2,
+            "start": [
+                -64.0,
+                -96.0
+            ],
+            "textureIndex": 0
         }
     ]
 }

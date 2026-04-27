@@ -1,8 +1,8 @@
-#include <format>
+#include "MapEditorInternal.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 
-#include "Headers/Renderer/Renderer.hpp"
+#include "Headers/Renderer/Renderer/Renderer.hpp"
 #include "Headers/Renderer/Shader.hpp"
 #include "Headers/Renderer/MapEditor.hpp"
 #include "../../Headers/Renderer/TextureManager.hpp"
@@ -13,11 +13,8 @@
 #define SCREEN_WIDTH 1080
 #define SCREEN_HEIGHT 960
 
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
 int main() {
-    bool editorMode = true;
+    bool editorMode = false;
 
     if (editorMode) MapEditor::Start();
     while (editorMode) {
@@ -25,7 +22,7 @@ int main() {
         editorMode = !(MapEditor::QuitRequested());
         MapEditor::Update();
     }
-    MapEditor::Destroy();
+    //MapEditor::Destroy();
 
     MapEditor::LoadLevel("../Assets/Levels/test_level.json");
 
@@ -33,16 +30,16 @@ int main() {
         SDL_Log("Failed to initialize Renderer: %s", SDL_GetError());
         return 1;
     }
+    for (const auto& pathInput : MapEditorInternal::textureInputs) {
+        if (pathInput[0] == '\0') {
+            continue;
+        }
 
-    const int brickTexture = TextureManager::CreateTexture("../Assets/Textures/wall.png");
-    const int woodTexture = TextureManager::CreateTexture("../Assets/Textures/wood.png");
-    const int whiteTexture = TextureManager::CreateTexture("../Assets/Textures/white.png");
-    const int floorTexture = TextureManager::CreateTexture("../Assets/Textures/floor.png");
-    const int humanTexture = TextureManager::CreateTexture("../Assets/Textures/human.png");
+        const int textureIndex = TextureManager::CreateTexture(pathInput.data());
 
-    if (brickTexture == -1 || woodTexture == -1 || whiteTexture == -1) {
-        SDL_Log("Failed to load one or more textures");
-        return 1;
+        if (textureIndex == -1) {
+            SDL_Log("Failed to load texture: %s", pathInput.data());
+        }
     }
 
     Player::position = MapEditor::playerStartPos;
@@ -76,7 +73,7 @@ int main() {
         if (InputManager::GetKeyDown(SDL_SCANCODE_1)) Player::position.x += 1;
 
         Renderer::Update(Player::position, Player::angle);
-        Renderer::RenderTextRaw(std::format("FPS: {}", fps), 0, 0, 0.5f, Vector3{255, 255, 255});
+        Renderer::RenderTextRaw("FPS: " + std::to_string(fps), 0, 0, 0.5f, Vector3{255, 255, 255});
 
         SDL_GL_SwapWindow(Renderer::window);
 

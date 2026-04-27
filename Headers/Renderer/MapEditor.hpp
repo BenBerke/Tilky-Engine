@@ -1,37 +1,38 @@
-//
-// Created by berke on 4/13/2026.
-//
-
-#ifndef WOLFY_ENGINE_MAPEDITOR_H
-#define WOLFY_ENGINE_MAPEDITOR_H
+#pragma once
 
 #include <string>
 #include <vector>
-#include <SDL3/SDL_render.h>
-#include <SDL3_ttf/SDL_ttf.h>
 
+#include "../Math/Vector/Vector2.hpp"
+#include "../Math/Vector/Vector3.hpp"
 #include "../Objects/Wall.hpp"
 #include "../Objects/Sector.hpp"
 
 namespace MapEditor {
-    inline SDL_Window* window;
-    inline SDL_Renderer* renderer;
-    inline TTF_TextEngine* textEngine;
-    inline TTF_Font* font;
-
-    inline std::vector<Wall> walls;
-    inline std::vector<Sector> sectors;
-    void AddWall(const Wall &wall);
-    void AddSector(const Sector &sector);
-    void TriangulateSectors();
+    extern std::vector<Wall> walls;
+    extern std::vector<Sector> sectors;
+    extern Vector2 playerStartPos;
 
     void Start();
     void Update();
-    bool QuitRequested();
     void Destroy();
 
+    bool QuitRequested();
     bool LoadLevel(const std::string& level);
-    inline Vector2 playerStartPos;
-}
 
-#endif //WOLFY_ENGINE_MAPEDITOR_H
+    void AddWall(const Wall& wall);
+    void AddSector(const Sector& sector);
+
+    void CreateSector(
+        const std::vector<Vector2>& vertices,
+        float ceilHeight,
+        float floorHeight,
+        Vector3 ceilColor,
+        Vector3 floorColor,
+        int ceilTextureIndex,
+        int floorTextureIndex
+    );
+
+    void TriangulateSectors();
+    std::vector<Triangle> Triangulate(std::vector<Vector2> vertices);
+}
