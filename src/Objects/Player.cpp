@@ -2,14 +2,14 @@
 // Created by berke on 4/13/2026.
 //
 
-#include "../../Headers/Objects/Player.h"
+#include "../../Headers/Objects/Player.hpp"
 
 #include <algorithm>
 
-#include "../../Headers/Engine/InputManager.h"
-#include "../../Headers/Engine/GameTime.h"
+#include "../../Headers/Engine/InputManager.hpp"
+#include "../../Headers/Engine/GameTime.hpp"
 
-#include "../../Headers/Math/Vector/Vector2Math.h"
+#include "../../Headers/Math/Vector/Vector2Math.hpp"
 
 #define FRICTION .8f
 #define TURN_SPEED 90.0f

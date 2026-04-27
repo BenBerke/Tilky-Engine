@@ -8,9 +8,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-#include "Shader.h"
-#include "../Math/Vector/Vector2.h"
-#include "../Math/Vector/Vector3.h"
+#include "Shader.hpp"
+#include "../Math/Vector/Vector2.hpp"
+#include "../Math/Vector/Vector3.hpp"
 
 
 #endif //WOLFY_ENGINE_RENDERER_H

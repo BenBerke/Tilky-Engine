@@ -1,7 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_scancode.h>
-#include "../Math/Vector/Vector2.h"
+#include "../Math/Vector/Vector2.hpp"
 
 namespace InputManager {
     void BeginFrame();

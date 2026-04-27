@@ -7,9 +7,9 @@
 
 #include <vector>
 
-#include "Wall.h"
-#include "Sector.h"
-#include "../Math/Vector/Vector2.h"
+#include "Wall.hpp"
+#include "Sector.hpp"
+#include "../Math/Vector/Vector2.hpp"
 
 namespace Player {
     inline Vector2 position = {0, 0};

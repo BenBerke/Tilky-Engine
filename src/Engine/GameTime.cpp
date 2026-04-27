@@ -2,7 +2,7 @@
 // Created by berke on 4/6/2026.
 //
 
-#include "../../Headers/Engine/GameTime.h"
+#include "../../Headers/Engine/GameTime.hpp"
 #include <SDL3/SDL.h>
 
 namespace GameTime {

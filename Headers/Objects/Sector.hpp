@@ -5,8 +5,8 @@
 #ifndef WOLFY_ENGINE_SECTOR_H
 #define WOLFY_ENGINE_SECTOR_H
 
-#include "../Math/Vector/Vector2.h"
-#include "../Math/Vector/Vector3.h"
+#include "../Math/Vector/Vector2.hpp"
+#include "../Math/Vector/Vector3.hpp"
 
 struct Triangle {
     Vector2 a, b, c;

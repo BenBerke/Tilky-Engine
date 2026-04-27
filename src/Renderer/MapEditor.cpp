@@ -2,19 +2,23 @@
 // Created by berke on 4/13/2026.
 //
 
-#include "../../Headers/Renderer/MapEditor.h"
-#include "../../Headers/Math/Vector/Vector2Math.h"
-#include "../../Headers/Engine/InputManager.h"
+#include "../../Headers/Renderer/MapEditor.hpp"
+#include "../../Headers/Math/Vector/Vector2Math.hpp"
+#include "../../Headers/Engine/InputManager.hpp"
 
 #include "imgui.h"
 
 #include <algorithm>
-#include <string>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>
 
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
+#include <fstream>
 
 #define SCREEN_WIDTH 1680
 #define SCREEN_HEIGHT 960
@@ -25,7 +29,7 @@
 
 namespace {
     Vector2 cameraPos = {0, 0};
-    std::vector<Vector2> placedDots;
+    std::vector<Vector2> placedCorners;
 
     struct EditorLine {
         Vector2 start;
@@ -47,18 +51,35 @@ namespace {
         MODE_DOT,
         MODE_SECTOR,
         MODE_WALL,
+        MODE_OBJECT,
 
         MODE_COUNT
     };
     Mode currentMode = MODE_DOT;
+
+    enum ObjectType {
+        PLAYER,
+
+        OBJECT_COUNT,
+    };
+
+    struct Object {
+        ObjectType type;
+        Vector2 position;
+    };
+    std::vector<Object> objects;
+    ObjectType currentObjectToPlace = PLAYER;
+    bool playerPlaced = false;
+
+    bool quit = false;
 }
 
 bool SamePoint(const Vector2 &a, const Vector2 &b) {
     return a.x == b.x && a.y == b.y;
 }
 
-bool DotExistsAt(const Vector2 &point) {
-    for (const Vector2 &placedDot: placedDots) {
+bool CornerExistsAt(const Vector2 &point) {
+    for (const Vector2 &placedDot: placedCorners) {
         if (SamePoint(placedDot, point)) {
             return true;
         }
@@ -67,7 +88,7 @@ bool DotExistsAt(const Vector2 &point) {
     return false;
 }
 
-bool IsDotConnectedToLine(const Vector2 &point) {
+bool IsCornerConnectedToLine(const Vector2 &point) {
     for (const EditorLine &line: placedLines) {
         if (SamePoint(line.start, point) || SamePoint(line.end, point)) {
             return true;
@@ -82,7 +103,7 @@ bool IsDotConnectedToLine(const Vector2 &point) {
     return false;
 }
 
-void DrawThickLine(SDL_Renderer *renderer, Vector2 start, Vector2 end, float thickness) {
+void DrawThickLine(SDL_Renderer *renderer, const Vector2 start, const Vector2 end, const float thickness) {
     const float dx = end.x - start.x;
     const float dy = end.y - start.y;
 
@@ -277,7 +298,7 @@ namespace MapEditor {
         return true;
     }
 
-    std::vector<Triangle> triangulate(std::vector<Vector2> vertices) {
+    std::vector<Triangle> Triangulate(std::vector<Vector2> vertices) {
         std::vector<Triangle> triangles;
 
         if (vertices.size() < 3) {
@@ -342,9 +363,9 @@ namespace MapEditor {
 
     void CreateSector(
     const std::vector<Vector2>& vertices,
-    float ceilHeight,
+    const float ceilHeight,
     const float floorHeight,
-    Vector3 ceilColor,
+    const Vector3 ceilColor,
     const Vector3 floorColor,
     const int ceilTextureIndex,
     const int floorTextureIndex
@@ -360,7 +381,7 @@ namespace MapEditor {
             floorTextureIndex
         };
 
-        newSector.triangles = triangulate(newSector.vertices);
+        newSector.triangles = Triangulate(newSector.vertices);
 
         AddSector(newSector);
     }
@@ -370,9 +391,11 @@ namespace MapEditor {
             sector.triangles.clear();
 
             if (sector.vertices.size() < 3) continue;
-            sector.triangles = triangulate(sector.vertices);
+            sector.triangles = Triangulate(sector.vertices);
         }
     }
+
+    //region Render Functions
 
     void DrawFilledTriangle(const Triangle &triangle, const SDL_FColor color) {
         const Vector2 a = WorldToScreen(triangle.a, cameraPos);
@@ -403,7 +426,7 @@ namespace MapEditor {
             return;
         }
 
-        const std::vector<Triangle> previewTriangles = triangulate(previewVertices);
+        const std::vector<Triangle> previewTriangles = Triangulate(previewVertices);
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -465,6 +488,85 @@ namespace MapEditor {
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }
 
+    void DrawCorners() {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        for (const Vector2 &dotWorld: placedCorners) {
+            Vector2 dotScreen = WorldToScreen(dotWorld, cameraPos);
+
+            SDL_FRect dotRect = {
+                dotScreen.x - 3.0f,
+                dotScreen.y - 3.0f,
+                6.0f,
+                6.0f
+            };
+            SDL_RenderFillRect(renderer, &dotRect);
+        }
+    }
+
+    void DrawWalls() {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        for (const EditorLine &line: placedLines) {
+            const Vector2 startScreen = WorldToScreen(line.start, cameraPos);
+            const Vector2 endScreen = WorldToScreen(line.end, cameraPos);
+
+            DrawThickLine(renderer, startScreen, endScreen, 5.0f);
+        }
+    }
+
+    void DrawObjects() {
+        for (const Object &object : objects) {
+            const Vector2 objectScreen = WorldToScreen(object.position, cameraPos);
+
+            Vector3 color = {0, 0, 0};
+            switch (object.type) {
+                case PLAYER: color = {255, 0, 0,}; break;
+                default: color = {0, 0, 0, }; break;
+            }
+
+            SDL_FRect dotRect = {
+                objectScreen.x - 3.0f,
+                objectScreen.y - 3.0f,
+                15.0f,
+                15.0f
+            };
+            SDL_SetRenderDrawColor(renderer, color.x, color.y, color.z, 255);
+            SDL_RenderFillRect(renderer, &dotRect);
+        }
+    }
+
+    void DrawGridDots() {
+        constexpr float dotSize = 3.0f;
+
+        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+
+        // Work out visible world area
+        const float leftWorld = cameraPos.x - SCREEN_WIDTH * 0.5f;
+        const float rightWorld = cameraPos.x + SCREEN_WIDTH * 0.5f;
+        const float bottomWorld = cameraPos.y - SCREEN_HEIGHT * 0.5f;
+        const float topWorld = cameraPos.y + SCREEN_HEIGHT * 0.5f;
+
+        // Snap the first dot to the grid
+        const float startX = std::floor(leftWorld / GRID_SIZE) * GRID_SIZE;
+        const float startY = std::floor(bottomWorld / GRID_SIZE) * GRID_SIZE;
+
+        for (float worldX = startX; worldX <= rightWorld; worldX += GRID_SIZE) {
+            for (float worldY = startY; worldY <= topWorld; worldY += GRID_SIZE) {
+                // Convert world position to screen position
+                const float screenX = (worldX - cameraPos.x) + SCREEN_WIDTH * 0.5f;
+                const float screenY = SCREEN_HEIGHT * 0.5f - (worldY - cameraPos.y);
+
+                SDL_FRect dotRect = {
+                    screenX - dotSize * 0.5f,
+                    screenY - dotSize * 0.5f,
+                    dotSize,
+                    dotSize
+                };
+
+                SDL_RenderFillRect(renderer, &dotRect);
+            }
+        }
+    }
+
     void FinishSectorSelection() {
         const std::vector<Vector2> finalVertices = GetSectorVerticesWithoutClosingDuplicate();
 
@@ -495,6 +597,7 @@ namespace MapEditor {
         sectorBeingCreated.clear();
     }
 
+    //endregion
     void Start() {
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
             SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
@@ -534,39 +637,6 @@ namespace MapEditor {
 
     // static TTF_Text* controls = TTF_CreateText(textEngine, font, "Left / Right arrow to step backwards / forwards. Space to auto step", 0);
 
-    void DrawGridDots() {
-        constexpr float dotSize = 3.0f;
-
-        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
-
-        // Work out visible world area
-        const float leftWorld = cameraPos.x - SCREEN_WIDTH * 0.5f;
-        const float rightWorld = cameraPos.x + SCREEN_WIDTH * 0.5f;
-        const float bottomWorld = cameraPos.y - SCREEN_HEIGHT * 0.5f;
-        const float topWorld = cameraPos.y + SCREEN_HEIGHT * 0.5f;
-
-        // Snap the first dot to the grid
-        const float startX = std::floor(leftWorld / GRID_SIZE) * GRID_SIZE;
-        const float startY = std::floor(bottomWorld / GRID_SIZE) * GRID_SIZE;
-
-        for (float worldX = startX; worldX <= rightWorld; worldX += GRID_SIZE) {
-            for (float worldY = startY; worldY <= topWorld; worldY += GRID_SIZE) {
-                // Convert world position to screen position
-                const float screenX = (worldX - cameraPos.x) + SCREEN_WIDTH * 0.5f;
-                const float screenY = SCREEN_HEIGHT * 0.5f - (worldY - cameraPos.y);
-
-                SDL_FRect dotRect = {
-                    screenX - dotSize * 0.5f,
-                    screenY - dotSize * 0.5f,
-                    dotSize,
-                    dotSize
-                };
-
-                SDL_RenderFillRect(renderer, &dotRect);
-            }
-        }
-    }
-
     const char* GetModeName(const Mode mode) {
         switch (mode) {
             case MODE_DOT:
@@ -578,6 +648,9 @@ namespace MapEditor {
             case MODE_SECTOR:
                 return "Sector Mode";
 
+            case MODE_OBJECT:
+                return "Object Mode";
+
             default:
                 return "Unknown Mode";
         }
@@ -585,6 +658,60 @@ namespace MapEditor {
 
     void MoveMode() {
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
+    }
+
+    bool SaveAndQuit() {
+        if (!playerPlaced) {
+            SDL_Log("Can not play without a player");
+            return false;
+        }
+        json levelData;
+        levelData["objects"] = json::array();
+        levelData["walls"] = json::array();
+        levelData["sectors"] = json::array();
+        for (int i = 0; i < objects.size(); i++) {
+            json jsonObj = {
+                {"id", i},
+                {"type", static_cast<int>(objects[i].type)},
+                {"position", {objects[i].position.x, objects[i].position.y}},
+            };
+            levelData["objects"].push_back(jsonObj);
+        }
+        for (int i = 0; i < walls.size(); i++) {
+            json jsonObj = {
+                {"id", i},
+                    {"start", {walls[i].start.x, walls[i].start.y}},
+                        {"end", {walls[i].end.x, walls[i].end.y}},
+            };
+            levelData["walls"].push_back(jsonObj);
+        }
+        for (int i = 0; i < sectors.size(); i++) {
+            json cornerArray = json::array();
+            for (const auto& point : sectors[i].vertices) {
+                cornerArray.push_back({
+                    {"x", point.x},
+                    {"y", point.y}
+                });
+            }
+
+            json jsonObj = {
+                {"id", i},
+                {"corners", cornerArray}
+            };
+
+            levelData["sectors"].push_back(jsonObj);
+        }
+
+        std::ofstream file("../Assets/Levels/test_level.json");
+        if (!file.is_open()) {
+            SDL_Log("Failed to open test_level.json");
+            return false;
+        }
+        file << levelData.dump(4);
+        file.close();
+
+        SDL_Log("Level created successfully");
+        return true;
     }
 
     void Update() {
@@ -612,7 +739,7 @@ namespace MapEditor {
                 const Vector2 snappedWorld = SnapToGrid(mouseWorld);
 
                 if (currentMode == MODE_SECTOR) {
-                    if (DotExistsAt(snappedWorld)) {
+                    if (CornerExistsAt(snappedWorld)) {
                         AddSectorSelectionPoint(snappedWorld);
                         creatableSector = sectorBeingCreated.size() >= 3;
                     }
@@ -629,22 +756,30 @@ namespace MapEditor {
                 else if (currentMode == MODE_DOT) {
                     bool dotAlreadyExists = false;
 
-                    for (int i = 0; i < static_cast<int>(placedDots.size()); ++i) {
-                        if (SamePoint(placedDots[i], snappedWorld)) {
+                    for (int i = 0; i < static_cast<int>(placedCorners.size()); ++i) {
+                        if (SamePoint(placedCorners[i], snappedWorld)) {
                             dotAlreadyExists = true;
 
-                            if (IsDotConnectedToLine(snappedWorld)) {
-                                SDL_Log("Cannot delete dot because it has a line connected to it");
-                                break;
-                            }
-
-                            placedDots.erase(placedDots.begin() + i);
+                            if (IsCornerConnectedToLine(snappedWorld)) break;
+                            placedCorners.erase(placedCorners.begin() + i);
                             break;
                         }
                     }
 
                     if (!dotAlreadyExists) {
-                        placedDots.push_back(snappedWorld);
+                        placedCorners.push_back(snappedWorld);
+                    }
+                }
+                else if (currentMode == MODE_OBJECT) {
+                    if (currentObjectToPlace == PLAYER) {
+                        if (playerPlaced) {
+                            for (Object& object : objects) if (object.type == PLAYER) object.position = mouseWorld;
+                        }
+                        else {
+                            Object player = {PLAYER, mouseWorld};
+                            playerPlaced = true;
+                            objects.push_back(player);
+                        }
                     }
                 }
             }
@@ -653,7 +788,7 @@ namespace MapEditor {
                 const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
                 const Vector2 snappedWorld = SnapToGrid(mouseWorld);
 
-                if (DotExistsAt(snappedWorld)) {
+                if (CornerExistsAt(snappedWorld)) {
                     drawingLine = true;
                     lineStartWorld = snappedWorld;
                 }
@@ -676,11 +811,17 @@ namespace MapEditor {
                 const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
                 const Vector2 snappedWorld = SnapToGrid(mouseWorld);
 
-                if (DotExistsAt(snappedWorld) && !SamePoint(lineStartWorld, snappedWorld)) {
+                if (CornerExistsAt(snappedWorld) && !SamePoint(lineStartWorld, snappedWorld)) {
                     placedLines.push_back({
                         lineStartWorld,
                         snappedWorld
                     });
+                    const Wall newWall = {
+                        lineStartWorld,
+                        snappedWorld,
+                        {0, 0, 0, 255},
+                    };
+                    walls.push_back(newWall);
                 }
 
                 drawingLine = false;
@@ -693,28 +834,11 @@ namespace MapEditor {
 
         DrawGridDots();
         DrawExistingSectors();
+        DrawCorners();
+        DrawWalls();
+        DrawObjects();
         if (currentMode == MODE_SECTOR) DrawSectorPreview();
 
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        for (const Vector2 &dotWorld: placedDots) {
-            Vector2 dotScreen = WorldToScreen(dotWorld, cameraPos);
-
-            SDL_FRect dotRect = {
-                dotScreen.x - 3.0f,
-                dotScreen.y - 3.0f,
-                6.0f,
-                6.0f
-            };
-            SDL_RenderFillRect(renderer, &dotRect);
-        }
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        for (const EditorLine &line: placedLines) {
-            const Vector2 startScreen = WorldToScreen(line.start, cameraPos);
-            const Vector2 endScreen = WorldToScreen(line.end, cameraPos);
-
-            DrawThickLine(renderer, startScreen, endScreen, 5.0f);
-        }
         // TTF_DrawRendererText(controls, 15.0f, 50);
 
         ImGui::Begin("Editor");
@@ -737,7 +861,7 @@ namespace MapEditor {
 
         ImGui::Text("%s", GetModeName(currentMode));
 
-        ImGui::Text("\nDots: %d", static_cast<int>(placedDots.size()));
+        ImGui::Text("\nDots: %d", static_cast<int>(placedCorners.size()));
         ImGui::Text("Lines: %d", static_cast<int>(placedLines.size()));
         ImGui::Text("Sectors: %d", static_cast<int>(sectors.size()));
 
@@ -774,11 +898,21 @@ namespace MapEditor {
             }
         }
 
+        if (ImGui::Button("Save & Play")) {
+            if (SaveAndQuit()){
+                quit = true;
+            }
+        }
+
         ImGui::End();
 
         ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
         SDL_RenderPresent(renderer);
+    }
+
+    bool QuitRequested() {
+        return quit;
     }
 
     void Destroy() {
@@ -790,5 +924,100 @@ namespace MapEditor {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
+    }
+
+    bool LoadLevel(const std::string& level) {
+        walls.clear();
+        sectors.clear();
+        objects.clear();
+        placedLines.clear();
+        placedCorners.clear();
+
+        playerPlaced = false;
+        playerStartPos = {0.0f, 0.0f};
+        std::ifstream file(level);
+
+        if (!file.is_open()) {
+            SDL_Log("Couldn't open level file");
+            return false;
+        }
+
+        json levelData;
+        try {
+            file >> levelData;
+        }
+        catch (const std::exception& e) {
+            SDL_Log("Failed to parse level JSON: %s", e.what());
+            return false;
+        }
+        file.close();
+
+        if (levelData.contains("objects")) {
+            for (const json& objectJson : levelData["objects"]) {
+                Object object;
+
+                object.type = static_cast<ObjectType>(objectJson["type"].get<int>());
+                object.position = {
+                objectJson["position"][0].get<float>(),
+                objectJson["position"][1].get<float>(),
+                };
+
+                objects.push_back(object);
+                if (object.type == PLAYER) {
+                    playerPlaced = true;
+                    playerStartPos = object.position;
+                }
+            }
+        }
+        if (levelData.contains("walls")) {
+            for (const json& wallJson : levelData["walls"]) {
+                Vector2 start = {
+                    wallJson["start"][0].get<float>(),
+                    wallJson["start"][1].get<float>(),
+                };
+                Vector2 end = {
+                    wallJson["end"][0].get<float>(),
+                    wallJson["end"][1].get<float>(),
+                };
+                Wall wall {
+                    start, end,
+                    {0, 0, 0, 255},
+                };
+
+                walls.push_back(wall);
+                placedLines.push_back({start,end});
+            }
+        }
+
+        if (levelData.contains("sectors")) {
+            for (const json& sectorJson : levelData["sectors"]) {
+                std::vector<Vector2> corners;
+
+                for (const json& cornerJson : sectorJson["corners"]) {
+                    corners.push_back({
+                        cornerJson["x"].get<float>(),
+                        cornerJson["y"].get<float>()
+                    });
+                }
+
+                Sector sector = {
+                    corners,
+                    {},
+                    sectorJson.value("ceilingHeight", 40.0f),
+                    sectorJson.value("floorHeight", 0.0f),
+                    {255.0f, 255.0f, 255.0f},
+                    {255.0f, 255.0f, 255.0f},
+                    -1,
+                    -1
+                };
+
+                sector.triangles = Triangulate(sector.vertices);
+
+                sectors.push_back(sector);
+            }
+        }
+
+        SDL_Log("Level loaded successfully");
+        return true;
     }
 }

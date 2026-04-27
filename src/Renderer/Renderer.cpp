@@ -4,23 +4,23 @@
 
 
 #include <glad/glad.h>
-#include "../../Headers/Renderer/Renderer.h"
+#include "../../Headers/Renderer/Renderer.hpp"
 
 #include <map>
 #include <memory>
 #include <SDL3/SDL_init.h>
 
-#include "../../Headers/Objects/Wall.h"
-#include "../../Headers/Renderer/MapEditor.h"
+#include "../../Headers/Objects/Wall.hpp"
+#include "../../Headers/Renderer/MapEditor.hpp"
 
-#include "../../Headers/Math/Matrix/Matrix4.h"
-#include "Headers/Engine/InputManager.h"
+#include "../../Headers/Math/Matrix/Matrix4.hpp"
+#include "Headers/Engine/InputManager.hpp"
 
-#include "../../Headers/Math/Vector/Vector4.h"
+#include "../../Headers/Math/Vector/Vector4.hpp"
 
-#include "../../Headers/Objects/Player.h"
+#include "../../Headers/Objects/Player.hpp"
 
-#include "../../Headers/Renderer/TextureManager.h"
+#include "../../Headers/Renderer/TextureManager.hpp"
 
 #define SCREEN_WIDTH 1680
 #define SCREEN_HEIGHT 960

@@ -2,7 +2,7 @@
 #define WOLFY_ENGINE_VECTOR2MATH_H
 
 #include <cmath>
-#include "Vector2.h"
+#include "Vector2.hpp"
 
 namespace Vector2Math {
 

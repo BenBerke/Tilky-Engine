@@ -1,4 +1,4 @@
-#include "../../Headers/Engine/InputManager.h"
+#include "../../Headers/Engine/InputManager.hpp"
 #include <algorithm>
 
 #include "imgui_impl_sdl3.h"

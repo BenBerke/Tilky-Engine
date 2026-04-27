@@ -1,15 +1,14 @@
 #include <format>
-#include <iostream>
-#include "Headers/Engine/GameTime.h"
-#include "Headers/Engine/InputManager.h"
+#include "Headers/Engine/GameTime.hpp"
+#include "Headers/Engine/InputManager.hpp"
 
-#include "Headers/Renderer/Renderer.h"
-#include "Headers/Renderer/Shader.h"
-#include "Headers/Renderer/MapEditor.h"
-#include "../../Headers/Renderer/TextureManager.h"
+#include "Headers/Renderer/Renderer.hpp"
+#include "Headers/Renderer/Shader.hpp"
+#include "Headers/Renderer/MapEditor.hpp"
+#include "../../Headers/Renderer/TextureManager.hpp"
 
-#include "Headers/Objects/Player.h"
-#include "../../Headers/Objects/Sector.h"
+#include "Headers/Objects/Player.hpp"
+#include "../../Headers/Objects/Sector.hpp"
 
 #define SCREEN_WIDTH 1080
 #define SCREEN_HEIGHT 960
@@ -20,42 +19,32 @@ using json = nlohmann::json;
 int main() {
     bool editorMode = true;
 
-    json j_object = {
-        {"name", "John Doe"},
-        {"age", 30},
-        {"is_student", false},
-        {"skills", {"C++", "Python", "JavaScript"}}
-    };
-    std::cout << j_object["skills"] << std::endl;
-    j_object["skills"].push_back("Rust");
-    std::cout << j_object["skills"] << std::endl;
-
     if (editorMode) MapEditor::Start();
     while (editorMode) {
         InputManager::BeginFrame();
-        editorMode = !(InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) || InputManager::QuitRequested());
+        editorMode = !(MapEditor::QuitRequested());
         MapEditor::Update();
     }
     MapEditor::Destroy();
 
-    return 0;
+    MapEditor::LoadLevel("../Assets/Levels/test_level.json");
+
     if (!Renderer::Initialize()) {
         SDL_Log("Failed to initialize Renderer: %s", SDL_GetError());
         return 1;
     }
 
-    int brickTexture = TextureManager::CreateTexture("../Assets/Textures/wall.png");
-    int woodTexture = TextureManager::CreateTexture("../Assets/Textures/wood.png");
-    int whiteTexture = TextureManager::CreateTexture("../Assets/Textures/white.png");
-    int floorTexture = TextureManager::CreateTexture("../Assets/Textures/floor.png");
-    int humanTexture = TextureManager::CreateTexture("../Assets/Textures/human.png");
+    const int brickTexture = TextureManager::CreateTexture("../Assets/Textures/wall.png");
+    const int woodTexture = TextureManager::CreateTexture("../Assets/Textures/wood.png");
+    const int whiteTexture = TextureManager::CreateTexture("../Assets/Textures/white.png");
+    const int floorTexture = TextureManager::CreateTexture("../Assets/Textures/floor.png");
+    const int humanTexture = TextureManager::CreateTexture("../Assets/Textures/human.png");
     if (brickTexture == -1 || woodTexture == -1 || whiteTexture == -1) {
         SDL_Log("Failed to load one or more textures");
         return 1;
     }
 
-
-    Player::position = {00.0f, 0.0f};
+    Player::position = MapEditor::playerStartPos;
     Player::FindCurrentSector(MapEditor::sectors);
 
     if (Player::currentSector == -1) {
@@ -80,7 +69,6 @@ int main() {
         InputManager::BeginFrame();
         GameTime::Update();
         Player::Update(MapEditor::walls, MapEditor::sectors);
-
 
         running = !InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) || InputManager::QuitRequested();
 

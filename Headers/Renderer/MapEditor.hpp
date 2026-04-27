@@ -5,12 +5,13 @@
 #ifndef WOLFY_ENGINE_MAPEDITOR_H
 #define WOLFY_ENGINE_MAPEDITOR_H
 
+#include <string>
 #include <vector>
 #include <SDL3/SDL_render.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
-#include "../Objects/Wall.h"
-#include "../Objects/Sector.h"
+#include "../Objects/Wall.hpp"
+#include "../Objects/Sector.hpp"
 
 namespace MapEditor {
     inline SDL_Window* window;
@@ -26,7 +27,11 @@ namespace MapEditor {
 
     void Start();
     void Update();
+    bool QuitRequested();
     void Destroy();
+
+    bool LoadLevel(const std::string& level);
+    inline Vector2 playerStartPos;
 }
 
 #endif //WOLFY_ENGINE_MAPEDITOR_H

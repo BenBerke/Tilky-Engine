@@ -1,4 +1,4 @@
-#include "../../Headers/Renderer/TextureManager.h"
+#include "../../Headers/Renderer/TextureManager.hpp"
 
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_surface.h>
