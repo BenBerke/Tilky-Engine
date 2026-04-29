@@ -9,20 +9,38 @@
 #include <SDL3/SDL_log.h>
 
 namespace RendererInternal {
+    static float GetSectorFloorHeight(const Sector &sector) {
+        return sector.ceilingHeight - sector.floorHeight;
+    }
+
+    static float GetWallFloorBottomHeight(const Sector &sector, const int floorIndex) {
+        const float floorHeight = GetSectorFloorHeight(sector);
+
+        return sector.floorHeight + floorHeight * static_cast<float>(floorIndex);
+    }
+
+    static float GetWallFloorTopHeight(const Sector &sector, const int floorIndex) {
+        const float floorHeight = GetSectorFloorHeight(sector);
+
+        return sector.floorHeight + floorHeight * static_cast<float>(floorIndex + 1);
+    }
+
     static bool IsValidSectorIndex(const int index) {
         return index >= 0 && index < static_cast<int>(MapEditor::sectors.size());
     }
 
-    static bool IsPortalWall(const Wall& wall) {
-        return IsValidSectorIndex(wall.frontSector) &&
-               IsValidSectorIndex(wall.backSector);
+    static bool IsPortalWall(const Wall &wall) {
+        //return IsValidSectorIndex(wall.frontSector) &&
+        //  IsValidSectorIndex(wall.backSector);
+        return wall.frontSector != -1 && wall.backSector != -1 && wall.frontSector != wall.backSector;
     }
 
     static void PushGpuWallPiece(
-        const Wall& wall,
+        const Wall &wall,
         const float bottomHeight,
         const float topHeight,
-        const Vector4& color
+        const Vector4 &color,
+        const int floor
     ) {
         if (topHeight <= bottomHeight + 0.0001f) {
             return;
@@ -32,7 +50,7 @@ namespace RendererInternal {
 
         gpuWall.data = {
             static_cast<float>(wall.textureIndex),
-            0.0f,
+            static_cast<float>(floor),
             0.0f,
             0.0f
         };
@@ -56,23 +74,70 @@ namespace RendererInternal {
         gpuWalls.push_back(gpuWall);
     }
 
+    static float GetSectorStoreyHeight(const Sector& sector) {
+        return sector.ceilingHeight - sector.floorHeight;
+    }
+
+    static float GetSectorBoundaryHeight(const Sector& sector, const int boundaryIndex) {
+        const float storeyHeight = GetSectorStoreyHeight(sector);
+
+        if (boundaryIndex == 0) {
+            return sector.floorHeight;
+        }
+
+        if (boundaryIndex == 1) {
+            return sector.ceilingHeight;
+        }
+
+        if (boundaryIndex == 2) {
+            return sector.ceilingHeight + storeyHeight;
+        }
+
+        return sector.floorHeight;
+    }
+
+    static void PushPortalBoundaryDifference(
+        const Wall& wall,
+        const Sector& front,
+        const Sector& back,
+        const int boundaryIndex
+    ) {
+        const float frontHeight = GetSectorBoundaryHeight(front, boundaryIndex);
+        const float backHeight = GetSectorBoundaryHeight(back, boundaryIndex);
+
+        PushGpuWallPiece(
+            wall,
+            std::min(frontHeight, backHeight),
+            std::max(frontHeight, backHeight),
+            wall.color,
+            boundaryIndex
+        );
+    }
+
+    static float GetWallBandBottomHeight(const Sector& sector, const int floorIndex) {
+        return GetSectorBoundaryHeight(sector, floorIndex);
+    }
+
+    static float GetWallBandTopHeight(const Sector& sector, const int floorIndex) {
+        return GetSectorBoundaryHeight(sector, floorIndex + 1);
+    }
+
     void BuildGpuWallsFromMap() {
         gpuWalls.clear();
 
-        for (const Wall& wall : MapEditor::walls) {
+        for (const Wall &wall: MapEditor::walls) {
             if (IsPortalWall(wall)) {
                 const Sector& front = MapEditor::sectors[wall.frontSector];
                 const Sector& back = MapEditor::sectors[wall.backSector];
 
-                const float lowerBottom = std::min(front.floorHeight, back.floorHeight);
-                const float lowerTop = std::max(front.floorHeight, back.floorHeight);
+                // floor difference
+                PushPortalBoundaryDifference(wall, front, back, 0);
 
-                PushGpuWallPiece(wall, lowerBottom, lowerTop, wall.color);
+                // first ceiling / second floor difference
+                //PushPortalBoundaryDifference(wall, front, back, 1);
 
-                const float upperBottom = std::min(front.ceilingHeight, back.ceilingHeight);
-                const float upperTop = std::max(front.ceilingHeight, back.ceilingHeight);
-
-                PushGpuWallPiece(wall, upperBottom, upperTop, wall.color);
+                // second ceiling difference
+                PushPortalBoundaryDifference(wall, front, back, 2);
 
                 continue;
             }
@@ -81,13 +146,12 @@ namespace RendererInternal {
 
             if (IsValidSectorIndex(wall.frontSector)) {
                 sectorIndex = wall.frontSector;
-            }
-            else if (IsValidSectorIndex(wall.backSector)) {
+            } else if (IsValidSectorIndex(wall.backSector)) {
                 sectorIndex = wall.backSector;
             }
 
             if (sectorIndex == -1) {
-                PushGpuWallPiece(wall, 0.0f, 32.0f, wall.color);
+                PushGpuWallPiece(wall, 0.0f, 32.0f, wall.color, wall.floor);
                 continue;
             }
 
@@ -95,9 +159,10 @@ namespace RendererInternal {
 
             PushGpuWallPiece(
                 wall,
-                sector.floorHeight,
-                sector.ceilingHeight,
-                wall.color
+                GetWallBandBottomHeight(sector, wall.floor),
+                GetWallBandTopHeight(sector, wall.floor),
+                wall.color,
+                wall.floor
             );
         }
 
@@ -120,8 +185,8 @@ namespace RendererInternal {
     }
 
     static void ClipFlatTriangleAgainstNearPlane(
-        const GpuFlatTriangle& triangle,
-        const Vector2& playerPos,
+        const GpuFlatTriangle &triangle,
+        const Vector2 &playerPos,
         const float playerAngle
     ) {
         std::vector<Vector4> input = {
@@ -144,12 +209,10 @@ namespace RendererInternal {
 
             if (currentInside && nextInside) {
                 output.push_back(next);
-            }
-            else if (currentInside && !nextInside) {
+            } else if (currentInside && !nextInside) {
                 const float t = (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
                 output.push_back(LerpVector4(current, next, t));
-            }
-            else if (!currentInside && nextInside) {
+            } else if (!currentInside && nextInside) {
                 const float t = (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
                 output.push_back(LerpVector4(current, next, t));
                 output.push_back(next);
@@ -168,8 +231,7 @@ namespace RendererInternal {
                 triangle.color,
                 triangle.data
             });
-        }
-        else if (output.size() == 4) {
+        } else if (output.size() == 4) {
             visibleFlatTriangles.push_back({
                 output[0],
                 output[1],
@@ -188,10 +250,10 @@ namespace RendererInternal {
         }
     }
 
-    void BuildVisibleFlatTriangles(const Vector2& playerPos, const float playerAngle) {
+    void BuildVisibleFlatTriangles(const Vector2 &playerPos, const float playerAngle) {
         visibleFlatTriangles.clear();
 
-        for (const GpuFlatTriangle& triangle : flatTriangles) {
+        for (const GpuFlatTriangle &triangle: flatTriangles) {
             ClipFlatTriangleAgainstNearPlane(triangle, playerPos, playerAngle);
         }
 
@@ -214,9 +276,9 @@ namespace RendererInternal {
         visibleFlatTriangles.clear();
 
         for (int sectorIndex = 0; sectorIndex < static_cast<int>(MapEditor::sectors.size()); ++sectorIndex) {
-            const Sector& sector = MapEditor::sectors[sectorIndex];
+            const Sector &sector = MapEditor::sectors[sectorIndex];
 
-            for (const Triangle& triangle : sector.triangles) {
+            for (const Triangle &triangle: sector.triangles) {
                 GpuFlatTriangle floorTriangle;
 
                 floorTriangle.a = {triangle.a.x, triangle.a.y, 0.0f, 0.0f};
@@ -248,6 +310,23 @@ namespace RendererInternal {
                     0.0f,
                     0.0f
                 };
+
+                GpuFlatTriangle higherCeilingTriangle;
+
+                higherCeilingTriangle.a = {triangle.a.x, triangle.a.y, 0.0f, 0.0f};
+                higherCeilingTriangle.b = {triangle.b.x, triangle.b.y, 0.0f, 0.0f};
+                higherCeilingTriangle.c = {triangle.c.x, triangle.c.y, 0.0f, 0.0f};
+
+                higherCeilingTriangle.color = {255.0f, 255.0f, 255.0f, 255.0f};
+
+                higherCeilingTriangle.data = {
+                    static_cast<float>(sectorIndex),
+                    2.0f, // higher ceiling
+                    0.0f,
+                    0.0f
+                };
+
+                flatTriangles.push_back(higherCeilingTriangle);
 
                 flatTriangles.push_back(ceilingTriangle);
             }

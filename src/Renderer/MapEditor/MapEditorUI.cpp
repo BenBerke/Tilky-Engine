@@ -112,9 +112,12 @@ namespace MapEditorInternal {
             int backSector = MapEditor::walls[selectedWall].backSector;
             int textureIndex = MapEditor::walls[selectedWall].textureIndex;
 
+            int floor = MapEditor::walls[selectedWall].floor;;
+
             ImGui::InputInt("Front Sector", &frontSector);
             ImGui::InputInt("Back Sector", &backSector);
             ImGui::InputInt("Texture Index", &textureIndex);
+            ImGui::InputInt("Floor", &floor);
 
             ImGui::InputFloat4("Wall Color", &color.x);
 
@@ -122,6 +125,7 @@ namespace MapEditorInternal {
             MapEditor::walls[selectedWall].textureIndex = textureIndex;
             MapEditor::walls[selectedWall].frontSector = frontSector;
             MapEditor::walls[selectedWall].backSector = backSector;
+            MapEditor::walls[selectedWall].floor = floor;
 
             if (ImGui::Button("Delete")) {
                 MapEditor::walls.erase(MapEditor::walls.begin() + selectedWall);
@@ -227,6 +231,8 @@ namespace MapEditorInternal {
                 editingObject = false;
             }
         }
+
+        ImGui::InputInt("Floor", &currentFloor);
 
         if (ImGui::Button("Save & Play")) {
             if (SaveAndQuit()) {

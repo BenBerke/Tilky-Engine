@@ -47,7 +47,8 @@ namespace MapEditorInternal {
                 {"end", {wall.end.x, wall.end.y}},
                 {"textureIndex", wall.textureIndex},
                 {"frontSector", wall.frontSector},
-                {"backSector", wall.backSector}
+                {"backSector", wall.backSector},
+                {"floor", wall.floor}
             };
 
             levelData["walls"].push_back(jsonObj);
@@ -71,7 +72,7 @@ namespace MapEditorInternal {
                 {"ceilingHeight", sector.ceilingHeight},
                 {"floorHeight", sector.floorHeight},
                 {"ceilingTextureIndex", sector.ceilingTextureIndex},
-                {"floorTextureIndex", sector.floorTextureIndex}
+                {"floorTextureIndex", sector.floorTextureIndex},
             };
 
             levelData["sectors"].push_back(jsonObj);
@@ -180,6 +181,7 @@ namespace MapEditor {
                 const int frontSector = wallJson.value("frontSector", -1);
                 const int backSector = wallJson.value("backSector", -1);
                 const int textureIndex = wallJson.value("textureIndex", 1);
+                const int floor = wallJson.value("floor", 0);
 
                 Wall wall(
                     start,
@@ -187,7 +189,8 @@ namespace MapEditor {
                     {255.0f, 255.0f, 255.0f, 255.0f},
                     frontSector,
                     backSector,
-                    textureIndex
+                    textureIndex,
+                    floor
                 );
 
                 walls.push_back(wall);

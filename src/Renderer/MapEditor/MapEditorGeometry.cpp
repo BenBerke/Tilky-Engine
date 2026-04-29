@@ -206,6 +206,7 @@ namespace MapEditorInternal {
 
         for (int i = 0; i < static_cast<int>(MapEditor::walls.size()); ++i) {
             const Wall& wall = MapEditor::walls[i];
+            if (wall.floor != currentFloor) continue;
 
             const float distanceSq = DistancePointToSegmentSq(
                 worldPoint,

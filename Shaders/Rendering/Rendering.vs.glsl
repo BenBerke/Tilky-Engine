@@ -45,6 +45,7 @@ struct Decal {
     vec4 data;
 };
 
+
 struct Sector {
     vec4 heights;
     vec4 floorColor;
@@ -195,7 +196,12 @@ void renderFlat() {
 
     Sector sector = sectors[sectorIndex];
 
-    if (flatType == 1) {
+    if(flatType == 2){
+        point.z = sector.heights.y + sector.heights.y - sector.heights.x;
+        vWallColor = sector.ceilingColor / 255.0;
+        vFlatTextureIndex = int(sector.textureData.y);
+    }
+    else if (flatType == 1) {
         // Ceiling
         point.z = sector.heights.y;
         vWallColor = sector.ceilingColor / 255.0;

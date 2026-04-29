@@ -35,6 +35,9 @@ namespace Renderer {
         float scale,
         Vector3 color
     );
+
+    inline constexpr int SECTOR_FLOOR_COUNT = 3;
+    inline constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;
 }
 
 #endif // WOLFY_ENGINE_RENDERER_H

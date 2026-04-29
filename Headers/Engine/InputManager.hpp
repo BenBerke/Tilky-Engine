@@ -17,6 +17,10 @@ namespace InputManager {
     bool GetMouseButton(Uint32 button);
     bool GetMouseButtonUp(Uint32 button);
 
+    bool GetMouseWheelScrollUp();
+    bool GetMouseWheelScrollDown();
+    float GetMouseWheelScroll();
+
     Vector2 GetMousePosition();
     Vector2 GetMouseDelta();
     void SetRelativeMouseMode(SDL_Window* window, bool enabled);

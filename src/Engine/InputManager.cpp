@@ -18,6 +18,8 @@ namespace {
     Vector2 mousePosition{};
     Vector2 mouseDelta{};
 
+    float mouseWheelScrollAmount = 0.0f;
+
     bool relativeMouseMode = false;
 
     bool quitRequested = false;
@@ -26,6 +28,7 @@ namespace {
 namespace InputManager {
 
     void BeginFrame() {
+        mouseWheelScrollAmount = 0.0f;
         // First time setup
         if (!keyboardState) {
             SDL_PumpEvents();
@@ -49,6 +52,10 @@ namespace InputManager {
         while (SDL_PollEvent(&event)) {
             if (ImGui::GetCurrentContext() != nullptr) {
                 ImGui_ImplSDL3_ProcessEvent(&event);
+            }
+
+            if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                mouseWheelScrollAmount += event.wheel.y;
             }
 
             if (event.type == SDL_EVENT_QUIT) {
@@ -112,6 +119,18 @@ namespace InputManager {
     bool GetMouseButtonUp(Uint32 button) {
         return !(mouseState & SDL_BUTTON_MASK(button)) &&
                 (prevMouseState & SDL_BUTTON_MASK(button));
+    }
+
+    bool GetMouseWheelScrollUp() {
+         return mouseWheelScrollAmount > 0;
+    }
+
+    bool GetMouseWheelScrollDown() {
+        return mouseWheelScrollAmount < 0;
+    }
+
+    float GetMouseWheelScroll() {
+        return mouseWheelScrollAmount;
     }
 
     Vector2 GetMousePosition() {

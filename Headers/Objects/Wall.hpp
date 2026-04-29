@@ -17,6 +17,8 @@ struct Wall {
     int backSector = -1;
     int textureIndex = -1;
 
+    int floor = 0;
+
     Vector2 dir, normal;
     float lengthSq;
 
@@ -26,14 +28,16 @@ struct Wall {
         const Vector4 color,
         const int fs = -1,
         const int bs = -1,
-        const int textureIndex = -1
+        const int textureIndex = -1,
+        const int floor = 0
     )
         : start(start),
           end(end),
           color(color),
           frontSector(fs),
           backSector(bs),
-          textureIndex(textureIndex)
+          textureIndex(textureIndex),
+          floor(floor)
     {
         dir = end - start;
         lengthSq = Vector2Math::Dot(dir, dir);

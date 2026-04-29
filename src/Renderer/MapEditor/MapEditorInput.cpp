@@ -41,7 +41,7 @@ namespace MapEditorInternal {
 
                     const int clickedWall = GetWallAtPoint(mouseWorld);
 
-                    if (clickedWall != -1 && !clickedOnCorder) {
+                    if (clickedWall != -1 && !clickedOnCorder && MapEditor::walls[clickedWall].floor == currentFloor) {
                         selectedWall = clickedWall;
                         editingWall = true;
                     }
@@ -89,6 +89,7 @@ namespace MapEditorInternal {
                             else {
                                 newObject.position = mouseWorld;
                                 newObject.type = OBJ_PLAYER_SPAWN;
+                                playerPlaced = true;
                             }
                         }
                         else if (currentObjectTypeToPlace == OBJ_SPRITE) {
@@ -124,7 +125,8 @@ namespace MapEditorInternal {
                         {0, 0, 0, 255},
                         -1,
                         -1,
-                        0
+                        0,
+                        currentFloor
                     );
 
                     MapEditor::walls.push_back(newWall);
@@ -140,14 +142,11 @@ namespace MapEditorInternal {
         }
 
         if (!keyboardBlockedByImgui) {
-            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
-                MoveMode();
-            }
+
         }
-        else {
-            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
-                MoveMode();
-            }
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
+            MoveMode();
         }
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
@@ -160,6 +159,9 @@ namespace MapEditorInternal {
                     break;
                 case ACTION_CREATE_SECTOR:
                     MapEditor::sectors.pop_back();
+                    break;
+                case ACTION_CREATE_OBJECT:
+                    MapEditor::objects.pop_back();
                     break;
                 default: break;
             }

@@ -42,5 +42,7 @@ namespace MapEditorInternal {
 
     std::vector<Action> actions;
 
+    int currentFloor;
+
     bool quit = false;
 }

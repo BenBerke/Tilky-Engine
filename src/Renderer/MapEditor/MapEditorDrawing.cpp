@@ -104,15 +104,27 @@ namespace MapEditorInternal {
 
         const int totalSectors = static_cast<int>(MapEditor::sectors.size());
 
-        for (int i = 0; i < totalSectors; ++i) {
-            const float offset = static_cast<float>(i) / static_cast<float>(std::max(totalSectors, 1));
+        auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
+            float r, g, b;
+            const int i = floor(h * 6);
+            const float f = h * 6 - i;
+            const float p = v * (1 - s);
+            const float q = v * (1 - f * s);
+            const float t = v * (1 - (1 - f) * s);
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            return { r, g, b, .55f};
+        };
 
-            const SDL_FColor normalSectorColor = {
-                std::fmod(hoveredSectorColor.r + offset, 1.0f),
-                std::fmod(hoveredSectorColor.g + offset, 1.0f),
-                std::fmod(hoveredSectorColor.b + offset, 1.0f),
-                hoveredSectorColor.a
-            };
+        for (int i = 0; i < totalSectors; ++i) {
+            float hue = std::fmod(i * 0.618033988749895f, 1.0f);
+            const SDL_FColor normalSectorColor = HSVtoRGB(hue, 0.7f, 0.9f);
 
             const SDL_FColor sectorColor =
                 i == hoveredSectorIndex && currentMode == MODE_SECTOR
@@ -148,6 +160,7 @@ namespace MapEditorInternal {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
         for (const Wall& wall : MapEditor::walls) {
+            if (wall.floor != currentFloor) continue;
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 

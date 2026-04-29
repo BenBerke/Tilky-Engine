@@ -13,7 +13,8 @@
 
 #define FRICTION .8f
 #define TURN_SPEED 90.0f
-#define SENSITIVITY .5f
+#define SENSITIVITY_X .5f
+#define SENSITIVITY_Y .004f
 
 constexpr int COLLISION_ITERATIONS = 4;
 
@@ -51,7 +52,7 @@ namespace {
     int activePortalWallIndex = -1;
 
     bool IsPortalWall(const Wall& wall) {
-        return wall.frontSector != -1 && wall.backSector != -1;
+        return wall.frontSector != -1 && wall.backSector != -1 && wall.backSector != wall.frontSector;
     }
 
     bool IsValidSectorIndex(const int index, const std::vector<Sector>& sectors) {
@@ -178,15 +179,28 @@ namespace Player {
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_V)) noClip = !noClip;
 
-        angle += InputManager::GetMouseDelta().x * SENSITIVITY;
+        angle += InputManager::GetMouseDelta().x * SENSITIVITY_X;
+        camZ -= InputManager::GetMouseDelta().y * SENSITIVITY_Y;
+
+        camZ = std::clamp(camZ, -.15f, .8f);
 
         //Check each sector every frame, might cause lag
         currentSector = FindCurrentSector(sectors);
+        float sectorCeilHeight = sectors[currentSector].ceilingHeight;
+        float sectorFloorHeight = sectors[currentSector].floorHeight;
 
-        constexpr float smoothingSpeed = 100.0f;
+        float targetWorldEyeHeight = eyeHeight;
 
-        const float targetWorldEyeHeight = currentSector < sectors.size() ? sectors[currentSector].floorHeight + eyeHeight : eyeHeight;
-        currentEyeHeight += (targetWorldEyeHeight - currentEyeHeight) * smoothingSpeed * GameTime::deltaTime;
+        if (sectorCeilHeight < currentEyeHeight) {
+            targetWorldEyeHeight = sectorCeilHeight + eyeHeight;
+            currentFloor = 1;
+        }
+        else {
+            targetWorldEyeHeight = currentSector < sectors.size() ? sectors[currentSector].floorHeight + eyeHeight : eyeHeight;
+            currentFloor = 0;
+        }
+
+        currentEyeHeight = targetWorldEyeHeight;
 
         const float angleInRad = angle * M_PI / 180.0f;
         const float s = std::sin(angleInRad);
@@ -211,6 +225,8 @@ namespace Player {
 
             for (int i = 0; i < static_cast<int>(walls.size()); ++i) {
                 const Wall& wall = walls[i];
+
+                if (wall.floor != currentFloor) continue;
 
                 const Vector2 closest = ClosestPointOnSegment(wall, position);
                 const Vector2 delta = position - closest;
@@ -249,7 +265,7 @@ namespace Player {
 
                 const float penetration = size - dist;
                 if (!noClip)
-                position += normal * penetration;
+                    position += normal * penetration;
 
                 const float intoWall = Vector2Math::Dot(normal, velocity);
                 if (intoWall < 0.0f) {

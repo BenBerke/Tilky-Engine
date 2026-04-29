@@ -63,6 +63,7 @@ namespace MapEditorInternal {
     extern ObjectType currentObjectTypeToPlace;
     extern bool playerPlaced;
 
+    extern int currentFloor;
 
     extern bool quit;
 

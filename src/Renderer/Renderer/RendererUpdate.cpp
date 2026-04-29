@@ -30,8 +30,17 @@ namespace Renderer {
         glUniform1f(playerHeightUniform, Player::currentEyeHeight);
         glUniform1f(playerCamZUniform, Player::camZ);
 
-        if (InputManager::GetKey(SDL_SCANCODE_G)) MapEditor::sectors[3].floorHeight += 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_H)) MapEditor::sectors[3].floorHeight -= 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_G)) {
+            MapEditor::sectors[0].floorHeight += 1.0f;
+            MapEditor::sectors[0].ceilingHeight += 1.0f;
+        }
+        if (InputManager::GetKey(SDL_SCANCODE_H)) {
+            MapEditor::sectors[0].floorHeight -= 1.0f;
+            MapEditor::sectors[0].ceilingHeight -= 1.0f;
+        }
+
+        MapEditor::sectors[0].floorHeight += InputManager::GetMouseWheelScroll();
+        MapEditor::sectors[0].ceilingHeight += InputManager::GetMouseWheelScroll();
 
         BuildVisibleFlatTriangles(playerPos, playerAngle);
         BuildGpuSectors();
