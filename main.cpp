@@ -26,6 +26,9 @@ int main() {
     MapEditor::Destroy();
 
     MapEditor::LoadLevel(MapEditor::currentMap);
+
+    Player::position = MapEditor::playerStartPos;
+    MapQueries::AssignWallsToSectors(MapEditor::sectors, MapEditor::walls);
     Player::Start(MapEditor::sectors);
 
     if (!Renderer::Initialize()) {
@@ -44,8 +47,6 @@ int main() {
         }
     }
 
-    Player::position = MapEditor::playerStartPos;
-    MapQueries::FindSectorContainingPoint(MapEditor::sectors, Player::position);
 
     if (Player::currentSector == -1) {
         SDL_Log("Player is not inside any sector");

@@ -71,15 +71,20 @@ namespace {
         return bestFloor;
     }
 
-    Vector2 ClosestPointOnSegment(const Wall &wall, const Vector2 &p) {
-        if (wall.lengthSq <= 0.00001f) {
+    Vector2 ClosestPointOnSegment(const Wall& wall, const Vector2& p) {
+        if (wall.length <= 0.00001f) {
             return wall.start;
         }
 
-        float t = Vector2Math::Dot((p - wall.start), wall.dir) / wall.lengthSq;
-        t = std::clamp(t, 0.0f, 1.0f);
+        float distanceAlongWall = Vector2Math::Dot(p - wall.start, wall.dir);
 
-        return wall.start + wall.dir * t;
+        distanceAlongWall = std::clamp(
+            distanceAlongWall,
+            0.0f,
+            wall.length
+        );
+
+        return wall.start + wall.dir * distanceAlongWall;
     }
 
     int activePortalWallIndex = -1;
@@ -276,11 +281,13 @@ namespace Player {
 
         bool touchingPortalThisFrame = false;
 
+
         for (int iter = 0; iter < COLLISION_ITERATIONS; ++iter) {
             bool collided = false;
 
-            for (int i = 0; i < static_cast<int>(walls.size()); ++i) {
-                const Wall &wall = walls[i];
+            for (int i = 0; i < sectors[currentSector].walls.size(); ++i) {
+                const Wall &wall = sectors[currentSector].walls[i];
+                SDL_Log("%d", wall.frontSector);
 
                 if (wall.floor != currentFloor) continue;
 

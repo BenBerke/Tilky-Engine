@@ -6,6 +6,7 @@
 
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Wall.hpp"
 #include "config.h"
 
 struct Triangle {
@@ -26,6 +27,8 @@ struct Sector {
 
     std::array<int, MAX_FLOOR_COUNT> ceilingTextureIndices = {};
     int floorTextureIndex = -1;
+
+    std::vector<Wall> walls = {};
 };
 
 #endif

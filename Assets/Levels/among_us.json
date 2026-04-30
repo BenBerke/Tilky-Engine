@@ -1,6 +1,7 @@
 {
     "objects": [
         {
+            "decalBaseHeight": 0.0,
             "floor": 0,
             "id": 0,
             "position": [
@@ -8,9 +9,13 @@
                 22.0
             ],
             "texture": -1,
-            "type": 0
+            "type": 0,
+            "wallIndex": 0,
+            "wallOffset": 0.0,
+            "zOffset": 0.0
         },
         {
+            "decalBaseHeight": 0.0,
             "floor": 0,
             "id": 1,
             "position": [
@@ -18,9 +23,13 @@
                 0.0
             ],
             "texture": -1,
-            "type": 67
+            "type": 67,
+            "wallIndex": 0,
+            "wallOffset": 0.0,
+            "zOffset": 0.0
         },
         {
+            "decalBaseHeight": 0.0,
             "floor": 0,
             "id": 2,
             "position": [
@@ -28,7 +37,10 @@
                 0.0
             ],
             "texture": -1,
-            "type": 178
+            "type": 178,
+            "wallIndex": 0,
+            "wallOffset": 0.0,
+            "zOffset": 0.0
         }
     ],
     "sectors": [

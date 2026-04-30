@@ -55,6 +55,34 @@
             "wallIndex": 6,
             "wallOffset": 100.0,
             "zOffset": 0.0
+        },
+        {
+            "decalBaseHeight": 0.0,
+            "floor": 0,
+            "id": 4,
+            "position": [
+                -128.0,
+                -13.0
+            ],
+            "texture": 5,
+            "type": 2,
+            "wallIndex": 5,
+            "wallOffset": 141.0,
+            "zOffset": 0.0
+        },
+        {
+            "decalBaseHeight": 0.0,
+            "floor": 0,
+            "id": 5,
+            "position": [
+                19.0,
+                20.0
+            ],
+            "texture": 4,
+            "type": 1,
+            "wallIndex": -1,
+            "wallOffset": -1.0,
+            "zOffset": 0.0
         }
     ],
     "sectors": [
@@ -154,7 +182,8 @@
         "floor",
         "wood",
         "skybox",
-        "human"
+        "human",
+        "torch"
     ],
     "walls": [
         {

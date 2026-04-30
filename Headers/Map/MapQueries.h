@@ -9,6 +9,7 @@
 
 namespace MapQueries {
     int FindSectorContainingPoint(const std::vector<Sector> &sectors, const Vector2 position);
+    void AssignWallsToSectors(std::vector<Sector>& sectors, const std::vector<Wall> &walls);
 }
 
 #endif //WOLFY_ENGINE_MAPQUERIES_H
