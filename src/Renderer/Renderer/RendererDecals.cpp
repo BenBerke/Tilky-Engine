@@ -8,7 +8,7 @@ namespace RendererInternal {
     void BuildGpuDecals() {
         gpuDecals.clear();
 
-        for (const Object& object : MapEditor::objects) {
+        for (Object& object : MapEditor::objects) {
             if (object.type != OBJ_DECAL) {
                 continue;
             }
@@ -20,7 +20,8 @@ namespace RendererInternal {
 
             const Wall& wall = MapEditor::walls[object.wallIndex];
 
-            const Vector2 wallVector = wall.end - wall.start;
+            const Vector2 wallVector = wall.vector;
+
             const float wallLength = std::sqrt(
                 wallVector.x * wallVector.x +
                 wallVector.y * wallVector.y
@@ -30,22 +31,37 @@ namespace RendererInternal {
                 continue;
             }
 
-            const Vector2 wallDir = {
-                wallVector.x / wallLength,
-                wallVector.y / wallLength
+            const Vector2 wallDir = wall.dir;
+
+            // Only calculate wallOffset from object.position if it has not been set yet.
+            // Ideally, set wallOffset once when placing the decal in the editor.
+            if (object.wallOffset < 0.0f) {
+                const Vector2 toObject = object.position - wall.start;
+
+                float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / (wallLength * wallLength);
+
+                t = std::clamp(t, 0.0f, 1.0f);
+
+                object.wallOffset = wallLength * t;
+            }
+
+            object.wallOffset = std::clamp(object.wallOffset, 0.0f, wallLength);
+
+            const Vector2 decalCentre = {
+                (wall.start.x + wallDir.x * object.wallOffset),
+                wall.start.y + wallDir.y * object.wallOffset
             };
 
-           // const float halfWidth = object.width * 0.5f;
-            const float halfWidth = 16.0f;
+            const float halfWidth = object.width * 0.5f;
 
-            Vector2 decalStart = {
-                object.position.x - wallDir.x * halfWidth,
-                object.position.y - wallDir.y * halfWidth
+            const Vector2 decalStart = {
+                decalCentre.x - wallDir.x * halfWidth,
+                decalCentre.y - wallDir.y * halfWidth
             };
 
-            Vector2 decalEnd = {
-                object.position.x + wallDir.x * halfWidth,
-                object.position.y + wallDir.y * halfWidth
+            const Vector2 decalEnd = {
+                decalCentre.x + wallDir.x * halfWidth,
+                decalCentre.y + wallDir.y * halfWidth
             };
 
             GpuDecal decal;
@@ -71,9 +87,40 @@ namespace RendererInternal {
             //     0.0f
             // };
 
+            int sectorIndex = object.sectorIndex;
+
+            if (sectorIndex < 0 ||
+                sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                sectorIndex = wall.frontSector;
+
+                if (sectorIndex < 0 ||
+                    sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                    sectorIndex = wall.backSector;
+                    }
+                }
+
+            if (sectorIndex < 0 ||
+                sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                continue;
+                }
+
+            const Sector& sector = MapEditor::sectors[sectorIndex];
+
+            const float sectorHeight =
+                sector.ceilingHeight - sector.floorHeight;
+
+            const int floor = std::clamp(
+                wall.floor,
+                0,
+                std::max(1, sector.floorCount) - 1
+            );
+
+            const float decalBottom = object.decalBaseHeight + object.zOffset;
+            const float decalTop = decalBottom + object.height;
+
             decal.heights = {
-                10,
-                10 + 10,
+                decalBottom,
+                decalTop,
                 0.0f,
                 0.0f
             };
@@ -87,77 +134,6 @@ namespace RendererInternal {
 
             gpuDecals.push_back(decal);
         }
-
-        //region hardcode
-        constexpr int wallIndex = 58;
-
-        if (wallIndex >= 0 && wallIndex < static_cast<int>(MapEditor::walls.size())) {
-            const Wall& wall = MapEditor::walls[wallIndex];
-
-            const Vector2 wallVector = wall.end - wall.start;
-            const float wallLength = std::sqrt(
-                wallVector.x * wallVector.x +
-                wallVector.y * wallVector.y
-            );
-
-            if (wallLength > 0.0001f) {
-                const Vector2 wallDir = {
-                    wallVector.x / wallLength,
-                    wallVector.y / wallLength
-                };
-
-                const Vector2 wallMiddle = {
-                    (wall.start.x + wall.end.x) * 0.5f,
-                    (wall.start.y + wall.end.y) * 0.5f
-                };
-
-                constexpr float decalWidth = 32.0f;
-                constexpr float halfDecalWidth = decalWidth * 0.5f;
-
-                const Vector2 decalStart = {
-                    wallMiddle.x - wallDir.x * halfDecalWidth,
-                    wallMiddle.y - wallDir.y * halfDecalWidth
-                };
-
-                const Vector2 decalEnd = {
-                    wallMiddle.x + wallDir.x * halfDecalWidth,
-                    wallMiddle.y + wallDir.y * halfDecalWidth
-                };
-
-                GpuDecal decal;
-
-                decal.startEnd = {
-                    decalStart.x,
-                    decalStart.y,
-                    decalEnd.x,
-                    decalEnd.y
-                };
-
-                decal.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
-
-                decal.heights = {
-                    20.0f, // bottom height
-                    52.0f, // top height
-                    0.0f,
-                    0.0f
-                };
-
-                decal.data = {
-                    static_cast<int>(4.0f), // texture index
-                    0.0f,
-                    0.0f,
-                    0.0f
-                };
-
-                gpuDecals.push_back(decal);
-            }
-        }
-        //endregion
 
         decalCount = static_cast<GLsizei>(gpuDecals.size());
 

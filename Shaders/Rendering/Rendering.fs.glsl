@@ -157,7 +157,16 @@ void main() {
         float v = (fragYTopOrigin - topY) / heightDenominator;
         v = clamp(v, 0.0, 1.0);
 
-        vec2 uv = vec2(across, v);
+        float s = mix(
+        fSStart / fZLeft,
+        fSEnd / fZRight,
+        across
+        ) / invZ;
+
+        float decalWidth = max(abs(fSEnd - fSStart), 0.0001);
+        float u = s / decalWidth;
+
+        vec2 uv = vec2(u, v);
 
         vec4 texColor = SampleWallTexture(vTextureIndex, uv);
 

@@ -170,6 +170,7 @@ namespace MapEditorInternal {
 
     void DrawObjects() {
         for (const Object& object : MapEditor::objects) {
+            if (object.floor != currentFloor) continue;
             const Vector2 objectScreen = WorldToScreen(object.position, cameraPos);
 
             Vector3 color = {0, 0, 0};
@@ -178,7 +179,12 @@ namespace MapEditorInternal {
                 case OBJ_PLAYER_SPAWN:
                     color = {255, 0, 0};
                     break;
-
+                case OBJ_SPRITE:
+                    color = {0, 0, 0};
+                    break;
+                case OBJ_DECAL:
+                    color = {0, 0, 255};
+                    break;
                 default:
                     color = {0, 0, 0};
                     break;

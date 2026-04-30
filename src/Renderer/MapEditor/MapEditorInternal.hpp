@@ -55,6 +55,7 @@ namespace MapEditorInternal {
 
     extern bool editingObject;
     extern int selectedObject;
+    extern bool holdingObject;
 
     extern float objectSize;
 

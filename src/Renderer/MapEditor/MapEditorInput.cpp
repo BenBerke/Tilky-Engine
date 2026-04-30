@@ -69,36 +69,90 @@ namespace MapEditorInternal {
                 }
                 else if (currentMode == MODE_OBJECT) {
                     bool objectFound = false;
+
                     for (int i = 0; i < static_cast<int>(MapEditor::objects.size()); ++i) {
-                        if (WithinRadius(mouseWorld, MapEditor::objects[i].position, objectSize)) {
+                        if (WithinRadius(mouseWorld, MapEditor::objects[i].position, objectSize) &&
+                            MapEditor::objects[i].floor == currentFloor) {
                             objectFound = true;
-                            editingObject = !editingObject;
+
                             selectedObject = i;
+
+                            if (currentObjectTypeToPlace == MapEditor::objects[i].type) {
+                                editingObject = true;
+                                holdingObject = true;
+                            }
+
+                            break;
                         }
                     }
+
                     if (!objectFound) {
-                        Object newObject;
+                        bool skipCreating = false;
+                        holdingObject = true;
+                        Object newObject{};
+                        newObject.id = static_cast<int>(MapEditor::objects.size());
+                        newObject.type = currentObjectTypeToPlace;
+                        newObject.position = mouseWorld;
+                        newObject.textureIndex = 0;
+
                         if (currentObjectTypeToPlace == OBJ_PLAYER_SPAWN) {
                             if (playerPlaced) {
                                 for (Object& object : MapEditor::objects) {
                                     if (object.type == OBJ_PLAYER_SPAWN) {
                                         object.position = mouseWorld;
+                                        selectedObject = object.id;
+                                        editingObject = true;
+                                        break;
                                     }
                                 }
+
+                                return;
+                            }
+
+                            playerPlaced = true;
+                        }
+                        else if (currentObjectTypeToPlace == OBJ_DECAL) {
+                            const int clickedWall = GetWallAtPoint(mouseWorld);
+                            if (clickedWall != -1) {
+                                newObject.wallIndex = clickedWall;
+                                const Wall& wall = MapEditor::walls[clickedWall];
+                                newObject.floor = wall.floor;
+                                int sectorIndex = wall.frontSector;
+
+                                if (sectorIndex < 0 ||
+                                    sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                                    sectorIndex = wall.backSector;
+                                    }
+
+                                if (sectorIndex >= 0 &&
+                                    sectorIndex < static_cast<int>(MapEditor::sectors.size())) {
+                                    const Sector& sector = MapEditor::sectors[sectorIndex];
+
+                                    const float sectorHeight =
+                                        sector.ceilingHeight - sector.floorHeight;
+
+                                    const int floor = std::clamp(
+                                        wall.floor,
+                                        0,
+                                        std::max(1, sector.floorCount) - 1
+                                    );
+
+                                    newObject.decalBaseHeight =
+                                        sector.floorHeight + sectorHeight * static_cast<float>(floor);
+                                    }
                             }
                             else {
-                                newObject.position = mouseWorld;
-                                newObject.type = OBJ_PLAYER_SPAWN;
-                                playerPlaced = true;
+                                skipCreating = true;
+                                holdingObject = false;
                             }
                         }
-                        else if (currentObjectTypeToPlace == OBJ_SPRITE) {
-                            newObject.type = currentObjectTypeToPlace;
-                            newObject.position = mouseWorld;
-                        }
-                        MapEditor::objects.push_back(newObject);
-                    }
 
+                        if (!skipCreating)
+                        MapEditor::objects.push_back(newObject);
+
+                        selectedObject = static_cast<int>(MapEditor::objects.size()) - 1;
+                        editingObject = true;
+                    }
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {
@@ -134,6 +188,17 @@ namespace MapEditorInternal {
                 }
 
                 drawingLine = false;
+            }
+
+            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingObject) {
+                const Vector2 mouseScreen = InputManager::GetMousePosition();
+                const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+
+                MapEditor::objects[selectedObject].position = mouseWorld;
+            }
+
+            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
+                holdingObject = false;
             }
         }
 

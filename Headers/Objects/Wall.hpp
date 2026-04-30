@@ -19,33 +19,39 @@ struct Wall {
 
     int floor = 0;
 
-    Vector2 dir, normal;
+    Vector2 dir, normal, vector;
     float lengthSq;
+    float length;
 
     Wall(
-        const Vector2& start,
-        const Vector2& end,
-        const Vector4 color,
-        const int fs = -1,
-        const int bs = -1,
-        const int textureIndex = -1,
-        const int floor = 0
-    )
-        : start(start),
-          end(end),
-          color(color),
-          frontSector(fs),
-          backSector(bs),
-          textureIndex(textureIndex),
-          floor(floor)
+    const Vector2& start,
+    const Vector2& end,
+    const Vector4 color,
+    const int fs = -1,
+    const int bs = -1,
+    const int textureIndex = -1,
+    const int floor = 0
+)
+    : start(start),
+      end(end),
+      color(color),
+      frontSector(fs),
+      backSector(bs),
+      textureIndex(textureIndex),
+      floor(floor)
     {
-        dir = end - start;
-        lengthSq = Vector2Math::Dot(dir, dir);
+        vector = end - start;
 
-        normal = {-dir.y, dir.x};
+        lengthSq = Vector2Math::Dot(vector, vector);
+        length = std::sqrt(lengthSq);
 
-        if (lengthSq > 0.00001f) {
-            Vector2Math::Normalize(normal);
+        if (length > 0.00001f) {
+            dir = vector / length;
+            normal = {-dir.y, dir.x};
+        }
+        else {
+            dir = {0.0f, 0.0f};
+            normal = {0.0f, 0.0f};
         }
     }
 };

@@ -30,6 +30,7 @@ namespace MapEditorInternal {
 
     bool editingObject = false;
     int selectedObject = -1;
+    bool holdingObject = false;
 
     float objectSize = 15.0f;
 

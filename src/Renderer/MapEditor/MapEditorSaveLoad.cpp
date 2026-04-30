@@ -45,12 +45,17 @@ namespace MapEditorInternal {
         }
 
         for (int i = 0; i < static_cast<int>(MapEditor::objects.size()); i++) {
+            Object obj = MapEditor::objects[i];
             json jsonObj = {
                 {"id", i},
-                {"type", static_cast<int>(MapEditor::objects[i].type)},
-                {"position", {MapEditor::objects[i].position.x, MapEditor::objects[i].position.y}},
-                {"texture", MapEditor::objects[i].textureIndex},
-                {"floor", MapEditor::objects[i].floor},
+                {"type", static_cast<int>(obj.type)},
+                {"position", {obj.position.x, obj.position.y}},
+                {"texture", obj.textureIndex},
+                {"floor", obj.floor},
+                    {"zOffset", obj.zOffset},
+                {"wallOffset", obj.wallOffset},
+                {"wallIndex", obj.wallIndex},
+                {"decalBaseHeight", obj.decalBaseHeight},
             };
 
             levelData["objects"].push_back(jsonObj);
@@ -95,7 +100,7 @@ namespace MapEditorInternal {
                 {"floorHeight", sector.floorHeight},
                 {"floorTextureIndex", sector.floorTextureIndex},
                 {"floorCount", sector.floorCount},
-                {"ceilingTextureIndices", ceilingTextureArray}
+                {"ceilingTextureIndices", ceilingTextureArray},
             };
 
             levelData["sectors"].push_back(jsonObj);
@@ -175,6 +180,11 @@ namespace MapEditor {
                 object.type = static_cast<ObjectType>(objectJson.value("type", 0));
                 object.textureIndex = objectJson.value("texture", -1);
                 object.floor = objectJson.value("floor", 0);
+                object.zOffset = objectJson.value("zOffset", 0.0f);
+                object.wallOffset = objectJson.value("wallOffset", 0.0f);
+                object.wallIndex = objectJson.value("wallIndex", 0);
+                object.decalBaseHeight = objectJson.value("decalBaseHeight", 0);
+
 
                 if (playerPlaced && object.type == OBJ_PLAYER_SPAWN) continue;
 

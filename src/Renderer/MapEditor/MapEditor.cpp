@@ -82,6 +82,48 @@ namespace MapEditor {
 
         HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
+        for (Object& object : objects) {
+            if (object.type != OBJ_DECAL || object.wallIndex == -1) {
+                continue;
+            }
+
+            if (object.wallIndex < 0 || object.wallIndex >= static_cast<int>(walls.size())) {
+                continue;
+            }
+
+            const Wall& wall = walls[object.wallIndex];
+
+            const Vector2 wallVector = wall.end - wall.start;
+
+            const float wallLengthSq =
+                wallVector.x * wallVector.x +
+                wallVector.y * wallVector.y;
+
+            if (wallLengthSq <= 0.0001f) {
+                continue;
+            }
+
+            const Vector2 toObject = object.position - wall.start;
+
+            float t =
+                (toObject.x * wallVector.x + toObject.y * wallVector.y) /
+                wallLengthSq;
+
+            t = std::clamp(t, 0.0f, 1.0f);
+
+            object.wallT = t;
+            object.wallOffset = std::sqrt(wallLengthSq) * object.wallT;
+
+            auto lerp = [](const float a, const float b, const float t) -> float {
+                return (1.0f - t) * a + t * b;
+            };
+
+            object.position = {
+                lerp(wall.start.x, wall.end.x, object.wallT),
+                lerp(wall.start.y, wall.end.y, object.wallT)
+            };
+        }
+
         DrawGridDots();
         DrawExistingSectors();
         DrawCorners();
@@ -91,7 +133,6 @@ namespace MapEditor {
         if (currentMode == MODE_SECTOR) {
             DrawSectorPreview();
         }
-
         DrawEditorUI();
 
         ImGui::Render();

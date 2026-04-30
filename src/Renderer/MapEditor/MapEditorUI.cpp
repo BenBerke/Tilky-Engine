@@ -161,6 +161,9 @@ namespace MapEditorInternal {
                 case OBJ_SPRITE:
                     return "Sprite";
                     break;
+                case OBJ_DECAL:
+                    return "Decal";
+                    break;
                 default: return "Unknown"; break;
             }
         };
@@ -172,17 +175,56 @@ namespace MapEditorInternal {
 
             Vector2 position = object.position;
             int textureIndex = object.textureIndex;
+            const int wallIndex = object.wallIndex;
             int floor = object.floor;
+            float zOffset = object.zOffset;
+            float wallOffset = object.wallOffset;
 
             ImGui::Text("ID:%d", object.id);
             ImGui::Text("Type:%s", GetObjectName(object.type));
             ImGui::InputFloat2("Position", &position.x);
-            ImGui::InputInt("Floor", &floor);
+            if (object.type != OBJ_DECAL) ImGui::InputInt("Floor", &floor);
             ImGui::InputInt("Texture Index", &textureIndex);
+
+            if (object.type == OBJ_DECAL) {
+                ImGui::InputFloat("Horizontal Offset", &wallOffset);
+                ImGui::InputFloat("Vertical Offset", &zOffset);
+                floor = MapEditor::walls[wallIndex].floor;
+            }
 
             object.position = position;
             object.textureIndex = textureIndex;
             object.floor = floor;
+            object.wallIndex = wallIndex;
+            object.zOffset = zOffset;
+            object.wallOffset = wallOffset;
+
+            if (object.type == OBJ_DECAL &&
+                object.wallIndex >= 0 &&
+                object.wallIndex < static_cast<int>(MapEditor::walls.size())) {
+                const Wall &wall = MapEditor::walls[object.wallIndex];
+
+                const Vector2 wallVector = wall.end - wall.start;
+
+                const float wallLength = std::sqrt(
+                    wallVector.x * wallVector.x +
+                    wallVector.y * wallVector.y
+                );
+
+                if (wallLength > 0.0001f) {
+                    const Vector2 wallDir = {
+                        wallVector.x / wallLength,
+                        wallVector.y / wallLength
+                    };
+
+                    object.wallOffset = std::clamp(object.wallOffset, 0.0f, wallLength);
+
+                    object.position = {
+                        wall.start.x + wallDir.x * object.wallOffset,
+                        wall.start.y + wallDir.y * object.wallOffset
+                    };
+                }
+            }
 
             if (object.type != OBJ_PLAYER_SPAWN && ImGui::Button("Delete")) {
                 MapEditor::objects.erase(MapEditor::objects.begin() + selectedObject);
@@ -212,6 +254,7 @@ namespace MapEditorInternal {
             }
         }
 
+        PutSpace(2);
         if (ImGui::Button("Create Texture")) {
             textureInputs.push_back({});
         }
