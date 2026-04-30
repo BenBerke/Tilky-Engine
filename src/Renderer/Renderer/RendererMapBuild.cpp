@@ -38,12 +38,13 @@ namespace RendererInternal {
     }
 
     static void PushGpuWallPiece(
-        const Wall &wall,
-        const float bottomHeight,
-        const float topHeight,
-        const Vector4 &color,
-        const int floor,
-        const float textureAnchorHeight
+    const Wall& wall,
+    const float bottomHeight,
+    const float topHeight,
+    const Vector4& color,
+    const int floor,
+    const float textureAnchorHeight,
+    const float textureDirection
     ) {
         if (topHeight <= bottomHeight + 0.0001f) {
             return;
@@ -55,7 +56,7 @@ namespace RendererInternal {
             static_cast<float>(wall.textureIndex),
             static_cast<float>(floor),
             textureAnchorHeight,
-            0.0f
+            textureDirection
         };
 
         gpuWall.startEnd = {
@@ -115,7 +116,8 @@ namespace RendererInternal {
             top,
             wall.color,
             label,
-            top
+            top,
+            -1.0f
         );
     }
 
@@ -134,34 +136,50 @@ namespace RendererInternal {
                 const int frontFloorCount = GetSafeSectorFloorCount(front);
                 const int backFloorCount = GetSafeSectorFloorCount(back);
 
-                const float frontFloor = GetSectorBoundaryHeight(front, 0);
-                const float backFloor = GetSectorBoundaryHeight(back, 0);
+                const int frontFloorBoundary = std::clamp(
+                    wall.floor,
+                    0,
+                    frontFloorCount
+                );
+
+                const int backFloorBoundary = std::clamp(
+                    wall.floor,
+                    0,
+                    backFloorCount
+                );
+
+                const float frontFloor = GetSectorBoundaryHeight(front, frontFloorBoundary);
+                const float backFloor = GetSectorBoundaryHeight(back, backFloorBoundary);;
 
                 const float frontTopCeiling = GetSectorBoundaryHeight(front, frontFloorCount);
                 const float backTopCeiling = GetSectorBoundaryHeight(back, backFloorCount);
 
-                const float lowerBottom = std::min(frontFloor, backFloor);
-                const float lowerTop = std::max(frontFloor, backFloor);
+                const float lowFloor = std::min(frontFloor, backFloor);
+                const float highFloor = std::max(frontFloor, backFloor);
 
+                const float lowCeiling = std::min(frontTopCeiling, backTopCeiling);
+                const float highCeiling = std::max(frontTopCeiling, backTopCeiling);
+
+                // Lower portal wall: floor difference for this wall's floor
                 PushGpuWallPiece(
                     wall,
-                    lowerBottom,
-                    lowerTop,
+                    lowFloor,
+                    highFloor,
                     wall.color,
-                    0,
-                    lowerBottom
+                    wall.floor,
+                    highFloor,
+                    -1.0f
                 );
 
-                const float upperBottom = std::min(frontTopCeiling, backTopCeiling);
-                const float upperTop = std::max(frontTopCeiling, backTopCeiling);
-
+                // Upper portal wall: ceiling difference
                 PushGpuWallPiece(
                     wall,
-                    upperBottom,
-                    upperTop,
+                    lowCeiling,
+                    highCeiling,
                     wall.color,
                     std::max(frontFloorCount, backFloorCount),
-                    upperTop
+                    lowCeiling,
+                    1.0f
                 );
 
                 continue;
@@ -182,7 +200,8 @@ namespace RendererInternal {
                     32.0f,
                     wall.color,
                     wall.floor,
-                    32.0f
+                    32.0f,
+                    -1.0f
                 );
                 continue;
             }
@@ -204,7 +223,8 @@ namespace RendererInternal {
                 wallTop,
                 wall.color,
                 wall.floor,
-                wallTop
+                wallTop,
+                -1.0f
             );
         }
 

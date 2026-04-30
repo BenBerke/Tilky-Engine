@@ -106,11 +106,14 @@ flat out int vSpriteTextureIndex;
 flat out float fSpriteViewDepth;
 flat out vec4 vSpriteColor;
 
+flat out float fWallTextureDirection;
+
 uniform vec2 playerPos;
 uniform float playerAngle;
 uniform float playerHeight;
 uniform float playerCamZ;
 uniform int renderMode;
+
 
 const float FOV =  90.0;
 const float halfFov = FOV * .5;
@@ -184,6 +187,7 @@ void outputDummyWallData() {
     fWallTopHeight = 1.0;
 
     fWallTextureAnchorHeight = 0.0;
+    fWallTextureDirection = -1.0;
 }
 
 void renderFlat() {
@@ -332,6 +336,9 @@ void renderWall() {
     vFlatInvZ = 1.0;
     vFlatWorldOverZ = vec2(0.0);
     vFlatTextureIndex = -1;
+
+    fWallTextureAnchorHeight = wall.data.z;
+    fWallTextureDirection = wall.data.w;
 
     vec2 wallStart = wall.startEnd.xy;
     vec2 wallEnd = wall.startEnd.zw;

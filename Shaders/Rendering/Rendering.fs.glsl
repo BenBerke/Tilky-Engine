@@ -23,6 +23,7 @@ flat in float fScreenXStart;
 flat in float fScreenXEnd;
 
 flat in float fWallTextureAnchorHeight;
+flat in float fWallTextureDirection;
 
 flat in float fTopYStart;
 flat in float fTopYEnd;
@@ -225,7 +226,16 @@ void main() {
     v
     );
 
-    float texV = -worldHeightAtFragment / tileSize;
+    float texV;
+
+    if (fWallTextureDirection < 0.0) {
+        // Top-down tiling. Good for normal walls and floor step walls.
+        texV = (fWallTextureAnchorHeight - worldHeightAtFragment) / tileSize;
+    }
+    else {
+        // Bottom-up tiling. Good for ceiling gap walls.
+        texV = (worldHeightAtFragment - fWallTextureAnchorHeight) / tileSize;
+    }
 
     if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
         vec4 texColor = SampleWallTexture(vTextureIndex, vec2(u, texV));
