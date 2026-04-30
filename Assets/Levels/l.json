@@ -71,7 +71,7 @@
             "id": 1
         },
         {
-            "ceilingHeight": 30.0,
+            "ceilingHeight": 40.0,
             "ceilingTextureIndices": [
                 1,
                 2,
@@ -109,13 +109,13 @@
     ],
     "walls": [
         {
-            "backSector": 1,
+            "backSector": 0,
             "end": [
                 128.0,
                 128.0
             ],
             "floor": 0,
-            "frontSector": 0,
+            "frontSector": 1,
             "id": 0,
             "start": [
                 -128.0,

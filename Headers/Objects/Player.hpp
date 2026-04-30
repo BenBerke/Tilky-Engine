@@ -21,6 +21,7 @@ namespace Player {
     inline float size = 1.0f;
     inline float eyeHeight = 12.0f;
     inline float stepSize = 8.0f;
+    inline float bodySize = 10.0f;
 
     inline float camZ = 0.5;
 

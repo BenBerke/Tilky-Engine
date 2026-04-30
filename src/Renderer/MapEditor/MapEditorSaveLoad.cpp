@@ -8,12 +8,6 @@ using json = nlohmann::json;
 
 namespace MapEditorInternal {
     void UpdateLevels() {
-        const std::string levelPath = "test_level";
-
-        if (!MapEditor::LoadLevel(levelPath)) {
-            SDL_Log("No existing test_scene.json loaded. Starting with an empty editor.");
-        }
-
         const std::string levelsPath = "../Assets/Levels";
         try {
             MapEditor::maps.clear();

@@ -19,7 +19,56 @@
 constexpr int COLLISION_ITERATIONS = 4;
 
 namespace {
-    bool IsPointInPolygon(const std::vector<Vector2>& polygon, const Vector2 p) {
+    float GetSectorHeight(const Sector &sector) {
+        return sector.ceilingHeight - sector.floorHeight;
+    }
+
+    int GetSafeFloorCount(const Sector &sector) {
+        return std::max(1, sector.floorCount);
+    }
+
+    float GetFloorBaseHeight(const Sector &sector, const int floorIndex) {
+        const float sectorHeight = GetSectorHeight(sector);
+
+        return sector.floorHeight + sectorHeight * static_cast<float>(floorIndex);
+    }
+
+    float GetEyeHeightForFloor(const Sector &sector, const int floorIndex) {
+        return GetFloorBaseHeight(sector, floorIndex) + Player::eyeHeight;
+    }
+
+    int GetFloorFromWorldEyeHeight(
+        const Sector &sector,
+        const float worldEyeHeight
+    ) {
+        const float sectorHeight = GetSectorHeight(sector);
+
+        if (sectorHeight <= 0.0001f) {
+            return 0;
+        }
+
+        const int floorCount = GetSafeFloorCount(sector);
+
+        int bestFloor = 0;
+        float bestDifference = std::numeric_limits<float>::max();
+
+        for (int floor = 0; floor < floorCount; ++floor) {
+            const float candidateEyeHeight =
+                    GetEyeHeightForFloor(sector, floor);
+
+            const float difference =
+                    std::abs(candidateEyeHeight - worldEyeHeight);
+
+            if (difference < bestDifference) {
+                bestDifference = difference;
+                bestFloor = floor;
+            }
+        }
+
+        return bestFloor;
+    }
+
+    bool IsPointInPolygon(const std::vector<Vector2> &polygon, const Vector2 p) {
         bool inside = false;
         const size_t n = polygon.size();
 
@@ -31,14 +80,16 @@ namespace {
             // If it is, calculate the X-coordinate of the intersection of the edge and the ray
             // then check if the point's X-coordinate is to the left of that intersection
             if (isBetweenY &&
-                (p.x < (polygon[j].x - polygon[i].x) * (p.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x)) {
+                (p.x < (polygon[j].x - polygon[i].x) * (p.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i]
+                 .x)) {
                 inside = !inside; // Toggle the state
-                }
+            }
         }
 
         return inside;
     }
-    Vector2 ClosestPointOnSegment(const Wall& wall, const Vector2& p) {
+
+    Vector2 ClosestPointOnSegment(const Wall &wall, const Vector2 &p) {
         if (wall.lengthSq <= 0.00001f) {
             return wall.start;
         }
@@ -51,15 +102,40 @@ namespace {
 
     int activePortalWallIndex = -1;
 
-    bool IsPortalWall(const Wall& wall) {
+    bool IsPortalWall(const Wall &wall) {
         return wall.frontSector != -1 && wall.backSector != -1 && wall.backSector != wall.frontSector;
     }
 
-    bool IsValidSectorIndex(const int index, const std::vector<Sector>& sectors) {
+    bool IsValidSectorIndex(const int index, const std::vector<Sector> &sectors) {
         return index >= 0 && index < static_cast<int>(sectors.size());
     }
 
-    int GetOtherPortalSector(const Wall& wall, const int currentSector) {
+    void EnterSectorKeepingWorldEyeHeight(
+        const int newSector,
+        const std::vector<Sector> &sectors
+    ) {
+        if (!IsValidSectorIndex(newSector, sectors)) {
+            return;
+        }
+
+        const Sector &sector = sectors[newSector];
+
+        const int newFloor = GetFloorFromWorldEyeHeight(
+            sector,
+            Player::currentEyeHeight
+        );
+
+        const float newEyeHeight = GetEyeHeightForFloor(
+            sector,
+            newFloor
+        );
+
+        Player::currentSector = newSector;
+        Player::currentFloor = newFloor;
+        Player::currentEyeHeight = newEyeHeight;
+    }
+
+    int GetOtherPortalSector(const Wall &wall, const int currentSector) {
         if (currentSector == wall.frontSector) {
             return wall.backSector;
         }
@@ -72,31 +148,64 @@ namespace {
     }
 
     bool CanStepIntoSector(
-        const int currentSector,
-        const int newSector,
-        const std::vector<Sector>& sectors
-    ) {
+    const int currentSector,
+    const int newSector,
+    const std::vector<Sector>& sectors
+) {
         if (!IsValidSectorIndex(currentSector, sectors) ||
             !IsValidSectorIndex(newSector, sectors)) {
             return false;
             }
 
-        const float currentFloorHeight = sectors[currentSector].floorHeight;
-        const float newFloorHeight = sectors[newSector].floorHeight;
+        const Sector& next = sectors[newSector];
 
-        const float stepUpAmount = newFloorHeight - currentFloorHeight;
+        const int newFloor = GetFloorFromWorldEyeHeight(
+            next,
+            Player::currentEyeHeight
+        );
 
-        return stepUpAmount <= Player::stepSize;
+        const float newEyeHeight = GetEyeHeightForFloor(
+            next,
+            newFloor
+        );
+
+        const float heightDifference =
+            newEyeHeight - Player::currentEyeHeight;
+
+        // Moving up: only allow normal step height.
+        if (heightDifference > 0.0f) {
+            return heightDifference <= Player::stepSize;
+        }
+
+        // Moving down.
+        if (heightDifference < 0.0f) {
+            const float fallDistance = -heightDifference;
+
+            // Allow small step-downs.
+            if (fallDistance <= Player::stepSize) {
+                return true;
+            }
+
+            // Allow large drops only if they are large enough to be a real floor drop.
+            if (fallDistance >= Player::bodySize) {
+                return true;
+            }
+
+            // Medium drop: block it, like hitting a floor edge.
+            return false;
+        }
+
+        return true;
     }
 
-    void OnPortalEnter(const Wall& wall, const std::vector<Sector>& sectors) {
+    void OnPortalEnter(const Wall &wall, const std::vector<Sector> &sectors) {
         const int newSector = GetOtherPortalSector(wall, Player::currentSector);
 
         if (!CanStepIntoSector(Player::currentSector, newSector, sectors)) {
             return;
         }
 
-        Player::currentSector = newSector;
+        EnterSectorKeepingWorldEyeHeight(newSector, sectors);
     }
 
     int FindCurrentSectorBetweenPortalSides(
@@ -116,7 +225,7 @@ namespace {
         return Player::currentSector;
     }
 
-    float PolygonAreaAbs(const std::vector<Vector2>& polygon) {
+    float PolygonAreaAbs(const std::vector<Vector2> &polygon) {
         float area = 0.0f;
 
         for (int i = 0; i < static_cast<int>(polygon.size()); ++i) {
@@ -131,7 +240,7 @@ namespace {
 }
 
 namespace Player {
-    int FindCurrentSector(const std::vector<Sector>& sectors) {
+    int FindCurrentSector(const std::vector<Sector> &sectors) {
         int bestSector = -1;
         float bestArea = std::numeric_limits<float>::max();
 
@@ -148,20 +257,36 @@ namespace Player {
             }
         }
 
-        if (bestSector != -1) {
-            currentSector = bestSector;
-        } else currentSector = 0;
-
         return bestSector;
     }
 
-    void Start(const std::vector<Sector>& sectors) {
+    void Start(const std::vector<Sector> &sectors) {
         currentSector = FindCurrentSector(sectors);
-        currentEyeHeight = currentSector < sectors.size() ? sectors[currentSector].floorHeight + eyeHeight : eyeHeight;
 
+        if (IsValidSectorIndex(currentSector, sectors)) {
+            currentFloor = std::clamp(
+                currentFloor,
+                0,
+                GetSafeFloorCount(sectors[currentSector]) - 1
+            );
+
+            currentEyeHeight = GetEyeHeightForFloor(
+                sectors[currentSector],
+                currentFloor
+            );
+        } else {
+            currentSector = 0;
+            currentFloor = 0;
+
+            if (!sectors.empty()) {
+                currentEyeHeight = GetEyeHeightForFloor(sectors[0], 0);
+            } else {
+                currentEyeHeight = eyeHeight;
+            }
+        }
     }
 
-    void Update(const std::vector<Wall>& walls, const std::vector<Sector>& sectors) {
+    void Update(const std::vector<Wall> &walls, const std::vector<Sector> &sectors) {
         Vector2 input = {0.0f, 0.0f};
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x -= 1.0f;
@@ -183,46 +308,6 @@ namespace Player {
         camZ -= InputManager::GetMouseDelta().y * SENSITIVITY_Y;
 
         camZ = std::clamp(camZ, -.15f, .8f);
-
-        //Check each sector every frame, might cause lag
-        FindCurrentSector(sectors);
-
-        if (currentSector < 0 || currentSector >= static_cast<int>(sectors.size())) {
-            currentFloor = 0;
-            return;
-        }
-
-        const Sector& sector = sectors[currentSector];
-
-        const float sectorFloorHeight = sector.floorHeight;
-        const float sectorCeilHeight = sector.ceilingHeight;
-        const float sectorHeight = sectorCeilHeight - sectorFloorHeight;
-
-        if (sectorHeight <= 0.0001f) {
-            currentFloor = 0;
-            return;
-        }
-
-        const int floorCount = sector.floorCount;
-        const float worldFootHeight = currentEyeHeight - eyeHeight;
-
-        int calculatedFloor = static_cast<int>(
-            std::floor((worldFootHeight - sectorFloorHeight) / sectorHeight)
-        );
-
-        calculatedFloor = std::clamp(calculatedFloor, 0, floorCount - 1);
-
-        currentFloor = calculatedFloor;
-
-        const float targetWorldEyeHeight =
-            sectorFloorHeight + static_cast<float>(currentFloor) * sectorHeight + eyeHeight;
-
-        // Direct snap:
-        currentEyeHeight = targetWorldEyeHeight;
-
-        // Or smooth version:
-        // constexpr float smoothingSpeed = 8.0f;
-        // currentEyeHeight += (targetWorldEyeHeight - currentEyeHeight) * smoothingSpeed * GameTime::deltaTime;
 
         const float angleInRad = angle * M_PI / 180.0f;
         const float s = std::sin(angleInRad);
@@ -246,7 +331,7 @@ namespace Player {
             bool collided = false;
 
             for (int i = 0; i < static_cast<int>(walls.size()); ++i) {
-                const Wall& wall = walls[i];
+                const Wall &wall = walls[i];
 
                 if (wall.floor != currentFloor) continue;
 
@@ -276,7 +361,11 @@ namespace Player {
                         touchingPortalThisFrame = true;
                         activePortalWallIndex = i;
 
-                        currentSector = FindCurrentSectorBetweenPortalSides(wall, sectors);
+                        const int sectorOnOtherSide = FindCurrentSectorBetweenPortalSides(wall, sectors);
+
+                        if (sectorOnOtherSide != currentSector) {
+                            EnterSectorKeepingWorldEyeHeight(sectorOnOtherSide, sectors);
+                        }
 
                         continue;
                     }
@@ -300,6 +389,25 @@ namespace Player {
             if (!collided) {
                 break;
             }
+        }
+
+        //Check each sector every frame, might cause lag
+        const int foundSector = FindCurrentSector(sectors);
+
+        if (foundSector != -1 && foundSector != currentSector) {
+            EnterSectorKeepingWorldEyeHeight(foundSector, sectors);
+        }
+
+        if (IsValidSectorIndex(currentSector, sectors)) {
+            const Sector &sector = sectors[currentSector];
+
+            currentFloor = std::clamp(
+                currentFloor,
+                0,
+                GetSafeFloorCount(sector) - 1
+            );
+
+            currentEyeHeight = GetEyeHeightForFloor(sector, currentFloor);
         }
 
         if (!touchingPortalThisFrame) {
