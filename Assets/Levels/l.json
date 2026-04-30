@@ -3,10 +3,74 @@
         {
             "id": 0,
             "position": [
+                -65.0,
+                -29.0
+            ],
+            "texture": -1,
+            "type": 0
+        },
+        {
+            "id": 1,
+            "position": [
                 0.0,
                 0.0
             ],
-            "type": 0
+            "texture": -1,
+            "type": 150
+        },
+        {
+            "id": 2,
+            "position": [
+                0.0,
+                0.0
+            ],
+            "texture": -1,
+            "type": 150
+        },
+        {
+            "id": 3,
+            "position": [
+                0.0,
+                0.0
+            ],
+            "texture": -1,
+            "type": 150
+        },
+        {
+            "id": 4,
+            "position": [
+                0.0,
+                0.0
+            ],
+            "texture": -1,
+            "type": 150
+        },
+        {
+            "id": 5,
+            "position": [
+                0.0,
+                0.0
+            ],
+            "texture": -1965032688,
+            "type": 81
+        },
+        {
+            "id": 6,
+            "position": [
+                0.0,
+                0.0
+            ],
+            "texture": -1965032688,
+            "type": 81
+        },
+        {
+            "id": 7,
+            "position": [
+                0.0,
+                75.0
+            ],
+            "texture": 2,
+            "type": 1
         }
     ],
     "sectors": [

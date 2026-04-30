@@ -31,7 +31,7 @@ namespace MapEditorInternal {
     bool editingObject = false;
     int selectedObject = -1;
 
-    float objectSize = 10.0f;
+    float objectSize = 15.0f;
 
     Mode currentMode = MODE_DOT;
 

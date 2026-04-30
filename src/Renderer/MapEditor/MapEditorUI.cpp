@@ -116,13 +116,15 @@ namespace MapEditorInternal {
         if (editingWall && currentMode == MODE_WALL && selectedWall != -1) {
             ImGui::Begin("Wall", &editingSector);
 
-            Vector4 color = MapEditor::walls[selectedWall].color;
+            auto& wall = MapEditor::walls[selectedWall];
 
-            int frontSector = MapEditor::walls[selectedWall].frontSector;
-            int backSector = MapEditor::walls[selectedWall].backSector;
-            int textureIndex = MapEditor::walls[selectedWall].textureIndex;
+            Vector4 color = wall.color;
 
-            int floor = MapEditor::walls[selectedWall].floor;;
+            int frontSector = wall.frontSector;
+            int backSector = wall.backSector;
+            int textureIndex = wall.textureIndex;
+
+            int floor = wall.floor;;
 
             ImGui::InputInt("Front Sector", &frontSector);
             ImGui::InputInt("Back Sector", &backSector);
@@ -131,11 +133,11 @@ namespace MapEditorInternal {
 
             ImGui::InputFloat4("Wall Color", &color.x);
 
-            MapEditor::walls[selectedWall].color = color;
-            MapEditor::walls[selectedWall].textureIndex = textureIndex;
-            MapEditor::walls[selectedWall].frontSector = frontSector;
-            MapEditor::walls[selectedWall].backSector = backSector;
-            MapEditor::walls[selectedWall].floor = floor;
+            wall.color = color;
+            wall.textureIndex = textureIndex;
+            wall.frontSector = frontSector;
+            wall.backSector = backSector;
+            wall.floor = floor;
 
             if (ImGui::Button("Delete")) {
                 MapEditor::walls.erase(MapEditor::walls.begin() + selectedWall);
@@ -164,20 +166,22 @@ namespace MapEditorInternal {
         };
 
         if (editingObject && currentMode == MODE_OBJECT && selectedObject != -1) {
-            ImGui::Begin("Object", &editingSector);
+            ImGui::Begin("Object");
 
-            Vector2 position = MapEditor::objects[selectedObject].position;
-            int textureIndex = MapEditor::objects[selectedObject].textureIndex;
+            auto& object = MapEditor::objects[selectedObject];
 
-            ImGui::Text("ID:%d", MapEditor::objects[selectedObject].id);
-            ImGui::Text("Type:%s", GetObjectName(MapEditor::objects[selectedObject].type));
+            Vector2 position = object.position;
+            int textureIndex = object.textureIndex;
+
+            ImGui::Text("ID:%d", object.id);
+            ImGui::Text("Type:%s", GetObjectName(object.type));
             ImGui::InputFloat2("Position", &position.x);
             ImGui::InputInt("Texture Index", &textureIndex);
 
-            MapEditor::objects[selectedObject].position = position;
-            MapEditor::objects[selectedObject].textureIndex = textureIndex;
+            object.position = position;
+            object.textureIndex = textureIndex;
 
-            if (MapEditor::objects[selectedObject].type != OBJ_PLAYER_SPAWN && ImGui::Button("Delete")) {
+            if (object.type != OBJ_PLAYER_SPAWN && ImGui::Button("Delete")) {
                 MapEditor::objects.erase(MapEditor::objects.begin() + selectedObject);
                 editingObject = false;
             }
@@ -223,7 +227,7 @@ namespace MapEditorInternal {
         if (currentMode == MODE_OBJECT) {
             ImGui::Text("Object Details");
             PutSpace(3);
-            const char* items[OBJ_COUNT] = {"Player Spawn", "Sprite"};
+            const char* items[OBJ_COUNT] = {"Player Spawn", "Sprite", "Decal"};
             static int item_current = 0;
             if (ImGui::BeginCombo("Select Type", items[item_current])) {
                 for (int n = 0; n < IM_ARRAYSIZE(items); n++) {

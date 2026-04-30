@@ -49,6 +49,7 @@ namespace MapEditorInternal {
                 {"id", i},
                 {"type", static_cast<int>(MapEditor::objects[i].type)},
                 {"position", {MapEditor::objects[i].position.x, MapEditor::objects[i].position.y}},
+                    {"texture", MapEditor::objects[i].textureIndex},
             };
 
             levelData["objects"].push_back(jsonObj);
@@ -171,6 +172,7 @@ namespace MapEditor {
 
                 object.id = objectJson.value("id", -1);
                 object.type = static_cast<ObjectType>(objectJson.value("type", 0));
+                object.textureIndex = objectJson.value("texture", -1);
 
                 if (playerPlaced && object.type == OBJ_PLAYER_SPAWN) continue;
 
