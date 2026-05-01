@@ -13,6 +13,8 @@
 #include "../../../Headers/Math/Vector/Vector4.hpp"
 
 namespace RendererInternal {
+    inline constexpr int SCREEN_WIDTH = 1680;
+    inline constexpr int SCREEN_HEIGHT = 960;
     inline constexpr float DEBUG_MAP_SCALE = 200.0f;
     inline constexpr float DEBUG_PLAYER_HALF_SIZE = 0.01f;
     inline constexpr float DEBUG_FOV_DEG = 90.0f;
@@ -136,9 +138,6 @@ namespace RendererInternal {
     Vector2 WorldToDebugNdc(const Vector2& worldPoint, const Vector2& playerPos);
     float GetViewDepth(const Vector4& point, const Vector2& playerPos, float playerAngle);
     Vector4 LerpVector4(const Vector4& a, const Vector4& b, float t);
-
-    inline constexpr int SCREEN_WIDTH = 1680;
-    inline constexpr int SCREEN_HEIGHT = 960;
 
     inline constexpr bool DEBUG_ENABLED = true;
 

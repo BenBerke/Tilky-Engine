@@ -1,6 +1,8 @@
 #include "../../Headers/Renderer/Renderer/Renderer.hpp"
 #include "RendererInternal.hpp"
 
+#include "../../Headers/Math/Vector/Vector3.hpp"
+
 #include <SDL3/SDL_log.h>
 
 namespace RendererInternal {

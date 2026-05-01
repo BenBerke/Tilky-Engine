@@ -60,6 +60,7 @@ add_executable(Wolfy_Engine
         Headers/Map/MapQueries.h
         src/Map/MapQueries.cpp
         src/Renderer/Renderer/RenderBackground.cpp
+        src/Renderer/Renderer/RendererUI.cpp
 )
 
 target_precompile_headers(Wolfy_Engine PRIVATE

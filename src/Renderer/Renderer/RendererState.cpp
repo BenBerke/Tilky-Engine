@@ -17,6 +17,7 @@ namespace Renderer {
 
     GLuint uiVAO = 0;
     GLuint uiVBO = 0;
+    GLuint uiEBO = 0;
 }
 
 namespace RendererInternal {

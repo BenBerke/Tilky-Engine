@@ -4,7 +4,6 @@
 #include "RendererInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
-#include "Headers/Engine/GameTime.hpp"
 
 #include "Headers/Objects/Player.hpp"
 #include "Headers/Objects/Wall.hpp"
@@ -13,6 +12,7 @@
 #include "Headers/Renderer/TextureManager.hpp"
 
 namespace Renderer {
+
     void Update(const Vector2& playerPos, const float angle) {
         using namespace RendererInternal;
 
@@ -148,9 +148,25 @@ namespace Renderer {
         uiShader->use();
         glBindVertexArray(uiVAO);
 
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glBindVertexArray(0);
+
+        constexpr float percentage = std::clamp(65.0f / 100.0f, 0.0f, 1.0f);
+
+        // Background
+        DrawUIRectangle(
+            {20.0f, 20.0f},
+            {300.0f, 30.0f},
+            {40.0f, 40.0f, 40.0f, 220.0f}
+        );
+
+        // Health fill
+        DrawUIRectangle(
+            {23.0f, 23.0f},
+            {294.0f * percentage, 24.0f},
+            {220.0f, 30.0f, 30.0f, 255.0f}
+        );
 
         //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
