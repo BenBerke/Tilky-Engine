@@ -6,16 +6,18 @@
 #include "../../Headers/Renderer/Renderer/Renderer.hpp"
 
 #include "../../Headers/Math/Vector/Vector2.hpp"
-#include "../../Headers/Math/Vector/Vector4.hpp"
 
+#include "Headers/Renderer/TextureManager.hpp"
 
 namespace Renderer {
     using namespace RendererInternal;
+
     void DrawUIRectangle(
-            const Vector2& position,
-            const Vector2& size,
-            const Vector4& color
-        ) {
+        const Vector2& position,
+        const Vector2& size,
+        const Vector4& color,
+        const int textureIndex
+    ) {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
@@ -49,6 +51,29 @@ namespace Renderer {
             color.z / 255.0f,
             color.w / 255.0f
         );
+
+        const bool useTexture =
+            textureIndex >= 0 &&
+            textureIndex < TextureManager::GetTextureCount();
+
+        glUniform1i(
+            glGetUniformLocation(uiShader->ID, "uUseTexture"),
+            useTexture ? 1 : 0
+        );
+
+        if (useTexture) {
+            glActiveTexture(GL_TEXTURE0);
+
+            glBindTexture(
+                GL_TEXTURE_2D,
+                TextureManager::GetTexture(textureIndex).id
+            );
+
+            glUniform1i(
+                glGetUniformLocation(uiShader->ID, "uTexture"),
+                0
+            );
+        }
 
         glBindVertexArray(uiVAO);
 

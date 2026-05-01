@@ -139,35 +139,10 @@ namespace Renderer {
         // ImGui::Text("Eye Height: %.2f", Player::currentEyeHeight);
         // ImGui::Text("NoClip: %s", Player::noClip ? "true" : "false");
 
-       // ImGui::End();
+        // ImGui::End();
 
         //ImGui::Render();
-
-        glDisable(GL_DEPTH_TEST);
-
-        uiShader->use();
-        glBindVertexArray(uiVAO);
-
-        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        glBindVertexArray(0);
-
-        constexpr float percentage = std::clamp(65.0f / 100.0f, 0.0f, 1.0f);
-
-        // Background
-        DrawUIRectangle(
-            {20.0f, 20.0f},
-            {300.0f, 30.0f},
-            {40.0f, 40.0f, 40.0f, 220.0f}
-        );
-
-        // Health fill
-        DrawUIRectangle(
-            {23.0f, 23.0f},
-            {294.0f * percentage, 24.0f},
-            {220.0f, 30.0f, 30.0f, 255.0f}
-        );
-
+        
         //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 }

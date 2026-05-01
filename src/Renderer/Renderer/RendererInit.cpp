@@ -130,14 +130,16 @@ namespace Renderer {
 
     bool InitUI() {
         const float vertices[] = {
-            0.5f,  0.5f, 0.0f,  // top right
-            0.5f, -0.5f, 0.0f,  // bottom right
-           -0.5f, -0.5f, 0.0f,  // bottom left
-           -0.5f,  0.5f, 0.0f   // top left
+            // x, y,      u, v
+            0.5f,  0.5f, 1.0f, 0.0f,  // top right
+            0.5f, -0.5f, 1.0f, 1.0f,  // bottom right
+           -0.5f, -0.5f, 0.0f, 1.0f,  // bottom left
+           -0.5f,  0.5f, 0.0f, 0.0f   // top left
        };
+
         const unsigned int indices[] = {
-            0, 1, 3,   // first triangle
-            1, 2, 3    // second triangle
+            0, 1, 3,
+            1, 2, 3
         };
 
         uiShader = std::make_unique<Shader>(
@@ -152,6 +154,7 @@ namespace Renderer {
 
         glGenVertexArrays(1, &uiVAO);
         glGenBuffers(1, &uiVBO);
+        glGenBuffers(1, &uiEBO);
 
         glBindVertexArray(uiVAO);
 
@@ -163,24 +166,39 @@ namespace Renderer {
             GL_STATIC_DRAW
         );
 
-        glVertexAttribPointer(
-            0,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            3 * sizeof(float),
-            static_cast<void*>(nullptr)
+        // IMPORTANT: bind EBO while uiVAO is bound
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, uiEBO);
+        glBufferData(
+            GL_ELEMENT_ARRAY_BUFFER,
+            sizeof(indices),
+            indices,
+            GL_STATIC_DRAW
         );
 
+        // location 0: position
+        glVertexAttribPointer(
+            0,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            4 * sizeof(float),
+            reinterpret_cast<void*>(0)
+        );
         glEnableVertexAttribArray(0);
 
-
-        glGenBuffers(1, &uiEBO);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, uiEBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        // location 1: UV
+        glVertexAttribPointer(
+            1,
+            2,
+            GL_FLOAT,
+            GL_FALSE,
+            4 * sizeof(float),
+            reinterpret_cast<void*>(2 * sizeof(float))
+        );
+        glEnableVertexAttribArray(1);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+
         glBindVertexArray(0);
 
         return true;

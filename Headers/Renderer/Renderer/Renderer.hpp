@@ -6,7 +6,8 @@
 #include <glad/glad.h>
 #include <SDL3/SDL_video.h>
 
-struct Vector4;
+#include "Headers/Math/Vector/Vector4.hpp"
+
 struct Vector2;
 struct Vector3;
 
@@ -42,9 +43,10 @@ namespace Renderer {
     );
 
     void DrawUIRectangle(
-        const Vector2& position,
-        const Vector2& size,
-        const Vector4& color
+    const Vector2& position,
+    const Vector2& size,
+    const Vector4& color = (Vector4){255.0f, 255.0f, 255.0f, 255.0f},
+    int textureIndex = -1
     );
 
     inline constexpr int SECTOR_FLOOR_COUNT = 3;
