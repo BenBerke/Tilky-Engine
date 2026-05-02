@@ -1,13 +1,15 @@
 #include "RendererInternal.hpp"
 
-#include "Headers/Renderer/MapEditor.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 namespace RendererInternal {
     void BuildGpuSectors() {
-        gpuSectors.clear();
-        gpuSectors.reserve(MapEditor::sectors.size());
+        Level& level = LevelManager::CurrentLevel();
 
-        for (const Sector& sector : MapEditor::sectors) {
+        gpuSectors.clear();
+        gpuSectors.reserve(level.sectors.size());
+
+        for (const Sector& sector : level.sectors) {
             GpuSector gpuSector;
 
             gpuSector.heights = {
@@ -33,7 +35,7 @@ namespace RendererInternal {
 
             gpuSector.textureData = {
                 static_cast<float>(sector.floorTextureIndex),
-                0.0,
+                0.0f,
                 0.0f,
                 0.0f
             };

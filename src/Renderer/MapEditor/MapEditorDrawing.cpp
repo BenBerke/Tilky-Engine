@@ -1,6 +1,7 @@
 #include "MapEditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 #include <cmath>
 
@@ -81,13 +82,15 @@ namespace MapEditorInternal {
     }
 
     void DrawExistingSectors() {
+        Level& level = LevelManager::CurrentLevel();
+
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
         int hoveredSectorIndex = -1;
 
-        for (int i = static_cast<int>(MapEditor::sectors.size()) - 1; i >= 0; --i) {
-            if (IsPointInsidePolygon(MapEditor::sectors[i].vertices, mouseWorld)) {
+        for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
+            if (IsPointInsidePolygon(level.sectors[i].vertices, mouseWorld)) {
                 hoveredSectorIndex = i;
                 break;
             }
@@ -102,10 +105,10 @@ namespace MapEditorInternal {
             0.45f
         };
 
-        const int totalSectors = static_cast<int>(MapEditor::sectors.size());
+        const int totalSectors = static_cast<int>(level.sectors.size());
 
         auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
-            float r, g, b;
+            float r = 0.0f, g = 0.0f, b = 0.0f;
             const int i = floor(h * 6);
             const float f = h * 6 - i;
             const float p = v * (1 - s);
@@ -118,6 +121,7 @@ namespace MapEditorInternal {
                 case 3: r = p, g = q, b = v; break;
                 case 4: r = t, g = p, b = v; break;
                 case 5: r = v, g = p, b = q; break;
+                default: break;
             }
             return { r, g, b, .55f};
         };
@@ -131,7 +135,7 @@ namespace MapEditorInternal {
                     ? hoveredSectorColor
                     : normalSectorColor;
 
-            for (const Triangle& triangle : MapEditor::sectors[i].triangles) {
+            for (const Triangle& triangle : level.sectors[i].triangles) {
                 DrawFilledTriangle(triangle, sectorColor);
             }
         }
@@ -157,9 +161,11 @@ namespace MapEditorInternal {
     }
 
     void DrawWalls() {
+        Level& level = LevelManager::CurrentLevel();
+
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
-        for (const Wall& wall : MapEditor::walls) {
+        for (const Wall& wall : level.walls) {
             if (wall.floor != currentFloor) continue;
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
@@ -169,26 +175,14 @@ namespace MapEditorInternal {
     }
 
     void DrawObjects() {
-        for (const Object& object : MapEditor::objects) {
-            if (object.floor != currentFloor) continue;
-            const Vector2 objectScreen = WorldToScreen(object.position, cameraPos);
+        Level& level = LevelManager::CurrentLevel();
 
-            Vector3 color = {0, 0, 0};
+        for (const ComponentTransform& transform : level.transforms.components) {
+            if (transform.floor != currentFloor) continue;
 
-            switch (object.type) {
-                case OBJ_PLAYER_SPAWN:
-                    color = {255, 0, 0};
-                    break;
-                case OBJ_SPRITE:
-                    color = {0, 0, 0};
-                    break;
-                case OBJ_DECAL:
-                    color = {0, 0, 255};
-                    break;
-                default:
-                    color = {0, 0, 0};
-                    break;
-            }
+            const Vector2 objectScreen = WorldToScreen(transform.position, cameraPos);
+
+            const Vector3 color = {0, 0, 0};
 
             SDL_FRect dotRect = {
                 objectScreen.x - 3.0f,

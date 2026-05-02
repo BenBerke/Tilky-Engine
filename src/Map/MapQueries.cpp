@@ -2,7 +2,7 @@
 // Created by berke on 4/30/2026.
 //
 
-#include "../../Headers/Map/MapQueries.h"
+#include "../../Headers/Map/MapQueries.hpp"
 #include "../../Headers/Math/Geometry/Geometry.h"
 #include "Headers/Objects/Wall.hpp"
 

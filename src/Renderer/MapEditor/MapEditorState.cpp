@@ -1,9 +1,9 @@
 #include "MapEditorInternal.hpp"
 
 namespace MapEditor {
-    std::vector<Wall> walls;
-    std::vector<Sector> sectors;
-    std::vector<Object> objects;
+    std::vector<std::string> maps;
+    std::string currentMap;
+
     Vector2 playerStartPos = {0.0f, 0.0f};
     int backgroundTextureIndex = -1;
 }
@@ -29,15 +29,12 @@ namespace MapEditorInternal {
     bool editingWall = false;
     int selectedWall = -1;
 
-    bool editingObject = false;
-    int selectedObject = -1;
-    bool holdingObject = false;
+    std::string currentMap;
 
     float objectSize = 15.0f;
 
     Mode currentMode = MODE_DOT;
 
-    ObjectType currentObjectTypeToPlace = OBJ_PLAYER_SPAWN;
     bool playerPlaced = false;
 
     std::vector<std::array<char, 256>> textureInputs;

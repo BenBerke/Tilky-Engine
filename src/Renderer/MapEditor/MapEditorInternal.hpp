@@ -30,7 +30,6 @@ namespace MapEditorInternal {
         ACTION_CREATE_CORNER,
         ACTION_CREATE_OBJECT,
     };
-
     extern std::vector<Action> actions;
 
     extern SDL_Window* window;
@@ -53,15 +52,12 @@ namespace MapEditorInternal {
     extern bool editingWall;
     extern int selectedWall;
 
-    extern bool editingObject;
-    extern int selectedObject;
-    extern bool holdingObject;
+    extern std::string currentMap;
 
     extern float objectSize;
 
     extern Mode currentMode;
 
-    extern ObjectType currentObjectTypeToPlace;
     extern bool playerPlaced;
 
     extern int currentFloor;

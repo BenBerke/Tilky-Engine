@@ -1,56 +1,44 @@
 {
+    "components": {
+        "decals": [],
+        "playerSpawns": [
+            {
+                "ownerID": 1
+            }
+        ],
+        "sprites": [],
+        "transforms": [
+            {
+                "floor": 0,
+                "ownerID": 1,
+                "position": [
+                    0.0,
+                    0.0
+                ],
+                "scale": [
+                    32.0,
+                    32.0
+                ],
+                "sectorIndex": -1
+            }
+        ]
+    },
+    "entities": [
+        1
+    ],
+    "id": 0,
     "levelVars": {
         "backgroundTextureIndex": -1
     },
-    "objects": [
-        {
-            "absHeight": false,
-            "decalBaseHeight": 0.0,
-            "floor": 0,
-            "id": 0,
-            "position": [
-                -127.0,
-                22.0
-            ],
-            "texture": -1,
-            "type": 0,
-            "wallIndex": 0,
-            "wallOffset": 0.0,
-            "zOffset": 0.0
-        },
-        {
-            "absHeight": false,
-            "decalBaseHeight": 0.0,
-            "floor": 0,
-            "id": 1,
-            "position": [
-                0.0,
-                0.0
-            ],
-            "texture": -1,
-            "type": 67,
-            "wallIndex": 0,
-            "wallOffset": 0.0,
-            "zOffset": 0.0
-        },
-        {
-            "absHeight": false,
-            "decalBaseHeight": 0.0,
-            "floor": 0,
-            "id": 2,
-            "position": [
-                0.0,
-                0.0
-            ],
-            "texture": -1,
-            "type": 178,
-            "wallIndex": 0,
-            "wallOffset": 0.0,
-            "zOffset": 0.0
-        }
-    ],
+    "name": "among_us",
+    "nextEntityID": 2,
     "sectors": [
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 72.0,
             "ceilingTextureIndices": [
                 1,
@@ -82,6 +70,11 @@
                     "x": -160.0,
                     "y": 160.0
                 }
+            ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
             ],
             "floorCount": 1,
             "floorHeight": 0.0,
@@ -89,6 +82,11 @@
             "id": 0
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 72.0,
             "ceilingTextureIndices": [
                 1,
@@ -113,12 +111,22 @@
                     "y": 240.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 0.0,
             "floorTextureIndex": 1,
             "id": 1
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 80.0,
             "ceilingTextureIndices": [
                 1,
@@ -143,12 +151,22 @@
                     "y": 300.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 8.0,
             "floorTextureIndex": 2,
             "id": 2
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 88.0,
             "ceilingTextureIndices": [
                 1,
@@ -173,12 +191,22 @@
                     "y": 360.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 16.0,
             "floorTextureIndex": 2,
             "id": 3
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 96.0,
             "ceilingTextureIndices": [
                 1,
@@ -203,12 +231,22 @@
                     "y": 420.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 24.0,
             "floorTextureIndex": 2,
             "id": 4
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 104.0,
             "ceilingTextureIndices": [
                 1,
@@ -233,12 +271,22 @@
                     "y": 480.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 32.0,
             "floorTextureIndex": 2,
             "id": 5
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 112.0,
             "ceilingTextureIndices": [
                 1,
@@ -263,12 +311,22 @@
                     "y": 540.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 40.0,
             "floorTextureIndex": 2,
             "id": 6
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 120.0,
             "ceilingTextureIndices": [
                 1,
@@ -293,12 +351,22 @@
                     "y": 600.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 48.0,
             "floorTextureIndex": 2,
             "id": 7
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 128.0,
             "ceilingTextureIndices": [
                 1,
@@ -323,12 +391,22 @@
                     "y": 660.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 56.0,
             "floorTextureIndex": 2,
             "id": 8
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 136.0,
             "ceilingTextureIndices": [
                 1,
@@ -353,12 +431,22 @@
                     "y": 740.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 1,
             "floorHeight": 64.0,
             "floorTextureIndex": 2,
             "id": 9
         },
         {
+            "ceilingColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "ceilingHeight": 64.0,
             "ceilingTextureIndices": [
                 1,
@@ -391,6 +479,11 @@
                     "y": 1060.0
                 }
             ],
+            "floorColor": [
+                255.0,
+                255.0,
+                255.0
+            ],
             "floorCount": 2,
             "floorHeight": 0.0,
             "floorTextureIndex": 1,
@@ -406,6 +499,12 @@
     "walls": [
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 160.0,
                 -160.0
@@ -421,6 +520,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 160.0,
                 160.0
@@ -436,6 +541,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 160.0
@@ -451,6 +562,12 @@
         },
         {
             "backSector": 1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 160.0
@@ -466,6 +583,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 160.0
@@ -481,6 +604,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -160.0,
                 160.0
@@ -496,6 +625,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 240.0
@@ -511,6 +646,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 240.0
@@ -526,6 +667,12 @@
         },
         {
             "backSector": 2,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 240.0
@@ -541,6 +688,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 300.0
@@ -556,6 +709,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 300.0
@@ -571,6 +730,12 @@
         },
         {
             "backSector": 3,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 300.0
@@ -586,6 +751,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 360.0
@@ -601,6 +772,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 360.0
@@ -616,6 +793,12 @@
         },
         {
             "backSector": 4,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 360.0
@@ -631,6 +814,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 420.0
@@ -646,6 +835,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 420.0
@@ -661,6 +856,12 @@
         },
         {
             "backSector": 5,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 420.0
@@ -676,6 +877,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 480.0
@@ -691,6 +898,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 480.0
@@ -706,6 +919,12 @@
         },
         {
             "backSector": 6,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 480.0
@@ -721,6 +940,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 540.0
@@ -736,6 +961,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 540.0
@@ -751,6 +982,12 @@
         },
         {
             "backSector": 7,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 540.0
@@ -766,6 +1003,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 600.0
@@ -781,6 +1024,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 600.0
@@ -796,6 +1045,12 @@
         },
         {
             "backSector": 8,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 600.0
@@ -811,6 +1066,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 660.0
@@ -826,6 +1087,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 660.0
@@ -841,6 +1108,12 @@
         },
         {
             "backSector": 9,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 660.0
@@ -856,6 +1129,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 740.0
@@ -871,6 +1150,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 740.0
@@ -886,6 +1171,12 @@
         },
         {
             "backSector": 10,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 48.0,
                 740.0
@@ -901,6 +1192,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -48.0,
                 740.0
@@ -916,6 +1213,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 200.0,
                 740.0
@@ -931,6 +1234,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 200.0,
                 1060.0
@@ -946,6 +1255,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -200.0,
                 1060.0
@@ -961,6 +1276,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -200.0,
                 740.0
@@ -976,6 +1297,12 @@
         },
         {
             "backSector": 10,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -192.0,
                 736.0
@@ -991,6 +1318,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 192.0,
                 736.0
@@ -1006,6 +1339,12 @@
         },
         {
             "backSector": -1,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 192.0,
                 1056.0
@@ -1021,6 +1360,12 @@
         },
         {
             "backSector": 10,
+            "color": [
+                255.0,
+                255.0,
+                255.0,
+                255.0
+            ],
             "end": [
                 -192.0,
                 1056.0

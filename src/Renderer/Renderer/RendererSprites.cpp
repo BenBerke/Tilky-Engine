@@ -1,31 +1,39 @@
 #include "RendererInternal.hpp"
-#include "Headers/Renderer/MapEditor.hpp"
+
+#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Objects/Components.hpp"
+#include "Headers/Objects/Sector.hpp"
 
 namespace RendererInternal {
     void BuildGpuSprites() {
         gpuSprites.clear();
 
-        for (Object& object : MapEditor::objects) {
-            if (object.type != OBJ_SPRITE) {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (ComponentSprite& spriteComponent : level.sprites.components) {
+            ComponentTransform* transform =
+                level.transforms.Get(spriteComponent.ownerID);
+
+            if (transform == nullptr) continue;
+            if (level.decals.Has(spriteComponent.ownerID)) continue;
+
+            transform->UpdateObjectSector(level.sectors);
+
+            if (transform->sectorIndex < 0 ||
+                transform->sectorIndex >= static_cast<int>(level.sectors.size())) {
                 continue;
             }
 
-            Object::UpdateObjectSector(object, MapEditor::sectors);
-
-            if (object.sectorIndex < 0 ||
-                object.sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
-                continue;
-                }
-
-            const float bottomHeight = Object::GetObjectBottomHeight(object, MapEditor::sectors);
+            const float bottomHeight =
+                transform->GetObjectBottomHeight(level.sectors);
 
             GpuSprite gpuSprite;
 
             gpuSprite.positionSize = {
-                object.position.x,
-                object.position.y,
+                transform->position.x,
+                transform->position.y,
                 bottomHeight,
-                object.height
+                transform->scale.y
             };
 
             gpuSprite.color = {
@@ -36,8 +44,8 @@ namespace RendererInternal {
             };
 
             gpuSprite.data = {
-                object.width,
-                static_cast<float>(object.textureIndex),
+                transform->scale.x,
+                static_cast<float>(spriteComponent.textureIndex),
                 0.0f,
                 0.0f
             };

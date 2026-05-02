@@ -1,6 +1,7 @@
 #include "MapEditorInternal.hpp"
 
 #include "Headers/Math/Vector/Vector2Math.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +26,9 @@ namespace MapEditorInternal {
     }
 
     bool IsCornerConnectedToLine(const Vector2& point) {
-        for (const Wall& wall : MapEditor::walls) {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (const Wall& wall : level.walls) {
             if (SamePoint(wall.start, point) || SamePoint(wall.end, point)) {
                 return true;
             }
@@ -39,7 +42,9 @@ namespace MapEditorInternal {
     }
 
     bool HasLineBetween(const Vector2& a, const Vector2& b) {
-        for (const Wall& wall : MapEditor::walls) {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (const Wall& wall : level.walls) {
             const bool sameDirection = SamePoint(wall.start, a) && SamePoint(wall.end, b);
             const bool oppositeDirection = SamePoint(wall.start, b) && SamePoint(wall.end, a);
 
@@ -198,14 +203,16 @@ namespace MapEditorInternal {
     }
 
     int GetWallAtPoint(const Vector2& worldPoint) {
+        Level& level = LevelManager::CurrentLevel();
+
         constexpr float clickRadius = 12.0f;
         constexpr float clickRadiusSq = clickRadius * clickRadius;
 
         int closestWallIndex = -1;
         float closestDistanceSq = clickRadiusSq;
 
-        for (int i = 0; i < static_cast<int>(MapEditor::walls.size()); ++i) {
-            const Wall& wall = MapEditor::walls[i];
+        for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
+            const Wall& wall = level.walls[i];
             if (wall.floor != currentFloor) continue;
 
             const float distanceSq = DistancePointToSegmentSq(
@@ -327,11 +334,11 @@ namespace MapEditor {
     }
 
     void AddWall(const Wall& wall) {
-        walls.push_back(wall);
+        LevelManager::CurrentLevel().walls.push_back(wall);
     }
 
     void AddSector(const Sector& sector) {
-        sectors.push_back(sector);
+        LevelManager::CurrentLevel().sectors.push_back(sector);
     }
 
     void CreateSector(
@@ -360,7 +367,9 @@ namespace MapEditor {
     }
 
     void TriangulateSectors() {
-        for (Sector& sector : sectors) {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (Sector& sector : level.sectors) {
             sector.triangles.clear();
 
             if (sector.vertices.size() < 3) {

@@ -7,11 +7,14 @@
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>
 
-#include <filesystem>
+#include "Headers/Objects/Entity.hpp"
+#include "Headers/Objects/Level.hpp"
+#include "Headers/Map/LevelManager.hpp"
+
 
 namespace MapEditor {
-    std::vector<std::string> maps;
-    std::string currentMap = "test_level";
+    std::vector<Level> levels;
+    EntityID currentLevels = 0;
 
     void Start() {
         using namespace MapEditorInternal;
@@ -54,7 +57,7 @@ namespace MapEditor {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
 
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO &io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
         ImGui::StyleColorsDark();
@@ -68,6 +71,13 @@ namespace MapEditor {
     void Update() {
         using namespace MapEditorInternal;
 
+        if (!LevelManager::HasCurrentLevel()) {
+            LevelManager::loadedLevels.emplace_back();
+            LevelManager::currentLevelIndex = 0;
+        }
+
+        Level &level = LevelManager::CurrentLevel();
+
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
@@ -75,52 +85,55 @@ namespace MapEditor {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        const ImGuiIO& io = ImGui::GetIO();
+        const ImGuiIO &io = ImGui::GetIO();
 
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
         const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
 
         HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
-        for (Object& object : objects) {
-            if (object.type != OBJ_DECAL || object.wallIndex == -1) {
+        for (ComponentDecal &decal: level.decals.components) {
+            ComponentTransform *transform = level.transforms.Get(decal.ownerID);
+
+            if (transform == nullptr) {
                 continue;
             }
 
-            if (object.wallIndex < 0 || object.wallIndex >= static_cast<int>(walls.size())) {
+            if (decal.wallIndex < 0 ||
+                decal.wallIndex >= static_cast<int>(level.walls.size())) {
                 continue;
             }
 
-            const Wall& wall = walls[object.wallIndex];
+            const Wall &wall = level.walls[decal.wallIndex];
 
             const Vector2 wallVector = wall.end - wall.start;
 
             const float wallLengthSq =
-                wallVector.x * wallVector.x +
-                wallVector.y * wallVector.y;
+                    wallVector.x * wallVector.x +
+                    wallVector.y * wallVector.y;
 
             if (wallLengthSq <= 0.0001f) {
                 continue;
             }
 
-            const Vector2 toObject = object.position - wall.start;
+            const Vector2 toObject = transform->position - wall.start;
 
             float t =
-                (toObject.x * wallVector.x + toObject.y * wallVector.y) /
-                wallLengthSq;
+                    (toObject.x * wallVector.x + toObject.y * wallVector.y) /
+                    wallLengthSq;
 
             t = std::clamp(t, 0.0f, 1.0f);
 
-            object.wallT = t;
-            object.wallOffset = std::sqrt(wallLengthSq) * object.wallT;
+            decal.wallT = t;
+            decal.wallOffset = std::sqrt(wallLengthSq) * decal.wallT;
 
             auto lerp = [](const float a, const float b, const float t) -> float {
                 return (1.0f - t) * a + t * b;
             };
 
-            object.position = {
-                lerp(wall.start.x, wall.end.x, object.wallT),
-                lerp(wall.start.y, wall.end.y, object.wallT)
+            transform->position = {
+                lerp(wall.start.x, wall.end.x, decal.wallT),
+                lerp(wall.start.y, wall.end.y, decal.wallT)
             };
         }
 
@@ -133,6 +146,7 @@ namespace MapEditor {
         if (currentMode == MODE_SECTOR) {
             DrawSectorPreview();
         }
+
         DrawEditorUI();
 
         ImGui::Render();
@@ -155,7 +169,6 @@ namespace MapEditor {
         if (font) {
             TTF_CloseFont(font);
             font = nullptr;
-
         }
 
         TTF_Quit();

@@ -2,10 +2,15 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Renderer/TextureManager.hpp"
 
 namespace MapEditorInternal {
@@ -14,6 +19,8 @@ namespace MapEditorInternal {
     }
 
     void DrawEditorUI() {
+        Level& level = LevelManager::CurrentLevel();
+
         ImGui::Begin("Editor");
 
         auto PutSpace = [](const int amount) {
@@ -57,194 +64,108 @@ namespace MapEditorInternal {
 
         ImGui::Text("%s", GetModeName(currentMode));
 
-        //ImGui::Text("\nDots: %d", static_cast<int>(placedCorners.size()));
-        //ImGui::Text("Lines: %d", static_cast<int>(MapEditor::walls.size()));
-        //ImGui::Text("Sectors: %d", static_cast<int>(MapEditor::sectors.size()));
-
         //region EDITING
 
         if (editingSector && currentMode == MODE_SECTOR && selectedSector != -1) {
-            ImGui::Begin("Sector", &editingSector);
-
-            auto& sector = MapEditor::sectors[selectedSector];
-
-            float ceilHeight = sector.ceilingHeight;
-            float floorHeight = sector.floorHeight;
-            int floorTexture = sector.floorTextureIndex;
-            int floorCount = sector.floorCount;
-
-            Vector3 ceilColor = sector.ceilingColor;
-            Vector3 floorColor = sector.floorColor;
-
-            ImGui::InputFloat("Ceil Height", &ceilHeight);
-            ImGui::InputFloat("Floor Height", &floorHeight);
-            ImGui::InputInt("Floor Count", &floorCount);
-
-            floorCount = std::clamp(floorCount, 1, MAX_FLOOR_COUNT);
-
-            ImGui::InputInt("Ground Floor Texture", &floorTexture);
-
-            for (int i = 0; i < floorCount; ++i) {
-                std::string label = "Ceiling Texture " + std::to_string(i + 1);
-                ImGui::InputInt(label.c_str(), &sector.ceilingTextureIndices[i]);
-            }
-
-            ImGui::InputFloat3("Ceiling Color", &ceilColor.x);
-            ImGui::InputFloat3("Floor Color", &floorColor.x);
-
-            sector.ceilingHeight = ceilHeight;
-            sector.floorHeight = floorHeight;
-            sector.floorTextureIndex = floorTexture;
-            sector.ceilingColor = ceilColor;
-            sector.floorColor = floorColor;
-            sector.floorCount = floorCount;
-
-            if (ImGui::Button("Delete")) {
-                MapEditor::sectors.erase(MapEditor::sectors.begin() + selectedSector);
+            if (selectedSector < 0 ||
+                selectedSector >= static_cast<int>(level.sectors.size())) {
                 editingSector = false;
             }
+            else {
+                ImGui::Begin("Sector", &editingSector);
 
-            if (ImGui::Button("Close")) {
-                editingSector = false;
+                auto& sector = level.sectors[selectedSector];
+
+                float ceilHeight = sector.ceilingHeight;
+                float floorHeight = sector.floorHeight;
+                int floorTexture = sector.floorTextureIndex;
+                int floorCount = sector.floorCount;
+
+                Vector3 ceilColor = sector.ceilingColor;
+                Vector3 floorColor = sector.floorColor;
+
+                ImGui::InputFloat("Ceil Height", &ceilHeight);
+                ImGui::InputFloat("Floor Height", &floorHeight);
+                ImGui::InputInt("Floor Count", &floorCount);
+
+                floorCount = std::clamp(floorCount, 1, MAX_FLOOR_COUNT);
+
+                ImGui::InputInt("Ground Floor Texture", &floorTexture);
+
+                for (int i = 0; i < floorCount; ++i) {
+                    std::string label = "Ceiling Texture " + std::to_string(i + 1);
+                    ImGui::InputInt(label.c_str(), &sector.ceilingTextureIndices[i]);
+                }
+
+                ImGui::InputFloat3("Ceiling Color", &ceilColor.x);
+                ImGui::InputFloat3("Floor Color", &floorColor.x);
+
+                sector.ceilingHeight = ceilHeight;
+                sector.floorHeight = floorHeight;
+                sector.floorTextureIndex = floorTexture;
+                sector.ceilingColor = ceilColor;
+                sector.floorColor = floorColor;
+                sector.floorCount = floorCount;
+
+                if (ImGui::Button("Delete")) {
+                    level.sectors.erase(level.sectors.begin() + selectedSector);
+                    editingSector = false;
+                }
+
+                if (ImGui::Button("Close")) {
+                    editingSector = false;
+                }
+
+                ImGui::Text("ID: %d", selectedSector);
+
+                ImGui::End();
             }
-
-            ImGui::Text("ID: %d", selectedSector);
-
-            ImGui::End();
         }
 
         if (editingWall && currentMode == MODE_WALL && selectedWall != -1) {
-            ImGui::Begin("Wall", &editingSector);
-
-            auto& wall = MapEditor::walls[selectedWall];
-
-            Vector4 color = wall.color;
-
-            int frontSector = wall.frontSector;
-            int backSector = wall.backSector;
-            int textureIndex = wall.textureIndex;
-
-            int floor = wall.floor;;
-
-            ImGui::InputInt("Front Sector", &frontSector);
-            ImGui::InputInt("Back Sector", &backSector);
-            ImGui::InputInt("Texture Index", &textureIndex);
-            ImGui::InputInt("Floor", &floor);
-
-            ImGui::InputFloat4("Wall Color", &color.x);
-
-            wall.color = color;
-            wall.textureIndex = textureIndex;
-            wall.frontSector = frontSector;
-            wall.backSector = backSector;
-            wall.floor = floor;
-
-            if (ImGui::Button("Delete")) {
-                MapEditor::walls.erase(MapEditor::walls.begin() + selectedWall);
+            if (selectedWall < 0 ||
+                selectedWall >= static_cast<int>(level.walls.size())) {
                 editingWall = false;
             }
+            else {
+                ImGui::Begin("Wall", &editingSector);
 
-            if (ImGui::Button("Close")) {
-                editingWall = false;
-            }
+                auto& wall = level.walls[selectedWall];
 
-            ImGui::Text("ID: %d", selectedWall);
+                Vector4 color = wall.color;
 
-            ImGui::End();
-        }
+                int frontSector = wall.frontSector;
+                int backSector = wall.backSector;
+                int textureIndex = wall.textureIndex;
 
-        auto GetObjectName = [](const int enumType) {
-            switch (enumType) {
-                case OBJ_PLAYER_SPAWN:
-                    return "Player Spawn";
-                break;
-                case OBJ_SPRITE:
-                    return "Sprite";
-                    break;
-                case OBJ_DECAL:
-                    return "Decal";
-                    break;
-                default: return "Unknown"; break;
-            }
-        };
+                int floor = wall.floor;
 
-        if (editingObject && currentMode == MODE_OBJECT && selectedObject != -1) {
-            ImGui::Begin("Object");
+                ImGui::InputInt("Front Sector", &frontSector);
+                ImGui::InputInt("Back Sector", &backSector);
+                ImGui::InputInt("Texture Index", &textureIndex);
+                ImGui::InputInt("Floor", &floor);
 
-            auto& object = MapEditor::objects[selectedObject];
+                ImGui::InputFloat4("Wall Color", &color.x);
 
-            Vector2 position = object.position;
-            int textureIndex = object.textureIndex;
-            const int wallIndex = object.wallIndex;
-            int floor = object.floor;
-            float zOffset = object.zOffset;
-            float wallOffset = object.wallOffset;
-            float width = object.width;
-            float height = object.height;
-            bool absHeight = object.absHeight;
+                wall.color = color;
+                wall.textureIndex = textureIndex;
+                wall.frontSector = frontSector;
+                wall.backSector = backSector;
+                wall.floor = floor;
 
-            ImGui::Text("ID:%d", object.id);
-            ImGui::Text("Type:%s", GetObjectName(object.type));
-            ImGui::InputFloat2("Position", &position.x);
-            if (object.type != OBJ_DECAL) ImGui::InputInt("Floor", &floor);
-            ImGui::InputInt("Texture Index", &textureIndex);
-            ImGui::InputFloat("Width", &width);
-            ImGui::InputFloat("Height", &height);
-
-            if (object.type == OBJ_DECAL) {
-                ImGui::InputFloat("Horizontal Offset", &wallOffset);
-                ImGui::InputFloat("Vertical Offset", &zOffset);
-                ImGui::Checkbox("Absolute Height", &absHeight);
-                floor = MapEditor::walls[wallIndex].floor;
-            }
-
-            object.position = position;
-            object.textureIndex = textureIndex;
-            object.floor = floor;
-            object.wallIndex = wallIndex;
-            object.zOffset = zOffset;
-            object.wallOffset = wallOffset;
-            object.width = width;
-            object.height = height;
-            object.absHeight = absHeight;
-
-            if (object.type == OBJ_DECAL &&
-                object.wallIndex >= 0 &&
-                object.wallIndex < static_cast<int>(MapEditor::walls.size())) {
-                const Wall &wall = MapEditor::walls[object.wallIndex];
-
-                const Vector2 wallVector = wall.end - wall.start;
-
-                const float wallLength = std::sqrt(
-                    wallVector.x * wallVector.x +
-                    wallVector.y * wallVector.y
-                );
-
-                if (wallLength > 0.0001f) {
-                    const Vector2 wallDir = {
-                        wallVector.x / wallLength,
-                        wallVector.y / wallLength
-                    };
-
-                    object.wallOffset = std::clamp(object.wallOffset, 0.0f, wallLength);
-
-                    object.position = {
-                        wall.start.x + wallDir.x * object.wallOffset,
-                        wall.start.y + wallDir.y * object.wallOffset
-                    };
+                if (ImGui::Button("Delete")) {
+                    level.walls.erase(level.walls.begin() + selectedWall);
+                    editingWall = false;
                 }
-            }
 
-            if (object.type != OBJ_PLAYER_SPAWN && ImGui::Button("Delete")) {
-                MapEditor::objects.erase(MapEditor::objects.begin() + selectedObject);
-                editingObject = false;
-            }
+                if (ImGui::Button("Close")) {
+                    editingWall = false;
+                }
 
-            if (ImGui::Button("Close")) {
-                editingObject = false;
-            }
+                ImGui::Text("ID: %d", selectedWall);
 
-            ImGui::End();
+                ImGui::End();
+            }
         }
         //endregion
 
@@ -284,29 +205,9 @@ namespace MapEditorInternal {
         MapEditor::backgroundTextureIndex = bgTextureIndex;
 
         if (currentMode == MODE_OBJECT) {
-            ImGui::Text("Object Details");
-            PutSpace(3);
-            const char* items[OBJ_COUNT] = {"Player Spawn", "Sprite", "Decal"};
-            static int item_current = 0;
-            if (ImGui::BeginCombo("Select Type", items[item_current])) {
-                for (int n = 0; n < IM_ARRAYSIZE(items); n++) {
-                    const bool is_selected = (item_current == n);
-                    if (ImGui::Selectable(items[n], is_selected)) {
-                        item_current = n;
-                        currentObjectTypeToPlace = static_cast<ObjectType>(item_current);
-                        currentObjectTypeToPlace = static_cast<ObjectType>(n);
-                    };
-                    if (is_selected)
-                        ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
 
-            if (ImGui::Button("Close")) {
-                editingObject = false;
-            }
-            PutSpace(5);
         }
+
         ImGui::InputInt("Floor", &currentFloor);
 
         if (ImGui::Button("Save")) Save(MapEditor::currentMap);
@@ -327,7 +228,7 @@ namespace MapEditorInternal {
         static char buf[64] = "";
 
         if (buf[0] == '\0' && !MapEditor::currentMap.empty()) {
-            strncpy(buf, MapEditor::currentMap.c_str(), sizeof(buf) - 1);
+            std::strncpy(buf, MapEditor::currentMap.c_str(), sizeof(buf) - 1);
         }
 
         if (ImGui::InputText("Level Name", buf, IM_ARRAYSIZE(buf))) {
@@ -337,13 +238,11 @@ namespace MapEditorInternal {
         ImGui::End(); // Editor
 
         ImGui::Begin("Levels");
-        ImGui::Begin("Levels");
 
         for (int i = 0; i < static_cast<int>(MapEditor::maps.size()); ++i) {
             ImGui::PushID(i);
 
-            std::string mapName = MapEditor::maps[i];
-            std::string cleanName = mapName.substr(0, mapName.find('.'));
+            std::string cleanName = MapEditor::maps[i];
 
             ImGui::Text("%s", cleanName.c_str());
 
@@ -380,7 +279,6 @@ namespace MapEditorInternal {
             ImGui::PopID();
         }
 
-        ImGui::End();
         ImGui::End();
     }
 }

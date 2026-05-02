@@ -12,7 +12,7 @@
 #include "../../Headers/Math/Vector/Vector2Math.hpp"
 
 #include "../../Headers/Math/Geometry/Geometry.h"
-#include "../../Headers/Map/MapQueries.h"
+#include "../../Headers/Map/MapQueries.hpp"
 
 #define FRICTION .8f
 #define TURN_SPEED 90.0f
@@ -273,9 +273,8 @@ namespace Player {
         if (input.x != 0.0f || input.y != 0.0f) {
             const Vector2 moveDir = right * input.x + forward * input.y;
             velocity = Vector2Math::Normalized(moveDir) * currentSpeed;
-        } else {
-            velocity *= FRICTION;
-        }
+        } else velocity *= FRICTION;
+
 
         position += velocity * GameTime::deltaTime;
 
@@ -300,7 +299,7 @@ namespace Player {
                     continue;
                 }
 
-                float dist = std::sqrt(distSq);
+                const float dist = std::sqrt(distSq);
 
                 Vector2 normal;
                 if (dist > 0.00001f) {

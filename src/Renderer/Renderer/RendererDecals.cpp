@@ -1,25 +1,42 @@
 #include "RendererInternal.hpp"
 
-#include "Headers/Renderer/MapEditor.hpp"
-#include "Headers/Objects/Object.hpp"
+#include <algorithm>
+#include <cmath>
+
+#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Wall.hpp"
+#include "Headers/Objects/Sector.hpp"
 
 namespace RendererInternal {
     void BuildGpuDecals() {
         gpuDecals.clear();
 
-        for (Object& object : MapEditor::objects) {
-            if (object.type != OBJ_DECAL) {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (ComponentDecal& decalComponent : level.decals.components) {
+            ComponentTransform* transform =
+                level.transforms.Get(decalComponent.ownerID);
+
+            if (transform == nullptr) {
                 continue;
             }
 
-            if (object.wallIndex < 0 ||
-                object.wallIndex >= static_cast<int>(MapEditor::walls.size())) {
+            ComponentSprite* sprite =
+                level.sprites.Get(decalComponent.ownerID);
+
+            const int textureIndex =
+                sprite != nullptr ? sprite->textureIndex : -1;
+
+            if (decalComponent.wallIndex < 0 ||
+                decalComponent.wallIndex >= static_cast<int>(level.walls.size())) {
                 continue;
             }
 
-            const Wall& wall = MapEditor::walls[object.wallIndex];
+            const Wall& wall = level.walls[decalComponent.wallIndex];
 
+            // Use live start/end instead of wall.vector/wall.dir,
+            // in case the wall was edited or moved after construction.
             const Vector2 wallVector = wall.vector;
 
             const float wallLength = std::sqrt(
@@ -31,28 +48,42 @@ namespace RendererInternal {
                 continue;
             }
 
-            const Vector2 wallDir = wall.dir;
+            const Vector2 wallDir = {
+                wallVector.x / wallLength,
+                wallVector.y / wallLength
+            };
 
-            // Only calculate wallOffset from object.position if it has not been set yet.
-            // Ideally, set wallOffset once when placing the decal in the editor.
-            if (object.wallOffset < 0.0f) {
-                const Vector2 toObject = object.position - wall.start;
+            if (decalComponent.wallOffset < 0.0f) {
+                const Vector2 toObject = transform->position - wall.start;
 
-                float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / (wallLength * wallLength);
+                float t =
+                    (toObject.x * wallVector.x + toObject.y * wallVector.y) /
+                    (wallLength * wallLength);
 
                 t = std::clamp(t, 0.0f, 1.0f);
 
-                object.wallOffset = wallLength * t;
+                decalComponent.wallOffset = wallLength * t;
             }
 
-            object.wallOffset = std::clamp(object.wallOffset, 0.0f, wallLength);
+            decalComponent.wallOffset =
+                std::clamp(decalComponent.wallOffset, 0.0f, wallLength);
 
-            const Vector2 decalCentre = {
-                (wall.start.x + wallDir.x * object.wallOffset),
-                wall.start.y + wallDir.y * object.wallOffset
+            const Vector2 wallNormal = {
+                -wallDir.y,
+                 wallDir.x
             };
 
-            const float halfWidth = object.width * 0.5f;
+            const Vector2 decalCentre = {
+                wall.start.x +
+                    wallDir.x * decalComponent.wallOffset +
+                    wallNormal.x * decalComponent.wallNormalOffset,
+
+                wall.start.y +
+                    wallDir.y * decalComponent.wallOffset +
+                    wallNormal.y * decalComponent.wallNormalOffset
+            };
+
+            const float halfWidth = transform->scale.x * 0.5f;
 
             const Vector2 decalStart = {
                 decalCentre.x - wallDir.x * halfWidth,
@@ -64,84 +95,91 @@ namespace RendererInternal {
                 decalCentre.y + wallDir.y * halfWidth
             };
 
-            GpuDecal decal;
+            GpuDecal gpuDecal;
 
-            decal.startEnd = {
+            gpuDecal.startEnd = {
                 decalStart.x,
                 decalStart.y,
                 decalEnd.x,
                 decalEnd.y
             };
 
-            decal.color = {
+            gpuDecal.color = {
                 255.0f,
                 255.0f,
                 255.0f,
                 255.0f
             };
 
-            // decal.heights = {
-            //     object.bottomHeight,
-            //     object.bottomHeight + object.height,
-            //     0.0f,
-            //     0.0f
-            // };
-
-            int sectorIndex = object.sectorIndex;
+            int sectorIndex = transform->sectorIndex;
 
             if (sectorIndex < 0 ||
-                sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                sectorIndex >= static_cast<int>(level.sectors.size())) {
                 sectorIndex = wall.frontSector;
 
                 if (sectorIndex < 0 ||
-                    sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                    sectorIndex >= static_cast<int>(level.sectors.size())) {
                     sectorIndex = wall.backSector;
-                    }
                 }
+            }
 
             if (sectorIndex < 0 ||
-                sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
+                sectorIndex >= static_cast<int>(level.sectors.size())) {
                 continue;
-                }
+            }
 
-            const Sector& sector = MapEditor::sectors[sectorIndex];
+            const Sector& sector = level.sectors[sectorIndex];
 
-            float decalBottom = 0;
-            float decalTop = 0;
+            float decalBottom = 0.0f;
+            float decalTop = 0.0f;
 
-            if (object.absHeight) {
-                decalBottom = object.decalBaseHeight + object.zOffset;
-                decalTop = decalBottom + object.height;
+            if (decalComponent.absHeight) {
+                decalBottom =
+                    decalComponent.baseHeight +
+                    decalComponent.zOffset;
+
+                decalTop =
+                    decalBottom +
+                    transform->scale.y;
             }
             else {
                 const float sectorHeight =
-                sector.ceilingHeight - sector.floorHeight;
+                    sector.ceilingHeight - sector.floorHeight;
 
                 const int floor = std::clamp(
                     wall.floor,
                     0,
                     std::max(1, sector.floorCount) - 1
                 );
-                 const float floorBaseHeight = sector.floorHeight + sectorHeight * static_cast<float>(floor);
-                 decalBottom = floorBaseHeight + object.zOffset;
-                 decalTop = decalBottom + object.height;
+
+                const float floorBaseHeight =
+                    sector.floorHeight +
+                    sectorHeight * static_cast<float>(floor);
+
+                decalBottom =
+                    floorBaseHeight +
+                    decalComponent.zOffset;
+
+                decalTop =
+                    decalBottom +
+                    transform->scale.y;
             }
 
-            decal.heights = {
+            gpuDecal.heights = {
                 decalBottom,
                 decalTop,
                 0.0f,
                 0.0f
             };
 
-            decal.data = {
-                static_cast<float>(object.textureIndex),
+            gpuDecal.data = {
+                static_cast<float>(textureIndex),
                 0.0f,
                 0.0f,
                 0.0f
             };
 
-            gpuDecals.push_back(decal);
+            gpuDecals.push_back(gpuDecal);
         }
 
         decalCount = static_cast<GLsizei>(gpuDecals.size());

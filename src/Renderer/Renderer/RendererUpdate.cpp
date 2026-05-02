@@ -8,6 +8,7 @@
 #include "Headers/Objects/Player.hpp"
 #include "Headers/Objects/Wall.hpp"
 
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Renderer/MapEditor.hpp"
 #include "Headers/Renderer/TextureManager.hpp"
 
@@ -15,6 +16,8 @@ namespace Renderer {
 
     void Update(const Vector2& playerPos, const float angle) {
         using namespace RendererInternal;
+
+        Level& level = LevelManager::CurrentLevel();
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -109,7 +112,7 @@ namespace Renderer {
 
             DrawDebugRect({0.0f, 0.0f}, DEBUG_PLAYER_HALF_SIZE, DEBUG_PLAYER_HALF_SIZE);
 
-            for (const Wall& wall : MapEditor::walls) {
+            for (const Wall& wall : level.walls) {
                 const Vector2 start = WorldToDebugNdc(wall.start, playerPos);
                 const Vector2 end = WorldToDebugNdc(wall.end, playerPos);
 
@@ -142,7 +145,7 @@ namespace Renderer {
         // ImGui::End();
 
         //ImGui::Render();
-        
+
         //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 }

@@ -7,24 +7,24 @@
 #include "../Math/Vector/Vector3.hpp"
 #include "../Objects/Wall.hpp"
 #include "../Objects/Sector.hpp"
-#include "Headers/Objects/Object.hpp"
+#include "Headers/Map/LevelManager.hpp"
+
+struct Level;
+using EntityID = uint32_t;
 
 namespace MapEditor {
-    extern std::vector<Wall> walls;
-    extern std::vector<Sector> sectors;
-    extern std::vector<Object> objects;
     extern Vector2 playerStartPos;
     extern int backgroundTextureIndex;
 
-    extern std::string currentMap;
     extern std::vector<std::string> maps;
+    extern std::string currentMap;
 
     void Start();
     void Update();
     void Destroy();
 
     bool QuitRequested();
-    bool LoadLevel(const std::string& level);
+    bool LoadLevel(const std::string& levelName);
 
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);

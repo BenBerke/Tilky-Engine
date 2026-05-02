@@ -1,9 +1,12 @@
 #include "MapEditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 namespace MapEditorInternal {
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
+        Level& level = LevelManager::CurrentLevel();
+
         if (!mouseBlockedByImGui) {
             if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) {
                 const Vector2 mouseDelta = InputManager::GetMouseDelta();
@@ -22,8 +25,8 @@ namespace MapEditorInternal {
                         creatableSector = sectorBeingCreated.size() >= 3;
                     }
                     else {
-                        for (int i = static_cast<int>(MapEditor::sectors.size()) - 1; i >= 0; --i) {
-                            if (IsPointInsidePolygon(MapEditor::sectors[i].vertices, mouseWorld)) {
+                        for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
+                            if (IsPointInsidePolygon(level.sectors[i].vertices, mouseWorld)) {
                                 editingSector = !editingSector;
                                 selectedSector = i;
                                 break;
@@ -41,7 +44,7 @@ namespace MapEditorInternal {
 
                     const int clickedWall = GetWallAtPoint(mouseWorld);
 
-                    if (clickedWall != -1 && !clickedOnCorder && MapEditor::walls[clickedWall].floor == currentFloor) {
+                    if (clickedWall != -1 && !clickedOnCorder && level.walls[clickedWall].floor == currentFloor) {
                         selectedWall = clickedWall;
                         editingWall = true;
                     }
@@ -68,91 +71,7 @@ namespace MapEditorInternal {
                     }
                 }
                 else if (currentMode == MODE_OBJECT) {
-                    bool objectFound = false;
 
-                    for (int i = 0; i < static_cast<int>(MapEditor::objects.size()); ++i) {
-                        if (WithinRadius(mouseWorld, MapEditor::objects[i].position, objectSize) &&
-                            MapEditor::objects[i].floor == currentFloor) {
-                            objectFound = true;
-
-                            selectedObject = i;
-
-                            if (currentObjectTypeToPlace == MapEditor::objects[i].type) {
-                                editingObject = true;
-                                holdingObject = true;
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (!objectFound) {
-                        bool skipCreating = false;
-                        holdingObject = true;
-                        Object newObject{};
-                        newObject.id = static_cast<int>(MapEditor::objects.size());
-                        newObject.type = currentObjectTypeToPlace;
-                        newObject.position = mouseWorld;
-                        newObject.textureIndex = 0;
-
-                        if (currentObjectTypeToPlace == OBJ_PLAYER_SPAWN) {
-                            if (playerPlaced) {
-                                for (Object& object : MapEditor::objects) {
-                                    if (object.type == OBJ_PLAYER_SPAWN) {
-                                        object.position = mouseWorld;
-                                        selectedObject = object.id;
-                                        editingObject = true;
-                                        break;
-                                    }
-                                }
-
-                                return;
-                            }
-
-                            playerPlaced = true;
-                        }
-                        else if (currentObjectTypeToPlace == OBJ_DECAL) {
-                            const int clickedWall = GetWallAtPoint(mouseWorld);
-                            if (clickedWall != -1) {
-                                newObject.wallIndex = clickedWall;
-                                const Wall& wall = MapEditor::walls[clickedWall];
-                                newObject.floor = wall.floor;
-                                int sectorIndex = wall.frontSector;
-
-                                if (sectorIndex < 0 ||
-                                    sectorIndex >= static_cast<int>(MapEditor::sectors.size())) {
-                                    sectorIndex = wall.backSector;
-                                    }
-
-                                if (sectorIndex >= 0 &&
-                                    sectorIndex < static_cast<int>(MapEditor::sectors.size())) {
-                                    const Sector& sector = MapEditor::sectors[sectorIndex];
-
-                                    const float sectorHeight =
-                                        sector.ceilingHeight - sector.floorHeight;
-
-                                    const int floor = std::clamp(
-                                        wall.floor,
-                                        0,
-                                        std::max(1, sector.floorCount) - 1
-                                    );
-
-                                    newObject.decalBaseHeight =
-                                        sector.floorHeight + sectorHeight * static_cast<float>(floor);
-                                    }
-                            }
-                            else {
-                                skipCreating = true;
-                                holdingObject = false;
-                            }
-                        }
-
-                        if (!skipCreating)
-                        MapEditor::objects.push_back(newObject);
-
-                        selectedObject = static_cast<int>(MapEditor::objects.size()) - 1;
-                        editingObject = true;
-                    }
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {
@@ -183,22 +102,11 @@ namespace MapEditorInternal {
                         currentFloor
                     );
 
-                    MapEditor::walls.push_back(newWall);
+                    level.walls.push_back(newWall);
                     actions.push_back(ACTION_CREATE_WALL);
                 }
 
                 drawingLine = false;
-            }
-
-            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingObject) {
-                const Vector2 mouseScreen = InputManager::GetMousePosition();
-                const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-
-                MapEditor::objects[selectedObject].position = mouseWorld;
-            }
-
-            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
-                holdingObject = false;
             }
         }
 
@@ -220,13 +128,16 @@ namespace MapEditorInternal {
                     placedCorners.pop_back();
                     break;
                 case ACTION_CREATE_WALL:
-                    MapEditor::walls.pop_back();
+                    level.walls.pop_back();
                     break;
                 case ACTION_CREATE_SECTOR:
-                    MapEditor::sectors.pop_back();
+                    level.sectors.pop_back();
                     break;
                 case ACTION_CREATE_OBJECT:
-                    MapEditor::objects.pop_back();
+                    if (!level.entities.empty()) {
+                        const EntityID entityID = level.entities.back();
+                        level.DestroyEntity(entityID);
+                    }
                     break;
                 default: break;
             }

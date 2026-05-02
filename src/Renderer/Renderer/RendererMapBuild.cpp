@@ -3,6 +3,7 @@
 
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Renderer/MapEditor.hpp"
 
 #include <algorithm>
@@ -28,7 +29,9 @@ namespace RendererInternal {
     }
 
     static bool IsValidSectorIndex(const int index) {
-        return index >= 0 && index < static_cast<int>(MapEditor::sectors.size());
+        Level& level = LevelManager::CurrentLevel();
+
+        return index >= 0 && index < static_cast<int>(level.sectors.size());
     }
 
     static bool IsPortalWall(const Wall& wall) {
@@ -38,13 +41,13 @@ namespace RendererInternal {
     }
 
     static void PushGpuWallPiece(
-    const Wall& wall,
-    const float bottomHeight,
-    const float topHeight,
-    const Vector4& color,
-    const int floor,
-    const float textureAnchorHeight,
-    const float textureDirection
+        const Wall& wall,
+        const float bottomHeight,
+        const float topHeight,
+        const Vector4& color,
+        const int floor,
+        const float textureAnchorHeight,
+        const float textureDirection
     ) {
         if (topHeight <= bottomHeight + 0.0001f) {
             return;
@@ -97,13 +100,13 @@ namespace RendererInternal {
     }
 
     static void PushPortalBoundaryDifference(
-    const Wall& wall,
-    const Sector& front,
-    const int frontBoundaryIndex,
-    const Sector& back,
-    const int backBoundaryIndex,
-    const int label
-) {
+        const Wall& wall,
+        const Sector& front,
+        const int frontBoundaryIndex,
+        const Sector& back,
+        const int backBoundaryIndex,
+        const int label
+    ) {
         const float frontHeight = GetSectorBoundaryHeight(front, frontBoundaryIndex);
         const float backHeight = GetSectorBoundaryHeight(back, backBoundaryIndex);
 
@@ -126,12 +129,14 @@ namespace RendererInternal {
     }
 
     void BuildGpuWallsFromMap() {
+        Level& level = LevelManager::CurrentLevel();
+
         gpuWalls.clear();
 
-        for (const Wall& wall : MapEditor::walls) {
+        for (const Wall& wall : level.walls) {
             if (IsPortalWall(wall)) {
-                const Sector& front = MapEditor::sectors[wall.frontSector];
-                const Sector& back = MapEditor::sectors[wall.backSector];
+                const Sector& front = level.sectors[wall.frontSector];
+                const Sector& back = level.sectors[wall.backSector];
 
                 const int frontFloorCount = GetSafeSectorFloorCount(front);
                 const int backFloorCount = GetSafeSectorFloorCount(back);
@@ -149,7 +154,7 @@ namespace RendererInternal {
                 );
 
                 const float frontFloor = GetSectorBoundaryHeight(front, frontFloorBoundary);
-                const float backFloor = GetSectorBoundaryHeight(back, backFloorBoundary);;
+                const float backFloor = GetSectorBoundaryHeight(back, backFloorBoundary);
 
                 const float frontTopCeiling = GetSectorBoundaryHeight(front, frontFloorCount);
                 const float backTopCeiling = GetSectorBoundaryHeight(back, backFloorCount);
@@ -184,6 +189,7 @@ namespace RendererInternal {
 
                 continue;
             }
+
             int sectorIndex = -1;
 
             if (IsValidSectorIndex(wall.frontSector)) {
@@ -206,7 +212,7 @@ namespace RendererInternal {
                 continue;
             }
 
-            const Sector& sector = MapEditor::sectors[sectorIndex];
+            const Sector& sector = level.sectors[sectorIndex];
 
             const int sectorFloorCount = GetSafeSectorFloorCount(sector);
 
@@ -334,90 +340,92 @@ namespace RendererInternal {
     }
 
     void BuildFlatTrianglesFromSectors() {
-    flatTriangles.clear();
-    visibleFlatTriangles.clear();
+        Level& level = LevelManager::CurrentLevel();
 
-    for (int sectorIndex = 0; sectorIndex < static_cast<int>(MapEditor::sectors.size()); ++sectorIndex) {
-        const Sector& sector = MapEditor::sectors[sectorIndex];
+        flatTriangles.clear();
+        visibleFlatTriangles.clear();
 
-        const int sectorFloorCount = GetSafeSectorFloorCount(sector);
-        const int sectorBoundaryCount = sectorFloorCount + 1;
+        for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
+            const Sector& sector = level.sectors[sectorIndex];
 
-        for (const Triangle& triangle : sector.triangles) {
-            for (int boundaryIndex = 0; boundaryIndex < sectorBoundaryCount; ++boundaryIndex) {
-                GpuFlatTriangle flatTriangle;
+            const int sectorFloorCount = GetSafeSectorFloorCount(sector);
+            const int sectorBoundaryCount = sectorFloorCount + 1;
 
-                int textureIndex = sector.floorTextureIndex;
+            for (const Triangle& triangle : sector.triangles) {
+                for (int boundaryIndex = 0; boundaryIndex < sectorBoundaryCount; ++boundaryIndex) {
+                    GpuFlatTriangle flatTriangle;
 
-                if (boundaryIndex > 0) {
-                    const int ceilingIndex = boundaryIndex - 1;
+                    int textureIndex = sector.floorTextureIndex;
 
-                    if (ceilingIndex >= 0 && ceilingIndex < MAX_FLOOR_COUNT) {
-                        textureIndex = sector.ceilingTextureIndices[ceilingIndex];
+                    if (boundaryIndex > 0) {
+                        const int ceilingIndex = boundaryIndex - 1;
+
+                        if (ceilingIndex >= 0 && ceilingIndex < MAX_FLOOR_COUNT) {
+                            textureIndex = sector.ceilingTextureIndices[ceilingIndex];
+                        }
                     }
+
+                    flatTriangle.a = {
+                        triangle.a.x,
+                        triangle.a.y,
+                        0.0f,
+                        0.0f
+                    };
+
+                    if (boundaryIndex == 0) {
+                        // Bottom floor uses reversed winding.
+                        flatTriangle.b = {
+                            triangle.c.x,
+                            triangle.c.y,
+                            0.0f,
+                            0.0f
+                        };
+
+                        flatTriangle.c = {
+                            triangle.b.x,
+                            triangle.b.y,
+                            0.0f,
+                            0.0f
+                        };
+                    }
+                    else {
+                        // Ceilings / upper floors.
+                        flatTriangle.b = {
+                            triangle.b.x,
+                            triangle.b.y,
+                            0.0f,
+                            0.0f
+                        };
+
+                        flatTriangle.c = {
+                            triangle.c.x,
+                            triangle.c.y,
+                            0.0f,
+                            0.0f
+                        };
+                    }
+
+                    flatTriangle.color = {
+                        255.0f,
+                        255.0f,
+                        255.0f,
+                        255.0f
+                    };
+
+                    flatTriangle.data = {
+                        static_cast<float>(sectorIndex),
+                        static_cast<float>(boundaryIndex),
+                        static_cast<float>(textureIndex),
+                        0.0f
+                    };
+
+                    flatTriangles.push_back(flatTriangle);
                 }
-
-                flatTriangle.a = {
-                    triangle.a.x,
-                    triangle.a.y,
-                    0.0f,
-                    0.0f
-                };
-
-                if (boundaryIndex == 0) {
-                    // Bottom floor uses reversed winding.
-                    flatTriangle.b = {
-                        triangle.c.x,
-                        triangle.c.y,
-                        0.0f,
-                        0.0f
-                    };
-
-                    flatTriangle.c = {
-                        triangle.b.x,
-                        triangle.b.y,
-                        0.0f,
-                        0.0f
-                    };
-                }
-                else {
-                    // Ceilings / upper floors.
-                    flatTriangle.b = {
-                        triangle.b.x,
-                        triangle.b.y,
-                        0.0f,
-                        0.0f
-                    };
-
-                    flatTriangle.c = {
-                        triangle.c.x,
-                        triangle.c.y,
-                        0.0f,
-                        0.0f
-                    };
-                }
-
-                flatTriangle.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
-
-                flatTriangle.data = {
-                    static_cast<float>(sectorIndex),
-                    static_cast<float>(boundaryIndex),
-                    static_cast<float>(textureIndex),
-                    0.0f
-                };
-
-                flatTriangles.push_back(flatTriangle);
             }
         }
-    }
 
-    flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
-}
+        flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
+    }
 }
 
 namespace Renderer {

@@ -51,16 +51,20 @@ add_executable(Wolfy_Engine
         src/Renderer/Renderer/RendererDebug.cpp
         src/Renderer/Renderer/RendererUpdate.cpp
         src/Renderer/Renderer/RendererDestroy.cpp
-        Headers/Objects/Object.hpp
+        Headers/Objects/Entity.hpp
         src/Renderer/Renderer/RendererDecals.cpp
         src/Renderer/Renderer/RendererSectors.cpp
         config.h
         Headers/Math/Geometry/Geometry.h
         src/Math/Geometry/Geometry.cpp
-        Headers/Map/MapQueries.h
+        Headers/Map/MapQueries.hpp
         src/Map/MapQueries.cpp
         src/Renderer/Renderer/RenderBackground.cpp
         src/Renderer/Renderer/RendererUI.cpp
+        Headers/Objects/Level.hpp
+        Headers/Map/LevelManager.hpp
+        src/Map/LevelManager.cpp
+        Headers/Objects/Components.hpp
 )
 
 target_precompile_headers(Wolfy_Engine PRIVATE

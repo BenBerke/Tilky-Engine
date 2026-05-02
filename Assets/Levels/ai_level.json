@@ -1,9 +1,7 @@
 {
-    "levelVars": [
-        {
-            "backgroundTextureIndex": -1
-        }
-    ],
+    "levelVars": {
+        "backgroundTextureIndex": -1
+    },
     "objects": [
         {
             "absHeight": false,
