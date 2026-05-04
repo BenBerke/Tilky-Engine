@@ -43,8 +43,6 @@ namespace Localisation {
     bool LoadLanguage(const std::string& languageCode) {
         const fs::path path = BuildLanguagePath(languageCode);
 
-        SDL_Log("Trying localisation path: %s", path.string().c_str());
-
         std::ifstream file(path.string());
 
         if (!file.is_open()) {
@@ -75,12 +73,6 @@ namespace Localisation {
         }
 
         currentLanguage = languageCode;
-
-        SDL_Log(
-            "Loaded localisation file: %s with %d keys",
-            path.string().c_str(),
-            static_cast<int>(strings.size())
-        );
 
         return true;
     }

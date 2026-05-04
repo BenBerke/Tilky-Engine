@@ -28,6 +28,10 @@ namespace {
 }
 
 namespace ProjectManager {
+    // Returns the current user's home folder.
+    // On Windows this usually comes from the USERPROFILE environment variable.
+    // Example:
+    // C:\Users\berke
     fs::path GetUserHomeDirectory() {
 #if _WIN32
         const char *userProfile = std::getenv("USERPROFILE");
@@ -38,9 +42,14 @@ namespace ProjectManager {
         if (userProfile != nullptr) {
             return fs::path(userProfile);
         }
+
         return fs::current_path();
     }
 
+    // Returns Tilky Engine's default projects folder.
+    // This is where all user-created Tilky projects are stored.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects
     fs::path GetDefaultProjectsFolder() {
 #ifdef _WIN32
         return GetUserHomeDirectory() / "Documents" / "Tilky Engine" / "Projects";
@@ -185,30 +194,59 @@ namespace ProjectManager {
         return true;
     }
 
+        // Returns whether a project has successfully been loaded into ProjectManager.
+    // This does not return a file path.
+    // Example result:
+    // true if C:\Users\berke\Documents\Tilky Engine\Projects\TestProject\project.tilky was loaded successfully.
     bool HasProject() {
         return projectLoaded;
     }
 
+    // Returns the currently loaded project's .tilky project file.
+    // This is the metadata file used to open/load the project.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects\TestProject\project.tilky
     fs::path GetProjectFiles() {
         return currentProjectFile;
     }
 
+    // Returns the root folder of the currently loaded project.
+    // This is the folder that contains project.tilky and the Assets folder.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects\TestProject
     fs::path GetProjectFolder() {
         return currentProjectFolder;
     }
 
+    // Returns the Assets folder of the currently loaded project.
+    // This folder contains project-specific assets such as levels and textures.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects\TestProject\Assets
     fs::path GetAssetsPath() {
         return currentAssetsPath;
     }
 
+    // Returns the Textures folder of the currently loaded project.
+    // This is where project-specific texture files should be stored.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects\TestProject\Assets\Textures
     fs::path GetTexturesPath() {
         return currentTexturesPath;
     }
 
+    // Returns the Levels folder of the currently loaded project.
+    // This is where project-specific level JSON files should be saved and loaded from.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine\Projects\TestProject\Assets\Levels
     fs::path GetLevelsPath() {
         return currentLevelsPath;
     }
 
+    // Returns the folder where the currently running executable is located.
+    // This comes from SDL_GetBasePath(), so in CLion it usually points to the build folder.
+    // This is NOT the same as the user's Documents\Tilky Engine folder.
+    // Example:
+    // C:\Users\berke\Desktop\CLion Projects\Wolfy Engine\cmake-build-debug
     fs::path GetEngineBasePath() {
         const char* basePath = SDL_GetBasePath();
 
@@ -218,6 +256,23 @@ namespace ProjectManager {
 
         return fs::path(basePath);
     }
+
+    // Returns Tilky Engine's user data folder inside Documents.
+    // This is the parent folder of the Projects folder.
+    // Use this for launcher-wide files such as Launcher.json.
+    // Example:
+    // C:\Users\berke\Documents\Tilky Engine
+    fs::path GetEngineFolder() {
+        const fs::path projectsPath = GetDefaultProjectsFolder();
+        const fs::path tilkyEngineFolder = projectsPath.parent_path();
+
+        return tilkyEngineFolder;
+    }
+
+    // Returns the name of the currently loaded project.
+    // This comes from the "name" field inside project.tilky.
+    // Example result:
+    // TestProject
     std::string GetProjectName() {
         return currentProjectName;
     }

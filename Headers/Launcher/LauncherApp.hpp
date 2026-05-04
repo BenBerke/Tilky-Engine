@@ -4,9 +4,10 @@
 
 #ifndef WOLFY_ENGINE_LAUNCHERAPP_HPP
 #define WOLFY_ENGINE_LAUNCHERAPP_HPP
+#include <string>
 
 namespace LauncherApp {
-    void Start();
+    void Start(const std::string& langCode);
     void Update();
     void Destroy();
 

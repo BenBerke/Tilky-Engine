@@ -3,6 +3,7 @@
 //
 #include "Headers/Launcher/LauncherApp.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 
 #include <iostream>
 #include <SDL3/SDL.h>
@@ -16,10 +17,16 @@ namespace {
     SDL_Renderer* renderer = nullptr;
 
     bool quitRequested = false;
+
+    void PutSpace(const int n) {
+        for (int i = 0; i < n; i++) {
+            ImGui::Spacing();
+        }
+    }
 }
 
 namespace LauncherApp {
-    void Start() {
+    void Start(const std::string& langCode) {
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
             return;
@@ -29,7 +36,7 @@ namespace LauncherApp {
                 "Tilky Engine Launcher",
                 1060,
                 800,
-                0,
+                SDL_WINDOW_RESIZABLE,
                 &window,
                 &renderer
             )) {
@@ -53,6 +60,8 @@ namespace LauncherApp {
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
         ImGui_ImplSDLRenderer3_Init(renderer);
+
+        Localisation::LoadLanguage(langCode);
     }
 
     void Update() {
@@ -73,21 +82,36 @@ namespace LauncherApp {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::Begin("Tilky Engine Launcher");
+        int windowWidth, windowHeight;
+        SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+        ImGui::SetNextWindowSize(ImVec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight)), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
 
-        ImGui::Text("Projects");
+        ImGui::Begin(Localisation::Get("launcher.name").c_str(), nullptr,
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground);
 
-        if (ImGui::Button("Create Project")) {
+        if (ImGui::Button(Localisation::Get("launcher.create_project").c_str())) {
             std::cout << "Create Project clicked\n";
         }
 
-        if (ImGui::Button("Open Project")) {
-            std::cout << "Open Project clicked\n";
+        for (const fs::directory_entry& entry : fs::directory_iterator(ProjectManager::GetDefaultProjectsFolder())) {
+            if (entry.is_directory()) {
+                //std::cout << entry.path().filename().string() << '\n';
+            }
         }
 
-        if (ImGui::Button("Quit")) {
+        ImGui::Text(Localisation::Get("launcher.projects").c_str());
+
+        ImGui::SetCursorPosY(static_cast<float>(windowHeight) - 35.0f);
+        if (ImGui::Button(Localisation::Get("launcher.quit").c_str())) {
             quitRequested = true;
         }
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(static_cast<float>(windowWidth) - 120.0f);
+        if (ImGui::Button("English")) Localisation::LoadLanguage("en");
+        ImGui::SameLine();
+        if (ImGui::Button("Türkçe")) Localisation::LoadLanguage("tr");
 
         ImGui::End();
 

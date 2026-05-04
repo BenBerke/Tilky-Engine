@@ -28,6 +28,7 @@ namespace ProjectManager {
     fs::path GetTexturesPath();
     fs::path GetLevelsPath();
     fs::path GetEngineBasePath();
+    fs::path GetEngineFolder();
     std::string GetProjectName();
 
 }

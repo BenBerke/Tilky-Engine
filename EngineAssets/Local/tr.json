@@ -44,5 +44,10 @@
 
   "log.deleted_level": "Silinen Seviye:",
   "log.failed_delete_missing": "Seviye Silinemedi, dosya var olmayabilir:",
-  "log.delete_level_failed": "Seviye Silinemedi:"
+  "log.delete_level_failed": "Seviye Silinemedi:",
+
+  "launcher.name": "Tilki Motoru Başlatıcısı",
+  "launcher.projects": "Tasarılar",
+  "launcher.create_project": "Tasarı Oluştur",
+  "launcher.quit": "Çık"
 }
