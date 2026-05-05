@@ -105,7 +105,11 @@ namespace MapEditorInternal {
                     }
                 }
                 else if (currentMode == MODE_OBJECT) {
+                    const uint32_t sO = ObjectExistsAt(InputManager::GetMousePosition(), 15.0f);
+                    if (sO != -1) selectedObject = sO;
+                    else selectedObject = level.CreateEntity();
 
+                    editingObject = true;
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {
@@ -148,7 +152,6 @@ namespace MapEditorInternal {
 
 
         if (!keyboardBlockedByImgui) {
-
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {

@@ -13,9 +13,9 @@ namespace MapEditorInternal {
     constexpr int SCREEN_WIDTH = 1680;
     constexpr int SCREEN_HEIGHT = 960;
     constexpr int FONT_SIZE = 24;
-    constexpr float GRID_SIZE = 32.0f;
 
     extern float editorZoom;
+    extern float GRID_SIZE;
     constexpr float MIN_EDITOR_ZOOM = 0.20f;
     constexpr float MAX_EDITOR_ZOOM = 5.00f;
 
@@ -56,6 +56,9 @@ namespace MapEditorInternal {
     extern bool editingWall;
     extern int selectedWall;
 
+    extern bool editingObject;
+    extern uint32_t selectedObject;
+
     extern std::string currentMap;
 
     extern float objectSize;
@@ -70,6 +73,7 @@ namespace MapEditorInternal {
 
     bool SamePoint(const Vector2& a, const Vector2& b);
     bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
+    uint32_t ObjectExistsAt(const Vector2& worldPos, const float radius);
     bool CornerExistsAt(const Vector2& point);
     bool IsCornerConnectedToLine(const Vector2& point);
     bool HasLineBetween(const Vector2& a, const Vector2& b);

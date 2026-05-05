@@ -36,13 +36,15 @@ int main(int argc, char** argv) {
     }
     if (projectFile.empty()) {
         std::cout << "No project found" << std::endl;
-        return 1;
+        //return 1;
     }
 
-    if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-        std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
-        return 1;
-    }
+    //if (!ProjectManager::LoadProjectMetaData(projectFile)) {
+      //  std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
+      //  return 1;
+    //}
+
+    ProjectManager::LoadProjectMetaData("C:/Users/berke/Documents/Tilky Engine/Projects/test/project.tilky");
 
     Localisation::LoadLanguage(ProjectManager::GetCurrentLanguageInLauncher());
 

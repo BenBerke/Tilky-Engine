@@ -15,6 +15,7 @@ namespace MapEditorInternal {
     TTF_TextEngine* textEngine = nullptr;
 
     float editorZoom = 1.0f;
+    float GRID_SIZE = 32.0f;
 
     Vector2 cameraPos = {0.0f, 0.0f};
     std::vector<Vector2> placedCorners;
@@ -30,6 +31,9 @@ namespace MapEditorInternal {
 
     bool editingWall = false;
     int selectedWall = -1;
+
+    bool editingObject = false;
+    uint32_t selectedObject = -1;
 
     std::string currentMap;
 

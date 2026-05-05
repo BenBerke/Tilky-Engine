@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Headers/Objects/Entity.hpp"
+
 namespace MapEditorInternal {
     bool SamePoint(const Vector2& a, const Vector2& b) {
         return a.x == b.x && a.y == b.y;
@@ -13,6 +15,15 @@ namespace MapEditorInternal {
 
     bool WithinRadius(const Vector2& a, const Vector2& b, const float radius) {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
+    }
+
+    uint32_t ObjectExistsAt(const Vector2& mouseClick, const float radius) {
+        Level& level = LevelManager::CurrentLevel();
+        for (const uint32_t entityID : LevelManager::CurrentLevel().entities) {
+            ComponentTransform* transform = level.transforms.Get(entityID);
+            if (WithinRadius(transform->position, mouseClick, radius)) return entityID;
+        }
+        return -1;
     }
 
     bool CornerExistsAt(const Vector2& point) {
