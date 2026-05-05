@@ -4,7 +4,7 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/Renderer/MapEditor.hpp"
+#include "../../../Headers/MapEditor/MapEditor.hpp"
 
 #include <algorithm>
 #include <SDL3/SDL_log.h>

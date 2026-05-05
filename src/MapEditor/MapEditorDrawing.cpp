@@ -20,6 +20,7 @@ namespace MapEditorInternal {
 
         const int halfThickness = static_cast<int>(thickness * 0.5f);
 
+        SDL_SetRenderDrawColor(renderer, 205, 205, 205, 255);
         for (int i = -halfThickness; i <= halfThickness; ++i) {
             const float offsetX = normalX * static_cast<float>(i);
             const float offsetY = normalY * static_cast<float>(i);
@@ -144,7 +145,7 @@ namespace MapEditorInternal {
     }
 
     void DrawCorners() {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
         for (const Vector2& cornerWorld : placedCorners) {
             const Vector2 cornerScreen = WorldToScreen(cornerWorld, cameraPos);
@@ -163,7 +164,7 @@ namespace MapEditorInternal {
     void DrawWalls() {
         Level& level = LevelManager::CurrentLevel();
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
 
         for (const Wall& wall : level.walls) {
             if (wall.floor != currentFloor) continue;
@@ -201,22 +202,24 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
 
-        const float leftWorld = cameraPos.x - SCREEN_WIDTH * 0.5f;
-        const float rightWorld = cameraPos.x + SCREEN_WIDTH * 0.5f;
-        const float bottomWorld = cameraPos.y - SCREEN_HEIGHT * 0.5f;
-        const float topWorld = cameraPos.y + SCREEN_HEIGHT * 0.5f;
+        const float visibleHalfWidthWorld = (SCREEN_WIDTH * 0.5f) / editorZoom;
+        const float visibleHalfHeightWorld = (SCREEN_HEIGHT * 0.5f) / editorZoom;
+
+        const float leftWorld = cameraPos.x - visibleHalfWidthWorld;
+        const float rightWorld = cameraPos.x + visibleHalfWidthWorld;
+        const float bottomWorld = cameraPos.y - visibleHalfHeightWorld;
+        const float topWorld = cameraPos.y + visibleHalfHeightWorld;
 
         const float startX = std::floor(leftWorld / GRID_SIZE) * GRID_SIZE;
         const float startY = std::floor(bottomWorld / GRID_SIZE) * GRID_SIZE;
 
         for (float worldX = startX; worldX <= rightWorld; worldX += GRID_SIZE) {
             for (float worldY = startY; worldY <= topWorld; worldY += GRID_SIZE) {
-                const float screenX = worldX - cameraPos.x + SCREEN_WIDTH * 0.5f;
-                const float screenY = SCREEN_HEIGHT * 0.5f - (worldY - cameraPos.y);
+                const Vector2 screenPos = WorldToScreen({worldX, worldY}, cameraPos);
 
                 SDL_FRect dotRect = {
-                    screenX - dotSize * 0.5f,
-                    screenY - dotSize * 0.5f,
+                    screenPos.x - dotSize * 0.5f,
+                    screenPos.y - dotSize * 0.5f,
                     dotSize,
                     dotSize
                 };

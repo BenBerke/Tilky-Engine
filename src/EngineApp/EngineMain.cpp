@@ -8,7 +8,7 @@
 
 #include "../../Headers/Renderer/Renderer/Renderer.hpp"
 #include "../../Headers/Renderer/Shader.hpp"
-#include "../../Headers/Renderer/MapEditor.hpp"
+#include "../../Headers/MapEditor/MapEditor.hpp"
 #include "../../Headers/Renderer/TextureManager.hpp"
 
 #include "../../Headers/Map/MapQueries.hpp"

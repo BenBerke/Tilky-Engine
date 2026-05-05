@@ -103,17 +103,17 @@ namespace MapEditorInternal {
         sectorBeingCreated.push_back(point);
     }
 
-    Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos) {
+    Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPosition) {
         return {
-            screenPos.x - SCREEN_WIDTH * 0.5f + cameraPos.x,
-            SCREEN_HEIGHT * 0.5f - screenPos.y + cameraPos.y
+            (worldPos.x - cameraPosition.x) * editorZoom + SCREEN_WIDTH * 0.5f,
+            SCREEN_HEIGHT * 0.5f - (worldPos.y - cameraPosition.y) * editorZoom
         };
     }
 
-    Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos) {
+    Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPosition) {
         return {
-            worldPos.x - cameraPos.x + SCREEN_WIDTH * 0.5f,
-            SCREEN_HEIGHT * 0.5f - (worldPos.y - cameraPos.y)
+            (screenPos.x - SCREEN_WIDTH * 0.5f) / editorZoom + cameraPosition.x,
+            (SCREEN_HEIGHT * 0.5f - screenPos.y) / editorZoom + cameraPosition.y
         };
     }
 

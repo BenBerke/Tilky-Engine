@@ -14,6 +14,8 @@ namespace MapEditorInternal {
     TTF_Font* font = nullptr;
     TTF_TextEngine* textEngine = nullptr;
 
+    float editorZoom = 1.0f;
+
     Vector2 cameraPos = {0.0f, 0.0f};
     std::vector<Vector2> placedCorners;
 

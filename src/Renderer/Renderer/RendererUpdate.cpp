@@ -9,7 +9,7 @@
 #include "Headers/Objects/Wall.hpp"
 
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/Renderer/MapEditor.hpp"
+#include "../../../Headers/MapEditor/MapEditor.hpp"
 #include "Headers/Renderer/TextureManager.hpp"
 
 namespace Renderer {

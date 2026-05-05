@@ -1,9 +1,43 @@
+#include <iostream>
+
 #include "MapEditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
 namespace MapEditorInternal {
+    void UpdateEditorZoom() {
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorldBeforeZoom = ScreenToWorld(mouseScreen, cameraPos);
+
+        bool zoomChanged = false;
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_EQUALS) ||
+            InputManager::GetKeyDown(SDL_SCANCODE_KP_PLUS) || InputManager::GetMouseWheelScrollUp()) {
+            editorZoom *= 1.15f;
+            zoomChanged = true;
+            }
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_MINUS) ||
+            InputManager::GetKeyDown(SDL_SCANCODE_KP_MINUS) || InputManager::GetMouseWheelScrollDown()) {
+            editorZoom /= 1.15f;
+            zoomChanged = true;
+            }
+
+        editorZoom = std::clamp(
+            editorZoom,
+            MIN_EDITOR_ZOOM,
+            MAX_EDITOR_ZOOM
+        );
+
+        if (zoomChanged) {
+            const Vector2 mouseWorldAfterZoom = ScreenToWorld(mouseScreen, cameraPos);
+
+            cameraPos.x += mouseWorldBeforeZoom.x - mouseWorldAfterZoom.x;
+            cameraPos.y += mouseWorldBeforeZoom.y - mouseWorldAfterZoom.y;
+        }
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -108,14 +142,17 @@ namespace MapEditorInternal {
 
                 drawingLine = false;
             }
+
+            UpdateEditorZoom();
+        }
+
+
+        if (!keyboardBlockedByImgui) {
+
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
             quit = true;
-        }
-
-        if (!keyboardBlockedByImgui) {
-
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {

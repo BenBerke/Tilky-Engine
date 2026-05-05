@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Headers/Renderer/MapEditor.hpp"
+#include "../../Headers/MapEditor/MapEditor.hpp"
 
 #include <array>
 #include <vector>
@@ -14,6 +14,10 @@ namespace MapEditorInternal {
     constexpr int SCREEN_HEIGHT = 960;
     constexpr int FONT_SIZE = 24;
     constexpr float GRID_SIZE = 32.0f;
+
+    extern float editorZoom;
+    constexpr float MIN_EDITOR_ZOOM = 0.20f;
+    constexpr float MAX_EDITOR_ZOOM = 5.00f;
 
     enum Mode {
         MODE_DOT,

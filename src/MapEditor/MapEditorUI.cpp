@@ -132,7 +132,7 @@ namespace MapEditorInternal {
                 editingWall = false;
             }
             else {
-                ImGui::Begin(Get("wall").c_str(), &editingWall);
+                ImGui::Begin(Get("wall.title").c_str(), &editingWall);
 
                 auto& wall = level.walls[selectedWall];
 
