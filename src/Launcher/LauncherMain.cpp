@@ -16,7 +16,7 @@ using json = nlohmann::json;
 
 
 fs::path GetLauncherVarsPath() {
-    return ProjectManager::GetEngineFolder() / "Launcher.json";
+    return ProjectManager::GetEngineFolder() / "Launcher.tilky";
 }
 
 bool WriteLauncherVariablesJson(const json& launcherVariablesData) {
@@ -64,7 +64,7 @@ int main() {
         fs::create_directories(launcherVarsPath.parent_path());
     }
     catch (std::exception& e) {
-        std::cerr << "Couldn't create Launcher.json" << e.what() << std::endl;
+        std::cerr << "Couldn't create Launcher.tilky" << e.what() << std::endl;
     }
 
     std::ifstream launcherVars(launcherVarsPath);
@@ -110,10 +110,16 @@ int main() {
         LauncherApp::Update();
     }
 
+    const fs::path projectToOpen = LauncherApp::GetPendingProjectToOpen();
+
     launcherVariablesData["lang"] = Localisation::CurrentLanguage();
     WriteLauncherVariablesJson(launcherVariablesData);
 
     LauncherApp::Destroy();
+
+    if (!projectToOpen.empty()) {
+        ProjectManager::OpenProject(projectToOpen);
+    }
     // CreateDirectory(projectName);
 
     return 0;

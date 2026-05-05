@@ -83,7 +83,7 @@ namespace MapEditor {
 
         Level &level = LevelManager::CurrentLevel();
 
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
         SDL_RenderClear(renderer);
 
         ImGui_ImplSDLRenderer3_NewFrame();

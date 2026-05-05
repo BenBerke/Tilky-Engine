@@ -4,12 +4,15 @@
 
 #ifndef WOLFY_ENGINE_LAUNCHERAPP_HPP
 #define WOLFY_ENGINE_LAUNCHERAPP_HPP
+#include <filesystem>
 #include <string>
 
 namespace LauncherApp {
     void Start(const std::string& langCode);
     void Update();
     void Destroy();
+
+    std::filesystem::path GetPendingProjectToOpen();
 
     bool QuitRequested();
 }

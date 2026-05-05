@@ -28,6 +28,8 @@ namespace {
     bool creatingProject = false;
     std::array<char, 64> projectName{};
 
+    fs::path pendingProjectToOpen;
+
     void PutSpace(const int n) {
         for (int i = 0; i < n; i++) {
             ImGui::Spacing();
@@ -144,8 +146,8 @@ namespace LauncherApp {
                                 Localisation::Get("launcher.open_project") + "##open_" + foundPath.string();
 
                             if (ImGui::Button(openButtonId.c_str())) {
+                                pendingProjectToOpen = foundPath.parent_path();
                                 quitRequested = true;
-                                ProjectManager::OpenProject(foundPath.parent_path());
                             }
 
                             ImGui::SameLine();
@@ -207,6 +209,10 @@ namespace LauncherApp {
 
     bool QuitRequested() {
         return quitRequested;
+    }
+
+    fs::path GetPendingProjectToOpen() {
+        return pendingProjectToOpen;
     }
 
     void Destroy() {

@@ -351,9 +351,9 @@ namespace ProjectManager {
         return fs::path(basePath);
     }
 
-    // Returns Tilky Engine's user data folder inside Documents.
+    // Returns Tilky Engine's user data folder inside Documents\TilkyEngine.
     // This is the parent folder of the Projects folder.
-    // Use this for launcher-wide files such as Launcher.json.
+    // Use this for launcher-wide files such as Launcher.tilky.
     // Example:
     // C:\Users\berke\Documents\Tilky Engine
     fs::path GetEngineFolder() {
@@ -361,6 +361,38 @@ namespace ProjectManager {
         const fs::path tilkyEngineFolder = projectsPath.parent_path();
 
         return tilkyEngineFolder;
+    }
+
+    // Returns Launcher.tilky insdie Documents\TilkyEngine which stores metadata about the launcher, such as the language
+    fs::path GetLauncherVariables() {
+        return ProjectManager::GetEngineFolder() / "Launcher.tilky";
+    }
+
+    std::string GetCurrentLanguageInLauncher() {
+        const fs::path configPath = GetLauncherVariables();
+
+        if (!fs::exists(configPath)) {
+            std::cout << "Launcher config not found. Using English.\n";
+            return "en";
+        }
+
+        std::ifstream file(configPath);
+
+        if (!file.is_open()) {
+            std::cout << "Could not open launcher config. Using English.\n";
+            return "en";
+        }
+
+        try {
+            json configData;
+            file >> configData;
+
+            return configData.value("lang", "en");
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Failed to read launcher language: " << e.what() << std::endl;
+            return "en";
+        }
     }
 
     // Returns the name of the currently loaded project.

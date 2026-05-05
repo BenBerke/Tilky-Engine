@@ -29,6 +29,8 @@ namespace ProjectManager {
     fs::path GetLevelsPath();
     fs::path GetEngineBasePath();
     fs::path GetEngineFolder();
+    fs::path GetLauncherVariables();
+    std::string GetCurrentLanguageInLauncher();
     std::string GetProjectName();
 
 }

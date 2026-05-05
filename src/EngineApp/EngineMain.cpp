@@ -38,14 +38,13 @@ int main(int argc, char** argv) {
         std::cout << "No project found" << std::endl;
         return 1;
     }
-    std::cout << "Opening File: " << projectFile << std::endl;
 
     if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-        std::cout << "Failed to load project metadata\n";
+        std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
         return 1;
     }
 
-    Localisation::LoadLanguage("tr");
+    Localisation::LoadLanguage(ProjectManager::GetCurrentLanguageInLauncher());
 
     bool editorMode = true;
     if (editorMode) MapEditor::Start();
