@@ -9,7 +9,7 @@
 
 namespace GameTime {
     extern float deltaTime;
-    extern float time;
+    extern float time; // Times passed since game start
     extern float smoothedFPS;
 
     void Update();

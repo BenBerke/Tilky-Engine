@@ -13,6 +13,11 @@ struct Texture {
 };
 
 namespace TextureManager {
+
+    // ONLY ACCEPTS PNGs todo: Add more fomat support
+    // Simply write the name of the .png of the desired image that is in Assets/Textures
+    // DO NOT add the file path or the format
+    // Example path parameter: myPicture (for Assets/Textures/myPicture.png)
     int CreateTexture(const std::string& path);
     const Texture& GetTexture(int index);
     int GetTextureCount();

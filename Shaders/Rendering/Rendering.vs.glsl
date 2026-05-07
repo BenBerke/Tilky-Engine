@@ -9,35 +9,49 @@
 #define RENDER_SPRITE 2
 #define RENDER_DECAL 3
 
+// Wall instance data.
+// startEnd = start.xy, end.xy
+// color = RGBA in 0-255 range
+// heights = floor height, ceiling height, unused, unused
+// data.x = texture index
+// data.z = vertical texture anchor height
+// data.w = vertical texture direction
 struct Wall {
     vec4 startEnd;
     vec4 color;
     vec4 heights;
-    vec4 data;      // x = textureIndex
+    vec4 data;
 };
 
+// Floor/ceiling triangle instance data.
+// a/b/c = world x, world y, height/boundary data
+// color currently unused for sector flats; sector colour is used instead.
+// data.x = sector index
+// data.y = floor/ceiling boundary index
+// data.z = texture index
 struct FlatTriangle {
     vec4 a;
     vec4 b;
     vec4 c;
     vec4 color;
-    vec4 data; // x = textureIndex
+    vec4 data;
 };
 
+// Billboard sprite instance data.
+// positionSize.x = world x
+// positionSize.y = world y
+// positionSize.z = bottom height
+// positionSize.w = sprite height
+// data.x = sprite width
+// data.y = texture index
 struct Sprite {
     vec4 positionSize;
-// x = world x
-// y = world y
-// z = bottom height
-// w = sprite height
-
     vec4 color;
-
     vec4 data;
-// x = width
-// y = textureIndex
 };
 
+// Decal instance data.
+// Uses the same projected-wall path as walls, but is drawn slightly forward in the fragment shader.
 struct Decal {
     vec4 startEnd;
     vec4 color;
@@ -45,7 +59,9 @@ struct Decal {
     vec4 data;
 };
 
-
+// Sector data used when drawing floor/ceiling triangles.
+// heights.x = floor height
+// heights.y = ceiling/storey height target
 struct Sector {
     vec4 heights;
     vec4 floorColor;
@@ -53,6 +69,7 @@ struct Sector {
     vec4 textureData;
 };
 
+// GPU-side instance buffers.
 layout(std430, binding = 0) readonly buffer WallBuffer {
     Wall walls[];
 };
@@ -73,58 +90,79 @@ layout(std430, binding = 4) readonly buffer SectorBuffer {
     Sector sectors[];
 };
 
+// Shared wall/decal/flat tint colour.
+// flat = one value per primitive, not interpolated.
 flat out vec4 vWallColor;
 
+// Projected horizontal wall/decal span in screen pixels.
+// The fragment shader uses these for manual interpolation by gl_FragCoord.x.
 flat out float fScreenXStart;
 flat out float fScreenXEnd;
 
+// Projected top/bottom Y values at both sides of a wall/decal.
 flat out float fTopYStart;
 flat out float fTopYEnd;
 flat out float fBottomYStart;
 flat out float fBottomYEnd;
 
+// Wall/decal horizontal texture distance and view depth at both sides.
+// Used for manual perspective-correct interpolation in the fragment shader.
 flat out float fSStart;
 flat out float fSEnd;
 flat out float fZLeft;
 flat out float fZRight;
 
+// World-space height that the wall texture should tile from.
 flat out float fWallTextureAnchorHeight;
 
+// Floor/ceiling interpolation values.
+// noperspective stops OpenGL from doing perspective correction automatically;
+// the fragment shader reconstructs the world position manually.
 noperspective out float vFlatInvZ;
-
-flat out int vTextureIndex;
-flat out float fWallWorldHeight;
-
 noperspective out vec2 vFlatWorldOverZ;
 flat out int vFlatTextureIndex;
 
+// Texture index for walls/decals.
+flat out int vTextureIndex;
+
+// Wall vertical information used for world-aligned texture coordinates.
+flat out float fWallWorldHeight;
 flat out float fWallBottomHeight;
 flat out float fWallTopHeight;
 
+// Sprite data passed directly to the fragment shader.
 noperspective out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
 flat out float fSpriteViewDepth;
 flat out vec4 vSpriteColor;
 
+// Decides whether wall V texture coordinates run downwards or upwards.
 flat out float fWallTextureDirection;
 
+// Camera/player state.
 uniform vec2 playerPos;
 uniform float playerAngle;
 uniform float playerHeight;
+
+// Normalised screen-space horizon position.
+// Example: 0.5 means halfway down the screen.
 uniform float playerCamZ;
+
+// Selects wall, flat, sprite, or decal rendering path.
 uniform int renderMode;
 
-
-const float FOV =  90.0;
-const float halfFov = FOV * .5;
+const float FOV = 90.0;
+const float halfFov = FOV * 0.5;
 float horizonY = SCREEN_HEIGHT * playerCamZ;
+
 const float wallHeight = 32.0;
-const float nearPlane = .1;
+const float nearPlane = 0.1;
 
 float degToRad(float angle) {
     return angle * (PI / 180.0);
 }
 
+// Rotates world-relative coordinates into camera/view space.
 vec2 rotate(vec2 p, float angle) {
     float c = cos(angle);
     float s = sin(angle);
@@ -135,6 +173,8 @@ vec2 rotate(vec2 p, float angle) {
     );
 }
 
+// Returns forward depth in view space.
+// Positive Y is treated as forward after rotation.
 float getViewDepth(vec2 worldPos) {
     float playerAngleInRad = degToRad(playerAngle);
 
@@ -144,6 +184,7 @@ float getViewDepth(vec2 worldPos) {
     return view.y;
 }
 
+// Projects a world-space point at a given height into OpenGL NDC.
 vec2 projectToNdc(vec2 worldPos, float height) {
     float playerAngleInRad = degToRad(playerAngle);
     float halfFovInRad = degToRad(halfFov);
@@ -166,6 +207,8 @@ vec2 projectToNdc(vec2 worldPos, float height) {
     return vec2(ndcX, ndcY);
 }
 
+// Resets wall/decal outputs for render paths that do not use them.
+// This avoids undefined values reaching the fragment shader.
 void outputDummyWallData() {
     fScreenXStart = 0.0;
     fScreenXEnd = 0.0;
@@ -212,6 +255,7 @@ void renderFlat() {
 
     float storeyHeight = sector.heights.y - sector.heights.x;
 
+    // boundaryIndex chooses which floor/ceiling layer this flat belongs to.
     point.z = sector.heights.x + storeyHeight * float(boundaryIndex);
 
     if (boundaryIndex == 0) {
@@ -228,6 +272,7 @@ void renderFlat() {
 
     outputDummyWallData();
 
+    // Perspective-correct flat texture coordinates are reconstructed in the fragment shader.
     vFlatWorldOverZ = point.xy * vFlatInvZ;
 
     vec2 ndc = projectToNdc(point.xy, point.z);
@@ -235,6 +280,7 @@ void renderFlat() {
     gl_Position = vec4(ndc, 0.0, 1.0);
 }
 
+// Projects a view-space point to screen X in pixels.
 float projectScreenX(vec2 viewPoint) {
     float halfFovInRad = degToRad(halfFov);
     float focalLength = (SCREEN_WIDTH * 0.5) / tan(halfFovInRad);
@@ -242,6 +288,7 @@ float projectScreenX(vec2 viewPoint) {
     return SCREEN_WIDTH * 0.5 + (viewPoint.x / viewPoint.y) * focalLength;
 }
 
+// Projects a world height at a given view depth to screen Y in pixels.
 float projectScreenY(float height, float viewDepth) {
     float halfFovInRad = degToRad(halfFov);
     float focalLength = (SCREEN_WIDTH * 0.5) / tan(halfFovInRad);
@@ -267,6 +314,7 @@ void renderSprite() {
     vec2 relative = spriteWorldPos - playerPos;
     vec2 centerView = rotate(relative, playerAngleInRad);
 
+    // Hide sprites fully behind the near plane.
     if (centerView.y <= nearPlane) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
         return;
@@ -303,6 +351,7 @@ void renderSprite() {
         uv = vec2(1.0, 0.0);
     }
 
+    // Billboard is expanded horizontally in view space.
     vec2 viewPoint = vec2(
     centerView.x + side * halfWidth,
     centerView.y
@@ -349,8 +398,6 @@ void renderWall() {
     fWallBottomHeight = floorHeight;
     fWallTopHeight = ceilingHeight;
 
-    fWallTextureAnchorHeight = wall.data.z;
-
     vTextureIndex = int(wall.data.x);
     fWallWorldHeight = ceilingHeight - floorHeight;
 
@@ -366,11 +413,13 @@ void renderWall() {
     float sStart = 0.0;
     float sEnd = wallLength;
 
+    // Reject walls fully behind the near plane.
     if (viewStart.y <= nearPlane && viewEnd.y <= nearPlane) {
         gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
         return;
     }
 
+    // Clip each endpoint against the near plane.
     if (viewStart.y <= nearPlane) {
         float t = (nearPlane - viewStart.y) / (viewEnd.y - viewStart.y);
         viewStart = mix(viewStart, viewEnd, t);
@@ -400,6 +449,7 @@ void renderWall() {
     float topRightY = 1.0 - (topYEnd / SCREEN_HEIGHT) * 2.0;
     float bottomRightY = 1.0 - (bottomYEnd / SCREEN_HEIGHT) * 2.0;
 
+    // Vertex order forms a quad strip: bottom-left, top-left, bottom-right, top-right.
     vec2 verts[4] = vec2[4](
     vec2(leftX, bottomLeftY),
     vec2(leftX, topLeftY),

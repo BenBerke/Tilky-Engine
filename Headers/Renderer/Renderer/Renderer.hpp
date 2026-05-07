@@ -34,6 +34,8 @@ namespace Renderer {
     bool CreateMap();
     void Destroy();
 
+
+    // Renders a text at given screen coordinates, simplifies OpenGL's stuff
     void RenderTextRaw(
         const std::string& text,
         float x,

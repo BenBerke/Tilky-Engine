@@ -275,11 +275,9 @@ namespace Player {
             velocity = Vector2Math::Normalized(moveDir) * currentSpeed;
         } else velocity *= FRICTION;
 
-
         position += velocity * GameTime::deltaTime;
 
         bool touchingPortalThisFrame = false;
-
 
         for (int iter = 0; iter < COLLISION_ITERATIONS; ++iter) {
             bool collided = false;

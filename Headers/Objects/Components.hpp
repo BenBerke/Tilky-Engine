@@ -22,6 +22,8 @@ enum ComponentType {
     CMP_COUNT,
 };
 
+// Stores things related to the entity's whereabouts
+// Every entity MUST have a transform component
 struct ComponentTransform {
     EntityID ownerID = -1;
 
@@ -71,6 +73,7 @@ struct ComponentTransform {
     }
 };
 
+// Stores things related to the entity's visuals
 struct ComponentSprite {
     EntityID ownerID = -1;
 
@@ -81,6 +84,7 @@ struct ComponentPlayerSpawn {
     EntityID ownerID = -1;
 };
 
+// MUST have a sprite component to work properly
 struct ComponentDecal {
     EntityID ownerID = -1;
 

@@ -97,6 +97,7 @@ namespace MapEditor {
 
         HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
+        // Update decals so they always stick to the wall they are attached to
         for (ComponentDecal &decal: level.decals.components) {
             ComponentTransform *transform = level.transforms.Get(decal.ownerID);
 
@@ -123,15 +124,14 @@ namespace MapEditor {
 
             const Vector2 toObject = transform->position - wall.start;
 
-            float t =
-                    (toObject.x * wallVector.x + toObject.y * wallVector.y) /
-                    wallLengthSq;
+            float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
 
             t = std::clamp(t, 0.0f, 1.0f);
 
-            decal.wallT = t;
-            decal.horizontalPos = std::sqrt(wallLengthSq) * decal.wallT;
-
+            if (!editingComponent) {
+                decal.wallT = t;
+                decal.horizontalPos = std::sqrt(wallLengthSq) * decal.wallT;
+            }
             auto lerp = [](const float a, const float b, const float t) -> float {
                 return (1.0f - t) * a + t * b;
             };

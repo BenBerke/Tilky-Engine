@@ -15,7 +15,7 @@ struct Triangle {
 
 struct Sector {
     std::vector<Vector2> vertices;
-    std::vector<Triangle> triangles;
+    std::vector<Triangle> triangles; // DO NOT change, triangles making up the sector after triangluation
 
     float ceilingHeight;
     float floorHeight;

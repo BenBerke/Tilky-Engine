@@ -8,6 +8,9 @@
 
 #include "Headers/Objects/Entity.hpp"
 
+
+// This is an internal file for functions related ot mathematical calculations about the map
+// Such as if a given point is inside a sector
 namespace MapEditorInternal {
     float GetActiveGridSize() {
         constexpr float minPixelSpacing = 24.0f;

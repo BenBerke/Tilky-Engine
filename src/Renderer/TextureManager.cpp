@@ -1,4 +1,5 @@
 #include "../../Headers/Renderer/TextureManager.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_surface.h>
@@ -11,7 +12,7 @@ namespace {
 namespace TextureManager {
 
     int CreateTexture(const std::string& _path) {
-        const std::string path = "../EngineAssets/Textures/" + _path + ".png";
+        const std::string path = ProjectManager::GetTexturesPath().string() + "/" + _path + ".png";
         SDL_Surface* loadedSurface = IMG_Load(path.c_str());
 
         if (loadedSurface == nullptr) {

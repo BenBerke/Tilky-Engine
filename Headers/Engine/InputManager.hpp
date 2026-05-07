@@ -3,6 +3,8 @@
 #include <SDL3/SDL_scancode.h>
 #include "../Math/Vector/Vector2.hpp"
 
+//todo: Custom wrapper around SDL'S keycode
+
 namespace InputManager {
     void BeginFrame(); // Must be called at the start of every frame
 

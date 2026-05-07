@@ -128,7 +128,7 @@ namespace MapEditorInternal {
         };
 
         for (int i = 0; i < totalSectors; ++i) {
-            float hue = std::fmod(i * 0.618033988749895f, 1.0f);
+            const float hue = std::fmod(static_cast<float>(i) * 0.618033988749895f, 1.0f);
             const SDL_FColor normalSectorColor = HSVtoRGB(hue, 0.7f, 0.9f);
 
             const SDL_FColor sectorColor =
@@ -162,7 +162,7 @@ namespace MapEditorInternal {
     }
 
     void DrawWalls() {
-        Level& level = LevelManager::CurrentLevel();
+        const Level& level = LevelManager::CurrentLevel();
 
         SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
 

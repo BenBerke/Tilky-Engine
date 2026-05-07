@@ -12,6 +12,8 @@
 #include <sstream>
 #include <SDL3/SDL_log.h>
 
+
+// This was taken from learnopengl.com
 class Shader {
     public:
     unsigned int ID{};

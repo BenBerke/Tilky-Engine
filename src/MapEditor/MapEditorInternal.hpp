@@ -34,12 +34,16 @@ namespace MapEditorInternal {
         ACTION_CREATE_CORNER,
         ACTION_CREATE_OBJECT,
     };
+
+    // Internal variables do not touch
     extern std::vector<Action> actions;
 
     extern SDL_Window* window;
     extern SDL_Renderer* renderer;
     extern TTF_Font* font;
     extern TTF_TextEngine* textEngine;
+
+    // --
 
     extern Vector2 cameraPos;
     extern std::vector<Vector2> placedCorners;
@@ -79,6 +83,7 @@ namespace MapEditorInternal {
     bool IsCornerConnectedToLine(const Vector2& point);
     bool HasLineBetween(const Vector2& a, const Vector2& b);
 
+    // Automatically if a sector's first and last vertices aren't the same
     std::vector<Vector2> GetSectorVerticesWithoutClosingDuplicate();
     bool IsSectorClosed(const std::vector<Vector2>& vertices);
     void AddSectorSelectionPoint(const Vector2& point);
@@ -104,7 +109,7 @@ namespace MapEditorInternal {
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
     void DrawEditorUI();
 
-    void MoveMode();
+    void ChangeMode();
 
     bool Save(const std::string& saveTo);
 

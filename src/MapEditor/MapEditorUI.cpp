@@ -22,7 +22,7 @@ namespace {
 }
 
 namespace MapEditorInternal {
-    void MoveMode() {
+    void ChangeMode() {
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
     }
 
@@ -40,7 +40,7 @@ namespace MapEditorInternal {
         if (ImGui::Button(Get("editor.mode").c_str())) {
             const Mode previousMode = currentMode;
 
-            MoveMode();
+            ChangeMode();
 
             if (previousMode == MODE_SECTOR) {
                 FinishSectorSelection();

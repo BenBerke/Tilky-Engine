@@ -14,13 +14,8 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-
-fs::path GetLauncherVarsPath() {
-    return ProjectManager::GetEngineFolder() / "Launcher.tilky";
-}
-
 bool WriteLauncherVariablesJson(const json& launcherVariablesData) {
-    const fs::path launcherVarsPath = GetLauncherVarsPath();
+    const fs::path launcherVarsPath = ProjectManager::GetLauncherVariables();
 
     try {
         fs::create_directories(launcherVarsPath.parent_path());
@@ -58,7 +53,7 @@ int main() {
     }
 
     // Editor Variables JSON
-    const fs::path launcherVarsPath = GetLauncherVarsPath();
+    const fs::path launcherVarsPath = ProjectManager::GetLauncherVariables();
 
     try {
         fs::create_directories(launcherVarsPath.parent_path());

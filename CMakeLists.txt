@@ -6,8 +6,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Put all .exe files in the same build folder.
-# This helps the launcher find Wolfy_Engine.exe.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 option(WOLFY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
@@ -37,6 +35,7 @@ target_link_libraries(glad PUBLIC
 
 # ============================================================
 # Dear ImGui
+# External UI library. Do not put this directly into executables.
 # ============================================================
 
 if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
@@ -69,9 +68,8 @@ else()
 endif()
 
 # ============================================================
-# Shared ProjectManager library
-# Used by both engine and launcher.
-# Add ProjectManager-related files here only.
+# Shared project system
+# Used by launcher and engine.
 # ============================================================
 
 add_library(Wolfy_Project STATIC
@@ -94,9 +92,8 @@ target_compile_definitions(Wolfy_Project PUBLIC
 )
 
 # ============================================================
-# Shared Localisation library
-# Used by both engine and launcher.
-# Add localisation-related files here only.
+# Shared localisation system
+# Used by launcher and engine.
 # ============================================================
 
 add_library(Wolfy_Local STATIC
@@ -119,13 +116,14 @@ target_compile_definitions(Wolfy_Local PUBLIC
 )
 
 # ============================================================
-# Engine core library
-# Engine code goes here.
-# Do NOT put EngineMain.cpp here.
-# Do NOT put launcher files here.
+# Engine source list
+# Every engine file goes here.
+# No EngineMain.cpp.
+# No launcher files.
+# No external library source files.
 # ============================================================
 
-add_library(Wolfy_EngineCore STATIC
+set(WOLFY_ENGINE_SOURCES
         src/Renderer/TextureManager.cpp
 
         src/MapEditor/MapEditor.cpp
@@ -139,6 +137,7 @@ add_library(Wolfy_EngineCore STATIC
         src/Engine/GameTime.cpp
         src/Engine/InputManager.cpp
 
+        src/Objects/Entity.cpp
         src/Objects/Player.cpp
 
         src/Renderer/Renderer/RendererState.cpp
@@ -161,6 +160,7 @@ add_library(Wolfy_EngineCore STATIC
         src/Map/LevelManager.cpp
 
         config.h
+        Headers/Objects/EntityTypes.hpp
         Headers/Objects/Entity.hpp
         Headers/Objects/Level.hpp
         Headers/Objects/Components.hpp
@@ -169,7 +169,15 @@ add_library(Wolfy_EngineCore STATIC
         Headers/Map/MapQueries.hpp
         Headers/Map/LevelManager.hpp
         Headers/Math/Geometry/Geometry.hpp
-        Headers/Objects/EntityTypes.hpp
+)
+
+# ============================================================
+# Engine core library
+# This compiles all engine files.
+# ============================================================
+
+add_library(Wolfy_EngineCore STATIC
+        ${WOLFY_ENGINE_SOURCES}
 )
 
 target_precompile_headers(Wolfy_EngineCore PRIVATE
@@ -215,30 +223,23 @@ else()
 endif()
 
 # ============================================================
-# Engine executable
-# Run configuration: Engine
-# Compiles engine code and runs Wolfy_Engine.
+# Launcher source list
+# Only launcher-specific files go here.
+# No engine renderer/editor files.
 # ============================================================
 
-add_executable(Wolfy_Engine
-        src/EngineApp/EngineMain.cpp
-        src/Objects/Entity.cpp
-)
-
-target_link_libraries(Wolfy_Engine PRIVATE
-        Wolfy_EngineCore
+set(WOLFY_LAUNCHER_SOURCES
+        src/Launcher/LauncherApp.cpp
+        Headers/Launcher/LauncherApp.hpp
 )
 
 # ============================================================
 # Launcher core library
-# Launcher code goes here.
-# Do NOT put LauncherMain.cpp here.
-# Do NOT put engine renderer/editor files here.
+# This compiles only launcher files.
 # ============================================================
 
 add_library(Wolfy_LauncherCore STATIC
-        src/Launcher/LauncherApp.cpp
-        Headers/Launcher/LauncherApp.hpp
+        ${WOLFY_LAUNCHER_SOURCES}
 )
 
 target_include_directories(Wolfy_LauncherCore PUBLIC
@@ -259,10 +260,10 @@ target_compile_definitions(Wolfy_LauncherCore PUBLIC
 )
 
 # ============================================================
-# Launcher executable
-# Run configuration: Launcher
-# Compiles launcher code and runs Wolfy_Launcher.
-# This does NOT build Wolfy_Engine unless needed as a dependency elsewhere.
+# Runnable 1: Wolfy_Launcher
+# ONLY launcher executable.
+# Compiles LauncherMain.cpp + launcher-related library code.
+# Does not compile engine files.
 # ============================================================
 
 add_executable(Wolfy_Launcher
@@ -274,22 +275,36 @@ target_link_libraries(Wolfy_Launcher PRIVATE
 )
 
 # ============================================================
-# All executable
-# Run configuration: All
-# Builds Wolfy_Engine and Wolfy_Launcher, then runs launcher-style app.
+# Runnable 2: Wolfy_Engine
+# ONLY engine executable.
+# Compiles EngineMain.cpp + all engine files.
+# Does not compile launcher files.
+# ============================================================
+
+add_executable(Wolfy_Engine
+        src/EngineApp/EngineMain.cpp
+)
+
+target_link_libraries(Wolfy_Engine PRIVATE
+        Wolfy_EngineCore
+)
+
+# ============================================================
+# Runnable 3: Wolfy_All
+# Launcher-style executable that also builds/links every engine file.
+# Does not directly list ImGui, SDL, GLAD, etc. source files.
 # ============================================================
 
 add_executable(Wolfy_All
         src/Launcher/LauncherMain.cpp
-        src/Objects/Entity.cpp
-        Headers/Objects/EntityTypes.hpp
 )
 
 target_link_libraries(Wolfy_All PRIVATE
         Wolfy_LauncherCore
+        Wolfy_EngineCore
 )
 
 add_dependencies(Wolfy_All
-        Wolfy_Engine
         Wolfy_Launcher
+        Wolfy_Engine
 )

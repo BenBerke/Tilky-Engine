@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 
 namespace {
     std::unordered_map<std::string, std::string> strings;
-    std::string currentLanguage = "en";
+    std::string currentLanguage = "en"; // Default back to English in case of a bug
 
     const std::string missingString = "<missing>";
 
@@ -39,6 +39,7 @@ namespace {
     }
 }
 
+// Refer to Local.hpp for comments
 namespace Localisation {
     bool LoadLanguage(const std::string& languageCode) {
         const fs::path path = BuildLanguagePath(languageCode);

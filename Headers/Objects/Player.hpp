@@ -21,7 +21,7 @@ namespace Player {
     inline float size = 1.0f;
     inline float eyeHeight = 12.0f;
     inline float stepSize = 8.0f;
-    inline float bodySize = 10.0f;
+    inline float bodySize = 10.0f; // For collision
 
     inline float camZ = 0.5;
 
@@ -30,7 +30,7 @@ namespace Player {
     inline float currentEyeHeight;
     inline int currentFloor;
 
-    inline bool noClip;
+    inline bool noClip; // If true, will pass through walls, eyeHeight functions as usual
 
     void Update(const std::vector<Wall>& walls, const std::vector<Sector>& sectors);
     void Start(const std::vector<Sector>& sectors);

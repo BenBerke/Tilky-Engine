@@ -128,6 +128,7 @@ namespace LauncherApp {
 
         PutSpace(10);
 
+        //region Listing Projects
         fs::path projectToDelete;
         for (const auto& entry : fs::recursive_directory_iterator(ProjectManager::GetDefaultProjectsFolder())) {
             if (entry.is_regular_file() && entry.path().extension() == ".tilky") {
@@ -186,12 +187,17 @@ namespace LauncherApp {
             }
         }
 
+        //endregion
+
         ImGui::SetCursorPosY(static_cast<float>(windowHeight) - 35.0f);
         if (ImGui::Button(Localisation::Get("launcher.quit").c_str())) {
             quitRequested = true;
         }
 
         ImGui::SameLine();
+
+
+        // Languages
 
         int langCount = 2;
         ImGui::SetCursorPosX(static_cast<float>(windowWidth) - langCount * 60.0f);

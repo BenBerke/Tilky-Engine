@@ -36,17 +36,31 @@ int main(int argc, char** argv) {
     }
     if (projectFile.empty()) {
         std::cout << "No project found" << std::endl;
-        //return 1;
+        return 1;
     }
 
-    //if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-      //  std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
-      //  return 1;
-    //}
+    if (!ProjectManager::LoadProjectMetaData(projectFile)) {
+        std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
+        return 1;
+    }
 
-    ProjectManager::LoadProjectMetaData("C:/Users/berke/Documents/Tilky Engine/Projects/test/project.tilky");
+    const std::string langCode = ProjectManager::GetCurrentLanguageInLauncher();
 
-    Localisation::LoadLanguage("en");
+    if (!Localisation::LoadLanguage(langCode)) {
+        SDL_Log("Failed to load localisation '%s'. Falling back to English.",
+                langCode.c_str());
+
+        if (!Localisation::LoadLanguage("en")) {
+            SDL_Log("Failed to load fallback English localisation.");
+            return 1;
+        }
+    }
+
+    //ProjectManager::LoadProjectMetaData("C:/Users/berke/Documents/Tilky Engine/Projects/test/project.tilky");
+
+    //Localisation::LoadLanguage("tr");
+
+    //todo: Proper Game Initilization
 
     bool editorMode = true;
     if (editorMode) MapEditor::Start();

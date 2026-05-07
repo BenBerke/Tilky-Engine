@@ -19,6 +19,7 @@ struct Wall {
 
     int floor = 0;
 
+    // Read only do not change
     Vector2 dir, normal, vector;
     float lengthSq;
     float length;

@@ -5,6 +5,10 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
+namespace {
+    bool holdingEntity = false;
+}
+
 namespace MapEditorInternal {
     void UpdateEditorZoom() {
         const Vector2 mouseScreen = InputManager::GetMousePosition();
@@ -109,11 +113,11 @@ namespace MapEditorInternal {
 
                     if (en != nullptr) {
                         selectedEntity = *en;
-                    }
-                    else {
+                        holdingEntity = true;
+                    } else {
                         selectedEntity = level.CreateEntity(); // This gives the entity ComponentTransform
 
-                        auto* t = selectedEntity.GetComponent<ComponentTransform>();
+                        auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) {
                             t->position = mouseWorld;
                             t->floor = currentFloor;
@@ -121,41 +125,50 @@ namespace MapEditorInternal {
                     }
 
                     editingEntity = true;
+
                 }
             }
-            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {
+            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
                 const Vector2 mouseScreen = InputManager::GetMousePosition();
                 const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
                 const Vector2 snappedWorld = SnapToGrid(mouseWorld);
 
-                const Vector2 startScreen = WorldToScreen(lineStartWorld, cameraPos);
-                const Vector2 endScreen = WorldToScreen(snappedWorld, cameraPos);
+                if (drawingLine && currentMode == MODE_WALL) {
+                    const Vector2 startScreen = WorldToScreen(lineStartWorld, cameraPos);
+                    const Vector2 endScreen = WorldToScreen(snappedWorld, cameraPos);
 
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                DrawThickLine(renderer, startScreen, endScreen, 5.0f);
+                    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                    DrawThickLine(renderer, startScreen, endScreen, 5.0f);
+                }
+                else if (holdingEntity && currentMode == MODE_ENTITY) {
+                    selectedEntity.GetComponent<ComponentTransform>()->position = mouseWorld;
+                }
+
             }
 
-            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {
+            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
                 const Vector2 mouseScreen = InputManager::GetMousePosition();
                 const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
                 const Vector2 snappedWorld = SnapToGrid(mouseWorld);
 
-                if (CornerExistsAt(snappedWorld) && !SamePoint(lineStartWorld, snappedWorld)) {
-                    const Wall newWall(
-                        lineStartWorld,
-                        snappedWorld,
-                        {0, 0, 0, 255},
-                        -1,
-                        -1,
-                        0,
-                        currentFloor
-                    );
+                if (drawingLine && currentMode == MODE_WALL) {
+                    if (CornerExistsAt(snappedWorld) && !SamePoint(lineStartWorld, snappedWorld)) {
+                        const Wall newWall(
+                            lineStartWorld,
+                            snappedWorld,
+                            {0, 0, 0, 255},
+                            -1,
+                            -1,
+                            0,
+                            currentFloor
+                        );
 
-                    level.walls.push_back(newWall);
-                    actions.push_back(ACTION_CREATE_WALL);
+                        level.walls.push_back(newWall);
+                        actions.push_back(ACTION_CREATE_WALL);
+                    }
                 }
-
                 drawingLine = false;
+                holdingEntity = false;
             }
 
             UpdateEditorZoom();
@@ -165,12 +178,13 @@ namespace MapEditorInternal {
         if (!keyboardBlockedByImgui) {
         }
 
+        // Force quit without saving
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
             quit = true;
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
-            MoveMode();
+            ChangeMode();
         }
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
