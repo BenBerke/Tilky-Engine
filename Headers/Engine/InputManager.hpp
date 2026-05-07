@@ -4,9 +4,9 @@
 #include "../Math/Vector/Vector2.hpp"
 
 namespace InputManager {
-    void BeginFrame();
+    void BeginFrame(); // Must be called at the start of every frame
 
-    bool QuitRequested();
+    bool QuitRequested(); // Close button pressed
 
     bool GetKeyDown(SDL_Scancode key);
     bool GetKey(SDL_Scancode key);
@@ -17,11 +17,11 @@ namespace InputManager {
     bool GetMouseButton(Uint32 button);
     bool GetMouseButtonUp(Uint32 button);
 
-    bool GetMouseWheelScrollUp();
-    bool GetMouseWheelScrollDown();
-    float GetMouseWheelScroll();
+    bool GetMouseWheelScrollUp(); // if wheelScroll > 0
+    bool GetMouseWheelScrollDown(); // if wheelScroll < 0
+    float GetMouseWheelScroll(); // Returns -1, 0 or +1
 
-    Vector2 GetMousePosition();
+    Vector2 GetMousePosition(); // Screen Position
     Vector2 GetMouseDelta();
     void SetRelativeMouseMode(SDL_Window* window, bool enabled);
 }

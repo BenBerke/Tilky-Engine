@@ -17,7 +17,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 namespace {
-    bool editingComponent;
+    bool addingComponent;
     int selectedComponent;
 }
 
@@ -56,19 +56,19 @@ namespace MapEditorInternal {
         auto GetModeName = [](const int mode) -> const char* {
             switch (mode) {
                 case MODE_DOT:
-                    return Localisation::Get("mode.dot").c_str();
+                    return Get("mode.dot").c_str();
 
                 case MODE_WALL:
-                    return Localisation::Get("mode.wall").c_str();
+                    return Get("mode.wall").c_str();
 
                 case MODE_SECTOR:
-                    return Localisation::Get("mode.sector").c_str();
+                    return Get("mode.sector").c_str();
 
                 case MODE_ENTITY:
-                    return Localisation::Get("mode.entity").c_str();
+                    return Get("mode.entity").c_str();
 
                 default:
-                    return Localisation::Get("mode.unknown").c_str();
+                    return Get("mode.unknown").c_str();
             }
         };
 
@@ -180,42 +180,166 @@ namespace MapEditorInternal {
             }
         }
 
-        if (editingComponent && currentMode == MODE_ENTITY) {
-            ImGui::Begin(Get("entity.title").c_str(), &editingWall);
+        if (editingEntity && currentMode == MODE_ENTITY) {
+            Entity *entityPtr = nullptr;
 
-            std::array<char, 64> entityName{};
-
-            ImGui::Text("%u", selectedEntity.id);
-            ImGui::SameLine();
-            ImGui::InputText(Get("entity.name").c_str(), &selectedEntity.name);
-
-            if (ImGui::Button(Get("entity.add_component").c_str())) {
-                const char* components[CMP_COUNT] = { Get("component.transform").c_str(), Get("component.sprite").c_str(),
-                    Get("component.decal").c_str(), Get("component.player_spawn").c_str() };
-                int selected_index = 0;
-
-                if (ImGui::BeginCombo(Get("component.component").c_str(), components[selected_index]))
-                {
-                    for (int i = 0; i < IM_ARRAYSIZE(components); i++)
-                    {
-                        const bool is_selected = (selected_index == i);
-
-                        if (ImGui::Selectable(components[i], is_selected)) selected_index = i;
-
-                        if (is_selected) ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndCombo();
+            for (Entity &entity: level.entities) {
+                if (entity.id == selectedEntity.id) {
+                    entityPtr = &entity;
+                    break;
                 }
-
-
-                if (selectedComponent == CMP_TRANSFORM) selectedEntity.AddComponent<ComponentTransform>();
-                else if (selectedComponent == CMP_SPRITE) selectedEntity.AddComponent<ComponentSprite>();
-                else if (selectedComponent == CMP_DECAL) selectedEntity.AddComponent<ComponentDecal>();
-                else if (selectedComponent == CMP_PLAYER_SPAWN) selectedEntity.AddComponent<ComponentPlayerSpawn>();
             }
 
-            if (editingComponent) {
+            if (entityPtr == nullptr) {
+                editingEntity = false;
+                editingComponent = false;
+                selectedComponent = -1;
+            } else {
+                Entity &entity = *entityPtr;
+
+                ImGui::Begin(Get("entity.title").c_str(), &editingEntity);
+
+                ImGui::Text("%u", entity.id);
+                ImGui::SameLine();
+                ImGui::InputText(Get("entity.name").c_str(), &entity.name);
+
+                if (ImGui::Button(Get("entity.add_component").c_str())) {
+                    addingComponent = !addingComponent;
+                }
+
+                static int componentToAdd = CMP_SPRITE;
+
+                if (addingComponent) {
+                    const char *components[CMP_COUNT];
+
+                    components[CMP_TRANSFORM] = Get("component.transform").c_str();
+                    components[CMP_SPRITE] = Get("component.sprite").c_str();
+                    components[CMP_DECAL] = Get("component.decal").c_str();
+                    components[CMP_PLAYER_SPAWN] = Get("component.player_spawn").c_str();
+
+                    ImGui::PushID("add_component_combo");
+
+                    if (ImGui::BeginCombo(Get("component.component").c_str(), components[componentToAdd])) {
+                        for (int i = 0; i < CMP_COUNT; i++) {
+                            if (i == CMP_TRANSFORM) {
+                                continue; // Entity already has Transform.
+                            }
+
+                            const bool isSelected = componentToAdd == i;
+
+                            if (ImGui::Selectable(components[i], isSelected)) {
+                                componentToAdd = i;
+                            }
+
+                            if (isSelected) {
+                                ImGui::SetItemDefaultFocus();
+                            }
+                        }
+
+                        ImGui::EndCombo();
+                    }
+
+                    if (ImGui::Button(Get("common.add").c_str())) {
+                        if (componentToAdd == CMP_SPRITE &&
+                            !entity.HasComponent<ComponentSprite>()) {
+                            entity.AddComponent<ComponentSprite>();
+                        } else if (componentToAdd == CMP_DECAL &&
+                                   !entity.HasComponent<ComponentDecal>()) {
+                            entity.AddComponent<ComponentDecal>();
+                        } else if (componentToAdd == CMP_PLAYER_SPAWN &&
+                                   !entity.HasComponent<ComponentPlayerSpawn>()) {
+                            entity.AddComponent<ComponentPlayerSpawn>();
+                        }
+
+                        addingComponent = false;
+                        componentToAdd = CMP_SPRITE;
+                    }
+
+                    ImGui::SameLine();
+
+                    if (ImGui::Button(Get("common.cancel").c_str())) {
+                        addingComponent = false;
+                        componentToAdd = CMP_SPRITE;
+                    }
+
+                    ImGui::PopID();
+                }
+
+                PutSpace(2);
+                ImGui::Text("%s", Get("entity.components").c_str());
+
+                auto DrawComponentRow = [&](const char *label, const int componentType) {
+                    ImGui::PushID(componentType);
+
+                    ImGui::Text("%s", label);
+                    ImGui::SameLine();
+
+                    if (ImGui::Button(Get("common.edit").c_str())) {
+                        selectedComponent = componentType;
+                        editingComponent = true;
+                    }
+
+                    ImGui::PopID();
+                };
+
+                if (entity.HasComponent<ComponentTransform>())
+                    DrawComponentRow(Get("component.transform").c_str(), CMP_TRANSFORM);
+
+                if (entity.HasComponent<ComponentSprite>())
+                    DrawComponentRow(Get("component.sprite").c_str(), CMP_SPRITE);
+
+                if (entity.HasComponent<ComponentDecal>())
+                    DrawComponentRow(Get("component.decal").c_str(), CMP_DECAL);
+
+                if (entity.HasComponent<ComponentPlayerSpawn>())
+                    DrawComponentRow(Get("component.player_spawn").c_str(), CMP_PLAYER_SPAWN);
+
+                PutSpace(2);
+
+                ImGui::PushID("entity_buttons");
+
+                if (ImGui::Button(Get("common.delete").c_str())) {
+                    const EntityID idToDelete = entity.id;
+
+                    editingComponent = false;
+                    selectedComponent = -1;
+                    editingEntity = false;
+
+                    level.DestroyEntity(idToDelete);
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::Button(Get("common.close").c_str())) {
+                    editingComponent = false;
+                    selectedComponent = -1;
+                    editingEntity = false;
+                }
+
+                ImGui::PopID();
+
+                ImGui::End();
+            }
+        }
+
+        if (editingComponent && currentMode == MODE_ENTITY && selectedComponent != -1) {
+            Entity *entityPtr = nullptr;
+
+            for (Entity &entity: level.entities) {
+                if (entity.id == selectedEntity.id) {
+                    entityPtr = &entity;
+                    break;
+                }
+            }
+
+            if (entityPtr == nullptr) {
+                editingComponent = false;
+                selectedComponent = -1;
+            } else {
+                Entity &entity = *entityPtr;
+
                 std::string componentName;
+
                 switch (selectedComponent) {
                     case CMP_TRANSFORM:
                         componentName = Get("component.transform");
@@ -233,99 +357,126 @@ namespace MapEditorInternal {
                         componentName = Get("bug.unknown");
                         break;
                 }
-                ImGui::Begin(componentName.c_str(), &editingComponent);
+
+                const std::string windowTitle = componentName + "##component_editor";
+
+                ImGui::Begin(windowTitle.c_str(), &editingComponent);
+                ImGui::PushID(selectedComponent);
+
                 if (selectedComponent == CMP_TRANSFORM) {
-                    auto* c = selectedEntity.GetComponent<ComponentTransform>();
-                    Vector2 position = {.0f, .0f};
-                    int floor = 0;
-                    Vector2 scale = {32.0f, 32.0f};
+                    ComponentTransform *c = entity.GetComponent<ComponentTransform>();
 
-                    ImGui::Text(Get("component.transform.position").c_str());
-                    ImGui::InputFloat(Get("math.vector2.x").c_str(), &position.x);
-                    ImGui::SameLine();
-                    ImGui::InputFloat(Get("math.vector2.y").c_str(), &position.y);
+                    if (c == nullptr) {
+                        ImGui::Text("Transform component missing");
+                    } else {
+                        float positionValues[2] = {c->position.x, c->position.y};
+                        float scaleValues[2] = {c->scale.x, c->scale.y};
+                        int floor = c->floor;
 
-                    ImGui::Text(Get("component.transform.scale").c_str());
-                    ImGui::InputFloat(Get("math.vector2.x").c_str(), &scale.x);
-                    ImGui::SameLine();
-                    ImGui::InputFloat(Get("math.vector2.y").c_str(), &scale.y);
+                        ImGui::Text("%s", Get("component.transform.position").c_str());
+                        ImGui::Text("X    Y");
+                        ImGui::SetNextItemWidth(220.0f);
+                        ImGui::InputFloat2("##position", positionValues);
 
-                    ImGui::InputInt(Get("component.transform.floor").c_str(), &floor);
+                        ImGui::Spacing();
 
-                    c->position = position;
-                    c->floor = floor;
-                    c->scale = scale;
+                        ImGui::Text("%s", Get("component.transform.scale").c_str());
+                        ImGui::Text("X    Y");
+                        ImGui::SetNextItemWidth(220.0f);
+                        ImGui::InputFloat2("##scale", scaleValues);
+
+                        ImGui::Spacing();
+
+                        ImGui::SetNextItemWidth(120.0f);
+                        ImGui::InputInt(Get("component.transform.floor").c_str(), &floor);
+
+                        c->position = {positionValues[0], positionValues[1]};
+                        c->scale = {scaleValues[0], scaleValues[1]};
+                        c->floor = floor;
+
+                        ImGui::Spacing();
+
+                        if (ImGui::Button(Get("common.delete").c_str())) {
+                            entity.RemoveComponent<ComponentTransform>();
+                            editingComponent = false;
+                            selectedComponent = -1;
+                        }
+                    }
+                } else if (selectedComponent == CMP_SPRITE) {
+                    ComponentSprite *c = entity.GetComponent<ComponentSprite>();
+
+                    if (c == nullptr) {
+                        ImGui::Text("Sprite component missing");
+                    } else {
+                        int textureIndex = c->textureIndex;
+
+                        ImGui::SetNextItemWidth(120.0f);
+                        ImGui::InputInt(Get("component.sprite.texture_index").c_str(), &textureIndex);
+
+                        c->textureIndex = textureIndex;
+
+                        if (ImGui::Button(Get("common.delete").c_str())) {
+                            entity.RemoveComponent<ComponentSprite>();
+                            editingComponent = false;
+                            selectedComponent = -1;
+                        }
+                    }
+                } else if (selectedComponent == CMP_PLAYER_SPAWN) {
+                    ImGui::Text("%s", Get("component.player_spawn").c_str());
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
-                        selectedEntity.RemoveComponent<ComponentTransform>();
+                        entity.RemoveComponent<ComponentPlayerSpawn>();
                         editingComponent = false;
+                        selectedComponent = -1;
                     }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Get("common.close").c_str())) {
-                        editingComponent = false;
+                } else if (selectedComponent == CMP_DECAL) {
+                    ComponentDecal *c = entity.GetComponent<ComponentDecal>();
+
+                    if (c == nullptr) {
+                        ImGui::Text("Decal component missing");
+                    } else {
+                        int wallIndex = c->wallIndex;
+                        float verticalPos = c->verticalPos;
+                        float horizontalPos = c->horizontalPos;
+                        float wallNormalOffset = c->wallNormalOffset;
+                        float wallT = c->wallT;
+                        float baseHeight = c->baseHeight;
+                        bool absHeight = c->absHeight;
+
+                        ImGui::InputInt(Get("component.decal.attached_wall").c_str(), &wallIndex);
+                        ImGui::InputFloat(Get("component.decal.wall_offset").c_str(), &horizontalPos);
+                        ImGui::InputFloat(Get("component.decal.wall_normal_offset").c_str(), &wallNormalOffset);
+                        ImGui::InputFloat(Get("component.decal.z_offset").c_str(), &verticalPos);
+                        ImGui::InputFloat("Wall T", &wallT);
+                        ImGui::InputFloat("Base Height", &baseHeight);
+                        ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &absHeight);
+
+                        c->wallIndex = wallIndex;
+                        c->verticalPos = verticalPos;
+                        c->horizontalPos = horizontalPos;
+                        c->wallNormalOffset = wallNormalOffset;
+                        c->wallT = wallT;
+                        c->baseHeight = baseHeight;
+                        c->absHeight = absHeight;
+
+                        if (ImGui::Button(Get("common.delete").c_str())) {
+                            entity.RemoveComponent<ComponentDecal>();
+                            editingComponent = false;
+                            selectedComponent = -1;
+                        }
                     }
                 }
-                else if (selectedComponent == CMP_SPRITE) {
-                    auto* c = selectedEntity.GetComponent<ComponentSprite>();
-                    int textureIndex;
 
+                ImGui::SameLine();
 
-                    ImGui::Text(Get("component.sprite.texture_index").c_str());
-                    ImGui::InputInt(Get("math.vector2.x").c_str(), &textureIndex);;
-
-                    c->textureIndex = textureIndex;
-
-                    if (ImGui::Button(Get("common.delete").c_str())) {
-                        selectedEntity.RemoveComponent<ComponentSprite>();
-                        editingComponent = false;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Get("common.close").c_str())) {
-                        editingComponent = false;
-                    }
+                if (ImGui::Button(Get("common.close").c_str())) {
+                    editingComponent = false;
+                    selectedComponent = -1;
                 }
-                else if (selectedComponent == CMP_PLAYER_SPAWN) {
-                    if (ImGui::Button(Get("common.delete").c_str())) {
-                        selectedEntity.RemoveComponent<ComponentPlayerSpawn>();
-                        editingComponent = false;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Get("common.close").c_str())) {
-                        editingComponent = false;
-                    }
-                }
-                else if (selectedComponent == CMP_DECAL) {
-                    auto* c = selectedEntity.GetComponent<ComponentDecal>();
-                    int wallIndex;
-                    float zOffset, wallOffset, wallNormalOffset;
-                    bool absHeight;
 
-                    ImGui::InputInt(Get("component.decal.attached_wall").c_str(), &wallIndex);
-                    ImGui::InputFloat(Get("component.decal.wall_offset").c_str(), &wallOffset);
-                    ImGui::InputFloat(Get("component.decal.wall_normal_offset").c_str(), &wallNormalOffset);
-                    ImGui::InputFloat(Get("component.decal.z_offset").c_str(), &zOffset);
-                    ImGui::Checkbox("Enable System", &absHeight);
-
-                    c->wallIndex = wallIndex;
-                    c->verticalPos = zOffset;
-                    c->horizontalPos = wallOffset;
-                    c->wallNormalOffset = wallNormalOffset;
-
-                    if (ImGui::Button(Get("common.delete").c_str())) {
-                        selectedEntity.RemoveComponent<ComponentDecal>();
-                        editingComponent = false;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Get("common.close").c_str())) {
-                        editingComponent = false;
-                    }
-                }
+                ImGui::PopID();
                 ImGui::End();
             }
-
-            strcpy(entityName.data(), selectedEntity.name.c_str());
-
-            ImGui::End();
         }
         //endregion
 

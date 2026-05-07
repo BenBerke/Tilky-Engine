@@ -57,6 +57,7 @@ namespace MapEditorInternal {
     extern int selectedWall;
 
     extern bool editingComponent;
+    extern bool editingEntity;
     extern Entity selectedEntity;
 
     extern std::string currentMap;
@@ -97,7 +98,7 @@ namespace MapEditorInternal {
     void DrawExistingSectors();
     void DrawCorners();
     void DrawWalls();
-    void DrawObjects();
+    void DrawEntities();
     void DrawGridDots();
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);

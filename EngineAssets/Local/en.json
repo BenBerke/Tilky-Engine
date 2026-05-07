@@ -37,13 +37,14 @@
   "wall.floor": "Floor",
   "wall.color": "Wall Color",
 
-  "entity.name" : "Name",
-  "entity.title": "Object",
-  "entity.add_component": "Add Component",
-  "entity.delete": "Remove",
-
   "math.vector2.x" : "X",
   "math.vector2.y" : "Y",
+
+  "entity.name" : "Name",
+  "entity.title": "Entity",
+  "entity.add_component": "Add Component",
+  "entity.delete": "Remove",
+  "entity.components" : "Components",
 
   "component.modify" : "Modify",
 
@@ -61,12 +62,15 @@
 
   "component.decal.attached_wall" : "Attached Wall",
   "component.decal.z_offset" : "Vertical Position",
-  "component.decal.wall_0ffset" : "Horizontal Position",
+  "component.decal.wall_offset" : "Horizontal Position",
   "component.decal.wall_normal_offset" : "Distance from Wall",
   "component.decal.abs_height" : "Absolute Height",
 
   "common.delete": "Delete",
   "common.close": "Close",
+  "common.add" : "Add",
+  "common.edit": "Edit",
+  "common.cancel" : "Cancel",
   "common.id": "ID",
 
   "log.deleted_level": "Deleted level:",
@@ -79,7 +83,6 @@
   "launcher.projects": "Projects",
   "launcher.create_project": "Create Project",
   "launcher.create": "Create",
-  "launcher.cancel": "Cancel",
   "launcher.input_name": "Project Name",
   "launcher.open_project": "Open Project",
   "launcher.delete_project": "Delete Project",

@@ -175,15 +175,15 @@ namespace MapEditorInternal {
         }
     }
 
-    void DrawObjects() {
+    void DrawEntities() {
         Level& level = LevelManager::CurrentLevel();
 
         for (const ComponentTransform& transform : level.transforms.components) {
-            if (transform.floor != currentFloor) continue;
+            if (transform.floor != currentFloor && selectedEntity.id != transform.ownerID) continue;
 
             const Vector2 objectScreen = WorldToScreen(transform.position, cameraPos);
 
-            const Vector3 color = {0, 0, 0};
+            const Vector3 color = {250, 250, 255};
 
             SDL_FRect dotRect = {
                 objectScreen.x - 3.0f,

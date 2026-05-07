@@ -117,7 +117,7 @@ namespace LauncherApp {
                 creatingProject = false;
             }
             ImGui::SameLine();
-            if (ImGui::Button(Localisation::Get("launcher.cancel").c_str())) {
+            if (ImGui::Button(Localisation::Get("common.cancel").c_str())) {
                 creatingProject = false;
             }
 

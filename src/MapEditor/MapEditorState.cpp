@@ -33,6 +33,7 @@ namespace MapEditorInternal {
     int selectedWall = -1;
 
     bool editingComponent = false;
+    bool editingEntity = false;
     Entity selectedEntity;
 
     std::string currentMap;

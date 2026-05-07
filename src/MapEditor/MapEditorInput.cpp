@@ -107,16 +107,20 @@ namespace MapEditorInternal {
                 else if (currentMode == MODE_ENTITY) {
                     Entity *en = EntityExistsAt(mouseWorld, 15.0f);
 
-                    if (en != nullptr) selectedEntity = *en;
-                    else selectedEntity = level.CreateEntity(); // This gives the entity ComponentTransform
+                    if (en != nullptr) {
+                        selectedEntity = *en;
+                    }
+                    else {
+                        selectedEntity = level.CreateEntity(); // This gives the entity ComponentTransform
 
-                    auto* t = selectedEntity.GetComponent<ComponentTransform>();
-                    if (t != nullptr) {
-                        t->position = mouseWorld;
-                        t->floor = currentFloor;
+                        auto* t = selectedEntity.GetComponent<ComponentTransform>();
+                        if (t != nullptr) {
+                            t->position = mouseWorld;
+                            t->floor = currentFloor;
+                        }
                     }
 
-                    editingComponent = true;
+                    editingEntity = true;
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && drawingLine && currentMode == MODE_WALL) {

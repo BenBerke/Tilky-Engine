@@ -146,7 +146,7 @@ namespace MapEditor {
         DrawExistingSectors();
         DrawCorners();
         DrawWalls();
-        DrawObjects();
+        DrawEntities();
 
         if (currentMode == MODE_SECTOR) {
             DrawSectorPreview();
