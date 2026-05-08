@@ -217,11 +217,17 @@ namespace LauncherApp {
 
         // Languages
 
-        int langCount = 2;
+        constexpr int langCount = 5;
         ImGui::SetCursorPosX(static_cast<float>(windowWidth) - langCount * 60.0f);
         if (ImGui::Button("English")) Localisation::LoadLanguage("en");
         ImGui::SameLine();
         if (ImGui::Button("Türkçe")) Localisation::LoadLanguage("tr");
+        ImGui::SameLine();
+        if (ImGui::Button("Kazakh")) Localisation::LoadLanguage("qa");
+        ImGui::SameLine();
+        if (ImGui::Button("Russian")) Localisation::LoadLanguage("ru");
+        ImGui::SameLine();
+        if (ImGui::Button("Polish")) Localisation::LoadLanguage("pl");
 
         ImGui::End();
 
@@ -240,7 +246,7 @@ namespace LauncherApp {
 
             SDL_RenderTexture(renderer, logo, nullptr, &logoRect);
         }
-        else  std::cout << "logo aint visible" << std::endl;
+        else  std::cout << "Logo failed to load" << std::endl;
 
         SDL_RenderPresent(renderer);
     }

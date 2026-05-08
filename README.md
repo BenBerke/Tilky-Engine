@@ -213,6 +213,8 @@ Created by Berke as a custom C++ game engine and editor project.
 
 ## Translations
 Special thanks to:
+    ```
     Ilya Brezhnev (Russian & Kazakh)
-    
+    ThatGuyMiki (Polish)
+    ```
 for helping to translate the Tilky Engine

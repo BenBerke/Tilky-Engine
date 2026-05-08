@@ -1,0 +1,103 @@
+{ "editor.title": "Редактор",
+"editor.mode": "Тәртіп",
+"editor.create_sector": "Секторды жасау",
+"editor.create_texture": "Текстураны жасау",
+"editor.texture": "Текстура",
+"editor.background_texture": "Фондық текстура",
+"editor.floor": "Қабат",
+"editor.save": "Сақтау",
+"editor.save_and_play": "Сақтау және ойынды бастау",
+"editor.shutdown": "Тоқтату",
+"editor.level_name": "Деңгей атауы",
+
+
+"levels.title": "Деңгейлер",
+"levels.load": "Деңгейді жүктеу",
+"levels.delete": "Деңгейді кетіру",
+
+
+"mode.dot": "Нүкте тәртібі",
+"mode.wall": "Қабырға тәртібі",
+"mode.sector": "Сектор тәртібі",
+"mode.entity": "Объект тәртібі",
+"mode.unknown": "Белгісіз тәртіп",
+
+
+"sector.title": "Сектор",
+"sector.ceil_height": "Төбе биіктігі",
+"sector.floor_height": "Еден биіктігі",
+"sector.floor_count": "Қабаттар саны",
+"sector.ground_floor_texture": "Бірінші қабаттың текстурасы",
+"sector.ceiling_texture": "Төбе текстурасы",
+"sector.ceiling_color": "Төбе түсі",
+"sector.floor_color": "Еден түсі",
+
+
+"wall.title": "Қабырға",
+"wall.front_sector": "Алдыңғы сектор",
+"wall.back_sector": "Артқы сектор",
+"wall.texture_index": "Текстура индексы",
+"wall.floor": "Қабат",
+"wall.color": "Қабырғаның түсі",
+
+
+"math.vector2.x" : "X",
+"math.vector2.y" : "Y",
+
+
+"entity.name" : "Атау",
+"entity.title": "Объект",
+"entity.add_component": "Компонентті қосу",
+"entity.delete": "Кетіру",
+"entity.components" : "Компоненттер",
+
+
+"component.modify" : "Өзгерту",
+
+
+"component.component": "Компонент",
+"component.transform": "Орын",
+"component.sprite": "Спрайт",
+"component.decal": "Жапсырма",
+"component.player_spawn": "Ойыншының пайда болуының орны",
+
+
+"component.transform.position" : "Позиция",
+"component.transform.scale" : "Көлем",
+"component.transform.floor" : "Қабат",
+
+
+"component.sprite.texture_index" : "Текстура индексы",
+
+
+"component.decal.attached_wall" : "Байланысты қабырға",
+"component.decal.z_offset" : "Тігінен позиция",
+"component.decal.wall_offset" : "Көлденең бойынша позиция",
+"component.decal.wall_normal_offset" : "Қабырғадан қашықтық",
+"component.decal.abs_height" : "Абсолют биіктік",
+
+"common.delete": "Кетіру",
+"common.close": "Жабу",
+"common.add" : "Қосу",
+"common.edit": "Өзгерту",
+"common.cancel" : "Жою",
+"common.id": "ID",
+
+
+"log.deleted_level": "Кетірілген деңгей:",
+"log.failed_delete_missing": "Деңгейді кетірген кезде қате, файл жоқ:",
+"log.delete_level_failed": "Деңгейді кетірген кезде қате:",
+
+
+"bug.unknown" : "Белгісіз",
+
+
+"launcher.name": "Tilky Engine лаунчеры",
+"launcher.projects": "Жобалар",
+"launcher.create_project": "Жобаны жасау",
+"launcher.create": "Жасау",
+"launcher.input_name": "Жобаның атауы",
+"launcher.open_project": "Жобаны ашу",
+"launcher.delete_project": "Жобаны кетіру",
+"launcher.quit": "Шығу"
+}

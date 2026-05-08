@@ -1,0 +1,90 @@
+{
+  "editor.title": "Edytor",
+  "editor.mode": "Tryb",
+  "editor.create_sector": "Utwórz Sektor",
+  "editor.create_texture": "Utwórz Teksture",
+  "editor.texture": "Tekstura",
+  "editor.background_texture": "Tekstura Tła",
+  "editor.floor": "Obecne Piętro",
+  "editor.save": "Zapisz",
+  "editor.save_and_play": "Zapisz i Zagraj",
+  "editor.shutdown": "Zamknij",
+  "editor.level_name": "Nazwa Poziomu",
+
+  "levels.title": "Poziomy",
+  "levels.load": "Wczytaj Poziom",
+  "levels.delete": "Usuń Poziom",
+
+  "mode.dot": "Tryb Kropek",
+  "mode.wall": "Tryb Ścian",
+  "mode.sector": "Tryb Sektorów",
+  "mode.entity": "Tryb Objektów/Postaci",
+  "mode.unknown": "Nieznany Tryb",
+
+  "sector.title": "Sektor",
+  "sector.ceil_height": "Wysokość Sufitu",
+  "sector.floor_height": "Wysokość Podłogi",
+  "sector.floor_count": "Ilość Podłóg",
+  "sector.ground_floor_texture": "Tekstura Parteru",
+  "sector.ceiling_texture": "Tekstura Sufitu",
+  "sector.ceiling_color": "Kolor Sufitu",
+  "sector.floor_color": "Kolor Podłogi",
+
+  "wall.title": "Ściana",
+  "wall.front_sector": "Przedni Sektor",
+  "wall.back_sector": "Tylni Sektor",
+  "wall.texture_index": "Indeks Tekstury",
+  "wall.floor": "Podłoga",
+  "wall.color": "Kolor Ściany",
+
+  "math.vector2.x" : "X",
+  "math.vector2.y" : "Y",
+
+  "entity.name" : "Nazwa",
+  "entity.title": "Postać",
+  "entity.add_component": "Dodaj Komponent",
+  "entity.delete": "Usuń",
+  "entity.components" : "Komponenty",
+
+  "component.modify" : "Modyfikuj",
+
+  "component.component": "Komponent",
+  "component.transform": "Położenie",
+  "component.sprite": "Obrazek",
+  "component.decal": "Naklejka",
+  "component.player_spawn": "Punkt Startowy Gracza",
+
+  "component.transform.position" : "Pozycja",
+  "component.transform.scale" : "Skala",
+  "component.transform.floor" : "Piętro",
+
+  "component.sprite.texture_index" : "Indeks Tekstury",
+
+  "component.decal.attached_wall" : "Dołączona Ściana",
+  "component.decal.z_offset" : "Pozycja Pionowa",
+  "component.decal.wall_offset" : "Pozycja Pozioma",
+  "component.decal.wall_normal_offset" : "Dystans od Ściany",
+  "component.decal.abs_height" : "Wysokość Maksymalna",
+
+  "common.delete": "Usuń",
+  "common.close": "Zamknij",
+  "common.add" : "Dodaj",
+  "common.edit": "Edytuj",
+  "common.cancel" : "Anuluj",
+  "common.id": "ID",
+
+  "log.deleted_level": "Usuń Poziom:",
+  "log.failed_delete_missing": "Wystąpił błąd podczas usuwania pozoimu; Plik poziomu prawdopodobnie nie istnieje:",
+  "log.delete_level_failed": "Nieudało się usunąć poziomu:",
+
+  "bug.unknown" : "Nieznany błąd",
+
+  "launcher.name": "Program Uruchamiający Tilky Engine",
+  "launcher.projects": "Projekty",
+  "launcher.create_project": "Utwórz Projekt",
+  "launcher.create": "Utwórz",
+  "launcher.input_name": "Nazwa Projektu",
+  "launcher.open_project": "Otwórz Projekt",
+  "launcher.delete_project": "Usuń Projekt",
+  "launcher.quit": "Wyjście"
+}
