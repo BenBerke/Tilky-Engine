@@ -8,12 +8,14 @@ The goal of the project is to build a small but complete engine toolchain:
 Launcher → Project System → Level Editor → Runtime
 
 ## Current Features
+```
 Launcher
 Create and open Tilky Engine projects.
 Stores projects inside the user’s documents folder.
 Supports launcher-wide settings through a Launcher.tilky file.
 Supports localisation/language switching.
 Launches the engine with the selected project file.
+```
 
 ## Project System
 Each project contains its own metadata and assets:
@@ -31,7 +33,7 @@ The engine loads project-specific levels, textures, and metadata through the pro
 
 ## Level Editor
 The editor is built using DearImGui and supports:
-
+```
 Dot placement
 Wall creation
 Sector creation
@@ -42,6 +44,7 @@ Component editing
 Level save/load
 Project-specific level files
 Basic editor camera movement and zooming
+```
 
 ## Entity/Component System
 
@@ -61,7 +64,7 @@ This allows editor-side entity editing while keeping runtime systems cache-frien
 ## Renderer
 
 The runtime renderer supports:
-
+```
 2.5D wall projection
 Sector-based floors and ceilings
 Textured walls
@@ -72,6 +75,7 @@ Depth handling
 OpenGL shader-based rendering
 Custom shaders with GLSL
 SSBO-based geometry buffers
+```
 
 ## Localisation
 
