@@ -210,3 +210,9 @@ Assets, fonts, textures, and example project files may have separate licences wh
 ## Author
 
 Created by Berke as a custom C++ game engine and editor project.
+
+## Translations
+Special thanks to:
+    Ilya Brezhnev (Russian & Kazakh)
+    
+for helping to translate the Tilky Engine
