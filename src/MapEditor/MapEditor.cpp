@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3_image/SDL_image.h>
 
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -36,6 +37,10 @@ namespace MapEditor {
             SDL_Quit();
             return;
         }
+
+        SDL_Surface* windowIcon = IMG_Load("../LauncherAssets/Fox.png");
+        if (windowIcon == nullptr) SDL_Log("IMG_Load Error: MapEditor.cpp: %s\n", SDL_GetError());
+        else if (!SDL_SetWindowIcon(window, windowIcon)) SDL_Log("SDL_SetWindowIcon Error on Map Editor: %s\n", SDL_GetError());
 
         if (!TTF_Init()) {
             SDL_Log("TTF_INIT failed: %s\n", SDL_GetError());

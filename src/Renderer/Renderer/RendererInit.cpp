@@ -8,6 +8,7 @@
 
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3_image/SDL_image.h>
 
 namespace RendererInternal {
     bool InitializeOpenGL() {
@@ -73,6 +74,9 @@ namespace Renderer {
             SDL_Log("SDL_CreateWindow Error: %s\n", SDL_GetError());
             return false;
         }
+        SDL_Surface* windowIcon = IMG_Load("../LauncherAssets/Fox.png");
+        if (windowIcon == nullptr) SDL_Log("IMG_Load Error: RendererInit.cpp: %s\n", SDL_GetError());
+        else if (!SDL_SetWindowIcon(window, windowIcon)) SDL_Log("SDL_SetWindowIcon Error on RendererInit.cpp: %s\n", SDL_GetError());
 
         if (!InitializeOpenGL()) {
             SDL_Log("Initialize OpenGL Error: %s\n", SDL_GetError());

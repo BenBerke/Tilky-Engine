@@ -249,6 +249,7 @@ target_include_directories(Wolfy_LauncherCore PUBLIC
 target_link_libraries(Wolfy_LauncherCore PUBLIC
         SDL3::SDL3
         SDL3::Headers
+        $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
         imgui
         Wolfy_Project
         Wolfy_Local

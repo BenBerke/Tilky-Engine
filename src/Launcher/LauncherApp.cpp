@@ -10,12 +10,14 @@
 
 #include <iostream>
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_render.h>
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
 #include <nlohmann/json.hpp>
+#include <SDL3_image/SDL_image.h>
 
 using json = nlohmann::json;
 
@@ -29,6 +31,10 @@ namespace {
     std::array<char, 64> projectName{};
 
     fs::path pendingProjectToOpen;
+
+    SDL_Texture* logo = nullptr;
+
+    int windowWidth = 1080, windowHeight = 960;
 
     void PutSpace(const int n) {
         for (int i = 0; i < n; i++) {
@@ -46,8 +52,8 @@ namespace LauncherApp {
 
         if (!SDL_CreateWindowAndRenderer(
                 "Tilky Engine Launcher",
-                1060,
-                800,
+                windowWidth,
+                windowHeight,
                 SDL_WINDOW_RESIZABLE,
                 &window,
                 &renderer
@@ -56,6 +62,10 @@ namespace LauncherApp {
             SDL_Quit();
             return;
         }
+
+        SDL_Surface* windowIcon = IMG_Load("../LauncherAssets/Fox.png");
+        if (windowIcon == nullptr) std::cerr << "Failed to load image!" << SDL_GetError() << std::endl;
+        else if (!SDL_SetWindowIcon(window, windowIcon)) std::cerr << "Failed to set launcher image icon!" << SDL_GetError() << std::endl;
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -74,6 +84,15 @@ namespace LauncherApp {
         ImGui_ImplSDLRenderer3_Init(renderer);
 
         Localisation::LoadLanguage(langCode);
+
+        logo = IMG_LoadTexture(renderer, "../LauncherAssets/LogoWithWhiteText.png");
+        if (logo == nullptr) {
+            std::cerr << "Failed to load logo!" << std::endl;
+        }
+        else {
+            SDL_SetTextureBlendMode(logo, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureAlphaMod(logo, 145);
+        }
     }
 
     void Update() {
@@ -94,7 +113,6 @@ namespace LauncherApp {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        int windowWidth, windowHeight;
         SDL_GetWindowSize(window, &windowWidth, &windowHeight);
         ImGui::SetNextWindowSize(ImVec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight)), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -210,6 +228,20 @@ namespace LauncherApp {
         ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
 
+        // Logo
+        constexpr float logoWidth = 600.0f, logoHeight = 600.0f;
+        if (logo != nullptr) {
+            SDL_FRect logoRect = {
+                static_cast<float>(windowWidth) / 2.0f - logoWidth/2.0f,
+                static_cast<float>(windowHeight) / 2.0f - logoHeight/2.0f,
+                logoWidth,
+                logoHeight
+            };
+
+            SDL_RenderTexture(renderer, logo, nullptr, &logoRect);
+        }
+        else  std::cout << "logo aint visible" << std::endl;
+
         SDL_RenderPresent(renderer);
     }
 
@@ -222,6 +254,11 @@ namespace LauncherApp {
     }
 
     void Destroy() {
+        if (logo != nullptr) {
+            SDL_DestroyTexture(logo);
+            logo = nullptr;
+        }
+
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();

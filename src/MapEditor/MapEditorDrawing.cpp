@@ -183,7 +183,9 @@ namespace MapEditorInternal {
 
             const Vector2 objectScreen = WorldToScreen(transform.position, cameraPos);
 
-            const Vector3 color = {250, 250, 255};
+            Vector3 color = {250, 250, 255};
+            if (level.entities[transform.ownerID].HasComponent<ComponentPlayerSpawn>())
+                color = {250, 100, 100};
 
             SDL_FRect dotRect = {
                 objectScreen.x - 3.0f,
