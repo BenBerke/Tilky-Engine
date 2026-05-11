@@ -130,7 +130,7 @@ Go to EngineAssets/Local, copy paste the en.json to the same directory, name it 
 "bug.unknown" : "Unknown",
 
 
-"launcher.name": "Tilky Engine Launcher", // “Tilky” is a special name, do not change it (Unless you are using a different script or the rules of your language says it, then you can change it to a phonetic spelling in your system). Pronunciation at the end of the google doc
+"launcher.name": "Tilky Engine Launcher", // “Tilky” is a special name, do not change it (Unless you are using a different script or the rules of your language says it, then you can change it to a phonetic spelling in your system). Pronunciation at the end of the markdown
 "launcher.projects": "Projects",
 "launcher.create_project": "Create Project",
 "launcher.create": "Create",
