@@ -7,55 +7,86 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
+#include <filesystem>
+
 #include <SDL3/SDL_init.h>
-#include <SDL3/SDL_log.h>
 #include <SDL3_image/SDL_image.h>
+
+#include <spdlog/spdlog.h>
+
+namespace fs = std::filesystem;
 
 namespace RendererInternal {
     bool InitializeOpenGL() {
         if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4)) {
-            SDL_Log("SDL_GL_SetAttribute Major Error: %s\n", SDL_GetError());
+            spdlog::critical(
+                "SDL_GL_SetAttribute failed while setting OpenGL major version: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
         if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3)) {
-            SDL_Log("SDL_GL_SetAttribute Minor Error: %s\n", SDL_GetError());
+            spdlog::critical(
+                "SDL_GL_SetAttribute failed while setting OpenGL minor version: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
         if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)) {
-            SDL_Log("SDL_GL_SetAttribute Core Error: %s\n", SDL_GetError());
+            spdlog::critical(
+                "SDL_GL_SetAttribute failed while setting OpenGL core profile: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
         if (!SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)) {
-            SDL_Log("SDL_GL_SetAttribute Double Error: %s\n", SDL_GetError());
+            spdlog::critical(
+                "SDL_GL_SetAttribute failed while enabling double buffering: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
         if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)) {
-            SDL_Log("SDL_GL_SetAttribute Depth Error: %s\n", SDL_GetError());
+            spdlog::critical(
+                "SDL_GL_SetAttribute failed while setting depth buffer size: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
         Renderer::glContext = SDL_GL_CreateContext(Renderer::window);
-        if (!Renderer::glContext) {
-            SDL_Log("SDL_GL_CreateContext Error: %s", SDL_GetError());
+
+        if (Renderer::glContext == nullptr) {
+            spdlog::critical(
+                "SDL_GL_CreateContext failed: {}",
+                SDL_GetError()
+            );
+
             SDL_DestroyWindow(Renderer::window);
             Renderer::window = nullptr;
+
             return false;
         }
 
         if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
-            SDL_Log("Failed to initialize GLAD");
+            spdlog::critical("Failed to initialize GLAD");
             return false;
         }
 
         glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
         if (!SDL_GL_SetSwapInterval(0)) {
-            SDL_Log("SDL_GL_SetSwapInterval Warning: %s", SDL_GetError());
+            spdlog::warn(
+                "SDL_GL_SetSwapInterval failed. VSync setting may not apply: {}",
+                SDL_GetError()
+            );
         }
+
+        spdlog::info("OpenGL initialized successfully");
 
         return true;
     }
@@ -63,37 +94,64 @@ namespace RendererInternal {
 
 namespace Renderer {
     using namespace RendererInternal;
-    //region init
+
     bool InitSDL() {
-        if (SDL_Init(SDL_INIT_VIDEO) == false) {
-            SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
+        if (!SDL_Init(SDL_INIT_VIDEO)) {
+            spdlog::critical(
+                "SDL_Init failed while initializing video subsystem: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
-        window = SDL_CreateWindow("Wolfy Engine", SCREEN_WIDTH, SCREEN_HEIGHT, WINDOW_FLAGS);
-        if (!window) {
-            SDL_Log("SDL_CreateWindow Error: %s\n", SDL_GetError());
+        window = SDL_CreateWindow(
+            "Tilky Engine",
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT,
+            WINDOW_FLAGS
+        );
+
+        if (window == nullptr) {
+            spdlog::critical(
+                "SDL_CreateWindow failed: {}",
+                SDL_GetError()
+            );
             return false;
         }
 
-        const fs::path iconPath = ProjectManager::GetEngineBasePath() / "LauncherAssets" / "Fox.png";
+        const fs::path iconPath =
+            ProjectManager::FindAssetPath(fs::path("LauncherAssets") / "Fox.png");
+
         SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
 
-        if (windowIcon == nullptr)
-            SDL_Log("RendererInit.cpp failed to load window icon: %s", SDL_GetError());
+        if (windowIcon == nullptr) {
+            spdlog::warn(
+                "Renderer window icon failed to load. This does not break the renderer. Path: {} Error: {}",
+                iconPath.string(),
+                SDL_GetError()
+            );
+        }
         else {
             if (!SDL_SetWindowIcon(window, windowIcon)) {
-                SDL_Log("RendeerInit.cpp failed to set window icon: %s", SDL_GetError());
+                spdlog::warn(
+                    "Failed to set renderer window icon. This does not break the renderer. Error: {}",
+                    SDL_GetError()
+                );
             }
+
             SDL_DestroySurface(windowIcon);
         }
 
         if (!InitializeOpenGL()) {
-            SDL_Log("Initialize OpenGL Error: %s\n", SDL_GetError());
+            spdlog::critical("OpenGL initialization failed");
             return false;
         }
+
+        spdlog::info("Renderer SDL initialization completed");
+
         return true;
     }
+
     bool InitImGui() {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -106,32 +164,54 @@ namespace Renderer {
         ImGui_ImplSDL3_InitForOpenGL(window, glContext);
         ImGui_ImplOpenGL3_Init("#version 430");
 
+        spdlog::info("Renderer ImGui initialized");
+
         return true;
     }
 
     bool InitProjection() {
-        const fs::path shaderPath = ProjectManager::GetEngineBasePath() / "Shaders";
+        const fs::path renderingVsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Rendering" / "Rendering.vs.glsl");
+
+        const fs::path renderingFsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Rendering" / "Rendering.fs.glsl");
+
         projectionShader = std::make_unique<Shader>(
-    (shaderPath / "Rendering" / "Rendering.vs.glsl").string().c_str(),
-    (shaderPath / "Rendering" / "Rendering.fs.glsl").string().c_str()
+            renderingVsPath.string().c_str(),
+            renderingFsPath.string().c_str()
         );
 
         if (projectionShader->ID == 0) {
-            SDL_Log("Projection Shader creation failed");
+            spdlog::critical(
+                "Projection shader creation failed. VS: {} FS: {}",
+                renderingVsPath.string(),
+                renderingFsPath.string()
+            );
             return false;
         }
 
+        const fs::path backgroundVsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Background" / "Background.vs.glsl");
+
+        const fs::path backgroundFsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Background" / "Background.fs.glsl");
+
         backgroundShader = std::make_unique<Shader>(
-    (shaderPath / "Background" / "Background.vs.glsl").string().c_str(),
-    (shaderPath / "Background" / "Background.fs.glsl").string().c_str()
+            backgroundVsPath.string().c_str(),
+            backgroundFsPath.string().c_str()
         );
 
         if (backgroundShader->ID == 0) {
-            SDL_Log("Background Shader creation failed");
+            spdlog::critical(
+                "Background shader creation failed. VS: {} FS: {}",
+                backgroundVsPath.string(),
+                backgroundFsPath.string()
+            );
             return false;
         }
 
         backgroundShader->use();
+
         glUniform1i(
             glGetUniformLocation(backgroundShader->ID, "backgroundTexture"),
             0
@@ -140,31 +220,43 @@ namespace Renderer {
         glGenVertexArrays(1, &VAO);
         glBindVertexArray(VAO);
         glBindVertexArray(0);
+
+        spdlog::info("Projection and background shaders initialized");
+
         return true;
     }
 
     bool InitUI() {
         const float vertices[] = {
             // x, y,      u, v
-            0.5f,  0.5f, 1.0f, 0.0f,  // top right
-            0.5f, -0.5f, 1.0f, 1.0f,  // bottom right
-           -0.5f, -0.5f, 0.0f, 1.0f,  // bottom left
-           -0.5f,  0.5f, 0.0f, 0.0f   // top left
-       };
+             0.5f,  0.5f, 1.0f, 0.0f,
+             0.5f, -0.5f, 1.0f, 1.0f,
+            -0.5f, -0.5f, 0.0f, 1.0f,
+            -0.5f,  0.5f, 0.0f, 0.0f
+        };
 
         const unsigned int indices[] = {
             0, 1, 3,
             1, 2, 3
         };
-        const fs::path shaderPath = ProjectManager::GetEngineBasePath() / "Shaders";
+
+        const fs::path uiVsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "UI" / "UI.vs.glsl");
+
+        const fs::path uiFsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "UI" / "UI.fs.glsl");
+
         uiShader = std::make_unique<Shader>(
-    (shaderPath / "UI" / "UI.vs.glsl").string().c_str(),
-    (shaderPath / "UI" / "UI.fs.glsl").string().c_str()
+            uiVsPath.string().c_str(),
+            uiFsPath.string().c_str()
         );
 
-
         if (uiShader->ID == 0) {
-            SDL_Log("UI Shader creation failed");
+            spdlog::critical(
+                "UI shader creation failed. VS: {} FS: {}",
+                uiVsPath.string(),
+                uiFsPath.string()
+            );
             return false;
         }
 
@@ -182,7 +274,6 @@ namespace Renderer {
             GL_STATIC_DRAW
         );
 
-        // IMPORTANT: bind EBO while uiVAO is bound
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, uiEBO);
         glBufferData(
             GL_ELEMENT_ARRAY_BUFFER,
@@ -191,7 +282,6 @@ namespace Renderer {
             GL_STATIC_DRAW
         );
 
-        // location 0: position
         glVertexAttribPointer(
             0,
             2,
@@ -202,7 +292,6 @@ namespace Renderer {
         );
         glEnableVertexAttribArray(0);
 
-        // location 1: UV
         glVertexAttribPointer(
             1,
             2,
@@ -214,22 +303,31 @@ namespace Renderer {
         glEnableVertexAttribArray(1);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
-
         glBindVertexArray(0);
+
+        spdlog::info("Renderer UI buffers and shader initialized");
 
         return true;
     }
 
     bool InitDebug() {
+        const fs::path debugVsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Debug" / "debug.vs.glsl");
 
-        const fs::path shaderPath = ProjectManager::GetEngineBasePath() / "Shaders";
+        const fs::path debugFsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Debug" / "debug.fs.glsl");
+
         debugShader = std::make_unique<Shader>(
-    (shaderPath / "Debug" / "debug.vs.glsl").string().c_str(),
-    (shaderPath / "Debug" / "debug.fs.glsl").string().c_str()
+            debugVsPath.string().c_str(),
+            debugFsPath.string().c_str()
         );
 
         if (debugShader->ID == 0) {
-            SDL_Log("Debug Shader creation failed");
+            spdlog::critical(
+                "Debug shader creation failed. VS: {} FS: {}",
+                debugVsPath.string(),
+                debugFsPath.string()
+            );
             return false;
         }
 
@@ -239,32 +337,46 @@ namespace Renderer {
         glBindVertexArray(debugVAO);
         glBindBuffer(GL_ARRAY_BUFFER, debugVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 16, nullptr, GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), reinterpret_cast<void*>(0));
         glEnableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
 
         debugColorUniform = glGetUniformLocation(debugShader->ID, "uColor");
+
         if (debugColorUniform == -1) {
-            SDL_Log("Failed to get debug shader uniform location uColor");
+            spdlog::critical("Failed to get debug shader uniform location: uColor");
             return false;
         }
+
+        spdlog::info("Debug renderer initialized");
+
         return true;
     }
 
     bool InitText() {
-        const fs::path shaderPath = ProjectManager::GetEngineBasePath() / "Shaders";
+        const fs::path glyphVsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.vs.glsl");
+
+        const fs::path glyphFsPath =
+            ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.fs.glsl");
+
         textShader = std::make_unique<Shader>(
-    (shaderPath / "Glyph" / "glyph.vs.glsl").string().c_str(),
-    (shaderPath / "Glyph" / "glyph.fs.glsl").string().c_str()
+            glyphVsPath.string().c_str(),
+            glyphFsPath.string().c_str()
         );
 
         if (textShader->ID == 0) {
-            SDL_Log("Text Shader creation failed");
+            spdlog::critical(
+                "Text shader creation failed. VS: {} FS: {}",
+                glyphVsPath.string(),
+                glyphFsPath.string()
+            );
             return false;
         }
 
         textShader->use();
+
         Matrix4 projection = Matrix4::Orthographic(
             0.0f, static_cast<float>(SCREEN_WIDTH),
             0.0f, static_cast<float>(SCREEN_HEIGHT),
@@ -278,27 +390,57 @@ namespace Renderer {
             &projection.m[0][0]
         );
 
-        glUniform1i(glGetUniformLocation(textShader->ID, "text"), 0);
+        glUniform1i(
+            glGetUniformLocation(textShader->ID, "text"),
+            0
+        );
 
         if (!InitializeFont()) {
-            SDL_Log("Failed to initialize font");
+            spdlog::critical("Failed to initialize renderer font system");
             return false;
         }
+
+        spdlog::info("Renderer text system initialized");
 
         return true;
     }
 
-    //endregion
-
     bool Initialize() {
-        InitSDL();
-        InitImGui();
-        InitProjection();
-        InitUI();
-        if (DEBUG_ENABLED) InitDebug();
-        InitText();
+        if (!InitSDL()) {
+            spdlog::critical("Renderer initialization stopped at InitSDL");
+            return false;
+        }
+
+        if (!InitImGui()) {
+            spdlog::critical("Renderer initialization stopped at InitImGui");
+            return false;
+        }
+
+        if (!InitProjection()) {
+            spdlog::critical("Renderer initialization stopped at InitProjection");
+            return false;
+        }
+
+        if (!InitUI()) {
+            spdlog::critical("Renderer initialization stopped at InitUI");
+            return false;
+        }
+
+        if (DEBUG_ENABLED) {
+            if (!InitDebug()) {
+                spdlog::critical("Renderer initialization stopped at InitDebug");
+                return false;
+            }
+        }
+
+        if (!InitText()) {
+            spdlog::critical("Renderer initialization stopped at InitText");
+            return false;
+        }
 
         SDL_SetWindowRelativeMouseMode(window, true);
+
+        spdlog::info("Renderer initialized successfully");
 
         return true;
     }

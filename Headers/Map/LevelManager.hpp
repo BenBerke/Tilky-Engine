@@ -2,8 +2,8 @@
 // Created by berke on 5/2/2026.
 //
 
-#ifndef WOLFY_ENGINE_LEVELMANAGER_H
-#define WOLFY_ENGINE_LEVELMANAGER_H
+#ifndef TILKY_ENGINE_LEVELMANAGER_H
+#define TILKY_ENGINE_LEVELMANAGER_H
 
 #include <vector>
 
@@ -17,4 +17,4 @@ namespace LevelManager {
     bool HasCurrentLevel();
 }
 
-#endif // WOLFY_ENGINE_LEVELMANAGER_H
+#endif // TILKY_ENGINE_LEVELMANAGER_H

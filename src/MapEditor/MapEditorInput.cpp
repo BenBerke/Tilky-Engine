@@ -174,14 +174,11 @@ namespace MapEditorInternal {
             UpdateEditorZoom();
         }
 
-
         if (!keyboardBlockedByImgui) {
         }
 
         // Force quit without saving
-        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
-            quit = true;
-        }
+        quit = InputManager::QuitRequested();
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
             ChangeMode();

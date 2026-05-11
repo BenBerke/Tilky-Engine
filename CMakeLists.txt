@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1)
 
-project(Wolfy_Engine LANGUAGES C CXX)
+project(Tilky_Engine LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,9 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-option(WOLFY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
+option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 find_package(OpenGL REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3 Headers)
 find_package(SDL3_image REQUIRED CONFIG)
 find_package(SDL3_ttf REQUIRED CONFIG)
@@ -72,23 +73,24 @@ endif()
 # Used by launcher and engine.
 # ============================================================
 
-add_library(Wolfy_Project STATIC
+add_library(Tilky_Project STATIC
         src/Project/ProjectManager.cpp
         Headers/Project/ProjectManager.hpp
 )
 
-target_include_directories(Wolfy_Project PUBLIC
+target_include_directories(Tilky_Project PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(Wolfy_Project PUBLIC
+target_link_libraries(Tilky_Project PUBLIC
         SDL3::SDL3
         SDL3::Headers
+        spdlog::spdlog
         nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(Wolfy_Project PUBLIC
-        WOLFY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_definitions(Tilky_Project PUBLIC
+        TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 # ============================================================
@@ -96,23 +98,24 @@ target_compile_definitions(Wolfy_Project PUBLIC
 # Used by launcher and engine.
 # ============================================================
 
-add_library(Wolfy_Local STATIC
+add_library(Tilky_Local STATIC
         src/Engine/Local/Local.cpp
         Headers/Engine/Local/Local.hpp
 )
 
-target_include_directories(Wolfy_Local PUBLIC
+target_include_directories(Tilky_Local PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(Wolfy_Local PUBLIC
+target_link_libraries(Tilky_Local PUBLIC
         SDL3::SDL3
         SDL3::Headers
+        spdlog::spdlog
         nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(Wolfy_Local PUBLIC
-        WOLFY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_definitions(Tilky_Local PUBLIC
+        TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 # ============================================================
@@ -123,7 +126,7 @@ target_compile_definitions(Wolfy_Local PUBLIC
 # No external library source files.
 # ============================================================
 
-set(WOLFY_ENGINE_SOURCES
+set(TILKY_ENGINE_SOURCES
         src/Renderer/TextureManager.cpp
 
         src/MapEditor/MapEditor.cpp
@@ -176,11 +179,11 @@ set(WOLFY_ENGINE_SOURCES
 # This compiles all engine files.
 # ============================================================
 
-add_library(Wolfy_EngineCore STATIC
-        ${WOLFY_ENGINE_SOURCES}
+add_library(Tilky_EngineCore STATIC
+        ${TILKY_ENGINE_SOURCES}
 )
 
-target_precompile_headers(Wolfy_EngineCore PRIVATE
+target_precompile_headers(Tilky_EngineCore PRIVATE
         <vector>
         <string>
         <array>
@@ -194,32 +197,33 @@ target_precompile_headers(Wolfy_EngineCore PRIVATE
         <nlohmann/json.hpp>
 )
 
-target_include_directories(Wolfy_EngineCore PUBLIC
+target_include_directories(Tilky_EngineCore PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         src/MapEditor
 )
 
-target_link_libraries(Wolfy_EngineCore PUBLIC
+target_link_libraries(Tilky_EngineCore PUBLIC
         SDL3::SDL3
+        spdlog::spdlog
         SDL3::Headers
         $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
         SDL3_ttf::SDL3_ttf
         Freetype::Freetype
         glad
         imgui
-        Wolfy_Project
-        Wolfy_Local
+        Tilky_Project
+        Tilky_Local
         nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(Wolfy_EngineCore PUBLIC
-        WOLFY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_definitions(Tilky_EngineCore PUBLIC
+        TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-if (WOLFY_USE_IMGUI)
-    target_compile_definitions(Wolfy_EngineCore PUBLIC WOLFY_USE_IMGUI=1)
+if (TILKY_USE_IMGUI)
+    target_compile_definitions(Tilky_EngineCore PUBLIC TILKY_USE_IMGUI=1)
 else()
-    target_compile_definitions(Wolfy_EngineCore PUBLIC WOLFY_USE_IMGUI=0)
+    target_compile_definitions(Tilky_EngineCore PUBLIC TILKY_USE_IMGUI=0)
 endif()
 
 # ============================================================
@@ -228,7 +232,7 @@ endif()
 # No engine renderer/editor files.
 # ============================================================
 
-set(WOLFY_LAUNCHER_SOURCES
+set(TILKY_LAUNCHER_SOURCES
         src/Launcher/LauncherApp.cpp
         Headers/Launcher/LauncherApp.hpp
 )
@@ -238,79 +242,80 @@ set(WOLFY_LAUNCHER_SOURCES
 # This compiles only launcher files.
 # ============================================================
 
-add_library(Wolfy_LauncherCore STATIC
-        ${WOLFY_LAUNCHER_SOURCES}
+add_library(Tilky_LauncherCore STATIC
+        ${TILKY_LAUNCHER_SOURCES}
 )
 
-target_include_directories(Wolfy_LauncherCore PUBLIC
+target_include_directories(Tilky_LauncherCore PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(Wolfy_LauncherCore PUBLIC
+target_link_libraries(Tilky_LauncherCore PUBLIC
         SDL3::SDL3
+        spdlog::spdlog
         SDL3::Headers
         $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
         imgui
-        Wolfy_Project
-        Wolfy_Local
+        Tilky_Project
+        Tilky_Local
         nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(Wolfy_LauncherCore PUBLIC
-        WOLFY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_definitions(Tilky_LauncherCore PUBLIC
+        TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 # ============================================================
-# Runnable 1: Wolfy_Launcher
+# Runnable 1: Tilky_Launcher
 # ONLY launcher executable.
 # Compiles LauncherMain.cpp + launcher-related library code.
 # Does not compile engine files.
 # ============================================================
 
-add_executable(Wolfy_Launcher
+add_executable(Tilky_Launcher
         src/Launcher/LauncherMain.cpp
-        resources/WolfyIcon.rc
+        resources/TilkyIcon.rc
 )
 
-target_link_libraries(Wolfy_Launcher PRIVATE
-        Wolfy_LauncherCore
+target_link_libraries(Tilky_Launcher PRIVATE
+        Tilky_LauncherCore
 )
 
 # ============================================================
-# Runnable 2: Wolfy_Engine
+# Runnable 2: Tilky_Engine
 # ONLY engine executable.
 # Compiles EngineMain.cpp + all engine files.
 # Does not compile launcher files.
 # ============================================================
 
-add_executable(Wolfy_Engine
+add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
-        resources/WolfyIcon.rc
+        resources/TilkyIcon.rc
 )
 
-target_link_libraries(Wolfy_Engine PRIVATE
-        Wolfy_EngineCore
+target_link_libraries(Tilky_Engine PRIVATE
+        Tilky_EngineCore
 )
 
 # ============================================================
-# Runnable 3: Wolfy_All
+# Runnable 3: Tilky_All
 # Launcher-style executable that also builds/links every engine file.
 # Does not directly list ImGui, SDL, GLAD, etc. source files.
 # ============================================================
 
-add_executable(Wolfy_All
+add_executable(Tilky_All
         src/Launcher/LauncherMain.cpp
-        resources/WolfyIcon.rc
+        resources/TilkyIcon.rc
 )
 
-target_link_libraries(Wolfy_All PRIVATE
-        Wolfy_LauncherCore
-        Wolfy_EngineCore
+target_link_libraries(Tilky_All PRIVATE
+        Tilky_LauncherCore
+        Tilky_EngineCore
 )
 
-add_dependencies(Wolfy_All
-        Wolfy_Launcher
-        Wolfy_Engine
+add_dependencies(Tilky_All
+        Tilky_Launcher
+        Tilky_Engine
 )
 
 # ============================================================
@@ -318,7 +323,7 @@ add_dependencies(Wolfy_All
 # Copy folders needed by the .exe into the build output folder.
 # ============================================================
 
-set(WOLFY_RUNTIME_ASSET_DIRS
+set(TILKY_RUNTIME_ASSET_DIRS
         EngineAssets
         LauncherAssets
         Shaders
@@ -327,7 +332,7 @@ set(WOLFY_RUNTIME_ASSET_DIRS
 )
 
 function(copy_runtime_assets target_name)
-    foreach(asset_dir IN LISTS WOLFY_RUNTIME_ASSET_DIRS)
+    foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}")
             add_custom_command(TARGET ${target_name} POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -341,9 +346,9 @@ function(copy_runtime_assets target_name)
     endforeach()
 endfunction()
 
-copy_runtime_assets(Wolfy_Launcher)
-copy_runtime_assets(Wolfy_Engine)
-copy_runtime_assets(Wolfy_All)
+copy_runtime_assets(Tilky_Launcher)
+copy_runtime_assets(Tilky_Engine)
+copy_runtime_assets(Tilky_All)
 
 # ============================================================
 # Runtime DLLs
@@ -374,10 +379,10 @@ function(make_gui_in_release target_name)
     endif()
 endfunction()
 
-make_gui_in_release(Wolfy_Launcher)
-make_gui_in_release(Wolfy_Engine)
-make_gui_in_release(Wolfy_All)
+make_gui_in_release(Tilky_Launcher)
+#make_gui_in_release(Tilky_Engine)
+#make_gui_in_release(Tilky_All)
 
-copy_runtime_dlls(Wolfy_Launcher)
-copy_runtime_dlls(Wolfy_Engine)
-copy_runtime_dlls(Wolfy_All)
+copy_runtime_dlls(Tilky_Launcher)
+copy_runtime_dlls(Tilky_Engine)
+copy_runtime_dlls(Tilky_All)

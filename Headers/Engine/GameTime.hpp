@@ -2,8 +2,8 @@
 // Created by berke on 4/5/2026.
 //
 
-#ifndef TILKYENGINE_GAMETIME_H
-#define TILKYENGINE_GAMETIME_H
+#ifndef TILKY_ENGINE_GAMETIME_H
+#define TILKY_ENGINE_GAMETIME_H
 
 #include <SDL3/SDL.h>
 

@@ -2,8 +2,8 @@
 // Created by berke on 4/12/2026.
 //
 
-#ifndef WOLFY_ENGINE_SHADER_H
-#define WOLFY_ENGINE_SHADER_H
+#ifndef TILKY_ENGINE_SHADER_H
+#define TILKY_ENGINE_SHADER_H
 
 #include <glad/glad.h>
 

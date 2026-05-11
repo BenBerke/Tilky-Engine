@@ -2,8 +2,8 @@
 // Created by berke on 4/13/2026.
 //
 
-#ifndef WOLFY_ENGINE_WALL_H
-#define WOLFY_ENGINE_WALL_H
+#ifndef TILKY_ENGINE_WALL_H
+#define TILKY_ENGINE_WALL_H
 
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
@@ -57,4 +57,4 @@ struct Wall {
     }
 };
 
-#endif //WOLFY_ENGINE_WALL_H
+#endif //TILKY_ENGINE_WALL_H

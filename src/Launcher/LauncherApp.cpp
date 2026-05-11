@@ -18,6 +18,7 @@
 
 #include <nlohmann/json.hpp>
 #include <SDL3_image/SDL_image.h>
+#include <spdlog/spdlog.h>
 
 using json = nlohmann::json;
 
@@ -36,6 +37,53 @@ namespace {
 
     int windowWidth = 1080, windowHeight = 960;
 
+    std::map<std::string, std::string> languages;
+
+    bool RefreshLanguages() {
+        languages.clear();
+
+        const fs::path languagesPath =
+            ProjectManager::FindAssetPath(fs::path("EngineAssets") / "Local");
+
+        if (!fs::exists(languagesPath)) {
+            spdlog::critical("Languages folder does not exists at {}", languagesPath.string());
+            return false;
+        }
+
+        for (const auto& entry : fs::directory_iterator(languagesPath)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+
+            if (entry.path().extension() != ".json") {
+                continue;
+            }
+
+            const std::string languageCode =
+                entry.path().stem().string();
+
+            std::string displayName = languageCode;
+
+            try {
+                std::ifstream file(entry.path());
+
+                if (file.is_open()) {
+                    json languageJson;
+                    file >> languageJson;
+
+                    displayName = languageJson.value("language.name", languageCode);
+                }
+            }
+            catch (const std::exception& e) {
+                spdlog::error("Failed to read language file: {} {}", entry.path().string(), e.what());
+            }
+
+            languages[languageCode] = displayName;
+        }
+
+        return true;
+    }
+
     void PutSpace(const int n) {
         for (int i = 0; i < n; i++) {
             ImGui::Spacing();
@@ -46,19 +94,19 @@ namespace {
 namespace LauncherApp {
     void Start(const std::string& langCode) {
         if (!SDL_Init(SDL_INIT_VIDEO)) {
-            SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
+            spdlog::critical("SDL_Init failed: {}", SDL_GetError());
             return;
         }
 
         if (!SDL_CreateWindowAndRenderer(
-                "Tilky Engine Launcher",
+                "Tilky_Engine Launcher",
                 windowWidth,
                 windowHeight,
                 SDL_WINDOW_RESIZABLE,
                 &window,
                 &renderer
             )) {
-            std::cerr << "Failed to start launcher: " << SDL_GetError() << std::endl;
+            spdlog::critical("Failed to create window or renderer for launcher: {}", SDL_GetError());
             SDL_Quit();
             return;
         }
@@ -70,23 +118,14 @@ namespace LauncherApp {
 
         std::cout << "Loading window icon from: " << iconPath << std::endl;
 
-        if (!fs::exists(iconPath)) {
-            std::cerr << "Icon file does not exist at: " << iconPath << std::endl;
-        }
+        if (!fs::exists(iconPath)) spdlog::error("Icon file does not exist at {}", iconPath.string());
         else {
             SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
 
-            if (windowIcon == nullptr) {
-                std::cerr << "Failed to load window icon: "
-                          << SDL_GetError()
-                          << std::endl;
-            }
+            if (windowIcon == nullptr) spdlog::error("Failed to load window icon: {}", SDL_GetError());
             else {
-                if (!SDL_SetWindowIcon(window, windowIcon)) {
-                    std::cerr << "Failed to set launcher window icon: "
-                              << SDL_GetError()
-                              << std::endl;
-                }
+                if (!SDL_SetWindowIcon(window, windowIcon))
+                    spdlog::error("Failed to set launcher window icon, {}", SDL_GetError());
 
                 SDL_DestroySurface(windowIcon);
             }
@@ -100,7 +139,7 @@ namespace LauncherApp {
 
         const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
-        std::cout << "Loading ImGui font from: " << fontPath << std::endl;
+        spdlog::info("Loading ImGui font from: {}", fontPath.string());
 
         io.Fonts->AddFontFromFileTTF(
             fontPath.string().c_str(),
@@ -113,23 +152,18 @@ namespace LauncherApp {
         ImGui_ImplSDLRenderer3_Init(renderer);
 
         Localisation::LoadLanguage(langCode);
+        RefreshLanguages();
 
         // Background/logo texture
         const fs::path logoPath = basePath / "LauncherAssets" / "LogoWithWhiteText.png";
 
-        std::cout << "Loading launcher logo from: " << logoPath << std::endl;
-
         if (!fs::exists(logoPath)) {
-            std::cerr << "Logo file does not exist at: " << logoPath << std::endl;
+            spdlog::error("Background logo does not exists at: {}", logoPath.string());
         }
         else {
             logo = IMG_LoadTexture(renderer, logoPath.string().c_str());
 
-            if (logo == nullptr) {
-                std::cerr << "Failed to load logo: "
-                          << SDL_GetError()
-                          << std::endl;
-            }
+            if (logo == nullptr) spdlog::error("Failed to load logo {}", SDL_GetError());
             else {
                 SDL_SetTextureBlendMode(logo, SDL_BLENDMODE_BLEND);
                 SDL_SetTextureAlphaMod(logo, 145);
@@ -173,7 +207,7 @@ namespace LauncherApp {
             ImGui::InputText(Localisation::Get("launcher.input_name").c_str(), projectName.data(), projectName.size());
 
             if (ImGui::Button(Localisation::Get("launcher.create").c_str())) {
-                ProjectManager::CreateDirectory(projectName.data());
+                ProjectManager::CreateProjectDirectory(projectName.data());
                 creatingProject = false;
             }
             ImGui::SameLine();
@@ -257,19 +291,68 @@ namespace LauncherApp {
         ImGui::SameLine();
 
 
-        // Languages
+        //region Languages
 
-        constexpr int langCount = 5;
-        ImGui::SetCursorPosX(static_cast<float>(windowWidth) - langCount * 60.0f);
-        if (ImGui::Button("English")) Localisation::LoadLanguage("en");
-        ImGui::SameLine();
-        if (ImGui::Button("Türkçe")) Localisation::LoadLanguage("tr");
-        ImGui::SameLine();
-        if (ImGui::Button("Kazakh")) Localisation::LoadLanguage("qa");
-        ImGui::SameLine();
-        if (ImGui::Button("Russian")) Localisation::LoadLanguage("ru");
-        ImGui::SameLine();
-        if (ImGui::Button("Polish")) Localisation::LoadLanguage("pl");
+        if (languages.empty()) {
+            RefreshLanguages();
+        }
+
+        const ImGuiStyle& style = ImGui::GetStyle();
+
+        float totalLanguageButtonWidth = 0.0f;
+
+        for (const auto& [languageCode, displayName] : languages) {
+            const float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+            const float buttonWidth = textWidth + style.FramePadding.x * 2.0f;
+
+            totalLanguageButtonWidth += buttonWidth;
+            totalLanguageButtonWidth += style.ItemSpacing.x;
+        }
+
+        if (!languages.empty()) {
+            totalLanguageButtonWidth -= style.ItemSpacing.x;
+        }
+
+        const float languageStartX =
+            std::max(10.0f, static_cast<float>(windowWidth) - totalLanguageButtonWidth - 10.0f);
+
+        ImGui::SetCursorPosX(languageStartX);
+
+        int languageIndex = 0;
+
+        for (const auto& [languageCode, displayName] : languages) {
+            ImGui::PushID(languageCode.c_str());
+
+            const bool isCurrentLanguage =
+                Localisation::CurrentLanguage() == languageCode;
+
+            if (isCurrentLanguage) {
+                ImGui::BeginDisabled();
+            }
+
+            if (ImGui::Button(displayName.c_str())) {
+                if (Localisation::LoadLanguage(languageCode)) {
+                    spdlog::info("Changed language to {}", languageCode);
+                }
+                else {
+                    spdlog::error("Failed to change language to {}", languageCode);
+                }
+            }
+
+            if (isCurrentLanguage) {
+                ImGui::EndDisabled();
+            }
+
+            ImGui::PopID();
+
+            ++languageIndex;
+
+            if (languageIndex < static_cast<int>(languages.size())) {
+                ImGui::SameLine();
+            }
+        }
+
+        //endregion
 
         ImGui::End();
 
@@ -288,7 +371,7 @@ namespace LauncherApp {
 
             SDL_RenderTexture(renderer, logo, nullptr, &logoRect);
         }
-        else  std::cout << "Logo failed to load" << std::endl;
+        else  spdlog::error("Logo failed to load");
 
         SDL_RenderPresent(renderer);
     }

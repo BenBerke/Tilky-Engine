@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_VECTOR2MATH_H
-#define WOLFY_ENGINE_VECTOR2MATH_H
+#ifndef TILKY_ENGINE_VECTOR2MATH_H
+#define TILKY_ENGINE_VECTOR2MATH_H
 
 #include <cmath>
 #include "Vector2.hpp"
@@ -52,4 +52,4 @@ namespace Vector2Math {
 
 }
 
-#endif // WOLFY_ENGINE_VECTOR2MATH_H
+#endif // TILKY_ENGINE_VECTOR2MATH_H

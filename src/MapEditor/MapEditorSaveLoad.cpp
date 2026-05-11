@@ -5,6 +5,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <SDL3/SDL_log.h>
+#include <spdlog/spdlog.h>
 
 #include "Headers/Project/ProjectManager.hpp"
 
@@ -535,7 +536,7 @@ namespace MapEditorInternal {
                 MapEditor::maps.push_back(entry.path().stem().string());
             }
         } catch (const std::filesystem::filesystem_error &e) {
-            SDL_Log("Error loading levels: %s", e.what());
+            spdlog::critical("Error loading levels {}", e.what());
         }
     }
 
@@ -545,7 +546,7 @@ namespace MapEditorInternal {
         const std::string cleanName = CleanLevelName(saveTo);
 
         if (cleanName.empty()) {
-            SDL_Log("Cannot save level with empty name");
+            spdlog::warn("Can not save with an empty name");
             return false;
         }
 
@@ -574,14 +575,14 @@ namespace MapEditorInternal {
         std::ofstream file(path);
 
         if (!file.is_open()) {
-            SDL_Log("Failed to open level for saving: %s", path.string().c_str());
+            spdlog::critical("Failed to open level for saving: {}", path.string().c_str());
             return false;
         }
 
         file << levelData.dump(4);
         file.close();
 
-        SDL_Log("Level saved successfully: %s", path.string().c_str());
+        spdlog::info("Level loaded succsefully {}", path.string());
 
         UpdateLevels();
 
@@ -599,7 +600,7 @@ namespace MapEditor {
         std::ifstream file(path);
 
         if (!file.is_open()) {
-            SDL_Log("Couldn't open level file: %s", path.string().c_str());
+            spdlog::critical("Could not open level file {}", path.string());
             return false;
         }
 
@@ -608,7 +609,7 @@ namespace MapEditor {
         try {
             file >> levelData;
         } catch (const std::exception &e) {
-            SDL_Log("Failed to parse level JSON: %s", e.what());
+            spdlog::critical("Failed to parse level JSON: {}", e.what());
             return false;
         }
 
@@ -622,8 +623,7 @@ namespace MapEditor {
 
         if (levelData.contains("levelVars") &&
             levelData["levelVars"].is_object()) {
-            backgroundTextureIndex =
-                    levelData["levelVars"].value("backgroundTextureIndex", -1);
+            backgroundTextureIndex = levelData["levelVars"].value("backgroundTextureIndex", -1);
         }
 
         currentMap = cleanName;
@@ -661,7 +661,7 @@ namespace MapEditor {
                     loadedLevel;
         }
 
-        SDL_Log("Level loaded successfully: %s", path.string().c_str());
+        spdlog::info("Level loaded succesfully {}", path.string());
 
         return true;
     }

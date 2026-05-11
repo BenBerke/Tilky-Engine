@@ -2,8 +2,8 @@
 // Created by berke on 4/13/2026.
 //
 
-#ifndef WOLFY_ENGINE_VECTOR3_H
-#define WOLFY_ENGINE_VECTOR3_H
+#ifndef TILKY_ENGINE_VECTOR3_H
+#define TILKY_ENGINE_VECTOR3_H
 #include <cmath>
 
 struct Vector3{
@@ -58,4 +58,4 @@ struct Vector3{
     }
 };
 
-#endif //WOLFY_ENGINE_VECTOR3_H
+#endif //TILKY_ENGINE_VECTOR3_H

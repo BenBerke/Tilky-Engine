@@ -20,6 +20,8 @@
 #include "../MapEditor/MapEditorInternal.hpp"
 #include "../Renderer/Renderer/RendererInternal.hpp"
 
+#include "spdlog/spdlog.h"
+
 #define SCREEN_WIDTH 1080
 #define SCREEN_HEIGHT 960
 
@@ -35,28 +37,25 @@ int main(int argc, char** argv) {
         }
     }
     if (projectFile.empty()) {
-        std::cout << "No project found" << std::endl;
+        spdlog::critical("No project found");
         return 1;
     }
 
     if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-        std::cout << "Failed to load project metadata from: " << projectFile << std::endl;
+        spdlog::critical("Failed to load project metadata from {}", projectFile.string());
         return 1;
     }
 
     const std::string langCode = ProjectManager::GetCurrentLanguageInLauncher();
 
     if (!Localisation::LoadLanguage(langCode)) {
-        SDL_Log("Failed to load localisation '%s'. Falling back to English.",
-                langCode.c_str());
+        spdlog::error("Failed to load localisation {}. Falling back to english", langCode);
 
         if (!Localisation::LoadLanguage("en")) {
-            SDL_Log("Failed to load fallback English localisation.");
+            spdlog::critical("Failed to fall back to english");
             return 1;
         }
     }
-
-    //ProjectManager::LoadProjectMetaData("C:/Users/berke/Documents/Tilky Engine/Projects/test/project.tilky");
 
     //Localisation::LoadLanguage("tr");
 
@@ -76,7 +75,7 @@ int main(int argc, char** argv) {
     MapEditor::LoadLevel(MapEditor::currentMap);
 
     if (!LevelManager::HasCurrentLevel()) {
-        SDL_Log("No current level loaded");
+        spdlog::critical("No current level loaded");
         return 1;
     }
 
@@ -92,7 +91,7 @@ int main(int argc, char** argv) {
     Player::Start(level.sectors);
 
     if (!Renderer::Initialize()) {
-        SDL_Log("Failed to initialize Renderer: %s", SDL_GetError());
+        spdlog::critical("Failed to initialize renderer {}", SDL_GetError());
         return 1;
     }
 
@@ -104,19 +103,18 @@ int main(int argc, char** argv) {
         const int textureIndex = TextureManager::CreateTexture(pathInput.data());
 
         if (textureIndex == -1) {
-            SDL_Log("Failed to load texture: %s", pathInput.data());
+            spdlog::error("Failed to load texture {}", pathInput.data());
         }
     }
 
     RendererInternal::backgroundTextureIndex = MapEditor::backgroundTextureIndex;
 
     if (Player::currentSector == -1) {
-        SDL_Log("Player is not inside any sector");
-        return 1;
+        spdlog::warn("Player is not inside any sector");
     }
 
     if (!Renderer::CreateMap()) {
-        SDL_Log("Failed to create map");
+        spdlog::critical("Failed to create map");
         return 1;
     }
 
@@ -127,8 +125,8 @@ int main(int argc, char** argv) {
 
     static int fps = 0;
 
+    spdlog::info("Starting the game loop");
     bool running = true;
-
     while (running) {
         timer = GameTime::time;
 
@@ -182,6 +180,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    spdlog::info("Finished the game loop");
     Renderer::Destroy();
 
     return 0;

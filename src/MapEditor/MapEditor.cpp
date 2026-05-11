@@ -7,6 +7,7 @@
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>
 #include <SDL3_image/SDL_image.h>
+#include <spdlog/spdlog.h>
 
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -22,19 +23,19 @@ namespace MapEditor {
         using namespace MapEditorInternal;
 
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
-            SDL_Log("SDL_Init Error: %s\n", SDL_GetError());
+            spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
             return;
         }
 
         if (SDL_CreateWindowAndRenderer(
-                "Wolfy Level Editor",
+                "Tilky_Level Editor",
                 SCREEN_WIDTH,
                 SCREEN_HEIGHT,
                 0,
                 &window,
                 &renderer
             ) == false) {
-            SDL_Log("Window/Renderer Error: %s\n", SDL_GetError());
+            spdlog::critical("MapEditor Window or Renderer failed", SDL_GetError());
             SDL_Quit();
             return;
         }
@@ -43,27 +44,24 @@ namespace MapEditor {
         SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
 
         if (windowIcon == nullptr)
-            SDL_Log("Mapeditor.cpp failed to load window icon: %s", SDL_GetError());
+            spdlog::error("Mapeditor failed to load window icon {}", SDL_GetError());
         else {
-            if (!SDL_SetWindowIcon(window, windowIcon)) {
-                SDL_Log("Mapeditor.cpp failed to set window icon: %s", SDL_GetError());
-            }
+            if (!SDL_SetWindowIcon(window, windowIcon)) spdlog::error("Mapeditor failed to set window icon {}", SDL_GetError());
             SDL_DestroySurface(windowIcon);
         }
 
         if (!TTF_Init()) {
-            SDL_Log("TTF_INIT failed: %s\n", SDL_GetError());
+            spdlog::critical("TTF_Init failed {}", SDL_GetError());
             SDL_Quit();
             return;
         }
-        ;
 
         const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
         font = TTF_OpenFont(fontPath.string().c_str(), FONT_SIZE);
 
         if (!font) {
-            SDL_Log("TTF_OpenFont failed: %s\n", SDL_GetError());
+            spdlog::critical("TTF_OpenFont failed {}", SDL_GetError());
             TTF_Quit();
             SDL_Quit();
             return;

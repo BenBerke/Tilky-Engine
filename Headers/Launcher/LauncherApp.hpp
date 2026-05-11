@@ -2,8 +2,8 @@
 // Created by berke on 5/4/2026.
 //
 
-#ifndef WOLFY_ENGINE_LAUNCHERAPP_HPP
-#define WOLFY_ENGINE_LAUNCHERAPP_HPP
+#ifndef TILKY_ENGINE_LAUNCHERAPP_HPP
+#define TILKY_ENGINE_LAUNCHERAPP_HPP
 #include <filesystem>
 #include <string>
 
@@ -17,4 +17,4 @@ namespace LauncherApp {
     bool QuitRequested();
 }
 
-#endif //WOLFY_ENGINE_LAUNCHERAPP_HPP
+#endif //TILKY_ENGINE_LAUNCHERAPP_HPP

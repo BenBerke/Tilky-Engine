@@ -4,6 +4,7 @@
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_surface.h>
 #include <SDL3_image/SDL_image.h>
+#include <spdlog/spdlog.h>
 
 namespace {
     std::vector<Texture> textures;
@@ -16,7 +17,7 @@ namespace TextureManager {
         SDL_Surface* loadedSurface = IMG_Load(path.c_str());
 
         if (loadedSurface == nullptr) {
-            SDL_Log("IMG_Load failed for %s: %s", path.c_str(), SDL_GetError());
+            spdlog::error("IMG_Load failed for {}: {}", path, SDL_GetError());
             return -1;
         }
 
@@ -28,7 +29,7 @@ namespace TextureManager {
         SDL_DestroySurface(loadedSurface);
 
         if (convertedSurface == nullptr) {
-            SDL_Log("SDL_ConvertSurface failed for %s: %s", path.c_str(), SDL_GetError());
+            spdlog::error("SDL_ConvertSurface failed for {}: {}", path.c_str(), SDL_GetError());
             return -1;
         }
 

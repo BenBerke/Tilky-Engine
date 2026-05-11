@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_ENTITY_H
-#define WOLFY_ENGINE_ENTITY_H
+#ifndef TILKY_ENGINE_ENTITY_H
+#define TILKY_ENGINE_ENTITY_H
 
 #include <cstdint>
 #include <string>

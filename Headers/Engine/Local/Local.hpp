@@ -2,8 +2,8 @@
 // Created by berke on 5/3/2026.
 //
 
-#ifndef WOLFY_ENGINE_LOCALISATION_H
-#define WOLFY_ENGINE_LOCALISATION_H
+#ifndef TILKY_ENGINE_LOCALISATION_H
+#define TILKY_ENGINE_LOCALISATION_H
 
 #include <string>
 #include <unordered_map>
@@ -20,4 +20,4 @@ namespace Localisation {
     const std::string& CurrentLanguage();
 }
 
-#endif //WOLFY_ENGINE_LOCALISATION_H
+#endif //TILKY_ENGINE_LOCALISATION_H

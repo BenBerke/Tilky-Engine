@@ -3,7 +3,6 @@
 //
 #include "Headers/Project/ProjectManager.hpp"
 
-#include <iostream>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +10,11 @@
 
 #include <SDL3/SDL_filesystem.h>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -29,19 +33,18 @@ namespace {
 
 namespace ProjectManager {
 
-    // For function documentation see ProjectManager.hpp
-
     fs::path GetUserHomeDirectory() {
 #if _WIN32
-        const char *userProfile = std::getenv("USERPROFILE");
+        const char* userProfile = std::getenv("USERPROFILE");
 #else
-        const char *userProfile = std::getenv("HOME");
+        const char* userProfile = std::getenv("HOME");
 #endif
 
         if (userProfile != nullptr) {
             return fs::path(userProfile);
         }
 
+        spdlog::warn("Could not find user home directory. Falling back to current working directory.");
         return fs::current_path();
     }
 
@@ -49,7 +52,7 @@ namespace ProjectManager {
 #ifdef _WIN32
         return GetUserHomeDirectory() / "Documents" / "Tilky Engine" / "Projects";
 #else
-        const char *xdgDataHome = std::getenv("XDG_DATA_HOME");
+        const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
 
         if (xdgDataHome != nullptr) {
             return fs::path(xdgDataHome) / "Tilky Engine" / "Projects";
@@ -59,17 +62,64 @@ namespace ProjectManager {
 #endif
     }
 
-    // Launches the engine executable and passes it a specific .tilky project file.
-    // Parameter:
-    // - projectFile should be the full path to the project's project.tilky file.
-    // - It should NOT be the project root folder.
-    // - It should NOT be the top-level Projects folder.
-    //
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\project.tilky
-    void LaunchEngine(const fs::path &projectFile) {
-        const std::string command = "Wolfy_Engine.exe --project \"" + projectFile.string() + "\"";
-        std::system(command.c_str());
+    void LaunchEngine(const fs::path& projectFile) {
+#ifdef _WIN32
+        const fs::path engineExe = GetEngineBasePath() / "Wolfy_Engine.exe";
+
+        std::wstring appPath = engineExe.wstring();
+
+        std::wstring commandLine =
+            L"\"" + appPath + L"\" --project \"" + projectFile.wstring() + L"\"";
+
+        std::wstring workingDirectory = GetEngineBasePath().wstring();
+
+        STARTUPINFOW startupInfo{};
+        startupInfo.cb = sizeof(startupInfo);
+
+        PROCESS_INFORMATION processInfo{};
+
+        spdlog::info("Launching engine executable: {}", engineExe.string());
+        spdlog::info("Opening project file: {}", projectFile.string());
+
+        const BOOL success = CreateProcessW(
+            appPath.c_str(),
+            commandLine.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            workingDirectory.c_str(),
+            &startupInfo,
+            &processInfo
+        );
+
+        if (!success) {
+            spdlog::error(
+                "Failed to launch Wolfy_Engine.exe. Windows error code: {}. Engine path: {}",
+                GetLastError(),
+                engineExe.string()
+            );
+            return;
+        }
+
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(processInfo.hThread);
+
+#else
+        const fs::path engineExe = GetEngineBasePath() / "Wolfy_Engine";
+
+        const std::string command =
+            "\"" + engineExe.string() + "\" --project \"" + projectFile.string() + "\"";
+
+        spdlog::info("Launching engine with command: {}", command);
+
+        const int result = std::system(command.c_str());
+
+        if (result != 0) {
+            spdlog::error("Engine process returned non-zero exit code: {}", result);
+        }
+#endif
     }
 
     bool OpenProject(const fs::path& path) {
@@ -83,12 +133,12 @@ namespace ProjectManager {
         }
 
         if (!fs::exists(projectFile)) {
-            std::cout << "Missing .tilky file at: " << projectFile << std::endl;
+            spdlog::error("Missing .tilky project file at: {}", projectFile.string());
             return false;
         }
 
         if (!LoadProjectMetaData(projectFile)) {
-            std::cout << "Failed to load project metadata before launching engine\n";
+            spdlog::error("Failed to load project metadata before launching engine: {}", projectFile.string());
             return false;
         }
 
@@ -97,7 +147,7 @@ namespace ProjectManager {
         return true;
     }
 
-    void CreateProject(const fs::path &directory, const std::string &projectName) {
+    void CreateProject(const fs::path& directory, const std::string& projectName) {
         const fs::path assetsPath = directory / "Assets";
         const fs::path levelsPath = assetsPath / "Levels";
         const fs::path texturesPath = assetsPath / "Textures";
@@ -107,22 +157,31 @@ namespace ProjectManager {
         try {
             if (!fs::exists(assetsPath)) {
                 if (!fs::create_directories(assetsPath)) {
-                    std::cout << "Could not create assets folder" << std::endl;
+                    spdlog::error("Could not create project assets folder: {}", assetsPath.string());
                     openProject = false;
+                }
+                else {
+                    spdlog::info("Created project assets folder: {}", assetsPath.string());
                 }
             }
 
             if (!fs::exists(levelsPath)) {
                 if (!fs::create_directories(levelsPath)) {
-                    std::cout << "Could not create levels folder" << std::endl;
+                    spdlog::error("Could not create project levels folder: {}", levelsPath.string());
                     openProject = false;
+                }
+                else {
+                    spdlog::info("Created project levels folder: {}", levelsPath.string());
                 }
             }
 
             if (!fs::exists(texturesPath)) {
                 if (!fs::create_directories(texturesPath)) {
-                    std::cout << "Could not create textures folder" << std::endl;
+                    spdlog::error("Could not create project textures folder: {}", texturesPath.string());
                     openProject = false;
+                }
+                else {
+                    spdlog::info("Created project textures folder: {}", texturesPath.string());
                 }
             }
 
@@ -137,50 +196,60 @@ namespace ProjectManager {
             if (file.is_open()) {
                 file << projectData.dump(4);
                 file.close();
-            } else {
-                std::cout << "Failed to create metadata " << projectName << std::endl;
+
+                spdlog::info("Created project metadata file: {}", dataPath.string());
             }
-        } catch (std::exception &e) {
-            std::cout << "Failed to create project " << e.what() << std::endl;
+            else {
+                spdlog::error("Failed to create project metadata file for project '{}': {}", projectName, dataPath.string());
+                openProject = false;
+            }
+        }
+        catch (const std::exception& e) {
+            spdlog::error("Failed to create project '{}': {}", projectName, e.what());
+            openProject = false;
         }
 
         if (!openProject) {
+            spdlog::error("Project '{}' was not opened because project creation failed.", projectName);
             return;
         }
 
         OpenProject(directory);
     }
 
-    void CreateDirectory(const std::string &projectName) {
+    void CreateProjectDirectory(const std::string& projectName) {
         const fs::path path = GetDefaultProjectsFolder() / projectName;
 
         try {
             if (!fs::exists(path)) {
                 if (fs::create_directories(path)) {
-                    std::cout << "Folder created at " + path.string() << std::endl;
+                    spdlog::info("Created project folder: {}", path.string());
                     CreateProject(path, projectName);
-                } else {
-                    std::cout << "Failed to create folder " << std::endl;
                 }
-            } else {
-                std::cout << "Folder already exists " << std::endl;
+                else {
+                    spdlog::error("Failed to create project folder: {}", path.string());
+                }
+            }
+            else {
+                spdlog::warn("Project folder already exists. Opening existing project: {}", path.string());
                 OpenProject(path);
             }
-        } catch (std::exception &e) {
-            std::cout << "Failed to create project " << e.what() << std::endl;
+        }
+        catch (const std::exception& e) {
+            spdlog::error("Failed to create project directory '{}': {}", path.string(), e.what());
         }
     }
 
-    bool LoadProjectMetaData(const fs::path &tilkyEnginePath) {
+    bool LoadProjectMetaData(const fs::path& tilkyEnginePath) {
         if (!fs::exists(tilkyEnginePath)) {
-            std::cout << "Project file does not exist" << std::endl;
+            spdlog::error("Project file does not exist: {}", tilkyEnginePath.string());
             return false;
         }
 
         std::ifstream file(tilkyEnginePath);
 
         if (!file.is_open()) {
-            std::cout << "Failed to open project" << std::endl;
+            spdlog::error("Failed to open project file: {}", tilkyEnginePath.string());
             return false;
         }
 
@@ -188,8 +257,9 @@ namespace ProjectManager {
 
         try {
             file >> projectData;
-        } catch (std::exception &e) {
-            std::cout << "Failed to parse project file:" << e.what() << std::endl;
+        }
+        catch (const std::exception& e) {
+            spdlog::error("Failed to parse project file '{}': {}", tilkyEnginePath.string(), e.what());
             return false;
         }
 
@@ -204,21 +274,25 @@ namespace ProjectManager {
         currentTexturesPath = currentAssetsPath / "Textures";
 
         if (!fs::exists(currentAssetsPath)) {
-            std::cout << "Missing Assets folder: " << currentAssetsPath << '\n';
+            spdlog::error("Project is missing Assets folder: {}", currentAssetsPath.string());
             return false;
         }
 
         if (!fs::exists(currentLevelsPath)) {
-            std::cout << "Missing Levels folder: " << currentLevelsPath << '\n';
+            spdlog::error("Project is missing Levels folder: {}", currentLevelsPath.string());
             return false;
         }
 
         if (!fs::exists(currentTexturesPath)) {
-            std::cout << "Missing Textures folder: " << currentTexturesPath << '\n';
+            spdlog::error("Project is missing Textures folder: {}", currentTexturesPath.string());
             return false;
         }
 
         projectLoaded = true;
+
+        spdlog::info("Loaded project metadata: {}", tilkyEnginePath.string());
+        spdlog::info("Current project name: {}", currentProjectName);
+        spdlog::info("Project assets path: {}", currentAssetsPath.string());
 
         return true;
     }
@@ -251,34 +325,51 @@ namespace ProjectManager {
 #ifdef WOLFY_CONTENT_ROOT
         return fs::path(WOLFY_CONTENT_ROOT);
 #else
+        spdlog::warn("WOLFY_CONTENT_ROOT is not defined. Falling back to current working directory.");
         return fs::current_path();
 #endif
     }
 
     fs::path FindAssetPath(const fs::path& relativePath) {
-        const fs::path packagedPath = GetEngineBasePath() / relativePath;
+        const fs::path sourcePath =
+            GetContentRootPath() / relativePath;
 
-        if (fs::exists(packagedPath)) {
-            return packagedPath;
-        }
+        const fs::path packagedPath =
+            GetEngineBasePath() / relativePath;
 
-        const fs::path sourcePath = GetContentRootPath() / relativePath;
-
+#ifndef NDEBUG
         if (fs::exists(sourcePath)) {
             return sourcePath;
         }
 
-        std::cout << "Asset not found. Tried:\n"
-                  << "Packaged: " << packagedPath << '\n'
-                  << "Source:   " << sourcePath << '\n';
+        if (fs::exists(packagedPath)) {
+            return packagedPath;
+        }
+#else
+        if (fs::exists(packagedPath)) {
+            return packagedPath;
+        }
+
+        if (fs::exists(sourcePath)) {
+            return sourcePath;
+        }
+#endif
+
+        spdlog::error(
+            "Asset path not found. Relative path: '{}'. Tried source path '{}' and packaged path '{}'.",
+            relativePath.string(),
+            sourcePath.string(),
+            packagedPath.string()
+        );
 
         return packagedPath;
     }
 
     fs::path GetEngineBasePath() {
-        const char *basePath = SDL_GetBasePath();
+        const char* basePath = SDL_GetBasePath();
 
         if (basePath == nullptr) {
+            spdlog::warn("SDL_GetBasePath returned null. Falling back to current working directory.");
             return fs::current_path();
         }
 
@@ -300,14 +391,14 @@ namespace ProjectManager {
         const fs::path configPath = GetLauncherVariables();
 
         if (!fs::exists(configPath)) {
-            std::cout << "Launcher config not found. Using English.\n";
+            spdlog::warn("Launcher config not found. Falling back to English. Expected path: {}", configPath.string());
             return "en";
         }
 
         std::ifstream file(configPath);
 
         if (!file.is_open()) {
-            std::cout << "Could not open launcher config. Using English.\n";
+            spdlog::error("Could not open launcher config. Falling back to English. Path: {}", configPath.string());
             return "en";
         }
 
@@ -315,10 +406,14 @@ namespace ProjectManager {
             json configData;
             file >> configData;
 
-            return configData.value("lang", "en");
+            const std::string language = configData.value("lang", "en");
+
+            spdlog::info("Loaded launcher language setting: {}", language);
+
+            return language;
         }
         catch (const std::exception& e) {
-            std::cerr << "Failed to read launcher language: " << e.what() << std::endl;
+            spdlog::error("Failed to read launcher config. Falling back to English. Error: {}", e.what());
             return "en";
         }
     }

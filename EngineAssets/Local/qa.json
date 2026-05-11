@@ -1,4 +1,7 @@
-{ "editor.title": "Редактор",
+{
+  "language.name": "қазақ",
+
+  "editor.title": "Редактор",
 "editor.mode": "Тәртіп",
 "editor.create_sector": "Секторды жасау",
 "editor.create_texture": "Текстураны жасау",

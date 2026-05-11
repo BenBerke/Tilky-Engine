@@ -7,7 +7,7 @@
 #include "../../../Headers/MapEditor/MapEditor.hpp"
 
 #include <algorithm>
-#include <SDL3/SDL_log.h>
+#include <spdlog/spdlog.h>
 
 #include "config.h"
 
@@ -432,10 +432,18 @@ namespace Renderer {
     bool CreateMap() {
         using namespace RendererInternal;
 
+        spdlog::info("Creating renderer map data");
+
         MapEditor::TriangulateSectors();
 
         BuildFlatTrianglesFromSectors();
         BuildGpuWallsFromMap();
+
+        spdlog::info(
+            "Built map GPU data. Walls: {}, flat triangles: {}",
+            gpuWalls.size(),
+            flatTriangles.size()
+        );
 
         glGenBuffers(1, &wallSSBO);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, wallSSBO);
@@ -489,37 +497,42 @@ namespace Renderer {
             if (location != -1) {
                 glUniform1i(location, i);
             }
+            else {
+                spdlog::warn("Projection shader texture uniform not found: {}", uniformName);
+            }
         }
 
         playerPosUniform = glGetUniformLocation(projectionShader->ID, "playerPos");
         if (playerPosUniform == -1) {
-            SDL_Log("Failed to get shader uniform location playerPos");
+            spdlog::critical("Failed to get projection shader uniform location: playerPos");
             return false;
         }
 
         playerAngleUniform = glGetUniformLocation(projectionShader->ID, "playerAngle");
         if (playerAngleUniform == -1) {
-            SDL_Log("Failed to get shader uniform location playerAngle");
+            spdlog::critical("Failed to get projection shader uniform location: playerAngle");
             return false;
         }
 
         playerHeightUniform = glGetUniformLocation(projectionShader->ID, "playerHeight");
         if (playerHeightUniform == -1) {
-            SDL_Log("Failed to get shader uniform location playerHeight");
+            spdlog::critical("Failed to get projection shader uniform location: playerHeight");
             return false;
         }
 
         playerCamZUniform = glGetUniformLocation(projectionShader->ID, "playerCamZ");
         if (playerCamZUniform == -1) {
-            SDL_Log("Failed to get shader uniform location playerCamZ");
+            spdlog::critical("Failed to get projection shader uniform location: playerCamZ");
             return false;
         }
 
         renderModeUniform = glGetUniformLocation(projectionShader->ID, "renderMode");
         if (renderModeUniform == -1) {
-            SDL_Log("Failed to get shader uniform location renderMode");
+            spdlog::critical("Failed to get projection shader uniform location: renderMode");
             return false;
         }
+
+        spdlog::info("Renderer map creation completed successfully");
 
         return true;
     }

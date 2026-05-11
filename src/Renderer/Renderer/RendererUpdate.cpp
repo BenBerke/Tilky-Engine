@@ -1,5 +1,3 @@
-#include "imgui_impl_opengl3.h"
-#include "imgui_impl_sdl3.h"
 #include "../../Headers/Renderer/Renderer/Renderer.hpp"
 #include "RendererInternal.hpp"
 
@@ -9,7 +7,6 @@
 #include "Headers/Objects/Wall.hpp"
 
 #include "Headers/Map/LevelManager.hpp"
-#include "../../../Headers/MapEditor/MapEditor.hpp"
 #include "Headers/Renderer/TextureManager.hpp"
 
 namespace Renderer {

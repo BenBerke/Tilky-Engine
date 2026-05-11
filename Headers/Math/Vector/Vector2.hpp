@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_VECTOR2_H
-#define WOLFY_ENGINE_VECTOR2_H
+#ifndef TILKY_ENGINE_VECTOR2_H
+#define TILKY_ENGINE_VECTOR2_H
 
 struct Vector2 {
     float x;
@@ -60,4 +60,4 @@ constexpr Vector2 operator*(float value, const Vector2& v) {
     return {v.x * value, v.y * value};
 }
 
-#endif // WOLFY_ENGINE_VECTOR2_H
+#endif // TILKY_ENGINE_VECTOR2_H

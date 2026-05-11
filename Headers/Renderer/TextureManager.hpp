@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_TEXTURE_MANAGER_H
-#define WOLFY_ENGINE_TEXTURE_MANAGER_H
+#ifndef TILKY_ENGINE_TEXTURE_MANAGER_H
+#define TILKY_ENGINE_TEXTURE_MANAGER_H
 
 #include <string>
 #include <vector>

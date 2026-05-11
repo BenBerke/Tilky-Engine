@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_RENDERER_H
-#define WOLFY_ENGINE_RENDERER_H
+#ifndef TILKY_ENGINE_RENDERER_H
+#define TILKY_ENGINE_RENDERER_H
 
 #include <string>
 

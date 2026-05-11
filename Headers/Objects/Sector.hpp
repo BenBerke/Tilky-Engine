@@ -1,5 +1,5 @@
-#ifndef WOLFY_ENGINE_SECTOR_H
-#define WOLFY_ENGINE_SECTOR_H
+#ifndef TILKY_ENGINE_SECTOR_H
+#define TILKY_ENGINE_SECTOR_H
 
 #include <array>
 #include <vector>

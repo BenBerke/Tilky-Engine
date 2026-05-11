@@ -2,8 +2,8 @@
 // Created by berke on 5/3/2026.
 //
 
-#ifndef WOLFY_ENGINE_PROJECTMANAGER_H
-#define WOLFY_ENGINE_PROJECTMANAGER_H
+#ifndef TILKY_ENGINE_PROJECTMANAGER_H
+#define TILKY_ENGINE_PROJECTMANAGER_H
 
 #include <filesystem>
 #include <string>
@@ -75,7 +75,7 @@ namespace ProjectManager {
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject
     //
     // Then it calls CreateProject() using that project root folder.
-    void CreateDirectory(const std::string &projectName);
+    void CreateProjectDirectory(const std::string &projectName);
 
     // Loads a project's metadata from its project.tilky file and stores the important
     // project paths inside ProjectManager.
@@ -161,4 +161,4 @@ namespace ProjectManager {
 
 }
 
-#endif //WOLFY_ENGINE_PROJECTMANAGER_H
+#endif //TILKY_ENGINE_PROJECTMANAGER_H

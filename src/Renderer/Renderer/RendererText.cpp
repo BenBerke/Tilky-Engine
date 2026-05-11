@@ -4,20 +4,25 @@
 
 #include "../../Headers/Math/Vector/Vector3.hpp"
 
-#include <SDL3/SDL_log.h>
-
+#include <spdlog/spdlog.h>
 
 namespace RendererInternal {
     bool InitializeFont() {
         if (FT_Init_FreeType(&ft)) {
-            SDL_Log("FT_Init_FreeType Error");
+            spdlog::critical("FT_Init_FreeType failed. FreeType could not be initialized.");
             return false;
         }
 
-        const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
+        const fs::path fontPath =
+            ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
         if (FT_New_Face(ft, fontPath.string().c_str(), 0, &face)) {
-            SDL_Log("FT_New_Face Error. Tried path: %s", fontPath.string().c_str());
+            spdlog::critical(
+                "FT_New_Face failed. Could not load font face. Tried path: {}",
+                fontPath.string()
+            );
+
+            FT_Done_FreeType(ft);
             return false;
         }
 
@@ -25,9 +30,16 @@ namespace RendererInternal {
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
+        int failedGlyphCount = 0;
+
         for (unsigned char c = 0; c < 128; c++) {
             if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
-                SDL_Log("Failed to load glyph: %c", c);
+                spdlog::warn(
+                    "Failed to load glyph '{}'. Text rendering may miss this character.",
+                    static_cast<char>(c)
+                );
+
+                failedGlyphCount++;
                 continue;
             }
 
@@ -81,6 +93,19 @@ namespace RendererInternal {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
 
+        if (failedGlyphCount > 0) {
+            spdlog::warn(
+                "Font initialized, but {} glyph(s) failed to load.",
+                failedGlyphCount
+            );
+        }
+        else {
+            spdlog::info(
+                "Font initialized successfully from: {}",
+                fontPath.string()
+            );
+        }
+
         return true;
     }
 }
@@ -105,7 +130,17 @@ namespace Renderer {
         glUniform3f(glGetUniformLocation(s.ID, "textColor"), color.x, color.y, color.z);
 
         for (char c : text) {
-            auto [textureID, Size, Bearing, Advance] = Characters[c];
+            auto characterIt = Characters.find(c);
+
+            if (characterIt == Characters.end()) {
+                spdlog::warn(
+                    "Tried to render missing glyph '{}'. Skipping character.",
+                    c
+                );
+                continue;
+            }
+
+            const auto& [textureID, Size, Bearing, Advance] = characterIt->second;
 
             const float xPos = x + Bearing.x * scale;
             const float yPos = y - (Size.y - Bearing.y) * scale;

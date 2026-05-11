@@ -2,8 +2,8 @@
 // Created by berke on 5/2/2026.
 //
 
-#ifndef WOLFY_ENGINE_COMPONENTS_HPP
-#define WOLFY_ENGINE_COMPONENTS_HPP
+#ifndef TILKY_ENGINE_COMPONENTS_HPP
+#define TILKY_ENGINE_COMPONENTS_HPP
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
@@ -162,4 +162,4 @@ struct ComponentStorage {
     }
 };
 
-#endif //WOLFY_ENGINE_COMPONENTS_HPP
+#endif //TILKY_ENGINE_COMPONENTS_HPP

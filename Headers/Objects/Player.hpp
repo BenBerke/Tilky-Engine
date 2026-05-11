@@ -2,8 +2,8 @@
 // Created by berke on 4/13/2026.
 //
 
-#ifndef WOLFY_ENGINE_PLAYER_H
-#define WOLFY_ENGINE_PLAYER_H
+#ifndef TILKY_ENGINE_PLAYER_H
+#define TILKY_ENGINE_PLAYER_H
 
 #include <vector>
 
