@@ -49,8 +49,8 @@ namespace MapEditorInternal {
             if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) {
                 const Vector2 mouseDelta = InputManager::GetMouseDelta();
 
-                cameraPos.x -= mouseDelta.x;
-                cameraPos.y += mouseDelta.y;
+                cameraPos.x -= mouseDelta.x / editorZoom;
+                cameraPos.y += mouseDelta.y / editorZoom;
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 const Vector2 mouseScreen = InputManager::GetMousePosition();
@@ -109,7 +109,7 @@ namespace MapEditorInternal {
                     }
                 }
                 else if (currentMode == MODE_ENTITY) {
-                    Entity *en = EntityExistsAt(mouseWorld, 15.0f);
+                    Entity *en = EntityExistsAt(mouseWorld);
 
                     if (en != nullptr) {
                         selectedEntity = *en;

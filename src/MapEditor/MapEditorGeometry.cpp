@@ -34,13 +34,43 @@ namespace MapEditorInternal {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
     }
 
-    Entity* EntityExistsAt(const Vector2& mouseClick, const float radius) {
+    bool AABBCollisionWithEntity(const Vector2& entityPosition, const Vector2& mousePosition) {
+        constexpr float mouseSize = 0.1f;
+
+        const float entityHalfSize = entitySize * 0.5f;
+        constexpr float mouseHalfSize = mouseSize * 0.5f;
+
+        const float entityLeft   = entityPosition.x - entityHalfSize;
+        const float entityRight  = entityPosition.x + entityHalfSize;
+        const float entityBottom = entityPosition.y - entityHalfSize;
+        const float entityTop    = entityPosition.y + entityHalfSize;
+
+        const float mouseLeft   = mousePosition.x - mouseHalfSize;
+        const float mouseRight  = mousePosition.x + mouseHalfSize;
+        const float mouseBottom = mousePosition.y - mouseHalfSize;
+        const float mouseTop    = mousePosition.y + mouseHalfSize;
+
+        return entityLeft <= mouseRight &&
+               entityRight >= mouseLeft &&
+               entityBottom <= mouseTop &&
+               entityTop >= mouseBottom;
+    }
+
+    Entity* EntityExistsAt(const Vector2& mouseClick) {
         Level& level = LevelManager::CurrentLevel();
-        for (Entity& entity : LevelManager::CurrentLevel().entities) {
-            auto* transform = entity.GetComponent<ComponentTransform>();
-            if (transform == nullptr) continue;
-            if (WithinRadius(transform->position, mouseClick, radius)) return &entity;
+
+        for (Entity& entity : level.entities) {
+            ComponentTransform* transform = level.transforms.Get(entity.id);
+
+            if (transform == nullptr) {
+                continue;
+            }
+
+            if (AABBCollisionWithEntity(transform->position, mouseClick)) {
+                return &entity;
+            }
         }
+
         return nullptr;
     }
 

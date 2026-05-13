@@ -4,6 +4,7 @@
 #include "Headers/Map/LevelManager.hpp"
 
 #include <cmath>
+#include <spdlog/spdlog.h>
 
 namespace MapEditorInternal {
     void DrawThickLine(SDL_Renderer* renderer, const Vector2 start, const Vector2 end, const float thickness) {
@@ -178,24 +179,41 @@ namespace MapEditorInternal {
     void DrawEntities() {
         Level& level = LevelManager::CurrentLevel();
 
-        for (const ComponentTransform& transform : level.transforms.components) {
-            if (transform.floor != currentFloor && selectedEntity.id != transform.ownerID) continue;
+        for (Entity& entity : level.entities) {
+            ComponentTransform* transform = level.transforms.Get(entity.id);
 
-            const Vector2 objectScreen = WorldToScreen(transform.position, cameraPos);
+            if (transform == nullptr || transform->floor != currentFloor) {
+                continue;
+            }
 
-            Vector3 color = {250, 250, 255};
-            if (level.entities[transform.ownerID].HasComponent<ComponentPlayerSpawn>())
-                color = {250, 100, 100};
+            const Vector2 screenPos = WorldToScreen(transform->position, cameraPos);
 
-            SDL_FRect dotRect = {
-                objectScreen.x - 3.0f,
-                objectScreen.y - 3.0f,
-                15.0f,
-                15.0f
+            const float screenEntitySize = entitySize * editorZoom;
+
+            SDL_FRect rect = {
+                screenPos.x - screenEntitySize * 0.5f,
+                screenPos.y - screenEntitySize * 0.5f,
+                screenEntitySize,
+                screenEntitySize
             };
 
-            SDL_SetRenderDrawColor(renderer, color.x, color.y, color.z, 255);
-            SDL_RenderFillRect(renderer, &dotRect);
+            if (level.playerSpawns.Get(entity.id) != nullptr) {
+                SDL_SetRenderDrawColor(renderer, 80, 180, 255, 255);
+            }
+            else if (level.sprites.Get(entity.id) != nullptr) {
+                SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
+            }
+            else if (level.decals.Get(entity.id) != nullptr) {
+                SDL_SetRenderDrawColor(renderer, 255, 120, 120, 255);
+            }
+            else {
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            }
+
+            SDL_RenderFillRect(renderer, &rect);
+
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderRect(renderer, &rect);
         }
     }
 

@@ -38,7 +38,7 @@ namespace MapEditorInternal {
 
     std::string currentMap;
 
-    float objectSize = 15.0f;
+    float entitySize = 15.0f;
 
     Mode currentMode = MODE_DOT;
 

@@ -63,10 +63,10 @@ namespace MapEditorInternal {
     extern bool editingComponent;
     extern bool editingEntity;
     extern Entity selectedEntity;
+    extern float entitySize;
 
     extern std::string currentMap;
 
-    extern float objectSize;
 
     extern Mode currentMode;
 
@@ -78,7 +78,7 @@ namespace MapEditorInternal {
 
     bool SamePoint(const Vector2& a, const Vector2& b);
     bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
-    Entity* EntityExistsAt(const Vector2& worldPos, const float radius);
+    Entity* EntityExistsAt(const Vector2& mouseClick);
     bool CornerExistsAt(const Vector2& point);
     bool IsCornerConnectedToLine(const Vector2& point);
     bool HasLineBetween(const Vector2& a, const Vector2& b);
