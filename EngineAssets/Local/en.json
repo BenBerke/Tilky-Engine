@@ -75,10 +75,6 @@
   "common.cancel" : "Cancel",
   "common.id": "ID",
 
-  "log.deleted_level": "Deleted level:",
-  "log.failed_delete_missing": "Failed to delete level, file may not exist:",
-  "log.delete_level_failed": "Delete level failed:",
-
   "bug.unknown" : "Unknown",
 
   "launcher.name": "Tilky Engine Launcher",

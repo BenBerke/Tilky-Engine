@@ -75,10 +75,6 @@
   "common.cancel" : "Vazgeç",
   "common.id": "No.",
 
-  "log.deleted_level": "Silinen Seviye",
-  "log.failed_delete_missing": "Seviye silinemedi: dosya varolmayabilir",
-  "log.delete_level_failed": "Seviye silinemedi:",
-
   "bug.unknown" : "Bilinmeyen",
 
   "launcher.name": "Tilky Motoru Başlatıcısı",

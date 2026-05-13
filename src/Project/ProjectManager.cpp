@@ -64,7 +64,7 @@ namespace ProjectManager {
 
     void LaunchEngine(const fs::path& projectFile) {
 #ifdef _WIN32
-        const fs::path engineExe = GetEngineBasePath() / "Wolfy_Engine.exe";
+        const fs::path engineExe = GetEngineBasePath() / "Tilky_Engine.exe";
 
         std::wstring appPath = engineExe.wstring();
 
@@ -96,7 +96,7 @@ namespace ProjectManager {
 
         if (!success) {
             spdlog::error(
-                "Failed to launch Wolfy_Engine.exe. Windows error code: {}. Engine path: {}",
+                "Failed to launch TIlkyy_Engine.exe. Windows error code: {}. Engine path: {}",
                 GetLastError(),
                 engineExe.string()
             );
@@ -107,7 +107,7 @@ namespace ProjectManager {
         CloseHandle(processInfo.hThread);
 
 #else
-        const fs::path engineExe = GetEngineBasePath() / "Wolfy_Engine";
+        const fs::path engineExe = GetEngineBasePath() / "TIlky_Engine";
 
         const std::string command =
             "\"" + engineExe.string() + "\" --project \"" + projectFile.string() + "\"";
@@ -322,10 +322,10 @@ namespace ProjectManager {
     }
 
     fs::path GetContentRootPath() {
-#ifdef WOLFY_CONTENT_ROOT
-        return fs::path(WOLFY_CONTENT_ROOT);
+#ifdef TILKY_CONTENT_ROOT
+        return fs::path(TILKY_CONTENT_ROOT);
 #else
-        spdlog::warn("WOLFY_CONTENT_ROOT is not defined. Falling back to current working directory.");
+        spdlog::warn("TILKY_CONTENT_ROOT is not defined. Falling back to current working directory.");
         return fs::current_path();
 #endif
     }

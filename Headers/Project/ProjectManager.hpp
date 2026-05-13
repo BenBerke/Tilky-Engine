@@ -135,7 +135,7 @@ namespace ProjectManager {
     // This comes from SDL_GetBasePath(), so in CLion it usually points to the build folder.
     // This is NOT the same as the user's Documents\Tilky Engine folder.
     // Example:
-    // C:\Users\x\Desktop\CLion Projects\Wolfy Engine\cmake-build-debug
+    // C:\Users\x\Desktop\CLion Projects\Tilky Engine\cmake-build-debug
     fs::path GetEngineBasePath();
 
     // Returns Tilky Engine's user data folder inside Documents\TilkyEngine.

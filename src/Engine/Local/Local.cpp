@@ -18,8 +18,8 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-#ifndef WOLFY_CONTENT_ROOT
-#define WOLFY_CONTENT_ROOT "."
+#ifndef TILKY_CONTENT_ROOT
+#define TILKY_CONTENT_ROOT "."
 #endif
 
 namespace {
@@ -29,7 +29,7 @@ namespace {
     const std::string missingString = "<missing>";
 
     fs::path GetContentRootPath() {
-        return fs::path(WOLFY_CONTENT_ROOT);
+        return fs::path(TILKY_CONTENT_ROOT);
     }
 
     fs::path GetEngineAssetsPath() {

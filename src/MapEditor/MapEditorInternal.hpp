@@ -118,5 +118,8 @@ namespace MapEditorInternal {
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b);
     int GetWallAtPoint(const Vector2& worldPoint);
 
+    void QueueLevelLoad(const std::string& levelName);
+    bool ProcessPendingLevelLoad();
+
     void UpdateLevels();
 }

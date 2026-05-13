@@ -11,6 +11,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 find_package(OpenGL REQUIRED)
+find_package(OpenAL REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3 Headers)
 find_package(SDL3_image REQUIRED CONFIG)
@@ -206,6 +207,7 @@ target_link_libraries(Tilky_EngineCore PUBLIC
         SDL3::SDL3
         spdlog::spdlog
         SDL3::Headers
+        OpenAL::OpenAL
         $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
         SDL3_ttf::SDL3_ttf
         Freetype::Freetype
@@ -295,6 +297,7 @@ add_executable(Tilky_Engine
 
 target_link_libraries(Tilky_Engine PRIVATE
         Tilky_EngineCore
+        OpenAL::OpenAL
 )
 
 # ============================================================
@@ -311,6 +314,7 @@ add_executable(Tilky_All
 target_link_libraries(Tilky_All PRIVATE
         Tilky_LauncherCore
         Tilky_EngineCore
+        OpenAL::OpenAL
 )
 
 add_dependencies(Tilky_All
@@ -366,6 +370,39 @@ function(copy_runtime_dlls target_name)
         )
     endif()
 endfunction()
+
+# ============================================================
+# MinGW runtime DLLs
+# Copy the exact C++ runtime DLLs used by the current compiler.
+# This avoids loading the wrong libstdc++-6.dll from PATH.
+# ============================================================
+
+if(WIN32 AND MINGW)
+    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+
+    function(copy_mingw_runtime_dlls target_name)
+        foreach(runtime_dll
+                libstdc++-6.dll
+                libgcc_s_seh-1.dll
+                libwinpthread-1.dll
+        )
+            if(EXISTS "${MINGW_BIN_DIR}/${runtime_dll}")
+                add_custom_command(TARGET ${target_name} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${MINGW_BIN_DIR}/${runtime_dll}"
+                        "$<TARGET_FILE_DIR:${target_name}>"
+                        COMMENT "Copying ${runtime_dll} for ${target_name}"
+                )
+            else()
+                message(WARNING "Could not find MinGW runtime DLL: ${MINGW_BIN_DIR}/${runtime_dll}")
+            endif()
+        endforeach()
+    endfunction()
+
+    copy_mingw_runtime_dlls(Tilky_Launcher)
+    copy_mingw_runtime_dlls(Tilky_Engine)
+    copy_mingw_runtime_dlls(Tilky_All)
+endif()
 
 # ============================================================
 # Hide console window in Release builds on Windows

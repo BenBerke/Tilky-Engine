@@ -582,7 +582,7 @@ namespace MapEditorInternal {
         file << levelData.dump(4);
         file.close();
 
-        spdlog::info("Level loaded succsefully {}", path.string());
+        spdlog::info("Level saved successfully {}", path.string());
 
         UpdateLevels();
 
@@ -640,28 +640,52 @@ namespace MapEditor {
 
         actions.clear();
 
-        LoadTextures(levelData);
-        LoadEntities(levelData, loadedLevel);
-        LoadComponents(levelData, loadedLevel);
-        LoadWalls(levelData, loadedLevel);
-        LoadSectors(levelData, loadedLevel);
+        try {
+            spdlog::info("Loading textures");
+            LoadTextures(levelData);
 
-        RebuildNextEntityID(loadedLevel);
-        UpdatePlayerSpawnFromLoadedLevel(loadedLevel);
+            spdlog::info("Loading entities");
+            LoadEntities(levelData, loadedLevel);
 
-        if (LevelManager::loadedLevels.empty()) {
-            LevelManager::loadedLevels.push_back(loadedLevel);
-            LevelManager::currentLevelIndex = 0;
-        } else if (!LevelManager::HasCurrentLevel()) {
-            LevelManager::loadedLevels.push_back(loadedLevel);
-            LevelManager::currentLevelIndex =
-                    static_cast<int>(LevelManager::loadedLevels.size()) - 1;
-        } else {
-            LevelManager::loadedLevels[LevelManager::currentLevelIndex] =
-                    loadedLevel;
+            spdlog::info("Loading components");
+            LoadComponents(levelData, loadedLevel);
+
+            spdlog::info("Loading walls");
+            LoadWalls(levelData, loadedLevel);
+
+            spdlog::info("Loading sectors");
+            LoadSectors(levelData, loadedLevel);
+        }
+        catch (const nlohmann::json::exception& e) {
+            spdlog::critical("Level JSON schema error while loading '{}': {}", path.string(), e.what());
+            return false;
+        }
+        catch (const std::exception& e) {
+            spdlog::critical("Unexpected error while loading level '{}': {}", path.string(), e.what());
+            return false;
         }
 
-        spdlog::info("Level loaded succesfully {}", path.string());
+        RebuildNextEntityID(loadedLevel);
+
+        if (LevelManager::loadedLevels.empty()) {
+            LevelManager::loadedLevels.push_back(std::move(loadedLevel));
+            LevelManager::currentLevelIndex = 0;
+        }
+        else if (!LevelManager::HasCurrentLevel()) {
+            LevelManager::loadedLevels.push_back(std::move(loadedLevel));
+            LevelManager::currentLevelIndex =
+                static_cast<int>(LevelManager::loadedLevels.size()) - 1;
+        }
+        else {
+            LevelManager::loadedLevels[LevelManager::currentLevelIndex] =
+                std::move(loadedLevel);
+        }
+
+        Level& activeLevel = LevelManager::CurrentLevel();
+
+        UpdatePlayerSpawnFromLoadedLevel(activeLevel);
+
+        spdlog::info("Level loaded successfully {}", path.string());
 
         return true;
     }

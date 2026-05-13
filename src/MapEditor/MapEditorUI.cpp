@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <spdlog/spdlog.h>
+#include <optional>
 
 #include "Headers/Map/LevelManager.hpp"
 #include "../../Headers/Engine/Local/Local.hpp"
@@ -17,13 +19,52 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 namespace {
-    bool addingComponent;
-    int selectedComponent;
+    bool addingComponent = false;
+    int selectedComponent = -1;
+
+    std::optional<std::string> pendingLevelToLoad;
 }
+
 
 namespace MapEditorInternal {
     void ChangeMode() {
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
+    }
+
+    void QueueLevelLoad(const std::string& levelName) {
+        pendingLevelToLoad = levelName;
+        spdlog::info("Queued level load: {}", levelName);
+    }
+
+    bool ProcessPendingLevelLoad() {
+        if (!pendingLevelToLoad.has_value()) {
+            return false;
+        }
+
+        const std::string levelToLoad = *pendingLevelToLoad;
+        pendingLevelToLoad.reset();
+
+        addingComponent = false;
+        selectedComponent = -1;
+
+        editingSector = false;
+        selectedSector = -1;
+
+        editingWall = false;
+        selectedWall = -1;
+
+        editingEntity = false;
+        editingComponent = false;
+
+        creatableSector = false;
+        sectorBeingCreated.clear();
+        actions.clear();
+
+        spdlog::info("Processing queued level load: {}", levelToLoad);
+
+        MapEditor::LoadLevel(levelToLoad);
+
+        return true;
     }
 
     void DrawEditorUI() {
@@ -53,26 +94,27 @@ namespace MapEditorInternal {
             }
         }
 
-        auto GetModeName = [](const int mode) -> const char* {
+        auto GetModeName = [](const int mode) -> std::string  {
             switch (mode) {
                 case MODE_DOT:
-                    return Get("mode.dot").c_str();
+                    return Get("mode.dot");
 
                 case MODE_WALL:
-                    return Get("mode.wall").c_str();
+                    return Get("mode.wall");
 
                 case MODE_SECTOR:
-                    return Get("mode.sector").c_str();
+                    return Get("mode.sector");
 
                 case MODE_ENTITY:
-                    return Get("mode.entity").c_str();
+                    return Get("mode.entity");
 
                 default:
-                    return Get("mode.unknown").c_str();
+                    return Get("mode.unknown");
             }
         };
 
-        ImGui::Text("%s", GetModeName(currentMode));
+        const std::string modeName = GetModeName(currentMode);
+        ImGui::Text("%s", modeName.c_str());
 
         //region EDITING
 
@@ -210,24 +252,24 @@ namespace MapEditorInternal {
                 static int componentToAdd = CMP_SPRITE;
 
                 if (addingComponent) {
-                    const char *components[CMP_COUNT];
-
-                    components[CMP_TRANSFORM] = Get("component.transform").c_str();
-                    components[CMP_SPRITE] = Get("component.sprite").c_str();
-                    components[CMP_DECAL] = Get("component.decal").c_str();
-                    components[CMP_PLAYER_SPAWN] = Get("component.player_spawn").c_str();
-
                     ImGui::PushID("add_component_combo");
 
-                    if (ImGui::BeginCombo(Get("component.component").c_str(), components[componentToAdd])) {
+                    std::array<std::string, CMP_COUNT> componentNames;
+
+                    componentNames[CMP_TRANSFORM] = Get("component.transform");
+                    componentNames[CMP_SPRITE] = Get("component.sprite");
+                    componentNames[CMP_DECAL] = Get("component.decal");
+                    componentNames[CMP_PLAYER_SPAWN] = Get("component.player_spawn");
+
+                    if (ImGui::BeginCombo(Get("component.component").c_str(),componentNames[componentToAdd].c_str())) {
                         for (int i = 0; i < CMP_COUNT; i++) {
                             if (i == CMP_TRANSFORM) {
-                                continue; // Entity already has Transform.
+                                continue;
                             }
 
                             const bool isSelected = componentToAdd == i;
 
-                            if (ImGui::Selectable(components[i], isSelected)) {
+                            if (ImGui::Selectable(componentNames[i].c_str(), isSelected)) {
                                 componentToAdd = i;
                             }
 
@@ -565,8 +607,13 @@ namespace MapEditorInternal {
             ImGui::Text("%s", cleanName.c_str());
 
             if (ImGui::Button(Get("levels.load").c_str())) {
-                Save(MapEditor::currentMap);
-                MapEditor::LoadLevel(cleanName);
+                if (!MapEditor::currentMap.empty()) {
+                    Save(MapEditor::currentMap);
+                }
+
+                QueueLevelLoad(cleanName);
+
+                spdlog::info("Queued level load: {}", cleanName);
             }
 
             ImGui::SameLine();
@@ -577,11 +624,7 @@ namespace MapEditorInternal {
 
                 try {
                     if (std::filesystem::remove(path)) {
-                        SDL_Log(
-                            "%s %s",
-                            Get("log.deleted_level").c_str(),
-                            path.string().c_str()
-                        );
+                        spdlog::info("Deleted level: {}", path.string());
 
                         if (MapEditor::currentMap == cleanName) {
                             MapEditor::currentMap = "";
@@ -589,20 +632,11 @@ namespace MapEditorInternal {
 
                         UpdateLevels();
                     }
-                    else {
-                        SDL_Log(
-                            "%s %s",
-                            Get("log.failed_delete_missing").c_str(),
-                            path.string().c_str()
-                        );
-                    }
+                    else spdlog::error("Failed to delete level, file may not exist: {}", path.string());
+
                 }
                 catch (const std::filesystem::filesystem_error& e) {
-                    SDL_Log(
-                        "%s %s",
-                        Get("log.delete_level_failed").c_str(),
-                        e.what()
-                    );
+                    spdlog::error("Failed to delete level: {}", e.what());
                 }
             }
 

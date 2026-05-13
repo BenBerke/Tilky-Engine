@@ -55,4 +55,4 @@ namespace Renderer {
     inline constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;
 }
 
-#endif // WOLFY_ENGINE_RENDERER_H
+#endif // TILKY_ENGINE_RENDERER_H

@@ -3,7 +3,7 @@
 
 #include "imgui_impl_sdl3.h"
 
-#if WOLFY_USE_IMGUI
+#if TILKY_USE_IMGUI
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #endif

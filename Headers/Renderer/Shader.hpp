@@ -96,4 +96,4 @@ class Shader {
 
 };
 
-#endif //WOLFY_ENGINE_SHADER_H
+#endif //TILKY_ENGINE_SHADER_H

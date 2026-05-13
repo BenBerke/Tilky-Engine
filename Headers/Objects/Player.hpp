@@ -36,4 +36,4 @@ namespace Player {
     void Start(const std::vector<Sector>& sectors);
 }
 
-#endif //WOLFY_ENGINE_PLAYER_H
+#endif //TILKY_ENGINE_PLAYER_H

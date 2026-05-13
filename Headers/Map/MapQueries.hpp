@@ -2,8 +2,8 @@
 // Created by berke on 4/30/2026.
 //
 
-#ifndef WOLFY_ENGINE_MAPQUERIES_H
-#define WOLFY_ENGINE_MAPQUERIES_H
+#ifndef TILKY_ENGINE_MAPQUERIES_H
+#define TILKY_ENGINE_MAPQUERIES_H
 
 #include "Headers/Objects/Sector.hpp"
 
@@ -12,4 +12,4 @@ namespace MapQueries {
     void AssignWallsToSectors(std::vector<Sector>& sectors, const std::vector<Wall> &walls);
 }
 
-#endif //WOLFY_ENGINE_MAPQUERIES_H
+#endif //TILKY_ENGINE_MAPQUERIES_H

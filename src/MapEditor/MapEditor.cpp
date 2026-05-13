@@ -91,6 +91,13 @@ namespace MapEditor {
     void Update() {
         using namespace MapEditorInternal;
 
+        if (ProcessPendingLevelLoad()) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderClear(renderer);
+            SDL_RenderPresent(renderer);
+            return;
+        }
+
         if (!LevelManager::HasCurrentLevel()) {
             LevelManager::loadedLevels.emplace_back();
             LevelManager::currentLevelIndex = 0;

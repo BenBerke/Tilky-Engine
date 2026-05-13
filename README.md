@@ -123,13 +123,13 @@ The project is currently developed on Windows using CLion and vcpkg.
 
 The project has three main runnable targets:
 
-**Wolfy_Launcher**
+**Tilky_Launcher**
 Builds and runs only the launcher.
 
-**Wolfy_Engine**
+**Tilky_Engine**
 Builds and runs only the engine/editor/runtime.
 
-**Wolfy_All**
+**Tilky_All**
 Builds the launcher and engine code together for development convenience.
 
 ## Basic Usage
