@@ -110,13 +110,24 @@ namespace {
             });
         }
 
-        for (const ComponentAudioSource &a: level.audioSources.components) {
+        for (const ComponentAudioSource &a : level.audioSources.components) {
             componentsJson["audioSources"].push_back({
                 {"ownerID", a.ownerID},
-                {"fileName", a.name},
+                {"soundIndex", a.soundIndex},
                 {"pitch", a.pitch},
                 {"gain", a.gain},
-                {"looping", a.looping}
+                {"looping", a.looping},
+                {"playOnStart", a.playOnStart},
+
+                // Distance Attenuation
+                {"referenceDistance", a.referenceDistance},
+                {"maxDistance", a.maxDistance},
+                {"rollOffFactor", a.rollOffFactor},
+
+                // Sound Cone
+                {"innerConeAngle", a.innerConeAngle},
+                {"outerConeAngle", a.outerConeAngle},
+                {"outerGain", a.outerGain}
             });
         }
 
@@ -200,6 +211,24 @@ namespace {
         for (const Texture& texture : level.textures) {
             levelData["textures"].push_back({
                 {"fileName", texture.fileName}
+            });
+        }
+    }
+
+    void SaveSounds(json& levelData, const Level& level) {
+        levelData["sounds"] = json::array();
+
+        spdlog::info("Saving {} sound(s)", level.sounds.size());
+
+        for (const Sound& sound : level.sounds) {
+            spdlog::info("Saving sound: {}", sound.fileName);
+
+            if (sound.fileName.empty()) {
+                continue;
+            }
+
+            levelData["sounds"].push_back({
+                {"fileName", sound.fileName}
             });
         }
     }
@@ -301,14 +330,33 @@ namespace {
         }
 
         if (componentsJson.contains("audioSources")) {
-            for (const json &audioSourceJson: componentsJson["audioSources"]) {
-                const EntityID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
+            for (const json &audioSourceJson : componentsJson["audioSources"]) {
+                const EntityID ownerID =
+                    audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) {
+                    continue;
+                }
 
                 ComponentAudioSource& a = level.audioSources.Add(ownerID);
-                a.name = audioSourceJson.value("fileName", "");
-                a.pitch = audioSourceJson.value("pitch", 1.0f);
-                a.gain = audioSourceJson.value("gain", 1.0f);
-                a.looping = audioSourceJson.value("looping", false);
+
+                a.soundIndex = audioSourceJson.value("soundIndex", -1);
+                a.pitch      = audioSourceJson.value("pitch", 1.0f);
+                a.gain       = audioSourceJson.value("gain", 1.0f);
+                a.looping    = audioSourceJson.value("looping", false);
+                a.playOnStart = audioSourceJson.value("playOnStart", true);
+
+                // Distance Attenuation
+                a.referenceDistance = audioSourceJson.value("referenceDistance", 1.0f);
+                a.maxDistance       = audioSourceJson.value("maxDistance", 10000.0f);
+                a.rollOffFactor     = audioSourceJson.value("rollOffFactor", 1.0f);
+
+                // Sound Cone
+                a.innerConeAngle = audioSourceJson.value("innerConeAngle", 360.0f);
+                a.outerConeAngle = audioSourceJson.value("outerConeAngle", 360.0f);
+                a.outerGain      = audioSourceJson.value("outerGain", 0.0f);
+
+                a.name = "entity_" + std::to_string(ownerID) + "_audio";
             }
         }
     }
@@ -491,6 +539,33 @@ namespace {
         }
     }
 
+    void LoadSounds(const json& levelData, Level& level) {
+        level.sounds.clear();
+
+        if (!levelData.contains("sounds")) {
+            return;
+        }
+
+        for (const json& soundJson : levelData["sounds"]) {
+            Sound sound;
+
+            if (soundJson.is_object()) {
+                sound.fileName = soundJson.value("fileName", "");
+            }
+            else if (soundJson.is_string()) {
+                sound.fileName = std::filesystem::path(
+                    soundJson.get<std::string>()
+                ).stem().string();
+            }
+
+            if (!sound.fileName.empty()) {
+                level.sounds.push_back(sound);
+            }
+        }
+
+        spdlog::info("Loaded {} sound(s) into level", level.sounds.size());
+    }
+
     //endregion
 
     void UpdatePlayerSpawnFromLoadedLevel(Level& level) {
@@ -564,6 +639,9 @@ namespace MapEditorInternal {
     bool Save(const std::string &saveTo) {
         Level &level = GetOrCreateCurrentLevel();
 
+        MapEditor::RefreshLevelTexturesFromFolder();
+        MapEditor::RefreshLevelSoundsFromFolder();
+
         const std::string cleanName = CleanLevelName(saveTo);
 
         if (cleanName.empty()) {
@@ -588,6 +666,7 @@ namespace MapEditorInternal {
         SaveWalls(levelData, level);
         SaveSectors(levelData, level);
         SaveTextures(levelData, level);
+        SaveSounds(levelData, level);
 
         const std::filesystem::path path = BuildLevelPath(cleanName);
 
@@ -677,6 +756,9 @@ namespace MapEditor {
 
             LoadTextures(levelData, loadedLevel);
             spdlog::info("Textures loaded");
+
+            LoadSounds(levelData, loadedLevel);
+            spdlog::info("Sounds loaded");
         }
         catch (const nlohmann::json::exception& e) {
             spdlog::critical("Level JSON schema error while loading '{}': {}", path.string(), e.what());
@@ -706,6 +788,9 @@ namespace MapEditor {
         Level& activeLevel = LevelManager::CurrentLevel();
 
         UpdatePlayerSpawnFromLoadedLevel(activeLevel);
+
+        RefreshLevelTexturesFromFolder();
+        RefreshLevelSoundsFromFolder();
 
         spdlog::info("Level loaded successfully {}", path.string());
 

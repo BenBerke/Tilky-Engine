@@ -16,8 +16,9 @@ namespace {
     ALCdevice* device = nullptr;
     ALCcontext* context = nullptr;
 
-    std::unordered_map<std::string, ALuint> buffers;
+    std::vector<ALuint> buffers;
     std::unordered_map<std::string, ALuint> sources;
+
 }
 
 namespace SoundManager {
@@ -84,9 +85,9 @@ namespace SoundManager {
         return true;
     }
 
+
     bool CreateSource(const std::string& name) {
         if (sources.contains(name)) {
-            spdlog::warn("OpenAL source already exists {}", name);
             return true;
         }
 
@@ -115,10 +116,41 @@ namespace SoundManager {
         return true;
     }
 
+    bool IsSourcePlaying(const std::string& sourceName) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            return false;
+        }
+
+        ALint state = 0;
+        alGetSourcei(it->second, AL_SOURCE_STATE, &state);
+
+        CheckALErrors("Failed to get source state");
+
+        return state == AL_PLAYING;
+    }
+
+    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const int soundIndex) {
+        if (IsSourcePlaying(sourceName)) {
+            return;
+        }
+
+        PlaySoundOnSource(sourceName, soundIndex);
+    }
+
     void GenerateSounds() {
-        for (auto& buffer : buffers | std::views::values) {
+        // Stop all sources before deleting old buffers.
+        for (auto& source : sources | std::views::values) {
+            alSourceStop(source);
+            alSourcei(source, AL_BUFFER, 0);
+        }
+
+        // Delete previous buffers.
+        for (ALuint& buffer : buffers) {
             if (buffer != 0) {
                 alDeleteBuffers(1, &buffer);
+                buffer = 0;
             }
         }
 
@@ -127,8 +159,13 @@ namespace SoundManager {
         const fs::path soundsPath = ProjectManager::GetSoundsPath();
         const Level& level = LevelManager::CurrentLevel();
 
-        for (const Sound& sound : level.sounds) {
+        buffers.resize(level.sounds.size(), 0);
+
+        for (int i = 0; i < static_cast<int>(level.sounds.size()); ++i) {
+            const Sound& sound = level.sounds[i];
+
             if (sound.fileName.empty()) {
+                spdlog::warn("Skipping empty sound at index {}", i);
                 continue;
             }
 
@@ -141,18 +178,28 @@ namespace SoundManager {
             ALuint buffer = 0;
 
             if (!LoadWAVToOpenALBuffer(soundPath.string().c_str(), buffer)) {
-                spdlog::error("Failed to load sound: {}", soundPath.string());
+                spdlog::error(
+                    "Failed to load sound index {}: {}",
+                    i,
+                    soundPath.string()
+                );
                 continue;
             }
 
-            const std::string soundName = soundPath.stem().string();
+            buffers[i] = buffer;
 
-            buffers[soundName] = buffer;
-
-            spdlog::info("Loaded sound '{}' from {}", soundName, soundPath.string());
+            spdlog::info(
+                "Loaded sound index {} '{}' from {}",
+                i,
+                sound.fileName,
+                soundPath.string()
+            );
         }
 
-        spdlog::info("Generated {} sound buffer(s) from current level", buffers.size());
+        spdlog::info(
+            "Generated {} sound buffer slot(s) from current level",
+            buffers.size()
+        );
     }
 
     bool InitializeOpenAL() {
@@ -183,6 +230,10 @@ namespace SoundManager {
 
         GenerateSounds();
 
+        SetListenerPosition({0.0f, 0.0f, 0.0f});
+        SetListenerVelocity({0.0f, 0.0f, 0.0f});
+        SetListenerOrientation(0.0f);
+
         spdlog::info("Sounds generated");
         return true;
     }
@@ -206,16 +257,17 @@ namespace SoundManager {
     }
 
     void DestroyOpenAL() {
-        for (auto &source: sources | std::views::values) {
+        for (auto& source : sources | std::views::values) {
             alSourceStop(source);
             alDeleteSources(1, &source);
         }
 
         sources.clear();
 
-        for (auto &buffer: buffers | std::views::values) {
+        for (ALuint& buffer : buffers) {
             if (buffer != 0) {
                 alDeleteBuffers(1, &buffer);
+                buffer = 0;
             }
         }
 
@@ -235,8 +287,9 @@ namespace SoundManager {
         spdlog::info("OpenAL destroyed");
     }
 
-    void PlaySoundOnSource(const std::string& sourceName, const std::string& soundName) {
-        spdlog::info("Playing sound '{}'", soundName);
+    void PlaySoundOnSource(const std::string& sourceName, const int soundIndex) {
+        spdlog::info("Playing sound index {}", soundIndex);
+
         const auto sourceIt = sources.find(sourceName);
 
         if (sourceIt == sources.end()) {
@@ -244,22 +297,31 @@ namespace SoundManager {
             return;
         }
 
-        const auto bufferIt = buffers.find(soundName);
+        if (soundIndex < 0 || soundIndex >= static_cast<int>(buffers.size())) {
+            spdlog::error(
+                "Invalid sound index {}. Sound buffer count: {}",
+                soundIndex,
+                buffers.size()
+            );
+            return;
+        }
 
-        if (bufferIt == buffers.end()) {
-            spdlog::error("Sound not found: {}", soundName);
+        const ALuint buffer = buffers[soundIndex];
+
+        if (buffer == 0) {
+            spdlog::error("Sound index {} has no valid OpenAL buffer", soundIndex);
             return;
         }
 
         const ALuint source = sourceIt->second;
-        const ALuint buffer = bufferIt->second;
 
         alSourceStop(source);
         alSourcei(source, AL_BUFFER, static_cast<ALint>(buffer));
         alSourcePlay(source);
 
-        spdlog::info("Played sound '{}'", soundName);
         CheckALErrors("Failed to play sound on source");
+
+        spdlog::info("Played sound index {} on source '{}'", soundIndex, sourceName);
     }
 
     //region Setters
@@ -314,5 +376,129 @@ namespace SoundManager {
         CheckALErrors("Failed to set source looping");
     }
 
+    void SetSourceReferenceDistance(const std::string& sourceName, float distance) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_REFERENCE_DISTANCE, distance);
+        CheckALErrors("Failed to set AL_REFERENCE_DISTANCE");
+    }
+
+    void SetSourceMaxDistance(const std::string& sourceName, float maxDistance) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_MAX_DISTANCE, maxDistance);
+        CheckALErrors("Failed to set source looping");
+    }
+
+    void SetSourceRollOffFactor(const std::string& sourceName, float rollOffFactor) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_ROLLOFF_FACTOR, rollOffFactor);
+        CheckALErrors("Failed to set AL_ROLLOFF_FACTOR");
+    }
+
+    void SetSourceInnerConeAngle(const std::string& sourceName, float innerConeAngle) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_CONE_INNER_ANGLE, innerConeAngle);
+        CheckALErrors("Failed to set AL_CONE_INNER_ANGLE");
+    }
+
+    void SetSourceOuterConeAngle(const std::string& sourceName, float outerConeAngle) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_CONE_OUTER_ANGLE, outerConeAngle);
+        CheckALErrors("Failed to set AL_CONE_OUTER_ANGLE");
+    }
+
+    void SetSourceOuterGain(const std::string& sourceName, float outerGain) {
+        const auto it = sources.find(sourceName);
+
+        if (it == sources.end()) {
+            spdlog::error("Source not found: {}", sourceName);
+            return;
+        }
+
+        alSourcef(it->second, AL_CONE_OUTER_GAIN, outerGain);
+        CheckALErrors("Failed to set AL_CONE_OUTER_GAIN");
+    }
+
+    void SetListenerPosition(const Vector3 pos) {
+        alListener3f(AL_POSITION, pos.x, pos.y, pos.z);
+        CheckALErrors("Failed to set listener position");
+    }
+
+    void SetListenerVelocity(const Vector3 velocity) {
+        alListener3f(AL_VELOCITY, velocity.x, velocity.y, velocity.z);
+        CheckALErrors("Failed to set listener velocity");
+    }
+
+    void SetListenerOrientation(const float angleRadians) {
+        const float forwardX = std::cos(angleRadians);
+        const float forwardY = 0.0f;
+        const float forwardZ = std::sin(angleRadians);
+
+        const ALfloat orientation[] = {
+            forwardX, forwardY, forwardZ,  // forward
+            0.0f,     1.0f,     0.0f       // up
+        };
+
+        alListenerfv(AL_ORIENTATION, orientation);
+        CheckALErrors("Failed to set listener orientation");
+    }
+
+    void SetListenerGain(const float gain) {
+        alListenerf(AL_GAIN, gain);
+        CheckALErrors("Failed to set listener gain");
+    }
+
+    void SetDistanceModel(const ALenum model) {
+        alDistanceModel(model);
+        CheckALErrors("Failed to set distance model");
+    }
+
+    void SetDopplerFactor(const float factor) {
+        alDopplerFactor(factor);
+        CheckALErrors("Failed to set Doppler factor");
+    }
+
+    void SetSpeedOfSound(const float speed) {
+        alSpeedOfSound(speed);
+        CheckALErrors("Failed to set speed of sound");
+    }
+
+    void SetListenerOrientation(const Vector3 forward, const Vector3 up) {
+        const ALfloat orientation[] = {
+            forward.x, forward.y, forward.z,
+            up.x,      up.y,      up.z
+        };
+        alListenerfv(AL_ORIENTATION, orientation);
+        CheckALErrors("Failed to set listener orientation vectors");
+    }
     //endregion
 }

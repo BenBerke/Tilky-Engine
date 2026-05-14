@@ -28,26 +28,40 @@ enum ComponentType {
 
 struct ComponentAudioSource {
     EntityID ownerID = -1;
-    std::string name;
 
-    float pitch, gain;
-    bool looping;
+    std::string name; // OpenAL source name, e.g. "entity_4_audio"
+    int soundIndex = -1;
 
-    void PlaySound(const std::string& soundName) const {
-        SoundManager::PlaySoundOnSource(name, soundName);
-    }
+    float pitch = 1.0f;
+    float gain = 1.0f;
+    bool looping = false;
+    bool playOnStart = false;
 
-    void SetSourcePitch(const float pitch) const {
-        SoundManager::SetSourcePitch(name, pitch);
-    }
+    // Distance Attenuation (How volume drops over distance)
+    float referenceDistance = 1.0f;   // Distance where gain is at its max
+    float maxDistance = 10000.0f;      // Distance where attenuation stops
+    float rollOffFactor = 1.0f;       // How fast the sound fades (1.0 is "real")
 
-    void SetSourceGain(const float gain) const {
-        SoundManager::SetSourceGain(name, gain);
-    }
+    // Sound Cone (Directional audio behavior)
+    float innerConeAngle = 360.0f;    // Inside this angle, sound is full volume
+    float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
+    float outerGain = 0.0f;           // Volume multiplier outside the cone
 
-    void SetSourceLooping(const bool looping) const {
-        SoundManager::SetSourceLooping(name, looping);
-    }
+    // void PlaySound() const {
+    //     SoundManager::PlaySoundOnSource(name, soundIndex);
+    // }
+    //
+    // void SetSourcePitch(const float pitch) const {
+    //     SoundManager::SetSourcePitch(name, pitch);
+    // }
+    //
+    // void SetSourceGain(const float gain) const {
+    //     SoundManager::SetSourceGain(name, gain);
+    // }
+    //
+    // void SetSourceLooping(const bool looping) const {
+    //     SoundManager::SetSourceLooping(name, looping);
+    // }
 
     void SetSourcePosition(const Vector3& position) const {
         SoundManager::SetSourcePosition(name, position);

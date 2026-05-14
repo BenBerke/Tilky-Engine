@@ -13,6 +13,7 @@
 
 #include "../../Headers/Math/Geometry/Geometry.hpp"
 #include "../../Headers/Map/MapQueries.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 
 #define FRICTION .8f
 #define TURN_SPEED 90.0f
@@ -276,6 +277,20 @@ namespace Player {
         } else velocity *= FRICTION;
 
         position += velocity * GameTime::deltaTime;
+
+        SoundManager::SetListenerPosition({
+            position.x,
+            currentEyeHeight,
+            position.y
+        });
+
+        SoundManager::SetListenerOrientation(angleInRad);
+
+        SoundManager::SetListenerVelocity({
+            velocity.x,
+            0.0f,
+            velocity.y
+        });
 
         bool touchingPortalThisFrame = false;
 

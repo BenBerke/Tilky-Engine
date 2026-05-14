@@ -48,9 +48,6 @@ bool Entity::HasComponent() {
 }
 
 void Entity::Start() {
-    Level& level = LevelManager::CurrentLevel();
-    if (this->HasComponent<ComponentAudioSource>())
-        level.audioSources.Get(id)->PlaySound("Shoot");
 }
 
 void Entity::Update() {

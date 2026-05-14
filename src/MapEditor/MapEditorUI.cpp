@@ -72,6 +72,53 @@ namespace MapEditor {
 
         spdlog::info("Refreshed {} level texture(s)", level.textures.size());
     }
+
+    void RefreshLevelSoundsFromFolder() {
+        Level& level = LevelManager::CurrentLevel();
+        level.sounds.clear();
+
+        const std::filesystem::path soundsPath = ProjectManager::GetSoundsPath();
+
+        if (!std::filesystem::exists(soundsPath)) {
+            std::filesystem::create_directories(soundsPath);
+            spdlog::warn("Created missing Sounds folder: {}", soundsPath.string());
+            return;
+        }
+
+        if (!std::filesystem::is_directory(soundsPath)) {
+            spdlog::error("Sounds path is not a directory: {}", soundsPath.string());
+            return;
+        }
+
+        for (const auto& entry : std::filesystem::directory_iterator(soundsPath)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+
+            const std::filesystem::path path = entry.path();
+
+            std::string extension = path.extension().string();
+
+            std::ranges::transform(extension, extension.begin(), [](const unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (extension != ".wav") {
+                continue;
+            }
+
+            Sound sound;
+            sound.fileName = path.stem().string(); // "Shoot.wav" -> "Shoot"
+
+            level.sounds.push_back(sound);
+        }
+
+        std::ranges::sort(level.sounds, [](const Sound& a, const Sound& b) {
+            return a.fileName < b.fileName;
+        });
+
+        spdlog::info("Refreshed {} level sound(s)", level.sounds.size());
+    }
 }
 
 namespace MapEditorInternal {
@@ -146,14 +193,60 @@ namespace MapEditorInternal {
     }
 
     void DrawSoundCategory() {
-        const Level& level = LevelManager::CurrentLevel();
-        for (int i = 0; i < level.sounds.size(); i++) {
+        Level& level = LevelManager::CurrentLevel();
+
+        if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
+            MapEditor::RefreshLevelSoundsFromFolder();
+        }
+
+        for (int i = 0; i < static_cast<int>(level.sounds.size()); i++) {
             ImGui::PushID(i);
 
-            ImGui::Text(level.sounds[i].fileName.c_str());
+            ImGui::Text("%d: %s", i, level.sounds[i].fileName.c_str());
 
             ImGui::PopID();
         }
+
+        PutSpace(2);
+    }
+
+    void DrawWorldSettings() {
+        ImGui::Begin(Get("editor.world_settings").c_str());
+
+        // Local static state to hold values between frames
+        // In a real app, these should ideally be fetched from your SoundSystem state
+        static float masterGain = 1.0f;
+        static float dopplerFactor = 1.0f;
+        static float speedOfSound = 343.3f;
+        static int currentModel = 0; // Index for the distance model combo
+
+        // 1. Master Gain
+        if (ImGui::SliderFloat(Get("settings.audio.master_gain").c_str(), &masterGain, 0.0f, 2.0f)) {
+            SoundManager::SetListenerGain(masterGain);
+        }
+
+        ImGui::Separator();
+        ImGui::TextDisabled("%s", Get("settings.audio.global_physics_header").c_str());
+
+        // 2. Doppler Factor
+        if (ImGui::DragFloat(Get("settings.audio.doppler_factor").c_str(), &dopplerFactor, 0.01f, 0.0f, 10.0f)) {
+            SoundManager::SetDopplerFactor(dopplerFactor);
+        }
+
+        // 3. Speed of Sound
+        if (ImGui::InputFloat(Get("settings.audio.speed_of_sound").c_str(), &speedOfSound)) {
+            SoundManager::SetSpeedOfSound(speedOfSound);
+        }
+
+        // 4. Distance Model
+        const char* models[] = { "Inverse Distance", "Inverse Distance Clamped", "Linear Distance", "Linear Distance Clamped", "None" };
+        const ALenum alModels[] = { AL_INVERSE_DISTANCE, AL_INVERSE_DISTANCE_CLAMPED, AL_LINEAR_DISTANCE, AL_LINEAR_DISTANCE_CLAMPED, AL_NONE };
+
+        if (ImGui::Combo(Get("settings.audio.distance_model").c_str(), &currentModel, models, IM_ARRAYSIZE(models))) {
+            SoundManager::SetDistanceModel(alModels[currentModel]);
+        }
+
+        ImGui::End();
     }
 
     void DrawEditorUI() {
@@ -602,26 +695,63 @@ namespace MapEditorInternal {
                         ImGui::Text("Audio component missing");
                     }
                     else {
-                        std::string fileName = c->name;
-                        float pitch = c->pitch;
-                        float gain = c->gain;
-                        bool looping = c->looping;
+                       int soundIndex = c->soundIndex;
+                       float pitch = c->pitch;
+                       float gain = c->gain;
+                       bool looping = c->looping;
+                       bool playOnStart = c->playOnStart;
 
-                        ImGui::InputText(Get("component.audio_source.file_name").c_str(), &fileName);
-                        ImGui::InputFloat(Get("component.audio_source.pitch").c_str(), &pitch);
-                        ImGui::InputFloat(Get("component.audio_source.gain").c_str(), &gain);
-                        ImGui::Checkbox(Get("component.audio_source.looping").c_str(), &looping);
+                       // New local variables for the UI
+                       float refDist = c->referenceDistance;
+                       float maxDist = c->maxDistance;
+                       float rolloff = c->rollOffFactor;
+                       float innerAngle = c->innerConeAngle;
+                       float outerAngle = c->outerConeAngle;
+                       float outerGain = c->outerGain;
 
-                        c->pitch = pitch;
-                        c->gain = gain;
-                        c->looping = looping;
-                        c->name = fileName;
+                       ImGui::InputInt("Sound Index", &soundIndex);
+                       ImGui::InputFloat(Get("component.audio_source.pitch").c_str(), &pitch);
+                       ImGui::InputFloat(Get("component.audio_source.gain").c_str(), &gain);
+                       ImGui::Checkbox(Get("component.audio_source.looping").c_str(), &looping);
+                       ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &playOnStart);
 
-                        if (ImGui::Button(Get("common.delete").c_str())) {
-                            entity.RemoveComponent<ComponentAudioSource>();
-                            editingComponent = false;
-                            selectedComponent = -1;
-                        }
+                       ImGui::Separator();
+                       ImGui::TextDisabled("%s", Get("component.audio_source.attenuation_header").c_str());
+
+                       ImGui::DragFloat(Get("component.audio_source.ref_distance").c_str(), &refDist, 0.1f, 0.0f,
+                                        1000.0f);
+                       ImGui::DragFloat(Get("component.audio_source.max_distance").c_str(), &maxDist, 1.0f, 0.0f,
+                                        10000.0f);
+                       ImGui::DragFloat(Get("component.audio_source.rolloff").c_str(), &rolloff, 0.01f, 0.0f, 10.0f);
+
+                       ImGui::Separator();
+                       ImGui::TextDisabled("%s", Get("component.audio_source.cone_header").c_str());
+
+                       ImGui::DragFloat(Get("component.audio_source.inner_angle").c_str(), &innerAngle, 1.0f, 0.0f,
+                                        360.0f);
+                       ImGui::DragFloat(Get("component.audio_source.outer_angle").c_str(), &outerAngle, 1.0f, 0.0f,
+                                        360.0f);
+                       ImGui::DragFloat(Get("component.audio_source.outer_gain").c_str(), &outerGain, 0.01f, 0.0f,
+                                        1.0f);
+
+                       c->soundIndex = soundIndex;
+                       c->pitch = pitch;
+                       c->gain = gain;
+                       c->looping = looping;
+                       c->playOnStart = playOnStart;
+
+                       c->referenceDistance = refDist;
+                       c->maxDistance = maxDist;
+                       c->rollOffFactor = rolloff;
+                       c->innerConeAngle = innerAngle;
+                       c->outerConeAngle = outerAngle;
+                       c->outerGain = outerGain;
+
+if (ImGui::Button(Get("common.delete").c_str())) {
+    entity.RemoveComponent<ComponentAudioSource>();
+    editingComponent = false;
+    selectedComponent = -1;
+}
                     }
                 }
 
@@ -655,15 +785,10 @@ namespace MapEditorInternal {
 
         PutSpace(2);
 
-        DrawTextureCategory();
-
+        DrawSoundCategory();
         PutSpace(2);
 
-        DrawSoundCategory();
-
-        if (currentMode == MODE_ENTITY) {
-
-        }
+        DrawTextureCategory();
 
         ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
 
@@ -744,6 +869,8 @@ namespace MapEditorInternal {
 
             ImGui::PopID();
         }
+
+        DrawWorldSettings();
 
         ImGui::End();
     }

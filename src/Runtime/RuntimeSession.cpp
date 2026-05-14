@@ -11,6 +11,7 @@
 #include "Headers/Objects/Player.hpp"
 #include "Headers/Objects/Loadables.hpp"
 #include "Headers/Runtime/Renderer/Renderer/Renderer.hpp"
+#include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Renderer/Renderer/RendererInternal.hpp"
 
 namespace {
@@ -80,6 +81,8 @@ namespace RuntimeSession {
             return false;
         }
 
+        AudioSystem::Start(level);
+
         InputManager::SetRelativeMouseMode(Renderer::window, true);
 
         for (const Texture& texture : level.textures) TextureManager::CreateTexture(texture.fileName);
@@ -100,6 +103,7 @@ namespace RuntimeSession {
         );
 
         Renderer::Update(Player::position, Player::angle);
+        AudioSystem::Update(level);
 
         RenderDebugText();
 
@@ -114,5 +118,6 @@ namespace RuntimeSession {
     void Shutdown() {
         SoundManager::DestroyOpenAL();
         Renderer::Destroy();
+        AudioSystem::Shutdown(LevelManager::CurrentLevel());
     }
 }

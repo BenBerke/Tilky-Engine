@@ -93,6 +93,7 @@ namespace MapEditor {
         }
 
         RefreshLevelTexturesFromFolder();
+        RefreshLevelSoundsFromFolder();
     }
 
     void Update() {

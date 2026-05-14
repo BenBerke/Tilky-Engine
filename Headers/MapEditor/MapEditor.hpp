@@ -27,6 +27,7 @@ namespace MapEditor {
     bool QuitRequested();
     bool LoadLevel(const std::string& levelName);
     void RefreshLevelTexturesFromFolder();
+    void RefreshLevelSoundsFromFolder();
 
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);

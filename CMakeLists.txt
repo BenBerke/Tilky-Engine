@@ -178,6 +178,8 @@ set(TILKY_ENGINE_SOURCES
         Headers/Objects/Loadables.hpp
         src/Runtime/RuntimeSession.cpp
         Headers/Runtime/RuntimeSession.hpp
+        src/Runtime/Sound/AudioSystem.cpp
+        Headers/Runtime/Sound/AudioSystem.hpp
 )
 
 # ============================================================
