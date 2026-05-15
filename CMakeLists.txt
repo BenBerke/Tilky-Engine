@@ -327,6 +327,7 @@ add_dependencies(Tilky_All
         Tilky_Engine
 )
 
+
 # ============================================================
 # Runtime assets
 # Copy folders needed by the .exe into the build output folder.
@@ -407,6 +408,25 @@ if(WIN32 AND MINGW)
     copy_mingw_runtime_dlls(Tilky_Launcher)
     copy_mingw_runtime_dlls(Tilky_Engine)
     copy_mingw_runtime_dlls(Tilky_All)
+endif()
+
+# ===========================================================
+# Playable Exe
+# ===========================================================
+add_executable(Tilky_GameRuntime
+        resources/TilkyIcon.rc
+)
+
+target_link_libraries(Tilky_GameRuntime PRIVATE
+        Tilky_EngineCore
+        OpenAL::OpenAL
+)
+
+copy_runtime_assets(Tilky_GameRuntime)
+copy_runtime_dlls(Tilky_GameRuntime)
+
+if(WIN32 AND MINGW)
+    copy_mingw_runtime_dlls(Tilky_GameRuntime)
 endif()
 
 # ============================================================

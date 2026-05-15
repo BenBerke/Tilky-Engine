@@ -222,6 +222,8 @@ namespace MapEditor {
             window = nullptr;
         }
 
+        quit = false;
+        shutdown = false;
         SDL_Quit();
     }
 }

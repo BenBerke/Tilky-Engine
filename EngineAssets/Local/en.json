@@ -19,6 +19,8 @@
   "editor.level_name": "Level Name",
   "editor.world_settings": "World Settings",
 
+  "editor.export": "Export Game",
+
   "settings.audio.master_gain" : "Master Gain",
   "settings.audio.global_physics_header" : "Global Audio Physics",
   "settings.audio.doppler_factor" : "Doppler Factor",

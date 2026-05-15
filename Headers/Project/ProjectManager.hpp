@@ -153,6 +153,7 @@ namespace ProjectManager {
 
     // Returns Launcher.tilky insdie Documents\TilkyEngine which stores metadata about the launcher, such as the language
     fs::path GetLauncherVariables();
+
     std::string GetCurrentLanguageInLauncher();
 
     // Returns the name of the currently loaded project.

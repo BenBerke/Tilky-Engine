@@ -28,6 +28,9 @@
 
 namespace fs = std::filesystem;
 
+static void LaunchEditor();
+static void LaunchEngine();
+
 static bool InitEngineLogger() {
     const fs::path logPath =
         ProjectManager::GetDefaultProjectsFolder().parent_path()
@@ -74,6 +77,42 @@ static bool InitEngineLogger() {
     }
 }
 
+static void LaunchEngine() {
+    if(!RuntimeSession::Start()) {
+        spdlog::critical("Failed to start the session");
+        return;
+    }
+
+    spdlog::info("Starting the game loop");
+    bool running = true;
+    while (running) {
+        InputManager::BeginFrame();
+        GameTime::Update();
+        RuntimeSession::Update();
+
+        running = !(InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) || InputManager::QuitRequested());
+    }
+    spdlog::info("Finished the game loop");
+
+    RuntimeSession::Shutdown();
+    LaunchEditor();
+}
+
+static void LaunchEditor() {
+    MapEditor::Start();
+    while (!MapEditor::QuitRequested()) {
+        InputManager::BeginFrame();
+        MapEditor::Update();
+    }
+    const bool shutdown = MapEditor::ShutdownRequested();
+    MapEditor::Destroy();
+
+    if (shutdown) return;
+
+    MapEditor::LoadLevel(MapEditor::currentMap);
+    LaunchEngine();
+}
+
 int main(int argc, char** argv) {
     InitEngineLogger();
 
@@ -110,35 +149,7 @@ int main(int argc, char** argv) {
 
 
     //todo: Proper Game Initilization
-
-    MapEditor::Start();
-    while (!MapEditor::QuitRequested()) {
-        InputManager::BeginFrame();
-        MapEditor::Update();
-    }
-    MapEditor::Destroy();
-
-    if (MapEditor::ShutdownRequested()) return 0;
-
-    MapEditor::LoadLevel(MapEditor::currentMap);
-
-    if(!RuntimeSession::Start()) {
-        spdlog::critical("Failed to start the session");
-        return 1;
-    }
-
-    spdlog::info("Starting the game loop");
-    bool running = true;
-    while (running) {
-        InputManager::BeginFrame();
-        GameTime::Update();
-        RuntimeSession::Update();
-
-        running = !(InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) || InputManager::QuitRequested());
-    }
-    spdlog::info("Finished the game loop");
-
-    RuntimeSession::Shutdown();
+    LaunchEditor();
 
     return 0;
 }

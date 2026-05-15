@@ -21,6 +21,63 @@ constexpr EntityID INVALID_ENTITY_ID = static_cast<EntityID>(-1);
 
 using json = nlohmann::json;
 
+namespace MapEditor {
+    bool ExportProjectAsGame(const std::filesystem::path& exportFolder) {
+        namespace fs = std::filesystem;
+
+        try {
+            fs::create_directories(exportFolder);
+
+            const fs::path runtimeExe =
+                ProjectManager::GetEngineBasePath() / "Tilky_GameRuntime.exe";
+
+            const fs::path outputExe =
+                exportFolder / "MyGame.exe";
+
+            fs::copy_file(
+                runtimeExe,
+                outputExe,
+                fs::copy_options::overwrite_existing
+            );
+
+            fs::copy(
+                ProjectManager::GetProjectFolder(),
+                exportFolder / "Project",
+                fs::copy_options::recursive |
+                fs::copy_options::overwrite_existing
+            );
+
+            fs::copy(
+                ProjectManager::GetEngineBasePath() / "EngineAssets",
+                exportFolder / "EngineAssets",
+                fs::copy_options::recursive |
+                fs::copy_options::overwrite_existing
+            );
+
+            fs::copy(
+                ProjectManager::GetEngineBasePath() / "Shaders",
+                exportFolder / "Shaders",
+                fs::copy_options::recursive |
+                fs::copy_options::overwrite_existing
+            );
+
+            fs::copy(
+                ProjectManager::GetEngineBasePath() / "Fonts",
+                exportFolder / "Fonts",
+                fs::copy_options::recursive |
+                fs::copy_options::overwrite_existing
+            );
+
+            spdlog::info("Exported game to {}", exportFolder.string());
+            return true;
+        }
+        catch (const std::exception& e) {
+            spdlog::error("Failed to export game: {}", e.what());
+            return false;
+        }
+    }
+}
+
 namespace {
     //region backend
     std::filesystem::path BuildLevelPath(const std::string &levelName) {
