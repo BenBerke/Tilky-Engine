@@ -14,7 +14,6 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
-
 namespace MapEditor {
     std::vector<Level> levels;
     EntityID currentLevels = 0;
@@ -45,9 +44,9 @@ namespace MapEditor {
 
         if (SDL_CreateWindowAndRenderer(
                 "Tilky_Level Editor",
-                SCREEN_WIDTH,
-                SCREEN_HEIGHT,
-                0,
+                screenWidth,
+                screenHeight,
+                SDL_WINDOW_RESIZABLE,
                 &window,
                 &renderer
             ) == false) {
@@ -55,12 +54,13 @@ namespace MapEditor {
             SDL_Quit();
             return;
         }
+        SDL_SetWindowFullscreenMode(window, nullptr);
 
         const fs::path iconPath = ProjectManager::GetEngineBasePath() / "LauncherAssets" / "Fox.png";
         SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
 
         if (windowIcon == nullptr)
-            spdlog::error("Mapeditor failed to load window icon {}", SDL_GetError());
+            spdlog::error("Map editor failed to load window icon {}", SDL_GetError());
         else {
             if (!SDL_SetWindowIcon(window, windowIcon)) spdlog::error("Mapeditor failed to set window icon {}", SDL_GetError());
             SDL_DestroySurface(windowIcon);
@@ -202,6 +202,8 @@ namespace MapEditor {
 
         ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
+
+        SDL_GetWindowSize(window, &screenWidth, &screenHeight);
 
         SDL_RenderPresent(renderer);
     }

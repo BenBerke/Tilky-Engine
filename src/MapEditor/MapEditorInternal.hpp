@@ -10,8 +10,8 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 namespace MapEditorInternal {
-    constexpr int SCREEN_WIDTH = 1680;
-    constexpr int SCREEN_HEIGHT = 960;
+    extern int screenWidth;
+    extern int screenHeight;
     constexpr int FONT_SIZE = 24;
 
     extern float editorZoom;

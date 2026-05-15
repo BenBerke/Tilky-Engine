@@ -80,6 +80,23 @@ namespace MapEditor {
 
 namespace {
     //region backend
+
+    ALenum ValidateDistanceModel(const int model) {
+        switch (model) {
+            case AL_INVERSE_DISTANCE:
+            case AL_INVERSE_DISTANCE_CLAMPED:
+            case AL_LINEAR_DISTANCE:
+            case AL_LINEAR_DISTANCE_CLAMPED:
+            case AL_EXPONENT_DISTANCE:
+            case AL_EXPONENT_DISTANCE_CLAMPED:
+            case AL_NONE:
+                return static_cast<ALenum>(model);
+
+            default:
+                return AL_INVERSE_DISTANCE_CLAMPED;
+        }
+    }
+
     std::filesystem::path BuildLevelPath(const std::string &levelName) {
         std::string cleanName = levelName;
 
@@ -120,6 +137,20 @@ namespace {
     //endregion
 
     //region Saving
+
+    void SaveLevelStats(json& levelData, const Level& level) {
+        const ListenerSettings& settings = level.listenerSettings;
+
+        levelData["levelStats"] = {
+            {"listenerSettings", {
+                {"masterGain", settings.masterGain},
+                {"dopplerFactor", settings.dopplerFactor},
+                {"speedOfSound", settings.speedOfSound},
+                {"distanceModel", static_cast<int>(settings.distanceModel)}
+            }}
+        };
+    }
+
     void SaveComponents(json &levelData, const Level &level) {
         json componentsJson;
 
@@ -292,6 +323,40 @@ namespace {
     //endregion
 
     //region Loading
+
+    void LoadLevelStats(const json& levelData, Level& level) {
+        if (!levelData.contains("levelStats") ||
+            !levelData["levelStats"].is_object()) {
+            return;
+            }
+
+        const json& levelStatsJson = levelData["levelStats"];
+
+        if (!levelStatsJson.contains("listenerSettings") ||
+            !levelStatsJson["listenerSettings"].is_object()) {
+            return;
+            }
+
+        const json& listenerJson = levelStatsJson["listenerSettings"];
+
+        ListenerSettings& settings = level.listenerSettings;
+
+        settings.masterGain = listenerJson.value("masterGain", 1.0f);
+        settings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
+        settings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
+
+        const int distanceModel =
+            listenerJson.value(
+                "distanceModel",
+                static_cast<int>(AL_INVERSE_DISTANCE_CLAMPED)
+            );
+
+        settings.distanceModel = ValidateDistanceModel(distanceModel);
+
+        settings.masterGain = std::max(0.0f, settings.masterGain);
+        settings.dopplerFactor = std::max(0.0f, settings.dopplerFactor);
+        settings.speedOfSound = std::max(1.0f, settings.speedOfSound);
+    }
 
     void LoadComponents(const json &levelData, Level &level) {
         if (!levelData.contains("components")) {
@@ -718,6 +783,7 @@ namespace MapEditorInternal {
             {"backgroundTextureIndex", MapEditor::backgroundTextureIndex}
         };
 
+        SaveLevelStats(levelData, level);
         SaveEntities(levelData, level);
         SaveComponents(levelData, level);
         SaveWalls(levelData, level);
@@ -816,6 +882,9 @@ namespace MapEditor {
 
             LoadSounds(levelData, loadedLevel);
             spdlog::info("Sounds loaded");
+
+            LoadLevelStats(levelData, loadedLevel);
+            spdlog::info("Level stats loaded");
         }
         catch (const nlohmann::json::exception& e) {
             spdlog::critical("Level JSON schema error while loading '{}': {}", path.string(), e.what());

@@ -72,6 +72,18 @@ struct Level {
     }
 
     void Start() {
+        SoundManager::SetListenerGain(listenerSettings.masterGain);
+        SoundManager::SetListenerDopplerFactor(listenerSettings.dopplerFactor);
+        SoundManager::SetListenerSpeedOfSound(listenerSettings.speedOfSound);
+        SoundManager::SetListenerDistanceModel(listenerSettings.distanceModel);
+
+        spdlog::info(
+            "Level audio settings applied. Gain: {}, Doppler: {}, Speed of sound: {}, Distance model: {}",
+            listenerSettings.masterGain,
+            listenerSettings.dopplerFactor,
+            listenerSettings.speedOfSound,
+            static_cast<int>(listenerSettings.distanceModel)
+        );
     }
 
     void Update() {

@@ -88,9 +88,12 @@ namespace RuntimeSession {
         AudioSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
 
+
         InputManager::SetRelativeMouseMode(Renderer::window, true);
 
         for (const Texture& texture : level.textures) TextureManager::CreateTexture(texture.fileName);
+
+        level.Start();
         for (Entity& entity : level.entities) entity.Start();
 
         spdlog::info("Runtime Started");

@@ -224,8 +224,8 @@ namespace MapEditorInternal {
 
         const float activeGridSize = GetActiveGridSize();
 
-        const float visibleHalfWidthWorld = (SCREEN_WIDTH * 0.5f) / editorZoom;
-        const float visibleHalfHeightWorld = (SCREEN_HEIGHT * 0.5f) / editorZoom;
+        const float visibleHalfWidthWorld = (screenWidth * 0.5f) / editorZoom;
+        const float visibleHalfHeightWorld = (screenHeight * 0.5f) / editorZoom;
 
         const float leftWorld = cameraPos.x - visibleHalfWidthWorld;
         const float rightWorld = cameraPos.x + visibleHalfWidthWorld;

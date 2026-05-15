@@ -14,6 +14,9 @@ namespace MapEditorInternal {
     TTF_Font* font = nullptr;
     TTF_TextEngine* textEngine = nullptr;
 
+    int screenWidth = 1080;
+    int screenHeight = 960;
+
     float editorZoom = 1.0f;
     float GRID_SIZE = 32.0f;
 
