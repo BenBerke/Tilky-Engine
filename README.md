@@ -94,7 +94,9 @@ Contributions are welcome! Whether it's bug fixes, feature requests, or document
 
 # Special Thanks:
 
-## Translations: Ilya Brezhnev (RU/KZ), ThatGuyMiki (PL).
+## Translations
+* Ilya Brezhnev (Russian & Kazakh)
+* ThatGuyMiki (Polish).
 
 # AI Disclosure 
 Developed with assistance from AI coding tools. All code has been manually audited and tested for performance and security.
