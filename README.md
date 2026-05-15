@@ -1,230 +1,103 @@
-# Tilky Engine
+# 🛠️ Tilky Engine 
 
-<img width="1676" height="958" alt="image" src="https://github.com/user-attachments/assets/76ba6573-6561-4394-96f5-809ba7211b12" />
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-red.svg)](https://en.cppreference.com/w/cpp/20)
 
-<img width="1667" height="954" alt="image" src="https://github.com/user-attachments/assets/552930c9-3a2f-4785-8e4d-3f1520b710de" />
+**Tilky Engine** is a custom **Sector-Based 3D game engine** built in C++20. Inspired by the classic architecture of 90s legends like *Doom* and *Build Engine*, it utilizes a specialized 3D rendering pipeline where the world is defined by topological sectors with independent height data.
 
+The project provides a complete end-to-end toolchain: from a project launcher and visual level editor to a high-performance OpenGL runtime.
 
-Tilky Engine is a custom C++ 2.5D game engine inspired by classic sector-based engines.  
-The project includes a standalone launcher, project management system, level editor, runtime renderer, localisation support, and an ECS system.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/76ba6573-6561-4394-96f5-809ba7211b12" width="48%" alt="Editor Screenshot 1" />
+  <img src="https://github.com/user-attachments/assets/552930c9-3a2f-4785-8e4d-3f1520b710de" width="48%" alt="Editor Screenshot 2" />
+</p>
 
-The goal of the project is to build a small but complete engine toolchain:
+---
 
-Launcher → Project System → Level Editor → Runtime
+## 🏗️ Core Architecture
 
-## Current Features
-```
-Launcher
-Create and open Tilky Engine projects.
-Stores projects inside the user’s documents folder.
-Supports launcher-wide settings through a Launcher.tilky file.
-Supports localisation/language switching.
-Launches the engine with the selected project file.
-```
+### **Sector-Based 3D Rendering**
+Unlike modern triangle-mesh engines, Tilky defines the world through sectors. This architecture enables:
+* **True 3D Perspective:** Full 3D wall projection, depth handling, and textured surfaces.
+* **Dynamic Sector Heights:** Independent floor and ceiling altitudes per sector for complex verticality.
+* **Classic Aesthetic:** Authentic 90s-style sprite rendering and wall decals.
+* **Modern Pipeline:** Powered by OpenGL shaders and **SSBO-based geometry buffers** for high-performance data throughput.
 
-## Project System
-Each project contains its own metadata and assets:
+### **Integrated Toolchain**
+* **Tilky Launcher:** A centralized hub to manage `.tilky` project manifests, assets, and localized settings.
+* **Visual Editor:** A Dear ImGui-powered workspace with dedicated modes for Dot, Wall, Sector, and Entity manipulation.
+* **ECS (Entity Component System):** A data-oriented backend designed for cache-friendly performance, featuring components like `Transform`, `Sprite`, and `Decal`.
 
-```
-Tilky Engine/  
-└── Projects/  
-    └── MyProject/  
-        ├── project.tilky  
-        └── Assets/  
-            ├── Levels/  
-            └── Textures/
-```
-The engine loads project-specific levels, textures, and metadata through the project manager.
+---
 
-## Level Editor
-The editor is built using DearImGui and supports:
-```
-Wall creation
-Sector creation
-Floor/ceiling editing
-Texture index editing
-Entity placement
-Component editing
-Level save/load
-Project-specific level files
-Basic editor camera movement and zooming
-```
+## 🛠 Tech Stack
 
-## Entity/Component System
+| Category | Library |
+| :--- | :--- |
+| **Language** | C++20 |
+| **Graphics** | OpenGL (GLAD) |
+| **Framework** | SDL3 |
+| **UI** | Dear ImGui |
+| **Data/JSON** | nlohmann/json |
+| **Assets** | SDL3_image, SDL3_ttf, FreeType |
 
-Tilky Engine uses a data-oriented ECS structure where entities own IDs and components are stored in separate component arrays.
+---
 
-Current component types include:
+## 🚀 Build Instructions
 
-```
-ComponentTransform
-ComponentSprite
-ComponentDecal
-ComponentPlayerSpawn
-```
+### Prerequisites
+* A **C++20** compatible compiler (MSVC, GCC, or Clang).
+* **CMake** 3.16 or higher.
+* **vcpkg** (Recommended for dependency management).
 
-This allows editor-side entity editing while keeping runtime systems cache-friendly by iterating over component storage.
+### Building
+# Clone the repository
+git clone [https://github.com/your-username/TilkyEngine.git](https://github.com/your-username/TilkyEngine.git)
+cd TilkyEngine
 
-## Renderer
-
-The runtime renderer supports:
-```
-2.5D wall projection
-Sector-based floors and ceilings
-Textured walls
-Floor/ceiling textures
-Sprites
-Wall decals
-Depth handling
-OpenGL shader-based rendering
-Custom shaders with GLSL
-SSBO-based geometry buffers
+# Generate and build
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build . --config Release
 ```
 
-## Localisation
+# CMake Targets
+* Tilky_Launcher: Manages project files and localisation.
+* Tilky_Engine: The core Editor and Runtime environment.
+* Tilky_All: Builds the entire suite for development convenience.
 
-The launcher and editor use JSON-based localisation files stored in:
-EngineAssets/Local/ 
+# 🎮 Editor Workflow
+* Launch: Open the Tilky_Launcher and create a new project.
+* Design: Use the Editor modes to draw walls and define sectors.
+* Test: Use the Save & Play function to jump directly into the 3D runtime.
 
-## Tech Stack
-```
-C++20
-CMake
-SDL3
-OpenGL
-GLAD
-Dear ImGui
-SDL3_image
-SDL3_ttf
-FreeType
-nlohmann/json
-```
+## HotkeysKeyAction
+* Q Cycle Modes (Wall, Sector, Entity)
+* LMB Place / Select / Edit
+* MMBPan Editor CameraScrollZoom In / Out
+* Ctrl + Z Undo Action
 
-## Building
-Requirements
+# 🗺 Roadmap
+[ ] Visual UI Editor: In-engine tools for creating HUDs and menus.
 
-You need:
-```
-A C++20-compatible compiler
-CMake
-SDL3
-SDL3_image
-SDL3_ttf
-FreeType
-nlohmann/json
-OpenGL
-GLAD
-Dear ImGui
-```
+[ ] LUA Scripting: Runtime logic for gameplay events and triggers.
 
-The project is currently developed on Windows using CLion and vcpkg.
+[ ] Standalone Export: Capability to package projects into a single executable.
 
-## CMake Targets
+[ ] Networking: Initial support for multiplayer sector synchronization.
 
-The project has three main runnable targets:
+# 🤝 Contributing & Credits
+Contributions are welcome! Whether it's bug fixes, feature requests, or documentation, feel free to open an issue or submit a pull request.
 
-**Tilky_Launcher**
-Builds and runs only the launcher.
+* Author: Berke Memioğlu
 
-**Tilky_Engine**
-Builds and runs only the engine/editor/runtime.
+# Special Thanks:
 
-**Tilky_All**
-Builds the launcher and engine code together for development convenience.
+## Translations: Ilya Brezhnev (RU/KZ), ThatGuyMiki (PL).
 
-## Basic Usage
-Run the launcher.
-Create or open a project.
-The launcher starts the engine with the selected project.
-Use the editor to create a level.
-Use Save & Play to enter the runtime.
+# AI Disclosure 
+Developed with assistance from AI coding tools. All code has been manually audited and tested for performance and security.
 
-## Editor Controls
-Current editor modes include:
-
-Dot Mode
-Wall Mode
-Sector Mode
-Entity Mode
-
-```
-General controls:
-Q               Change editor mode
-Left Mouse      Place/select/edit depending on mode
-Middle Mouse    Pan editor camera
-Mouse Wheel     Zoom editor view
-Ctrl + Z        Undo recent editor action
-Escape          Quit
-```
-
-## File Formats
-Project File
-
-Each project has a project.tilky file:
-```
-{
-    "name": "MyProject",
-    "assetsFolder": "Assets"
-}
-```
-
-## Level File
-
-Levels are saved as JSON inside:
-
-Assets/Levels/
-
-A level stores:
-Walls
-Sectors
-Textures
-Entities
-Components
-Level metadata 
-
-## Current Status
-
-Tilky Engine currently has a working launcher, project system, level editor, JSON save/load pipeline, entity/component editor, and OpenGL-based 2.5D renderer.
-
-The project is still in development, so internal APIs and file formats may change.
-
-## Roadmap
-Roadmap:
-```
-Audio system with OpenAL
-        |
-Visual UI Editor
-        |
-Packaged builds -> Beta release on itch.io
-        |
-Improved editor workflow
-        |
-Runtime scripting with LUA
-        |
-Better documentation for engine architecture -> Release on Steam
-        |
-Networking Support
-```
-
-## License
-
-This project is licensed under the **Apache License 2.0**.
-See the LICENSE file for details.
-
-Games made with Tilky Engine may be sold commercially. You do not need to open-source your game code just because you used the engine.
-
-Assets, fonts, textures, and example project files may have separate licences where stated.
-
-## Author
-
-Created by Berke Memioğlu as a custom C++ game engine and editor project.
-
-## Credits
-* **Logo** Sourced from public web assets. If you are the original creator of this logo, please reach out or open an issue so I can provide proper credit or replace it.
-* **Translations:** Russian & Kazakh: Ilya Brezhnev
-    * Polish: ThatGuyMiki
-    * English & Turkish: Berke Memioğlu
-      
-## Disclaimer
-Parts of this codebase were developed with the assistance of AI coding tools. All AI-generated contributions have been manually reviewed, tested, and verified for performance and security by the maintainers.
-
+# License 
+Distributed under the Apache License 2.0. See LICENSE for details.
