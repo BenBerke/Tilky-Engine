@@ -26,11 +26,10 @@ namespace RendererInternal {
     std::unique_ptr<Shader> textShader;
     std::unique_ptr<Shader> uiShader;
 
-    GLint playerPosUniform = -1;
-    GLint playerAngleUniform = -1;
-    GLint playerHeightUniform = -1;
-    GLint playerCamZUniform = -1;
     GLint renderModeUniform = -1;
+
+    GLint viewUniform = -1;
+    GLint projectionUniform = -1;
 
     FT_Library ft = nullptr;
     FT_Face face = nullptr;

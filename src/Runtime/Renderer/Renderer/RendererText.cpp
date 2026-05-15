@@ -112,22 +112,33 @@ namespace RendererInternal {
 
 namespace Renderer {
     void RenderText(
-        const Shader& s,
-        const std::string& text,
-        float x,
-        const float y,
-        const float scale,
-        const Vector3 color
-    ) {
+    const Shader& s,
+    const std::string& text,
+    float x,
+    const float y,
+    const float scale,
+    const Vector3 color
+) {
         using namespace RendererInternal;
 
         glDisable(GL_DEPTH_TEST);
 
-        glBindVertexArray(textVAO);
-        glActiveTexture(GL_TEXTURE0);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         s.use();
-        glUniform3f(glGetUniformLocation(s.ID, "textColor"), color.x, color.y, color.z);
+
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(glGetUniformLocation(s.ID, "text"), 0);
+
+        glUniform3f(
+            glGetUniformLocation(s.ID, "textColor"),
+            color.x / 255.0f,
+            color.y / 255.0f,
+            color.z / 255.0f
+        );
+
+        glBindVertexArray(textVAO);
 
         for (char c : text) {
             auto characterIt = Characters.find(c);
@@ -162,15 +173,18 @@ namespace Renderer {
 
             glBindBuffer(GL_ARRAY_BUFFER, textVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
 
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
             x += (Advance >> 6) * scale;
         }
 
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
         glBindTexture(GL_TEXTURE_2D, 0);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
     }
 
     void RenderTextRaw(

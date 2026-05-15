@@ -1,7 +1,5 @@
 #version 430 core
 
-#define SCREEN_HEIGHT 960.0
-
 #define RENDER_WALL 0
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
@@ -9,281 +7,103 @@
 
 #define MAX_WALL_TEXTURES 8
 
-// Wall/decal texture index.
-// flat = do not interpolate between vertices.
-flat in int vTextureIndex;
+in vec2 vDecalUV;
 
-// Wall vertical bounds in world space.
-// Used to keep wall texture V coordinates aligned to world height.
-flat in float fWallWorldHeight;
-flat in float fWallBottomHeight;
-flat in float fWallTopHeight;
-
-// Texture array used by walls, floors, ceilings, sprites, and decals.
-uniform sampler2D wallTextures[MAX_WALL_TEXTURES];
-
-// Per-wall / per-flat / per-sprite tint colour.
-flat in vec4 vWallColor;
-
-// Screen-space horizontal span of the projected wall/decal.
-flat in float fScreenXStart;
-flat in float fScreenXEnd;
-
-// World-space height used as the texture's vertical anchor.
-// fWallTextureDirection decides whether texture V is measured upward or downward.
-flat in float fWallTextureAnchorHeight;
-flat in float fWallTextureDirection;
-
-// Projected top and bottom Y coordinates at each side of the wall/decal.
-// These are interpolated manually using gl_FragCoord.x.
-flat in float fTopYStart;
-flat in float fTopYEnd;
-flat in float fBottomYStart;
-flat in float fBottomYEnd;
-
-// Horizontal wall texture coordinate and depth at the left/right side.
-// These are used for manual perspective-correct interpolation.
-flat in float fSStart;
-flat in float fSEnd;
-flat in float fZLeft;
-flat in float fZRight;
-
-// Floor/ceiling perspective interpolation.
-// noperspective prevents OpenGL from doing its own perspective correction;
-// the shader does the divide manually.
-noperspective in float vFlatInvZ;
-noperspective in vec2 vFlatWorldOverZ;
-flat in int vFlatTextureIndex;
-
-// Sprite-specific inputs.
-noperspective in vec2 vSpriteUV;
+in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
-flat in float fSpriteViewDepth;
-flat in vec4 vSpriteColor;
 
-// Selects whether this fragment is being drawn as a wall, flat, sprite, or decal.
+in vec2 vWallUV;
+in vec2 vFlatUV;
+
+flat in int vTextureIndex;
+flat in int vFlatTextureIndex;
+flat in vec4 vColor;
+
+uniform sampler2D wallTextures[MAX_WALL_TEXTURES];
 uniform int renderMode;
-
-flat in float fDecalTextureWidth;
 
 out vec4 FragColor;
 
-const float nearPlane = 0.1;
-const float farPlane = 10000.0;
-const float tileSize = 32.0;
-
-// GLSL sampler arrays usually need constant indices on some drivers,
-// so this switch avoids dynamic sampler indexing problems.
 vec4 SampleWallTexture(int textureIndex, vec2 uv) {
     switch (textureIndex) {
-        case 0:
-        return texture(wallTextures[0], uv);
-        case 1:
-        return texture(wallTextures[1], uv);
-        case 2:
-        return texture(wallTextures[2], uv);
-        case 3:
-        return texture(wallTextures[3], uv);
-        case 4:
-        return texture(wallTextures[4], uv);
-        case 5:
-        return texture(wallTextures[5], uv);
-        case 6:
-        return texture(wallTextures[6], uv);
-        case 7:
-        return texture(wallTextures[7], uv);
-        default:
-        return vec4(1.0);
+        case 0: return texture(wallTextures[0], uv);
+        case 1: return texture(wallTextures[1], uv);
+        case 2: return texture(wallTextures[2], uv);
+        case 3: return texture(wallTextures[3], uv);
+        case 4: return texture(wallTextures[4], uv);
+        case 5: return texture(wallTextures[5], uv);
+        case 6: return texture(wallTextures[6], uv);
+        case 7: return texture(wallTextures[7], uv);
+        default: return vec4(1.0);
     }
 }
 
 void main() {
-    if (renderMode == RENDER_SPRITE) {
-        float spriteDepth01 = clamp(
-        (fSpriteViewDepth - nearPlane) / (farPlane - nearPlane),
-        0.0,
-        1.0
-        );
-
-        gl_FragDepth = spriteDepth01;
-
-        vec4 texColor = SampleWallTexture(vSpriteTextureIndex, vSpriteUV);
-
-        if (texColor.a < 0.1) {
-            discard;
-        }
-
-        FragColor = texColor * vSpriteColor;
-        return;
-    }
-
-    else if (renderMode == RENDER_FLAT) {
-        // Recover view depth from interpolated inverse depth.
-        float flatViewDepth = 1.0 / vFlatInvZ;
-
-        float flatDepth01 = (flatViewDepth - nearPlane) / (farPlane - nearPlane);
-        flatDepth01 = clamp(flatDepth01, 0.0, 0.99999);
-
-        gl_FragDepth = flatDepth01;
-
-        // Perspective-correct world position for this floor/ceiling fragment.
-        vec2 worldPos = vFlatWorldOverZ / vFlatInvZ;
-        vec2 flatUV = worldPos / tileSize;
-
+    if (renderMode == RENDER_FLAT) {
         if (vFlatTextureIndex >= 0 && vFlatTextureIndex < MAX_WALL_TEXTURES) {
-            vec4 texColor = SampleWallTexture(vFlatTextureIndex, flatUV);
+            vec4 texColor = SampleWallTexture(vFlatTextureIndex, vFlatUV);
 
             if (texColor.a < 0.1) {
                 discard;
             }
 
-            FragColor = texColor * vWallColor;
+            FragColor = texColor * vColor;
         }
         else {
-            FragColor = vWallColor;
+            FragColor = vColor;
         }
 
         return;
     }
 
-    else if (renderMode == RENDER_DECAL) {
-        float x = gl_FragCoord.x;
+    if (renderMode == RENDER_WALL) {
+        if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
+            vec4 texColor = SampleWallTexture(vTextureIndex, vWallUV);
 
-        float denominator = fScreenXEnd - fScreenXStart;
+            if (texColor.a < 0.1) {
+                discard;
+            }
 
-        if (abs(denominator) < 0.00001) {
-            discard;
+            FragColor = texColor * vColor;
+        }
+        else {
+            FragColor = vColor;
         }
 
-        // Horizontal progress across the projected decal.
-        float across = (x - fScreenXStart) / denominator;
-        across = clamp(across, 0.0, 1.0);
+        return;
+    }
+    if (renderMode == RENDER_SPRITE) {
+        if (vSpriteTextureIndex >= 0 && vSpriteTextureIndex < MAX_WALL_TEXTURES) {
+            vec4 texColor = SampleWallTexture(vSpriteTextureIndex, vSpriteUV);
 
-        // Manual perspective-correct depth interpolation.
-        float invZ = mix(1.0 / fZLeft, 1.0 / fZRight, across);
-        float decalViewDepth = 1.0 / invZ;
+            if (texColor.a < 0.1) {
+                discard;
+            }
 
-        float decalDepth01 = clamp(
-        (decalViewDepth - nearPlane) / (farPlane - nearPlane),
-        0.0,
-        1.0
-        );
-
-        // Pull the decal slightly forward to avoid z-fighting with the wall.
-        gl_FragDepth = max(decalDepth01 - 0.00002, 0.0);
-
-        float topY = mix(fTopYStart, fTopYEnd, across);
-        float bottomY = mix(fBottomYStart, fBottomYEnd, across);
-
-        float heightDenominator = bottomY - topY;
-
-        if (abs(heightDenominator) < 0.00001) {
-            discard;
+            FragColor = texColor * vColor;
+        }
+        else {
+            FragColor = vColor;
         }
 
-        // gl_FragCoord.y starts at the bottom, but the projected wall Y values use top-origin screen space.
-        float fragYTopOrigin = SCREEN_HEIGHT - gl_FragCoord.y;
+        return;
+    }
+    if (renderMode == RENDER_DECAL) {
+        if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
+            vec4 texColor = SampleWallTexture(vTextureIndex, vDecalUV);
 
-        float v = (fragYTopOrigin - topY) / heightDenominator;
-        v = clamp(v, 0.0, 1.0);
+            if (texColor.a < 0.1) {
+                discard;
+            }
 
-        // Perspective-correct horizontal decal coordinate.
-        float s = mix(
-        fSStart / fZLeft,
-        fSEnd / fZRight,
-        across
-        ) / invZ;
-
-        float u = s / max(fDecalTextureWidth, 0.0001);
-        u = clamp(u, 0.0, 1.0);
-
-        vec2 uv = vec2(u, v);
-
-        vec4 texColor = SampleWallTexture(vTextureIndex, uv);
-
-        if (texColor.a < 0.1) {
-            discard;
+            FragColor = texColor * vColor;
+        }
+        else {
+            FragColor = vColor;
         }
 
-        FragColor = texColor * vWallColor;
         return;
     }
 
-    // Default path: wall rendering.
-    float x = gl_FragCoord.x;
-
-    float denominator = fScreenXEnd - fScreenXStart;
-
-    if (abs(denominator) < 0.00001) {
-        discard;
-    }
-
-    // Horizontal progress across the projected wall.
-    float across = (x - fScreenXStart) / denominator;
-    across = clamp(across, 0.0, 1.0);
-
-    // Manual perspective-correct depth interpolation.
-    float invZ = mix(1.0 / fZLeft, 1.0 / fZRight, across);
-    float wallViewDepth = 1.0 / invZ;
-
-    float wallDepth01 = clamp(
-    (wallViewDepth - nearPlane) / (farPlane - nearPlane),
-    0.0,
-    1.0
-    );
-
-    // Slight forward offset helps avoid fighting with flats/decals at matching depths.
-    gl_FragDepth = max(wallDepth01 - 0.00001, 0.0);
-
-    // Perspective-correct horizontal texture distance along the wall.
-    float s = mix(fSStart / fZLeft, fSEnd / fZRight, across) / invZ;
-
-    float topY = mix(fTopYStart, fTopYEnd, across);
-    float bottomY = mix(fBottomYStart, fBottomYEnd, across);
-
-    float heightDenominator = bottomY - topY;
-
-    if (abs(heightDenominator) < 0.00001) {
-        discard;
-    }
-
-    float fragYTopOrigin = SCREEN_HEIGHT - gl_FragCoord.y;
-
-    // Vertical progress down the projected wall column.
-    float v = (fragYTopOrigin - topY) / heightDenominator;
-    v = clamp(v, 0.0, 1.0);
-
-    float u = s / tileSize;
-
-    // World-space vertical texture coordinate.
-    // This stops the texture from resetting when the wall moves.
-    float worldHeightAtFragment = mix(
-    fWallTopHeight,
-    fWallBottomHeight,
-    v
-    );
-
-    float texV;
-
-    if (fWallTextureDirection < 0.0) {
-        // Top-down tiling. Good for normal walls and floor step walls.
-        texV = (fWallTextureAnchorHeight - worldHeightAtFragment) / tileSize;
-    }
-    else {
-        // Bottom-up tiling. Good for ceiling gap walls.
-        texV = (worldHeightAtFragment - fWallTextureAnchorHeight) / tileSize;
-    }
-
-    if (vTextureIndex >= 0 && vTextureIndex < MAX_WALL_TEXTURES) {
-        vec4 texColor = SampleWallTexture(vTextureIndex, vec2(u, texV));
-
-        if (texColor.a < 0.1) {
-            discard;
-        }
-
-        FragColor = texColor * vWallColor;
-    }
-    else {
-        FragColor = vWallColor;
-    }
+    discard;
 }

@@ -5,24 +5,24 @@
 #ifndef TILKY_ENGINE_SOUNDMANAGER_H
 #define TILKY_ENGINE_SOUNDMANAGER_H
 
+#include <string>
+
 #include <AL/al.h>
 #include <AL/alc.h>
 
-#include <chrono>
-
-struct Vector3;
+#include "Headers/Math/Vector/Vector3.hpp"
 
 namespace SoundManager {
     bool InitializeOpenAL();
     void DestroyOpenAL();
 
-    void PlaySoundOnSource(const std::string& sourceName, int soundIndex);
-
-    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, int soundIndex);
+    void GenerateSounds();
 
     bool CreateSource(const std::string& name);
-
     void DestroySource(const std::string& sourceName);
+
+    void PlaySoundOnSource(const std::string& sourceName, int soundIndex);
+    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, int soundIndex);
 
     // The multiplier for the frequency. 1.0 is normal. 2.0 is an octave higher and double speed.
     void SetSourcePitch(const std::string& sourceName, float pitch);
@@ -32,75 +32,47 @@ namespace SoundManager {
 
     void SetSourcePosition(const std::string& sourceName, Vector3 pos);
 
-    // Set to AL_TRUE to make the sound repeat automatically when it reaches the end.
+    // Set to true to make the sound repeat automatically when it reaches the end.
     void SetSourceLooping(const std::string& sourceName, bool looping);
 
-    // The distance at which the listener will experience the maximum gain (AL_GAIN).
+    // The distance at which the listener experiences the source's full gain.
     void SetSourceReferenceDistance(const std::string& sourceName, float distance);
 
-    // The distance beyond which the sound will no longer get any quieter (it stays at a constant low volume).
+    // The distance beyond which the sound no longer gets quieter.
     void SetSourceMaxDistance(const std::string& sourceName, float maxDistance);
 
-    // How fast the sound fades. A factor of 1.0 is physically realistic. 0.0 disables distance attenuation entirely.
+    // How quickly the sound fades with distance.
     void SetSourceRollOffFactor(const std::string& sourceName, float rollOffFactor);
 
-    // The angle (in degrees) of the "inner cone" where the sound is at its full gain.
+    // The angle in degrees where the directional sound is at full gain.
     void SetSourceInnerConeAngle(const std::string& sourceName, float innerConeAngle);
 
-    // The angle (in degrees) of the "outer cone."
+    // The angle in degrees where the directional sound reaches outer gain.
     void SetSourceOuterConeAngle(const std::string& sourceName, float outerConeAngle);
 
-    // The volume of the sound when the listener is outside the outer cone.
+    // The gain used outside the outer cone.
     void SetSourceOuterGain(const std::string& sourceName, float outerGain);
 
-    void SetListenerPosition(Vector3 pos);
-
-    void SetListenerVelocity(Vector3 velocity);
-
-    void SetListenerOrientation(float angleRadians);
-
-    /**
- * Sets the master volume of the audio context.
- * @param gain: 1.0 is unity, 0.0 is silent. Values > 1.0 increase volume.
- */
+    // Sets the master volume of the audio context.
     void SetListenerGain(float gain);
 
-    /**
-     * Sets the 3D position of the listener in the world.
-     */
-    void SetListenerPosition(const Vector3 pos);
+    // Sets the 3D position of the listener in the world.
+    void SetListenerPosition(Vector3 pos);
 
-    /**
-     * Sets the velocity of the listener. Used by OpenAL to calculate Doppler shift.
-     */
-    void SetListenerVelocity(const Vector3 velocity);
+    // Sets the listener velocity. Used by OpenAL for Doppler shift.
+    void SetListenerVelocity(Vector3 velocity);
 
-    /**
-     * Sets the listener orientation using a single angle (2D plane).
-     * @param angleRadians: The rotation around the Y-axis.
-     */
-    void SetListenerOrientation(const float angleRadians);
+    // Sets the listener orientation using the camera/player forward direction.
+    void SetListenerOrientation(const Vector3& forward);
 
-    /**
-     * Sets the listener orientation using 3D vectors.
-     * @param forward: The "at" vector (where the listener is looking).
-     * @param up: The "up" vector (top of the listener's head).
-     */
-    void SetListenerOrientation(const Vector3 forward, const Vector3 up);
-
-    /**
-     * Sets the global distance attenuation model (e.g., AL_INVERSE_DISTANCE_CLAMPED).
-     */
+    // Sets the global distance attenuation model.
     void SetListenerDistanceModel(ALenum model);
 
-    /**
-     * Sets the global Doppler effect intensity. 1.0 is normal, 0.0 is off.
-     */
+    // Sets the global Doppler effect intensity.
     void SetListenerDopplerFactor(float factor);
 
-    /**
-     * Sets the speed of sound for Doppler calculations. Default is 343.3.
-     */
+    // Sets the speed of sound for Doppler calculations.
     void SetListenerSpeedOfSound(float speed);
 }
-#endif //TILKY_ENGINE_SOUNDMANAGER_H
+
+#endif // TILKY_ENGINE_SOUNDMANAGER_H

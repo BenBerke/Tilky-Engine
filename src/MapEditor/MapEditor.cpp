@@ -22,6 +22,22 @@ namespace MapEditor {
     void Start() {
         using namespace MapEditorInternal;
 
+        quit = false;
+        shutdown = false;
+
+        editingSector = false;
+        selectedSector = -1;
+
+        editingWall = false;
+        selectedWall = -1;
+
+        editingEntity = false;
+        editingComponent = false;
+
+        creatableSector = false;
+        sectorBeingCreated.clear();
+        actions.clear();
+
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
             spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
             return;

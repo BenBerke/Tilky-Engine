@@ -30,7 +30,7 @@ namespace Renderer {
     extern GLuint uiEBO;
 
     bool Initialize();
-    void Update(const Vector2& playerPos, float angle);
+    void Update();
     bool CreateMap();
     void Destroy();
 

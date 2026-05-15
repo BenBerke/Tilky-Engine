@@ -55,7 +55,11 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        Player::position = MapEditor::playerStartPos;
+        Player::position = {
+            MapEditor::playerStartPos.x,
+            0.0f,
+            MapEditor::playerStartPos.y
+        };;
 
         MapQueries::AssignWallsToSectors(
          level.sectors,
@@ -103,7 +107,7 @@ namespace RuntimeSession {
             level.sectors
         );
 
-        Renderer::Update(Player::position, Player::angle);
+        Renderer::Update();
         AudioSystem::Update(level);
 
         RenderDebugText();

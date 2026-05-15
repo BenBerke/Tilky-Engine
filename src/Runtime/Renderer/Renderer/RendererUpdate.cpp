@@ -11,44 +11,62 @@
 
 namespace Renderer {
 
-    void Update(const Vector2& playerPos, const float angle) {
+    void Update() {
         using namespace RendererInternal;
 
         Level& level = LevelManager::CurrentLevel();
+
+        const Vector2 playerPlanarPos = {
+            Player::position.x,
+            Player::position.z
+        };
+
+        const float playerYaw = Player::angle;
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
         glDisable(GL_CULL_FACE);
 
+        glDepthMask(GL_TRUE);
+
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-       // ImGui_ImplOpenGL3_NewFrame();
-       // ImGui_ImplSDL3_NewFrame();
-        //ImGui::NewFrame();
-
-        DrawBackground(angle);
+        DrawBackground(playerYaw);
 
         projectionShader->use();
         glBindVertexArray(VAO);
 
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
+        glUniformMatrix4fv(
+            viewUniform,
+            1,
+            GL_TRUE,
+            Player::view.Data()
+        );
 
-        glUniform2f(playerPosUniform, playerPos.x, playerPos.y);
-        glUniform1f(playerAngleUniform, angle);
-        glUniform1f(playerHeightUniform, Player::currentEyeHeight);
-        glUniform1f(playerCamZUniform, Player::camZ);
-
-        BuildVisibleFlatTriangles(playerPos, angle);
-        BuildGpuSectors();
-        UploadGpuWallsFromMap();
+        glUniformMatrix4fv(
+            projectionUniform,
+            1,
+            GL_TRUE,
+            Player::projection.Data()
+        );
 
         TextureManager::BindAllTextures(0);
 
+        // ============================================================
+        // Floors / ceilings
+        // ============================================================
+
+        BuildGpuSectors();
+
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
+
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
+
         glUniform1i(renderModeUniform, RENDER_FLAT);
 
         glDrawArraysInstanced(
@@ -58,27 +76,46 @@ namespace Renderer {
             flatTriangleCount
         );
 
+        // ============================================================
+        // Walls
+        // ============================================================
+
+        UploadGpuWallsFromMap();
+
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
-        glDepthFunc(GL_LEQUAL);
+
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+
         glUniform1i(renderModeUniform, RENDER_WALL);
 
         glDrawArraysInstanced(
-            GL_TRIANGLE_STRIP,
+            GL_TRIANGLES,
             0,
-            4,
+            6,
             gpuWallCount
         );
+
+        // ============================================================
+        // Sprites
+        // ============================================================
 
         BuildGpuSprites();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
-        glDepthFunc(GL_LEQUAL);
-        glUniform1i(renderModeUniform, RENDER_SPRITE);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+        glDepthFunc(GL_LEQUAL);
+
+        // For alpha-cutout sprites, writing depth is okay.
+        // If you later add semi-transparent sprites, change this to GL_FALSE
+        // and sort sprites back-to-front.
         glDepthMask(GL_TRUE);
+
+        glUniform1i(renderModeUniform, RENDER_SPRITE);
 
         glDrawArraysInstanced(
             GL_TRIANGLE_STRIP,
@@ -87,62 +124,84 @@ namespace Renderer {
             spriteCount
         );
 
+        glDisable(GL_BLEND);
+
+        // ============================================================
+        // Decals
+        // ============================================================
+
         BuildGpuDecals();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, decalSSBO);
-        glDepthFunc(GL_LEQUAL);
-        glUniform1i(renderModeUniform, RENDER_DECAL);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_TRUE);
+
+        glDepthFunc(GL_LEQUAL);
+
+        // Decals are surface details, so they should not write depth.
+        glDepthMask(GL_FALSE);
+
+        glUniform1i(renderModeUniform, RENDER_DECAL);
 
         glDrawArraysInstanced(
-            GL_TRIANGLE_STRIP,
+            GL_TRIANGLES,
             0,
-            4,
+            6,
             decalCount
         );
 
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+
+        // ============================================================
+        // Top-down debug map
+        // ============================================================
+
         if (InputManager::GetKey(SDL_SCANCODE_TAB)) {
             glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
 
-            DrawDebugRect({0.0f, 0.0f}, DEBUG_PLAYER_HALF_SIZE, DEBUG_PLAYER_HALF_SIZE);
+            DrawDebugRect(
+                {0.0f, 0.0f},
+                DEBUG_PLAYER_HALF_SIZE,
+                DEBUG_PLAYER_HALF_SIZE
+            );
 
             for (const Wall& wall : level.walls) {
-                const Vector2 start = WorldToDebugNdc(wall.start, playerPos);
-                const Vector2 end = WorldToDebugNdc(wall.end, playerPos);
+                const Vector2 start =
+                    WorldToDebugNdc(wall.start, playerPlanarPos);
+
+                const Vector2 end =
+                    WorldToDebugNdc(wall.end, playerPlanarPos);
 
                 DrawDebugLine(start, end);
             }
 
-            const float halfFovRad = DegToRad(DEBUG_FOV_DEG * 0.5f);
-            const float angleRad = DegToRad(angle);
+            const float halfFovRad =
+                DegToRad(DEBUG_FOV_DEG * 0.5f);
 
-            constexpr Vector2 baseForward = {0.0f, DEBUG_FOV_LINE_LENGTH};
+            const float angleRad =
+                DegToRad(playerYaw);
 
-            Vector2 leftFov = RotatePoint(baseForward, angleRad - halfFovRad);
-            Vector2 rightFov = RotatePoint(baseForward, angleRad + halfFovRad);
+            constexpr Vector2 baseForward = {
+                0.0f,
+                DEBUG_FOV_LINE_LENGTH
+            };
+
+            Vector2 leftFov =
+                RotatePoint(baseForward, angleRad - halfFovRad);
+
+            Vector2 rightFov =
+                RotatePoint(baseForward, angleRad + halfFovRad);
 
             leftFov.x *= -1.0f;
             rightFov.x *= -1.0f;
 
             DrawDebugLine({0.0f, 0.0f}, leftFov);
             DrawDebugLine({0.0f, 0.0f}, rightFov);
+
+            glEnable(GL_DEPTH_TEST);
         }
-
-        //ImGui::Begin("Game UI");
-
-        // ImGui::Text("FPS: %.1f", GameTime::GetFPS());
-        // ImGui::Text("Sector: %d", Player::currentSector);
-        // ImGui::Text("Floor: %d", Player::currentFloor);
-        // ImGui::Text("Eye Height: %.2f", Player::currentEyeHeight);
-        // ImGui::Text("NoClip: %s", Player::noClip ? "true" : "false");
-
-        // ImGui::End();
-
-        //ImGui::Render();
-
-        //ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 }

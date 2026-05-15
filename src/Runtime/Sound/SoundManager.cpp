@@ -232,7 +232,7 @@ namespace SoundManager {
 
         SetListenerPosition({0.0f, 0.0f, 0.0f});
         SetListenerVelocity({0.0f, 0.0f, 0.0f});
-        SetListenerOrientation(0.0f);
+        SetListenerOrientation({0.0f, 0.0f, 0.0f});
 
         spdlog::info("Sounds generated");
         return true;
@@ -458,14 +458,15 @@ namespace SoundManager {
         CheckALErrors("Failed to set listener velocity");
     }
 
-    void SetListenerOrientation(const float angleRadians) {
-        const float forwardX = std::cos(angleRadians);
-        const float forwardY = 0.0f;
-        const float forwardZ = std::sin(angleRadians);
-
+    void SetListenerOrientation(const Vector3& forward) {
         const ALfloat orientation[] = {
-            forwardX, forwardY, forwardZ,  // forward
-            0.0f,     1.0f,     0.0f       // up
+            forward.x,
+            forward.y,
+            forward.z,
+
+            0.0f,
+            1.0f,
+            0.0f
         };
 
         alListenerfv(AL_ORIENTATION, orientation);

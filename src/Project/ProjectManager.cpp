@@ -97,7 +97,7 @@ namespace ProjectManager {
 
         if (!success) {
             spdlog::error(
-                "Failed to launch TIlkyy_Engine.exe. Windows error code: {}. Engine path: {}",
+                "Failed to launch Tilky_Engine.exe. Windows error code: {}. Engine path: {}",
                 GetLastError(),
                 engineExe.string()
             );

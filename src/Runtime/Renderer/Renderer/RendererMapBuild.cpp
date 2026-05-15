@@ -502,33 +502,21 @@ namespace Renderer {
             }
         }
 
-        playerPosUniform = glGetUniformLocation(projectionShader->ID, "playerPos");
-        if (playerPosUniform == -1) {
-            spdlog::critical("Failed to get projection shader uniform location: playerPos");
-            return false;
-        }
-
-        playerAngleUniform = glGetUniformLocation(projectionShader->ID, "playerAngle");
-        if (playerAngleUniform == -1) {
-            spdlog::critical("Failed to get projection shader uniform location: playerAngle");
-            return false;
-        }
-
-        playerHeightUniform = glGetUniformLocation(projectionShader->ID, "playerHeight");
-        if (playerHeightUniform == -1) {
-            spdlog::critical("Failed to get projection shader uniform location: playerHeight");
-            return false;
-        }
-
-        playerCamZUniform = glGetUniformLocation(projectionShader->ID, "playerCamZ");
-        if (playerCamZUniform == -1) {
-            spdlog::critical("Failed to get projection shader uniform location: playerCamZ");
-            return false;
-        }
-
         renderModeUniform = glGetUniformLocation(projectionShader->ID, "renderMode");
         if (renderModeUniform == -1) {
             spdlog::critical("Failed to get projection shader uniform location: renderMode");
+            return false;
+        }
+
+        viewUniform = glGetUniformLocation(projectionShader->ID, "uView");
+        if (viewUniform == -1) {
+            spdlog::critical("Failed to get projection shader uniform location: uView");
+            return false;
+        }
+
+        projectionUniform = glGetUniformLocation(projectionShader->ID, "uProjection");
+        if (projectionUniform == -1) {
+            spdlog::critical("Failed to get projection shader uniform location: uProjection");
             return false;
         }
 
