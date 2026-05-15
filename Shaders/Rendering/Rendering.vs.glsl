@@ -77,22 +77,24 @@ out vec2 vDecalUV;
 
 const float tileSize = 32.0;
 
-vec3 GetCameraRightFromView() {
-    vec3 right = vec3(
-    uView[0][0],
-    uView[1][0],
-    uView[2][0]
+vec3 GetYawOnlySpriteRight() {
+    vec3 cameraForward = -vec3(
+    uView[0][2],
+    uView[1][2],
+    uView[2][2]
     );
 
-    right.y = 0.0;
+    // Remove pitch / up-down camera rotation.
+    cameraForward.y = 0.0;
 
-    float len = length(right);
-
-    if (len < 0.0001) {
+    if (length(cameraForward) < 0.0001) {
         return vec3(1.0, 0.0, 0.0);
     }
 
-    return normalize(right);
+    cameraForward = normalize(cameraForward);
+
+    // Build right vector from flattened forward.
+    return normalize(cross(vec3(0.0, 1.0, 0.0), cameraForward));
 }
 
 void renderDecal() {
@@ -210,21 +212,13 @@ void renderSprite() {
     spriteWorldPos.y
     );
 
-    vec4 centerView = uView * vec4(bottomCenter, 1.0);
-
-    if (centerView.z > -0.1) {
-        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
-        return;
-    }
-
-    // Make this negative to flip the sprite
-    vec3 spriteRight = GetCameraRightFromView();
-    vec3 worldUp = vec3(0.0, 1.0, 0.0);
+    vec3 spriteRight = GetYawOnlySpriteRight();
+    vec3 spriteUp = vec3(0.0, 1.0, 0.0);
 
     vec3 worldPos =
     bottomCenter +
     spriteRight * side * halfWidth +
-    worldUp * heightT * spriteHeight;
+    spriteUp * heightT * spriteHeight;
 
     vSpriteUV = uv;
     vSpriteTextureIndex = textureIndex;
