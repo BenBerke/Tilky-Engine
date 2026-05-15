@@ -13,6 +13,8 @@
 
 #include "../../../Headers/Engine/Local/Local.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include "Headers/Project/ProjectManager.hpp"
 
 using json = nlohmann::json;
@@ -50,11 +52,11 @@ namespace Localisation {
     bool LoadLanguage(const std::string& languageCode) {
         const fs::path path = BuildLanguagePath(languageCode);
 
-        SDL_Log("Requested language: %s", languageCode.c_str());
-        SDL_Log("Current working directory: %s", fs::current_path().string().c_str());
-        SDL_Log("Engine base path: %s", ProjectManager::GetEngineBasePath().string().c_str());
-        SDL_Log("Trying localisation file: %s", path.string().c_str());
-        SDL_Log("Localisation file exists: %s", fs::exists(path) ? "true" : "false");
+        spdlog::info("Requested language: {}", languageCode);
+        spdlog::info("Current working directory: {}", fs::current_path().string());
+        spdlog::info("Engine base path: {}", ProjectManager::GetEngineBasePath().string());
+        spdlog::info("Trying localisation file: {}", path.string());
+        spdlog::info("Localisation file exists: {}", fs::exists(path) ? "true" : "false");
 
         std::ifstream file(path.string());
 

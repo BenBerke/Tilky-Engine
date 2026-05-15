@@ -28,6 +28,7 @@ namespace {
     fs::path currentLevelsPath;
     fs::path currentTexturesPath;
     fs::path currentSoundsPath;
+    fs::path currentScriptsPath;
 
     std::string currentProjectName;
 }
@@ -153,6 +154,7 @@ namespace ProjectManager {
         const fs::path levelsPath = assetsPath / "Levels";
         const fs::path texturesPath = assetsPath / "Textures";
         const fs::path soundsPath = assetsPath / "Sounds";
+        const fs::path scriptsPath = assetsPath / "Scripts";
 
         bool openProject = true;
 
@@ -187,6 +189,14 @@ namespace ProjectManager {
                     openProject = false;
                 }
                 else spdlog::info("Created sounds path folder: {}", soundsPath.string());
+            }
+
+            if (!fs::exists(scriptsPath)) {
+                if (!fs::create_directories(soundsPath)) {
+                    spdlog::critical("Could not create project scripts folder: {}", scriptsPath.string());
+                    openProject = false;
+                }
+                else spdlog::info("Created sounds path folder: {}", scriptsPath.string());
             }
 
             const fs::path dataPath = directory / "project.tilky";
@@ -277,6 +287,7 @@ namespace ProjectManager {
         currentLevelsPath = currentAssetsPath / "Levels";
         currentTexturesPath = currentAssetsPath / "Textures";
         currentSoundsPath = currentAssetsPath / "Sounds";
+        currentScriptsPath = currentAssetsPath / "Scripts";
 
         if (!fs::exists(currentAssetsPath)) {
             spdlog::critical("Project is missing Assets folder: {}", currentAssetsPath.string());
@@ -295,6 +306,10 @@ namespace ProjectManager {
 
         if (!fs::exists(currentSoundsPath)) {
             spdlog::critical("Project is missing Sounds folder: {}", currentSoundsPath.string());
+        }
+
+        if (!fs::exists(currentScriptsPath)) {
+            spdlog::critical("Project is missing Scripts folder: {}", currentScriptsPath.string());
         }
 
         projectLoaded = true;
@@ -332,6 +347,10 @@ namespace ProjectManager {
 
     fs::path GetSoundsPath() {
         return currentSoundsPath;
+    }
+
+    fs::path GetScriptsPath() {
+        return currentScriptsPath;
     }
 
     fs::path GetContentRootPath() {

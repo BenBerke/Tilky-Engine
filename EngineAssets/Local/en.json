@@ -102,6 +102,10 @@
   "component.audio_source.outer_angle" : "Outer Angle",
   "component.audio_source.outer_gain" : "Outer Gain",
 
+  "component.script": "Custom Script",
+  "component.script.file_name": "File Name",
+  "component.script.enabled": "Enabled",
+
   "common.delete": "Delete",
   "common.close": "Close",
   "common.add" : "Add",

@@ -13,6 +13,7 @@
 #include "Headers/Runtime/Renderer/Renderer/Renderer.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Renderer/Renderer/RendererInternal.hpp"
+#include "Headers/Runtime/ScriptSystem.hpp"
 
 namespace {
     float timer = 0;
@@ -88,6 +89,11 @@ namespace RuntimeSession {
         AudioSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
 
+        if (!ScriptSystem::Initialize()) {
+            spdlog::critical("Failed to initialize script system");
+            return false;
+        }
+        ScriptSystem::Start(level);
 
         InputManager::SetRelativeMouseMode(Renderer::window, true);
 

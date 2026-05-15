@@ -16,14 +16,24 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
+
 enum ComponentType {
     CMP_TRANSFORM,
     CMP_SPRITE,
     CMP_PLAYER_SPAWN,
     CMP_DECAL,
     CMP_AUDIO_SOURCE,
+    CMP_SCRIPT,
 
     CMP_COUNT,
+};
+
+struct ComponentScript {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    std::string fileName = "";
+
+    bool enabled = true;
 };
 
 struct ComponentAudioSource {

@@ -41,6 +41,7 @@ struct Level {
     ComponentStorage<ComponentDecal> decals;
     ComponentStorage<ComponentPlayerSpawn> playerSpawns;
     ComponentStorage<ComponentAudioSource> audioSources;
+    ComponentStorage<ComponentScript> scripts;
 
     Entity& CreateEntity() {
         Entity entity;
@@ -66,6 +67,7 @@ struct Level {
         decals.Remove(id);
         playerSpawns.Remove(id);
         audioSources.Remove(id);
+        scripts.Remove(id);
     }
     void DestroyEntity(const Entity& entity) {
         DestroyEntity(entity.id);

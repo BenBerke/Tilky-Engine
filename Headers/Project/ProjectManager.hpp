@@ -137,6 +137,12 @@ namespace ProjectManager {
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Sounds
     fs::path GetSoundsPath();
 
+    // Returns the Scripts folder of the currently loaded project.
+    // This is where project-specific scripts files should be saved and loaded from.
+    // Example:
+    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Scripts
+    fs::path GetScriptsPath();
+
     // Returns the folder where the currently running executable is located.
     // This comes from SDL_GetBasePath(), so in CLion it usually points to the build folder.
     // This is NOT the same as the user's Documents\Tilky Engine folder.

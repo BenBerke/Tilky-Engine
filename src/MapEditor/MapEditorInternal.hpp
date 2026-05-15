@@ -67,7 +67,6 @@ namespace MapEditorInternal {
 
     extern std::string currentMap;
 
-
     extern Mode currentMode;
 
     extern bool playerPlaced;

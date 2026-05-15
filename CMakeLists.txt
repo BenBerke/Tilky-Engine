@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1)
 
-project(Tilky_Engine LANGUAGES C CXX)
+project(Tilky_Engine LANGUAGES C CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,8 @@ find_package(SDL3_image REQUIRED CONFIG)
 find_package(SDL3_ttf REQUIRED CONFIG)
 find_package(Freetype REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(sol2 CONFIG REQUIRED)
+find_package(Lua REQUIRED)
 
 # ============================================================
 # GLAD
@@ -181,6 +183,9 @@ set(TILKY_ENGINE_SOURCES
         src/Runtime/Sound/AudioSystem.cpp
         Headers/Runtime/Sound/AudioSystem.hpp
         Headers/Math/Vector/Vector3Math.hpp
+        Headers/Objects/Wrappers.hpp
+        src/Runtime/ScriptSystem.cpp
+        Headers/Runtime/ScriptSystem.hpp
 )
 
 # ============================================================
@@ -209,6 +214,7 @@ target_precompile_headers(Tilky_EngineCore PRIVATE
 target_include_directories(Tilky_EngineCore PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         src/MapEditor
+        ${LUA_INCLUDE_DIR}
 )
 
 target_link_libraries(Tilky_EngineCore PUBLIC
@@ -224,6 +230,8 @@ target_link_libraries(Tilky_EngineCore PUBLIC
         Tilky_Project
         Tilky_Local
         nlohmann_json::nlohmann_json
+        sol2::sol2
+        ${LUA_LIBRARIES}
 )
 
 target_compile_definitions(Tilky_EngineCore PUBLIC
@@ -275,6 +283,16 @@ target_compile_definitions(Tilky_LauncherCore PUBLIC
         TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
+set(TILKY_ICON_OBJECTS "")
+
+if(WIN32)
+    add_library(Tilky_Icon OBJECT
+            resources/TilkyIcon.rc
+    )
+
+    set(TILKY_ICON_OBJECTS $<TARGET_OBJECTS:Tilky_Icon>)
+endif()
+
 # ============================================================
 # Runnable 1: Tilky_Launcher
 # ONLY launcher executable.
@@ -284,7 +302,7 @@ target_compile_definitions(Tilky_LauncherCore PUBLIC
 
 add_executable(Tilky_Launcher
         src/Launcher/LauncherMain.cpp
-        resources/TilkyIcon.rc
+        ${TILKY_ICON_OBJECTS}
 )
 
 target_link_libraries(Tilky_Launcher PRIVATE
@@ -300,7 +318,7 @@ target_link_libraries(Tilky_Launcher PRIVATE
 
 add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
-        resources/TilkyIcon.rc
+        ${TILKY_ICON_OBJECTS}
 )
 
 target_link_libraries(Tilky_Engine PRIVATE
@@ -315,7 +333,7 @@ target_link_libraries(Tilky_Engine PRIVATE
 
 add_executable(Tilky_All
         src/Launcher/LauncherMain.cpp
-        resources/TilkyIcon.rc
+        ${TILKY_ICON_OBJECTS}
 )
 
 target_link_libraries(Tilky_All PRIVATE

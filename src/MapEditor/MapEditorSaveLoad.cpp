@@ -160,62 +160,70 @@ namespace {
         componentsJson["playerSpawns"] = json::array();
         componentsJson["audioSources"] = json::array();
 
-        for (const ComponentTransform &t: level.transforms.components) {
+        for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
-                {"ownerID", t.ownerID},
-                {"position", {t.position.x, t.position.y}},
-                {"sectorIndex", t.sectorIndex},
-                {"floor", t.floor},
-                {"scale", {t.scale.x, t.scale.y}}
+                {"ownerID", c.ownerID},
+                {"position", {c.position.x, c.position.y}},
+                {"sectorIndex", c.sectorIndex},
+                {"floor", c.floor},
+                {"scale", {c.scale.x, c.scale.y}}
             });
         }
 
-        for (const ComponentSprite &s: level.sprites.components) {
+        for (const ComponentSprite &c: level.sprites.components) {
             componentsJson["sprites"].push_back({
-                {"ownerID", s.ownerID},
-                {"textureIndex", s.textureIndex}
+                {"ownerID", c.ownerID},
+                {"textureIndex", c.textureIndex}
             });
         }
 
-        for (const ComponentDecal &d: level.decals.components) {
+        for (const ComponentDecal &c: level.decals.components) {
             componentsJson["decals"].push_back({
-                {"ownerID", d.ownerID},
-                {"wallIndex", d.wallIndex},
+                {"ownerID", c.ownerID},
+                {"wallIndex", c.wallIndex},
 
-                {"verticalPos", d.verticalPos},
-                {"horizontalPos", d.horizontalPos},
-                {"wallNormalOffset", d.wallNormalOffset},
+                {"verticalPos", c.verticalPos},
+                {"horizontalPos", c.horizontalPos},
+                {"wallNormalOffset", c.wallNormalOffset},
 
-                {"wallT", d.wallT},
-                {"baseHeight", d.baseHeight},
-                {"absHeight", d.absHeight}
+                {"wallT", c.wallT},
+                {"baseHeight", c.baseHeight},
+                {"absHeight", c.absHeight}
             });
         }
 
-        for (const ComponentPlayerSpawn &p: level.playerSpawns.components) {
+        for (const ComponentPlayerSpawn &c: level.playerSpawns.components) {
             componentsJson["playerSpawns"].push_back({
-                {"ownerID", p.ownerID}
+                {"ownerID", c.ownerID}
             });
         }
 
-        for (const ComponentAudioSource &a : level.audioSources.components) {
+        for (const ComponentAudioSource &c : level.audioSources.components) {
             componentsJson["audioSources"].push_back({
-                {"ownerID", a.ownerID},
-                {"soundIndex", a.soundIndex},
-                {"pitch", a.pitch},
-                {"gain", a.gain},
-                {"looping", a.looping},
-                {"playOnStart", a.playOnStart},
+                {"ownerID", c.ownerID},
+                {"soundIndex", c.soundIndex},
+                {"pitch", c.pitch},
+                {"gain", c.gain},
+                {"looping", c.looping},
+                {"playOnStart", c.playOnStart},
 
                 // Distance Attenuation
-                {"referenceDistance", a.referenceDistance},
-                {"maxDistance", a.maxDistance},
-                {"rollOffFactor", a.rollOffFactor},
+                {"referenceDistance", c.referenceDistance},
+                {"maxDistance", c.maxDistance},
+                {"rollOffFactor", c.rollOffFactor},
 
                 // Sound Cone
-                {"innerConeAngle", a.innerConeAngle},
-                {"outerConeAngle", a.outerConeAngle},
-                {"outerGain", a.outerGain}
+                {"innerConeAngle", c.innerConeAngle},
+                {"outerConeAngle", c.outerConeAngle},
+                {"outerGain", c.outerGain}
+            });
+        }
+
+        for (const ComponentScript& c : level.scripts.components) {
+            componentsJson["scripts"].push_back({
+                {"ownerID", c.ownerID},
+                {"fileName", std::filesystem::path(c.fileName).stem().string()},
+                   {"enabled", c.enabled},
             });
         }
 
@@ -417,8 +425,7 @@ namespace {
 
         if (componentsJson.contains("decals")) {
             for (const json &decalJson: componentsJson["decals"]) {
-                const EntityID ownerID =
-                        decalJson.value("ownerID", INVALID_ENTITY_ID);
+                const EntityID ownerID = decalJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
@@ -453,12 +460,9 @@ namespace {
 
         if (componentsJson.contains("audioSources")) {
             for (const json &audioSourceJson : componentsJson["audioSources"]) {
-                const EntityID ownerID =
-                    audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
+                const EntityID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentAudioSource& a = level.audioSources.Add(ownerID);
 
@@ -479,6 +483,20 @@ namespace {
                 a.outerGain      = audioSourceJson.value("outerGain", 0.0f);
 
                 a.name = "entity_" + std::to_string(ownerID) + "_audio";
+            }
+        }
+
+        if (componentsJson.contains("scripts")) {
+            for (const json &scriptJson : componentsJson["scripts"]) {
+                const EntityID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentScript& s = level.scripts.Add(ownerID);
+
+                const std::string loadedName = scriptJson.value("fileName", "Test");
+
+                s.enabled = scriptJson.value("enabled", true);
+                s.fileName = std::filesystem::path(loadedName).stem().string();
             }
         }
     }

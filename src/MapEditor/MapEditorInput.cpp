@@ -180,6 +180,12 @@ namespace MapEditorInternal {
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
             ChangeMode();
         }
+
+        if (InputManager::QuitRequested()) {
+            shutdown = true;
+            quit = true;
+        }
+
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
             switch (actions.back()) {
