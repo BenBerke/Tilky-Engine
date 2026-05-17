@@ -1,4 +1,4 @@
-#include "MapEditorInternal.hpp"
+#include "EditorInternal.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -15,13 +15,14 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "config.h"
+#include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Objects/Loadables.hpp"
 
 constexpr EntityID INVALID_ENTITY_ID = static_cast<EntityID>(-1);
 
 using json = nlohmann::json;
 
-namespace MapEditor {
+namespace Editor {
     bool ExportProjectAsGame(const std::filesystem::path& exportFolder) {
         namespace fs = std::filesystem;
 
@@ -159,6 +160,9 @@ namespace {
         componentsJson["decals"] = json::array();
         componentsJson["playerSpawns"] = json::array();
         componentsJson["audioSources"] = json::array();
+        componentsJson["scripts"] = json::array();
+        componentsJson["uiTransforms"] = json::array();
+        componentsJson["uiSprites"] = json::array();
 
         for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
@@ -224,6 +228,21 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"fileName", std::filesystem::path(c.fileName).stem().string()},
                    {"enabled", c.enabled},
+            });
+        }
+
+        for (const ComponentUITransform &c: level.ui_transforms.components) {
+            componentsJson["uiTransforms"].push_back({
+                {"ownerID", c.ownerID},
+                {"position", {c.position.x, c.position.y}},
+                {"scale", {c.scale.x, c.scale.y}}
+            });
+        }
+
+        for (const ComponentUISprite &c: level.ui_sprites.components) {
+            componentsJson["uiSprites"].push_back({
+                {"ownerID", c.ownerID},
+                {"textureIndex", c.textureIndex},
             });
         }
 
@@ -379,6 +398,9 @@ namespace {
         level.playerSpawns.Clear();
         level.audioSources.Clear();
 
+        level.ui_transforms.Clear();
+        level.ui_sprites.Clear();
+
         if (componentsJson.contains("transforms")) {
             for (const json &transformJson: componentsJson["transforms"]) {
                 const EntityID ownerID =
@@ -499,6 +521,43 @@ namespace {
                 s.fileName = std::filesystem::path(loadedName).stem().string();
             }
         }
+
+        if (componentsJson.contains("uiTransforms")) {
+            for (const json &transformJson : componentsJson["uiTransforms"]) {
+                const EntityID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentUITransform& c = level.ui_transforms.Add(ownerID);
+
+                if (transformJson.contains("position")) {
+                    c.position = {
+                        transformJson["position"][0].get<float>(),
+                        transformJson["position"][1].get<float>()
+                    };
+                }
+
+                if (transformJson.contains("scale")) {
+                    c.scale = {
+                        transformJson["scale"][0].get<float>(),
+                        transformJson["scale"][1].get<float>()
+                    };
+                }
+            }
+        }
+
+        if (componentsJson.contains("uiSprites")) {
+            for (const json &spriteJson : componentsJson["uiSprites"]) {
+                const EntityID ownerID = spriteJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentUISprite& c = level.ui_sprites.Add(ownerID);
+
+                c.textureIndex = spriteJson.value("textureIndex", -1);
+            }
+        }
+
     }
 
     void LoadWalls(const json &levelData, Level &level) {
@@ -629,7 +688,7 @@ namespace {
                 }
             }
 
-            sector.triangles = MapEditor::Triangulate(sector.vertices);
+            sector.triangles = Editor::Triangulate(sector.vertices);
 
             level.sectors.push_back(sector);
         }
@@ -712,7 +771,7 @@ namespace {
         using namespace MapEditorInternal;
 
         playerPlaced = false;
-        MapEditor::playerStartPos = {0.0f, 0.0f};
+        Editor::playerStartPos = {0.0f, 0.0f};
 
         for (const ComponentPlayerSpawn& spawn : level.playerSpawns.components) {
             ComponentTransform* transform =
@@ -723,11 +782,12 @@ namespace {
             }
 
             playerPlaced = true;
-            MapEditor::playerStartPos = transform->position;
+            Editor::playerStartPos = transform->position;
             return;
         }
 
-        Entity& playerEntity = level.CreateEntity();
+        constexpr bool isUiEntity = false;
+        Entity& playerEntity = level.CreateEntity(isUiEntity);
 
         auto* transform =
             playerEntity.GetComponent<ComponentTransform>();
@@ -743,7 +803,7 @@ namespace {
         level.playerSpawns.Add(playerEntity.id);
 
         playerPlaced = true;
-        MapEditor::playerStartPos = transform->position;
+        Editor::playerStartPos = transform->position;
     }
 }
 
@@ -752,7 +812,7 @@ namespace MapEditorInternal {
         const std::filesystem::path levelsPath = ProjectManager::GetLevelsPath();
 
         try {
-            MapEditor::maps.clear();
+            Editor::maps.clear();
 
             if (!std::filesystem::exists(levelsPath) ||
                 !std::filesystem::is_directory(levelsPath)) {
@@ -769,7 +829,7 @@ namespace MapEditorInternal {
                     continue;
                 }
 
-                MapEditor::maps.push_back(entry.path().stem().string());
+                Editor::maps.push_back(entry.path().stem().string());
             }
         } catch (const std::filesystem::filesystem_error &e) {
             spdlog::critical("Error loading levels {}", e.what());
@@ -779,8 +839,8 @@ namespace MapEditorInternal {
     bool Save(const std::string &saveTo) {
         Level &level = GetOrCreateCurrentLevel();
 
-        MapEditor::RefreshLevelTexturesFromFolder();
-        MapEditor::RefreshLevelSoundsFromFolder();
+        EditorTextureCache::RefreshLevelTexturesFromFolder();;
+        Editor::RefreshLevelSoundsFromFolder();
 
         const std::string cleanName = CleanLevelName(saveTo);
 
@@ -798,7 +858,7 @@ namespace MapEditorInternal {
         levelData["nextEntityID"] = level.nextEntityID;
 
         levelData["levelVars"] = {
-            {"backgroundTextureIndex", MapEditor::backgroundTextureIndex}
+            {"backgroundTextureIndex", Editor::backgroundTextureIndex}
         };
 
         SaveLevelStats(levelData, level);
@@ -831,7 +891,7 @@ namespace MapEditorInternal {
     }
 }
 
-namespace MapEditor {
+namespace Editor {
     bool LoadLevel(const std::string &levelName) {
         using namespace MapEditorInternal;
 
@@ -884,7 +944,7 @@ namespace MapEditor {
         try {
 
             LoadEntities(levelData, loadedLevel);
-            spdlog::info("Entities loaded");
+            spdlog::info("Entity loaded");
 
             LoadComponents(levelData, loadedLevel);
             spdlog::info("Components loaded");
@@ -933,7 +993,7 @@ namespace MapEditor {
 
         UpdatePlayerSpawnFromLoadedLevel(activeLevel);
 
-        RefreshLevelTexturesFromFolder();
+        EditorTextureCache::RefreshLevelTexturesFromFolder();
         RefreshLevelSoundsFromFolder();
 
         spdlog::info("Level loaded successfully {}", path.string());

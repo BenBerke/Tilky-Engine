@@ -132,13 +132,14 @@ target_compile_definitions(Tilky_Local PUBLIC
 set(TILKY_ENGINE_SOURCES
         src/Runtime/Renderer/TextureManager.cpp
 
-        src/MapEditor/MapEditor.cpp
-        src/MapEditor/MapEditorState.cpp
-        src/MapEditor/MapEditorGeometry.cpp
-        src/MapEditor/MapEditorDrawing.cpp
-        src/MapEditor/MapEditorInput.cpp
-        src/MapEditor/MapEditorUI.cpp
-        src/MapEditor/MapEditorSaveLoad.cpp
+        src/Editor/MapEditor/MapEditorDrawing.cpp
+        src/Editor/MapEditor/MapEditorGeometry.cpp
+        src/Editor/MapEditor/MapEditorUI.cpp
+        src/Editor/MapEditor/MapEditorInput.cpp
+
+        src/Editor/Editor.cpp
+        src/Editor/EditorState.cpp
+        src/Editor/EditorSaveLoad.cpp
 
         src/Engine/GameTime.cpp
         src/Engine/InputManager.cpp
@@ -186,6 +187,11 @@ set(TILKY_ENGINE_SOURCES
         Headers/Objects/Wrappers.hpp
         src/Runtime/ScriptSystem.cpp
         Headers/Runtime/ScriptSystem.hpp
+        src/Editor/UIEditor/UIEditorUI.cpp
+        src/Editor/UIEditor/UIEditorInput.cpp
+        src/Editor/UIEditor/UiEditorDraw.cpp
+        src/Editor/EditorTextureCache.cpp
+        Headers/Editor/EditorTextureCache.hpp
 )
 
 # ============================================================

@@ -1,4 +1,4 @@
-#include "MapEditorInternal.hpp"
+#include "../EditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -65,7 +65,7 @@ namespace MapEditorInternal {
             return;
         }
 
-        const std::vector<Triangle> previewTriangles = MapEditor::Triangulate(previewVertices);
+        const std::vector<Triangle> previewTriangles = Editor::Triangulate(previewVertices);
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -179,8 +179,8 @@ namespace MapEditorInternal {
     void DrawEntities() {
         Level& level = LevelManager::CurrentLevel();
 
-        for (Entity& entity : level.entities) {
-            ComponentTransform* transform = level.transforms.Get(entity.id);
+        for (const Entity& entity : level.entities) {
+            const ComponentTransform* transform = level.transforms.Get(entity.id);
 
             if (transform == nullptr || transform->floor != currentFloor) {
                 continue;

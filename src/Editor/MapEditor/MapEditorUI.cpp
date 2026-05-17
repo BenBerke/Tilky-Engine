@@ -1,4 +1,4 @@
-#include "MapEditorInternal.hpp"
+#include "../EditorInternal.hpp"
 
 #include "imgui.h"
 
@@ -13,59 +13,13 @@
 #include <optional>
 
 #include "Headers/Map/LevelManager.hpp"
-#include "../../Headers/Engine/Local/Local.hpp"
+#include "../../../Headers/Engine/Local/Local.hpp"
+#include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "misc/cpp/imgui_stdlib.h"
 
-namespace MapEditor {
-    void RefreshLevelTexturesFromFolder() {
-        Level& level = LevelManager::CurrentLevel();
-        level.textures.clear();
-
-        const std::filesystem::path texturesPath = ProjectManager::GetTexturesPath();
-
-        if (!std::filesystem::exists(texturesPath)) {
-            std::filesystem::create_directories(texturesPath);
-            spdlog::warn("Created missing Textures folder: {}", texturesPath.string());
-            return;
-        }
-
-        if (!std::filesystem::is_directory(texturesPath)) {
-            spdlog::error("Textures path is not a directory: {}", texturesPath.string());
-            return;
-        }
-
-        for (const auto& entry : std::filesystem::directory_iterator(texturesPath)) {
-            if (!entry.is_regular_file()) {
-                continue;
-            }
-
-            const std::filesystem::path& path = entry.path();
-
-            std::string extension = path.extension().string();
-
-            std::ranges::transform(extension, extension.begin(), [](const unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
-
-            if (extension != ".png") {
-                continue;
-            }
-
-            Texture texture;
-            texture.fileName = path.stem().string(); // "Brick.png" -> "Brick"
-
-            level.textures.push_back(texture);
-        }
-
-        std::ranges::sort(level.textures, [](const Texture& a, const Texture& b) {
-            return a.fileName < b.fileName;
-        });
-
-        spdlog::info("Refreshed {} level texture(s)", level.textures.size());
-    }
-
+namespace Editor {
     void RefreshLevelSoundsFromFolder() {
         Level& level = LevelManager::CurrentLevel();
         level.sounds.clear();
@@ -130,7 +84,7 @@ namespace {
         const Level& level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_textures").c_str())) {
-            MapEditor::RefreshLevelTexturesFromFolder();
+            EditorTextureCache::RefreshLevelTexturesFromFolder();
         }
 
         for (int i = 0; i < static_cast<int>(level.textures.size()); i++) {
@@ -140,13 +94,6 @@ namespace {
 
             ImGui::PopID();
         }
-
-        PutSpace(5);
-
-        int bgTextureIndex = MapEditor::backgroundTextureIndex;
-        ImGui::InputInt(Get("editor.background_texture").c_str(), &bgTextureIndex);
-        MapEditor::backgroundTextureIndex = bgTextureIndex;
-
         PutSpace(2);
     }
 
@@ -154,7 +101,7 @@ namespace {
         const Level& level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
-            MapEditor::RefreshLevelSoundsFromFolder();
+            Editor::RefreshLevelSoundsFromFolder();
         }
 
         for (int i = 0; i < static_cast<int>(level.sounds.size()); i++) {
@@ -258,6 +205,12 @@ namespace {
             settings.distanceModel = alModels[currentModel];
             // SoundManager::SetListenerDistanceModel(settings.distanceModel);
         }
+
+        PutSpace(5);
+
+        int bgTextureIndex = Editor::backgroundTextureIndex;
+        ImGui::InputInt(Get("editor.background_texture").c_str(), &bgTextureIndex);
+        Editor::backgroundTextureIndex = bgTextureIndex;
 
         ImGui::End();
     }
@@ -442,7 +395,7 @@ namespace {
             if (addingComponent) {
                 ImGui::PushID("add_component_combo");
 
-                std::array<std::string, CMP_COUNT> componentNames;
+                std::array<std::string, CMP_NORMAL_COUNT> componentNames;
 
                 componentNames[CMP_TRANSFORM] = Get("component.transform");
                 componentNames[CMP_SPRITE] = Get("component.sprite");
@@ -452,7 +405,7 @@ namespace {
                 componentNames[CMP_SCRIPT] = Get("component.script");
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
-                    for (int i = 0; i < CMP_COUNT; i++) {
+                    for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
                         if (i == CMP_TRANSFORM) {
                             continue;
                         }
@@ -854,7 +807,7 @@ namespace MapEditorInternal {
 
         spdlog::info("Processing queued level load: {}", levelToLoad);
 
-        MapEditor::LoadLevel(levelToLoad);
+        Editor::LoadLevel(levelToLoad);
 
         return true;
     }
@@ -899,14 +852,14 @@ namespace MapEditorInternal {
         ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
 
         if (ImGui::Button(Get("editor.save").c_str())) {
-            Save(MapEditor::currentMap);
+            Save(Editor::currentMap);
         }
 
         PutSpace(1);
 
         if (ImGui::Button(Get("editor.save_and_play").c_str())) {
-            if (Save(MapEditor::currentMap)) {
-                SDL_Log("%s", MapEditor::currentMap.c_str());
+            if (Save(Editor::currentMap)) {
+                SDL_Log("%s", Editor::currentMap.c_str());
                 quit = true;
             }
         }
@@ -920,28 +873,30 @@ namespace MapEditorInternal {
 
         static char buf[64] = "";
 
-        if (buf[0] == '\0' && !MapEditor::currentMap.empty()) {
-            std::strncpy(buf, MapEditor::currentMap.c_str(), sizeof(buf) - 1);
+        if (buf[0] == '\0' && !Editor::currentMap.empty()) {
+            std::strncpy(buf, Editor::currentMap.c_str(), sizeof(buf) - 1);
         }
 
         if (ImGui::InputText(Get("editor.level_name").c_str(), buf, IM_ARRAYSIZE(buf))) {
-            MapEditor::currentMap = buf;
+            Editor::currentMap = buf;
         }
 
-        ImGui::End();
+        if (ImGui::Button(Get("editor.switch_to_ui").c_str())) currentState = STATE_UI;
+
+        ImGui::End(); // Editor
 
         ImGui::Begin(Get("levels.title").c_str());
 
-        for (int i = 0; i < static_cast<int>(MapEditor::maps.size()); ++i) {
+        for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
             ImGui::PushID(i);
 
-            std::string cleanName = MapEditor::maps[i];
+            std::string cleanName = Editor::maps[i];
 
             ImGui::Text("%s", cleanName.c_str());
 
             if (ImGui::Button(Get("levels.load").c_str())) {
-                if (!MapEditor::currentMap.empty()) {
-                    Save(MapEditor::currentMap);
+                if (!Editor::currentMap.empty()) {
+                    Save(Editor::currentMap);
                 }
 
                 QueueLevelLoad(cleanName);
@@ -959,8 +914,8 @@ namespace MapEditorInternal {
                     if (std::filesystem::remove(path)) {
                         spdlog::info("Deleted level: {}", path.string());
 
-                        if (MapEditor::currentMap == cleanName) {
-                            MapEditor::currentMap = "";
+                        if (Editor::currentMap == cleanName) {
+                            Editor::currentMap = "";
                         }
 
                         UpdateLevels();
@@ -978,6 +933,6 @@ namespace MapEditorInternal {
 
         DrawWorldSettings();
 
-        ImGui::End();
+        ImGui::End(); // Levels
     }
 }

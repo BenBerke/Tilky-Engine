@@ -16,6 +16,8 @@
 #include "Headers/Objects/Wrappers.hpp"
 #include "Headers/Objects/Components.hpp"
 
+#include "Headers/Math/Vector/Vector2Math.hpp"
+
 namespace {
     struct ScriptInstance {
         EntityID ownerID = static_cast<EntityID>(-1);
@@ -29,36 +31,103 @@ namespace {
     sol::state lua;
     std::vector<ScriptInstance> scriptInstances;
 
+    void RegisterMathLibrary() {
+        sol::table tilky;
+
+        if (lua["Tilky"].valid()) {
+            tilky = lua["Tilky"];
+        }
+        else {
+            tilky = lua.create_named_table("Tilky");
+        }
+
+        sol::table math = lua.create_table();
+
+
+        math.set_function("DegToRad", [](const float value) -> float {
+            return value * (180.0f / 3.14159265358979323846f);
+        });
+
+        math.set_function("RadToDeg", [](const float value) -> float {
+            return value * (3.14159265358979323846f / 180.0f);
+        });
+
+        math.set_function("Clamp", [](const float value, const float minValue, const float maxValue) -> float {
+            return std::clamp(value, minValue, maxValue);
+        });
+
+        math.set_function("Lerp", [](const float a, const float b, const float t) -> float {
+            return (1-t) * a + t * b;
+        });
+
+        math.set_function("Vector2Distance", [](const Vector2& a, const Vector2& b) -> float {
+            return Vector2Math::Distance(a, b);
+        });
+
+        tilky["Math"] = math;
+    }
+
     void RegisterBindings() {
         lua.new_usertype<Vector2>(
             "Vector2",
             sol::constructors<Vector2(), Vector2(float, float)>(),
             "x", &Vector2::x,
-            "y", &Vector2::y
+            "y", &Vector2::y,
+
+            // Properties
+            "length", sol::property([](const Vector2 &self) {
+                return Vector2Math::Length(self);
+            })
         );
 
         lua.new_usertype<ScriptTransform>(
             "Transform",
-            "x", sol::property(&ScriptTransform::GetX, &ScriptTransform::SetX),
-            "y", sol::property(&ScriptTransform::GetY, &ScriptTransform::SetY),
-            "position", sol::property(&ScriptTransform::GetPosition, &ScriptTransform::SetPosition)
+
+            "position", sol::property(
+                &ScriptTransform::GetPosition,
+                &ScriptTransform::SetPosition
+            ),
+
+            "x", sol::property(
+                &ScriptTransform::GetX,
+                &ScriptTransform::SetX
+            ),
+
+            "y", sol::property(
+                &ScriptTransform::GetY,
+                &ScriptTransform::SetY
+            )
         );
 
         lua.new_usertype<ScriptEntity>(
-            "Entity",
+            "Entities",
 
-            "GetID", &ScriptEntity::GetID,
-            "GetTransform", &ScriptEntity::GetTransform,
-            "HasTransform", &ScriptEntity::HasTransform
+            "id", sol::property(&ScriptEntity::GetID),
+
+            "hasTransform", sol::property(&ScriptEntity::HasTransform),
+
+            "transform", sol::property(
+                [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                    const sol::state_view lua(state);
+
+                    if (entity.level == nullptr) {
+                        return sol::nil;
+                    }
+
+                    if (entity.level->transforms.Get(entity.ownerID) == nullptr) {
+                        return sol::nil;
+                    }
+
+                    return sol::make_object(
+                        lua,
+                        ScriptTransform {
+                            entity.level,
+                            entity.ownerID
+                        }
+                    );
+                }
+            )
         );
-
-        lua.set_function("Log", [](const std::string &message) {
-            spdlog::info("[Lua] {}", message);
-        });
-    }
-
-    std::filesystem::path GetScriptPath(const std::string &scriptFile) {
-        return ProjectManager::GetProjectFolder() / "Assets" / "Scripts" / scriptFile;
     }
 
     namespace fs = std::filesystem;
@@ -84,7 +153,9 @@ namespace ScriptSystem {
     bool Initialize() {
         try {
             lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
+
             RegisterBindings();
+            RegisterMathLibrary();
 
             spdlog::info("Lua scripting initialized");
             return true;

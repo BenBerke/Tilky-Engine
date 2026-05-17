@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "MapEditorInternal.hpp"
+#include "../EditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -109,13 +109,14 @@ namespace MapEditorInternal {
                     }
                 }
                 else if (currentMode == MODE_ENTITY) {
-                    Entity *en = EntityExistsAt(mouseWorld);
+                    Entity *en = EntityAt(mouseWorld);
 
                     if (en != nullptr) {
                         selectedEntity = *en;
                         holdingEntity = true;
                     } else {
-                        selectedEntity = level.CreateEntity(); // This gives the entity ComponentTransform
+                        static constexpr bool isUIEntity = false;
+                        selectedEntity = level.CreateEntity(isUIEntity); // This gives the entity ComponentTransform
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) {
@@ -143,7 +144,6 @@ namespace MapEditorInternal {
                 else if (holdingEntity && currentMode == MODE_ENTITY) {
                     selectedEntity.GetComponent<ComponentTransform>()->position = mouseWorld;
                 }
-
             }
 
             if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {

@@ -25,8 +25,30 @@ enum ComponentType {
     CMP_AUDIO_SOURCE,
     CMP_SCRIPT,
 
+    CMP_NORMAL_COUNT,
+
+    CMP_UI_TRANSFORM, // Transform must always be the first UI component otherwise UIEditorDrawUI breaks
+    CMP_UI_SPRITE,
+
     CMP_COUNT,
 };
+
+
+// region UI Components
+struct ComponentUISprite {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    int textureIndex;
+};
+
+struct ComponentUITransform {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    Vector2 position = {.0f, .0f};
+    Vector2 scale = {1.0f, 1.0f};
+};
+
+// endregion
 
 struct ComponentScript {
     EntityID ownerID = static_cast<EntityID>(-1);
@@ -37,7 +59,7 @@ struct ComponentScript {
 };
 
 struct ComponentAudioSource {
-    EntityID ownerID = -1;
+    EntityID ownerID = static_cast<EntityID>(-1);
 
     std::string name; // OpenAL source name, e.g. "entity_4_audio"
     int soundIndex = -1;
@@ -57,21 +79,21 @@ struct ComponentAudioSource {
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
-    // void PlaySound() const {
-    //     SoundManager::PlaySoundOnSource(name, soundIndex);
-    // }
-    //
-    // void SetSourcePitch(const float pitch) const {
-    //     SoundManager::SetSourcePitch(name, pitch);
-    // }
-    //
-    // void SetSourceGain(const float gain) const {
-    //     SoundManager::SetSourceGain(name, gain);
-    // }
-    //
-    // void SetSourceLooping(const bool looping) const {
-    //     SoundManager::SetSourceLooping(name, looping);
-    // }
+    void PlaySound() const {
+        SoundManager::PlaySoundOnSource(name, soundIndex);
+    }
+
+    void SetSourcePitch(const float pitch) const {
+        SoundManager::SetSourcePitch(name, pitch);
+    }
+
+    void SetSourceGain(const float gain) const {
+        SoundManager::SetSourceGain(name, gain);
+    }
+
+    void SetSourceLooping(const bool looping) const {
+        SoundManager::SetSourceLooping(name, looping);
+    }
 
     void SetSourcePosition(const Vector3& position) const {
         SoundManager::SetSourcePosition(name, position);

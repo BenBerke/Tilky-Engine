@@ -1,6 +1,6 @@
-#include "MapEditorInternal.hpp"
+#include "EditorInternal.hpp"
 
-namespace MapEditor {
+namespace Editor {
     std::vector<std::string> maps;
     std::string currentMap;
 
@@ -44,6 +44,7 @@ namespace MapEditorInternal {
     float entitySize = 15.0f;
 
     Mode currentMode = MODE_DOT;
+    State currentState = STATE_MAP;
 
     bool playerPlaced = false;
 

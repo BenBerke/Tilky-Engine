@@ -43,7 +43,10 @@ struct Level {
     ComponentStorage<ComponentAudioSource> audioSources;
     ComponentStorage<ComponentScript> scripts;
 
-    Entity& CreateEntity() {
+    ComponentStorage<ComponentUITransform> ui_transforms;
+    ComponentStorage<ComponentUISprite> ui_sprites;
+
+    Entity& CreateEntity(bool uiEntity) {
         Entity entity;
         entity.id = nextEntityID++;
         entity.name = "Entity";
@@ -53,7 +56,8 @@ struct Level {
 
         Entity& createdEntity = entities.back();
 
-        transforms.Add(createdEntity.id);
+        if (uiEntity) ui_transforms.Add(createdEntity.id);
+        else transforms.Add(createdEntity.id);
 
         return createdEntity;
     }
@@ -68,6 +72,9 @@ struct Level {
         playerSpawns.Remove(id);
         audioSources.Remove(id);
         scripts.Remove(id);
+
+        ui_transforms.Remove(id);
+        ui_sprites.Remove(id);
     }
     void DestroyEntity(const Entity& entity) {
         DestroyEntity(entity.id);

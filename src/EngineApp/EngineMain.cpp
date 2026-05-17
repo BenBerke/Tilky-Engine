@@ -4,17 +4,9 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
-#include "Headers/Runtime/Renderer/Renderer/Renderer.hpp"
-#include "Headers/MapEditor/MapEditor.hpp"
-#include "Headers/Runtime/Renderer/TextureManager.hpp"
-
-#include "Headers/Map/MapQueries.hpp"
-#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Editor/Editor.hpp"
 
 #include "Headers/Objects/Player.hpp"
-#include "Headers/Objects/Sector.hpp"
-
-#include "../MapEditor/MapEditorInternal.hpp"
 #include "../Runtime/Renderer/Renderer/RendererInternal.hpp"
 
 #include <spdlog/spdlog.h>
@@ -99,17 +91,17 @@ static void LaunchEngine() {
 }
 
 static void LaunchEditor() {
-    MapEditor::Start();
-    while (!MapEditor::QuitRequested()) {
+    Editor::Start();
+    while (!Editor::QuitRequested()) {
         InputManager::BeginFrame();
-        MapEditor::Update();
+        Editor::Update();
     }
-    const bool shutdown = MapEditor::ShutdownRequested();
-    MapEditor::Destroy();
+    const bool shutdown = Editor::ShutdownRequested();
+    Editor::Destroy();
 
     if (shutdown) return;
 
-    MapEditor::LoadLevel(MapEditor::currentMap);
+    Editor::LoadLevel(Editor::currentMap);
     LaunchEngine();
 }
 

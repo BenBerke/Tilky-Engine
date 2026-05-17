@@ -155,6 +155,19 @@ namespace Renderer {
         glDisable(GL_BLEND);
 
         // ============================================================
+        // UI
+        // ============================================================
+
+        for (ComponentUISprite& sprite : level.ui_sprites.components) {
+            const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
+            if (transform == nullptr) {
+                spdlog::error("UI Sprite does not have ui transform");
+                continue;
+            }
+            DrawUIRectangle(transform->position, transform->scale, {255.0f, 255.0f, 255.0f, 255.0f}, sprite.textureIndex);
+        }
+
+        // ============================================================
         // Top-down debug map
         // ============================================================
 

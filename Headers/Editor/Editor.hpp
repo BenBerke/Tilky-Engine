@@ -12,7 +12,7 @@
 struct Level;
 using EntityID = uint32_t;
 
-namespace MapEditor {
+namespace Editor {
     extern Vector2 playerStartPos;
     extern int backgroundTextureIndex;
 
@@ -26,7 +26,6 @@ namespace MapEditor {
     bool ShutdownRequested();
     bool QuitRequested();
     bool LoadLevel(const std::string& levelName);
-    void RefreshLevelTexturesFromFolder();
     void RefreshLevelSoundsFromFolder();
 
     bool ExportProjectAsGame(const std::filesystem::path& exportFolder);

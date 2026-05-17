@@ -4,7 +4,7 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/MapEditor/MapEditor.hpp"
+#include "Headers/Editor/Editor.hpp"
 
 #include <algorithm>
 #include <spdlog/spdlog.h>
@@ -434,7 +434,7 @@ namespace Renderer {
 
         spdlog::info("Creating renderer map data");
 
-        MapEditor::TriangulateSectors();
+        Editor::TriangulateSectors();
 
         BuildFlatTrianglesFromSectors();
         BuildGpuWallsFromMap();

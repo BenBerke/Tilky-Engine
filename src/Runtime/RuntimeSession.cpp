@@ -7,7 +7,7 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/MapEditor/MapEditor.hpp"
+#include "Headers/Editor/Editor.hpp"
 #include "Headers/Objects/Player.hpp"
 #include "Headers/Objects/Loadables.hpp"
 #include "Headers/Runtime/Renderer/Renderer/Renderer.hpp"
@@ -57,9 +57,9 @@ namespace RuntimeSession {
         Level& level = LevelManager::CurrentLevel();
 
         Player::position = {
-            MapEditor::playerStartPos.x,
+            Editor::playerStartPos.x,
             0.0f,
-            MapEditor::playerStartPos.y
+            Editor::playerStartPos.y
         };;
 
         MapQueries::AssignWallsToSectors(
@@ -74,7 +74,7 @@ namespace RuntimeSession {
             return false;
         }
 
-        RendererInternal::backgroundTextureIndex = MapEditor::backgroundTextureIndex;
+        RendererInternal::backgroundTextureIndex = Editor::backgroundTextureIndex;
 
         if (!Renderer::CreateMap()) {
             spdlog::critical("Failed to create map");

@@ -10,35 +10,74 @@
 #include "Headers/Math/Vector/Vector2.hpp"
 
 struct ScriptTransform {
-    ComponentTransform* transform = nullptr;
+    Level* level = nullptr;
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    [[nodiscard]] ComponentTransform* GetComponent() const {
+        if (level == nullptr) {
+            return nullptr;
+        }
+
+        return level->transforms.Get(ownerID);
+    }
 
     [[nodiscard]] Vector2 GetPosition() const {
-        if (transform == nullptr) return {0.0f, 0.0f};
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return {0.0f, 0.0f};
+        }
+
         return transform->position;
     }
 
-     void SetPosition(const Vector2& position) const {
-        if (transform == nullptr) return;
+    void SetPosition(const Vector2& position) const {
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return;
+        }
+
         transform->position = position;
     }
 
     [[nodiscard]] float GetX() const {
-        if (transform == nullptr) return 0.0f;
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return 0.0f;
+        }
+
         return transform->position.x;
     }
 
-    [[nodiscard]] float GetY() const {
-        if (transform == nullptr) return 0.0f;
-        return transform->position.y;
-    }
-
     void SetX(const float x) const {
-        if (transform == nullptr) return;
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return;
+        }
+
         transform->position.x = x;
     }
 
+    [[nodiscard]] float GetY() const {
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return 0.0f;
+        }
+
+        return transform->position.y;
+    }
+
     void SetY(const float y) const {
-        if (transform == nullptr) return;
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return;
+        }
+
         transform->position.y = y;
     }
 };
@@ -51,18 +90,12 @@ struct ScriptEntity {
         return ownerID;
     }
 
-    [[nodiscard]] ScriptTransform GetTransform() const {
-        if (level == nullptr) {
-            return {};
-        }
-
-        return {
-            level->transforms.Get(ownerID)
-        };
-    }
-
     [[nodiscard]] bool HasTransform() const {
         return level != nullptr && level->transforms.Get(ownerID) != nullptr;
+    }
+
+    [[nodiscard]] ScriptTransform GetTransform() const {
+        return {level,ownerID};
     }
 };
 

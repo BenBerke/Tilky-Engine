@@ -1,4 +1,4 @@
-#include "MapEditorInternal.hpp"
+#include "../EditorInternal.hpp"
 
 #include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -34,16 +34,39 @@ namespace MapEditorInternal {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
     }
 
-    bool AABBCollisionWithEntity(const Vector2& entityPosition, const Vector2& mousePosition) {
+    bool AABBCollisionWithEntity(const ComponentUITransform& transform, const Vector2& mousePosition) {
         constexpr float mouseSize = 0.1f;
-
-        const float entityHalfSize = entitySize * 0.5f;
         constexpr float mouseHalfSize = mouseSize * 0.5f;
 
-        const float entityLeft   = entityPosition.x - entityHalfSize;
-        const float entityRight  = entityPosition.x + entityHalfSize;
-        const float entityBottom = entityPosition.y - entityHalfSize;
-        const float entityTop    = entityPosition.y + entityHalfSize;
+        const float entityHalfWidth  = transform.scale.x * 0.5f;
+        const float entityHalfHeight = transform.scale.y * 0.5f;
+
+        const float entityLeft   = transform.position.x - entityHalfWidth;
+        const float entityRight  = transform.position.x + entityHalfWidth;
+        const float entityBottom = transform.position.y - entityHalfHeight;
+        const float entityTop    = transform.position.y + entityHalfHeight;
+
+        const float mouseLeft   = mousePosition.x - mouseHalfSize;
+        const float mouseRight  = mousePosition.x + mouseHalfSize;
+        const float mouseBottom = mousePosition.y - mouseHalfSize;
+        const float mouseTop    = mousePosition.y + mouseHalfSize;
+
+        return entityLeft <= mouseRight &&
+               entityRight >= mouseLeft &&
+               entityBottom <= mouseTop &&
+               entityTop >= mouseBottom;
+    }
+    bool AABBCollisionWithEntity(const ComponentTransform& transform, const Vector2& mousePosition) {
+        constexpr float mouseSize = 0.1f;
+        constexpr float mouseHalfSize = mouseSize * 0.5f;
+
+        const float entityHalfWidth  = transform.scale.x * 0.5f;
+        const float entityHalfHeight = transform.scale.y * 0.5f;
+
+        const float entityLeft   = transform.position.x - entityHalfWidth;
+        const float entityRight  = transform.position.x + entityHalfWidth;
+        const float entityBottom = transform.position.y - entityHalfHeight;
+        const float entityTop    = transform.position.y + entityHalfHeight;
 
         const float mouseLeft   = mousePosition.x - mouseHalfSize;
         const float mouseRight  = mousePosition.x + mouseHalfSize;
@@ -56,18 +79,18 @@ namespace MapEditorInternal {
                entityTop >= mouseBottom;
     }
 
-    Entity* EntityExistsAt(const Vector2& mouseClick) {
+    Entity* EntityAt(const Vector2& mouseClick) {
         Level& level = LevelManager::CurrentLevel();
 
         for (Entity& entity : level.entities) {
-            ComponentTransform* transform = level.transforms.Get(entity.id);
+            const ComponentTransform* transform = level.transforms.Get(entity.id);
+            const ComponentUITransform* uiTransform = level.ui_transforms.Get(entity.id);
 
-            if (transform == nullptr) {
-                continue;
+            if (transform != nullptr ) {
+                if (AABBCollisionWithEntity(*transform, mouseClick)) return &entity;
             }
-
-            if (AABBCollisionWithEntity(transform->position, mouseClick)) {
-                return &entity;
+            else if (uiTransform != nullptr) {
+                if (AABBCollisionWithEntity(*uiTransform, mouseClick)) return &entity;
             }
         }
 
@@ -225,7 +248,7 @@ namespace MapEditorInternal {
             return;
         }
 
-        MapEditor::CreateSector(
+        Editor::CreateSector(
             finalVertices,
             40.0f,
             0.0f,
@@ -343,7 +366,7 @@ namespace {
     }
 }
 
-namespace MapEditor {
+namespace Editor {
     std::vector<Triangle> Triangulate(std::vector<Vector2> vertices) {
         std::vector<Triangle> triangles;
 

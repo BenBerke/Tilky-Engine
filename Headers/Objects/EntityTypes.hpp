@@ -7,5 +7,6 @@
 
 using EntityID = uint32_t;
 using LevelID = EntityID;
+using UIElementID = EntityID;
 
 #endif // TILKY_ENGINE_ENTITY_TYPES_HPP

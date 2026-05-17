@@ -1,20 +1,21 @@
-#include "MapEditorInternal.hpp"
+#include "EditorInternal.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
 #include <SDL3/SDL_init.h>
-#include <SDL3/SDL_log.h>
 #include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
 
+#include "Headers/Editor/EditorTextureCache.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
-namespace MapEditor {
+namespace Editor {
     std::vector<Level> levels;
     EntityID currentLevels = 0;
 
@@ -108,8 +109,9 @@ namespace MapEditor {
             LevelManager::currentLevelIndex = 0;
         }
 
-        RefreshLevelTexturesFromFolder();
+        EditorTextureCache::RefreshLevelTexturesFromFolder();
         RefreshLevelSoundsFromFolder();
+        EditorTextureCache::Load(renderer, LevelManager::CurrentLevel());
     }
 
     void Update() {
@@ -141,64 +143,70 @@ namespace MapEditor {
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
         const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
 
-        HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+        if (currentState == STATE_MAP) {
+            // Update decals so they always stick to the wall they are attached to
+            HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+            for (ComponentDecal &decal: level.decals.components) {
+                ComponentTransform *transform = level.transforms.Get(decal.ownerID);
 
-        // Update decals so they always stick to the wall they are attached to
-        for (ComponentDecal &decal: level.decals.components) {
-            ComponentTransform *transform = level.transforms.Get(decal.ownerID);
+                if (transform == nullptr) {
+                    continue;
+                }
 
-            if (transform == nullptr) {
-                continue;
+                if (decal.wallIndex < 0 ||
+                    decal.wallIndex >= static_cast<int>(level.walls.size())) {
+                    continue;
+                    }
+
+                const Wall &wall = level.walls[decal.wallIndex];
+
+                const Vector2 wallVector = wall.end - wall.start;
+
+                const float wallLengthSq =
+                        wallVector.x * wallVector.x +
+                        wallVector.y * wallVector.y;
+
+                if (wallLengthSq <= 0.0001f) {
+                    continue;
+                }
+
+                const Vector2 toObject = transform->position - wall.start;
+
+                float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
+
+                t = std::clamp(t, 0.0f, 1.0f);
+
+                if (!editingComponent) {
+                    decal.wallT = t;
+                    decal.horizontalPos = std::sqrt(wallLengthSq) * decal.wallT;
+                }
+                auto lerp = [](const float a, const float b, const float t) -> float {
+                    return (1.0f - t) * a + t * b;
+                };
+
+                transform->position = {
+                    lerp(wall.start.x, wall.end.x, decal.wallT),
+                    lerp(wall.start.y, wall.end.y, decal.wallT)
+                };
             }
 
-            if (decal.wallIndex < 0 ||
-                decal.wallIndex >= static_cast<int>(level.walls.size())) {
-                continue;
+            DrawGridDots();
+            DrawExistingSectors();
+            DrawCorners();
+            DrawWalls();
+            DrawEntities();
+
+            if (currentMode == MODE_SECTOR) {
+                DrawSectorPreview();
             }
 
-            const Wall &wall = level.walls[decal.wallIndex];
-
-            const Vector2 wallVector = wall.end - wall.start;
-
-            const float wallLengthSq =
-                    wallVector.x * wallVector.x +
-                    wallVector.y * wallVector.y;
-
-            if (wallLengthSq <= 0.0001f) {
-                continue;
-            }
-
-            const Vector2 toObject = transform->position - wall.start;
-
-            float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
-
-            t = std::clamp(t, 0.0f, 1.0f);
-
-            if (!editingComponent) {
-                decal.wallT = t;
-                decal.horizontalPos = std::sqrt(wallLengthSq) * decal.wallT;
-            }
-            auto lerp = [](const float a, const float b, const float t) -> float {
-                return (1.0f - t) * a + t * b;
-            };
-
-            transform->position = {
-                lerp(wall.start.x, wall.end.x, decal.wallT),
-                lerp(wall.start.y, wall.end.y, decal.wallT)
-            };
+            DrawEditorUI();
         }
-
-        DrawGridDots();
-        DrawExistingSectors();
-        DrawCorners();
-        DrawWalls();
-        DrawEntities();
-
-        if (currentMode == MODE_SECTOR) {
-            DrawSectorPreview();
+        else if (currentState == STATE_UI) {
+            HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+            DrawUIEditorUI();
+            DrawEntities_UI();
         }
-
-        DrawEditorUI();
 
         ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
@@ -209,11 +217,11 @@ namespace MapEditor {
     }
 
     bool QuitRequested() {
-        return MapEditorInternal::quit;
+        return MapEditorInternal::quit  || InputManager::QuitRequested();
     }
 
     bool ShutdownRequested() {
-        return MapEditorInternal::shutdown;
+        return MapEditorInternal::shutdown  || InputManager::QuitRequested();
     }
 
     void Destroy() {

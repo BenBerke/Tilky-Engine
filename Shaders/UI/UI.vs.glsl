@@ -20,5 +20,5 @@ void main() {
 
     gl_Position = vec4(ndc, 0.0, 1.0);
 
-    vUV = aUV;
+    vUV = vec2(aUV.x, 1.0 - aUV.y);
 }

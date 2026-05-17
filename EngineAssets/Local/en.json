@@ -19,7 +19,12 @@
   "editor.level_name": "Level Name",
   "editor.world_settings": "World Settings",
 
+  "editor.switch_to_ui": "Edit UI",
+  "editor.switch_to_map": "Edit Map",
+
   "editor.export": "Export Game",
+
+  "ui_editor.title": "UI Editor",
 
   "settings.audio.master_gain" : "Master Gain",
   "settings.audio.global_physics_header" : "Global Audio Physics",
@@ -105,6 +110,9 @@
   "component.script": "Custom Script",
   "component.script.file_name": "File Name",
   "component.script.enabled": "Enabled",
+
+  "component.ui_transform" : "UI Transform",
+  "component.ui_sprite": "Image",
 
   "common.delete": "Delete",
   "common.close": "Close",

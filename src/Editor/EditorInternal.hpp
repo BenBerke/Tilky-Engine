@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Headers/MapEditor/MapEditor.hpp"
+#include "../../Headers/Editor/Editor.hpp"
 
 #include <array>
 #include <vector>
@@ -33,6 +33,13 @@ namespace MapEditorInternal {
         ACTION_CREATE_WALL,
         ACTION_CREATE_CORNER,
         ACTION_CREATE_OBJECT,
+    };
+
+    enum State {
+        STATE_MAP,
+        STATE_UI,
+
+        STATE_COUNT,
     };
 
     // Internal variables do not touch
@@ -68,6 +75,7 @@ namespace MapEditorInternal {
     extern std::string currentMap;
 
     extern Mode currentMode;
+    extern State currentState;
 
     extern bool playerPlaced;
 
@@ -76,12 +84,12 @@ namespace MapEditorInternal {
     extern bool quit;
     extern bool shutdown;
 
-    bool SamePoint(const Vector2& a, const Vector2& b);
-    bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
-    Entity* EntityExistsAt(const Vector2& mouseClick);
-    bool CornerExistsAt(const Vector2& point);
-    bool IsCornerConnectedToLine(const Vector2& point);
-    bool HasLineBetween(const Vector2& a, const Vector2& b);
+    [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
+    [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
+    [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);
+    [[nodiscard]] bool CornerExistsAt(const Vector2& point);
+    [[nodiscard]] bool IsCornerConnectedToLine(const Vector2& point);
+    [[nodiscard]] bool HasLineBetween(const Vector2& a, const Vector2& b);
 
     // Automatically if a sector's first and last vertices aren't the same
     std::vector<Vector2> GetSectorVerticesWithoutClosingDuplicate();
@@ -93,7 +101,7 @@ namespace MapEditorInternal {
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos);
     Vector2 SnapToGrid(const Vector2& worldPos);
 
-    bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point);
+    [[nodiscard]] bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point);
 
     float GetActiveGridSize();
 
@@ -108,6 +116,11 @@ namespace MapEditorInternal {
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
     void DrawEditorUI();
+
+    void DrawUIImages();
+    void DrawEntities_UI();
+    void DrawUIEditorUI();
+    void HandleUIEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui);
 
     void ChangeMode();
 

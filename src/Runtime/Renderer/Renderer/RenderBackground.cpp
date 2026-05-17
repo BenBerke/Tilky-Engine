@@ -16,7 +16,7 @@ namespace RendererInternal {
 
         glUniform1f(
             glGetUniformLocation(backgroundShader->ID, "playerAngle"),
-            playerAngle
+            -playerAngle
         );
 
         glActiveTexture(GL_TEXTURE0);

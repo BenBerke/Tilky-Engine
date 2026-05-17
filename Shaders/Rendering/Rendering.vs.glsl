@@ -78,23 +78,15 @@ out vec2 vDecalUV;
 const float tileSize = 32.0;
 
 vec3 GetYawOnlySpriteRight() {
-    vec3 cameraForward = -vec3(
-    uView[0][2],
-    uView[1][2],
-    uView[2][2]
-    );
+    float forwardX = -uView[0][2];
+    float forwardZ = -uView[2][2];
 
-    // Remove pitch / up-down camera rotation.
-    cameraForward.y = 0.0;
+    // Flatten to XZ plane — ignore any pitch contribution
+    vec2 flatForward = normalize(vec2(forwardX, forwardZ));
 
-    if (length(cameraForward) < 0.0001) {
-        return vec3(1.0, 0.0, 0.0);
-    }
-
-    cameraForward = normalize(cameraForward);
-
-    // Build right vector from flattened forward.
-    return normalize(cross(vec3(0.0, 1.0, 0.0), cameraForward));
+    // Right is perpendicular to forward in XZ plane
+    // rotating 90 degrees: (x, z) -> (z, -x)
+    return vec3(flatForward.y, 0.0, -flatForward.x);
 }
 
 void renderDecal() {
