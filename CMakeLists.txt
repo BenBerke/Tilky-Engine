@@ -26,11 +26,11 @@ find_package(Lua REQUIRED)
 # ============================================================
 
 add_library(glad STATIC
-        glad/src/glad.c
+        External/glad/src/glad.c
 )
 
 target_include_directories(glad PUBLIC
-        glad/include
+        External/glad/include
 )
 
 target_link_libraries(glad PUBLIC
@@ -292,8 +292,25 @@ target_compile_definitions(Tilky_LauncherCore PUBLIC
 set(TILKY_ICON_OBJECTS "")
 
 if(WIN32)
+    set(TILKY_ICON_PATH
+            "${CMAKE_CURRENT_SOURCE_DIR}/LauncherAssets/Fox.ico"
+    )
+
+    if(NOT EXISTS "${TILKY_ICON_PATH}")
+        message(FATAL_ERROR "Missing icon file: ${TILKY_ICON_PATH}")
+    endif()
+
+    set(TILKY_ICON_PATH_RC "${TILKY_ICON_PATH}")
+    string(REPLACE "\\" "/" TILKY_ICON_PATH_RC "${TILKY_ICON_PATH_RC}")
+
+    configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/TilkyIcon.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
+            @ONLY
+    )
+
     add_library(Tilky_Icon OBJECT
-            resources/TilkyIcon.rc
+            "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
     )
 
     set(TILKY_ICON_OBJECTS $<TARGET_OBJECTS:Tilky_Icon>)
