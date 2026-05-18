@@ -1,0 +1,11 @@
+{
+  "editor": {
+    "save": "Save",
+    "play": "Play",
+    "shutdown": "Shutdown"
+  },
+  "component": {
+    "sprite": "Sprite",
+    "transform": "Transform"
+  }
+}
