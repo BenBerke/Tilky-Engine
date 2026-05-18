@@ -28,116 +28,148 @@ Turkish Translation:
 
 
 # What to do in the Engine
+1. Download the latest Tilky Engine Windows release from GitHub Releases.
+2. Extract the zip.
+3. Double-click TilkyLocalise.exe.
+4. Follow the commands
+5. Open EngineAssets/Local/<your_language>.json.
+6. Replace all "$Missing Translation" values. (you can use ctrl+f to search for all $ symbols)
+7. Send the completed JSON file back to the developer. Or make a pull request yourself
 
-Go to EngineAssets/Local, copy paste the en.json to the same directory, name it to your language (preferably a two letter language code) and edit it.
-
-#### The JSON File with the context (do NOT copy paste this):
 #### This is only to give context, make sure your .json file does not contain any comments
 
 ```json
-"editor.title": "Editor",
-"editor.mode": "Mode", // Mode as in “Creative mode”, “Survival Mode”
-"editor.create_sector": "Create Sector", //“A sector is a room, a 2d polygon of any size and shape”
-"editor.create_texture": "Create Texture", // A texture is an image
-"editor.texture": "Texture",
-"editor.background_texture": "Background Texture", // The skybox. The image that will be rendered if there are no walls or entities visible
-"editor.floor": "Current Floor", // As in the floors in a building, NOT the floor you are walking on
-"editor.save": "Save",
-"editor.save_and_play": "Save & Play",
-"editor.shutdown": "Shutdown", // Force quit without saving
-"editor.level_name": "Level Name", // A level is a map
+{
+  "language.name": "English",
 
+  "editor.title": "Editor",
+  "editor.mode": "Mode", // Mode as in “Creative mode”, “Survival Mode”
+  "editor.create_sector": "Create Sector", // “A sector is a room, a 2d polygon of any size and shape”
+  "editor.create_texture": "Create Texture", // A texture is an image
+  "editor.texture": "Texture",
+  "editor.sound": "Sound",
+  "editor.refresh_textures": "Refresh Texture",
+  "editor.refresh_sounds": "Refresh Sounds",
+  "editor.background_texture": "Background Texture", // The skybox. The image that will be rendered if there are no walls or entities visible
+  "editor.floor": "Current Floor", // As in the floors in a building, NOT the floor you are walking on
+  "editor.save": "Save",
+  "editor.save_and_play": "Save & Play",
+  "editor.shutdown": "Shutdown", // Force quit without saving
+  "editor.level_name": "Level Name", // A level is a map
+  "editor.world_settings": "World Settings",
+  "editor.switch_to_ui": "Edit UI",
+  "editor.switch_to_map": "Edit Map",
+  "editor.export": "Export Game",
 
-"levels.title": "Levels", // A level as in a video game level
-"levels.load": "Load Level",
-"levels.delete": "Delete Level",
+  "ui_editor.title": "UI Editor",
 
+  "settings.audio.master_gain" : "Master Gain",
+  "settings.audio.global_physics_header" : "Global Audio Physics",
+  "settings.audio.doppler_factor" : "Doppler Factor",
+  "settings.audio.speed_of_sound" : "Speed of Sound",
+  "settings.audio.distance_model" : "Distance Model",
+  "settings.audio.distance_model.inverse": "Inverse Distance",
+  "settings.audio.distance_model.inverse_clamped": "Inverse Distance Clamped",
+  "settings.audio.distance_model.linear": "Linear Distance",
+  "settings.audio.distance_model.linear_clamped": "Linear Distance Clamped",
+  "settings.audio.distance_model.none": "None",
 
-"mode.dot": "Dot Mode", // A dot is an invisible “thing” placed on the map to help walls snap to the grid
-"mode.wall": "Wall Mode",
-"mode.sector": "Sector Mode",
-"mode.entity": "Entity Mode", // You can imagine ann entity (can also be called “Object”) as a “blank box” that you put information in and it does stuff. For example, if you put a “image” in the box, it becomes visible on in the game. If you add “physics” in the box, it starts falling
-"mode.unknown": "Unknown Mode", // If a bug occurs and no mode is found this text will appear
+  "levels.title": "Levels", // A level as in a video game level
+  "levels.load": "Load Level",
+  "levels.delete": "Delete Level",
 
+  "mode.dot": "Dot Mode", // A dot is an invisible “thing” placed on the map to help walls snap to the grid
+  "mode.wall": "Wall Mode",
+  "mode.sector": "Sector Mode",
+  "mode.entity": "Entity Mode", // You can imagine an entity (can also be called “Object”) as a “blank box” that you put information in and it does stuff.   For example, if you put a “image” in the box, it becomes visible on in the game. If you add “physics” in the box, it starts falling
+  "mode.unknown": "Unknown Mode", // If a bug occurs and no mode is found this text will appear
 
-"sector.title": "Sector",
-"sector.ceil_height": "Ceiling Height",
-"sector.floor_height": "Floor Height", // The distance of the room’s floor from y = 0
-"sector.floor_count": "Floor Count", // Floor as in the amount of stories in a building (i.e ground floor, first floor, second floor…)
-"sector.ground_floor_texture": "Ground Floor Texture", // Texture of the area’s ground floor (an area can have multiple floors)
-"sector.ceiling_texture": "Ceiling Texture",
-"sector.ceiling_color": "Ceiling Color",
-"sector.floor_color": "Floor Color", // As in the ground you are walking on
+  "sector.title": "Sector",
+  "sector.ceil_height": "Ceiling Height",
+  "sector.floor_height": "Floor Height", // The distance of the room’s floor from y = 0
+  "sector.floor_count": "Floor Count", // Floor as in the amount of stories in a building (i.e ground floor, first floor, second floor…)
+  "sector.ground_floor_texture": "Ground Floor Texture", // Texture of the area’s ground floor (an area can have multiple floors)
+  "sector.ceiling_texture": "Ceiling Texture",
+  "sector.ceiling_color": "Ceiling Color",
+  "sector.floor_color": "Floor Color", // As in the ground you are walking on
 
+  "wall.title": "Wall",
+  "wall.front_sector": "Front Sector", // The sector that is in front of the wall (In other words. if a sector is a room, than this wall is it’s south side)
+  "wall.back_sector": "Back Sector", // The sector that is below the wall (on a 2D top-down view. In other words: if the sector is a room, then this wall is it’s north side)
+  "wall.texture_index": "Texture Index",
+  "wall.floor": "Floor", // Which story of the building it is in.
+  "wall.color": "Wall Color",
 
-"wall.title": "Wall",
-"wall.front_sector": "Front Sector", // The sector that is in front of the wall (In other words. if a sector is a room, than this wall is it’s south side)
-"wall.back_sector": "Back Sector", // The sector that is below the wall (on a 2D top-down view. In other words: if the sector is a room, then this wall is it’s north side)
-"wall.texture_index": "Texture Index",
-"wall.floor": "Floor", // Which story of the building it is in.
-"wall.color": "Wall Color",
+  "math.vector2.x" : "X", // Coordinate system
+  "math.vector2.y" : "Y",
 
+  "entity.name" : "Name",
+  "entity.title": "Entity",
+  "entity.add_component": "Add Component", // A component is basically a box of information (for example a Transform component would have x and y positions)
+  "entity.delete": "Remove",
+  "entity.components" : "Components",
 
-"math.vector2.x" : "X", // Coordinate system
-"math.vector2.y" : "Y",
+  "component.modify" : "Modify",
 
+  "component.component": "Component",
+  "component.transform": "Transform", // Stores information about the position, rotation etc. of the object
+  "component.sprite": "Sprite", // A sprite is a 2D image that can be placed anywhere in the world
+  "component.decal": "Decal", // A decal is a 2d image that is attached to a wall. Like a sticker
+  "component.player_spawn": "Player Spawn", // the position the player starts at
+  "component.audio_source": "Audio Source",
+  "component.script": "Custom Script",
+  "component.ui_transform" : "UI Transform",
+  "component.ui_sprite": "Image",
 
-"entity.name" : "Name",
-"entity.title": "Entity",
-"entity.add_component": "Add Component", // A component is basically a box of information (for example a Transform component would have x and y positions)
-"entity.delete": "Remove",
-"entity.components" : "Components",
+  "component.transform.position" : "Position",
+  "component.transform.scale" : "Scale",
+  "component.transform.floor" : "Floor",
 
+  "component.sprite.texture_index" : "Texture Index",
 
-"component.modify" : "Modify",
+  "component.decal.attached_wall" : "Attached Wall", // The wall the decal is attached to
+  "component.decal.z_offset" : "Vertical Position",
+  "component.decal.wall_offset" : "Horizontal Position",
+  "component.decal.wall_normal_offset" : "Distance from Wall",
+  "component.decal.abs_height" : "Absolute Height", // This is a boolean, if this is true, the decal will not change vertical positions even if the wall it is attached to moves up or down
 
+  "component.audio_source.pitch" : "Pitch",
+  "component.audio_source.gain" : "Gain",
+  "component.audio_source.looping" : "Looping",
+  "component.audio_source.play_on_start" : "Play On Start",
+  "component.audio_source.attenuation_header" : "Distance Attenuation",
+  "component.audio_source.ref_distance" : "Reference Distance",
+  "component.audio_source.max_distance" : "Max Distance",
+  "component.audio_source.rolloff" : "Rolloff Factor",
+  "component.audio_source.cone_header" : "Sound Cone",
+  "component.audio_source.inner_angle" : "Inner Angle",
+  "component.audio_source.outer_angle" : "Outer Angle",
+  "component.audio_source.outer_gain" : "Outer Gain",
 
-"component.component": "Component",
-"component.transform": "Transform", // Stores information about the position, rotation etc. of the object
-"component.sprite": "Sprite", // A sprite is a 2D image that can be placed anywhere in the world
-"component.decal": "Decal", // A decal is a 2d image that is attached to a wall. Like a sticker
-"component.player_spawn": "Player Spawn", // the position the player starts at
+  "component.script.file_name": "File Name",
+  "component.script.enabled": "Enabled",
 
+  "common.delete": "Delete",
+  "common.close": "Close",
+  "common.add" : "Add",
+  "common.edit": "Edit",
+  "common.cancel" : "Cancel",
+  "common.id": "ID", // Identity (number)
 
-"component.transform.position" : "Position",
-"component.transform.scale" : "Scale",
-"component.transform.floor" : "Floor",
+  "log.deleted_level": "Deleted level:",
+  "log.failed_delete_missing": "Failed to delete level, file may not exist:",
+  "log.delete_level_failed": "Delete level failed:",
 
+  "bug.unknown" : "Unknown",
 
-"component.sprite.texture_index" : "Texture Index",
-
-
-"component.decal.attached_wall" : "Attached Wall", // The wall the decal is attached to
-"component.decal.z_offset" : "Vertical Position",
-"component.decal.wall_offset" : "Horizontal Position",
-"component.decal.wall_normal_offset" : "Distance from Wall",
-"component.decal.abs_height" : "Absolute Height", // This is a boolean, if this is true, the decal will not change vertical positions even if the wall it is attached to moves up or down
-
-
-"common.delete": "Delete",
-"common.close": "Close",
-"common.add" : "Add",
-"common.edit": "Edit",
-"common.cancel" : "Cancel",
-"common.id": "ID", // Identity (number)
-
-
-"log.deleted_level": "Deleted level:",
-"log.failed_delete_missing": "Failed to delete level, file may not exist:",
-"log.delete_level_failed": "Delete level failed:",
-
-
-"bug.unknown" : "Unknown",
-
-
-"launcher.name": "Tilky Engine Launcher", // “Tilky” is a special name, do not change it (Unless you are using a different script or the rules of your language says it, then you can change it to a phonetic spelling in your system). Pronunciation at the end of the markdown
-"launcher.projects": "Projects",
-"launcher.create_project": "Create Project",
-"launcher.create": "Create",
-"launcher.input_name": "Project Name",
-"launcher.open_project": "Open Project",
-"launcher.delete_project": "Delete Project",
-"launcher.quit": "Quit" // DO NOT ADD A COMMA HERE
+  "launcher.name": "Tilky Engine Launcher", // “Tilky” is a special name, do not change it (Unless you are using a different script or the rules of your     language says it, then you can change it to a phonetic spelling in your system). Pronunciation at the end of the markdown
+  "launcher.projects": "Projects",
+  "launcher.create_project": "Create Project",
+  "launcher.create": "Create",
+  "launcher.input_name": "Project Name",
+  "launcher.open_project": "Open Project",
+  "launcher.delete_project": "Delete Project",
+  "launcher.quit": "Quit"
 }
 
 ```
@@ -147,7 +179,7 @@ T as in **T**ea
 I as in **I**gloo  
 L as in **L**ook  
 K as in **K**eep  
-Y as in **H**appy  
+Y as in Happ**y**  
 
 TIL.kee
 
