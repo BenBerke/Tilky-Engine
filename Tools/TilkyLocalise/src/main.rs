@@ -6,13 +6,13 @@ use std::{env, fs, io};
 fn get_local_dir() -> Result<PathBuf> {
     // This points to: ...\Wolfy Engine\Tools\TilkyLocalise
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    
+
     let local_dir = project_dir
-        .parent() 
+        .parent()
         .and_then(|p| p.parent()) // up to \Wolfy Engine
         .map(|p| p.join("EngineAssets").join("Local"))
         .ok_or_else(|| anyhow!("Could not resolve the parent asset directory"))?;
-    
+
     if !local_dir.exists() {
         fs::create_dir_all(&local_dir)?;
     }
