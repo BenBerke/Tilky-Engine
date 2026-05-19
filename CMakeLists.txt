@@ -130,7 +130,7 @@ target_compile_definitions(Tilky_Local PUBLIC
 # ============================================================
 
 set(TILKY_ENGINE_SOURCES
-        src/Runtime/Renderer/TextureManager.cpp
+        src/Runtime/Renderer/OpenGL/RendererTexture.cpp
 
         src/Editor/MapEditor/MapEditorDrawing.cpp
         src/Editor/MapEditor/MapEditorGeometry.cpp
@@ -147,19 +147,17 @@ set(TILKY_ENGINE_SOURCES
         src/Objects/Entity.cpp
         src/Objects/Player.cpp
 
-        src/Runtime/Renderer/Renderer/RendererState.cpp
-        src/Runtime/Renderer/Renderer/RendererMath.cpp
-        src/Runtime/Renderer/Renderer/RendererInit.cpp
-        src/Runtime/Renderer/Renderer/RendererText.cpp
-        src/Runtime/Renderer/Renderer/RendererMapBuild.cpp
-        src/Runtime/Renderer/Renderer/RendererSprites.cpp
-        src/Runtime/Renderer/Renderer/RendererDebug.cpp
-        src/Runtime/Renderer/Renderer/RendererUpdate.cpp
-        src/Runtime/Renderer/Renderer/RendererDestroy.cpp
-        src/Runtime/Renderer/Renderer/RendererDecals.cpp
-        src/Runtime/Renderer/Renderer/RendererSectors.cpp
-        src/Runtime/Renderer/Renderer/RenderBackground.cpp
-        src/Runtime/Renderer/Renderer/RendererUI.cpp
+        src/Runtime/Renderer/RendererMath.cpp
+        src/Runtime/Renderer/OpenGL/RendererInit.cpp
+        src/Runtime/Renderer/OpenGL/RendererText.cpp
+        src/Runtime/Renderer/OpenGL/RendererMapBuild.cpp
+        src/Runtime/Renderer/OpenGL/RendererSprites.cpp
+        src/Runtime/Renderer/OpenGL/RendererUpdate.cpp
+        src/Runtime/Renderer/OpenGL/RendererDestroy.cpp
+        src/Runtime/Renderer/OpenGL/RendererDecals.cpp
+        src/Runtime/Renderer/OpenGL/RendererSectors.cpp
+        src/Runtime/Renderer/OpenGL/RenderBackground.cpp
+        src/Runtime/Renderer/OpenGL/RendererUI.cpp
 
         src/Math/Geometry/Geometry.cpp
 
@@ -192,6 +190,15 @@ set(TILKY_ENGINE_SOURCES
         src/Editor/UIEditor/UiEditorDraw.cpp
         src/Editor/EditorTextureCache.cpp
         Headers/Editor/EditorTextureCache.hpp
+        Headers/Runtime/Renderer/IRenderer.hpp
+        Headers/Runtime/Renderer/RendererBackend.hpp
+        Headers/Runtime/Renderer/RendererFactory.hpp
+        Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp
+        Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
+        src/Runtime/Renderer/RendererFactory.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLRenderer.cpp
+        src/Runtime/Renderer/Vulkan/VulkanRenderer.cpp
+        Headers/Runtime/Renderer/RendererMath.hpp
 )
 
 # ============================================================

@@ -7,7 +7,6 @@
 #include "Headers/Editor/Editor.hpp"
 
 #include "Headers/Objects/Player.hpp"
-#include "../Runtime/Renderer/Renderer/RendererInternal.hpp"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>

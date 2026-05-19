@@ -11,7 +11,7 @@
 #include "Components.hpp"
 #include "Entity.hpp"
 #include "Loadables.hpp"
-#include "Headers/Runtime/Renderer/TextureManager.hpp"
+#include "../Runtime/Renderer/OpenGL/RendererTexture.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;
