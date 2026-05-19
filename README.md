@@ -98,7 +98,7 @@ Contributions are welcome! Whether it's bug fixes, feature requests, or document
 * ThatGuyMiki (Polish).
 
 # AI Disclosure 
-Developed with assistance from AI coding tools. All code has been manually audited and tested for performance and security.
+Architected and written entirely by hand, utilizing AI development tools as a productivity assistant for boilerplate acceleration and documentation. All code has been rigorously audited, manually refactored, and tested for performance and low-level efficiency.
 
 # License 
 Distributed under the Apache License 2.0. See LICENSE for details.
