@@ -9,10 +9,9 @@ fn get_local_dir() -> Result<PathBuf> {
 
     let local_dir = project_dir
         .parent()
-        .and_then(|p| p.parent()) // up to \Wolfy Engine
-        .map(|p| p.join("EngineAssets").join("Local"))
-        .ok_or_else(|| anyhow!("Could not resolve the parent asset directory"))?;
-
+        .ok_or_else(|| anyhow!("Could not resolve Local directory"))?
+        .to_path_buf();
+    
     if !local_dir.exists() {
         fs::create_dir_all(&local_dir)?;
     }
