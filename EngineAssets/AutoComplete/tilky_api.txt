@@ -1,0 +1,154 @@
+---@meta
+
+---@class Vector2
+---@field x number
+---@field y number
+
+---@alias Key
+---| '"A"'
+---| '"B"'
+---| '"C"'
+---| '"D"'
+---| '"E"'
+---| '"F"'
+---| '"G"'
+---| '"H"'
+---| '"I"'
+---| '"J"'
+---| '"K"'
+---| '"L"'
+---| '"M"'
+---| '"N"'
+---| '"O"'
+---| '"P"'
+---| '"Q"'
+---| '"R"'
+---| '"S"'
+---| '"T"'
+---| '"U"'
+---| '"V"'
+---| '"W"'
+---| '"X"'
+---| '"Y"'
+---| '"Z"'
+---| '"Space"'
+---| '"Escape"'
+---| '"Enter"'
+---| '"Tab"'
+---| '"Backspace"'
+---| '"Left"'
+---| '"Right"'
+---| '"Up"'
+---| '"Down"'
+---| '"LShift"'
+---| '"RShift"'
+---| '"LCtrl"'
+---| '"RCtrl"'
+---| '"LAlt"'
+---| '"RAlt"'
+---| '"0"'
+---| '"1"'
+---| '"2"'
+---| '"3"'
+---| '"4"'
+---| '"5"'
+---| '"6"'
+---| '"7"'
+---| '"8"'
+---| '"9"'
+
+---@class Input
+Input = {}
+
+---@param key Key
+---@return boolean
+function Input.GetKeyDown(key) end
+
+---@param key Key
+---@return boolean
+function Input.GetKey(key) end
+
+---@param key Key
+---@return boolean
+function Input.GetKeyUp(key) end
+
+---@param button integer
+---@return boolean
+function Input.GetMouseButtonDown(button) end
+
+---@param button integer
+---@return boolean
+function Input.GetMouseButton(button) end
+
+---@param button integer
+---@return boolean
+function Input.GetMouseButtonUp(button) end
+
+--@class Math
+--@param value number
+--@return number
+function Math.DegToRad(value) end
+
+---@param value number
+---@return number
+function Math.RadToDeg(value) end
+
+---@param value number
+---@param minValue number
+---@param maxValue number
+---@return number
+function Math.Clamp(value, minValue, maxValue) end
+
+---@param a number
+---@param b number
+---@param t number
+---@return number
+function Math.Lerp(a, b, t) end
+
+---@param a Vector2
+---@param b Vector2
+---@return number
+function Math.Vector2Distance(a, b) end
+
+---@param a Vector2
+---@param b Vector2
+---@return number
+function Math.Vector2DistanceSquared(a, b) end
+
+---@return Vector2
+function Input.GetMousePosition() end
+
+--@class Entities
+--@field id integer
+---@field hasTransform boolean
+---@field transform Transform?
+---@field hasSprite boolean
+---@field sprite Sprite?
+---@field hasDecal boolean
+---@field decal Decal?
+
+--@class Sprite
+--@field textureIndex integer
+
+---@class Transform
+---@field position Vector2
+---@field x number
+---@field y number
+
+---@class Decal
+---@field level Level
+---@field ownerID integer
+---@field wallIndex integer
+---@field verticalPos number
+---@field horizontalPos number
+---@field wallNormalOffset number
+---@field wallT number
+---@field baseHeight number
+---@field absHeight boolean
+
+---@type Entities
+owner = nil
+
+Input.MouseLeft = 1
+Input.MouseMiddle = 2
+Input.MouseRight = 3

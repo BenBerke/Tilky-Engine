@@ -121,7 +121,7 @@
   "component.ui_sprite": "Image",
 
   "component.ui_text": "Text",
-  "component.ui_text.text": "Text",
+  "component.ui.text.text": "Text",
 
   "common.delete": "Delete",
   "common.close": "Close",

@@ -39,6 +39,73 @@ namespace {
 
     std::map<std::string, std::string> languages;
 
+    bool CopyLuaAutocompleteFiles(const fs::path& projectPath) {
+        const fs::path autocompleteFolder =
+            ProjectManager::FindAssetPath(fs::path("EngineAssets") / "AutoComplete");
+
+        if (!fs::exists(autocompleteFolder)) {
+            spdlog::error(
+                "AutoComplete folder does not exist: {}",
+                autocompleteFolder.string()
+            );
+            return false;
+        }
+
+        const fs::path sourceApiFile = autocompleteFolder / "tilky_api.txt";
+        const fs::path sourceLuarcFile = autocompleteFolder / "luarc.txt";
+
+        if (!fs::exists(sourceApiFile)) {
+            spdlog::error(
+                "Lua autocomplete API file does not exist: {}",
+                sourceApiFile.string()
+            );
+            return false;
+        }
+
+        if (!fs::exists(sourceLuarcFile)) {
+            spdlog::error(
+                "Lua autocomplete config file does not exist: {}",
+                sourceLuarcFile.string()
+            );
+            return false;
+        }
+
+        const fs::path tilkyFolder = projectPath / ".tilky";
+        fs::create_directories(tilkyFolder);
+
+        const fs::path destinationApiFile = tilkyFolder / "tilky_api.lua";
+        const fs::path destinationLuarcFile = projectPath / ".luarc.json";
+
+        try {
+            fs::copy_file(
+                sourceApiFile,
+                destinationApiFile,
+                fs::copy_options::overwrite_existing
+            );
+
+            fs::copy_file(
+                sourceLuarcFile,
+                destinationLuarcFile,
+                fs::copy_options::overwrite_existing
+            );
+        }
+        catch (const std::exception& e) {
+            spdlog::error(
+                "Failed to copy Lua autocomplete files to project '{}': {}",
+                projectPath.string(),
+                e.what()
+            );
+            return false;
+        }
+
+        spdlog::info(
+            "Copied Lua autocomplete files to project: {}",
+            projectPath.string()
+        );
+
+        return true;
+    }
+
     bool RefreshLanguages() {
         languages.clear();
 
@@ -207,7 +274,15 @@ namespace LauncherApp {
             ImGui::InputText(Localisation::Get("launcher.input_name").c_str(), projectName.data(), projectName.size());
 
             if (ImGui::Button(Localisation::Get("launcher.create").c_str())) {
-                ProjectManager::CreateProjectDirectory(projectName.data());
+                const std::string newProjectName = projectName.data();
+
+                ProjectManager::CreateProjectDirectory(newProjectName);
+
+                const fs::path projectPath =
+                    ProjectManager::GetDefaultProjectsFolder() / newProjectName;
+
+                CopyLuaAutocompleteFiles(projectPath);
+
                 creatingProject = false;
             }
             ImGui::SameLine();

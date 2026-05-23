@@ -1,0 +1,12 @@
+{
+  "workspace.library": [
+    "./.tilky"
+  ],
+  "diagnostics.globals": [
+    "Input",
+    "Time",
+    "Entity",
+    "Math"
+  ],
+  "workspace.checkThirdParty": false
+}

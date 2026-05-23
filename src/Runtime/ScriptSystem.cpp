@@ -2,6 +2,8 @@
 // Created by berke on 5/15/2026.
 //
 
+#include "Headers/Runtime/ScriptSystem.hpp"
+
 #include "Headers/Objects/EntityTypes.hpp"
 
 #include <sol/sol.hpp>
@@ -19,6 +21,76 @@
 #include "Headers/Math/Vector/Vector2Math.hpp"
 
 namespace {
+    SDL_Scancode GetScancodeFromString(const std::string& key) {
+        static const std::unordered_map<std::string, SDL_Scancode> keys = {
+            {"A", SDL_SCANCODE_A},
+            {"B", SDL_SCANCODE_B},
+            {"C", SDL_SCANCODE_C},
+            {"D", SDL_SCANCODE_D},
+            {"E", SDL_SCANCODE_E},
+            {"F", SDL_SCANCODE_F},
+            {"G", SDL_SCANCODE_G},
+            {"H", SDL_SCANCODE_H},
+            {"I", SDL_SCANCODE_I},
+            {"J", SDL_SCANCODE_J},
+            {"K", SDL_SCANCODE_K},
+            {"L", SDL_SCANCODE_L},
+            {"M", SDL_SCANCODE_M},
+            {"N", SDL_SCANCODE_N},
+            {"O", SDL_SCANCODE_O},
+            {"P", SDL_SCANCODE_P},
+            {"Q", SDL_SCANCODE_Q},
+            {"R", SDL_SCANCODE_R},
+            {"S", SDL_SCANCODE_S},
+            {"T", SDL_SCANCODE_T},
+            {"U", SDL_SCANCODE_U},
+            {"V", SDL_SCANCODE_V},
+            {"W", SDL_SCANCODE_W},
+            {"X", SDL_SCANCODE_X},
+            {"Y", SDL_SCANCODE_Y},
+            {"Z", SDL_SCANCODE_Z},
+
+            {"Space", SDL_SCANCODE_SPACE},
+            {"Escape", SDL_SCANCODE_ESCAPE},
+            {"Enter", SDL_SCANCODE_RETURN},
+            {"Tab", SDL_SCANCODE_TAB},
+            {"Backspace", SDL_SCANCODE_BACKSPACE},
+
+            {"Left", SDL_SCANCODE_LEFT},
+            {"Right", SDL_SCANCODE_RIGHT},
+            {"Up", SDL_SCANCODE_UP},
+            {"Down", SDL_SCANCODE_DOWN},
+
+            {"LShift", SDL_SCANCODE_LSHIFT},
+            {"RShift", SDL_SCANCODE_RSHIFT},
+            {"LCtrl", SDL_SCANCODE_LCTRL},
+            {"RCtrl", SDL_SCANCODE_RCTRL},
+            {"LAlt", SDL_SCANCODE_LALT},
+            {"RAlt", SDL_SCANCODE_RALT},
+
+            {"1", SDL_SCANCODE_1},
+            {"2", SDL_SCANCODE_2},
+            {"3", SDL_SCANCODE_3},
+            {"4", SDL_SCANCODE_4},
+            {"5", SDL_SCANCODE_5},
+            {"6", SDL_SCANCODE_6},
+            {"7", SDL_SCANCODE_7},
+            {"8", SDL_SCANCODE_8},
+            {"9", SDL_SCANCODE_9},
+            {"0", SDL_SCANCODE_0},
+        };
+
+        const auto it = keys.find(key);
+
+        if (it != keys.end()) {
+            return it->second;
+        }
+
+        return SDL_SCANCODE_UNKNOWN;
+    }
+}
+
+namespace {
     struct ScriptInstance {
         EntityID ownerID = static_cast<EntityID>(-1);
         std::string scriptFile;
@@ -30,6 +102,68 @@ namespace {
 
     sol::state lua;
     std::vector<ScriptInstance> scriptInstances;
+
+    void RegisterInputManager() {
+        sol::table inputManager = lua.create_table();
+
+        inputManager.set_function("GetKeyDown", [](const std::string& key) -> bool {
+            const SDL_Scancode scancode = GetScancodeFromString(key);
+
+            if (scancode == SDL_SCANCODE_UNKNOWN) {
+                return false;
+            }
+
+            return InputManager::GetKeyDown(scancode);
+        });
+
+        inputManager.set_function("GetKey", [](const std::string& key) -> bool {
+            const SDL_Scancode scancode = GetScancodeFromString(key);
+
+            if (scancode == SDL_SCANCODE_UNKNOWN) {
+                return false;
+            }
+
+            return InputManager::GetKey(scancode);
+        });
+
+        inputManager.set_function("GetKeyUp", [](const std::string& key) -> bool {
+            const SDL_Scancode scancode = GetScancodeFromString(key);
+
+            if (scancode == SDL_SCANCODE_UNKNOWN) {
+                return false;
+            }
+
+            return InputManager::GetKeyUp(scancode);
+        });
+
+        inputManager.set_function("GetMouseButtonDown", [](int button) -> bool {
+            return InputManager::GetMouseButtonDown(button);
+        });
+
+        inputManager.set_function("GetMouseButton", [](int button) -> bool {
+            return InputManager::GetMouseButton(button);
+        });
+
+        inputManager.set_function("GetMouseButtonUp", [](int button) -> bool {
+            return InputManager::GetMouseButtonUp(button);
+        });
+
+        inputManager.set_function("GetMousePosition", []() -> sol::table {
+            const Vector2 pos = InputManager::GetMousePosition();
+
+            sol::table result = lua.create_table();
+            result["x"] = pos.x;
+            result["y"] = pos.y;
+
+            return result;
+        });
+
+        inputManager["MouseLeft"] = SDL_BUTTON_LEFT;
+        inputManager["MouseMiddle"] = SDL_BUTTON_MIDDLE;
+        inputManager["MouseRight"] = SDL_BUTTON_RIGHT;
+
+        lua["Input"] = inputManager;
+    }
 
     void RegisterMathLibrary() {
         sol::table tilky;
@@ -62,6 +196,10 @@ namespace {
 
         math.set_function("Vector2Distance", [](const Vector2& a, const Vector2& b) -> float {
             return Vector2Math::Distance(a, b);
+        });
+
+        math.set_function("Vector2DistanceSquared", [](const Vector2& a, const Vector2& b) -> float {
+            return Vector2Math::DistanceSquared(a, b);
         });
 
         tilky["Math"] = math;
@@ -99,6 +237,54 @@ namespace {
             )
         );
 
+        lua.new_usertype<ScriptSprite>(
+            "Sprite",
+
+            "textureIndex", sol::property(
+                &ScriptSprite::GetTextureIndex,
+                &ScriptSprite::SetTextureIndex
+            )
+        );
+
+        lua.new_usertype<ScriptDecal>(
+            "Decal",
+
+            "wallIndex", sol::property(
+                &ScriptDecal::GetWallIndex,
+                &ScriptDecal::SetWallIndex
+            ),
+
+            "verticalPos", sol::property(
+                &ScriptDecal::GetVerticalPos,
+                &ScriptDecal::SetVerticalPos
+            ),
+
+            "horizontalPos", sol::property(
+                &ScriptDecal::GetHorizontalPos,
+                &ScriptDecal::SetHorizontalPos
+            ),
+
+            "wallNormalOffset", sol::property(
+                &ScriptDecal::GetWallNormalOffset,
+                &ScriptDecal::SetWallNormalOffset
+            ),
+
+            "wallT", sol::property(
+                &ScriptDecal::GetWallT,
+                &ScriptDecal::SetWallT
+            ),
+
+            "baseHeight", sol::property(
+                &ScriptDecal::GetBaseHeight,
+                &ScriptDecal::SetBaseHeight
+            ),
+
+            "absHeight", sol::property(
+                &ScriptDecal::GetAbsHeight,
+                &ScriptDecal::SetAbsHeight
+            )
+        );
+
         lua.new_usertype<ScriptEntity>(
             "Entities",
 
@@ -121,6 +307,54 @@ namespace {
                     return sol::make_object(
                         lua,
                         ScriptTransform {
+                            entity.level,
+                            entity.ownerID
+                        }
+                    );
+                }
+            ),
+
+            "hasSprite", sol::property(&ScriptEntity::HasSprite),
+
+            "sprite", sol::property(
+                [](const ScriptEntity &entity, const sol::this_state state) -> sol::object {
+                    const sol::state_view lua(state);
+
+                    if (entity.level == nullptr) {
+                        return sol::nil;
+                    }
+
+                    if (entity.level->sprites.Get(entity.ownerID) == nullptr) {
+                        return sol::nil;
+                    }
+
+                    return sol::make_object(
+                        lua,
+                        ScriptSprite{
+                            entity.level,
+                            entity.ownerID
+                        }
+                    );
+                }
+            ),
+
+            "hasDecal", sol::property(&ScriptEntity::HasDecal),
+
+            "decal", sol::property(
+                [](const ScriptEntity &entity, const sol::this_state state) -> sol::object {
+                    const sol::state_view lua(state);
+
+                    if (entity.level == nullptr) {
+                        return sol::nil;
+                    }
+
+                    if (entity.level->decals.Get(entity.ownerID) == nullptr) {
+                        return sol::nil;
+                    }
+
+                    return sol::make_object(
+                        lua,
+                        ScriptDecal{
                             entity.level,
                             entity.ownerID
                         }
@@ -156,6 +390,7 @@ namespace ScriptSystem {
 
             RegisterBindings();
             RegisterMathLibrary();
+            RegisterInputManager();
 
             spdlog::info("Lua scripting initialized");
             return true;
