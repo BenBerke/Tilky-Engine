@@ -15,6 +15,7 @@
   "editor.floor": "Floor",
   "editor.save": "Save",
   "editor.save_and_play": "Save & Play",
+  "editor.save_and_quit": "Save & Quit",
   "editor.shutdown": "Shutdown",
   "editor.level_name": "Level Name",
   "editor.world_settings": "World Settings",
@@ -85,6 +86,7 @@
   "component.transform.position" : "Position",
   "component.transform.scale" : "Scale",
   "component.transform.floor" : "Floor",
+  "component.transform.rotation" : "Rotation",
 
   "component.sprite.texture_index" : "Texture Index",
 
@@ -112,7 +114,14 @@
   "component.script.enabled": "Enabled",
 
   "component.ui_transform" : "UI Transform",
+  "component.transform.anchor_min": "Min Anchor",
+  "component.ui_transform.anchor_max": "Max Anchor",
+  "component.ui_transform.pivot": "Pivot",
+
   "component.ui_sprite": "Image",
+
+  "component.ui_text": "Text",
+  "component.ui_text.text": "Text",
 
   "common.delete": "Delete",
   "common.close": "Close",

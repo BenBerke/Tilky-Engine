@@ -1,10 +1,10 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Sector.hpp"
 
-void OpenGLRenderer::BuildGpuSprites() {
+void OpenGL::BuildGpuSprites() {
     gpuSprites.clear();
 
     Level& level = LevelManager::CurrentLevel();

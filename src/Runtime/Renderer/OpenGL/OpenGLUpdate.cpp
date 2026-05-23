@@ -2,7 +2,7 @@
 // Created by berke on 5/14/2026.
 //
 
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -10,8 +10,9 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Player.hpp"
 #include "Headers/Objects/Wall.hpp"
+#include "Headers/UISystem.hpp"
 
-void OpenGLRenderer::RenderFrame() {
+void OpenGL::Update() {
     using namespace OpenGLRendererInternal;
 
     Level& level = LevelManager::CurrentLevel();
@@ -23,6 +24,9 @@ void OpenGLRenderer::RenderFrame() {
 
     const float playerYaw = Player::angle;
     DrawBackground(playerYaw);
+
+    SDL_GetWindowSize(window, &screenWidth, &screenHeight);
+    glViewport(0, 0, screenWidth, screenHeight);
 
     projectionShader->use();
     glBindVertexArray(VAO);
@@ -41,7 +45,29 @@ void OpenGLRenderer::RenderFrame() {
         Player::projection.Data()
     );
 
-    BindAllTextures(0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atlasTexture);
+
+    glUniform1i(
+        glGetUniformLocation(projectionShader->ID, "uAtlas"),
+        0
+    );
+
+    glUniform1i(
+        glGetUniformLocation(projectionShader->ID, "uTextureCount"),
+        static_cast<int>(textureRegions.size())
+    );
+
+    glBindBufferBase(
+        GL_SHADER_STORAGE_BUFFER,
+        5,
+        textureRegionSSBO
+    );
+
+    if (atlasTexture == 0) spdlog::error("atlasTexture is 0");
+    if (textureRegionSSBO == 0) spdlog::error("textureRegionSSBO is 0");
+    if (textureRegions.empty()) spdlog::warn("textureRegions is empty");
+
 
     // ============================================================
     // Floors / ceilings
@@ -146,8 +172,10 @@ void OpenGLRenderer::RenderFrame() {
     // UI
     // ============================================================
 
+    UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
+
     for (ComponentUISprite& sprite : level.ui_sprites.components) {
-        const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
+        ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
         if (transform == nullptr) {
             spdlog::error("UI Sprite does not have UI transform");
@@ -155,10 +183,22 @@ void OpenGLRenderer::RenderFrame() {
         }
 
         DrawUIRectangle(
-            transform->position,
-            transform->scale,
+            transform->resolvedPosition,
+            transform->resolvedSize,
             {255.0f, 255.0f, 255.0f, 255.0f},
+            transform->rotation,
             sprite.textureIndex
         );
+    }
+    for (ComponentUIText& text : level.ui_texts.components) {
+        const ComponentUITransform* transform =
+            level.ui_transforms.Get(text.ownerID);
+
+        if (transform == nullptr) {
+            spdlog::error("UI Text does not have UI transform");
+            continue;
+        }
+
+        RenderUIText(text, *transform);
     }
 }

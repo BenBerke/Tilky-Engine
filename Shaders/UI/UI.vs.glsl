@@ -7,10 +7,19 @@ uniform vec2 uScreenSize;
 uniform vec2 uPosition;
 uniform vec2 uSize;
 
+uniform float rotation;
+
 out vec2 vUV;
 
 void main() {
-    vec2 local01 = aLocalPos + vec2(0.5);
+    float s = sin(rotation);
+    float c = cos(rotation);
+
+    vec2 rotatedLocalPos;
+    rotatedLocalPos.x = aLocalPos.x * c - aLocalPos.y * s;
+    rotatedLocalPos.y = aLocalPos.x * s + aLocalPos.y * c;
+
+    vec2 local01 = rotatedLocalPos + vec2(0.5);
 
     vec2 pixelPos = uPosition + local01 * uSize;
 

@@ -35,26 +35,15 @@ namespace MapEditorInternal {
     }
 
     bool AABBCollisionWithEntity(const ComponentUITransform& transform, const Vector2& mousePosition) {
-        constexpr float mouseSize = 0.1f;
-        constexpr float mouseHalfSize = mouseSize * 0.5f;
+        const float entityLeft   = transform.resolvedPosition.x;
+        const float entityRight  = transform.resolvedPosition.x + transform.resolvedSize.x;
+        const float entityTop    = transform.resolvedPosition.y;
+        const float entityBottom = transform.resolvedPosition.y + transform.resolvedSize.y;
 
-        const float entityHalfWidth  = transform.scale.x * 0.5f;
-        const float entityHalfHeight = transform.scale.y * 0.5f;
-
-        const float entityLeft   = transform.position.x - entityHalfWidth;
-        const float entityRight  = transform.position.x + entityHalfWidth;
-        const float entityBottom = transform.position.y - entityHalfHeight;
-        const float entityTop    = transform.position.y + entityHalfHeight;
-
-        const float mouseLeft   = mousePosition.x - mouseHalfSize;
-        const float mouseRight  = mousePosition.x + mouseHalfSize;
-        const float mouseBottom = mousePosition.y - mouseHalfSize;
-        const float mouseTop    = mousePosition.y + mouseHalfSize;
-
-        return entityLeft <= mouseRight &&
-               entityRight >= mouseLeft &&
-               entityBottom <= mouseTop &&
-               entityTop >= mouseBottom;
+        return mousePosition.x >= entityLeft &&
+               mousePosition.x <= entityRight &&
+               mousePosition.y >= entityTop &&
+               mousePosition.y <= entityBottom;
     }
     bool AABBCollisionWithEntity(const ComponentTransform& transform, const Vector2& mousePosition) {
         constexpr float mouseSize = 0.1f;

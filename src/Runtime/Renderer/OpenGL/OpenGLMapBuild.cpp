@@ -1,4 +1,4 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <algorithm>
 #include <spdlog/spdlog.h>
@@ -169,7 +169,7 @@ namespace {
     }
 }
 
-void OpenGLRenderer::BuildGpuWallsFromMap() {
+void OpenGL::BuildGpuWallsFromMap() {
     Level& level = LevelManager::CurrentLevel();
 
     gpuWalls.clear();
@@ -286,7 +286,7 @@ void OpenGLRenderer::BuildGpuWallsFromMap() {
     gpuWallCount = static_cast<GLsizei>(gpuWalls.size());
 }
 
-void OpenGLRenderer::UploadGpuWallsFromMap() {
+void OpenGL::UploadGpuWallsFromMap() {
     BuildGpuWallsFromMap();
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, wallSSBO);
@@ -301,7 +301,7 @@ void OpenGLRenderer::UploadGpuWallsFromMap() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
 }
 
-void OpenGLRenderer::BuildVisibleFlatTriangles(
+void OpenGL::BuildVisibleFlatTriangles(
     const Vector2& playerPos,
     const float playerAngle
 ) {
@@ -330,7 +330,7 @@ void OpenGLRenderer::BuildVisibleFlatTriangles(
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
 }
 
-void OpenGLRenderer::BuildFlatTrianglesFromSectors() {
+void OpenGL::BuildFlatTrianglesFromSectors() {
     Level& level = LevelManager::CurrentLevel();
 
     flatTriangles.clear();
@@ -419,7 +419,7 @@ void OpenGLRenderer::BuildFlatTrianglesFromSectors() {
     flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
 }
 
-bool OpenGLRenderer::CreateMap() {
+bool OpenGL::CreateMap() {
     using namespace OpenGLRendererInternal;
 
     spdlog::info("Creating OpenGL renderer map data");
@@ -473,27 +473,6 @@ bool OpenGLRenderer::CreateMap() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
 
     projectionShader->use();
-
-    constexpr int MAX_WALL_TEXTURES = 8;
-
-    for (int i = 0; i < MAX_WALL_TEXTURES; ++i) {
-        const std::string uniformName =
-            "wallTextures[" + std::to_string(i) + "]";
-
-        const GLint location = glGetUniformLocation(
-            projectionShader->ID,
-            uniformName.c_str()
-        );
-
-        if (location != -1) {
-            glUniform1i(location, i);
-        } else {
-            spdlog::warn(
-                "Projection shader texture uniform not found: {}",
-                uniformName
-            );
-        }
-    }
 
     renderModeUniform = glGetUniformLocation(
         projectionShader->ID,

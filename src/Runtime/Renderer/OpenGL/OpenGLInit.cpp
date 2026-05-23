@@ -1,4 +1,4 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <filesystem>
 
@@ -13,10 +13,11 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#include "Headers/Map/LevelManager.hpp"
 
 namespace fs = std::filesystem;
 
-bool OpenGLRenderer::InitializeOpenGL() {
+bool OpenGL::InitializeOpenGL() {
     using namespace OpenGLRendererInternal;
 
     if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4)) {
@@ -78,7 +79,7 @@ bool OpenGLRenderer::InitializeOpenGL() {
         return false;
     }
 
-    glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    glViewport(0, 0, screenWidth, screenHeight);
 
     if (!SDL_GL_SetSwapInterval(0)) {
         spdlog::warn(
@@ -92,7 +93,7 @@ bool OpenGLRenderer::InitializeOpenGL() {
     return true;
 }
 
-bool OpenGLRenderer::InitSDL() {
+bool OpenGL::InitSDL() {
     using namespace OpenGLRendererInternal;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -105,8 +106,8 @@ bool OpenGLRenderer::InitSDL() {
 
     window = SDL_CreateWindow(
         "Tilky Engine",
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
+        screenWidth,
+        screenHeight,
         WINDOW_FLAGS
     );
 
@@ -150,7 +151,7 @@ bool OpenGLRenderer::InitSDL() {
     return true;
 }
 
-bool OpenGLRenderer::InitImGui() {
+bool OpenGL::InitImGui() const {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -167,7 +168,167 @@ bool OpenGLRenderer::InitImGui() {
     return true;
 }
 
-bool OpenGLRenderer::InitProjection() {
+bool OpenGL::BuildTextureAtlasFromLevel() {
+    using namespace OpenGLRendererInternal;
+    DestroyAllTextures();
+
+    const Level& level = LevelManager::CurrentLevel();
+
+    std::vector<LoadedTextureSurface> loadedSurfaces;
+    textureRegions.clear();
+    textureRegions.resize(level.textures.size());
+
+    int cursorX = ATLAS_PADDING;
+    int cursorY = ATLAS_PADDING;
+    int shelfHeight = 0;
+
+    std::vector<unsigned char> atlasPixels(
+        ATLAS_SIZE * ATLAS_SIZE * 4,
+        0
+    );
+
+    for (int i = 0; i < static_cast<int>(level.textures.size()); ++i) {
+        const Texture& texture = level.textures[i];
+
+        if (texture.fileName.empty()) {
+            textureRegions[i] = {
+                {0.0f, 0.0f, 0.0f, 0.0f},
+                {0.0f, 0.0f, 0.0f, 0.0f}
+            };
+
+            continue;
+        }
+
+        const std::string path =
+            ProjectManager::GetTexturesPath().string() + "/" + texture.fileName + ".png";
+
+        SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+
+        if (loadedSurface == nullptr) {
+            spdlog::error("IMG_Load failed for {}: {}", path, SDL_GetError());
+            continue;
+        }
+
+        SDL_Surface* surface = SDL_ConvertSurface(
+            loadedSurface,
+            SDL_PIXELFORMAT_RGBA32
+        );
+
+        SDL_DestroySurface(loadedSurface);
+
+        if (surface == nullptr) {
+            spdlog::error("SDL_ConvertSurface failed for {}: {}", path, SDL_GetError());
+            continue;
+        }
+
+        const int textureWidth = surface->w;
+        const int textureHeight = surface->h;
+
+        if (textureWidth + ATLAS_PADDING * 2 > ATLAS_SIZE ||
+            textureHeight + ATLAS_PADDING * 2 > ATLAS_SIZE) {
+            spdlog::error(
+                "Texture '{}' is too large for atlas: {}x{}",
+                texture.fileName,
+                textureWidth,
+                textureHeight
+            );
+
+            SDL_DestroySurface(surface);
+            continue;
+        }
+
+        if (cursorX + textureWidth + ATLAS_PADDING > ATLAS_SIZE) {
+            cursorX = ATLAS_PADDING;
+            cursorY += shelfHeight + ATLAS_PADDING;
+            shelfHeight = 0;
+        }
+
+        if (cursorY + textureHeight + ATLAS_PADDING > ATLAS_SIZE) {
+            spdlog::error("Texture atlas is full. Could not add '{}'", texture.fileName);
+            SDL_DestroySurface(surface);
+            continue;
+        }
+
+        for (int row = 0; row < textureHeight; ++row) {
+            const unsigned char* srcRow =
+                static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
+
+            unsigned char* dstRow =
+                atlasPixels.data() +
+                ((cursorY + row) * ATLAS_SIZE + cursorX) * 4;
+
+            std::memcpy(
+                dstRow,
+                srcRow,
+                textureWidth * 4
+            );
+        }
+
+        const float uMin = static_cast<float>(cursorX) / static_cast<float>(ATLAS_SIZE);
+        const float vMin = static_cast<float>(cursorY) / static_cast<float>(ATLAS_SIZE);
+        const float uMax = static_cast<float>(cursorX + textureWidth) / static_cast<float>(ATLAS_SIZE);
+        const float vMax = static_cast<float>(cursorY + textureHeight) / static_cast<float>(ATLAS_SIZE);
+
+        textureRegions[i] = {
+            {uMin, vMin, uMax, vMax},
+            {1.0f, 0.0f, 0.0f, 0.0f}
+        };
+
+        spdlog::info(
+            "Packed texture '{}' at atlas position {}, {} size {}x{}",
+            texture.fileName,
+            cursorX,
+            cursorY,
+            textureWidth,
+            textureHeight
+        );
+
+        cursorX += textureWidth + ATLAS_PADDING;
+        shelfHeight = std::max(shelfHeight, textureHeight);
+
+        SDL_DestroySurface(surface);
+    }
+
+    glGenTextures(1, &atlasTexture);
+    glBindTexture(GL_TEXTURE_2D, atlasTexture);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA8,
+        ATLAS_SIZE,
+        ATLAS_SIZE,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        atlasPixels.data()
+    );
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Use NEAREST first. LINEAR needs edge padding/extrusion to avoid bleeding.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glGenBuffers(1, &textureRegionSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, textureRegionSSBO);
+
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        textureRegions.size() * sizeof(GPUTextureRegion),
+        textureRegions.empty() ? nullptr : textureRegions.data(),
+        GL_STATIC_DRAW
+    );
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
+
+    spdlog::info("Created texture atlas with {} texture region(s)", textureRegions.size());
+
+    return true;
+}
+
+bool OpenGL::InitProjection() {
     using namespace OpenGLRendererInternal;
 
     const fs::path renderingVsPath =
@@ -226,7 +387,7 @@ bool OpenGLRenderer::InitProjection() {
     return true;
 }
 
-bool OpenGLRenderer::InitUI() {
+bool OpenGL::InitUI() {
     constexpr float vertices[] = {
         // x, y,      u, v
          0.5f,  0.5f, 1.0f, 0.0f,
@@ -310,7 +471,7 @@ bool OpenGLRenderer::InitUI() {
     return true;
 }
 
-bool OpenGLRenderer::InitText() {
+bool OpenGL::InitText() {
     using namespace OpenGLRendererInternal;
 
     const fs::path glyphVsPath =
@@ -335,10 +496,9 @@ bool OpenGLRenderer::InitText() {
 
     textShader->use();
 
-    //todo support window resizing
     const Matrix4 projection = Matrix4::Orthographic(
-        0.0f, static_cast<float>(SCREEN_WIDTH),
-        0.0f, static_cast<float>(SCREEN_HEIGHT),
+        0.0f, static_cast<float>(screenWidth),
+        static_cast<float>(screenHeight), 0.0f,
         -1.0f, 1.0f
     );
 
@@ -364,7 +524,7 @@ bool OpenGLRenderer::InitText() {
     return true;
 }
 
-bool OpenGLRenderer::Initialize() {
+bool OpenGL::Initialize() {
     if (!InitSDL()) {
         spdlog::critical("Renderer initialization stopped at InitSDL");
         return false;

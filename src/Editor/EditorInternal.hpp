@@ -19,6 +19,8 @@ namespace MapEditorInternal {
     constexpr float MIN_EDITOR_ZOOM = 0.20f;
     constexpr float MAX_EDITOR_ZOOM = 5.00f;
 
+    constexpr float ENTITY_SIZE = 32.0f;
+
     enum Mode {
         MODE_DOT,
         MODE_SECTOR,
@@ -82,6 +84,7 @@ namespace MapEditorInternal {
     extern int currentFloor;
 
     extern bool quit;
+    extern bool play;
     extern bool shutdown;
 
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);

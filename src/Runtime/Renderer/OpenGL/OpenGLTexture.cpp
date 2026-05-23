@@ -1,4 +1,4 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_surface.h>
@@ -9,7 +9,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Loadables.hpp"
 
-int OpenGLRenderer::CreateTexture(const std::string& fileName) {
+int OpenGL::CreateTexture(const std::string& fileName) {
     const std::string path =
         ProjectManager::GetTexturesPath().string() + "/" + fileName + ".png";
 
@@ -70,52 +70,34 @@ int OpenGLRenderer::CreateTexture(const std::string& fileName) {
     return static_cast<int>(textures.size()) - 1;
 }
 
-void OpenGLRenderer::RefreshTexturesFromLevel() {
-    DestroyAllTextures();
-
-    const Level& level = LevelManager::CurrentLevel();
-
-    for (const Texture& texture : level.textures) {
-        if (texture.fileName.empty()) {
-            continue;
-        }
-
-        const int textureIndex = CreateTexture(texture.fileName);
-
-        if (textureIndex == -1) {
-            spdlog::error("Failed to create renderer texture: {}", texture.fileName);
-            continue;
-        }
-
-        spdlog::info(
-            "Created renderer texture '{}' at index {}",
-            texture.fileName,
-            textureIndex
-        );
+void OpenGL::RefreshTexturesFromLevel() {
+    if (!BuildTextureAtlasFromLevel()) {
+        spdlog::error("Failed to build texture atlas from level");
+        return;
     }
 
     spdlog::info(
-        "Created {} renderer texture(s) from level texture list",
-        textures.size()
+        "Built texture atlas with {} texture region(s)",
+        textureRegions.size()
     );
 }
 
-const OpenGLRenderer::GPUTexture& OpenGLRenderer::GetTexture(const int index) const {
+const OpenGL::GPUTexture& OpenGL::GetTexture(const int index) const {
     return textures[index];
 }
 
-int OpenGLRenderer::GetTextureCount() const {
+int OpenGL::GetTextureCount() const {
     return static_cast<int>(textures.size());
 }
 
-void OpenGLRenderer::BindAllTextures(const int firstTextureUnit) const {
-    for (int i = 0; i < static_cast<int>(textures.size()); ++i) {
-        glActiveTexture(GL_TEXTURE0 + firstTextureUnit + i);
-        glBindTexture(GL_TEXTURE_2D, textures[i].id);
-    }
-}
+// void OpenGL::BindAllTextures(const int firstTextureUnit) const {
+//     for (int i = 0; i < static_cast<int>(textures.size()); ++i) {
+//         glActiveTexture(GL_TEXTURE0 + firstTextureUnit + i);
+//         glBindTexture(GL_TEXTURE_2D, textures[i].id);
+//     }
+// }
 
-void OpenGLRenderer::DestroyAllTextures() {
+void OpenGL::DestroyAllTextures() {
     for (GPUTexture& texture : textures) {
         if (texture.id != 0) {
             glDeleteTextures(1, &texture.id);
@@ -127,4 +109,16 @@ void OpenGLRenderer::DestroyAllTextures() {
     }
 
     textures.clear();
+
+    if (atlasTexture != 0) {
+        glDeleteTextures(1, &atlasTexture);
+        atlasTexture = 0;
+    }
+
+    if (textureRegionSSBO != 0) {
+        glDeleteBuffers(1, &textureRegionSSBO);
+        textureRegionSSBO = 0;
+    }
+
+    textureRegions.clear();
 }

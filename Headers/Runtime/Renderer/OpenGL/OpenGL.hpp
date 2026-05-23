@@ -18,17 +18,13 @@
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"
+#include "Headers/Objects/Components.hpp"
 
 struct Texture;
 
 namespace OpenGLRendererInternal {
-    inline constexpr int SCREEN_WIDTH = 1680;
-    inline constexpr int SCREEN_HEIGHT = 960;
-
-    inline constexpr float DEBUG_MAP_SCALE = 200.0f;
-    inline constexpr float DEBUG_PLAYER_HALF_SIZE = 0.01f;
-    inline constexpr float DEBUG_FOV_DEG = 90.0f;
-    inline constexpr float DEBUG_FOV_LINE_LENGTH = 100.0f;
+    inline int screenWidth = 1680;
+    inline int screenHeight = 960;
 
     inline constexpr float FLAT_NEAR_PLANE = 0.1f;
 
@@ -37,10 +33,10 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_DECAL = 3;
 
-    inline constexpr bool DEBUG_ENABLED = true;
+    constexpr int ATLAS_SIZE = 4096;
+    constexpr int ATLAS_PADDING = 2;
 
-    inline constexpr SDL_WindowFlags WINDOW_FLAGS =
-        static_cast<SDL_WindowFlags>(SDL_WINDOW_OPENGL);
+    inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
 
     struct Character {
         unsigned int textureID = 0;
@@ -89,18 +85,30 @@ namespace OpenGLRendererInternal {
         int width = 0;
         int height = 0;
     };
+
+    struct GPUTextureRegion {
+        Vector4 uvRect; // x = uMin, y = vMin, z = uMax, w = vMax
+        Vector4 data;   // x = valid, y/z/w unused for now
+    };
+
+    struct LoadedTextureSurface {
+        SDL_Surface* surface = nullptr;
+        int textureIndex = -1;
+        int x = 0;
+        int y = 0;
+    };
 }
 
-class OpenGLRenderer final : public IRenderer {
+class OpenGL final : public IRenderer {
 public:
-    OpenGLRenderer() = default;
-    ~OpenGLRenderer() override = default;
+    OpenGL() = default;
+    ~OpenGL() override = default;
 
     bool Initialize() override;
     void Shutdown() override;
 
     void BeginFrame() override;
-    void RenderFrame() override;
+    void Update() override;
     void EndFrame() override;
 
     void OnResize(int width, int height) override;
@@ -109,19 +117,18 @@ public:
     int CreateTexture(const std::string& fileName) override;
 
     void RenderText(
-    const Shader& shader,
-    const std::string& text,
-    float x,
-    float y,
-    float scale,
-    Vector3 color
-    );
-
-    void RenderTextRaw(
+        const Shader& shader,
         const std::string& text,
         float x,
         float y,
-        float scale,
+        Vector2 scale,
+        Vector3 color
+        );
+
+    void RenderTextRaw(
+        const std::string& text,
+        Vector2 position,
+        Vector2 scale,
         Vector3 color
     );
 
@@ -129,6 +136,7 @@ public:
         const Vector2& position,
         const Vector2& size,
         const Vector4& color = Vector4{255.0f, 255.0f, 255.0f, 255.0f},
+        float rotation = 0,
         int textureIndex = -1
     ) const;
 
@@ -139,6 +147,8 @@ public:
     [[nodiscard]] const char* GetName() const override {
         return "OpenGL";
     }
+
+    bool BuildTextureAtlasFromLevel();
 
 private:
     using Character = OpenGLRendererInternal::Character;
@@ -198,6 +208,10 @@ private:
     std::vector<GpuSprite> gpuSprites;
 
     std::vector<GPUTexture> textures;
+    GLuint atlasTexture = 0;
+    GLuint textureRegionSSBO = 0;
+
+    std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
 
     int backgroundTextureIndex = -1;
 
@@ -205,7 +219,7 @@ private:
     bool InitializeFont();
 
     bool InitSDL();
-    bool InitImGui();
+    bool InitImGui() const;
     bool InitProjection();
     bool InitUI();
     bool InitText();
@@ -226,8 +240,8 @@ private:
     void RefreshTexturesFromLevel();
     [[nodiscard]] const GPUTexture& GetTexture(int index) const;
     [[nodiscard]] int GetTextureCount() const;
-    void BindAllTextures(int firstTextureUnit) const;
     void DestroyAllTextures();
+    void RenderUIText(const ComponentUIText& text, const ComponentUITransform& transform);
 
     static constexpr int SECTOR_FLOOR_COUNT = 3;
     static constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;

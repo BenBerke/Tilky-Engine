@@ -1,13 +1,7 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
-void OpenGLRenderer::DrawBackground(const float playerAngle) const {
-    if (!backgroundShader || backgroundTextureIndex < 0) {
-        return;
-    }
-
-    if (backgroundTextureIndex >= GetTextureCount()) {
-        return;
-    }
+void OpenGL::DrawBackground(const float playerAngle) const {
+    if (!backgroundShader || backgroundTextureIndex < 0 || backgroundTextureIndex >= GetTextureCount()) return;
 
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);

@@ -1,4 +1,4 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <SDL3/SDL_init.h>
 
@@ -6,7 +6,7 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
-void OpenGLRenderer::Shutdown() {
+void OpenGL::Shutdown() {
     // Textures must be deleted while the OpenGL context still exists.
     DestroyAllTextures();
 

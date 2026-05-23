@@ -19,8 +19,41 @@
 
 namespace fs = std::filesystem;
 
-static void LaunchEditor();
-static void LaunchEngine();
+enum Mode {
+    EDITOR,
+    ENGINE
+};
+
+static Mode currentMode = EDITOR;
+
+static void DestroyModes() {
+    switch (currentMode) {
+        case EDITOR:
+            Editor::Destroy();
+            if (Editor::ShutdownRequested()) break;
+            Editor::LoadLevel(Editor::currentMap);
+            break;
+        case ENGINE:
+            RuntimeSession::Shutdown();
+            break;
+    }
+}
+
+static void SwitchModes(const Mode mode) {
+    currentMode = mode;
+    switch (mode) {
+        case EDITOR:
+            Editor::Start();
+            break;
+        case ENGINE:
+            if(!RuntimeSession::Start()) {
+                spdlog::critical("Failed to start the session");
+                return;
+            }
+            spdlog::info("Starting the game loop");
+            break;
+    }
+}
 
 static bool InitEngineLogger() {
     const fs::path logPath =
@@ -68,40 +101,12 @@ static bool InitEngineLogger() {
     }
 }
 
-static void LaunchEngine() {
-    if(!RuntimeSession::Start()) {
-        spdlog::critical("Failed to start the session");
-        return;
-    }
-
-    spdlog::info("Starting the game loop");
-    bool running = true;
-    while (running) {
-        InputManager::BeginFrame();
-        GameTime::Update();
-        RuntimeSession::Update();
-
-        running = !(InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) || InputManager::QuitRequested());
-    }
-    spdlog::info("Finished the game loop");
-
-    RuntimeSession::Shutdown();
-    LaunchEditor();
+static void EngineUpdate() {
+    RuntimeSession::Update();
 }
 
-static void LaunchEditor() {
-    Editor::Start();
-    while (!Editor::QuitRequested()) {
-        InputManager::BeginFrame();
-        Editor::Update();
-    }
-    const bool shutdown = Editor::ShutdownRequested();
-    Editor::Destroy();
-
-    if (shutdown) return;
-
-    Editor::LoadLevel(Editor::currentMap);
-    LaunchEngine();
+static void EditorUpdate() {
+    Editor::Update();
 }
 
 int main(int argc, char** argv) {
@@ -137,10 +142,29 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
+    SwitchModes(currentMode);
 
-
-    //todo: Proper Game Initilization
-    LaunchEditor();
-
+    bool quit = false;
+    while (!quit) {
+        InputManager::BeginFrame();
+        quit = InputManager::QuitRequested() && currentMode != ENGINE;
+        switch (currentMode) {
+            case EDITOR:
+                EditorUpdate();
+                if (Editor::ShutdownRequested()) return 0;
+                if (Editor::QuitRequested()) {
+                    DestroyModes();
+                    if (Editor::PlayRequested()) SwitchModes(ENGINE);
+                }
+                break;
+            case ENGINE:
+                EngineUpdate();
+                if (InputManager::QuitRequested()) {
+                    DestroyModes();
+                    SwitchModes(EDITOR);
+                }
+                break;
+        }
+    }
     return 0;
 }

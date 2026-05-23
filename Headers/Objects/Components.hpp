@@ -29,23 +29,41 @@ enum ComponentType {
 
     CMP_UI_TRANSFORM, // Transform must always be the first UI component otherwise UIEditorDrawUI breaks
     CMP_UI_SPRITE,
+    CMP_UI_TEXT,
 
     CMP_COUNT,
 };
 
 
 // region UI Components
+
+struct ComponentUIText {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    std::string text;
+};
+
 struct ComponentUISprite {
     EntityID ownerID = static_cast<EntityID>(-1);
 
-    int textureIndex;
+    int textureIndex{};
 };
 
 struct ComponentUITransform {
     EntityID ownerID = static_cast<EntityID>(-1);
 
-    Vector2 position = {.0f, .0f};
+    Vector2 anchorMin = {0.5f, 0.5f};
+    Vector2 anchorMax = {0.5f, 0.5f};
+
+    Vector2 pivot = {0.5f, 0.5f};
+
+    Vector2 position = {0.0f, 0.0f};
+
     Vector2 scale = {1.0f, 1.0f};
+    float rotation = 0.0f;
+
+    Vector2 resolvedPosition = {};
+    Vector2 resolvedSize = {};
 };
 
 // endregion
@@ -107,6 +125,7 @@ struct ComponentTransform {
     EntityID ownerID = -1;
 
     Vector2 position = {.0f, .0f};
+    Vector2 forward = {1.0f, .0f};
     int floor = 0;
     Vector2 scale = {32.0f, 32.0f};
 

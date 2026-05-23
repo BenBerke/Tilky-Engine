@@ -19,37 +19,34 @@
 #include "Headers/Runtime/ScriptSystem.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 namespace {
     float timer = 0.0f;
     float timerHelper = 0.0f;
     int fps = 0;
 
-    std::unique_ptr<OpenGLRenderer> renderer;
+    std::unique_ptr<OpenGL> renderer;
+
+    bool relativeMouseMode = true;
 
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            0.0f,
-            0.0f,
-            0.5f,
+            {0.0f, 0.0f,},
+            {.5f, .5f},
             Vector3{255.0f, 255.0f, 255.0f}
         );
-
         renderer->RenderTextRaw(
             "NoClip:" + std::to_string(Player::noClip),
-            100.0f,
-            0.0f,
-            0.5f,
+            {210.0f, 0.0f,},
+            {.5f, .5f},
             Vector3{255.0f, 255.0f, 255.0f}
         );
-
         renderer->RenderTextRaw(
             "CS:" + std::to_string(Player::currentSector),
-            200.0f,
-            0.0f,
-            0.5f,
+            {400.0f, 0.0f,},
+            {.5f, .5f},
             Vector3{255.0f, 255.0f, 255.0f}
         );
     }
@@ -77,7 +74,7 @@ namespace RuntimeSession {
 
         Player::Start(level.sectors);
 
-        renderer = std::make_unique<OpenGLRenderer>();
+        renderer = std::make_unique<OpenGL>();
 
         if (!renderer->Initialize()) {
             spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
@@ -126,17 +123,26 @@ namespace RuntimeSession {
             return;
         }
 
+        GameTime::Update();
         timer = GameTime::time;
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) {
+            relativeMouseMode = false;
+            InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
+            SDL_ShowCursor();
+        }
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) {
+            relativeMouseMode = true;
+            InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
+            SDL_HideCursor();
+        }
 
         Level& level = LevelManager::CurrentLevel();
 
-        Player::Update(
-            level.walls,
-            level.sectors
-        );
+        if (relativeMouseMode) Player::Update(level.walls,level.sectors);
 
         renderer->BeginFrame();
-        renderer->RenderFrame();
+        renderer->Update();
 
         AudioSystem::Update(level);
         ScriptSystem::Update(level);

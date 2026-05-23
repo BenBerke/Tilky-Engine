@@ -130,7 +130,7 @@ target_compile_definitions(Tilky_Local PUBLIC
 # ============================================================
 
 set(TILKY_ENGINE_SOURCES
-        src/Runtime/Renderer/OpenGL/RendererTexture.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLTexture.cpp
 
         src/Editor/MapEditor/MapEditorDrawing.cpp
         src/Editor/MapEditor/MapEditorGeometry.cpp
@@ -148,16 +148,16 @@ set(TILKY_ENGINE_SOURCES
         src/Objects/Player.cpp
 
         src/Runtime/Renderer/RendererMath.cpp
-        src/Runtime/Renderer/OpenGL/RendererInit.cpp
-        src/Runtime/Renderer/OpenGL/RendererText.cpp
-        src/Runtime/Renderer/OpenGL/RendererMapBuild.cpp
-        src/Runtime/Renderer/OpenGL/RendererSprites.cpp
-        src/Runtime/Renderer/OpenGL/RendererUpdate.cpp
-        src/Runtime/Renderer/OpenGL/RendererDestroy.cpp
-        src/Runtime/Renderer/OpenGL/RendererDecals.cpp
-        src/Runtime/Renderer/OpenGL/RendererSectors.cpp
-        src/Runtime/Renderer/OpenGL/RenderBackground.cpp
-        src/Runtime/Renderer/OpenGL/RendererUI.cpp
+        src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLText.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLMapBuild.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLSprite.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLDecal.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLSector.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLBackground.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
 
         src/Math/Geometry/Geometry.cpp
 
@@ -193,12 +193,14 @@ set(TILKY_ENGINE_SOURCES
         Headers/Runtime/Renderer/IRenderer.hpp
         Headers/Runtime/Renderer/RendererBackend.hpp
         Headers/Runtime/Renderer/RendererFactory.hpp
-        Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp
+        Headers/Runtime/Renderer/OpenGL/OpenGL.hpp
         Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
         src/Runtime/Renderer/RendererFactory.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLRenderer.cpp
+        src/Runtime/Renderer/OpenGL/OpenGL.cpp
         src/Runtime/Renderer/Vulkan/VulkanRenderer.cpp
         Headers/Runtime/Renderer/RendererMath.hpp
+        Headers/UISystem.hpp
+        src/UISytem.cpp
 )
 
 # ============================================================

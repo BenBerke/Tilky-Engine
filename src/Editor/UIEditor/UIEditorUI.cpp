@@ -93,6 +93,7 @@ namespace {
                 componentNames[GetCorrectIndex(CMP_UI_TRANSFORM)] = Get("component.ui_transform");
                 componentNames[GetCorrectIndex(CMP_UI_SPRITE)] = Get("component.ui_sprite");
                 componentNames[GetCorrectIndex(CMP_SCRIPT)] = Get("component.script").c_str();
+                componentNames[GetCorrectIndex(CMP_UI_TEXT)] = Get("component.ui_text").c_str();
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
                     for (int i = 0; i < compCount; i++) {
@@ -119,6 +120,8 @@ namespace {
                         entity.AddComponent<ComponentUISprite>();
                     if (componentToAdd == GetCorrectIndex(CMP_SCRIPT) && !entity.HasComponent<ComponentScript>())
                         entity.AddComponent<ComponentScript>();
+                    if (componentToAdd == GetCorrectIndex(CMP_UI_TEXT) && !entity.HasComponent<ComponentUIText>())
+                        entity.AddComponent<ComponentUIText>();
 
                     addingComponent = false;
                     componentToAdd = GetCorrectIndex(CMP_UI_SPRITE);
@@ -160,6 +163,9 @@ namespace {
 
             if (entity.HasComponent<ComponentScript>())
                 DrawComponentRow(Get("component.script").c_str(), CMP_SCRIPT);
+
+            if (entity.HasComponent<ComponentUIText>())
+                DrawComponentRow(Get("component.ui_text").c_str(), CMP_UI_TEXT);
 
             PutSpace(2);
 
@@ -218,6 +224,9 @@ namespace {
                 case CMP_SCRIPT:
                     componentName = Get("component.script");
                     break;
+                case CMP_UI_TEXT:
+                    componentName = Get("component.ui_text");
+                    break;
                 default:
                     componentName = Get("bug.unknown");
                     break;
@@ -231,26 +240,52 @@ namespace {
             if (selectedComponent == CMP_UI_TRANSFORM) {
                 auto *c = entity.GetComponent<ComponentUITransform>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Transform component missing");
-                } else {
-                    float positionValues[2] = {c->position.x, c->position.y};
-                    float scaleValues[2] = {c->scale.x, c->scale.y};
-
-                    ImGui::Text("%s", Get("component.transform.position").c_str());
+                if (c == nullptr) ImGui::Text("Transform component missing");
+                else {
+                    // Anchor Min
+                    ImGui::Text("%s", Get("component.transform.anchor_min").c_str());
                     ImGui::Text("X    Y");
                     ImGui::SetNextItemWidth(220.0f);
-                    ImGui::InputFloat2("##position", positionValues);
+                    ImGui::InputFloat2("##anchormin", &c->anchorMin.x);
 
                     ImGui::Spacing();
 
+                    // Anchor Max
+                    ImGui::Text("%s", Get("component.ui_transform.anchor_max").c_str());
+                    ImGui::Text("X    Y");
+                    ImGui::SetNextItemWidth(220.0f);
+                    ImGui::InputFloat2("##anchormax", &c->anchorMax.x);
+
+                    ImGui::Spacing();
+
+                    // Pivot
+                    ImGui::Text("%s", Get("component.ui_transform.pivot").c_str());
+                    ImGui::Text("X    Y");
+                    ImGui::SetNextItemWidth(220.0f);
+                    ImGui::InputFloat2("##pivot", &c->pivot.x);
+
+                    ImGui::Spacing();
+
+                    // Position
+                    ImGui::Text("%s", Get("component.transform.position").c_str());
+                    ImGui::Text("X    Y");
+                    ImGui::SetNextItemWidth(220.0f);
+                    ImGui::InputFloat2("##position", &c->position.x);
+
+                    ImGui::Spacing();
+
+                    // Scale
                     ImGui::Text("%s", Get("component.transform.scale").c_str());
                     ImGui::Text("X    Y");
                     ImGui::SetNextItemWidth(220.0f);
-                    ImGui::InputFloat2("##scale", scaleValues);
+                    ImGui::InputFloat2("##scale", &c->scale.x);
 
-                    c->position = {positionValues[0], positionValues[1]};
-                    c->scale = {scaleValues[0], scaleValues[1]};
+                    ImGui::Spacing();
+
+                    // Rotation
+                    ImGui::Text("%s", Get("component.transform.rotation").c_str());
+                    ImGui::SetNextItemWidth(220.0f);
+                    ImGui::InputFloat("##rotation", &c->rotation);
 
                     ImGui::Spacing();
 
@@ -264,9 +299,8 @@ namespace {
             else if (selectedComponent == CMP_UI_SPRITE) {
                 auto *c = entity.GetComponent<ComponentUISprite>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Sprite component missing");
-                } else {
+                if (c == nullptr) ImGui::Text("Sprite component missing");
+                else {
                     int textureIndex = c->textureIndex;
 
                     ImGui::SetNextItemWidth(120.0f);
@@ -284,9 +318,9 @@ namespace {
             else if (selectedComponent == CMP_SCRIPT) {
                 auto *c = entity.GetComponent<ComponentScript>();
 
-                if (c == nullptr) {
+                if (c == nullptr)
                     ImGui::Text("Script component missing");
-                } else {
+                else {
                     std::string scriptFile = c->fileName;
                     bool enabled = c->enabled;
 
@@ -295,6 +329,25 @@ namespace {
 
                     c->fileName = scriptFile;
                     c->enabled = enabled;
+
+                    if (ImGui::Button(Get("common.delete").c_str())) {
+                        entity.RemoveComponent<ComponentScript>();
+                        editingComponent = false;
+                        selectedComponent = -1;
+                    }
+                }
+            }
+            else if (selectedComponent == CMP_UI_TEXT) {
+                auto *c = entity.GetComponent<ComponentUIText>();
+
+                if (c == nullptr)
+                    ImGui::Text("Text component missing");
+                else {
+                    std::string text = c->text;
+
+                    ImGui::InputText(Get("component.ui.text.text").c_str(), &text);
+
+                    c->text = text;
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
                         entity.RemoveComponent<ComponentScript>();
@@ -322,7 +375,6 @@ namespace MapEditorInternal {
     void DrawUIEditorUI() {
         using namespace Localisation;
         ImGui::Begin(Get("ui_editor.title").c_str());
-
 
         if (editingComponent && selectedComponent != -1) EditingComponent();
         if (editingEntity) EditingEntity();

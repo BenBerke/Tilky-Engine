@@ -1,8 +1,8 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <spdlog/spdlog.h>
 
-void OpenGLRenderer::BeginFrame() {
+void OpenGL::BeginFrame() {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
@@ -23,16 +23,16 @@ void OpenGLRenderer::BeginFrame() {
     );
 }
 
-void OpenGLRenderer::EndFrame() {
+void OpenGL::EndFrame() {
     if (window == nullptr) {
-        spdlog::error("OpenGLRenderer::EndFrame called with null window");
+        spdlog::error("OpenGL::EndFrame called with null window");
         return;
     }
 
     SDL_GL_SwapWindow(window);
 }
 
-void OpenGLRenderer::OnResize(const int width, const int height) {
+void OpenGL::OnResize(const int width, const int height) {
     if (width <= 0 || height <= 0) {
         return;
     }

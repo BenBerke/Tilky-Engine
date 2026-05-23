@@ -1,8 +1,8 @@
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include "Headers/Map/LevelManager.hpp"
 
-void OpenGLRenderer::BuildGpuSectors() {
+void OpenGL::BuildGpuSectors() {
     Level& level = LevelManager::CurrentLevel();
 
     gpuSectors.clear();

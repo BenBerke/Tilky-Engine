@@ -18,6 +18,7 @@ T* Entity::GetComponent() {
     else if constexpr (std::is_same_v<T, ComponentScript>) return level.scripts.Get(id);
     else if constexpr (std::is_same_v<T, ComponentUITransform>) return level.ui_transforms.Get(id);
     else if constexpr (std::is_same_v<T, ComponentUISprite>) return level.ui_sprites.Get(id);
+    else if constexpr (std::is_same_v<T, ComponentUIText>) return level.ui_texts.Get(id);
     else return nullptr;
 }
 
@@ -33,6 +34,7 @@ T* Entity::AddComponent() {
     else if constexpr (std::is_same_v<T, ComponentScript>) return &level.scripts.Add(id);
     else if constexpr (std::is_same_v<T, ComponentUITransform>) return &level.ui_transforms.Add(id);
     else if constexpr (std::is_same_v<T, ComponentUISprite>) return &level.ui_sprites.Add(id);
+    else if constexpr (std::is_same_v<T, ComponentUIText>) return &level.ui_texts.Add(id);
     else return nullptr;
 }
 
@@ -48,6 +50,7 @@ bool Entity::RemoveComponent() {
     else if constexpr (std::is_same_v<T, ComponentScript>) return level.scripts.Remove(id);
     else if constexpr (std::is_same_v<T, ComponentUITransform>) return level.ui_transforms.Remove(id);
     else if constexpr (std::is_same_v<T, ComponentUISprite>) return level.ui_sprites.Remove(id);
+    else if constexpr (std::is_same_v<T, ComponentUIText>) return level.ui_texts.Remove(id);
     else return false;
 }
 
@@ -71,6 +74,7 @@ template ComponentAudioSource* Entity::GetComponent<ComponentAudioSource>();
 template ComponentScript* Entity::GetComponent<ComponentScript>();
 template ComponentUITransform* Entity::GetComponent<ComponentUITransform>();
 template ComponentUISprite* Entity::GetComponent<ComponentUISprite>();
+template ComponentUIText* Entity::GetComponent<ComponentUIText>();
 
 template ComponentTransform* Entity::AddComponent<ComponentTransform>();
 template ComponentSprite* Entity::AddComponent<ComponentSprite>();
@@ -80,6 +84,7 @@ template ComponentAudioSource* Entity::AddComponent<ComponentAudioSource>();
 template ComponentScript* Entity::AddComponent<ComponentScript>();
 template ComponentUITransform* Entity::AddComponent<ComponentUITransform>();
 template ComponentUISprite* Entity::AddComponent<ComponentUISprite>();
+template ComponentUIText* Entity::AddComponent<ComponentUIText>();
 
 template bool Entity::RemoveComponent<ComponentTransform>();
 template bool Entity::RemoveComponent<ComponentSprite>();
@@ -89,6 +94,7 @@ template bool Entity::RemoveComponent<ComponentAudioSource>();
 template bool Entity::RemoveComponent<ComponentScript>();
 template bool Entity::RemoveComponent<ComponentUITransform>();
 template bool Entity::RemoveComponent<ComponentUISprite>();
+template bool Entity::RemoveComponent<ComponentUIText>();
 
 template bool Entity::HasComponent<ComponentTransform>();
 template bool Entity::HasComponent<ComponentSprite>();
@@ -98,7 +104,7 @@ template bool Entity::HasComponent<ComponentAudioSource>();
 template bool Entity::HasComponent<ComponentScript>();
 template bool Entity::HasComponent<ComponentUITransform>();
 template bool Entity::HasComponent<ComponentUISprite>();
-
+template bool Entity::HasComponent<ComponentUIText>();
 
 
 

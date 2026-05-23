@@ -4,14 +4,14 @@
 
 #include "Headers/Runtime/Renderer/RendererFactory.hpp"
 
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 // Later:
 // #include "Runtime/Renderer/Vulkan/VulkanRenderer.hpp"
 
 std::unique_ptr<IRenderer> RendererFactory::Create(RendererBackend backend) {
     switch (backend) {
         case RendererBackend::OpenGL:
-            return std::make_unique<OpenGLRenderer>();
+            return std::make_unique<OpenGL>();
 
         case RendererBackend::Vulkan:
             // Later:

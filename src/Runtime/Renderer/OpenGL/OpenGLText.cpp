@@ -2,14 +2,14 @@
 // Created by berke on 5/1/2026.
 //
 
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <spdlog/spdlog.h>
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 
-bool OpenGLRenderer::InitializeFont() {
+bool OpenGL::InitializeFont() {
     if (FT_Init_FreeType(&ft)) {
         spdlog::critical("FT_Init_FreeType failed. FreeType could not be initialized.");
         return false;
@@ -114,12 +114,12 @@ bool OpenGLRenderer::InitializeFont() {
     return true;
 }
 
-void OpenGLRenderer::RenderText(
+void OpenGL::RenderText(
     const Shader& shader,
     const std::string& text,
     float x,
     const float y,
-    const float scale,
+    const Vector2 scale,
     const Vector3 color
 ) {
     glDisable(GL_DEPTH_TEST);
@@ -154,20 +154,20 @@ void OpenGLRenderer::RenderText(
 
         const auto& [textureID, Size, Bearing, Advance] = characterIt->second;
 
-        const float xPos = x + Bearing.x * scale;
-        const float yPos = y - (Size.y - Bearing.y) * scale;
+        const float xPos = x + Bearing.x * scale.x;
+        const float yPos = y - Bearing.y * scale.y;
 
-        const float w = Size.x * scale;
-        const float h = Size.y * scale;
+        const float w = Size.x * scale.x;
+        const float h = Size.y * scale.y;
 
-        float vertices[6][4] = {
-            {xPos,     yPos + h, 0.0f, 0.0f},
-            {xPos,     yPos,     0.0f, 1.0f},
-            {xPos + w, yPos,     1.0f, 1.0f},
+        const float vertices[6][4] = {
+            {xPos,     yPos,     0.0f, 0.0f},
+            {xPos,     yPos + h, 0.0f, 1.0f},
+            {xPos + w, yPos + h, 1.0f, 1.0f},
 
-            {xPos,     yPos + h, 0.0f, 0.0f},
-            {xPos + w, yPos,     1.0f, 1.0f},
-            {xPos + w, yPos + h, 1.0f, 0.0f}
+            {xPos,     yPos,     0.0f, 0.0f},
+            {xPos + w, yPos + h, 1.0f, 1.0f},
+            {xPos + w, yPos,     1.0f, 0.0f}
         };
 
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -177,7 +177,7 @@ void OpenGLRenderer::RenderText(
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        x += static_cast<float>(Advance >> 6) * scale;
+        x += static_cast<float>(Advance >> 6) * scale.x;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -188,12 +188,32 @@ void OpenGLRenderer::RenderText(
     glEnable(GL_DEPTH_TEST);
 }
 
-void OpenGLRenderer::RenderTextRaw(
+void OpenGL::RenderTextRaw(
     const std::string& text,
-    const float x,
-    const float y,
-    const float scale,
+    const Vector2 position,
+    const Vector2 scale,
     const Vector3 color
 ) {
-    RenderText(*textShader, text, x, y, scale, color);
+    RenderText(*textShader, text, position.x, position.y, scale, color);
+}
+
+void OpenGL::RenderUIText(
+    const ComponentUIText& text,
+    const ComponentUITransform& transform
+) {
+    constexpr float fontPixelSize = 48.0f;
+    constexpr float padding = 8.0f;
+    constexpr float fontScale = 1.0f;
+
+    const Vector2 textPosition = {
+        transform.resolvedPosition.x + padding,
+        transform.resolvedPosition.y + padding + fontPixelSize * fontScale
+    };
+
+    RenderTextRaw(
+        text.text,
+        textPosition,
+        {fontScale, fontScale},
+        {255.0f, 255.0f, 255.0f}
+    );
 }

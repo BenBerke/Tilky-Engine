@@ -2,12 +2,13 @@
 // Created by berke on 5/1/2026.
 //
 
-#include "Headers/Runtime/Renderer/OpenGL/OpenGLRenderer.hpp"
+#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
-void OpenGLRenderer::DrawUIRectangle(
+void OpenGL::DrawUIRectangle(
     const Vector2& position,
     const Vector2& size,
     const Vector4& color,
+    const float rotation,
     const int textureIndex
 ) const {
     using namespace OpenGLRendererInternal;
@@ -22,8 +23,8 @@ void OpenGLRenderer::DrawUIRectangle(
 
     glUniform2f(
         glGetUniformLocation(uiShader->ID, "uScreenSize"),
-        static_cast<float>(SCREEN_WIDTH),
-        static_cast<float>(SCREEN_HEIGHT)
+        static_cast<float>(screenWidth),
+        static_cast<float>(screenHeight)
     );
 
     glUniform2f(
@@ -46,9 +47,13 @@ void OpenGLRenderer::DrawUIRectangle(
         color.w / 255.0f
     );
 
-    const bool useTexture =
-        textureIndex >= 0 &&
-        textureIndex < GetTextureCount();
+    glUniform1f(
+        glGetUniformLocation(uiShader->ID, "rotation"),
+        static_cast<GLfloat>(rotation * (3.14159265358979323846 / 180.f))
+    );
+
+
+    const bool useTexture = textureIndex >= 0 && textureIndex < static_cast<int>(textureRegions.size());
 
     glUniform1i(
         glGetUniformLocation(uiShader->ID, "uUseTexture"),
@@ -57,15 +62,27 @@ void OpenGLRenderer::DrawUIRectangle(
 
     if (useTexture) {
         glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
-        glBindTexture(
-            GL_TEXTURE_2D,
-            GetTexture(textureIndex).id
+        glUniform1i(
+            glGetUniformLocation(uiShader->ID, "uAtlas"),
+            0
         );
 
         glUniform1i(
-            glGetUniformLocation(uiShader->ID, "uTexture"),
-            0
+            glGetUniformLocation(uiShader->ID, "uTextureIndex"),
+            textureIndex
+        );
+
+        glUniform1i(
+            glGetUniformLocation(uiShader->ID, "uTextureCount"),
+            static_cast<int>(textureRegions.size())
+        );
+
+        glBindBufferBase(
+            GL_SHADER_STORAGE_BUFFER,
+            5,
+            textureRegionSSBO
         );
     }
 

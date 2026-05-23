@@ -45,6 +45,7 @@ struct Level {
 
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;
+    ComponentStorage<ComponentUIText> ui_texts;
 
     Entity& CreateEntity(bool uiEntity) {
         Entity entity;

@@ -29,8 +29,14 @@ namespace MapEditorInternal {
                     static constexpr bool isUIEntity = true;
                     selectedEntity = level.CreateEntity(isUIEntity); // This gives the entity ComponentUITransform
 
-                    auto *t = selectedEntity.GetComponent<ComponentUITransform>();
+                    auto* t = selectedEntity.GetComponent<ComponentUITransform>();
+
                     if (t != nullptr) {
+                        t->anchorMin = {0.0f, 0.0f};
+                        t->anchorMax = {0.0f, 0.0f};
+
+                        t->pivot = {0.0f, 0.0f};
+
                         t->position = mouseScreen;
                         t->scale = {15.0f, 15.0f};
                     }
@@ -39,8 +45,11 @@ namespace MapEditorInternal {
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
-                if (holdingEntity && currentMode == MODE_ENTITY)
-                    selectedEntity.GetComponent<ComponentTransform>()->position = mouseScreen;
+                if (holdingEntity) {
+                    if (auto* t = selectedEntity.GetComponent<ComponentUITransform>()) {
+                        t->position += InputManager::GetMouseDelta();
+                    }
+                }
             }
             if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
                 holdingEntity = false;

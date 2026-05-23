@@ -8,6 +8,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
 
+#include "Headers/UISystem.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Objects/Entity.hpp"
@@ -23,6 +24,7 @@ namespace Editor {
         using namespace MapEditorInternal;
 
         quit = false;
+        play = false;
         shutdown = false;
 
         editingSector = false;
@@ -204,8 +206,13 @@ namespace Editor {
         }
         else if (currentState == STATE_UI) {
             HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+
+            Level& level = LevelManager::CurrentLevel();
+            UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
+
             DrawUIEditorUI();
             DrawEntities_UI();
+            DrawUIImages();
         }
 
         ImGui::Render();
@@ -218,6 +225,10 @@ namespace Editor {
 
     bool QuitRequested() {
         return MapEditorInternal::quit  || InputManager::QuitRequested();
+    }
+
+    bool PlayRequested() {
+        return MapEditorInternal::quit  || MapEditorInternal::play;
     }
 
     bool ShutdownRequested() {

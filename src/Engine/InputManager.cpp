@@ -29,6 +29,8 @@ namespace InputManager {
 
     void BeginFrame() {
         mouseWheelScrollAmount = 0.0f;
+        quitRequested = false;
+
         // First time setup
         if (!keyboardState) {
             SDL_PumpEvents();
@@ -72,10 +74,7 @@ namespace InputManager {
 
             mouseState = SDL_GetRelativeMouseState(&dx, &dy);
 
-            mouseDelta = {
-                dx,
-                dy
-            };
+            mouseDelta = {dx, dy};
         }
         else {
             mouseDelta = {

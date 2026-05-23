@@ -240,11 +240,15 @@ namespace {
             });
         }
 
-        for (const ComponentUITransform &c: level.ui_transforms.components) {
+        for (const ComponentUITransform &c : level.ui_transforms.components) {
             componentsJson["uiTransforms"].push_back({
                 {"ownerID", c.ownerID},
+                {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
+                {"anchorMax", {c.anchorMax.x, c.anchorMax.y}},
+                {"pivot", {c.pivot.x, c.pivot.y}},
                 {"position", {c.position.x, c.position.y}},
-                {"scale", {c.scale.x, c.scale.y}}
+                {"scale", {c.scale.x, c.scale.y}},
+                {"rotation", c.rotation}
             });
         }
 
@@ -252,6 +256,13 @@ namespace {
             componentsJson["uiSprites"].push_back({
                 {"ownerID", c.ownerID},
                 {"textureIndex", c.textureIndex},
+            });
+        }
+
+        for (const ComponentUIText &c: level.ui_texts.components) {
+            componentsJson["uiTexts"].push_back({
+                {"ownerID", c.ownerID},
+                {"text", c.text},
             });
         }
 
@@ -539,6 +550,29 @@ namespace {
 
                 ComponentUITransform& c = level.ui_transforms.Add(ownerID);
 
+                // New Fields
+                if (transformJson.contains("anchorMin")) {
+                    c.anchorMin = {
+                        transformJson["anchorMin"][0].get<float>(),
+                        transformJson["anchorMin"][1].get<float>()
+                    };
+                }
+
+                if (transformJson.contains("anchorMax")) {
+                    c.anchorMax = {
+                        transformJson["anchorMax"][0].get<float>(),
+                        transformJson["anchorMax"][1].get<float>()
+                    };
+                }
+
+                if (transformJson.contains("pivot")) {
+                    c.pivot = {
+                        transformJson["pivot"][0].get<float>(),
+                        transformJson["pivot"][1].get<float>()
+                    };
+                }
+
+                // Existing Fields
                 if (transformJson.contains("position")) {
                     c.position = {
                         transformJson["position"][0].get<float>(),
@@ -552,6 +586,10 @@ namespace {
                         transformJson["scale"][1].get<float>()
                     };
                 }
+
+                if (transformJson.contains("rotation")) {
+                    c.rotation = transformJson["rotation"].get<float>();
+                }
             }
         }
 
@@ -564,6 +602,18 @@ namespace {
                 ComponentUISprite& c = level.ui_sprites.Add(ownerID);
 
                 c.textureIndex = spriteJson.value("textureIndex", -1);
+            }
+        }
+
+        if (componentsJson.contains("uiTexts")) {
+            for (const json &textJson : componentsJson["uiTexts"]) {
+                const EntityID ownerID = textJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentUIText& c = level.ui_texts.Add(ownerID);
+
+                c.text = textJson.value("text", "");
             }
         }
 

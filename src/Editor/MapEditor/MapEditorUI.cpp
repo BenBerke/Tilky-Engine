@@ -861,6 +861,13 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 SDL_Log("%s", Editor::currentMap.c_str());
                 quit = true;
+                play = true;
+            }
+        }
+        if (ImGui::Button(Get("editor.save_and_quit").c_str())) {
+            if (Save(Editor::currentMap)) {
+                SDL_Log("%s", Editor::currentMap.c_str());
+                quit = true;
             }
         }
 
