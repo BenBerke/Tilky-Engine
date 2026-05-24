@@ -6,7 +6,7 @@
 
 #include "Headers/Editor/Editor.hpp"
 
-#include "Headers/Objects/Player.hpp"
+#include "../../Headers/Runtime/PlayerControllerSystem.hpp"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>

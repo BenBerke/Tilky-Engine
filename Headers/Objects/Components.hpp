@@ -13,6 +13,7 @@
 #include "../Objects/Sector.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "EntityTypes.hpp"
+#include "Headers/Math/Matrix/Matrix4.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
@@ -20,10 +21,11 @@
 enum ComponentType {
     CMP_TRANSFORM,
     CMP_SPRITE,
-    CMP_PLAYER_SPAWN,
     CMP_DECAL,
     CMP_AUDIO_SOURCE,
     CMP_SCRIPT,
+    CMP_PLAYER_CONTROLLER,
+    CMP_CAMERA,
 
     CMP_NORMAL_COUNT,
 
@@ -67,6 +69,62 @@ struct ComponentUITransform {
 };
 
 // endregion
+struct ComponentPlayerController {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    // Physical player/camera-body position.
+    // x = world/map X
+    // y = world eye height
+    // z = world/map Y
+
+    bool isActive = false;
+
+    // Movement velocity.
+    Vector3 velocity = {0.0f, 0.0f, 0.0f};
+
+    float speed = 46.0f;
+    float runningSpeed = 90.0f;
+    float size = 1.0f;
+
+    // Eye height above the current floor.
+    float eyeHeight = 12.0f;
+
+    float stepSize = 8.0f;
+    float bodySize = 10.0f;
+
+    int currentSector = -1;
+    float currentSpeed = 0.0f;
+    float currentEyeHeight = 0.0f;
+    int currentFloor = 0;
+
+    float friction = 0.8f;
+    float sensitivityX = .5f, sensitivityY = .5f;
+
+    bool noClip = false;
+};
+
+struct ComponentCamera {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    bool isActive = true;
+
+    // yaw = left/right rotation.
+    float yaw = 0.0f;
+
+    // pitch = up/down rotation.
+    float pitch = 0.0f;
+
+    Vector3 forward = {0.0f, 0.0f, 1.0f};
+    Vector3 target = {0.0f, 0.0f, 1.0f};
+
+    Matrix4 view = Matrix4::Identity();
+    Matrix4 projection = Matrix4::Identity();
+
+    float fov = 90.0f;
+    float aspectRatio = 1680.0f / 960.0f;
+    float nearPlane = 0.1f;
+    float farPlane = 10000.0f;
+};
 
 struct ComponentScript {
     EntityID ownerID = static_cast<EntityID>(-1);
@@ -93,7 +151,7 @@ struct ComponentAudioSource {
     float rollOffFactor = 1.0f;       // How fast the sound fades (1.0 is "real")
 
     // Sound Cone (Directional audio behavior)
-    float innerConeAngle = 360.0f;    // Inside this angle, sound is full volume
+    float innerConeAngle = 360.0f;    // Inside this yaw, sound is full volume
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
@@ -124,7 +182,7 @@ struct ComponentAudioSource {
 struct ComponentTransform {
     EntityID ownerID = -1;
 
-    Vector2 position = {.0f, .0f};
+    Vector3 position = {.0f, .0f, .0f};
     Vector2 forward = {1.0f, .0f};
     int floor = 0;
     Vector2 scale = {32.0f, 32.0f};
@@ -152,7 +210,7 @@ struct ComponentTransform {
     void UpdateObjectSector(const std::vector<Sector>& sectors) {
         const int newSector = MapQueries::FindSectorContainingPoint(
             sectors,
-            this->position
+            {this->position.x, this->position.z}
         );
 
         if (newSector == -1) {
@@ -176,10 +234,6 @@ struct ComponentSprite {
     EntityID ownerID = -1;
 
     int textureIndex;
-};
-
-struct ComponentPlayerSpawn {
-    EntityID ownerID = -1;
 };
 
 // MUST have a sprite component to work properly

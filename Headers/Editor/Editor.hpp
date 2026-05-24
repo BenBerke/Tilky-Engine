@@ -13,7 +13,7 @@ struct Level;
 using EntityID = uint32_t;
 
 namespace Editor {
-    extern Vector2 playerStartPos;
+    extern Vector3 playerStartPos;
     extern int backgroundTextureIndex;
 
     extern std::vector<std::string> maps;

@@ -44,7 +44,7 @@ void OpenGL::BuildGpuDecals() {
         const Vector2 wallDir = {wallVector.x / wallLength, wallVector.y / wallLength};
 
         if (decalComponent.horizontalPos < 0.0f) {
-            const Vector2 toObject = transform->position - wall.start;
+            const Vector2 toObject = transform->position.ToVector2() - wall.start;
 
             float t =
                 (toObject.x * wallVector.x + toObject.y * wallVector.y) /

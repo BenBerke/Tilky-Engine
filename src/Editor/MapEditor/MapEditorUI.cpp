@@ -21,7 +21,7 @@
 
 namespace Editor {
     void RefreshLevelSoundsFromFolder() {
-        Level& level = LevelManager::CurrentLevel();
+        Level &level = LevelManager::CurrentLevel();
         level.sounds.clear();
 
         const std::filesystem::path soundsPath = ProjectManager::GetSoundsPath();
@@ -37,7 +37,7 @@ namespace Editor {
             return;
         }
 
-        for (const auto& entry : std::filesystem::directory_iterator(soundsPath)) {
+        for (const auto &entry: std::filesystem::directory_iterator(soundsPath)) {
             if (!entry.is_regular_file()) {
                 continue;
             }
@@ -60,7 +60,7 @@ namespace Editor {
             level.sounds.push_back(sound);
         }
 
-        std::ranges::sort(level.sounds, [](const Sound& a, const Sound& b) {
+        std::ranges::sort(level.sounds, [](const Sound &a, const Sound &b) {
             return a.fileName < b.fileName;
         });
 
@@ -81,7 +81,7 @@ namespace {
     }
 
     void DrawTextureCategory() {
-        const Level& level = LevelManager::CurrentLevel();
+        const Level &level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_textures").c_str())) {
             EditorTextureCache::RefreshLevelTexturesFromFolder();
@@ -98,7 +98,7 @@ namespace {
     }
 
     void DrawSoundCategory() {
-        const Level& level = LevelManager::CurrentLevel();
+        const Level &level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
             Editor::RefreshLevelSoundsFromFolder();
@@ -121,16 +121,12 @@ namespace {
 
         ImGui::Begin(Get("editor.world_settings").c_str());
 
-        if (ImGui::SliderFloat(
+        ImGui::SliderFloat(
             Get("settings.audio.master_gain").c_str(),
             &settings.masterGain,
             0.0f,
             2.0f
-        )) {
-            // Only call this in runtime if OpenAL is active.
-            // In the editor, just changing the level value is enough.
-            // SoundManager::SetListenerGain(settings.masterGain);
-        }
+        );
 
         ImGui::Separator();
         ImGui::TextDisabled("%s", Get("settings.audio.global_physics_header").c_str());
@@ -161,7 +157,7 @@ namespace {
             Get("settings.audio.distance_model.none")
         };
 
-        const char* models[] = {
+        const char *models[] = {
             modelLabels[0].c_str(),
             modelLabels[1].c_str(),
             modelLabels[2].c_str(),
@@ -208,9 +204,7 @@ namespace {
 
         PutSpace(5);
 
-        int bgTextureIndex = Editor::backgroundTextureIndex;
-        ImGui::InputInt(Get("editor.background_texture").c_str(), &bgTextureIndex);
-        Editor::backgroundTextureIndex = bgTextureIndex;
+        ImGui::InputInt(Get("editor.background_texture").c_str(), &Editor::backgroundTextureIndex);
 
         ImGui::End();
     }
@@ -232,7 +226,7 @@ namespace {
             }
         }
 
-        auto GetModeName = [](const int mode) -> std::string  {
+        auto GetModeName = [](const int mode) -> std::string {
             switch (mode) {
                 case MODE_DOT:
                     return Get("mode.dot");
@@ -260,8 +254,7 @@ namespace {
         if (selectedSector < 0 ||
             selectedSector >= static_cast<int>(level.sectors.size())) {
             editingSector = false;
-        }
-        else {
+        } else {
             ImGui::Begin(Get("sector.title").c_str(), &editingSector);
 
             auto &sector = level.sectors[selectedSector];
@@ -319,11 +312,10 @@ namespace {
         if (selectedWall < 0 ||
             selectedWall >= static_cast<int>(level.walls.size())) {
             editingWall = false;
-        }
-        else {
+        } else {
             ImGui::Begin(Get("wall.title").c_str(), &editingWall);
 
-            auto& wall = level.walls[selectedWall];
+            auto &wall = level.walls[selectedWall];
 
             Vector4 color = wall.color;
 
@@ -376,8 +368,7 @@ namespace {
             editingEntity = false;
             editingComponent = false;
             selectedComponent = -1;
-        }
-        else {
+        } else {
             Entity &entity = *entityPtr;
 
             ImGui::Begin(Get("entity.title").c_str(), &editingEntity);
@@ -400,9 +391,10 @@ namespace {
                 componentNames[CMP_TRANSFORM] = Get("component.transform");
                 componentNames[CMP_SPRITE] = Get("component.sprite");
                 componentNames[CMP_DECAL] = Get("component.decal");
-                componentNames[CMP_PLAYER_SPAWN] = Get("component.player_spawn");
                 componentNames[CMP_AUDIO_SOURCE] = Get("component.audio_source");
                 componentNames[CMP_SCRIPT] = Get("component.script");
+                componentNames[CMP_PLAYER_CONTROLLER] = Get("component.player_controller");
+                componentNames[CMP_CAMERA] = Get("component.camera");
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
                     for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
@@ -429,12 +421,14 @@ namespace {
                         entity.AddComponent<ComponentSprite>();
                     else if (componentToAdd == CMP_DECAL && !entity.HasComponent<ComponentDecal>())
                         entity.AddComponent<ComponentDecal>();
-                    else if (componentToAdd == CMP_PLAYER_SPAWN && !entity.HasComponent<ComponentPlayerSpawn>())
-                        entity.AddComponent<ComponentPlayerSpawn>();
                     else if (componentToAdd == CMP_AUDIO_SOURCE && !entity.HasComponent<ComponentAudioSource>())
                         entity.AddComponent<ComponentAudioSource>();
                     else if (componentToAdd == CMP_SCRIPT && !entity.HasComponent<ComponentScript>())
                         entity.AddComponent<ComponentScript>();
+                    else if (componentToAdd == CMP_PLAYER_CONTROLLER && !entity.HasComponent<ComponentPlayerController>())
+                        entity.AddComponent<ComponentPlayerController>();
+                    else if (componentToAdd == CMP_CAMERA && !entity.HasComponent<ComponentCamera>())
+                        entity.AddComponent<ComponentCamera>();
 
                     addingComponent = false;
                     componentToAdd = CMP_SPRITE;
@@ -470,21 +464,18 @@ namespace {
 
             if (entity.HasComponent<ComponentTransform>())
                 DrawComponentRow(Get("component.transform").c_str(), CMP_TRANSFORM);
-
             if (entity.HasComponent<ComponentSprite>())
                 DrawComponentRow(Get("component.sprite").c_str(), CMP_SPRITE);
-
             if (entity.HasComponent<ComponentDecal>())
                 DrawComponentRow(Get("component.decal").c_str(), CMP_DECAL);
-
-            if (entity.HasComponent<ComponentPlayerSpawn>())
-                DrawComponentRow(Get("component.player_spawn").c_str(), CMP_PLAYER_SPAWN);
-
             if (entity.HasComponent<ComponentAudioSource>())
                 DrawComponentRow(Get("component.audio_source").c_str(), CMP_AUDIO_SOURCE);
-
             if (entity.HasComponent<ComponentScript>())
                 DrawComponentRow(Get("component.script").c_str(), CMP_SCRIPT);
+            if (entity.HasComponent<ComponentPlayerController>())
+                DrawComponentRow(Get("component.player_controller").c_str(), CMP_PLAYER_CONTROLLER);
+            if (entity.HasComponent<ComponentCamera>())
+                DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
 
             PutSpace(2);
 
@@ -543,14 +534,17 @@ namespace {
                 case CMP_DECAL:
                     componentName = Get("component.decal");
                     break;
-                case CMP_PLAYER_SPAWN:
-                    componentName = Get("component.player_spawn");
-                    break;
                 case CMP_AUDIO_SOURCE:
                     componentName = Get("component.audio_source");
                     break;
                 case CMP_SCRIPT:
                     componentName = Get("component.script");
+                    break;
+                case CMP_PLAYER_CONTROLLER:
+                    componentName = Get("component.player_controller");
+                    break;
+                case CMP_CAMERA:
+                    componentName = Get("component.camera");
                     break;
                 default:
                     componentName = Get("bug.unknown");
@@ -568,30 +562,22 @@ namespace {
                 if (c == nullptr) {
                     ImGui::Text("Transform component missing");
                 } else {
-                    float positionValues[2] = {c->position.x, c->position.y};
-                    float scaleValues[2] = {c->scale.x, c->scale.y};
-                    int floor = c->floor;
-
                     ImGui::Text("%s", Get("component.transform.position").c_str());
                     ImGui::Text("X    Y");
                     ImGui::SetNextItemWidth(220.0f);
-                    ImGui::InputFloat2("##position", positionValues);
+                    ImGui::InputFloat2("##position", &c->position.x);
 
                     ImGui::Spacing();
 
                     ImGui::Text("%s", Get("component.transform.scale").c_str());
                     ImGui::Text("X    Y");
                     ImGui::SetNextItemWidth(220.0f);
-                    ImGui::InputFloat2("##scale", scaleValues);
+                    ImGui::InputFloat2("##scale", &c->scale.x);
 
                     ImGui::Spacing();
 
                     ImGui::SetNextItemWidth(120.0f);
-                    ImGui::InputInt(Get("component.transform.floor").c_str(), &floor);
-
-                    c->position = {positionValues[0], positionValues[1]};
-                    c->scale = {scaleValues[0], scaleValues[1]};
-                    c->floor = floor;
+                    ImGui::InputInt(Get("component.transform.floor").c_str(), &c->floor);
 
                     ImGui::Spacing();
 
@@ -608,12 +594,8 @@ namespace {
                 if (c == nullptr) {
                     ImGui::Text("Sprite component missing");
                 } else {
-                    int textureIndex = c->textureIndex;
-
                     ImGui::SetNextItemWidth(120.0f);
-                    ImGui::InputInt(Get("component.sprite.texture_index").c_str(), &textureIndex);
-
-                    c->textureIndex = textureIndex;
+                    ImGui::InputInt(Get("component.sprite.texture_index").c_str(), &c->textureIndex);
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
                         entity.RemoveComponent<ComponentSprite>();
@@ -622,44 +604,19 @@ namespace {
                     }
                 }
             }
-            else if (selectedComponent == CMP_PLAYER_SPAWN) {
-                ImGui::Text("%s", Get("component.player_spawn").c_str());
-
-                if (ImGui::Button(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentPlayerSpawn>();
-                    editingComponent = false;
-                    selectedComponent = -1;
-                }
-            }
             else if (selectedComponent == CMP_DECAL) {
                 auto *c = entity.GetComponent<ComponentDecal>();
 
                 if (c == nullptr) {
                     ImGui::Text("Decal component missing");
                 } else {
-                    int wallIndex = c->wallIndex;
-                    float verticalPos = c->verticalPos;
-                    float horizontalPos = c->horizontalPos;
-                    float wallNormalOffset = c->wallNormalOffset;
-                    float wallT = c->wallT;
-                    float baseHeight = c->baseHeight;
-                    bool absHeight = c->absHeight;
-
-                    ImGui::InputInt(Get("component.decal.attached_wall").c_str(), &wallIndex);
-                    ImGui::InputFloat(Get("component.decal.wall_offset").c_str(), &horizontalPos);
-                    ImGui::InputFloat(Get("component.decal.wall_normal_offset").c_str(), &wallNormalOffset);
-                    ImGui::InputFloat(Get("component.decal.z_offset").c_str(), &verticalPos);
-                    ImGui::InputFloat("Wall T", &wallT);
-                    ImGui::InputFloat("Base Height", &baseHeight);
-                    ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &absHeight);
-
-                    c->wallIndex = wallIndex;
-                    c->verticalPos = verticalPos;
-                    c->horizontalPos = horizontalPos;
-                    c->wallNormalOffset = wallNormalOffset;
-                    c->wallT = wallT;
-                    c->baseHeight = baseHeight;
-                    c->absHeight = absHeight;
+                    ImGui::InputInt(Get("component.decal.attached_wall").c_str(), &c->wallIndex);
+                    ImGui::InputFloat(Get("component.decal.wall_offset").c_str(), &c->horizontalPos);
+                    ImGui::InputFloat(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset);
+                    ImGui::InputFloat(Get("component.decal.z_offset").c_str(), &c->verticalPos);
+                    ImGui::InputFloat("Wall T", &c->wallT);
+                    ImGui::InputFloat("Base Height", &c->baseHeight);
+                    ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &c->absHeight);
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
                         entity.RemoveComponent<ComponentDecal>();
@@ -674,57 +631,31 @@ namespace {
                 if (c == nullptr) {
                     ImGui::Text("Audio component missing");
                 } else {
-                    int soundIndex = c->soundIndex;
-                    float pitch = c->pitch;
-                    float gain = c->gain;
-                    bool looping = c->looping;
-                    bool playOnStart = c->playOnStart;
-
-                    // New local variables for the UI
-                    float refDist = c->referenceDistance;
-                    float maxDist = c->maxDistance;
-                    float rolloff = c->rollOffFactor;
-                    float innerAngle = c->innerConeAngle;
-                    float outerAngle = c->outerConeAngle;
-                    float outerGain = c->outerGain;
-
-                    ImGui::InputInt("Sound Index", &soundIndex);
-                    ImGui::InputFloat(Get("component.audio_source.pitch").c_str(), &pitch);
-                    ImGui::InputFloat(Get("component.audio_source.gain").c_str(), &gain);
-                    ImGui::Checkbox(Get("component.audio_source.looping").c_str(), &looping);
-                    ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &playOnStart);
+                    ImGui::InputInt("Sound Index", &c->soundIndex);
+                    ImGui::InputFloat(Get("component.audio_source.pitch").c_str(), &c->pitch);
+                    ImGui::InputFloat(Get("component.audio_source.gain").c_str(), &c->gain);
+                    ImGui::Checkbox(Get("component.audio_source.looping").c_str(), &c->looping);
+                    ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &c->playOnStart);
 
                     ImGui::Separator();
                     ImGui::TextDisabled("%s", Get("component.audio_source.attenuation_header").c_str());
 
-                    ImGui::DragFloat(Get("component.audio_source.ref_distance").c_str(), &refDist, 0.1f, 0.0f,
-                                     1000.0f);
-                    ImGui::DragFloat(Get("component.audio_source.max_distance").c_str(), &maxDist, 1.0f, 0.0f,
+                    ImGui::DragFloat(Get("component.audio_source.ref_distance").c_str(), &c->referenceDistance, 0.1f,
+                                     0.0f, 1000.0f);
+                    ImGui::DragFloat(Get("component.audio_source.max_distance").c_str(), &c->maxDistance, 1.0f, 0.0f,
                                      10000.0f);
-                    ImGui::DragFloat(Get("component.audio_source.rolloff").c_str(), &rolloff, 0.01f, 0.0f, 10.0f);
+                    ImGui::DragFloat(Get("component.audio_source.rolloff").c_str(), &c->rollOffFactor, 0.01f, 0.0f,
+                                     10.0f);
 
                     ImGui::Separator();
                     ImGui::TextDisabled("%s", Get("component.audio_source.cone_header").c_str());
 
-                    ImGui::DragFloat(Get("component.audio_source.inner_angle").c_str(), &innerAngle, 1.0f, 0.0f,
+                    ImGui::DragFloat(Get("component.audio_source.inner_angle").c_str(), &c->innerConeAngle, 1.0f, 0.0f,
                                      360.0f);
-                    ImGui::DragFloat(Get("component.audio_source.outer_angle").c_str(), &outerAngle, 1.0f, 0.0f,
+                    ImGui::DragFloat(Get("component.audio_source.outer_angle").c_str(), &c->outerConeAngle, 1.0f, 0.0f,
                                      360.0f);
-                    ImGui::DragFloat(Get("component.audio_source.outer_gain").c_str(), &outerGain, 0.01f, 0.0f,
+                    ImGui::DragFloat(Get("component.audio_source.outer_gain").c_str(), &c->outerGain, 0.01f, 0.0f,
                                      1.0f);
-
-                    c->soundIndex = soundIndex;
-                    c->pitch = pitch;
-                    c->gain = gain;
-                    c->looping = looping;
-                    c->playOnStart = playOnStart;
-
-                    c->referenceDistance = refDist;
-                    c->maxDistance = maxDist;
-                    c->rollOffFactor = rolloff;
-                    c->innerConeAngle = innerAngle;
-                    c->outerConeAngle = outerAngle;
-                    c->outerGain = outerGain;
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
                         entity.RemoveComponent<ComponentAudioSource>();
@@ -739,17 +670,63 @@ namespace {
                 if (c == nullptr) {
                     ImGui::Text("Script component missing");
                 } else {
-                    std::string scriptFile = c->fileName;
-                    bool enabled = c->enabled;
-
-                    ImGui::InputText(Get("component.script.file_name").c_str(), &scriptFile);
-                    ImGui::Checkbox(Get("component.script.enabled").c_str(), &enabled);
-
-                    c->fileName = scriptFile;
-                    c->enabled = enabled;
+                    ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
+                    ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
 
                     if (ImGui::Button(Get("common.delete").c_str())) {
                         entity.RemoveComponent<ComponentScript>();
+                        editingComponent = false;
+                        selectedComponent = -1;
+                    }
+                }
+            }
+            else if (selectedComponent == CMP_PLAYER_CONTROLLER) {
+                auto *c = entity.GetComponent<ComponentPlayerController>();
+
+                if (c == nullptr) {
+                    ImGui::Text("Player Controller component missing");
+                } else {
+                    ImGui::InputFloat(Get("component.player_controller.speed").c_str(), &c->speed);
+                    ImGui::InputFloat(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed);
+                    ImGui::InputFloat(Get("component.player_controller.size").c_str(), &c->size);
+                    ImGui::InputFloat(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight);
+                    ImGui::InputFloat(Get("component.player_controller.step_size").c_str(), &c->stepSize);
+                    ImGui::InputFloat(Get("component.player_controller.body_size").c_str(), &c->bodySize);
+
+                    ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
+                    ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(), &c->sensitivityX,
+                                       0.001f, 2.0f);
+                    ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(), &c->sensitivityY,
+                                       0.001f, 2.0f);
+
+                    ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(), &c->noClip);
+                    ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive);
+
+                    ImGui::Separator();
+
+                    if (ImGui::Button(Get("common.delete").c_str())) {
+                        entity.RemoveComponent<ComponentPlayerController>();
+                        editingComponent = false;
+                        selectedComponent = -1;
+                    }
+                }
+            }
+            else if (selectedComponent == CMP_CAMERA) {
+                auto *c = entity.GetComponent<ComponentCamera>();
+
+                if (c == nullptr) {
+                    ImGui::Text("Camera component missing");
+                } else {
+                    ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
+                    ImGui::InputFloat(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio);
+                    ImGui::InputFloat(Get("component.camera.near_plane").c_str(), &c->nearPlane);
+                    ImGui::InputFloat(Get("component.camera.far_plane").c_str(), &c->farPlane);
+                    ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);
+
+                    ImGui::Separator();
+
+                    if (ImGui::Button(Get("common.delete").c_str())) {
+                        entity.RemoveComponent<ComponentCamera>();
                         editingComponent = false;
                         selectedComponent = -1;
                     }
@@ -776,7 +753,7 @@ namespace MapEditorInternal {
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
     }
 
-    void QueueLevelLoad(const std::string& levelName) {
+    void QueueLevelLoad(const std::string &levelName) {
         pendingLevelToLoad = levelName;
         spdlog::info("Queued level load: {}", levelName);
     }
@@ -813,8 +790,6 @@ namespace MapEditorInternal {
     }
 
     void DrawEditorUI() {
-        Level& level = LevelManager::CurrentLevel();
-
         ImGui::Begin(Get("editor.title").c_str());
 
         DrawMode();
@@ -915,7 +890,7 @@ namespace MapEditorInternal {
 
             if (ImGui::Button(Get("levels.delete").c_str())) {
                 const std::filesystem::path path =
-                    ProjectManager::GetLevelsPath() / (cleanName + ".json");
+                        ProjectManager::GetLevelsPath() / (cleanName + ".json");
 
                 try {
                     if (std::filesystem::remove(path)) {
@@ -926,11 +901,8 @@ namespace MapEditorInternal {
                         }
 
                         UpdateLevels();
-                    }
-                    else spdlog::error("Failed to delete level, file may not exist: {}", path.string());
-
-                }
-                catch (const std::filesystem::filesystem_error& e) {
+                    } else spdlog::error("Failed to delete level, file may not exist: {}", path.string());
+                } catch (const std::filesystem::filesystem_error &e) {
                     spdlog::error("Failed to delete level: {}", e.what());
                 }
             }

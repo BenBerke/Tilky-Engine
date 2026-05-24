@@ -333,8 +333,6 @@ namespace LauncherApp {
                         std::cerr << "JSON format error in " << foundPath.filename() << ": " << e.what() << std::endl;
                     }
                 }
-
-                break;
             }
         }
         if (!projectToDelete.empty()) {

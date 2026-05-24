@@ -120,7 +120,7 @@ namespace MapEditorInternal {
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) {
-                            t->position = mouseWorld;
+                            t->position = {mouseWorld.x, t->position.y, mouseWorld.y};
                             t->floor = currentFloor;
                         }
                     }
@@ -142,7 +142,8 @@ namespace MapEditorInternal {
                     DrawThickLine(renderer, startScreen, endScreen, 5.0f);
                 }
                 else if (holdingEntity && currentMode == MODE_ENTITY) {
-                    selectedEntity.GetComponent<ComponentTransform>()->position = mouseWorld;
+                    selectedEntity.GetComponent<ComponentTransform>()->position =
+                        {mouseWorld.x, selectedEntity.GetComponent<ComponentTransform>()->position.y, mouseWorld.y};
                 }
             }
 

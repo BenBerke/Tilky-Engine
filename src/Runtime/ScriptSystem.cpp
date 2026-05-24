@@ -234,6 +234,11 @@ namespace {
             "y", sol::property(
                 &ScriptTransform::GetY,
                 &ScriptTransform::SetY
+            ),
+
+            "z", sol::property(
+                &ScriptTransform::GetZ,
+                &ScriptTransform::SetZ
             )
         );
 

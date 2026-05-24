@@ -163,9 +163,12 @@ void renderDecal() {
 void renderSprite() {
     Sprite sprite = sprites[gl_InstanceID];
 
-    vec2 spriteWorldPos = sprite.positionSize.xy;
+    // positionSize.xyz is now the real 3D world position:
+    // x = world x
+    // y = vertical height
+    // z = world z
+    vec3 spriteWorldPos = sprite.positionSize.xyz;
 
-    float bottomHeight = sprite.positionSize.z;
     float spriteHeight = sprite.positionSize.w;
 
     float spriteWidth = sprite.data.x;
@@ -198,11 +201,7 @@ void renderSprite() {
         uv = vec2(1.0, 0.0);
     }
 
-    vec3 bottomCenter = vec3(
-    spriteWorldPos.x,
-    bottomHeight,
-    spriteWorldPos.y
-    );
+    vec3 bottomCenter = spriteWorldPos;
 
     vec3 spriteRight = GetYawOnlySpriteRight();
     vec3 spriteUp = vec3(0.0, 1.0, 0.0);

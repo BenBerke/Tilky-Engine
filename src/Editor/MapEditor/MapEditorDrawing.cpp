@@ -186,7 +186,7 @@ namespace MapEditorInternal {
                 continue;
             }
 
-            const Vector2 screenPos = WorldToScreen(transform->position, cameraPos);
+            const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
 
             const float screenEntitySize = entitySize * editorZoom;
 
@@ -197,10 +197,7 @@ namespace MapEditorInternal {
                 screenEntitySize
             };
 
-            if (level.playerSpawns.Get(entity.id) != nullptr) {
-                SDL_SetRenderDrawColor(renderer, 80, 180, 255, 255);
-            }
-            else if (level.sprites.Get(entity.id) != nullptr) {
+            if (level.sprites.Get(entity.id) != nullptr) {
                 SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
             }
             else if (level.decals.Get(entity.id) != nullptr) {

@@ -54,8 +54,8 @@ namespace MapEditorInternal {
 
         const float entityLeft   = transform.position.x - entityHalfWidth;
         const float entityRight  = transform.position.x + entityHalfWidth;
-        const float entityBottom = transform.position.y - entityHalfHeight;
-        const float entityTop    = transform.position.y + entityHalfHeight;
+        const float entityBottom = transform.position.z - entityHalfHeight;
+        const float entityTop    = transform.position.z + entityHalfHeight;
 
         const float mouseLeft   = mousePosition.x - mouseHalfSize;
         const float mouseRight  = mousePosition.x + mouseHalfSize;

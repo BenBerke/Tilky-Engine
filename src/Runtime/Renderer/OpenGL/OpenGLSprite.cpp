@@ -30,15 +30,23 @@ void OpenGL::BuildGpuSprites() {
             continue;
         }
 
-        const float bottomHeight =
-            transform->GetObjectBottomHeight(level.sectors);
+        /*
+            New Vector3 convention:
+
+            position.x = map/world x
+            position.y = vertical world height
+            position.z = map/world z
+
+            So an object in a sector with floorHeight = 10
+            and position.y = 15 is 5 units above the floor.
+        */
 
         GpuSprite gpuSprite;
 
         gpuSprite.positionSize = {
             transform->position.x,
             transform->position.y,
-            bottomHeight,
+            transform->position.z,
             transform->scale.y
         };
 

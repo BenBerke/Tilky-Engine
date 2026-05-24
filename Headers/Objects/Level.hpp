@@ -4,6 +4,7 @@
 
 #ifndef TILKY_ENGINE_LEVEL_H
 #define TILKY_ENGINE_LEVEL_H
+
 #include <vector>
 #include <string>
 #include <spdlog/spdlog.h>
@@ -11,6 +12,7 @@
 #include "Components.hpp"
 #include "Entity.hpp"
 #include "Loadables.hpp"
+#include "../Runtime/PlayerControllerSystem.hpp"
 #include "../Runtime/Renderer/OpenGL/RendererTexture.hpp"
 
 struct ListenerSettings {
@@ -39,15 +41,36 @@ struct Level {
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;
     ComponentStorage<ComponentDecal> decals;
-    ComponentStorage<ComponentPlayerSpawn> playerSpawns;
     ComponentStorage<ComponentAudioSource> audioSources;
     ComponentStorage<ComponentScript> scripts;
+    ComponentStorage<ComponentPlayerController> playerControllers;
+    ComponentStorage<ComponentCamera> cameras;
 
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;
     ComponentStorage<ComponentUIText> ui_texts;
 
-    Entity& CreateEntity(bool uiEntity) {
+    Entity* GetEntity(const EntityID entityID) {
+        for (Entity& entity : entities) {
+            if (entity.id == entityID) {
+                return &entity;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const Entity* GetEntity(const EntityID entityID) const {
+        for (const Entity& entity : entities) {
+            if (entity.id == entityID) {
+                return &entity;
+            }
+        }
+
+        return nullptr;
+    }
+
+    Entity& CreateEntity(const bool uiEntity) {
         Entity entity;
         entity.id = nextEntityID++;
         entity.name = "Entity";
@@ -57,28 +80,134 @@ struct Level {
 
         Entity& createdEntity = entities.back();
 
-        if (uiEntity) ui_transforms.Add(createdEntity.id);
-        else transforms.Add(createdEntity.id);
+        if (uiEntity) {
+            ui_transforms.Add(createdEntity.id);
+        }
+        else {
+            transforms.Add(createdEntity.id);
+        }
 
         return createdEntity;
     }
-    void DestroyEntity(const EntityID id) {
-        std::erase_if(entities, [id](const Entity& entity) {
-            return entity.id == id;
+
+    void DestroyEntity(const EntityID entityID) {
+        std::erase_if(entities, [entityID](const Entity& entity) {
+            return entity.id == entityID;
         });
 
-        transforms.Remove(id);
-        sprites.Remove(id);
-        decals.Remove(id);
-        playerSpawns.Remove(id);
-        audioSources.Remove(id);
-        scripts.Remove(id);
+        transforms.Remove(entityID);
+        sprites.Remove(entityID);
+        decals.Remove(entityID);
+        audioSources.Remove(entityID);
+        scripts.Remove(entityID);
+        playerControllers.Remove(entityID);
+        cameras.Remove(entityID);
 
-        ui_transforms.Remove(id);
-        ui_sprites.Remove(id);
+        ui_transforms.Remove(entityID);
+        ui_sprites.Remove(entityID);
+        ui_texts.Remove(entityID);
     }
+
     void DestroyEntity(const Entity& entity) {
         DestroyEntity(entity.id);
+    }
+
+    ComponentPlayerController* GetActivePlayerController() {
+        for (ComponentPlayerController& controller : playerControllers.components) {
+            if (controller.isActive) {
+                return &controller;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const ComponentPlayerController* GetActivePlayerController() const {
+        for (const ComponentPlayerController& controller : playerControllers.components) {
+            if (controller.isActive) {
+                return &controller;
+            }
+        }
+
+        return nullptr;
+    }
+
+    ComponentCamera* GetActiveCamera() {
+        for (ComponentCamera& camera : cameras.components) {
+            if (camera.isActive) {
+                return &camera;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const ComponentCamera* GetActiveCamera() const {
+        for (const ComponentCamera& camera : cameras.components) {
+            if (camera.isActive) {
+                return &camera;
+            }
+        }
+
+        return nullptr;
+    }
+
+    ComponentTransform* GetActiveCameraTransform() {
+        ComponentCamera* camera = GetActiveCamera();
+
+        if (camera == nullptr) {
+            return nullptr;
+        }
+
+        return transforms.Get(camera->ownerID);
+    }
+
+    ComponentTransform* GetActivePlayerTransform() {
+        ComponentPlayerController* controller = GetActivePlayerController();
+
+        if (controller == nullptr) {
+            return nullptr;
+        }
+
+        return transforms.Get(controller->ownerID);
+    }
+
+    void SetActiveCamera(const EntityID entityID) {
+        bool found = false;
+
+        for (ComponentCamera& camera : cameras.components) {
+            camera.isActive = camera.ownerID == entityID;
+
+            if (camera.isActive) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            spdlog::warn(
+                "Tried to set active camera to entity {}, but that entity has no camera component",
+                entityID
+            );
+        }
+    }
+
+    void SetActivePlayerController(const EntityID entityID) {
+        bool found = false;
+
+        for (ComponentPlayerController& controller : playerControllers.components) {
+            controller.isActive = controller.ownerID == entityID;
+
+            if (controller.isActive) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            spdlog::warn(
+                "Tried to set active player controller to entity {}, but that entity has no player controller component",
+                entityID
+            );
+        }
     }
 
     void Start() {
@@ -94,11 +223,96 @@ struct Level {
             listenerSettings.speedOfSound,
             static_cast<int>(listenerSettings.distanceModel)
         );
+
+        for (const ComponentCamera& cam : cameras.components) {
+            if (cam.isActive) {
+                //todo support multiple cameras
+                SetActiveCamera(cam.ownerID);
+                break;
+            }
+        }
+
+        ComponentPlayerController* activeController =
+            GetActivePlayerController();
+
+        if (activeController != nullptr) {
+            ComponentTransform* playerTransform =
+                transforms.Get(activeController->ownerID);
+
+            if (playerTransform == nullptr) {
+                spdlog::error(
+                    "Level::Start skipped player controller: entity {} has no transform",
+                    activeController->ownerID
+                );
+            }
+            else {
+                ComponentCamera* activeCamera =
+                    GetActiveCamera();
+
+                if (activeCamera == nullptr) {
+                    spdlog::warn(
+                        "Level::Start skipped player controller: no active camera"
+                    );
+                }
+                else {
+                    PlayerControllerSystem::Start(
+                        *activeController,
+                        *playerTransform,
+                        *activeCamera,
+                        sectors
+                    );
+                }
+            }
+        }
+
+        // Future level start systems will run here.
     }
 
     void Update() {
-        for (Entity& entity : entities) entity.Update();
+        for (Entity& entity : entities) {
+            entity.Update();
+        }
+
+        ComponentPlayerController* activeController =
+            GetActivePlayerController();
+
+        if (activeController != nullptr) {
+            ComponentTransform* playerTransform =
+                transforms.Get(activeController->ownerID);
+
+            if (playerTransform == nullptr) {
+                spdlog::error(
+                    "Level::Update skipped player controller: entity {} has no transform",
+                    activeController->ownerID
+                );
+            }
+            else {
+                ComponentCamera* activeCamera =
+                    GetActiveCamera();
+
+                if (activeCamera == nullptr) {
+                    spdlog::warn(
+                        "Level::Update skipped player controller: no active camera"
+                    );
+                }
+                else {
+                    PlayerControllerSystem::Update(
+                        *activeController,
+                        *playerTransform,
+                        *activeCamera,
+                        walls,
+                        sectors
+                    );
+                }
+            }
+        }
+
+        // Future systems should still run here.
+        // Example:
+        // PhysicsSystem::Update(*this);
+        // AnimationSystem::Update(*this);
+        // TriggerSystem::Update(*this);
     }
 };
 
-#endif //TILKY_ENGINE_LEVEL_H
+#endif // TILKY_ENGINE_LEVEL_H

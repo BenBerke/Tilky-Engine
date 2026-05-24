@@ -6,6 +6,8 @@
 #define TILKY_ENGINE_VECTOR3_H
 #include <cmath>
 
+#include "Vector2.hpp"
+
 struct Vector3{
     float x, y, z;
     Vector3(float x = 0.0f, float y = 0.0f, float z = 0.0f) : x(x), y(y), z(z) {}
@@ -55,6 +57,10 @@ struct Vector3{
     }
     [[nodiscard]] float Dot(const Vector3& other) const{
         return x * other.x + y * other.y + z * other.z;
+    }
+
+    [[nodiscard]] Vector2 ToVector2() const {
+        return (Vector2){x, z};
     }
 };
 

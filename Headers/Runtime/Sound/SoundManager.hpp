@@ -44,10 +44,10 @@ namespace SoundManager {
     // How quickly the sound fades with distance.
     void SetSourceRollOffFactor(const std::string& sourceName, float rollOffFactor);
 
-    // The angle in degrees where the directional sound is at full gain.
+    // The yaw in degrees where the directional sound is at full gain.
     void SetSourceInnerConeAngle(const std::string& sourceName, float innerConeAngle);
 
-    // The angle in degrees where the directional sound reaches outer gain.
+    // The yaw in degrees where the directional sound reaches outer gain.
     void SetSourceOuterConeAngle(const std::string& sourceName, float outerConeAngle);
 
     // The gain used outside the outer cone.

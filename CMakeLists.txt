@@ -145,7 +145,7 @@ set(TILKY_ENGINE_SOURCES
         src/Engine/InputManager.cpp
 
         src/Objects/Entity.cpp
-        src/Objects/Player.cpp
+        src/Runtime/PlayerControllerSystem.cpp
 
         src/Runtime/Renderer/RendererMath.cpp
         src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
@@ -201,6 +201,7 @@ set(TILKY_ENGINE_SOURCES
         Headers/Runtime/Renderer/RendererMath.hpp
         Headers/UISystem.hpp
         src/UISytem.cpp
+        Headers/Runtime/CameraSystem.hpp
 )
 
 # ============================================================

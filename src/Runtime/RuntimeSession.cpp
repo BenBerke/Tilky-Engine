@@ -14,7 +14,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Editor/Editor.hpp"
-#include "Headers/Objects/Player.hpp"
+#include "../../Headers/Runtime/PlayerControllerSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 
@@ -37,18 +37,6 @@ namespace {
             {.5f, .5f},
             Vector3{255.0f, 255.0f, 255.0f}
         );
-        renderer->RenderTextRaw(
-            "NoClip:" + std::to_string(Player::noClip),
-            {210.0f, 0.0f,},
-            {.5f, .5f},
-            Vector3{255.0f, 255.0f, 255.0f}
-        );
-        renderer->RenderTextRaw(
-            "CS:" + std::to_string(Player::currentSector),
-            {400.0f, 0.0f,},
-            {.5f, .5f},
-            Vector3{255.0f, 255.0f, 255.0f}
-        );
     }
 }
 
@@ -61,18 +49,10 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        Player::position = {
-            Editor::playerStartPos.x,
-            0.0f,
-            Editor::playerStartPos.y
-        };
-
         MapQueries::AssignWallsToSectors(
             level.sectors,
             level.walls
         );
-
-        Player::Start(level.sectors);
 
         renderer = std::make_unique<OpenGL>();
 
@@ -139,13 +119,12 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        if (relativeMouseMode) Player::Update(level.walls,level.sectors);
-
         renderer->BeginFrame();
         renderer->Update();
 
         AudioSystem::Update(level);
         ScriptSystem::Update(level);
+        if (relativeMouseMode) level.Update();
 
         RenderDebugText();
 

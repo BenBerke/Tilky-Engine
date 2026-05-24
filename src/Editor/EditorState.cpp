@@ -4,7 +4,7 @@ namespace Editor {
     std::vector<std::string> maps;
     std::string currentMap;
 
-    Vector2 playerStartPos = {0.0f, 0.0f};
+    Vector3 playerStartPos = {0.0f, 0.0f, 0.0f};
     int backgroundTextureIndex = -1;
 }
 

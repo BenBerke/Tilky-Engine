@@ -22,7 +22,7 @@ struct ScriptTransform {
         return level->transforms.Get(ownerID);
     }
 
-    [[nodiscard]] Vector2 GetPosition() const {
+    [[nodiscard]] Vector3 GetPosition() const {
         ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
@@ -32,7 +32,7 @@ struct ScriptTransform {
         return transform->position;
     }
 
-    void SetPosition(const Vector2& position) const {
+    void SetPosition(const Vector3& position) const {
         ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
@@ -80,6 +80,26 @@ struct ScriptTransform {
         }
 
         transform->position.y = y;
+    }
+
+    [[nodiscard]] float GetZ() const {
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return 0.0f;
+        }
+
+        return transform->position.z;
+    }
+
+    void SetZ(const float z) const {
+        ComponentTransform* transform = GetComponent();
+
+        if (transform == nullptr) {
+            return;
+        }
+
+        transform->position.z = z;
     }
 };
 

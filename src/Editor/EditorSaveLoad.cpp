@@ -1,7 +1,6 @@
 #include "EditorInternal.hpp"
 
 #include <vector>
-#include <cstdint>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -157,7 +156,7 @@ namespace {
                 {"dopplerFactor", settings.dopplerFactor},
                 {"speedOfSound", settings.speedOfSound},
                 {"distanceModel", static_cast<int>(settings.distanceModel)}
-            }}
+            }},
         };
     }
 
@@ -167,16 +166,17 @@ namespace {
         componentsJson["transforms"] = json::array();
         componentsJson["sprites"] = json::array();
         componentsJson["decals"] = json::array();
-        componentsJson["playerSpawns"] = json::array();
         componentsJson["audioSources"] = json::array();
         componentsJson["scripts"] = json::array();
         componentsJson["uiTransforms"] = json::array();
         componentsJson["uiSprites"] = json::array();
+        componentsJson["playerControllers"] = json::array();
+        componentsJson["cameras"] = json::array();
 
         for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
                 {"ownerID", c.ownerID},
-                {"position", {c.position.x, c.position.y}},
+                {"position", {c.position.x, c.position.y, c.position.z}},
                 {"sectorIndex", c.sectorIndex},
                 {"floor", c.floor},
                 {"scale", {c.scale.x, c.scale.y}}
@@ -194,24 +194,16 @@ namespace {
             componentsJson["decals"].push_back({
                 {"ownerID", c.ownerID},
                 {"wallIndex", c.wallIndex},
-
                 {"verticalPos", c.verticalPos},
                 {"horizontalPos", c.horizontalPos},
                 {"wallNormalOffset", c.wallNormalOffset},
-
                 {"wallT", c.wallT},
                 {"baseHeight", c.baseHeight},
                 {"absHeight", c.absHeight}
             });
         }
 
-        for (const ComponentPlayerSpawn &c: level.playerSpawns.components) {
-            componentsJson["playerSpawns"].push_back({
-                {"ownerID", c.ownerID}
-            });
-        }
-
-        for (const ComponentAudioSource &c : level.audioSources.components) {
+        for (const ComponentAudioSource &c: level.audioSources.components) {
             componentsJson["audioSources"].push_back({
                 {"ownerID", c.ownerID},
                 {"soundIndex", c.soundIndex},
@@ -219,28 +211,24 @@ namespace {
                 {"gain", c.gain},
                 {"looping", c.looping},
                 {"playOnStart", c.playOnStart},
-
-                // Distance Attenuation
                 {"referenceDistance", c.referenceDistance},
                 {"maxDistance", c.maxDistance},
                 {"rollOffFactor", c.rollOffFactor},
-
-                // Sound Cone
                 {"innerConeAngle", c.innerConeAngle},
                 {"outerConeAngle", c.outerConeAngle},
                 {"outerGain", c.outerGain}
             });
         }
 
-        for (const ComponentScript& c : level.scripts.components) {
+        for (const ComponentScript &c: level.scripts.components) {
             componentsJson["scripts"].push_back({
                 {"ownerID", c.ownerID},
                 {"fileName", std::filesystem::path(c.fileName).stem().string()},
-                   {"enabled", c.enabled},
+                {"enabled", c.enabled},
             });
         }
 
-        for (const ComponentUITransform &c : level.ui_transforms.components) {
+        for (const ComponentUITransform &c: level.ui_transforms.components) {
             componentsJson["uiTransforms"].push_back({
                 {"ownerID", c.ownerID},
                 {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
@@ -263,6 +251,42 @@ namespace {
             componentsJson["uiTexts"].push_back({
                 {"ownerID", c.ownerID},
                 {"text", c.text},
+            });
+        }
+
+        for (const ComponentPlayerController &c: level.playerControllers.components) {
+            componentsJson["playerControllers"].push_back({
+                {"ownerID", c.ownerID},
+                {"isActive", c.isActive},
+                {"velocity", {c.velocity.x, c.velocity.y, c.velocity.z}},
+                {"speed", c.speed},
+                {"runningSpeed", c.runningSpeed},
+                {"size", c.size},
+                {"eyeHeight", c.eyeHeight},
+                {"stepSize", c.stepSize},
+                {"bodySize", c.bodySize},
+                {"currentSector", c.currentSector},
+                {"currentSpeed", c.currentSpeed},
+                {"currentEyeHeight", c.currentEyeHeight},
+                {"currentFloor", c.currentFloor},
+                {"friction", c.friction},
+                {"sensitivityX", c.sensitivityX},
+                {"sensitivityY", c.sensitivityY},
+                {"noClip", c.noClip}
+            });
+        }
+        for (const ComponentCamera &c : level.cameras.components) {
+            componentsJson["cameras"].push_back({
+                {"ownerID", c.ownerID},
+                {"isActive", c.isActive},
+                {"yaw", c.yaw},
+                {"pitch", c.pitch},
+                {"forward", {c.forward.x, c.forward.y, c.forward.z}},
+                {"target", {c.target.x, c.target.y, c.target.z}},
+                {"fov", c.fov},
+                {"aspectRatio", c.aspectRatio},
+                {"nearPlane", c.nearPlane},
+                {"farPlane", c.farPlane}
             });
         }
 
@@ -415,7 +439,6 @@ namespace {
         level.transforms.Clear();
         level.sprites.Clear();
         level.decals.Clear();
-        level.playerSpawns.Clear();
         level.audioSources.Clear();
 
         level.ui_transforms.Clear();
@@ -435,7 +458,8 @@ namespace {
                 if (transformJson.contains("position")) {
                     t.position = {
                         transformJson["position"][0].get<float>(),
-                        transformJson["position"][1].get<float>()
+                        transformJson["position"][1].get<float>(),
+                          transformJson["position"][2].get<float>()
                     };
                 }
 
@@ -484,19 +508,6 @@ namespace {
                 d.wallT = decalJson.value("wallT", 0.5f);
                 d.baseHeight = decalJson.value("baseHeight", 0.0f);
                 d.absHeight = decalJson.value("absHeight", false);
-            }
-        }
-
-        if (componentsJson.contains("playerSpawns")) {
-            for (const json &playerSpawnJson: componentsJson["playerSpawns"]) {
-                const EntityID ownerID =
-                        playerSpawnJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
-
-                level.playerSpawns.Add(ownerID);
             }
         }
 
@@ -576,7 +587,7 @@ namespace {
                 if (transformJson.contains("position")) {
                     c.position = {
                         transformJson["position"][0].get<float>(),
-                        transformJson["position"][1].get<float>()
+                        transformJson["position"][1].get<float>(),
                     };
                 }
 
@@ -616,7 +627,63 @@ namespace {
                 c.text = textJson.value("text", "");
             }
         }
+        if (componentsJson.contains("playerControllers")) {
+        for (const json &controllerJson : componentsJson["playerControllers"]) {
+            const EntityID ownerID = controllerJson.value("ownerID", INVALID_ENTITY_ID);
 
+            if (ownerID == INVALID_ENTITY_ID) continue;
+
+            ComponentPlayerController& c = level.playerControllers.Add(ownerID);
+
+            c.isActive = controllerJson.value("isActive", true);
+            c.speed           = controllerJson.value("speed", 46.0f);
+            c.runningSpeed    = controllerJson.value("runningSpeed", 90.0f);
+            c.size            = controllerJson.value("size", 1.0f);
+            c.eyeHeight       = controllerJson.value("eyeHeight", 12.0f);
+            c.stepSize        = controllerJson.value("stepSize", 8.0f);
+            c.bodySize        = controllerJson.value("bodySize", 10.0f);
+            c.friction     = controllerJson.value("friction", 0.8f);
+            c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
+            c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
+            c.noClip       = controllerJson.value("noClip", false);
+        }
+    }
+
+        if (componentsJson.contains("cameras")) {
+            for (const json &cameraJson: componentsJson["cameras"]) {
+                const EntityID ownerID = cameraJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentCamera &c = level.cameras.Add(ownerID);
+
+                c.isActive = componentsJson.value("isActive", true);
+                c.yaw = cameraJson.value("yaw", 0.0f);
+                c.pitch = cameraJson.value("pitch", 0.0f);
+
+                // if (cameraJson.contains("forward") && cameraJson["forward"].is_array() && cameraJson["forward"].size()
+                //     == 3) {
+                //     c.forward.x = cameraJson["forward"][0];
+                //     c.forward.y = cameraJson["forward"][1];
+                //     c.forward.z = cameraJson["forward"][2];
+                // }
+                //
+                // if (cameraJson.contains("target") && cameraJson["target"].is_array() && cameraJson["target"].size() ==
+                //     3) {
+                //     c.target.x = cameraJson["target"][0];
+                //     c.target.y = cameraJson["target"][1];
+                //     c.target.z = cameraJson["target"][2];
+                // }
+
+                c.fov = cameraJson.value("fov", 90.0f);
+                c.aspectRatio = cameraJson.value("aspectRatio", 1680.0f / 960.0f);
+                c.nearPlane = cameraJson.value("nearPlane", 0.1f);
+                c.farPlane = cameraJson.value("farPlane", 10000.0f);
+
+                // Note: Matrices (view, projection) default to Matrix4::Identity() on
+                // creation and should be left to calculate automatically via your update systems.
+            }
+        }
     }
 
     void LoadWalls(const json &levelData, Level &level) {
@@ -825,45 +892,6 @@ namespace {
     }
 
     //endregion
-
-    void UpdatePlayerSpawnFromLoadedLevel(Level& level) {
-        using namespace MapEditorInternal;
-
-        playerPlaced = false;
-        Editor::playerStartPos = {0.0f, 0.0f};
-
-        for (const ComponentPlayerSpawn& spawn : level.playerSpawns.components) {
-            ComponentTransform* transform =
-                level.transforms.Get(spawn.ownerID);
-
-            if (transform == nullptr) {
-                continue;
-            }
-
-            playerPlaced = true;
-            Editor::playerStartPos = transform->position;
-            return;
-        }
-
-        constexpr bool isUiEntity = false;
-        Entity& playerEntity = level.CreateEntity(isUiEntity);
-
-        auto* transform =
-            playerEntity.GetComponent<ComponentTransform>();
-
-        if (transform == nullptr) {
-            transform = playerEntity.AddComponent<ComponentTransform>();
-        }
-
-        transform->position = {0.0f, 0.0f};
-        transform->floor = 0;
-        transform->scale = {32.0f, 32.0f};
-
-        level.playerSpawns.Add(playerEntity.id);
-
-        playerPlaced = true;
-        Editor::playerStartPos = transform->position;
-    }
 }
 
 namespace MapEditorInternal {
@@ -1061,8 +1089,6 @@ namespace Editor {
         }
 
         Level& activeLevel = LevelManager::CurrentLevel();
-
-        UpdatePlayerSpawnFromLoadedLevel(activeLevel);
 
         EditorTextureCache::RefreshLevelTexturesFromFolder();
         RefreshLevelSoundsFromFolder();
