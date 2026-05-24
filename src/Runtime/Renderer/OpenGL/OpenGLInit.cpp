@@ -105,7 +105,7 @@ bool OpenGL::InitSDL() {
     }
 
     window = SDL_CreateWindow(
-        "Tilky Engine",
+        "screen.title.engine",
         screenWidth,
         screenHeight,
         WINDOW_FLAGS

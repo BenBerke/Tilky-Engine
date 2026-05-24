@@ -425,10 +425,14 @@ namespace {
                         entity.AddComponent<ComponentAudioSource>();
                     else if (componentToAdd == CMP_SCRIPT && !entity.HasComponent<ComponentScript>())
                         entity.AddComponent<ComponentScript>();
-                    else if (componentToAdd == CMP_PLAYER_CONTROLLER && !entity.HasComponent<ComponentPlayerController>())
-                        entity.AddComponent<ComponentPlayerController>();
-                    else if (componentToAdd == CMP_CAMERA && !entity.HasComponent<ComponentCamera>())
-                        entity.AddComponent<ComponentCamera>();
+                    else if (componentToAdd == CMP_PLAYER_CONTROLLER && !entity.HasComponent<ComponentPlayerController>()) {
+                        ComponentPlayerController* pc = entity.AddComponent<ComponentPlayerController>();
+                        pc->isActive = true;
+                    }
+                    else if (componentToAdd == CMP_CAMERA && !entity.HasComponent<ComponentCamera>()) {
+                        ComponentCamera* cam = entity.AddComponent<ComponentCamera>();
+                        cam->isActive = true;
+                    }
 
                     addingComponent = false;
                     componentToAdd = CMP_SPRITE;

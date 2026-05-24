@@ -28,6 +28,8 @@ namespace {
 
     std::unique_ptr<OpenGL> renderer;
 
+    std::unique_ptr<Level> editorLevelSnapshot;
+
     bool relativeMouseMode = true;
 
     void RenderDebugText() {
@@ -48,6 +50,8 @@ namespace RuntimeSession {
         }
 
         Level& level = LevelManager::CurrentLevel();
+        editorLevelSnapshot = std::make_unique<Level>(level);
+        spdlog::info("Runtime level snapshot created");
 
         MapQueries::AssignWallsToSectors(
             level.sectors,
@@ -142,6 +146,16 @@ namespace RuntimeSession {
         }
 
         SoundManager::DestroyOpenAL();
+
+        if (editorLevelSnapshot) {
+            LevelManager::CurrentLevel() = *editorLevelSnapshot;
+            editorLevelSnapshot.reset();
+
+            spdlog::info("Runtime ended. Level restored to editor snapshot");
+        }
+        else {
+            spdlog::error("Couldn't find editor level snapshot");
+        }
 
         if (renderer) {
             renderer->Shutdown();

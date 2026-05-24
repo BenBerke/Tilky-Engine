@@ -159,5 +159,8 @@
   "launcher.input_name": "Project Name",
   "launcher.open_project": "Open Project",
   "launcher.delete_project": "Delete Project",
-  "launcher.quit": "Quit"
+  "launcher.quit": "Quit",
+
+  "screen.title.level_editor": "Tilky Level Editor",
+  "screen.title.engine": "Tilky Engine"
 }

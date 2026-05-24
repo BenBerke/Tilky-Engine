@@ -15,6 +15,7 @@
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 
 namespace Editor {
     std::vector<Level> levels;
@@ -46,7 +47,7 @@ namespace Editor {
         }
 
         if (SDL_CreateWindowAndRenderer(
-                "Tilky_Level Editor",
+                Localisation::Get("screen.title.level_editor").c_str(),
                 screenWidth,
                 screenHeight,
                 SDL_WINDOW_RESIZABLE,
