@@ -20,6 +20,7 @@
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
+#include "src/Editor/EditorInternal.hpp"
 
 namespace {
     float timer = 0.0f;
@@ -35,9 +36,9 @@ namespace {
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            {0.0f, 0.0f,},
+            {0.0f, static_cast<float>(MapEditorInternal::screenHeight)},
             {.5f, .5f},
-            Vector3{255.0f, 255.0f, 255.0f}
+             Vector3{255.0f, .0f, 255.0f}
         );
     }
 }
