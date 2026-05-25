@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
+option(TILKY_ENABLE_TRACY "Enable Tracy profiler" ON)
 
 find_package(OpenGL REQUIRED)
 find_package(OpenAL REQUIRED)
@@ -70,6 +71,22 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
 else()
     message(FATAL_ERROR "Dear ImGui not found at External/imgui/imgui.h")
 endif()
+
+# ============================================================
+# Tracy Profiler
+# ============================================================
+
+set(TRACY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/External/tracy)
+
+add_library(TracyClient STATIC
+        ${TRACY_DIR}/public/TracyClient.cpp
+)
+
+target_include_directories(TracyClient PUBLIC
+        ${TRACY_DIR}/public
+)
+
+target_compile_definitions(TracyClient PUBLIC TRACY_ENABLE)
 
 # ============================================================
 # Shared project system
@@ -248,6 +265,7 @@ target_link_libraries(Tilky_EngineCore PUBLIC
         nlohmann_json::nlohmann_json
         sol2::sol2
         ${LUA_LIBRARIES}
+        TracyClient
 )
 
 target_compile_definitions(Tilky_EngineCore PUBLIC

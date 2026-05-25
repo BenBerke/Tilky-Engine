@@ -14,13 +14,12 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Editor/Editor.hpp"
-#include "../../Headers/Runtime/PlayerControllerSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 
-#include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include "src/Editor/EditorInternal.hpp"
+#include <tracy/Tracy.hpp>
 
 namespace {
     float timer = 0.0f;
@@ -107,6 +106,8 @@ namespace RuntimeSession {
         if (!renderer) {
             return;
         }
+
+
 
         GameTime::Update();
         timer = GameTime::time;
