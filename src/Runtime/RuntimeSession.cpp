@@ -36,7 +36,7 @@ namespace {
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            {0.0f, static_cast<float>(MapEditorInternal::screenHeight)},
+            {0.0f, static_cast<float>(MapEditorInternal::screenHeight - 7)},
             {.5f, .5f},
              Vector3{255.0f, .0f, 255.0f}
         );

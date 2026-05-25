@@ -326,7 +326,7 @@ namespace PlayerControllerSystem {
             input.x -= 1.0f;
         }
 
-        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT)) {
+        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)) {
             controller.currentSpeed = controller.runningSpeed;
         }
         else {
