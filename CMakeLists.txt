@@ -88,6 +88,13 @@ target_include_directories(TracyClient PUBLIC
 
 target_compile_definitions(TracyClient PUBLIC TRACY_ENABLE)
 
+target_link_libraries(TracyClient PUBLIC
+        ws2_32
+        wsock32
+        dbghelp
+        secur32
+)
+
 # ============================================================
 # Shared project system
 # Used by launcher and engine.

@@ -107,7 +107,7 @@ namespace RuntimeSession {
             return;
         }
 
-
+        ZoneScoped;
 
         GameTime::Update();
         timer = GameTime::time;
@@ -125,16 +125,30 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        renderer->BeginFrame();
-        renderer->Update();
+        {
+            ZoneScopedN("Renderer");
+            renderer->BeginFrame();
+            renderer->Update();
+            RenderDebugText();
+            renderer->EndFrame();
+        }
 
-        AudioSystem::Update(level);
-        ScriptSystem::Update(level);
-        if (relativeMouseMode) level.Update();
+        {
+            ZoneScopedN("Audio");
+            AudioSystem::Update(level);
+        }
+
+        {
+            ZoneScopedN("Scripts");
+            ScriptSystem::Update(level);
+        }
+
+        {
+            ZoneScopedN("Level");
+            if (relativeMouseMode) level.Update();
+        }
 
         RenderDebugText();
-
-        renderer->EndFrame();
 
         if (timer > timerHelper + 1.3f) {
             fps = static_cast<int>(GameTime::GetFPS());
