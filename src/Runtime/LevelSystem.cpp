@@ -126,7 +126,9 @@ namespace LevelSystem {
             entity.Start();
         }
 
-        ComponentPlayerController *activeController = GetActivePlayerController(level);
+        activeController = GetActivePlayerController(level);
+
+
 
         if (activeController != nullptr) {
             ComponentTransform* playerTransform =
@@ -157,8 +159,6 @@ namespace LevelSystem {
                 }
             }
         }
-
-        activeController = GetActivePlayerController(level);
 
         // Future level start systems will run here.
     }
@@ -311,9 +311,11 @@ namespace LevelSystem {
                         }
                     }
 
+                    //todo Fix player controller collision bug
+
                 } // Collision loop
             }
-        }
+        } // Zone Collision
 
         for (ComponentTransform& transform : level.transforms.components) {
             transform.isDirty = false;
