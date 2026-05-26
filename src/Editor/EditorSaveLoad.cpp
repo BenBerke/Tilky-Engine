@@ -463,21 +463,22 @@ namespace {
                     continue;
                 }
 
-                ComponentTransform &t = level.transforms.Add(ownerID);
+                ComponentTransform &c = level.transforms.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_TRANSFORM);
 
                 if (transformJson.contains("position")) {
-                    t.position = {
+                    c.position = {
                         transformJson["position"][0].get<float>(),
                         transformJson["position"][1].get<float>(),
                           transformJson["position"][2].get<float>()
                     };
                 }
 
-                t.sectorIndex = transformJson.value("sectorIndex", -1);
-                t.floor = transformJson.value("floor", 0);
+                c.sectorIndex = transformJson.value("sectorIndex", -1);
+                c.floor = transformJson.value("floor", 0);
 
                 if (transformJson.contains("scale")) {
-                    t.scale = {
+                    c.scale = {
                         transformJson["scale"][0].get<float>(),
                         transformJson["scale"][1].get<float>()
                     };
@@ -494,8 +495,10 @@ namespace {
                     continue;
                 }
 
-                ComponentSprite &s = level.sprites.Add(ownerID);
-                s.textureIndex = spriteJson.value("textureIndex", -1);
+                ComponentSprite &c = level.sprites.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_SPRITE);
+
+                c.textureIndex = spriteJson.value("textureIndex", -1);
             }
         }
 
@@ -507,17 +510,18 @@ namespace {
                     continue;
                 }
 
-                ComponentDecal &d = level.decals.Add(ownerID);
+                ComponentDecal &c = level.decals.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_DECAL);
 
-                d.wallIndex = decalJson.value("wallIndex", -1);
+                c.wallIndex = decalJson.value("wallIndex", -1);
 
-                d.verticalPos = decalJson.value("verticalPos", 0.0f);
-                d.horizontalPos = decalJson.value("horizontalPos", -1.0f);
-                d.wallNormalOffset = decalJson.value("wallNormalOffset", 0.0f);
+                c.verticalPos = decalJson.value("verticalPos", 0.0f);
+                c.horizontalPos = decalJson.value("horizontalPos", -1.0f);
+                c.wallNormalOffset = decalJson.value("wallNormalOffset", 0.0f);
 
-                d.wallT = decalJson.value("wallT", 0.5f);
-                d.baseHeight = decalJson.value("baseHeight", 0.0f);
-                d.absHeight = decalJson.value("absHeight", false);
+                c.wallT = decalJson.value("wallT", 0.5f);
+                c.baseHeight = decalJson.value("baseHeight", 0.0f);
+                c.absHeight = decalJson.value("absHeight", false);
             }
         }
 
@@ -527,25 +531,26 @@ namespace {
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                ComponentAudioSource& a = level.audioSources.Add(ownerID);
+                ComponentAudioSource& c = level.audioSources.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_AUDIO_SOURCE);
 
-                a.soundIndex = audioSourceJson.value("soundIndex", -1);
-                a.pitch      = audioSourceJson.value("pitch", 1.0f);
-                a.gain       = audioSourceJson.value("gain", 1.0f);
-                a.looping    = audioSourceJson.value("looping", false);
-                a.playOnStart = audioSourceJson.value("playOnStart", true);
+                c.soundIndex = audioSourceJson.value("soundIndex", -1);
+                c.pitch      = audioSourceJson.value("pitch", 1.0f);
+                c.gain       = audioSourceJson.value("gain", 1.0f);
+                c.looping    = audioSourceJson.value("looping", false);
+                c.playOnStart = audioSourceJson.value("playOnStart", true);
 
                 // Distance Attenuation
-                a.referenceDistance = audioSourceJson.value("referenceDistance", 1.0f);
-                a.maxDistance       = audioSourceJson.value("maxDistance", 10000.0f);
-                a.rollOffFactor     = audioSourceJson.value("rollOffFactor", 1.0f);
+                c.referenceDistance = audioSourceJson.value("referenceDistance", 1.0f);
+                c.maxDistance       = audioSourceJson.value("maxDistance", 10000.0f);
+                c.rollOffFactor     = audioSourceJson.value("rollOffFactor", 1.0f);
 
                 // Sound Cone
-                a.innerConeAngle = audioSourceJson.value("innerConeAngle", 360.0f);
-                a.outerConeAngle = audioSourceJson.value("outerConeAngle", 360.0f);
-                a.outerGain      = audioSourceJson.value("outerGain", 0.0f);
+                c.innerConeAngle = audioSourceJson.value("innerConeAngle", 360.0f);
+                c.outerConeAngle = audioSourceJson.value("outerConeAngle", 360.0f);
+                c.outerGain      = audioSourceJson.value("outerGain", 0.0f);
 
-                a.name = "entity_" + std::to_string(ownerID) + "_audio";
+                c.name = "entity_" + std::to_string(ownerID) + "_audio";
             }
         }
 
@@ -554,12 +559,13 @@ namespace {
                 const EntityID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                ComponentScript& s = level.scripts.Add(ownerID);
+                ComponentScript& c = level.scripts.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_SCRIPT);
 
                 const std::string loadedName = scriptJson.value("fileName", "Test");
 
-                s.enabled = scriptJson.value("enabled", true);
-                s.fileName = std::filesystem::path(loadedName).stem().string();
+                c.enabled = scriptJson.value("enabled", true);
+                c.fileName = std::filesystem::path(loadedName).stem().string();
             }
         }
 
@@ -570,6 +576,7 @@ namespace {
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentUITransform& c = level.ui_transforms.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_UI_TRANSFORM);
 
                 // New Fields
                 if (transformJson.contains("anchorMin")) {
@@ -621,6 +628,7 @@ namespace {
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentUISprite& c = level.ui_sprites.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_UI_SPRITE);
 
                 c.textureIndex = spriteJson.value("textureIndex", -1);
             }
@@ -633,6 +641,7 @@ namespace {
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentUIText& c = level.ui_texts.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_UI_TEXT);
 
                 c.text = textJson.value("text", "");
             }
@@ -644,6 +653,7 @@ namespace {
             if (ownerID == INVALID_ENTITY_ID) continue;
 
             ComponentPlayerController& c = level.playerControllers.Add(ownerID);
+            level.GetEntity(ownerID)->componentsMask.set(CMP_PLAYER_CONTROLLER);
 
             c.isActive = controllerJson.value("isActive", true);
             c.speed           = controllerJson.value("speed", 46.0f);
@@ -665,6 +675,7 @@ namespace {
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentCamera &c = level.cameras.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_CAMERA);
 
                 c.isActive = componentsJson.value("isActive", true);
                 c.yaw = cameraJson.value("yaw", 0.0f);
@@ -701,6 +712,7 @@ namespace {
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 ComponentSphereCollider &c = level.sphereColliders.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_SPHERE_COLLIDER);
 
                 c.isActive = componentsJson.value("isActive", true);
                 c.isTrigger = cameraJson.value("isTrigger", false);
