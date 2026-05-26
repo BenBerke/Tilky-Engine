@@ -117,7 +117,7 @@ namespace MapEditorInternal {
                     } else {
                         static constexpr bool isUIEntity = false;
                         const EntityID id = level.CreateEntity(isUIEntity);
-                        selectedEntity = *level.GetEntity(id); // This gives the entity ComponentTransform
+                        selectedEntity = *level.GetEntity(id);
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) {
@@ -143,8 +143,12 @@ namespace MapEditorInternal {
                     DrawThickLine(renderer, startScreen, endScreen, 5.0f);
                 }
                 else if (holdingEntity && currentMode == MODE_ENTITY) {
-                    selectedEntity.GetComponent<ComponentTransform>()->position =
-                        {mouseWorld.x, selectedEntity.GetComponent<ComponentTransform>()->position.y, mouseWorld.y};
+                    if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]] {
+                        t->position = {mouseWorld.x, t->position.y, mouseWorld.y};
+                    }
+                    else [[unlikely]]{
+                        spdlog::error("Entity does not have transform component");
+                    }
                 }
             }
 

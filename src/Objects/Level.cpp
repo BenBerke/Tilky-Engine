@@ -36,10 +36,10 @@ EntityID Level::CreateEntity(const bool uiEntity) {
 
     if (uiEntity) [[unlikely]] {
         ui_transforms.Add(newId);
-        GetEntity(newId)->componentsMask |= 1ULL << CMP_UI_TRANSFORM;
+        GetEntity(newId)->componentsMask.set(CMP_UI_TRANSFORM);
     } else [[likely]] {
         transforms.Add(newId);
-        GetEntity(newId)->componentsMask |= 1ULL << CMP_TRANSFORM;
+        GetEntity(newId)->componentsMask.set(CMP_TRANSFORM);
     }
 
     return newId;

@@ -513,7 +513,6 @@ namespace {
                 DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
             if (entity.HasComponent<ComponentSphereCollider>())
                 DrawComponentRow(Get("component.sphere_collider").c_str(), CMP_SPHERE_COLLIDER);
-            else spdlog::info("Enttity has no spherecollider");
 
             PutSpace(2);
 

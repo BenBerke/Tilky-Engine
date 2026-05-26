@@ -47,8 +47,11 @@ namespace MapEditorInternal {
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
                 if (holdingEntity) {
-                    if (auto* t = selectedEntity.GetComponent<ComponentUITransform>()) {
+                    if (auto* t = selectedEntity.GetComponent<ComponentUITransform>()) [[likely]] {
                         t->position += InputManager::GetMouseDelta();
+                    }
+                    else [[unlikely]]{
+                        spdlog::error("Entity does not have ui transform component");
                     }
                 }
             }
