@@ -84,6 +84,7 @@
   "component.audio_source": "Audio Source",
 
   "component.transform.position" : "Position",
+  "component.transform.height": "Height",
   "component.transform.scale" : "Scale",
   "component.transform.floor" : "Floor",
   "component.transform.rotation" : "Rotation",
@@ -132,6 +133,12 @@
   "component.camera.aspect_ratio": "Aspect Ratio",
   "component.camera.near_plane": "Near Plane",
   "component.camera.far_plane": "Far Plane",
+
+  "component.sphere_collider": "Sphere Collider",
+  "component.sphere_collider.is_active": "Is Active",
+  "component.sphere_collider.is_trigger": "Is Trigger",
+  "component.sphere_collider.is_static": "Is Static",
+  "component.sphere_collider.size": "Radius",
 
   "component.ui_transform" : "UI Transform",
   "component.transform.anchor_min": "Min Anchor",

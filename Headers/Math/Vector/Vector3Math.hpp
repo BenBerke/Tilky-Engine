@@ -16,22 +16,41 @@ namespace Vector3Math {
             a.x * b.y - a.y * b.x
         };
     }
-
     inline float Length(const Vector3& v) {
-        return std::sqrt(Dot(v, v));
+        return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    }
+
+    inline float LengthSquared(const Vector3& v) {
+        return v.x * v.x + v.y * v.y + v.z * v.z;
     }
 
     inline Vector3 Normalized(const Vector3& v) {
-        const float length = Length(v);
+        const float len = Length(v);
+        if (len == 0.0f) return {};
+        return {v.x / len, v.y / len, v.z / len};
+    }
 
-        if (length <= 0.00001f) {
-            return {0.0f, 0.0f, 0.0f};
-        }
+    inline void Normalize(Vector3& v) {
+        const float len = Length(v);
+        if (len == 0.0f) return;
+        v.x /= len;
+        v.y /= len;
+        v.z /= len;
+    }
 
-        return {
-            v.x / length,
-            v.y / length,
-            v.z / length
-        };
+    inline float Distance(const Vector3& a, const Vector3& b) {
+        const float lineA = a.x - b.x;
+        const float lineB = a.y - b.y;
+        const float lineD = a.z - b.z;
+        const float result = lineA * lineA + lineB * lineB + lineD * lineD;
+        return std::sqrt(result);
+    }
+
+    inline float DistanceSquared(const Vector3& a, const Vector3& b) {
+        const float lineA = a.x - b.x;
+        const float lineB = a.y - b.y;
+        const float lineD = a.z - b.z;
+        const float result = lineA * lineA + lineB * lineB + lineD * lineD;
+        return result;
     }
 }

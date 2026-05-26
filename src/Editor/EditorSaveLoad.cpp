@@ -172,6 +172,7 @@ namespace {
         componentsJson["uiSprites"] = json::array();
         componentsJson["playerControllers"] = json::array();
         componentsJson["cameras"] = json::array();
+        componentsJson["sphereSphereCollider"] = json::array();
 
         for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
@@ -261,20 +262,16 @@ namespace {
                 {"velocity", {c.velocity.x, c.velocity.y, c.velocity.z}},
                 {"speed", c.speed},
                 {"runningSpeed", c.runningSpeed},
-                {"size", c.size},
                 {"eyeHeight", c.eyeHeight},
                 {"stepSize", c.stepSize},
                 {"bodySize", c.bodySize},
-                {"currentSector", c.currentSector},
-                {"currentSpeed", c.currentSpeed},
-                {"currentEyeHeight", c.currentEyeHeight},
-                {"currentFloor", c.currentFloor},
+                {"bodySize", c.bodySize},
                 {"friction", c.friction},
                 {"sensitivityX", c.sensitivityX},
                 {"sensitivityY", c.sensitivityY},
-                {"noClip", c.noClip}
             });
         }
+
         for (const ComponentCamera &c : level.cameras.components) {
             componentsJson["cameras"].push_back({
                 {"ownerID", c.ownerID},
@@ -287,6 +284,16 @@ namespace {
                 {"aspectRatio", c.aspectRatio},
                 {"nearPlane", c.nearPlane},
                 {"farPlane", c.farPlane}
+            });
+        }
+
+        for (const ComponentSphereCollider &c : level.sphereColliders.components) {
+            componentsJson["sphereColliders"].push_back({
+                {"onwerID", c.ownerID},
+                {"isActive", c.isActive},
+                {"isTrigger", c.isTrigger},
+                    {"isStatic", c.isStatic},
+                {"size", c.size}
             });
         }
 
@@ -440,6 +447,9 @@ namespace {
         level.sprites.Clear();
         level.decals.Clear();
         level.audioSources.Clear();
+        level.sphereColliders.Clear();
+        level.playerControllers.Clear();
+        level.cameras.Clear();
 
         level.ui_transforms.Clear();
         level.ui_sprites.Clear();
@@ -638,7 +648,6 @@ namespace {
             c.isActive = controllerJson.value("isActive", true);
             c.speed           = controllerJson.value("speed", 46.0f);
             c.runningSpeed    = controllerJson.value("runningSpeed", 90.0f);
-            c.size            = controllerJson.value("size", 1.0f);
             c.eyeHeight       = controllerJson.value("eyeHeight", 12.0f);
             c.stepSize        = controllerJson.value("stepSize", 8.0f);
             c.bodySize        = controllerJson.value("bodySize", 10.0f);
@@ -682,6 +691,21 @@ namespace {
 
                 // Note: Matrices (view, projection) default to Matrix4::Identity() on
                 // creation and should be left to calculate automatically via your update systems.
+            }
+        }
+
+        if (componentsJson.contains("sphereColliders")) {
+            for (const json &cameraJson: componentsJson["sphereColliders"]) {
+                const EntityID ownerID = cameraJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                ComponentSphereCollider &c = level.sphereColliders.Add(ownerID);
+
+                c.isActive = componentsJson.value("isActive", true);
+                c.isTrigger = cameraJson.value("isTrigger", false);
+                c.isStatic = cameraJson.value("isStatic", false);
+                c.size = cameraJson.value("size", 1.0f);
             }
         }
     }

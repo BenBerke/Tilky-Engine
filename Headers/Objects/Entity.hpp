@@ -1,15 +1,20 @@
 #ifndef TILKY_ENGINE_ENTITY_H
 #define TILKY_ENGINE_ENTITY_H
 
-#include <cstdint>
+#include <bitset>
 #include <string>
 
 #include "EntityTypes.hpp"
+
+#define MAX_COMPONENTS 64
+using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 struct Entity {
     std::string name;
     EntityID id = static_cast<EntityID>(-1);
     EntityID attachedLevelId = static_cast<EntityID>(-1);
+
+    ComponentMask componentsMask;
 
     void Start();
     void Update();

@@ -16,10 +16,12 @@
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
-#include "src/Editor/EditorInternal.hpp"
 #include <tracy/Tracy.hpp>
+
+#include "Headers/Map/MapQueries.hpp"
 
 namespace {
     float timer = 0.0f;
@@ -35,7 +37,7 @@ namespace {
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            {0.0f, static_cast<float>(MapEditorInternal::screenHeight - 7)},
+            {0.0f, static_cast<float>(OpenGLRendererInternal::screenHeight - 7)},
             {.5f, .5f},
              Vector3{255.0f, .0f, 255.0f}
         );
@@ -57,6 +59,8 @@ namespace RuntimeSession {
             level.sectors,
             level.walls
         );
+
+        MapQueries::AssignNeighborsToSectors(level.sectors);
 
         renderer = std::make_unique<OpenGL>();
 
@@ -92,11 +96,7 @@ namespace RuntimeSession {
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
 
-        level.Start();
-
-        for (Entity& entity : level.entities) {
-            entity.Start();
-        }
+        LevelSystem::Start(level);
 
         spdlog::info("Runtime started using {} renderer", renderer->GetName());
         return true;
@@ -112,12 +112,12 @@ namespace RuntimeSession {
         GameTime::Update();
         timer = GameTime::time;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) {
+        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) [[unlikely]] {
             relativeMouseMode = false;
             InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
             SDL_ShowCursor();
         }
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) {
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) [[unlikely]] {
             relativeMouseMode = true;
             InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
             SDL_HideCursor();
@@ -145,12 +145,10 @@ namespace RuntimeSession {
 
         {
             ZoneScopedN("Level");
-            if (relativeMouseMode) level.Update();
+            if (relativeMouseMode) LevelSystem::Update(level);
         }
 
-        RenderDebugText();
-
-        if (timer > timerHelper + 1.3f) {
+        if (timer > timerHelper + 1.3f) [[unlikely]] {
             fps = static_cast<int>(GameTime::GetFPS());
             timerHelper = timer;
         }

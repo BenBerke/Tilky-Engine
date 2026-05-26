@@ -410,7 +410,8 @@ namespace Editor {
         LevelManager::CurrentLevel().walls.push_back(wall);
     }
 
-    void AddSector(const Sector& sector) {
+    void AddSector(Sector& sector) {
+        sector.id = LevelManager::CurrentLevel().sectors.size();
         LevelManager::CurrentLevel().sectors.push_back(sector);
     }
 

@@ -15,11 +15,15 @@ struct Vector2 {
         return {x - other.x, y - other.y};
     }
 
-    constexpr Vector2 operator*(float value) const {
+    constexpr Vector2 operator*(const float value) const {
         return {x * value, y * value};
     }
 
-    constexpr Vector2 operator/(float value) const {
+    constexpr Vector2 operator*(const Vector2& other) const {
+        return {x * other.x, y * other.y};
+    }
+
+    constexpr Vector2 operator/(const float value) const {
         return {x / value, y / value};
     }
 

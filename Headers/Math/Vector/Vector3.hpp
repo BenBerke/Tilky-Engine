@@ -14,8 +14,6 @@ struct Vector3{
 
     Vector3 operator+(const Vector3& other) const { return Vector3(x + other.x, y + other.y, z - other.z); }
     Vector3 operator-(const Vector3& other) const { return Vector3(x - other.x, y - other.y, z - other.z); }
-    template<typename T>
-    Vector3 operator*(T value) const { return Vector3(x * value, y * value, z * value); }
     Vector3 operator+=(const Vector3& other) {
         x += other.x;
         y += other.y;
@@ -40,28 +38,18 @@ struct Vector3{
         z /= other.z;
         return *this;
     }
+
     bool operator==(const Vector3& other) const { return x == other.x && y == other.y && z == other.z;}
     bool operator!=(const Vector3& other) const { return !(x == other.x && y == other.y && z == other.z);}
 
-    [[nodiscard]] float Length() const{ return std::sqrt(x*x + y*y + z*z); }
-    [[nodiscard]] Vector3 Normalized() const {
-        float len = Length();
-        return len == 0 ? Vector3() : Vector3(x / len, y / len, z / len);
-    }
-    void Normalize(){
-        float len = Length();
-        if(len == 0) return;
-        x/=len;
-        y/=len;
-        z/=len;
-    }
-    [[nodiscard]] float Dot(const Vector3& other) const{
-        return x * other.x + y * other.y + z * other.z;
-    }
-
-    [[nodiscard]] Vector2 ToVector2() const {
-        return (Vector2){x, z};
-    }
+    template<typename T>
+    Vector3 operator*(T value) const { return Vector3(x * value, y * value, z * value); }
+    template<typename T>
+    Vector3 operator/(T value) const {return Vector3(x / value, y / value, z / value); }
+    template<typename T>
+    Vector3 operator+(T value) const { return Vector3(x + value, y + value, z + value); }
+    template<typename T>
+    Vector3 operator-(T value) const {return Vector3(x - value, y - value, z - value); }
 };
 
 #endif //TILKY_ENGINE_VECTOR3_H

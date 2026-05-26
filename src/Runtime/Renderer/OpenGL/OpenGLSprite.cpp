@@ -21,6 +21,8 @@ void OpenGL::BuildGpuSprites() {
             continue;
         }
 
+
+        //todo do proper update loop
         transform->UpdateObjectSector(level.sectors);
 
         if (

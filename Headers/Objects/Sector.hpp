@@ -8,6 +8,9 @@
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Wall.hpp"
 #include "config.h"
+#include "Headers/Objects/EntityTypes.hpp"
+
+using ID = uint32_t;
 
 struct Triangle {
     Vector2 a, b, c;
@@ -16,6 +19,7 @@ struct Triangle {
 struct Sector {
     std::vector<Vector2> vertices;
     std::vector<Triangle> triangles; // DO NOT change, triangles making up the sector after triangluation
+
 
     float ceilingHeight;
     float floorHeight;
@@ -27,6 +31,10 @@ struct Sector {
 
     std::array<int, MAX_FLOOR_COUNT> ceilingTextureIndices = {};
     int floorTextureIndex = -1;
+
+    ID id = -1;
+    std::vector<EntityID> entitiesInside;
+    std::vector<Sector*> neighbors;
 
     std::vector<Wall> walls = {};
 };

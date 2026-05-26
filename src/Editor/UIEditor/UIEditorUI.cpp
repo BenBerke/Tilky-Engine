@@ -240,9 +240,8 @@ namespace {
             if (selectedComponent == CMP_UI_TRANSFORM) {
                 auto *c = entity.GetComponent<ComponentUITransform>();
 
-                if (c == nullptr) ImGui::Text("Transform component missing");
-                else {
-                    // Anchor Min
+                if (c != nullptr) [[likely]]{
+                     // Anchor Min
                     ImGui::Text("%s", Get("component.transform.anchor_min").c_str());
                     ImGui::Text("X    Y");
                     ImGui::SetNextItemWidth(220.0f);
@@ -295,12 +294,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]]{
+                    ImGui::Text("Transform component missing");
+                }
             }
             else if (selectedComponent == CMP_UI_SPRITE) {
                 auto *c = entity.GetComponent<ComponentUISprite>();
 
-                if (c == nullptr) ImGui::Text("Sprite component missing");
-                else {
+                if (c != nullptr) [[likely]] {
                     int textureIndex = c->textureIndex;
 
                     ImGui::SetNextItemWidth(120.0f);
@@ -314,13 +315,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Sprite component missing");
+                }
             }
             else if (selectedComponent == CMP_SCRIPT) {
                 auto *c = entity.GetComponent<ComponentScript>();
 
-                if (c == nullptr)
-                    ImGui::Text("Script component missing");
-                else {
+                if (c != nullptr) [[likely]] {
                     std::string scriptFile = c->fileName;
                     bool enabled = c->enabled;
 
@@ -336,13 +338,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Script component missing");
+                }
             }
             else if (selectedComponent == CMP_UI_TEXT) {
                 auto *c = entity.GetComponent<ComponentUIText>();
 
-                if (c == nullptr)
-                    ImGui::Text("Text component missing");
-                else {
+                if (c != nullptr) [[likely]] {
                     std::string text = c->text;
 
                     ImGui::InputText(Get("component.ui.text.text").c_str(), &text);
@@ -354,6 +357,9 @@ namespace {
                         editingComponent = false;
                         selectedComponent = -1;
                     }
+                }
+                else [[unlikely]] {
+                    ImGui::Text("Text component missing");
                 }
             }
 

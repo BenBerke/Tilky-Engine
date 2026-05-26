@@ -395,6 +395,7 @@ namespace {
                 componentNames[CMP_SCRIPT] = Get("component.script");
                 componentNames[CMP_PLAYER_CONTROLLER] = Get("component.player_controller");
                 componentNames[CMP_CAMERA] = Get("component.camera");
+                componentNames[CMP_SPHERE_COLLIDER] = Get("component.sphere_collider");
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
                     for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
@@ -417,21 +418,49 @@ namespace {
                 }
 
                 if (ImGui::Button(Get("common.add").c_str())) {
-                    if (componentToAdd == CMP_SPRITE && !entity.HasComponent<ComponentSprite>())
-                        entity.AddComponent<ComponentSprite>();
-                    else if (componentToAdd == CMP_DECAL && !entity.HasComponent<ComponentDecal>())
-                        entity.AddComponent<ComponentDecal>();
-                    else if (componentToAdd == CMP_AUDIO_SOURCE && !entity.HasComponent<ComponentAudioSource>())
-                        entity.AddComponent<ComponentAudioSource>();
-                    else if (componentToAdd == CMP_SCRIPT && !entity.HasComponent<ComponentScript>())
-                        entity.AddComponent<ComponentScript>();
-                    else if (componentToAdd == CMP_PLAYER_CONTROLLER && !entity.HasComponent<ComponentPlayerController>()) {
-                        ComponentPlayerController* pc = entity.AddComponent<ComponentPlayerController>();
-                        pc->isActive = true;
-                    }
-                    else if (componentToAdd == CMP_CAMERA && !entity.HasComponent<ComponentCamera>()) {
-                        ComponentCamera* cam = entity.AddComponent<ComponentCamera>();
-                        cam->isActive = true;
+                    switch (componentToAdd) {
+                        case CMP_SPRITE:
+                            if (!entity.HasComponent<ComponentSprite>())
+                                entity.AddComponent<ComponentSprite>();
+                            break;
+
+                        case CMP_DECAL:
+                            if (!entity.HasComponent<ComponentDecal>())
+                                entity.AddComponent<ComponentDecal>();
+                            break;
+
+                        case CMP_AUDIO_SOURCE:
+                            if (!entity.HasComponent<ComponentAudioSource>())
+                                entity.AddComponent<ComponentAudioSource>();
+                            break;
+
+                        case CMP_SCRIPT:
+                            if (!entity.HasComponent<ComponentScript>())
+                                entity.AddComponent<ComponentScript>();
+                            break;
+
+                        case CMP_PLAYER_CONTROLLER:
+                            if (!entity.HasComponent<ComponentPlayerController>()) {
+                                auto* pc = entity.AddComponent<ComponentPlayerController>();
+                                pc->isActive = true;
+                            }
+                            break;
+
+                        case CMP_CAMERA:
+                            if (!entity.HasComponent<ComponentCamera>()) {
+                                auto* cam = entity.AddComponent<ComponentCamera>();
+                                cam->isActive = true;
+                            }
+                            break;
+
+                        case CMP_SPHERE_COLLIDER:
+                            if (!entity.HasComponent<ComponentSphereCollider>())
+                                entity.AddComponent<ComponentSphereCollider>();
+                            break;
+
+                        default:
+                            spdlog::error("Unknown component type");
+                            break;
                     }
 
                     addingComponent = false;
@@ -463,10 +492,12 @@ namespace {
                     editingComponent = true;
                 }
 
+                spdlog::info("Component row drawn for", label);
+
                 ImGui::PopID();
             };
 
-            if (entity.HasComponent<ComponentTransform>())
+            if (entity.HasComponent<ComponentTransform>()) [[likely]]
                 DrawComponentRow(Get("component.transform").c_str(), CMP_TRANSFORM);
             if (entity.HasComponent<ComponentSprite>())
                 DrawComponentRow(Get("component.sprite").c_str(), CMP_SPRITE);
@@ -480,6 +511,9 @@ namespace {
                 DrawComponentRow(Get("component.player_controller").c_str(), CMP_PLAYER_CONTROLLER);
             if (entity.HasComponent<ComponentCamera>())
                 DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
+            if (entity.HasComponent<ComponentSphereCollider>())
+                DrawComponentRow(Get("component.sphere_collider").c_str(), CMP_SPHERE_COLLIDER);
+            else spdlog::info("Enttity has no spherecollider");
 
             PutSpace(2);
 
@@ -550,6 +584,9 @@ namespace {
                 case CMP_CAMERA:
                     componentName = Get("component.camera");
                     break;
+                case CMP_SPHERE_COLLIDER:
+                    componentName = Get("component.sphere_collider");
+                    break;
                 default:
                     componentName = Get("bug.unknown");
                     break;
@@ -563,15 +600,19 @@ namespace {
             if (selectedComponent == CMP_TRANSFORM) {
                 auto *c = entity.GetComponent<ComponentTransform>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Transform component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::Text("%s", Get("component.transform.position").c_str());
                     ImGui::Text("X    Y");
-                    ImGui::SetNextItemWidth(220.0f);
-                    ImGui::InputFloat2("##position", &c->position.x);
+                    ImGui::SetNextItemWidth(200.0f);
+                    ImGui::InputFloat("##positionx", &c->position.x);
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(200.0f);
+                    ImGui::InputFloat("##positionz", &c->position.y);
 
                     ImGui::Spacing();
+
+                    ImGui::Text("%s", Get("component.transform.height").c_str());
+                    ImGui::InputFloat("##height", &c->position.z);
 
                     ImGui::Text("%s", Get("component.transform.scale").c_str());
                     ImGui::Text("X    Y");
@@ -591,13 +632,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else {
+                    ImGui::Text("Transform component missing");
+                }
             }
             else if (selectedComponent == CMP_SPRITE) {
                 auto *c = entity.GetComponent<ComponentSprite>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Sprite component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::SetNextItemWidth(120.0f);
                     ImGui::InputInt(Get("component.sprite.texture_index").c_str(), &c->textureIndex);
 
@@ -607,13 +649,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Sprite component missing");
+                }
             }
             else if (selectedComponent == CMP_DECAL) {
                 auto *c = entity.GetComponent<ComponentDecal>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Decal component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::InputInt(Get("component.decal.attached_wall").c_str(), &c->wallIndex);
                     ImGui::InputFloat(Get("component.decal.wall_offset").c_str(), &c->horizontalPos);
                     ImGui::InputFloat(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset);
@@ -628,13 +671,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Decal component missing");
+                }
             }
             else if (selectedComponent == CMP_AUDIO_SOURCE) {
                 auto *c = entity.GetComponent<ComponentAudioSource>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Audio component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::InputInt("Sound Index", &c->soundIndex);
                     ImGui::InputFloat(Get("component.audio_source.pitch").c_str(), &c->pitch);
                     ImGui::InputFloat(Get("component.audio_source.gain").c_str(), &c->gain);
@@ -667,13 +711,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Audio component missing");
+                }
             }
             else if (selectedComponent == CMP_SCRIPT) {
                 auto *c = entity.GetComponent<ComponentScript>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Script component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
                     ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
 
@@ -683,19 +728,18 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Script component missing");
+                }
             }
             else if (selectedComponent == CMP_PLAYER_CONTROLLER) {
                 auto *c = entity.GetComponent<ComponentPlayerController>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Player Controller component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::InputFloat(Get("component.player_controller.speed").c_str(), &c->speed);
                     ImGui::InputFloat(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed);
-                    ImGui::InputFloat(Get("component.player_controller.size").c_str(), &c->size);
                     ImGui::InputFloat(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight);
                     ImGui::InputFloat(Get("component.player_controller.step_size").c_str(), &c->stepSize);
-                    ImGui::InputFloat(Get("component.player_controller.body_size").c_str(), &c->bodySize);
 
                     ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
                     ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(), &c->sensitivityX,
@@ -714,13 +758,14 @@ namespace {
                         selectedComponent = -1;
                     }
                 }
+                else [[unlikely]] {
+                    ImGui::Text("Player Controller component missing");
+                }
             }
             else if (selectedComponent == CMP_CAMERA) {
                 auto *c = entity.GetComponent<ComponentCamera>();
 
-                if (c == nullptr) {
-                    ImGui::Text("Camera component missing");
-                } else {
+                if (c != nullptr) [[likely]] {
                     ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
                     ImGui::InputFloat(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio);
                     ImGui::InputFloat(Get("component.camera.near_plane").c_str(), &c->nearPlane);
@@ -734,6 +779,22 @@ namespace {
                         editingComponent = false;
                         selectedComponent = -1;
                     }
+                }
+                else [[unlikely]]{
+                    ImGui::Text("Camera component missing");
+                }
+            }
+            else if (selectedComponent == CMP_SPHERE_COLLIDER) {
+                auto *c = entity.GetComponent<ComponentSphereCollider>();
+
+                if (c != nullptr) [[likely]] {
+                    ImGui::DragFloat(Get("component.sphere_collider.size").c_str(), &c->size);
+                    ImGui::Checkbox(Get("component.sphere_collider.is_trigger").c_str(), &c->isTrigger);
+                    ImGui::Checkbox(Get("component.sphere_collider.is_active").c_str(), &c->isActive);
+                    ImGui::Checkbox(Get("component.sphere_collider.is_static").c_str(), &c->isStatic);
+                }
+                else [[unlikely]] {
+                    ImGui::Text("Sphere Collider component missing");
                 }
             }
 
@@ -800,8 +861,10 @@ namespace MapEditorInternal {
 
         if (editingSector && currentMode == MODE_SECTOR && selectedSector != -1) EditingSector();
         if (editingWall && currentMode == MODE_WALL && selectedWall != -1) EditingWall();
-        if (editingEntity && currentMode == MODE_ENTITY) EditingEntity();
-
+        if (editingEntity && currentMode == MODE_ENTITY) {
+            spdlog::info("starting to edit entity");
+            EditingEntity();
+        }
         if (editingComponent && currentMode == MODE_ENTITY && selectedComponent != -1) EditingComponent();
         //endregion
 

@@ -226,6 +226,10 @@ set(TILKY_ENGINE_SOURCES
         Headers/UISystem.hpp
         src/UISytem.cpp
         Headers/Runtime/CameraSystem.hpp
+        src/Runtime/LevelSystem.cpp
+        Headers/Runtime/LevelSystem.hpp
+        src/Objects/Components.cpp
+        src/Objects/Level.cpp
 )
 
 # ============================================================

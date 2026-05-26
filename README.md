@@ -122,8 +122,10 @@ Contributions are welcome! Whether it's bug fixes, feature requests, or document
 ### Translations
 - **Ilya Brezhnev** — Russian & Kazakh
 - **ThatGuyMiki** — Polish
-
 ---
+
+### Special Thanks
+- **Roger Peterson** for community management, bug-testing and suggesting ideas 
 
 ## 📄 License
 

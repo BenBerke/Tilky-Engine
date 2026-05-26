@@ -304,80 +304,45 @@ namespace PlayerControllerSystem {
         const std::vector<Wall>& walls,
         const std::vector<Sector>& sectors
     ) {
-        // The full wall list is kept in the signature for compatibility,
+        // The full wall list is kept in the signature for compatibility, silences the compiler
         // but collision currently uses sectors[currentSector].walls.
         (void)walls;
 
         Vector2 input = {0.0f, 0.0f};
 
-        if (InputManager::GetKey(SDL_SCANCODE_W)) {
-            input.y += 1.0f;
-        }
+        if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_S)) input.y -= 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
-        if (InputManager::GetKey(SDL_SCANCODE_A)) {
-            input.x += 1.0f;
-        }
+        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)) controller.currentSpeed = controller.runningSpeed;
+        else controller.currentSpeed = controller.speed;
 
-        if (InputManager::GetKey(SDL_SCANCODE_S)) {
-            input.y -= 1.0f;
-        }
-
-        if (InputManager::GetKey(SDL_SCANCODE_D)) {
-            input.x -= 1.0f;
-        }
-
-        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)) {
-            controller.currentSpeed = controller.runningSpeed;
-        }
-        else {
-            controller.currentSpeed = controller.speed;
-        }
-
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
-            controller.noClip = !controller.noClip;
-        }
+        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
         camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
 
-        if (camera.yaw >= 360.0f) {
-            camera.yaw -= 360.0f;
-        }
-        else if (camera.yaw < 0.0f) {
-            camera.yaw += 360.0f;
-        }
+        if (camera.yaw >= 360.0f) camera.yaw -= 360.0f;
+        else if (camera.yaw < 0.0f) camera.yaw += 360.0f;
 
-        const float yawRadians =
-            camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float yawRadians =camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
 
-        const Vector2 forward = {
-            yawSin,
-            yawCos
-        };
+        const Vector2 forward = {yawSin, yawCos};
 
-        const Vector2 right = {
-            yawCos,
-            -yawSin
-        };
-
+        const Vector2 right = {yawCos, -yawSin};
         Vector2 planarVelocity = GetPlanarVelocity(controller);
 
         if (input.x != 0.0f || input.y != 0.0f) {
-            const Vector2 moveDirection =
-                right * input.x + forward * input.y;
-
-            planarVelocity =
-                Vector2Math::Normalized(moveDirection) *
-                controller.currentSpeed;
+            const Vector2 moveDirection =right * input.x + forward * input.y;
+            planarVelocity = Vector2Math::Normalized(moveDirection) * controller.currentSpeed;
         }
-        else {
-            planarVelocity *= controller.friction;
-        }
+        else planarVelocity *= controller.friction;
 
         Vector2 planarPosition = GetPlanarPosition(playerTransform);
         planarPosition += planarVelocity * GameTime::deltaTime;
@@ -387,129 +352,111 @@ namespace PlayerControllerSystem {
 
         bool touchingPortalThisFrame = false;
 
-        if (IsValidSectorIndex(controller.currentSector, sectors)) {
-            for (int iter = 0; iter < COLLISION_ITERATIONS; ++iter) {
-                bool collided = false;
-
-                const Sector& currentSector =
-                    sectors[controller.currentSector];
-
-                for (
-                    int i = 0;
-                    i < static_cast<int>(currentSector.walls.size());
-                    ++i
-                ) {
-                    const Wall& wall = currentSector.walls[i];
-
-                    if (wall.floor != controller.currentFloor) {
-                        continue;
-                    }
-
-                    planarPosition = GetPlanarPosition(playerTransform);
-                    planarVelocity = GetPlanarVelocity(controller);
-
-                    const Vector2 closest =
-                        ClosestPointOnSegment(wall, planarPosition);
-
-                    const Vector2 delta =
-                        planarPosition - closest;
-
-                    const float distSq =
-                        Vector2Math::Dot(delta, delta);
-
-                    const float radiusSq =
-                        controller.size * controller.size;
-
-                    if (distSq >= radiusSq) {
-                        continue;
-                    }
-
-                    const float dist =
-                        std::sqrt(distSq);
-
-                    Vector2 normal;
-
-                    if (dist > 0.00001f) {
-                        normal = delta * (1.0f / dist);
-                    }
-                    else {
-                        normal = wall.normal;
-                    }
-
-                    if (IsPortalWall(wall)) {
-                        const int newSector = GetOtherPortalSector(
-                            wall,
-                            controller.currentSector
-                        );
-
-                        if (CanStepIntoSector(
-                            controller,
-                            controller.currentSector,
-                            newSector,
-                            sectors
-                        )) {
-                            touchingPortalThisFrame = true;
-                            activePortalWallIndex = i;
-
-                            const int sectorOnOtherSide =
-                                FindCurrentSectorBetweenPortalSides(
-                                    controller,
-                                    playerTransform,
-                                    wall,
-                                    sectors
-                                );
-
-                            if (sectorOnOtherSide != controller.currentSector) {
-                                EnterSectorKeepingWorldEyeHeight(
-                                    controller,
-                                    playerTransform,
-                                    sectorOnOtherSide,
-                                    sectors
-                                );
-                            }
-
-                            continue;
-                        }
-                    }
-
-                    const float penetration =
-                        controller.size - dist;
-
-                    if (!controller.noClip) {
-                        planarPosition += normal * penetration;
-                    }
-
-                    const float intoWall =
-                        Vector2Math::Dot(normal, planarVelocity);
-
-                    if (intoWall < 0.0f) {
-                        planarVelocity -= normal * intoWall;
-                    }
-
-                    SetPlanarPosition(playerTransform, planarPosition);
-                    SetPlanarVelocity(controller, planarVelocity);
-
-                    collided = true;
-                }
-
-                if (!collided) {
-                    break;
-                }
-            }
-        }
+        // if (IsValidSectorIndex(controller.currentSector, sectors)) {
+        //     for (int iter = 0; iter < COLLISION_ITERATIONS; ++iter) {
+        //         bool collided = false;
+        //
+        //         const Sector& currentSector = sectors[controller.currentSector];
+        //
+        //         for (int i = 0; i < static_cast<int>(currentSector.walls.size());++i) {
+        //             const Wall& wall = currentSector.walls[i];
+        //
+        //             if (wall.floor != controller.currentFloor) {
+        //                 continue;
+        //             }
+        //
+        //             planarPosition = GetPlanarPosition(playerTransform);
+        //             planarVelocity = GetPlanarVelocity(controller);
+        //
+        //             const Vector2 closest = ClosestPointOnSegment(wall, planarPosition);
+        //             const Vector2 delta = planarPosition - closest;
+        //             const float distSq = Vector2Math::Dot(delta, delta);
+        //
+        //             const float radiusSq =
+        //                 controller.size * controller.size;
+        //
+        //             if (distSq >= radiusSq) {
+        //                 continue;
+        //             }
+        //
+        //             const float dist = std::sqrt(distSq);
+        //
+        //             Vector2 normal;
+        //
+        //             if (dist > 0.00001f) {
+        //                 normal = delta * (1.0f / dist);
+        //             }
+        //             else {
+        //                 normal = wall.normal;
+        //             }
+        //
+        //             if (IsPortalWall(wall)) {
+        //                 const int newSector = GetOtherPortalSector(
+        //                     wall,
+        //                     controller.currentSector
+        //                 );
+        //
+        //                 if (CanStepIntoSector(
+        //                     controller,
+        //                     controller.currentSector,
+        //                     newSector,
+        //                     sectors
+        //                 )) {
+        //                     touchingPortalThisFrame = true;
+        //                     activePortalWallIndex = i;
+        //
+        //                     const int sectorOnOtherSide =
+        //                         FindCurrentSectorBetweenPortalSides(
+        //                             controller,
+        //                             playerTransform,
+        //                             wall,
+        //                             sectors
+        //                         );
+        //
+        //                     if (sectorOnOtherSide != controller.currentSector) {
+        //                         EnterSectorKeepingWorldEyeHeight(
+        //                             controller,
+        //                             playerTransform,
+        //                             sectorOnOtherSide,
+        //                             sectors
+        //                         );
+        //                     }
+        //
+        //                     continue;
+        //                 }
+        //             }
+        //
+        //             const float penetration =
+        //                 controller.size - dist;
+        //
+        //             if (!controller.noClip) {
+        //                 planarPosition += normal * penetration;
+        //             }
+        //
+        //             const float intoWall =
+        //                 Vector2Math::Dot(normal, planarVelocity);
+        //
+        //             if (intoWall < 0.0f) {
+        //                 planarVelocity -= normal * intoWall;
+        //             }
+        //
+        //             SetPlanarPosition(playerTransform, planarPosition);
+        //             SetPlanarVelocity(controller, planarVelocity);
+        //
+        //             collided = true;
+        //         }
+        //
+        //         if (!collided) {
+        //             break;
+        //         }
+        //     }
+        // }
 
         planarPosition = GetPlanarPosition(playerTransform);
 
-        const int foundSector =
-            MapQueries::FindSectorContainingPoint(
-                sectors,
-                planarPosition
-            );
+        const int foundSector = MapQueries::FindSectorContainingPoint(sectors, planarPosition);
 
-        if (
-            foundSector != -1 &&
-            foundSector != controller.currentSector
-        ) {
+        if (foundSector != -1 && foundSector != controller.currentSector) {
             EnterSectorKeepingWorldEyeHeight(
                 controller,
                 playerTransform,
@@ -540,10 +487,6 @@ namespace PlayerControllerSystem {
             activePortalWallIndex = -1;
         }
 
-        UpdateAudioListener(
-            playerTransform,
-            controller,
-            camera
-        );
-    }
+        UpdateAudioListener(playerTransform, controller, camera);
+    } // Update
 }

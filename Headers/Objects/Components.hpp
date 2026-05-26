@@ -7,11 +7,9 @@
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
-#include <AL/al.h>
 
 #include "../Math/Vector/Vector2.hpp"
 #include "../Objects/Sector.hpp"
-#include "Headers/Map/MapQueries.hpp"
 #include "EntityTypes.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include "Headers/Project/ProjectManager.hpp"
@@ -26,6 +24,7 @@ enum ComponentType {
     CMP_SCRIPT,
     CMP_PLAYER_CONTROLLER,
     CMP_CAMERA,
+    CMP_SPHERE_COLLIDER,
 
     CMP_NORMAL_COUNT,
 
@@ -69,6 +68,17 @@ struct ComponentUITransform {
 };
 
 // endregion
+
+struct ComponentSphereCollider {
+    // Sphere Collider
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    bool isActive = true;
+    bool isTrigger = false;
+    bool isStatic = false;
+
+    float size = 1.0f;
+};
 struct ComponentPlayerController {
     EntityID ownerID = static_cast<EntityID>(-1);
 
@@ -84,7 +94,6 @@ struct ComponentPlayerController {
 
     float speed = 46.0f;
     float runningSpeed = 90.0f;
-    float size = 1.0f;
 
     // Eye height above the current floor.
     float eyeHeight = 12.0f;
@@ -155,30 +164,21 @@ struct ComponentAudioSource {
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
-    void PlaySound() const {
-        SoundManager::PlaySoundOnSource(name, soundIndex);
-    }
+    void PlaySound() const;
 
-    void SetSourcePitch(const float pitch) const {
-        SoundManager::SetSourcePitch(name, pitch);
-    }
+    void SetSourcePitch(float pitch) const;
 
-    void SetSourceGain(const float gain) const {
-        SoundManager::SetSourceGain(name, gain);
-    }
+    void SetSourceGain(float gain) const;
 
-    void SetSourceLooping(const bool looping) const {
-        SoundManager::SetSourceLooping(name, looping);
-    }
+    void SetSourceLooping(bool looping) const;
 
-    void SetSourcePosition(const Vector3& position) const {
-        SoundManager::SetSourcePosition(name, position);
-    }
+    void SetSourcePosition(const Vector3& position) const;
 
 };
 
 // Stores things related to the entity's whereabouts
 // Every entity MUST have a transform component
+struct Sector;
 struct ComponentTransform {
     EntityID ownerID = -1;
 
@@ -188,45 +188,12 @@ struct ComponentTransform {
     Vector2 scale = {32.0f, 32.0f};
 
     int sectorIndex = -1;
+    bool isDirty;
 
-    float GetObjectBottomHeight(const std::vector<Sector>& sectors) {
-        if (this->sectorIndex < 0 ||
-            this->sectorIndex >= static_cast<int>(sectors.size())) {
-            return 0.0f;
-            }
-
-        const Sector& sector = sectors[this->sectorIndex];
-
-        const float sectorHeight = sector.ceilingHeight - sector.floorHeight;
-
-        this->floor = std::clamp(
-            this->floor,
-            0,
-            std::max(1, sector.floorCount) - 1
-        );
-
-        return sector.floorHeight + sectorHeight * static_cast<float>(floor);
-    }
-    void UpdateObjectSector(const std::vector<Sector>& sectors) {
-        const int newSector = MapQueries::FindSectorContainingPoint(
-            sectors,
-            {this->position.x, this->position.z}
-        );
-
-        if (newSector == -1) {
-            return;
-        }
-
-        this->sectorIndex = newSector;
-
-        const Sector& sector = sectors[newSector];
-
-        this->floor = std::clamp(
-            this->floor,
-            0,
-            std::max(1, sector.floorCount) - 1
-        );
-    }
+    void AddPosition(const Vector3& position);
+    void SetPosition(const Vector3& position);
+    float GetObjectBottomHeight(const std::vector<Sector>& sectors);
+    void UpdateObjectSector(std::vector<Sector>& sectors);
 };
 
 // Stores things related to the entity's visuals

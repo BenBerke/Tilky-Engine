@@ -45,4 +45,16 @@ namespace MapQueries {
                 }
         }
     }
+
+    void AssignNeighborsToSectors(std::vector<Sector>& sectors) {
+        for (Sector& sector : sectors) {
+            sector.neighbors.clear();
+            for (Wall& wall : sector.walls) {
+                if (!(wall.frontSector == -1 || wall.frontSector == sector.id))
+                    sector.neighbors.push_back(&sectors[wall.frontSector]);
+                else if (!(wall.backSector == -1 || wall.backSector == sector.id))
+                    sector.neighbors.push_back(&sectors[wall.backSector]);
+            }
+        }
+    }
 }
