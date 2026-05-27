@@ -137,8 +137,11 @@
   "component.sphere_collider": "Sphere Collider",
   "component.sphere_collider.is_active": "Is Active",
   "component.sphere_collider.is_trigger": "Is Trigger",
-  "component.sphere_collider.is_static": "Is Static",
   "component.sphere_collider.size": "Radius",
+
+  "component.rigidbody": "Rigidbody",
+  "component.rigidbody.is_static": "Static",
+  "component.rigidbody.mass": "Mass",
 
   "component.ui_transform" : "UI Transform",
   "component.transform.anchor_min": "Min Anchor",

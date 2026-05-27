@@ -13,24 +13,14 @@ void OpenGL::BuildGpuSprites() {
         ComponentTransform* transform =
             level.transforms.Get(spriteComponent.ownerID);
 
-        if (transform == nullptr) {
-            continue;
-        }
+        if (transform == nullptr) [[unlikely]] continue;
 
-        if (level.decals.Has(spriteComponent.ownerID)) {
-            continue;
-        }
-
+        if (level.decals.Has(spriteComponent.ownerID)) continue;
 
         //todo do proper update loop
         transform->UpdateObjectSector(level.sectors);
 
-        if (
-            transform->sectorIndex < 0 ||
-            transform->sectorIndex >= static_cast<int>(level.sectors.size())
-        ) {
-            continue;
-        }
+        if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] continue;
 
         /*
             New Vector3 convention:
@@ -47,11 +37,13 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.positionSize = {
             transform->position.x,
-            transform->position.y,
             transform->position.z,
+            transform->position.y, // Intentionally swapped
             transform->scale.y
         };
 
+
+        //todo add texture coloring
         gpuSprite.color = {
             255.0f,
             255.0f,

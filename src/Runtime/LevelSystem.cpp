@@ -3,6 +3,8 @@
 //
 
 #include "../../Headers/Runtime/LevelSystem.hpp"
+
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 
 #include "tracy/Tracy.hpp"
@@ -196,6 +198,29 @@ namespace LevelSystem {
                 }
             }
         }
+
+        {
+            //todo make a world setting
+            constexpr float friction = 9.8f;
+            ZoneScopedN("Physics");
+            for (ComponentRigidbody& r : level.rigidbodies.components) {
+                // make sure to remove the include
+                if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) r.AddForce({1.0f, 0.0f, 0.0f});
+
+
+                if (r.velocity.IsZero()) continue;
+
+                ComponentTransform* transform = level.transforms.Get(r.ownerID);
+
+                transform->AddPosition(r.velocity);
+                r.ApplyFriction(friction);
+                r.ApplyAirResistance(friction);
+
+                if (transform->position.z - transform->scale.y * .5f >= level.sectors[transform->sectorIndex].floorHeight)
+                r.ApplyGravity(friction);
+            }
+        }
+
         {
             ZoneScopedN("Collision");
 
@@ -217,10 +242,10 @@ namespace LevelSystem {
                 float aWeight = 0.5f;
                 float bWeight = 0.5f;
 
-                if (aCol.isStatic) { aWeight = 0.0f; bWeight = 1.0f; }
-                else if (bCol.isStatic) { aWeight = 1.0f; bWeight = 0.0f; }
+             //   if (aCol.isStatic) { aWeight = 0.0f; bWeight = 1.0f; }
+              //  else if (bCol.isStatic) { aWeight = 1.0f; bWeight = 0.0f; }
 
-                if (aCol.isStatic && bCol.isStatic) return;
+              //  if (aCol.isStatic && bCol.isStatic) return;
 
                 float ax = normal.x * overlap * aWeight;
                 float ay = normal.y * overlap * aWeight;
@@ -318,7 +343,7 @@ namespace LevelSystem {
         } // Zone Collision
 
         for (ComponentTransform& transform : level.transforms.components) {
-            transform.isDirty = false;
+          //  transform.isDirty = false;
         }
 
         // Future systems should still run here.

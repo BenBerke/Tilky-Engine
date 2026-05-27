@@ -20,7 +20,7 @@ void OpenGL::Update() {
 
     ComponentCamera* camera = LevelSystem::GetActiveCamera(level);
 
-    if (camera == nullptr) {
+    if (camera == nullptr) [[unlikely]] {
         spdlog::error("OpenGL::Update failed: no active camera");
         return;
     }
@@ -139,9 +139,9 @@ void OpenGL::Update() {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
-            ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
+            const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
-            if (transform == nullptr) {
+            if (transform == nullptr) [[unlikely]] {
                 spdlog::error("UI Sprite does not have UI transform");
                 continue;
             }
@@ -162,7 +162,7 @@ void OpenGL::Update() {
             const ComponentUITransform* transform =
                 level.ui_transforms.Get(text.ownerID);
 
-            if (transform == nullptr) {
+            if (transform == nullptr) [[unlikely]] {
                 spdlog::error("UI Text does not have UI transform");
                 continue;
             }

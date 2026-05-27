@@ -42,6 +42,12 @@ struct Vector3{
     bool operator==(const Vector3& other) const { return x == other.x && y == other.y && z == other.z;}
     bool operator!=(const Vector3& other) const { return !(x == other.x && y == other.y && z == other.z);}
 
+    bool IsZero() const {
+        auto closeToZero = [](float n) -> bool {return -.0001 < n && n < .0001;};
+
+        return closeToZero(x) && closeToZero(y) && closeToZero(z);
+    }
+
     template<typename T>
     Vector3 operator*(T value) const { return Vector3(x * value, y * value, z * value); }
     template<typename T>

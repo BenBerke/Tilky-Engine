@@ -182,11 +182,10 @@ namespace MapEditorInternal {
         for (const Entity& entity : level.entities) {
             const ComponentTransform* transform = level.transforms.Get(entity.id);
 
-            if (transform == nullptr || transform->floor != currentFloor) {
-                continue;
-            }
+            if (transform == nullptr || transform->floor != currentFloor) continue;
 
-            const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
+
+            const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.y}, cameraPos);
 
             const float screenEntitySize = entitySize * editorZoom;
 
@@ -197,15 +196,9 @@ namespace MapEditorInternal {
                 screenEntitySize
             };
 
-            if (level.sprites.Get(entity.id) != nullptr) {
-                SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
-            }
-            else if (level.decals.Get(entity.id) != nullptr) {
-                SDL_SetRenderDrawColor(renderer, 255, 120, 120, 255);
-            }
-            else {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            }
+            if (level.sprites.Get(entity.id) != nullptr) SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
+            else if (level.decals.Get(entity.id) != nullptr) SDL_SetRenderDrawColor(renderer, 255, 120, 120, 255);
+            else SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
             SDL_RenderFillRect(renderer, &rect);
 

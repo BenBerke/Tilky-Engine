@@ -121,7 +121,7 @@ namespace MapEditorInternal {
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) {
-                            t->position = {mouseWorld.x, t->position.y, mouseWorld.y};
+                            t->SetPosition({mouseWorld.x, mouseWorld.y, 0.0f});
                             t->floor = currentFloor;
                         }
                     }
@@ -144,11 +144,9 @@ namespace MapEditorInternal {
                 }
                 else if (holdingEntity && currentMode == MODE_ENTITY) {
                     if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]] {
-                        t->position = {mouseWorld.x, t->position.y, mouseWorld.y};
+                        t->SetPosition({mouseWorld.x, mouseWorld.y, t->position.z});
                     }
-                    else [[unlikely]]{
-                        spdlog::error("Entity does not have transform component");
-                    }
+                    else [[unlikely]] spdlog::error("Entity does not have transform component");
                 }
             }
 

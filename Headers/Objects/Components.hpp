@@ -25,6 +25,7 @@ enum ComponentType {
     CMP_PLAYER_CONTROLLER,
     CMP_CAMERA,
     CMP_SPHERE_COLLIDER,
+    CMP_RIGIDBODY,
 
     CMP_NORMAL_COUNT,
 
@@ -69,13 +70,26 @@ struct ComponentUITransform {
 
 // endregion
 
+struct ComponentRigidbody {
+    EntityID ownerID = static_cast<EntityID>(-1);
+
+    bool isStatic = false;
+    float mass = 1.0f;
+
+    Vector3 velocity = {.0f, .0f, .0f};
+
+    void AddForce(Vector3 force);
+    void ApplyFriction(float friction);
+    void ApplyAirResistance(float resistance);
+    void ApplyGravity(float gravity);
+};
+
 struct ComponentSphereCollider {
     // Sphere Collider
     EntityID ownerID = static_cast<EntityID>(-1);
 
     bool isActive = true;
     bool isTrigger = false;
-    bool isStatic = false;
 
     float size = 1.0f;
 };

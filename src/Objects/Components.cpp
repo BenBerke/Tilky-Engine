@@ -3,7 +3,7 @@
 //
 
 #include "Headers/Objects/Components.hpp"
-
+#include <spdlog/spdlog.h>
 #include "Headers/Map/MapQueries.hpp"
 
 void ComponentTransform::SetPosition(const Vector3 &position) {
@@ -16,36 +16,31 @@ void ComponentTransform::AddPosition(const Vector3& position) {
 }
 
 float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& sectors) {
-    if (this->sectorIndex < 0 ||
-        this->sectorIndex >= static_cast<int>(sectors.size())) {
-        return 0.0f;
-        }
+    if (this->sectorIndex < 0 || this->sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]] return 0.0f;
 
     const Sector& sector = sectors[this->sectorIndex];
 
     const float sectorHeight = sector.ceilingHeight - sector.floorHeight;
 
-    this->floor = std::clamp(
-        this->floor,
-        0,
-        std::max(1, sector.floorCount) - 1
-    );
+    this->floor = std::clamp(this->floor, 0, std::max(1, sector.floorCount) - 1);
 
     return sector.floorHeight + sectorHeight * static_cast<float>(floor);
 }
 
+
 void ComponentTransform::UpdateObjectSector(std::vector<Sector>& sectors) {
-    if (!isDirty) return;
+    if (!isDirty && this->sectorIndex >= 0) return;
 
-    const int newSector = MapQueries::FindSectorContainingPoint(sectors,{this->position.x, this->position.z});
+    if (sectors.empty()) [[unlikely]] return;
 
-    if (newSector == -1) [[unlikely]] return;
+    const int newSector = MapQueries::FindSectorContainingPoint(sectors,{this->position.x, this->position.y});
 
-    if (std::ranges::find(sectors[this->sectorIndex].entitiesInside, ownerID) !=
-    sectors[this->sectorIndex].entitiesInside.end()) [[likely]]
-    {
-        std::erase(sectors[this->sectorIndex].entitiesInside, ownerID);
-    }
+    if (newSector == -1 || newSector >= static_cast<int>(sectors.size())) [[unlikely]] return;
+
+    if (this->sectorIndex == newSector) [[likely]] return;
+
+    if (sectorIndex >= 0 && sectorIndex < static_cast<int>(sectors.size())) [[likely]]
+        std::erase(sectors[sectorIndex].entitiesInside, ownerID);
 
     this->sectorIndex = newSector;
     sectors[this->sectorIndex].entitiesInside.push_back(ownerID);
@@ -77,4 +72,21 @@ void ComponentAudioSource::SetSourceLooping(const bool looping) const {
 
 void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {
     SoundManager::SetSourcePosition(name, position);
+}
+
+void ComponentRigidbody::AddForce(const Vector3 force) {
+    this->velocity += force;
+}
+
+void ComponentRigidbody::ApplyFriction(float friction) {
+    this->velocity.x -= friction;
+    this->velocity.y += friction;
+}
+
+void ComponentRigidbody::ApplyAirResistance(float airResistance) {
+    //todo implement
+}
+
+void ComponentRigidbody::ApplyGravity(float gravity) {
+    this->velocity.z -= gravity;
 }

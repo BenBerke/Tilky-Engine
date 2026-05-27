@@ -173,6 +173,7 @@ namespace {
         componentsJson["playerControllers"] = json::array();
         componentsJson["cameras"] = json::array();
         componentsJson["sphereSphereCollider"] = json::array();
+        componentsJson["rigidbodies"] = json::array();
 
         for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
@@ -289,11 +290,18 @@ namespace {
 
         for (const ComponentSphereCollider &c : level.sphereColliders.components) {
             componentsJson["sphereColliders"].push_back({
-                {"onwerID", c.ownerID},
+                {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
                 {"isTrigger", c.isTrigger},
-                    {"isStatic", c.isStatic},
                 {"size", c.size}
+            });
+        }
+
+        for (const ComponentRigidbody &c: level.rigidbodies.components) {
+            componentsJson["rigidbodies"].push_back({
+                {"ownerID", c.ownerID},
+                {"isStatic", c.isStatic},
+                {"mass", c.mass}
             });
         }
 
@@ -447,21 +455,21 @@ namespace {
         level.sprites.Clear();
         level.decals.Clear();
         level.audioSources.Clear();
-        level.sphereColliders.Clear();
         level.playerControllers.Clear();
         level.cameras.Clear();
+        level.sphereColliders.Clear();
+        level.rigidbodies.Clear();
 
         level.ui_transforms.Clear();
         level.ui_sprites.Clear();
 
-        if (componentsJson.contains("transforms")) {
+        if (componentsJson.contains("transforms")) [[likely]] {
             for (const json &transformJson: componentsJson["transforms"]) {
                 const EntityID ownerID =
                         transformJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
+
 
                 ComponentTransform &c = level.transforms.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_TRANSFORM);
@@ -486,14 +494,13 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("sprites")) {
+        if (componentsJson.contains("sprites")) [[likely]] {
             for (const json &spriteJson: componentsJson["sprites"]) {
-                const EntityID ownerID =
-                        spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                const EntityID ownerID =spriteJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
+
 
                 ComponentSprite &c = level.sprites.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_SPRITE);
@@ -502,13 +509,12 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("decals")) {
+        if (componentsJson.contains("decals")) [[likely]] {
             for (const json &decalJson: componentsJson["decals"]) {
                 const EntityID ownerID = decalJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
+
 
                 ComponentDecal &c = level.decals.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_DECAL);
@@ -525,11 +531,11 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("audioSources")) {
+        if (componentsJson.contains("audioSources")) [[likely]] {
             for (const json &audioSourceJson : componentsJson["audioSources"]) {
                 const EntityID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentAudioSource& c = level.audioSources.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_AUDIO_SOURCE);
@@ -554,10 +560,11 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("scripts")) {
+        if (componentsJson.contains("scripts")) [[likely]] {
             for (const json &scriptJson : componentsJson["scripts"]) {
                 const EntityID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
-                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentScript& c = level.scripts.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_SCRIPT);
@@ -569,11 +576,11 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("uiTransforms")) {
+        if (componentsJson.contains("uiTransforms")) [[likely]] {
             for (const json &transformJson : componentsJson["uiTransforms"]) {
                 const EntityID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentUITransform& c = level.ui_transforms.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_UI_TRANSFORM);
@@ -621,11 +628,11 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("uiSprites")) {
+        if (componentsJson.contains("uiSprites")) [[likely]] {
             for (const json &spriteJson : componentsJson["uiSprites"]) {
                 const EntityID ownerID = spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentUISprite& c = level.ui_sprites.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_UI_SPRITE);
@@ -634,11 +641,11 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("uiTexts")) {
+        if (componentsJson.contains("uiTexts")) [[likely]] {
             for (const json &textJson : componentsJson["uiTexts"]) {
                 const EntityID ownerID = textJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentUIText& c = level.ui_texts.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_UI_TEXT);
@@ -646,11 +653,12 @@ namespace {
                 c.text = textJson.value("text", "");
             }
         }
-        if (componentsJson.contains("playerControllers")) {
+
+        if (componentsJson.contains("playerControllers")) [[likely]] {
         for (const json &controllerJson : componentsJson["playerControllers"]) {
             const EntityID ownerID = controllerJson.value("ownerID", INVALID_ENTITY_ID);
 
-            if (ownerID == INVALID_ENTITY_ID) continue;
+            if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
             ComponentPlayerController& c = level.playerControllers.Add(ownerID);
             level.GetEntity(ownerID)->componentsMask.set(CMP_PLAYER_CONTROLLER);
@@ -668,16 +676,16 @@ namespace {
         }
     }
 
-        if (componentsJson.contains("cameras")) {
+        if (componentsJson.contains("cameras")) [[likely]] {
             for (const json &cameraJson: componentsJson["cameras"]) {
                 const EntityID ownerID = cameraJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentCamera &c = level.cameras.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_CAMERA);
 
-                c.isActive = componentsJson.value("isActive", true);
+                c.isActive = cameraJson.value("isActive", true);
                 c.yaw = cameraJson.value("yaw", 0.0f);
                 c.pitch = cameraJson.value("pitch", 0.0f);
 
@@ -705,19 +713,32 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("sphereColliders")) {
+        if (componentsJson.contains("sphereColliders")) [[likely]] {
             for (const json &cameraJson: componentsJson["sphereColliders"]) {
                 const EntityID ownerID = cameraJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
                 ComponentSphereCollider &c = level.sphereColliders.Add(ownerID);
                 level.GetEntity(ownerID)->componentsMask.set(CMP_SPHERE_COLLIDER);
 
                 c.isActive = componentsJson.value("isActive", true);
                 c.isTrigger = cameraJson.value("isTrigger", false);
-                c.isStatic = cameraJson.value("isStatic", false);
                 c.size = cameraJson.value("size", 1.0f);
+            }
+        }
+
+        if (componentsJson.contains("rigidbodies")) [[likely]] {
+            for (const json &rigidBodyJson : componentsJson["rigidbodies"]) {
+                const EntityID ownerID = rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
+
+                ComponentRigidbody &c = level.rigidbodies.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_RIGIDBODY);
+
+                c.isStatic = rigidBodyJson.value("isStatic", true);
+                c.mass = rigidBodyJson.value("mass", 1.0f);
             }
         }
     }
@@ -725,9 +746,8 @@ namespace {
     void LoadWalls(const json &levelData, Level &level) {
         using namespace MapEditorInternal;
 
-        if (!levelData.contains("walls")) {
-            return;
-        }
+        if (!levelData.contains("walls")) [[unlikely]] return;
+
 
         for (const json &wallJson: levelData["walls"]) {
             Vector2 start = {

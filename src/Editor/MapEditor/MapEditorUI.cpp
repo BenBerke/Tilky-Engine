@@ -396,6 +396,7 @@ namespace {
                 componentNames[CMP_PLAYER_CONTROLLER] = Get("component.player_controller");
                 componentNames[CMP_CAMERA] = Get("component.camera");
                 componentNames[CMP_SPHERE_COLLIDER] = Get("component.sphere_collider");
+                componentNames[CMP_RIGIDBODY] = Get("component.rigidbody");
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
                     for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
@@ -420,44 +421,47 @@ namespace {
                 if (ImGui::Button(Get("common.add").c_str())) {
                     switch (componentToAdd) {
                         case CMP_SPRITE:
-                            if (!entity.HasComponent<ComponentSprite>())
+                            if (!entity.HasComponent<ComponentSprite>()) [[likely]]
                                 entity.AddComponent<ComponentSprite>();
                             break;
 
                         case CMP_DECAL:
-                            if (!entity.HasComponent<ComponentDecal>())
+                            if (!entity.HasComponent<ComponentDecal>()) [[likely]]
                                 entity.AddComponent<ComponentDecal>();
                             break;
 
                         case CMP_AUDIO_SOURCE:
-                            if (!entity.HasComponent<ComponentAudioSource>())
+                            if (!entity.HasComponent<ComponentAudioSource>()) [[likely]]
                                 entity.AddComponent<ComponentAudioSource>();
                             break;
 
                         case CMP_SCRIPT:
-                            if (!entity.HasComponent<ComponentScript>())
+                            if (!entity.HasComponent<ComponentScript>()) [[likely]]
                                 entity.AddComponent<ComponentScript>();
                             break;
 
                         case CMP_PLAYER_CONTROLLER:
-                            if (!entity.HasComponent<ComponentPlayerController>()) {
+                            if (!entity.HasComponent<ComponentPlayerController>()) [[likely]] {
                                 auto* pc = entity.AddComponent<ComponentPlayerController>();
                                 pc->isActive = true;
                             }
                             break;
 
                         case CMP_CAMERA:
-                            if (!entity.HasComponent<ComponentCamera>()) {
+                            if (!entity.HasComponent<ComponentCamera>()) [[likely]] {
                                 auto* cam = entity.AddComponent<ComponentCamera>();
                                 cam->isActive = true;
                             }
                             break;
 
                         case CMP_SPHERE_COLLIDER:
-                            if (!entity.HasComponent<ComponentSphereCollider>())
+                            if (!entity.HasComponent<ComponentSphereCollider>()) [[likely]]
                                 entity.AddComponent<ComponentSphereCollider>();
                             break;
 
+                        case CMP_RIGIDBODY:
+                            if (!entity.HasComponent<ComponentRigidbody>()) [[likely]]
+                                entity.AddComponent<ComponentRigidbody>();
                         default:
                             spdlog::error("Unknown component type");
                             break;
@@ -492,8 +496,6 @@ namespace {
                     editingComponent = true;
                 }
 
-                spdlog::info("Component row drawn for", label);
-
                 ImGui::PopID();
             };
 
@@ -513,6 +515,8 @@ namespace {
                 DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
             if (entity.HasComponent<ComponentSphereCollider>())
                 DrawComponentRow(Get("component.sphere_collider").c_str(), CMP_SPHERE_COLLIDER);
+            if (entity.HasComponent<ComponentRigidbody>())
+                DrawComponentRow(Get("component.rigidbody").c_str(), CMP_RIGIDBODY);
 
             PutSpace(2);
 
@@ -586,6 +590,9 @@ namespace {
                 case CMP_SPHERE_COLLIDER:
                     componentName = Get("component.sphere_collider");
                     break;
+                case CMP_RIGIDBODY:
+                    componentName = Get("component.rigidbody");
+                    break;
                 default:
                     componentName = Get("bug.unknown");
                     break;
@@ -601,17 +608,17 @@ namespace {
 
                 if (c != nullptr) [[likely]] {
                     ImGui::Text("%s", Get("component.transform.position").c_str());
-                    ImGui::Text("X    Y");
+                    ImGui::Text("X       Y       Z");
                     ImGui::SetNextItemWidth(200.0f);
                     ImGui::InputFloat("##positionx", &c->position.x);
-                    ImGui::SameLine();
                     ImGui::SetNextItemWidth(200.0f);
-                    ImGui::InputFloat("##positionz", &c->position.y);
+                    ImGui::SameLine();
+                    ImGui::InputFloat("##positiony", &c->position.y);
+                    ImGui::SetNextItemWidth(200.0f);
+                    ImGui::SameLine();
+                    ImGui::InputFloat("##positionz", &c->position.z);
 
                     ImGui::Spacing();
-
-                    ImGui::Text("%s", Get("component.transform.height").c_str());
-                    ImGui::InputFloat("##height", &c->position.z);
 
                     ImGui::Text("%s", Get("component.transform.scale").c_str());
                     ImGui::Text("X    Y");
@@ -790,10 +797,17 @@ namespace {
                     ImGui::DragFloat(Get("component.sphere_collider.size").c_str(), &c->size);
                     ImGui::Checkbox(Get("component.sphere_collider.is_trigger").c_str(), &c->isTrigger);
                     ImGui::Checkbox(Get("component.sphere_collider.is_active").c_str(), &c->isActive);
-                    ImGui::Checkbox(Get("component.sphere_collider.is_static").c_str(), &c->isStatic);
                 }
                 else [[unlikely]] {
                     ImGui::Text("Sphere Collider component missing");
+                }
+            }
+            else if (selectedComponent == CMP_RIGIDBODY) {
+                auto *c = entity.GetComponent<ComponentRigidbody>();
+
+                if (c != nullptr) [[likely]] {
+                    ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
+                    ImGui::InputFloat(Get("component.rigidbody.mass").c_str(), &c->mass);
                 }
             }
 
@@ -860,10 +874,7 @@ namespace MapEditorInternal {
 
         if (editingSector && currentMode == MODE_SECTOR && selectedSector != -1) EditingSector();
         if (editingWall && currentMode == MODE_WALL && selectedWall != -1) EditingWall();
-        if (editingEntity && currentMode == MODE_ENTITY) {
-            spdlog::info("starting to edit entity");
-            EditingEntity();
-        }
+        if (editingEntity && currentMode == MODE_ENTITY) EditingEntity();
         if (editingComponent && currentMode == MODE_ENTITY && selectedComponent != -1) EditingComponent();
         //endregion
 
