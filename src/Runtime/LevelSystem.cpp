@@ -4,6 +4,7 @@
 
 #include "../../Headers/Runtime/LevelSystem.hpp"
 
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 
@@ -202,32 +203,50 @@ namespace LevelSystem {
         {
             //todo make a world setting
             constexpr float friction = 9.8f;
+
             ZoneScopedN("Physics");
+
             for (ComponentRigidbody& r : level.rigidbodies.components) {
                 // make sure to remove the include
-                if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) r.AddForce({1.0f, 0.0f, 0.0f});
-
-
-                if (r.velocity.IsZero()) continue;
+                if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) r.AddVelocity({5.0f, 0.0f, 0.0f});
 
                 ComponentTransform* transform = level.transforms.Get(r.ownerID);
 
-                transform->AddPosition(r.velocity);
+                if (transform->position.z > 0) r.ApplyGravity(friction);
+
+                if (transform->position.z <= 0.0f) {
+                    transform->position.z = 0.0f;
+
+                    if (r.velocity.z < 0.0f)
+                        r.velocity.z = 0.0f;
+                }
+
+                if (r.velocity.IsZero()) continue;
+
+                transform->AddPosition(r.velocity * GameTime::deltaTime);
                 r.ApplyFriction(friction);
                 r.ApplyAirResistance(friction);
-
-                if (transform->position.z - transform->scale.y * .5f >= level.sectors[transform->sectorIndex].floorHeight)
-                r.ApplyGravity(friction);
             }
         }
 
         {
             ZoneScopedN("Collision");
 
-            auto ResolveCollision = [](ComponentTransform& aTrans, const ComponentSphereCollider& aCol,
-                              ComponentTransform& bTrans, const ComponentSphereCollider& bCol)
+            auto GetWorldZ = [&level](const ComponentTransform& t) -> float {
+                return level.sectors[t.sectorIndex].floorHeight + t.position.z;
+            };
+
+            auto ResolveCollision = [&level, GetWorldZ](ComponentTransform& aTrans, const ComponentSphereCollider& aCol,
+                                                        ComponentTransform& bTrans, const ComponentSphereCollider& bCol)->void
             {
-                const Vector3 delta = aTrans.position - bTrans.position;
+                Vector3 aWorldPos = aTrans.position;
+                Vector3 bWorldPos = bTrans.position;
+
+                aWorldPos.z = GetWorldZ(aTrans);
+                bWorldPos.z = GetWorldZ(bTrans);
+
+                Vector3 delta = aWorldPos - bWorldPos;
+
                 const float distanceSq = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
 
                 if (distanceSq == 0.0f) {
@@ -242,10 +261,17 @@ namespace LevelSystem {
                 float aWeight = 0.5f;
                 float bWeight = 0.5f;
 
-             //   if (aCol.isStatic) { aWeight = 0.0f; bWeight = 1.0f; }
-              //  else if (bCol.isStatic) { aWeight = 1.0f; bWeight = 0.0f; }
+                const ComponentRigidbody* aRigid = level.rigidbodies.Get(aTrans.ownerID);
+                const ComponentRigidbody* bRigid = level.rigidbodies.Get(bTrans.ownerID);
 
-              //  if (aCol.isStatic && bCol.isStatic) return;
+                const bool aStatic = (aRigid == nullptr) || aRigid->isStatic;
+                const bool bStatic = (bRigid == nullptr) || bRigid->isStatic;
+
+                if (aStatic && bStatic) return;
+
+                if (aStatic) { aWeight = 0.0f; bWeight = 1.0f; }
+                else if (bStatic) { aWeight = 1.0f; bWeight = 0.0f; }
+
 
                 float ax = normal.x * overlap * aWeight;
                 float ay = normal.y * overlap * aWeight;
@@ -255,8 +281,8 @@ namespace LevelSystem {
                 float by = -normal.y * overlap * bWeight;
                 float bz = -normal.z * overlap * bWeight;
 
-                aTrans.AddPosition({ax, ay, az});
-                bTrans.AddPosition({bx, by, bz});
+                aTrans.AddPosition({ ax, ay, az });
+                bTrans.AddPosition({ bx, by, bz });
             };
 
             constexpr int COLLISION_ITERATIONS = 4;
@@ -265,7 +291,6 @@ namespace LevelSystem {
                     ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
                     Vector3 selfPos = selfTransform->position;
                     const float selfSize = selfCollider.size;
-                    const float selfHalfSize = selfSize * .5f;
 
                     if (!selfTransform->isDirty) [[unlikely]] continue;
 
@@ -276,6 +301,7 @@ namespace LevelSystem {
                         const ComponentSphereCollider *otherCollider = level.sphereColliders.Get(entityId);
 
                         if (!otherCollider || !otherCollider->isActive) continue;
+                        if (entityId == selfCollider.ownerID) [[unlikely]] continue;
 
                         if (Vector3Math::DistanceSquared(otherTransform->position, selfPos) <
                             (otherCollider->size + selfSize) * (otherCollider->size + selfSize)) {
@@ -292,6 +318,7 @@ namespace LevelSystem {
                             ComponentSphereCollider *otherCollider = level.sphereColliders.Get(entityId);
 
                             if (!otherCollider || !otherCollider->isActive) continue;
+                            if (entityId == selfCollider.ownerID) [[unlikely]] continue;
 
                             if (Vector3Math::DistanceSquared(otherTransform->position, selfPos) <
                                 (otherCollider->size + selfSize) * (otherCollider->size + selfSize)) {
@@ -315,9 +342,9 @@ namespace LevelSystem {
 
                         const float distSq = Vector2Math::DistanceSquared(selfPosVector2, closestPoint);
 
-                        if (distSq < selfHalfSize * selfHalfSize) {
+                        if (distSq < selfSize * selfSize) {
                             const float currentDistance = std::sqrt(distSq);
-                            const float overlapDistance = selfHalfSize - currentDistance;
+                            const float overlapDistance = selfSize - currentDistance;
 
                             Vector2 pushDirection = { 0.0f, 0.0f };
 
@@ -343,7 +370,7 @@ namespace LevelSystem {
         } // Zone Collision
 
         for (ComponentTransform& transform : level.transforms.components) {
-          //  transform.isDirty = false;
+            transform.isDirty = false;
         }
 
         // Future systems should still run here.

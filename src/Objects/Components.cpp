@@ -4,6 +4,8 @@
 
 #include "Headers/Objects/Components.hpp"
 #include <spdlog/spdlog.h>
+
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/MapQueries.hpp"
 
 void ComponentTransform::SetPosition(const Vector3 &position) {
@@ -74,13 +76,20 @@ void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {
     SoundManager::SetSourcePosition(name, position);
 }
 
-void ComponentRigidbody::AddForce(const Vector3 force) {
-    this->velocity += force;
+void ComponentRigidbody::AddVelocity(const Vector3 velocity) {
+    this->velocity += velocity;
 }
 
-void ComponentRigidbody::ApplyFriction(float friction) {
-    this->velocity.x -= friction;
-    this->velocity.y += friction;
+void ComponentRigidbody::ApplyFriction(const float friction) {
+    const float dt = GameTime::deltaTime;
+
+    auto applyAxis = [&](float& v) {
+        if (v > 0.0f) v = std::max(0.0f, v - friction * dt);
+        else if (v < 0.0f) v = std::min(0.0f, v + friction * dt);
+    };
+
+    applyAxis(velocity.x);
+    applyAxis(velocity.y);
 }
 
 void ComponentRigidbody::ApplyAirResistance(float airResistance) {
@@ -88,5 +97,5 @@ void ComponentRigidbody::ApplyAirResistance(float airResistance) {
 }
 
 void ComponentRigidbody::ApplyGravity(float gravity) {
-    this->velocity.z -= gravity;
+    this->velocity.z += gravity * GameTime::deltaTime;
 }

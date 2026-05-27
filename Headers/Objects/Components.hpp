@@ -78,7 +78,7 @@ struct ComponentRigidbody {
 
     Vector3 velocity = {.0f, .0f, .0f};
 
-    void AddForce(Vector3 force);
+    void AddVelocity(Vector3 velocity);
     void ApplyFriction(float friction);
     void ApplyAirResistance(float resistance);
     void ApplyGravity(float gravity);
@@ -239,6 +239,12 @@ struct ComponentStorage {
     std::unordered_map<EntityID, size_t> entityToIndex;
 
     T* Get(const EntityID id) {
+        const auto it = entityToIndex.find(id);
+        if (it == entityToIndex.end()) return nullptr;
+        return &components[it->second];
+    }
+
+    const T* Get(EntityID id) const {
         const auto it = entityToIndex.find(id);
         if (it == entityToIndex.end()) return nullptr;
         return &components[it->second];

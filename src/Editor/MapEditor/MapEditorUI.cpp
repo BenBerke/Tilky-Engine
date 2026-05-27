@@ -608,14 +608,15 @@ namespace {
 
                 if (c != nullptr) [[likely]] {
                     ImGui::Text("%s", Get("component.transform.position").c_str());
-                    ImGui::Text("X       Y       Z");
+                    ImGui::Text("X       Y");
                     ImGui::SetNextItemWidth(200.0f);
                     ImGui::InputFloat("##positionx", &c->position.x);
                     ImGui::SetNextItemWidth(200.0f);
                     ImGui::SameLine();
                     ImGui::InputFloat("##positiony", &c->position.y);
+
+                    ImGui::Text("Height");
                     ImGui::SetNextItemWidth(200.0f);
-                    ImGui::SameLine();
                     ImGui::InputFloat("##positionz", &c->position.z);
 
                     ImGui::Spacing();
@@ -801,6 +802,12 @@ namespace {
                 else [[unlikely]] {
                     ImGui::Text("Sphere Collider component missing");
                 }
+
+                if (ImGui::Button(Get("common.delete").c_str())) {
+                    entity.RemoveComponent<ComponentSphereCollider>();
+                    editingComponent = false;
+                    selectedComponent = -1;
+                }
             }
             else if (selectedComponent == CMP_RIGIDBODY) {
                 auto *c = entity.GetComponent<ComponentRigidbody>();
@@ -808,6 +815,12 @@ namespace {
                 if (c != nullptr) [[likely]] {
                     ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
                     ImGui::InputFloat(Get("component.rigidbody.mass").c_str(), &c->mass);
+                }
+
+                if (ImGui::Button(Get("common.delete").c_str())) {
+                    entity.RemoveComponent<ComponentRigidbody>();
+                    editingComponent = false;
+                    selectedComponent = -1;
                 }
             }
 
@@ -820,6 +833,7 @@ namespace {
 
             ImGui::PopID();
             ImGui::End();
+
         }
     }
 }
