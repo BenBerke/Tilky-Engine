@@ -11,6 +11,33 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 option(TILKY_ENABLE_TRACY "Enable Tracy profiler" ON)
 
+# ============================================================
+# Unity / Jumbo build
+# Speeds up full rebuilds by compiling batches of .cpp files together.
+# Keep OFF by default because unity builds can expose hidden ODR/name clashes.
+# Enable with:
+#   cmake -S . -B build -DTILKY_ENABLE_UNITY_BUILD=ON
+# ============================================================
+
+option(TILKY_ENABLE_UNITY_BUILD "Enable CMake unity/jumbo builds for Tilky project targets" OFF)
+
+set(TILKY_UNITY_BUILD_BATCH_SIZE "8" CACHE STRING
+        "Maximum number of source files per generated unity translation unit"
+)
+
+function(tilky_configure_unity_build target_name)
+    if(NOT TARGET ${target_name})
+        message(FATAL_ERROR "tilky_configure_unity_build called for missing target: ${target_name}")
+    endif()
+
+    set_target_properties(${target_name} PROPERTIES
+            UNITY_BUILD ${TILKY_ENABLE_UNITY_BUILD}
+            UNITY_BUILD_MODE BATCH
+            UNITY_BUILD_BATCH_SIZE ${TILKY_UNITY_BUILD_BATCH_SIZE}
+            UNITY_BUILD_UNIQUE_ID TILKY_UNITY_BUILD_ID
+    )
+endfunction()
+
 find_package(OpenGL REQUIRED)
 find_package(OpenAL REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
@@ -120,6 +147,8 @@ target_compile_definitions(Tilky_Project PUBLIC
         TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
+tilky_configure_unity_build(Tilky_Project)
+
 # ============================================================
 # Shared localisation system
 # Used by launcher and engine.
@@ -144,6 +173,8 @@ target_link_libraries(Tilky_Local PUBLIC
 target_compile_definitions(Tilky_Local PUBLIC
         TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
+
+tilky_configure_unity_build(Tilky_Local)
 
 # ============================================================
 # Engine source list
@@ -289,6 +320,8 @@ else()
     target_compile_definitions(Tilky_EngineCore PUBLIC TILKY_USE_IMGUI=0)
 endif()
 
+tilky_configure_unity_build(Tilky_EngineCore)
+
 # ============================================================
 # Launcher source list
 # Only launcher-specific files go here.
@@ -327,6 +360,8 @@ target_link_libraries(Tilky_LauncherCore PUBLIC
 target_compile_definitions(Tilky_LauncherCore PUBLIC
         TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
+
+tilky_configure_unity_build(Tilky_LauncherCore)
 
 set(TILKY_ICON_OBJECTS "")
 

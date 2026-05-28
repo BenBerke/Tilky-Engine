@@ -5,7 +5,7 @@
 #ifndef TILKY_ENGINE_LEVEL_H
 #define TILKY_ENGINE_LEVEL_H
 
-#include <al.h>
+#include <AL/al.h>
 #include <vector>
 #include <string>
 #include <spdlog/spdlog.h>

@@ -443,6 +443,8 @@ namespace {
                         case CMP_PLAYER_CONTROLLER:
                             if (!entity.HasComponent<ComponentPlayerController>()) [[likely]] {
                                 auto* pc = entity.AddComponent<ComponentPlayerController>();
+                                if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
+                                if (!entity.HasComponent<ComponentSphereCollider>()) entity.AddComponent<ComponentSphereCollider>();
                                 pc->isActive = true;
                             }
                             break;

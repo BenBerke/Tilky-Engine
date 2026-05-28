@@ -225,9 +225,7 @@ namespace PlayerControllerSystem {
                     ? controller.runningSpeed
                     : controller.speed;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
-            controller.noClip = !controller.noClip;
-        }
+        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
         sphereCollider.isActive = !controller.noClip;
 
@@ -235,12 +233,9 @@ namespace PlayerControllerSystem {
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
         camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
+        camera.yaw = std::fmod(camera.yaw, 360.0f);
 
-        if (camera.yaw >= 360.0f) camera.yaw -= 360.0f;
-        else if (camera.yaw < 0.0f) camera.yaw += 360.0f;
-
-        const float yawRadians =
-                camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
@@ -250,13 +245,16 @@ namespace PlayerControllerSystem {
 
         if (input.x != 0.0f || input.y != 0.0f) {
             const Vector2 moveDirection =
-                    Vector2Math::Normalized(right * input.x + forward * input.y);
+                Vector2Math::Normalized(right * input.x + forward * input.y);
 
             const Vector2 desiredVelocity =
-                    moveDirection * controller.currentSpeed;
+                moveDirection * controller.currentSpeed;
 
             rigidbody.velocity.x = desiredVelocity.x;
             rigidbody.velocity.y = desiredVelocity.y;
+        } else {
+            rigidbody.velocity.x = 0.0f;
+            rigidbody.velocity.y = 0.0f;
         }
 
         SoundManager::SetListenerPosition(playerTransform.position);
