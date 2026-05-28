@@ -131,11 +131,9 @@ namespace LevelSystem {
 
         activeController = GetActivePlayerController(level);
 
-
-
         if (activeController != nullptr) {
-            ComponentTransform* playerTransform =
-                level.transforms.Get(activeController->ownerID);
+            ComponentTransform* playerTransform = level.transforms.Get(activeController->ownerID);
+            ComponentRigidbody* playerRigidboy = level.rigidbodies.Get(activeController->ownerID);
 
             if (playerTransform == nullptr) {
                 spdlog::error(
@@ -144,8 +142,7 @@ namespace LevelSystem {
                 );
             }
             else {
-                ComponentCamera* activeCamera =
-                    GetActiveCamera(level);
+                ComponentCamera* activeCamera = GetActiveCamera(level);
 
                 if (activeCamera == nullptr) {
                     spdlog::warn(
@@ -156,6 +153,7 @@ namespace LevelSystem {
                     PlayerControllerSystem::Start(
                         *activeController,
                         *playerTransform,
+                        *playerRigidboy,
                         *activeCamera,
                         level.sectors
                     );
@@ -172,6 +170,8 @@ namespace LevelSystem {
 
         if (activeController != nullptr) {
             ComponentTransform* playerTransform = level.transforms.Get(activeController->ownerID);
+            ComponentRigidbody* playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
+            ComponentSphereCollider* playerSphereCollider = level.sphereColliders.Get(activeController->ownerID);
 
             if (playerTransform == nullptr) {
                 spdlog::error(
@@ -180,8 +180,7 @@ namespace LevelSystem {
                 );
             }
             else {
-                ComponentCamera* activeCamera =
-                    GetActiveCamera(level);
+                ComponentCamera* activeCamera = GetActiveCamera(level);
 
                 if (activeCamera == nullptr) {
                     spdlog::warn(
@@ -193,7 +192,8 @@ namespace LevelSystem {
                         *activeController,
                         *playerTransform,
                         *activeCamera,
-                        level.walls,
+                        *playerRigidbody,
+                        *playerSphereCollider,
                         level.sectors
                     );
                 }

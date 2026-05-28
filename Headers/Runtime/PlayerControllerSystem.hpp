@@ -48,18 +48,20 @@ namespace PlayerControllerSystem {
     }
 
     void Start(
-        ComponentPlayerController& controller,
-        ComponentTransform& playerTransform,
-        const ComponentCamera& camera,
-        const std::vector<Sector>& sectors
+        ComponentPlayerController &controller,
+        ComponentTransform &playerTransform,
+        const ComponentRigidbody &rigidbody,
+        const ComponentCamera &camera,
+        const std::vector<Sector> &sectors
     );
 
     void Update(
-        ComponentPlayerController& controller,
-        ComponentTransform& playerTransform,
-        ComponentCamera& camera,
-        const std::vector<Wall>& walls,
-        const std::vector<Sector>& sectors
+        ComponentPlayerController &controller,
+        ComponentTransform &playerTransform,
+        ComponentCamera &camera,
+        ComponentRigidbody &rigidbody,
+        ComponentSphereCollider &sphereCollider,
+        const std::vector<Sector> &sectors
     );
 }
 

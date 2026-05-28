@@ -265,8 +265,6 @@ namespace {
                 {"runningSpeed", c.runningSpeed},
                 {"eyeHeight", c.eyeHeight},
                 {"stepSize", c.stepSize},
-                {"bodySize", c.bodySize},
-                {"bodySize", c.bodySize},
                 {"friction", c.friction},
                 {"sensitivityX", c.sensitivityX},
                 {"sensitivityY", c.sensitivityY},
@@ -668,7 +666,6 @@ namespace {
             c.runningSpeed    = controllerJson.value("runningSpeed", 90.0f);
             c.eyeHeight       = controllerJson.value("eyeHeight", 12.0f);
             c.stepSize        = controllerJson.value("stepSize", 8.0f);
-            c.bodySize        = controllerJson.value("bodySize", 10.0f);
             c.friction     = controllerJson.value("friction", 0.8f);
             c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
             c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
