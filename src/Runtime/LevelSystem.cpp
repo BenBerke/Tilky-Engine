@@ -7,7 +7,7 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 
-#include "tracy/Tracy.hpp"
+#include <tracy/Tracy.hpp>
 
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {

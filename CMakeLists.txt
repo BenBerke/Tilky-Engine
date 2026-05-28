@@ -103,24 +103,37 @@ endif()
 # Tracy Profiler
 # ============================================================
 
-set(TRACY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/External/tracy)
+if(TILKY_ENABLE_TRACY)
+    set(TRACY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/tracy")
+    set(TRACY_CLIENT_CPP "${TRACY_DIR}/public/TracyClient.cpp")
 
-add_library(TracyClient STATIC
-        ${TRACY_DIR}/public/TracyClient.cpp
-)
+    if(EXISTS "${TRACY_CLIENT_CPP}")
+        add_library(TracyClient STATIC
+                "${TRACY_CLIENT_CPP}"
+        )
 
-target_include_directories(TracyClient PUBLIC
-        ${TRACY_DIR}/public
-)
+        target_include_directories(TracyClient PUBLIC
+                "${TRACY_DIR}/public"
+        )
 
-target_compile_definitions(TracyClient PUBLIC TRACY_ENABLE)
+        target_compile_definitions(TracyClient PUBLIC
+                TRACY_ENABLE
+        )
 
-target_link_libraries(TracyClient PUBLIC
-        ws2_32
-        wsock32
-        dbghelp
-        secur32
-)
+        if(WIN32)
+            target_link_libraries(TracyClient PUBLIC
+                    ws2_32
+                    wsock32
+                    dbghelp
+                    secur32
+            )
+        endif()
+    else()
+        message(WARNING "Tracy is enabled, but TracyClient.cpp was not found at: ${TRACY_CLIENT_CPP}")
+        message(WARNING "Disabling TracyClient target. Either add External/tracy or configure with -DTILKY_ENABLE_TRACY=OFF")
+        set(TILKY_ENABLE_TRACY OFF)
+    endif()
+endif()
 
 # ============================================================
 # Shared project system
@@ -260,6 +273,8 @@ set(TILKY_ENGINE_SOURCES
         Headers/Runtime/LevelSystem.hpp
         src/Objects/Components.cpp
         src/Objects/Level.cpp
+        Headers/Math/Vector/Vector2Math.hpp
+        Headers/Math/Vector/Vector3Math.hpp
 )
 
 # ============================================================
@@ -306,8 +321,13 @@ target_link_libraries(Tilky_EngineCore PUBLIC
         nlohmann_json::nlohmann_json
         sol2::sol2
         ${LUA_LIBRARIES}
-        TracyClient
 )
+
+if(TARGET TracyClient)
+    target_link_libraries(Tilky_EngineCore PUBLIC TracyClient)
+    target_include_directories(Tilky_EngineCore PUBLIC "${TRACY_DIR}/public")
+    target_compile_definitions(Tilky_EngineCore PUBLIC TRACY_ENABLE)
+endif()
 
 target_compile_definitions(Tilky_EngineCore PUBLIC
         TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
@@ -320,7 +340,6 @@ else()
 endif()
 
 tilky_configure_unity_build(Tilky_EngineCore)
-
 # ============================================================
 # Launcher source list
 # Only launcher-specific files go here.

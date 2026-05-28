@@ -1,12 +1,10 @@
-module;
+#pragma once
 
 #include <cmath>
 
-export module Matrix4;
+#include "../Vector/Vector3Math.hpp"
 
-import Vector3;
-
-export struct Matrix4 {
+struct Matrix4 {
     float m[4][4]{};
 
     Matrix4() = default;
