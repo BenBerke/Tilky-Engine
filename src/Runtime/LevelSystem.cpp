@@ -208,7 +208,109 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Collision");
-            
+
+            //todo make this a world setting
+            constexpr int COLLISION_ITERATIONS = 4;
+            for (int i  = 0; i < COLLISION_ITERATIONS; i++) {
+                for (const ComponentSphereCollider& selfCollider : level.sphereColliders.components) {
+                    if (!selfCollider.isActive) continue;
+
+                    ComponentTransform* selfTransform = level.transforms.Get(selfCollider.ownerID);
+                    if (!selfTransform->isDirty) [[unlikely]] continue;
+
+                    ComponentRigidbody* selfRb = level.rigidbodies.Get(selfCollider.ownerID);
+                    if (selfRb == nullptr) continue; // collision checks should only happen on entities with rigidbides
+
+                    std::vector<uint32_t> allEntities;
+                    Sector &sector = level.sectors[selfTransform->sectorIndex];
+
+                    allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
+                    //Neighboring sectors.
+                    //Can be potentially commented-out in exchange for better performance but potential glitches between sectors
+                    for (const Sector *nSector: sector.neighbors) {
+                        if (!nSector) [[unlikely]] continue;
+                        allEntities.insert(allEntities.end(), nSector->entitiesInside.begin(), nSector->entitiesInside.end());
+                    }
+
+                    Vector3 selfPos = selfTransform->position;
+                    const Vector2 selfVector2 = (Vector2){selfTransform->position.x, selfTransform->position.y};
+
+                    const float selfSize = selfCollider.size;
+
+                    for (const uint32_t entityId : allEntities) {
+                        Entity& otherEntity = level.entities[entityId];
+
+                        if (!otherEntity.HasComponent<ComponentSphereCollider>()) continue;
+
+                        auto* otherCollider = otherEntity.GetComponent<ComponentSphereCollider>();
+
+                        if (!otherCollider->isActive) continue;
+
+                        auto* otherTransform = otherEntity.GetComponent<ComponentTransform>();
+
+                        Vector3 otherPos = otherTransform->position;
+
+                        const float otherSize = otherCollider->size;
+                        const float minDistance = otherSize + selfSize;
+
+                        if (Vector3Math::DistanceSquared(otherPos, selfPos) < minDistance*minDistance) [[unlikely]] {
+                            ComponentRigidbody* otherRb = nullptr;
+                            if (otherEntity.HasComponent<ComponentRigidbody>())
+                                otherRb = otherEntity.GetComponent<ComponentRigidbody>();
+
+                            float overlap = selfSize + otherSize - Vector3Math::Distance(otherPos, selfPos);
+
+                            Vector3 pushDirection = Vector3Math::Normalized(otherPos - selfPos);
+
+                            //todo implement mass
+                            float selfWeight = 0.5f;
+                            float otherWeight = 0.5f;
+
+                            const bool aStatic = selfRb->isStatic; // Can not reach here if selfRb is null
+                            const bool bStatic = (otherRb == nullptr) || otherRb->isStatic;
+
+                            if (bStatic && aStatic) [[unlikely]] return;
+
+                            if (aStatic) { selfWeight = 0.0f; otherWeight = 1.0f; }
+                            else if (bStatic) { selfWeight = 1.0f; otherWeight = 0.0f; }
+
+                            Vector3 selfPush =
+                                (Vector3){pushDirection.x, pushDirection.y, pushDirection.z} * overlap * selfWeight;
+                            Vector3 otherPush =
+                                (Vector3){pushDirection.x, pushDirection.y, pushDirection.z} * overlap * otherWeight * -1;
+
+                            selfTransform->AddPosition(selfPush);
+                            otherTransform->AddPosition(otherPush);
+                        }
+                    }
+
+                    // Wall collision
+                    for (const Wall& wall : sector.walls) {
+                        const Vector2 w = selfVector2 - wall.start;
+                        const Vector2 v = wall.vector;
+
+                        const float vDotV = Vector2Math::Dot(v, v);
+                        if (vDotV <= 0.001f) continue;
+
+                        float t = Vector2Math::Dot(w, v) / vDotV;
+                        t = std::max(0.0f, std::min(1.0f, t));
+
+                        Vector2 closestPoint = wall.start + t * v;
+
+                        const float distanceSquared = Vector2Math::DistanceSquared(closestPoint, selfVector2);
+
+                        if (distanceSquared < selfSize * selfSize) [[unlikely]] {
+                            const float overlap = std::sqrt(distanceSquared);
+
+                            const Vector2 pushDirection = closestPoint - selfVector2;
+                            const Vector2 push = pushDirection * overlap;
+
+                            selfTransform->AddPosition((Vector3){push.x, push.y, 0.0f});
+                        }
+                    }
+
+                }
+            }
         } // Zone Collision
 
         for (ComponentTransform& transform : level.transforms.components) {
