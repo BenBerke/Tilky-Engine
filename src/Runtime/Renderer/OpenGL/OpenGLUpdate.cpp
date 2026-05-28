@@ -86,7 +86,7 @@ void OpenGL::Update() {
 
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
+        glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_FLAT);
 
         glDrawArraysInstanced(GL_TRIANGLES, 0, 3, flatTriangleCount);
@@ -99,7 +99,7 @@ void OpenGL::Update() {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
+        glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_WALL);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, gpuWallCount);
     }
@@ -111,7 +111,7 @@ void OpenGL::Update() {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthFunc(GL_LEQUAL);
+        glDepthFunc(GL_GEQUAL);
         glDepthMask(GL_TRUE);
         glUniform1i(renderModeUniform, RENDER_SPRITE);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
@@ -125,7 +125,7 @@ void OpenGL::Update() {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, decalSSBO);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthFunc(GL_LEQUAL);
+        glDepthFunc(GL_GEQUAL);
         glDepthMask(GL_FALSE);
         glUniform1i(renderModeUniform, RENDER_DECAL);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, decalCount);

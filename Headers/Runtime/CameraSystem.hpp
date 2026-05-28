@@ -57,7 +57,7 @@ namespace CameraSystem {
             {0.0f, 1.0f, 0.0f}
         );
 
-        camera.projection = Matrix4::Perspective(
+        camera.projection = Matrix4::PerspectiveReverseZ(
             camera.fov,
             camera.aspectRatio,
             camera.nearPlane,

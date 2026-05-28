@@ -133,6 +133,28 @@ struct Matrix4 {
         return result;
     }
 
+    static Matrix4 PerspectiveReverseZ(
+        const float fovDegrees,
+        const float aspect,
+        const float nearPlane,
+        const float farPlane
+    ) {
+        Matrix4 result{};
+
+        const float fovRadians = fovDegrees * 3.14159265359f / 180.0f;
+        const float f = 1.0f / std::tan(fovRadians * 0.5f);
+
+        result.m[0][0] = f / aspect;
+        result.m[1][1] = f;
+
+        // Reverse-Z, finite far plane, GL_ZERO_TO_ONE
+        result.m[2][2] = nearPlane / (farPlane - nearPlane);
+        result.m[2][3] = (farPlane * nearPlane) / (farPlane - nearPlane);
+        result.m[3][2] = -1.0f;
+
+        return result;
+    }
+
     static Matrix4 LookAt(
     const Vector3& eye,
     const Vector3& target,

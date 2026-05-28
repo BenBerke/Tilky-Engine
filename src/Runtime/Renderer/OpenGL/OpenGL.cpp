@@ -4,11 +4,11 @@
 
 void OpenGL::BeginFrame() {
     glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
+
+    glDepthFunc(GL_GREATER);
+    glDepthMask(GL_TRUE);
 
     glDisable(GL_CULL_FACE);
-
-    glDepthMask(GL_TRUE);
 
     glClearColor(
         1.0f,
@@ -17,10 +17,8 @@ void OpenGL::BeginFrame() {
         1.0f
     );
 
-    glClear(
-        GL_COLOR_BUFFER_BIT |
-        GL_DEPTH_BUFFER_BIT
-    );
+    glClearDepth(0.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void OpenGL::EndFrame() {

@@ -28,7 +28,7 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
-    if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3)) {
+    if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5)) {
         spdlog::critical(
             "SDL_GL_SetAttribute failed while setting OpenGL minor version: {}",
             SDL_GetError()
@@ -52,7 +52,7 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
-    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)) {
+    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 32)) {
         spdlog::critical(
             "SDL_GL_SetAttribute failed while setting depth buffer size: {}",
             SDL_GetError()
@@ -78,6 +78,10 @@ bool OpenGL::InitializeOpenGL() {
         spdlog::critical("Failed to initialize GLAD");
         return false;
     }
+    if (!GLAD_GL_VERSION_4_5) {
+        spdlog::critical("Reverse-Z with glClipControl requires OpenGL 4.5");
+        return false;
+    }
 
     glViewport(0, 0, screenWidth, screenHeight);
 
@@ -87,6 +91,10 @@ bool OpenGL::InitializeOpenGL() {
             SDL_GetError()
         );
     }
+
+    glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+    glClearDepth(0.0);
+    glDepthRange(0.0, 1.0);
 
     spdlog::info("OpenGL initialized successfully");
 
