@@ -13,7 +13,7 @@
 #include "Headers/Objects/Components.hpp"
 
 namespace CameraSystem {
-    inline Vector3 GetCameraForward(
+    inline Vector3 GetCameraForwardEngineSpace(
         const float yawDegrees,
         const float pitchDegrees
     ) {
@@ -29,10 +29,26 @@ namespace CameraSystem {
         const float pitchSin = std::sin(pitchRadians);
         const float pitchCos = std::cos(pitchRadians);
 
+        // Engine/game convention:
+        // x = world X
+        // y = world Z/depth
+        // z = height/up
         return {
             yawSin * pitchCos,
-            pitchSin,
-            yawCos * pitchCos
+            yawCos * pitchCos,
+            pitchSin
+        };
+    }
+
+    inline Vector3 EngineToRenderSpace(const Vector3& v) {
+        // Convert:
+        // engine x = world X       -> render x
+        // engine y = world Z/depth -> render z
+        // engine z = height/up     -> render y
+        return {
+            v.x,
+            v.z,
+            v.y
         };
     }
 
@@ -40,21 +56,28 @@ namespace CameraSystem {
         const ComponentTransform& transform,
         ComponentCamera& camera
     ) {
-        camera.forward = GetCameraForward(
+        camera.forward = GetCameraForwardEngineSpace(
             camera.yaw,
             camera.pitch
         );
 
-        camera.target = {
-            transform.position.x + camera.forward.x,
-            transform.position.y + camera.forward.y,
-            transform.position.z + camera.forward.z
+        const Vector3 cameraPositionEngine = transform.position;
+        const Vector3 targetEngine = {
+            cameraPositionEngine.x + camera.forward.x,
+            cameraPositionEngine.y + camera.forward.y,
+            cameraPositionEngine.z + camera.forward.z
         };
 
+        const Vector3 cameraPositionRender =
+            EngineToRenderSpace(cameraPositionEngine);
+
+        const Vector3 targetRender =
+            EngineToRenderSpace(targetEngine);
+
         camera.view = Matrix4::LookAt(
-            transform.position,
-            camera.target,
-            {0.0f, 1.0f, 0.0f}
+            cameraPositionRender,
+            targetRender,
+            {0.0f, 1.0f, 0.0f} // render-space up
         );
 
         camera.projection = Matrix4::PerspectiveReverseZ(

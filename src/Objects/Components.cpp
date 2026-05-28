@@ -7,6 +7,7 @@
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Objects/Entity.hpp"
 
 void ComponentTransform::SetPosition(const Vector3 &position) {
     this->position = position;
@@ -30,30 +31,67 @@ float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& secto
 }
 
 
-void ComponentTransform::UpdateObjectSector(std::vector<Sector>& sectors) {
-    if (!isDirty && this->sectorIndex >= 0) return;
+bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner) {
+    if (owner == nullptr) {
+        sectorIndex = -1;
+        floor = 0.0f;
+        return false;
+    }
 
-    if (sectors.empty()) [[unlikely]] return;
+    if (sectors.empty()) {
+        sectorIndex = -1;
+        floor = 0.0f;
+        return false;
+    }
 
-    const int newSector = MapQueries::FindSectorContainingPoint(sectors,{this->position.x, this->position.y});
+    const bool currentSectorValid =
+        sectorIndex >= 0 &&
+        sectorIndex < static_cast<int>(sectors.size());
 
-    if (newSector == -1 || newSector >= static_cast<int>(sectors.size())) [[unlikely]] return;
+    if (!isDirty && currentSectorValid) {
+        auto& inside = sectors[sectorIndex].entitiesInside;
 
-    if (this->sectorIndex == newSector) [[likely]] return;
+        if (std::find(inside.begin(), inside.end(), owner) == inside.end()) {
+            inside.push_back(owner);
+        }
 
-    if (sectorIndex >= 0 && sectorIndex < static_cast<int>(sectors.size())) [[likely]]
-        std::erase(sectors[sectorIndex].entitiesInside, ownerID);
+        return true;
+    }
 
-    this->sectorIndex = newSector;
-    sectors[this->sectorIndex].entitiesInside.push_back(ownerID);
+    const int oldSector = sectorIndex;
 
-    const Sector& sector = sectors[newSector];
-
-    this->floor = std::clamp(
-        this->floor,
-        0,
-        std::max(1, sector.floorCount) - 1
+    const int newSector = MapQueries::FindSectorContainingPoint(
+        sectors,
+        { position.x, position.y }
     );
+
+    if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
+        if (currentSectorValid) {
+            std::erase(sectors[oldSector].entitiesInside, owner);
+        }
+
+        sectorIndex = -1;
+        floor = 0.0f;
+        isDirty = false;
+        return false;
+    }
+
+    if (currentSectorValid && oldSector != newSector) {
+        std::erase(sectors[oldSector].entitiesInside, owner);
+    }
+
+    sectorIndex = newSector;
+
+    auto& inside = sectors[newSector].entitiesInside;
+
+    if (std::ranges::find(inside, owner) == inside.end()) {
+        inside.push_back(owner);
+    }
+
+    floor = sectors[newSector].floorHeight;
+
+    isDirty = false;
+    return true;
 }
 
 void ComponentAudioSource::PlaySound() const {
@@ -96,6 +134,6 @@ void ComponentRigidbody::ApplyAirResistance(float airResistance) {
     //todo implement
 }
 
-void ComponentRigidbody::ApplyGravity(float gravity) {
-    this->velocity.z -= gravity * GameTime::deltaTime;
+void ComponentRigidbody::ApplyGravity(const float gravity) {
+    this->velocity.y -= gravity * GameTime::deltaTime;
 }

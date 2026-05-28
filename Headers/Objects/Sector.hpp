@@ -16,10 +16,11 @@ struct Triangle {
     Vector2 a, b, c;
 };
 
+struct Entity;
+
 struct Sector {
     std::vector<Vector2> vertices;
     std::vector<Triangle> triangles; // DO NOT change, triangles making up the sector after triangluation
-
 
     float ceilingHeight;
     float floorHeight;
@@ -33,7 +34,7 @@ struct Sector {
     int floorTextureIndex = -1;
 
     ID id = -1;
-    std::vector<EntityID> entitiesInside;
+    std::vector<Entity*> entitiesInside;
     std::vector<Sector*> neighbors;
 
     std::vector<Wall> walls = {};

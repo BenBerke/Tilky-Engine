@@ -236,7 +236,6 @@ set(TILKY_ENGINE_SOURCES
         Headers/Runtime/RuntimeSession.hpp
         src/Runtime/Sound/AudioSystem.cpp
         Headers/Runtime/Sound/AudioSystem.hpp
-        Headers/Math/Vector/Vector3Math.hpp
         Headers/Objects/Wrappers.hpp
         src/Runtime/ScriptSystem.cpp
         Headers/Runtime/ScriptSystem.hpp

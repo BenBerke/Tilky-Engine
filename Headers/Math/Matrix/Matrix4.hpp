@@ -1,7 +1,12 @@
-#pragma once
-#include "Headers/Math/Vector/Vector3Math.hpp"
+module;
 
-struct Matrix4 {
+#include <cmath>
+
+export module Matrix4;
+
+import Vector3;
+
+export struct Matrix4 {
     float m[4][4]{};
 
     Matrix4() = default;
@@ -98,8 +103,8 @@ struct Matrix4 {
     }
 
     static Matrix4 Orthographic(float left, float right,
-                            float bottom, float top,
-                            float nearPlane, float farPlane) {
+                                float bottom, float top,
+                                float nearPlane, float farPlane) {
         Matrix4 result = Identity();
 
         result.m[0][0] =  2.0f / (right - left);
@@ -114,10 +119,10 @@ struct Matrix4 {
     }
 
     static Matrix4 Perspective(
-    const float fovDegrees,
-    const float aspect,
-    const float nearPlane,
-    const float farPlane
+        const float fovDegrees,
+        const float aspect,
+        const float nearPlane,
+        const float farPlane
     ) {
         Matrix4 result{};
 
@@ -156,10 +161,10 @@ struct Matrix4 {
     }
 
     static Matrix4 LookAt(
-    const Vector3& eye,
-    const Vector3& target,
-    const Vector3& up
-) {
+        const Vector3& eye,
+        const Vector3& target,
+        const Vector3& up
+    ) {
         const Vector3 forward = Vector3Math::Normalized(target - eye);
         const Vector3 right = Vector3Math::Normalized(Vector3Math::Cross(forward, up));
         const Vector3 cameraUp = Vector3Math::Cross(right, forward);

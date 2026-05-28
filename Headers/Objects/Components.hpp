@@ -204,7 +204,7 @@ struct ComponentTransform {
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
     float GetObjectBottomHeight(const std::vector<Sector>& sectors);
-    void UpdateObjectSector(std::vector<Sector>& sectors);
+    bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner);
 };
 
 // Stores things related to the entity's visuals

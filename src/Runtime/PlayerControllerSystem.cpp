@@ -172,9 +172,7 @@ namespace PlayerControllerSystem {
             planarPosition
         );
 
-        if (foundSector == -1) {
-            foundSector = sectors.empty() ? -1 : 0;
-        }
+        if (foundSector == -1) foundSector = sectors.empty() ? -1 : 0;
 
         playerTransform.sectorIndex = foundSector;
 
@@ -217,8 +215,8 @@ namespace PlayerControllerSystem {
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_S)) input.y -= 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_A)) input.x -= 1.0f;
+        if (InputManager::GetKey(SDL_SCANCODE_D)) input.x += 1.0f;
 
         controller.currentSpeed =
                 InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)
@@ -250,8 +248,8 @@ namespace PlayerControllerSystem {
             const Vector2 desiredVelocity =
                 moveDirection * controller.currentSpeed;
 
-            rigidbody.velocity.x = desiredVelocity.x;
-            rigidbody.velocity.y = desiredVelocity.y;
+          //  rigidbody.velocity.x = desiredVelocity.x;
+          //  rigidbody.velocity.y = desiredVelocity.y;
         } else {
             rigidbody.velocity.x = 0.0f;
             rigidbody.velocity.y = 0.0f;
