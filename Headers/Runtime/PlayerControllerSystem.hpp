@@ -57,7 +57,7 @@ namespace PlayerControllerSystem {
 
     void Update(
         ComponentPlayerController &controller,
-        ComponentTransform &playerTransform,
+        const ComponentTransform &playerTransform,
         ComponentCamera &camera,
         ComponentRigidbody &rigidbody,
         ComponentSphereCollider &sphereCollider,
