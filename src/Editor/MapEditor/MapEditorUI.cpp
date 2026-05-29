@@ -76,6 +76,40 @@ namespace {
 
     std::optional<std::string> pendingLevelToLoad;
 
+    void DrawDockSpace() {
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGuiWindowFlags flags =
+            ImGuiWindowFlags_NoDocking |
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoNavFocus |
+            ImGuiWindowFlags_NoBackground;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+        ImGui::Begin("Dockspace##MainDockspaceHost", nullptr, flags);
+        ImGui::PopStyleVar(3);
+
+        ImGuiID dockspaceID = ImGui::GetID("MainDockspace");
+        ImGui::DockSpace(
+            dockspaceID,
+            ImVec2(0.0f, 0.0f),
+            ImGuiDockNodeFlags_PassthruCentralNode
+        );
+
+        ImGui::End();
+    }
+
     void PutSpace(const int n) {
         for (int i = 0; i < n; i++) ImGui::Spacing();
     }
@@ -884,6 +918,8 @@ namespace MapEditorInternal {
     }
 
     void DrawEditorUI() {
+        DrawDockSpace();
+
         ImGui::Begin(Get("editor.title").c_str());
 
         DrawMode();
@@ -1003,8 +1039,8 @@ namespace MapEditorInternal {
             ImGui::PopID();
         }
 
-        DrawWorldSettings();
-
         ImGui::End(); // Levels
+
+        DrawWorldSettings();
     }
 }
