@@ -172,7 +172,7 @@ namespace {
         componentsJson["uiSprites"] = json::array();
         componentsJson["playerControllers"] = json::array();
         componentsJson["cameras"] = json::array();
-        componentsJson["sphereSphereCollider"] = json::array();
+        componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
 
         for (const ComponentTransform &c: level.transforms.components) {
@@ -286,12 +286,13 @@ namespace {
             });
         }
 
-        for (const ComponentSphereCollider &c : level.sphereColliders.components) {
-            componentsJson["sphereColliders"].push_back({
+        for (const ComponentCollider &c : level.colliders.components) {
+            componentsJson["colliders"].push_back({
                 {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
                 {"isTrigger", c.isTrigger},
-                {"size", c.size}
+                    {"type", c.type},
+                {"scale", {c.scale.x, c.scale.y, c.scale.z}}
             });
         }
 
@@ -455,7 +456,7 @@ namespace {
         level.audioSources.Clear();
         level.playerControllers.Clear();
         level.cameras.Clear();
-        level.sphereColliders.Clear();
+        level.colliders.Clear();
         level.rigidbodies.Clear();
 
         level.ui_transforms.Clear();
@@ -710,18 +711,25 @@ namespace {
             }
         }
 
-        if (componentsJson.contains("sphereColliders")) [[likely]] {
-            for (const json &cameraJson: componentsJson["sphereColliders"]) {
-                const EntityID ownerID = cameraJson.value("ownerID", INVALID_ENTITY_ID);
+        if (componentsJson.contains("colliders")) [[likely]] {
+            for (const json &colliderJson: componentsJson["colliders"]) {
+                const EntityID ownerID = colliderJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) [[unlikely]] continue;
 
-                ComponentSphereCollider &c = level.sphereColliders.Add(ownerID);
-                level.GetEntity(ownerID)->componentsMask.set(CMP_SPHERE_COLLIDER);
+                ComponentCollider &c = level.colliders.Add(ownerID);
+                level.GetEntity(ownerID)->componentsMask.set(CMP_COLLIDER);
 
-                c.isActive = componentsJson.value("isActive", true);
-                c.isTrigger = cameraJson.value("isTrigger", false);
-                c.size = cameraJson.value("size", 1.0f);
+                c.isActive = colliderJson.value("isActive", true);
+                c.isTrigger = colliderJson.value("isTrigger", false);
+                c.type = colliderJson.value("type", COLLIDERTYPE_SPHERE);
+                if (colliderJson.contains("scale")) {
+                    c.scale = {
+                        colliderJson["scale"][0].get<float>(),
+                        colliderJson["scale"][1].get<float>(),
+                        colliderJson["scale"][2].get<float>(),
+                    };
+                }
             }
         }
 

@@ -24,7 +24,7 @@ enum ComponentType {
     CMP_SCRIPT,
     CMP_PLAYER_CONTROLLER,
     CMP_CAMERA,
-    CMP_SPHERE_COLLIDER,
+    CMP_COLLIDER,
     CMP_RIGIDBODY,
 
     CMP_NORMAL_COUNT,
@@ -84,14 +84,22 @@ struct ComponentRigidbody {
     void ApplyGravity(float gravity);
 };
 
-struct ComponentSphereCollider {
+enum ColliderType {
+    COLLIDERTYPE_SPHERE,
+    COLLIDERTYPE_BOX
+};
+
+struct ComponentCollider {
     // Sphere Collider
     EntityID ownerID = static_cast<EntityID>(-1);
+
+    ColliderType type = COLLIDERTYPE_SPHERE;
 
     bool isActive = true;
     bool isTrigger = false;
 
-    float size = 1.0f;
+    // Type = Box -> Use these values as AABB; Type = Sphere -> Use size.x as the radius
+    Vector3 scale = {1.0f, 1.0f, 1.0f};
 };
 struct ComponentPlayerController {
     EntityID ownerID = static_cast<EntityID>(-1);

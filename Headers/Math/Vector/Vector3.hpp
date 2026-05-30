@@ -47,10 +47,3 @@ struct Vector3 {
         return closeToZero(x) && closeToZero(y) && closeToZero(z);
     }
 };
-
-// --- Left-Hand Side Scalar Multiplication ---
-// Allows you to write '2.0f * vector' instead of just 'vector * 2.0f'
-template<typename T>
-Vector3 operator*(T value, const Vector3& v) {
-    return Vector3(v.x * value, v.y * value, v.z * value);
-}

@@ -13,6 +13,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
 namespace fs = std::filesystem;
@@ -113,7 +114,7 @@ bool OpenGL::InitSDL() {
     }
 
     window = SDL_CreateWindow(
-        "screen.title.engine",
+        Localisation::Get("screen.title.engine").c_str(),
         screenWidth,
         screenHeight,
         WINDOW_FLAGS

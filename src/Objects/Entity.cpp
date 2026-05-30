@@ -49,9 +49,9 @@ T* Entity::GetComponent() {
         if (!HasComponentBit(componentsMask, CMP_CAMERA)) return nullptr;
         return LevelManager::CurrentLevel().cameras.Get(id);
     }
-    else if constexpr (std::is_same_v<T, ComponentSphereCollider>) {
-        if (!HasComponentBit(componentsMask, CMP_SPHERE_COLLIDER)) return nullptr;
-        return LevelManager::CurrentLevel().sphereColliders.Get(id);
+    else if constexpr (std::is_same_v<T, ComponentCollider>) {
+        if (!HasComponentBit(componentsMask, CMP_COLLIDER)) return nullptr;
+        return LevelManager::CurrentLevel().colliders.Get(id);
     }
     else if constexpr (std::is_same_v<T, ComponentRigidbody>) {
         if (!HasComponentBit(componentsMask, CMP_RIGIDBODY)) return nullptr;
@@ -106,9 +106,9 @@ T* Entity::AddComponent() {
         AddComponentBit(componentsMask, CMP_CAMERA);
         return &level.cameras.Add(id);
     }
-    else if constexpr (std::is_same_v<T, ComponentSphereCollider>) {
-        AddComponentBit(componentsMask, CMP_SPHERE_COLLIDER);
-        return &level.sphereColliders.Add(id);
+    else if constexpr (std::is_same_v<T, ComponentCollider>) {
+        AddComponentBit(componentsMask, CMP_COLLIDER);
+        return &level.colliders.Add(id);
     }
     else if constexpr (std::is_same_v<T, ComponentRigidbody>) {
         AddComponentBit(componentsMask, CMP_RIGIDBODY);
@@ -177,9 +177,9 @@ bool Entity::RemoveComponent() {
             return true;
         }
     }
-    else if constexpr (std::is_same_v<T, ComponentSphereCollider>) {
-        if (level.sphereColliders.Remove(id)) [[likely]]{
-            RemoveComponentBit(componentsMask, CMP_SPHERE_COLLIDER);
+    else if constexpr (std::is_same_v<T, ComponentCollider>) {
+        if (level.colliders.Remove(id)) [[likely]]{
+            RemoveComponentBit(componentsMask, CMP_COLLIDER);
             return true;
         }
     }
@@ -234,8 +234,8 @@ bool Entity::HasComponent() {
     else if constexpr (std::is_same_v<T, ComponentCamera>)
         return HasComponentBit(componentsMask, CMP_CAMERA);
 
-    else if constexpr (std::is_same_v<T, ComponentSphereCollider>)
-        return HasComponentBit(componentsMask, CMP_SPHERE_COLLIDER);
+    else if constexpr (std::is_same_v<T, ComponentCollider>)
+        return HasComponentBit(componentsMask, CMP_COLLIDER);
 
     else if constexpr (std::is_same_v<T, ComponentRigidbody>)
         return HasComponentBit(componentsMask, CMP_RIGIDBODY);
@@ -266,7 +266,7 @@ template ComponentAudioSource* Entity::GetComponent<ComponentAudioSource>();
 template ComponentScript* Entity::GetComponent<ComponentScript>();
 template ComponentPlayerController* Entity::GetComponent<ComponentPlayerController>();
 template ComponentCamera* Entity::GetComponent<ComponentCamera>();
-template ComponentSphereCollider* Entity::GetComponent<ComponentSphereCollider>();
+template ComponentCollider* Entity::GetComponent<ComponentCollider>();
 template ComponentRigidbody* Entity::GetComponent<ComponentRigidbody>();
 template ComponentUITransform* Entity::GetComponent<ComponentUITransform>();
 template ComponentUISprite* Entity::GetComponent<ComponentUISprite>();
@@ -279,7 +279,7 @@ template ComponentAudioSource* Entity::AddComponent<ComponentAudioSource>();
 template ComponentScript* Entity::AddComponent<ComponentScript>();
 template ComponentPlayerController* Entity::AddComponent<ComponentPlayerController>();
 template ComponentCamera* Entity::AddComponent<ComponentCamera>();
-template ComponentSphereCollider* Entity::AddComponent<ComponentSphereCollider>();
+template ComponentCollider* Entity::AddComponent<ComponentCollider>();
 template ComponentRigidbody* Entity::AddComponent<ComponentRigidbody>();
 template ComponentUITransform* Entity::AddComponent<ComponentUITransform>();
 template ComponentUISprite* Entity::AddComponent<ComponentUISprite>();
@@ -292,7 +292,7 @@ template bool Entity::RemoveComponent<ComponentAudioSource>();
 template bool Entity::RemoveComponent<ComponentScript>();
 template bool Entity::RemoveComponent<ComponentPlayerController>();
 template bool Entity::RemoveComponent<ComponentCamera>();
-template bool Entity::RemoveComponent<ComponentSphereCollider>();
+template bool Entity::RemoveComponent<ComponentCollider>();
 template bool Entity::RemoveComponent<ComponentRigidbody>();
 template bool Entity::RemoveComponent<ComponentUITransform>();
 template bool Entity::RemoveComponent<ComponentUISprite>();
@@ -305,7 +305,7 @@ template bool Entity::HasComponent<ComponentAudioSource>();
 template bool Entity::HasComponent<ComponentScript>();
 template bool Entity::HasComponent<ComponentPlayerController>();
 template bool Entity::HasComponent<ComponentCamera>();
-template bool Entity::HasComponent<ComponentSphereCollider>();
+template bool Entity::HasComponent<ComponentCollider>();
 template bool Entity::HasComponent<ComponentRigidbody>();
 template bool Entity::HasComponent<ComponentUITransform>();
 template bool Entity::HasComponent<ComponentUISprite>();

@@ -35,7 +35,7 @@ out vec4 FragColor;
 
 vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
     if (textureIndex < 0 || textureIndex >= uTextureCount) {
-        return vec4(1.0);
+        return vec4(.0, .0, .0, 1.0);
     }
 
     TextureRegion region = textureRegions[textureIndex];

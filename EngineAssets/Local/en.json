@@ -134,10 +134,13 @@
   "component.camera.near_plane": "Near Plane",
   "component.camera.far_plane": "Far Plane",
 
-  "component.sphere_collider": "Sphere Collider",
-  "component.sphere_collider.is_active": "Is Active",
-  "component.sphere_collider.is_trigger": "Is Trigger",
-  "component.sphere_collider.size": "Radius",
+  "component.collider": "Collider",
+  "component.collider.is_active": "Is Active",
+  "component.collider.is_trigger": "Is Trigger",
+  "component.collider.type.sphere": "Sphere",
+  "component.collider.type.box": "AABB",
+  "component.collider.sphere.scale": "Radius",
+  "component.collider.box.scale": "Scale",
 
   "component.rigidbody": "Rigidbody",
   "component.rigidbody.is_static": "Static",

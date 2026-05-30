@@ -12,7 +12,27 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
-option(TILKY_ENABLE_TRACY "Enable Tracy profiler" ON)
+
+# ============================================================
+# Tracy default
+# Debug: ON
+# RelWithDebInfo: ON, useful for profiling optimized builds
+# Release / MinSizeRel: forced OFF
+# ============================================================
+
+string(TOUPPER "${CMAKE_BUILD_TYPE}" TILKY_BUILD_TYPE_UPPER)
+
+set(TRACY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/tracy")
+set(TRACY_CLIENT_CPP "${TRACY_DIR}/public/TracyClient.cpp")
+
+if(TILKY_BUILD_TYPE_UPPER STREQUAL "RELEASE"
+        OR TILKY_BUILD_TYPE_UPPER STREQUAL "MINSIZEREL")
+    set(TILKY_ENABLE_TRACY OFF CACHE BOOL "Enable Tracy profiler" FORCE)
+else()
+    option(TILKY_ENABLE_TRACY "Enable Tracy profiler" ON)
+endif()
+
+message(STATUS "TILKY_ENABLE_TRACY = ${TILKY_ENABLE_TRACY}")
 
 # ============================================================
 # Unity / Jumbo build
@@ -116,9 +136,6 @@ endif()
 # ============================================================
 
 if(TILKY_ENABLE_TRACY)
-    set(TRACY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/External/tracy")
-    set(TRACY_CLIENT_CPP "${TRACY_DIR}/public/TracyClient.cpp")
-
     if(EXISTS "${TRACY_CLIENT_CPP}")
         add_library(TracyClient STATIC
                 "${TRACY_CLIENT_CPP}"
@@ -143,7 +160,7 @@ if(TILKY_ENABLE_TRACY)
     else()
         message(WARNING "Tracy is enabled, but TracyClient.cpp was not found at: ${TRACY_CLIENT_CPP}")
         message(WARNING "Disabling TracyClient target. Either add External/tracy or configure with -DTILKY_ENABLE_TRACY=OFF")
-        set(TILKY_ENABLE_TRACY OFF)
+        set(TILKY_ENABLE_TRACY OFF CACHE BOOL "Enable Tracy profiler" FORCE)
     endif()
 endif()
 
@@ -362,6 +379,18 @@ else()
 endif()
 
 tilky_configure_unity_build(Tilky_EngineCore)
+
+# Keep Tracy headers visible so #include <tracy/Tracy.hpp> still works.
+# Without TRACY_ENABLE, Tracy macros become no-op.
+if(EXISTS "${TRACY_DIR}/public/tracy/Tracy.hpp")
+    target_include_directories(Tilky_EngineCore PUBLIC "${TRACY_DIR}/public")
+endif()
+
+if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
+    target_link_libraries(Tilky_EngineCore PUBLIC TracyClient)
+    target_compile_definitions(Tilky_EngineCore PUBLIC TRACY_ENABLE)
+endif()
+
 # ============================================================
 # Launcher source list
 # Only launcher-specific files go here.

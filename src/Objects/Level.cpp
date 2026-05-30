@@ -57,7 +57,7 @@ void Level::DestroyEntity(const EntityID entityID) {
     scripts.Remove(entityID);
     playerControllers.Remove(entityID);
     cameras.Remove(entityID);
-    sphereColliders.Remove(entityID);
+    colliders.Remove(entityID);
     rigidbodies.Remove(entityID);
 
     ui_transforms.Remove(entityID);

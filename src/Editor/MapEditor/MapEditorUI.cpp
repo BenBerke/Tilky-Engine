@@ -429,7 +429,7 @@ namespace {
                 componentNames[CMP_SCRIPT] = Get("component.script");
                 componentNames[CMP_PLAYER_CONTROLLER] = Get("component.player_controller");
                 componentNames[CMP_CAMERA] = Get("component.camera");
-                componentNames[CMP_SPHERE_COLLIDER] = Get("component.sphere_collider");
+                componentNames[CMP_COLLIDER] = Get("component.collider");
                 componentNames[CMP_RIGIDBODY] = Get("component.rigidbody");
 
                 if (ImGui::BeginCombo(Get("component.component").c_str(), componentNames[componentToAdd].c_str())) {
@@ -478,7 +478,8 @@ namespace {
                             if (!entity.HasComponent<ComponentPlayerController>()) [[likely]] {
                                 auto* pc = entity.AddComponent<ComponentPlayerController>();
                                 if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
-                                if (!entity.HasComponent<ComponentSphereCollider>()) entity.AddComponent<ComponentSphereCollider>();
+                                if (!entity.HasComponent<ComponentCollider>()) entity.AddComponent<ComponentCollider>();
+                                if (!entity.HasComponent<ComponentCamera>()) entity.AddComponent<ComponentCamera>();
                                 pc->isActive = true;
                             }
                             break;
@@ -490,9 +491,9 @@ namespace {
                             }
                             break;
 
-                        case CMP_SPHERE_COLLIDER:
-                            if (!entity.HasComponent<ComponentSphereCollider>()) [[likely]]
-                                entity.AddComponent<ComponentSphereCollider>();
+                        case CMP_COLLIDER:
+                            if (!entity.HasComponent<ComponentCollider>()) [[likely]]
+                                entity.AddComponent<ComponentCollider>();
                             break;
 
                         case CMP_RIGIDBODY:
@@ -549,8 +550,8 @@ namespace {
                 DrawComponentRow(Get("component.player_controller").c_str(), CMP_PLAYER_CONTROLLER);
             if (entity.HasComponent<ComponentCamera>())
                 DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
-            if (entity.HasComponent<ComponentSphereCollider>())
-                DrawComponentRow(Get("component.sphere_collider").c_str(), CMP_SPHERE_COLLIDER);
+            if (entity.HasComponent<ComponentCollider>())
+                DrawComponentRow(Get("component.collider").c_str(), CMP_COLLIDER);
             if (entity.HasComponent<ComponentRigidbody>())
                 DrawComponentRow(Get("component.rigidbody").c_str(), CMP_RIGIDBODY);
 
@@ -623,8 +624,8 @@ namespace {
                 case CMP_CAMERA:
                     componentName = Get("component.camera");
                     break;
-                case CMP_SPHERE_COLLIDER:
-                    componentName = Get("component.sphere_collider");
+                case CMP_COLLIDER:
+                    componentName = Get("component.collider");
                     break;
                 case CMP_RIGIDBODY:
                     componentName = Get("component.rigidbody");
@@ -827,20 +828,36 @@ namespace {
                     ImGui::Text("Camera component missing");
                 }
             }
-            else if (selectedComponent == CMP_SPHERE_COLLIDER) {
-                auto *c = entity.GetComponent<ComponentSphereCollider>();
+            else if (selectedComponent == CMP_COLLIDER) {
+                auto *c = entity.GetComponent<ComponentCollider>();
 
                 if (c != nullptr) [[likely]] {
-                    ImGui::DragFloat(Get("component.sphere_collider.size").c_str(), &c->size);
-                    ImGui::Checkbox(Get("component.sphere_collider.is_trigger").c_str(), &c->isTrigger);
-                    ImGui::Checkbox(Get("component.sphere_collider.is_active").c_str(), &c->isActive);
+                    static const char* items[] = {
+                        Get("component.collider.type.sphere").c_str(),
+                        Get("component.collider.type.box").c_str(),
+                    };
+                    static int selectedColliderIndex = 0;
+
+                    ImGui::Combo("Simple Dropdown", &selectedColliderIndex, items, IM_ARRAYSIZE(items));
+
+                    if (selectedColliderIndex == 0)
+                        ImGui::DragFloat(Get("component.collider.sphere.scale").c_str(), &c->scale.x);
+                    else if (selectedColliderIndex == 1) {
+                        ImGui::Text("%s", Get("component.collider.box.scale").c_str());
+                        ImGui::Text("X           Y           Z");
+                        ImGui::SetNextItemWidth(200.0f);
+                        ImGui::InputFloat3("##position", &c->scale.x);
+                    }
+
+                    ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
+                    ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
                 }
                 else [[unlikely]] {
                     ImGui::Text("Sphere Collider component missing");
                 }
 
                 if (ImGui::Button(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentSphereCollider>();
+                    entity.RemoveComponent<ComponentCollider>();
                     editingComponent = false;
                     selectedComponent = -1;
                 }

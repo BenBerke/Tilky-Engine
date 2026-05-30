@@ -1,6 +1,8 @@
 //
 // Created by berke on 5/14/2026.
-//
+
+/// This script manages everything that happens after opening a project. The editor and the runtime renderer
+/// This script does not run any logic. It simply starts, updates and ends the necessary functions
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 
