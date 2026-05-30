@@ -113,7 +113,15 @@ void OpenGL::Update() {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_GEQUAL);
         glDepthMask(GL_TRUE);
+
         glUniform1i(renderModeUniform, RENDER_SPRITE);
+        glUniform3f(
+            glGetUniformLocation(projectionShader->ID, "uCameraWorldPos"),
+            cameraTransform->position.x,
+            cameraTransform->position.z, // Intentionally swapped
+            cameraTransform->position.y
+        );
+
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
         glDisable(GL_BLEND);
     }

@@ -198,6 +198,7 @@ namespace LevelSystem {
                 if (r.velocity.IsZero()) continue;
 
                 transform->AddPosition(r.velocity * GameTime::deltaTime);
+
                 r.ApplyFriction(friction);
                 r.ApplyAirResistance(friction);
             }
@@ -215,15 +216,18 @@ namespace LevelSystem {
                     ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
 
                     if (selfTransform == nullptr) [[unlikely]]continue;
+                    if (!selfTransform->isDirty) [[unlikely]] continue;
 
                     if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.size()))
                         continue;
 
                     Sector& sector = level.sectors[selfTransform->sectorIndex];
-                    if (!selfTransform->isDirty) [[unlikely]] continue;
 
                     ComponentRigidbody *selfRb = level.rigidbodies.Get(selfCollider.ownerID);
-                    if (selfRb == nullptr) continue; // collision checks should only happen on entities with rigidbides
+                    if (selfRb == nullptr) continue; // collision checks should only happen on entities with rigidbodies
+
+                    Entity* selfEntity = level.GetEntity(selfCollider.ownerID);
+                    if (selfEntity == nullptr) [[unlikely]] continue;
 
                     std::vector<Entity*> allEntities;
                     allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
@@ -241,7 +245,8 @@ namespace LevelSystem {
                     const float selfSize = selfCollider.size;
 
                     for (Entity* otherEntity : allEntities) {;
-                        if (otherEntity->id == level.GetEntity(selfCollider.ownerID)->id) continue;
+                        if (otherEntity == nullptr) [[unlikely]] continue;
+                        if (otherEntity == selfEntity) continue;
 
                         if (!otherEntity->HasComponent<ComponentSphereCollider>()) continue;
 
@@ -250,6 +255,7 @@ namespace LevelSystem {
                         if (!otherCollider->isActive) continue;
 
                         auto *otherTransform = otherEntity->GetComponent<ComponentTransform>();
+                        if (otherTransform == nullptr) [[unlikely]] continue;
 
                         Vector3 otherPos = otherTransform->position;
 
@@ -261,9 +267,18 @@ namespace LevelSystem {
                             if (otherEntity->HasComponent<ComponentRigidbody>())
                                 otherRb = otherEntity->GetComponent<ComponentRigidbody>();
 
-                            const float overlap = selfSize + otherSize - Vector3Math::Distance(otherPos, selfPos);
+                            Vector3 delta = selfPos - otherPos;
+                            float distanceSquared = Vector3Math::DistanceSquared(selfPos, otherPos);
 
-                            Vector3 pushDirection = Vector3Math::Normalized(otherPos - selfPos);
+                            if (distanceSquared < 0.000001f) {
+                                delta = {1.0f, 0.0f, 0.0f};
+                                distanceSquared = 1.0f;
+                            }
+
+                            const float distance = std::sqrt(distanceSquared);
+                            const float overlap = minDistance - distance;
+
+                            Vector3 pushDirection = delta / distance;
 
                             //todo implement mass
                             float selfWeight = 0.5f;
@@ -272,7 +287,7 @@ namespace LevelSystem {
                             const bool aStatic = selfRb->isStatic; // Can not reach here if selfRb is null
                             const bool bStatic = (otherRb == nullptr) || otherRb->isStatic;
 
-                            if (bStatic && aStatic) [[unlikely]] return;
+                            if (bStatic && aStatic) [[unlikely]] continue;
 
                             if (aStatic) {
                                 selfWeight = 0.0f;
@@ -282,43 +297,107 @@ namespace LevelSystem {
                                 otherWeight = 0.0f;
                             }
 
-                            Vector3 selfPush =
-                                    (Vector3){pushDirection.x, pushDirection.y, pushDirection.z} * overlap * selfWeight;
-                            Vector3 otherPush =
-                                    (Vector3){pushDirection.x, pushDirection.y, pushDirection.z} * overlap * otherWeight
-                                    * -1;
+                            Vector3 selfPush = pushDirection * overlap * selfWeight;
+                            Vector3 otherPush = pushDirection * -overlap * otherWeight;
 
-                          //  selfTransform->AddPosition(selfPush);
-                           // otherTransform->AddPosition(otherPush);
+                            bool otherBlockedByWall = false;
 
-                            spdlog::info("Entity {} collided with Entity {}",
-                                         level.entities[selfCollider.ownerID].name, otherEntity->name);
+                            if (otherTransform->sectorIndex >= 0 &&
+                                otherTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
+
+                                const Sector& otherSector = level.sectors[otherTransform->sectorIndex];
+
+                                const Vector2 candidateOtherPos = {
+                                    otherTransform->position.x + otherPush.x,
+                                    otherTransform->position.y + otherPush.y
+                                };
+
+                                const float otherRadius = otherCollider->size;
+
+                                for (const Wall& wall : otherSector.walls) {
+                                    const Vector2 v = wall.vector;
+
+                                    const float vDotV = Vector2Math::Dot(v, v);
+                                    if (vDotV <= 0.001f) continue;
+
+                                    const Vector2 w = candidateOtherPos - wall.start;
+
+                                    float t = Vector2Math::Dot(w, v) / vDotV;
+                                    t = std::max(0.0f, std::min(1.0f, t));
+
+                                    const Vector2 closestPoint = wall.start + t * v;
+
+                                    const float distanceSquared =
+                                        Vector2Math::DistanceSquared(candidateOtherPos, closestPoint);
+
+                                    if (distanceSquared < otherRadius * otherRadius) {
+                                        otherBlockedByWall = true;
+                                        break;
+                                    }
+                                }
+                                }
+
+                            if (otherBlockedByWall) {
+                                // The object cannot move into the wall, so the moving entity takes
+                                // the whole separation correction instead.
+                                selfTransform->AddPosition(pushDirection * overlap);
+                            }
+                            else {
+                                selfTransform->AddPosition(selfPush);
+                                otherTransform->AddPosition(otherPush);
+                            }
                         }
                     }
 
                     // Wall collision
                     for (const Wall &wall: sector.walls) {
-                        const Vector2 w = selfVector2 - wall.start;
+                        const Vector2 selfVector2 = {
+                            selfTransform->position.x,
+                            selfTransform->position.y
+                        };
+
                         const Vector2 v = wall.vector;
 
                         const float vDotV = Vector2Math::Dot(v, v);
                         if (vDotV <= 0.001f) continue;
+
+                        const Vector2 w = selfVector2 - wall.start;
 
                         float t = Vector2Math::Dot(w, v) / vDotV;
                         t = std::max(0.0f, std::min(1.0f, t));
 
                         Vector2 closestPoint = wall.start + t * v;
 
-                        const float distanceSquared = Vector2Math::DistanceSquared(closestPoint, selfVector2);
+                        const Vector2 delta = selfVector2 - closestPoint;
+                        const float distanceSquared = Vector2Math::Dot(delta, delta);
 
-                        if (distanceSquared < selfSize * selfSize) [[unlikely]] {
-                            const float overlap = std::sqrt(distanceSquared);
+                        if (distanceSquared >= selfSize * selfSize) continue;
 
-                            const Vector2 pushDirection = closestPoint - selfVector2;
-                            const Vector2 push = pushDirection * overlap;
+                        const float distance = std::sqrt(distanceSquared);
+                        const float overlap = selfSize - distance;
 
-                            //selfTransform->AddPosition((Vector3){push.x, push.y, 0.0f});
-                            spdlog::info("Entity {} collided with a wall", level.entities[selfCollider.ownerID].name);
+                        Vector2 pushDirection;
+
+                        if (distance > 0.0001f) {
+                            pushDirection = delta / distance;
+                        }
+                        else {
+                            const Vector2 wallDir = Vector2Math::Normalized(wall.vector);
+                            pushDirection = { -wallDir.y, wallDir.x };
+                        }
+
+                        const Vector2 push = pushDirection * overlap;
+
+                        selfTransform->AddPosition({ push.x, push.y, 0.0f });
+
+                        // Stop velocity into the wall, otherwise physics pushes it back in next frame.
+                        const float velocityIntoWall =
+                            selfRb->velocity.x * pushDirection.x +
+                            selfRb->velocity.y * pushDirection.y;
+
+                        if (velocityIntoWall < 0.0f) {
+                            selfRb->velocity.x -= pushDirection.x * velocityIntoWall;
+                            selfRb->velocity.y -= pushDirection.y * velocityIntoWall;
                         }
                     }
                 }

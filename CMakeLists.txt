@@ -6,7 +6,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 option(TILKY_ENABLE_TRACY "Enable Tracy profiler" ON)
@@ -76,7 +79,6 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             External/imgui/imgui_draw.cpp
             External/imgui/imgui_tables.cpp
             External/imgui/imgui_widgets.cpp
-            External/imgui/imgui_demo.cpp
 
             External/imgui/misc/cpp/imgui_stdlib.cpp
 
@@ -94,6 +96,16 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             SDL3::SDL3
             SDL3::Headers
             OpenGL::GL
+    )
+
+    target_precompile_headers(imgui PRIVATE
+            <cstdint>
+            <cstdlib>
+            <cstring>
+            <cmath>
+            <algorithm>
+            <string>
+            <vector>
     )
 else()
     message(FATAL_ERROR "Dear ImGui not found at External/imgui/imgui.h")
@@ -286,18 +298,28 @@ add_library(Tilky_EngineCore STATIC
         ${TILKY_ENGINE_SOURCES}
 )
 
+set_target_properties(Tilky_EngineCore PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+
 target_precompile_headers(Tilky_EngineCore PRIVATE
         <vector>
         <string>
+        <string_view>
         <array>
         <memory>
+        <optional>
         <map>
+        <unordered_map>
+        <unordered_set>
         <algorithm>
         <cmath>
+        <cstdint>
+        <limits>
         <fstream>
         <filesystem>
+
         <SDL3/SDL.h>
         <nlohmann/json.hpp>
+        <spdlog/spdlog.h>
 )
 
 target_include_directories(Tilky_EngineCore PUBLIC
@@ -359,6 +381,8 @@ set(TILKY_LAUNCHER_SOURCES
 add_library(Tilky_LauncherCore STATIC
         ${TILKY_LAUNCHER_SOURCES}
 )
+
+set_target_properties(Tilky_LauncherCore PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 target_include_directories(Tilky_LauncherCore PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -424,6 +448,8 @@ target_link_libraries(Tilky_Launcher PRIVATE
         Tilky_LauncherCore
 )
 
+set_target_properties(Tilky_Launcher PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+
 # ============================================================
 # Runnable 2: Tilky_Engine
 # ONLY engine executable.
@@ -435,6 +461,8 @@ add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
         ${TILKY_ICON_OBJECTS}
 )
+
+set_target_properties(Tilky_Engine PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 target_link_libraries(Tilky_Engine PRIVATE
         Tilky_EngineCore
@@ -455,6 +483,8 @@ target_link_libraries(Tilky_All PRIVATE
         Tilky_LauncherCore
         Tilky_EngineCore
 )
+
+set_target_properties(Tilky_All PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 add_dependencies(Tilky_All
         Tilky_Launcher

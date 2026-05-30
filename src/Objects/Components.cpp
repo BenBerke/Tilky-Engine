@@ -135,5 +135,5 @@ void ComponentRigidbody::ApplyAirResistance(float airResistance) {
 }
 
 void ComponentRigidbody::ApplyGravity(const float gravity) {
-    this->velocity.y -= gravity * GameTime::deltaTime;
+    this->velocity.z -= gravity * GameTime::deltaTime;
 }

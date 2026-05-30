@@ -192,7 +192,7 @@ struct ComponentAudioSource {
 struct Sector;
 struct ComponentTransform {
     EntityID ownerID = -1;
-
+    //                 World X, World Z, Height relative to the sector's floor
     Vector3 position = {.0f, .0f, .0f};
     Vector2 forward = {1.0f, .0f};
     int floor = 0;

@@ -77,16 +77,18 @@ out vec2 vDecalUV;
 
 const float tileSize = 32.0;
 
-vec3 GetYawOnlySpriteRight() {
-    float forwardX = -uView[0][2];
-    float forwardZ = -uView[2][2];
+uniform vec3 uCameraWorldPos;
 
-    // Flatten to XZ plane — ignore any pitch contribution
-    vec2 flatForward = normalize(vec2(forwardX, forwardZ));
+vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
+    vec2 toCamera = uCameraWorldPos.xz - spriteWorldPos.xz;
 
-    // Right is perpendicular to forward in XZ plane
-    // rotating 90 degrees: (x, z) -> (z, -x)
-    return vec3(flatForward.y, 0.0, -flatForward.x);
+    if (dot(toCamera, toCamera) < 0.000001) {
+        return vec3(1.0, 0.0, 0.0);
+    }
+
+    toCamera = normalize(toCamera);
+
+    return vec3(-toCamera.y, 0.0, toCamera.x);
 }
 
 void renderDecal() {
@@ -203,7 +205,7 @@ void renderSprite() {
 
     vec3 bottomCenter = spriteWorldPos;
 
-    vec3 spriteRight = GetYawOnlySpriteRight();
+    vec3 spriteRight = GetYawOnlySpriteRight(spriteWorldPos);
     vec3 spriteUp = vec3(0.0, 1.0, 0.0);
 
     vec3 worldPos =
