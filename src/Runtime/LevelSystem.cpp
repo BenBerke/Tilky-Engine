@@ -84,36 +84,36 @@ namespace {
     // circleCollider = SPHERE
     // circleCollider.scale.x = radius
     // squareCollider.scale.xyz = full box size
-    bool CircleAABBCollision(
-        Level& level,
-        ComponentCollider& squareCollider,
-        ComponentCollider& circleCollider
-    ) {
-        if (squareCollider.type != COLLIDERTYPE_BOX ||
-            circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] {
-            return false;
-        }
+    bool CircleAABBCollision(Level &level, ComponentCollider &squareCollider, ComponentCollider &circleCollider) {
+        if (squareCollider.type != COLLIDERTYPE_BOX || circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] return false;
+        if (squareCollider.isTrigger || circleCollider.isTrigger) return false;
 
-        ComponentTransform* squareTransform =
-            level.transforms.Get(squareCollider.ownerID);
+        ComponentTransform *squareTransform = level.transforms.Get(squareCollider.ownerID);
+        ComponentTransform *circleTransform = level.transforms.Get(circleCollider.ownerID);
 
-        ComponentTransform* circleTransform =
-            level.transforms.Get(circleCollider.ownerID);
+        if (squareTransform == nullptr || circleTransform == nullptr) [[unlikely]] return false;
 
-        if (squareTransform == nullptr || circleTransform == nullptr) [[unlikely]] {
-            return false;
-        }
+        ComponentRigidbody *squareRb = level.rigidbodies.Get(squareCollider.ownerID);
+        ComponentRigidbody *circleRb = level.rigidbodies.Get(circleCollider.ownerID);
 
-        ComponentRigidbody* squareRb =
-            level.rigidbodies.Get(squareCollider.ownerID);
+        const Vector3 squarePos = {
+              squareTransform->position.x,
+            squareTransform->position.z,
+            squareTransform->position.y
+        };
 
-        ComponentRigidbody* circleRb =
-            level.rigidbodies.Get(circleCollider.ownerID);
+        const Vector3 circlePos = {
+            circleTransform->position.x,
+            circleTransform->position.z,
+            circleTransform->position.y
+        };
 
-        const Vector3 squarePos = squareTransform->position;
-        const Vector3 circlePos = circleTransform->position;
+        const Vector3 halfSize = {
+            squareCollider.scale.x * 0.5f,
+            squareCollider.scale.z * 0.5f,
+            squareCollider.scale.y * 0.5f
+        };
 
-        const Vector3 halfSize = squareCollider.scale * 0.5f;
         const float circleRadius = circleCollider.scale.x;
 
         const Vector3 boxMin = {
@@ -133,14 +133,10 @@ namespace {
         closestPoint.y = std::max(boxMin.y, std::min(circlePos.y, boxMax.y));
         closestPoint.z = std::max(boxMin.z, std::min(circlePos.z, boxMax.z));
 
-        const float distanceSquared =
-            Vector3Math::DistanceSquared(circlePos, closestPoint);
+        const float distanceSquared = Vector3Math::DistanceSquared(circlePos, closestPoint);
 
-        if (distanceSquared >= circleRadius * circleRadius) {
-            return false;
-        }
+        if (distanceSquared >= circleRadius * circleRadius) return false;
 
-        // Direction always points from box -> circle.
         Vector3 pushDirection;
         float overlap = 0.0f;
 
@@ -194,42 +190,34 @@ namespace {
         const bool squareStatic = squareRb == nullptr || squareRb->isStatic;
         const bool circleStatic = circleRb == nullptr || circleRb->isStatic;
 
-        if (squareStatic && circleStatic) [[unlikely]] {
-            return true;
-        }
+        if (squareStatic && circleStatic) [[unlikely]] return true;
 
         if (squareStatic) {
             squareWeight = 0.0f;
             circleWeight = 1.0f;
-        }
-        else if (circleStatic) {
+        } else if (circleStatic) {
             squareWeight = 1.0f;
             circleWeight = 0.0f;
         }
 
-        // pushDirection points box -> circle.
-        // Box moves opposite the direction.
-        // Circle moves along the direction.
         const Vector3 squarePush = pushDirection * -overlap * squareWeight;
         const Vector3 circlePush = pushDirection * overlap * circleWeight;
 
         bool squareBlockedByWall = false;
 
-        if (squareWeight > 0.0f &&
-            squareTransform->sectorIndex >= 0 &&
-            squareTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
-            const Sector& squareSector =
-                level.sectors[squareTransform->sectorIndex];
+        if (squareWeight > 0.0f && squareTransform->sectorIndex >= 0 && squareTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
+            const Sector &squareSector =
+                    level.sectors[squareTransform->sectorIndex];
 
             const Vector2 candidateSquarePos = {
                 squareTransform->position.x + squarePush.x,
-                squareTransform->position.y + squarePush.y
+                squareTransform->position.y + squarePush.z
             };
 
-            // Conservative 2D radius for checking whether the AABB would be pushed into a wall.
-            const float squareRadius = std::max(halfSize.x, halfSize.y);
+            // Horizontal footprint uses collision-space x/z.
+            const float squareRadius = std::max(halfSize.x, halfSize.z);
 
-            for (const Wall& wall : squareSector.walls) {
+            for (const Wall &wall: squareSector.walls) {
                 const Vector2 v = wall.vector;
 
                 const float vDotV = Vector2Math::Dot(v, v);
@@ -242,8 +230,7 @@ namespace {
 
                 const Vector2 closestWallPoint = wall.start + t * v;
 
-                const float wallDistanceSquared =
-                    Vector2Math::DistanceSquared(candidateSquarePos, closestWallPoint);
+                const float wallDistanceSquared = Vector2Math::DistanceSquared(candidateSquarePos, closestWallPoint);
 
                 if (wallDistanceSquared < squareRadius * squareRadius) {
                     squareBlockedByWall = true;
@@ -254,12 +241,26 @@ namespace {
 
         if (squareBlockedByWall) {
             if (!circleStatic) {
-                circleTransform->AddPosition(pushDirection * overlap);
+                const Vector3 fullCirclePush = pushDirection * overlap;
+
+                circleTransform->AddPosition({
+                    fullCirclePush.x,
+                    fullCirclePush.z,
+                    fullCirclePush.y
+                });
             }
-        }
-        else {
-            squareTransform->AddPosition(squarePush);
-            circleTransform->AddPosition(circlePush);
+        } else {
+            squareTransform->AddPosition({
+                squarePush.x,
+                squarePush.z,
+                squarePush.y
+            });
+
+            circleTransform->AddPosition({
+                circlePush.x,
+                circlePush.z,
+                circlePush.y
+            });
         }
 
         return true;
@@ -403,11 +404,13 @@ namespace LevelSystem {
             for (int i = 0; i < COLLISION_ITERATIONS; i++) {
                 for (ComponentCollider &selfCollider: level.colliders.components) {
                     if (!selfCollider.isActive) continue;
+                    if (selfCollider.isTrigger) continue;
 
                     ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
 
-                    if (selfTransform == nullptr) [[unlikely]]continue;
-                    if (!selfTransform->isDirty) [[unlikely]] continue;
+                    if (selfTransform == nullptr) [[unlikely]] continue;
+
+                   // if (!selfTransform->isDirty) [[unlikely]] continue;
 
                     if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.
                             size()))
@@ -431,13 +434,21 @@ namespace LevelSystem {
                                            nSector->entitiesInside.end());
                     }
 
-                    Vector3 selfPos = selfTransform->position;
-                    const Vector2 selfVector2 = (Vector2){selfTransform->position.x, selfTransform->position.y};
-
                     const Vector3 selfSize = selfCollider.scale;
 
+                    const Vector3 selfCollisionPos = {
+                        selfTransform->position.x,
+                        selfTransform->position.z,
+                        selfTransform->position.y
+                    };
+
+                    const Vector3 selfCollisionSize = {
+                        selfCollider.scale.x,
+                        selfCollider.scale.z,
+                        selfCollider.scale.y
+                    };
+
                     for (Entity *otherEntity: allEntities) {
-                        ;
                         if (otherEntity == nullptr) [[unlikely]] continue;
                         if (otherEntity == selfEntity) continue;
 
@@ -447,40 +458,53 @@ namespace LevelSystem {
 
                         if (!otherCollider->isActive) continue;
 
+                        if (otherCollider->isTrigger) continue;
+
                         auto *otherTransform = otherEntity->GetComponent<ComponentTransform>();
                         if (otherTransform == nullptr) [[unlikely]] continue;
 
-                        Vector3 otherPos = otherTransform->position;
-
                         const Vector3 otherSize = otherCollider->scale;
+
+                        const Vector3 otherCollisionPos = {
+                            otherTransform->position.x,
+                            otherTransform->position.z,
+                            otherTransform->position.y
+                        };
+
+                        const Vector3 otherCollisionSize = {
+                            otherCollider->scale.x,
+                            otherCollider->scale.z,
+                            otherCollider->scale.y
+                        };
 
                         if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_SPHERE) {
                             const float minDistance = otherSize.x + selfSize.x;
 
-                            if (Vector3Math::DistanceSquared(otherPos, selfPos) < minDistance * minDistance) [[unlikely]
-                            ] {
+                            const float distanceSquared =
+                                    Vector3Math::DistanceSquared(otherCollisionPos, selfCollisionPos);
+
+                            if (distanceSquared < minDistance * minDistance) [[unlikely]] {
                                 ComponentRigidbody *otherRb = nullptr;
                                 if (otherEntity->HasComponent<ComponentRigidbody>())
                                     otherRb = otherEntity->GetComponent<ComponentRigidbody>();
 
-                                Vector3 delta = selfPos - otherPos;
-                                float distanceSquared = Vector3Math::DistanceSquared(selfPos, otherPos);
+                                Vector3 delta = selfCollisionPos - otherCollisionPos;
+                                float fixedDistanceSquared = distanceSquared;
 
-                                if (distanceSquared < 0.000001f) {
+                                if (fixedDistanceSquared < 0.000001f) {
                                     delta = {1.0f, 0.0f, 0.0f};
-                                    distanceSquared = 1.0f;
+                                    fixedDistanceSquared = 1.0f;
                                 }
 
-                                const float distance = std::sqrt(distanceSquared);
+                                const float distance = std::sqrt(fixedDistanceSquared);
                                 const float overlap = minDistance - distance;
 
                                 Vector3 pushDirection = delta / distance;
 
-                                //todo implement mass
                                 float selfWeight = 0.5f;
                                 float otherWeight = 0.5f;
 
-                                const bool aStatic = selfRb->isStatic; // Can not reach here if selfRb is null
+                                const bool aStatic = selfRb->isStatic;
                                 const bool bStatic = (otherRb == nullptr) || otherRb->isStatic;
 
                                 if (bStatic && aStatic) [[unlikely]] continue;
@@ -493,6 +517,10 @@ namespace LevelSystem {
                                     otherWeight = 0.0f;
                                 }
 
+                                // Collision-space push:
+                                // x = world X
+                                // y = height
+                                // z = world depth
                                 Vector3 selfPush = pushDirection * overlap * selfWeight;
                                 Vector3 otherPush = pushDirection * -overlap * otherWeight;
 
@@ -502,9 +530,10 @@ namespace LevelSystem {
                                     otherTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
                                     const Sector &otherSector = level.sectors[otherTransform->sectorIndex];
 
+                                    // Convert collision-space push back to engine horizontal x/y.
                                     const Vector2 candidateOtherPos = {
                                         otherTransform->position.x + otherPush.x,
-                                        otherTransform->position.y + otherPush.y
+                                        otherTransform->position.y + otherPush.z
                                     };
 
                                     const float otherRadius = otherCollider->scale.x;
@@ -522,10 +551,10 @@ namespace LevelSystem {
 
                                         const Vector2 closestPoint = wall.start + t * v;
 
-                                        const float distanceSquared =
+                                        const float wallDistanceSquared =
                                                 Vector2Math::DistanceSquared(candidateOtherPos, closestPoint);
 
-                                        if (distanceSquared < otherRadius * otherRadius) {
+                                        if (wallDistanceSquared < otherRadius * otherRadius) {
                                             otherBlockedByWall = true;
                                             break;
                                         }
@@ -533,12 +562,25 @@ namespace LevelSystem {
                                 }
 
                                 if (otherBlockedByWall) {
-                                    // The object cannot move into the wall, so the moving entity takes
-                                    // the whole separation correction instead.
-                                    selfTransform->AddPosition(pushDirection * overlap);
+                                    const Vector3 fullPush = pushDirection * overlap;
+
+                                    selfTransform->AddPosition({
+                                        fullPush.x,
+                                        fullPush.z,
+                                        fullPush.y
+                                    });
                                 } else {
-                                    selfTransform->AddPosition(selfPush);
-                                    otherTransform->AddPosition(otherPush);
+                                    selfTransform->AddPosition({
+                                        selfPush.x,
+                                        selfPush.z,
+                                        selfPush.y
+                                    });
+
+                                    otherTransform->AddPosition({
+                                        otherPush.x,
+                                        otherPush.z,
+                                        otherPush.y
+                                    });
                                 }
                             }
                         }
@@ -550,10 +592,10 @@ namespace LevelSystem {
                             CircleAABBCollision(level, selfCollider, *otherCollider);
 
                         else if (selfCollider.type == COLLIDERTYPE_BOX && otherCollider->type == COLLIDERTYPE_BOX) {
-                            const Vector3 selfHalfSize = selfSize * 0.5f;
-                            const Vector3 otherHalfSize = otherSize * 0.5f;
+                            const Vector3 selfHalfSize = selfCollisionSize * 0.5f;
+                            const Vector3 otherHalfSize = otherCollisionSize * 0.5f;
 
-                            const Vector3 delta = selfPos - otherPos;
+                            const Vector3 delta = selfCollisionPos - otherCollisionPos;
 
                             const float overlapX =
                                     selfHalfSize.x + otherHalfSize.x - std::abs(delta.x);
@@ -574,7 +616,6 @@ namespace LevelSystem {
                                 Vector3 pushDirection;
                                 float overlap;
 
-                                // Resolve along the axis with the smallest penetration.
                                 if (overlapX <= overlapY && overlapX <= overlapZ) {
                                     overlap = overlapX;
                                     pushDirection = {
@@ -598,7 +639,6 @@ namespace LevelSystem {
                                     };
                                 }
 
-                                //todo implement mass
                                 float selfWeight = 0.5f;
                                 float otherWeight = 0.5f;
 
@@ -615,7 +655,7 @@ namespace LevelSystem {
                                     otherWeight = 0.0f;
                                 }
 
-                                // pushDirection points from other box -> self box.
+                                // Collision-space push.
                                 Vector3 selfPush = pushDirection * overlap * selfWeight;
                                 Vector3 otherPush = pushDirection * -overlap * otherWeight;
 
@@ -626,10 +666,14 @@ namespace LevelSystem {
                                 ) -> bool {
                                     if (transform == nullptr) [[unlikely]] return false;
 
-                                    // Wall collisions are horizontal only.
-                                    // If the correction is only vertical, do not block it using 2D walls.
+                                    // Collision-space:
+                                    // push.x = world X
+                                    // push.y = height
+                                    // push.z = world depth
+                                    //
+                                    // So if x and z are zero, the push is vertical only.
                                     if (std::abs(push.x) < 0.000001f &&
-                                        std::abs(push.y) < 0.000001f) {
+                                        std::abs(push.z) < 0.000001f) {
                                         return false;
                                     }
 
@@ -642,11 +686,11 @@ namespace LevelSystem {
 
                                     const Vector2 candidatePos = {
                                         transform->position.x + push.x,
-                                        transform->position.y + push.y
+                                        transform->position.y + push.z
                                     };
 
-                                    // Conservative 2D radius for checking whether the AABB would be pushed into a wall.
-                                    const float radius = std::max(halfSize.x, halfSize.y);
+                                    // Horizontal footprint uses collision-space x/z.
+                                    const float radius = std::max(halfSize.x, halfSize.z);
 
                                     for (const Wall &wall: sector.walls) {
                                         const Vector2 v = wall.vector;
@@ -681,24 +725,41 @@ namespace LevelSystem {
                                         IsBoxBlockedByWall(otherTransform, otherPush, otherHalfSize);
 
                                 if (selfBlockedByWall && otherBlockedByWall) {
-                                    // Both possible corrections would push boxes into walls.
-                                    // Leave them as-is for this iteration.
                                     continue;
                                 }
 
                                 if (selfBlockedByWall) {
-                                    // Self cannot move, so other takes the whole correction.
                                     if (!bStatic) {
-                                        otherTransform->AddPosition(pushDirection * -overlap);
+                                        const Vector3 fullOtherPush = pushDirection * -overlap;
+
+                                        otherTransform->AddPosition({
+                                            fullOtherPush.x,
+                                            fullOtherPush.z,
+                                            fullOtherPush.y
+                                        });
                                     }
                                 } else if (otherBlockedByWall) {
-                                    // Other cannot move, so self takes the whole correction.
                                     if (!aStatic) {
-                                        selfTransform->AddPosition(pushDirection * overlap);
+                                        const Vector3 fullSelfPush = pushDirection * overlap;
+
+                                        selfTransform->AddPosition({
+                                            fullSelfPush.x,
+                                            fullSelfPush.z,
+                                            fullSelfPush.y
+                                        });
                                     }
                                 } else {
-                                    selfTransform->AddPosition(selfPush);
-                                    otherTransform->AddPosition(otherPush);
+                                    selfTransform->AddPosition({
+                                        selfPush.x,
+                                        selfPush.z,
+                                        selfPush.y
+                                    });
+
+                                    otherTransform->AddPosition({
+                                        otherPush.x,
+                                        otherPush.z,
+                                        otherPush.y
+                                    });
                                 }
                             }
                         }
@@ -755,7 +816,8 @@ namespace LevelSystem {
                                 selfRb->velocity.x -= pushDirection.x * velocityIntoWall;
                                 selfRb->velocity.y -= pushDirection.y * velocityIntoWall;
                             }
-                        } else if (selfCollider.type == COLLIDERTYPE_BOX) {
+                        }
+                        else if (selfCollider.type == COLLIDERTYPE_BOX) {
                             const Vector2 halfSize = {
                                 selfSize.x * 0.5f,
                                 selfSize.y * 0.5f
