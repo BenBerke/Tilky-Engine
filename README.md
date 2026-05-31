@@ -1,10 +1,13 @@
 # 🛠️ Tilky Engine
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-20-red.svg)](https://en.cppreference.com/w/cpp/20)
 
-**Tilky Engine** is a custom **Sector-Based 3D game engine** built in C++20. Inspired by the classic architecture of 90s legends like *Doom* and *Build Engine*, it utilizes a specialized 3D rendering pipeline where the world is defined by topological sectors with independent height data.
+**Tilky Engine** is a custom **sector-based 3D game engine and editor** built in C++20.
 
-The project provides a complete end-to-end toolchain: from a project launcher and visual level editor to a high-performance OpenGL runtime.
+Inspired by classic 90s engines like *Doom* and *Build Engine*, Tilky Engine uses a specialized 3D rendering pipeline where maps are built from topological sectors with independent height data, textured walls, floors, decals, sprites, and entities.
+
+The project provides a full end-to-end toolchain: a project launcher, visual level editor, OpenGL runtime, Lua scripting, OpenAL audio, localization tooling, profiling, and standalone export support.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/76ba6573-6561-4394-96f5-809ba7211b12" width="48%" alt="Editor Screenshot 1" />
@@ -16,47 +19,59 @@ The project provides a complete end-to-end toolchain: from a project launcher an
 ## 🏗️ Core Architecture
 
 ### Sector-Based 3D Rendering
-Unlike modern triangle-mesh engines, Tilky defines the world through sectors. This architecture enables:
-- **True 3D Perspective:** Full 3D wall projection, depth handling, and textured surfaces.
-- **Dynamic Sector Heights:** Independent floor and ceiling altitudes per sector for complex verticality.
-- **Classic Aesthetic:** Authentic 90s-style sprite rendering and wall decals.
-- **Modern Pipeline:** Powered by OpenGL shaders and **SSBO-based geometry buffers** for high-performance data throughput.
+
+Unlike modern triangle-mesh engines, Tilky Engine builds levels from connected sectors. Each sector can define its own floor and ceiling heights, allowing classic room-based level design with verticality.
+
+This architecture enables:
+
+* **Sector-Based Worlds:** Maps are built from walls, sectors, floors, ceilings, and entities.
+* **True 3D Perspective:** Walls, floors, decals, billboards, and sprites are rendered in a 3D scene.
+* **Dynamic Sector Heights:** Sectors can have independent floor and ceiling altitudes.
+* **Classic Aesthetic:** Designed for retro 3D games, sprite-heavy worlds, and Doom-like level layouts.
+* **Modern Pipeline:** Uses OpenGL shaders and SSBO-backed geometry data for efficient rendering.
 
 ### Integrated Toolchain
-- **Tilky Launcher:** A centralized hub to manage `.tilky` project manifests, assets, and localized settings.
-- **Visual Editor:** A Dear ImGui-powered workspace with dedicated modes for Dot, Wall, Sector, and Entity manipulation.
-- **ECS (Entity Component System):** A data-oriented backend designed for cache-friendly performance, featuring components like `Transform`, `Sprite`, and `Decal`.
-- **Lua Scripting:** Make custom scripts with Lua — easy-to-use and powerful at the same time.
-- **Audio System:** Positional 3D audio powered by OpenAL, with per-sector listener settings.
-- **Performance Profiling:** Integrated Tracy profiler for real-time frame and zone analysis.
 
----
+Tilky Engine is built as a complete editor/runtime workflow rather than just a renderer.
+
+* **Tilky Launcher:** Manages `.tilky` project files, assets, project settings, and localization data.
+* **Visual Editor:** A Dear ImGui-powered editor with tools for Wall, Sector, and Entity editing.
+* **Runtime:** Loads projects, runs scripts, updates entities, handles audio, collision, and rendering.
+* **ECS:** A data-oriented entity component system using entity IDs and type-specific component arrays.
+* **Lua Scripting:** Attach Lua scripts to entities for custom gameplay behavior.
+* **Audio System:** Positional 3D audio powered by OpenAL.
+* **Standalone Exporting:** Rust-based exporter for packaging projects into standalone builds.
+* **Localization Tooling:** Rust-based translator tool that generates the required JSON files automatically.
+* **Performance Profiling:** Tracy integration for frame, rendering, physics, collision, and script profiling.
 
 ## 🛠 Tech Stack
 
-| Category | Library |
-| :--- | :--- |
-| **Language** | C++20, Rust |
-| **Graphics** | OpenGL (GLAD) |
-| **Framework** | SDL3 |
-| **UI** | Dear ImGui |
-| **Audio** | OpenAL |
-| **Scripting** | Lua + sol2 |
-| **Profiling** | Tracy |
-| **Data/BSON** | nlohmann/json |
-| **Logging** | spdlog |
-| **Assets** | SDL3_image, SDL3_ttf, FreeType |
-| **Profiling** | Tracy Profiler |
-| **Helper Tools & Exporintg** | Rust |
+| Category                     | Library                        |
+| :--------------------------- | :----------------------------- |
+| **Language**                 | C++20, Rust                    |
+| **Graphics**                 | OpenGL, GLSL, GLAD             |
+| **Framework**                | SDL3                           |
+| **UI**                       | Dear ImGui                     |
+| **Audio**                    | OpenAL                         |
+| **Scripting**                | Lua, sol2                      |
+| **Profiling**                | Tracy                          |
+| **Data**                     | nlohmann/json                  |
+| **Logging**                  | spdlog                         |
+| **Assets**                   | SDL3_image, SDL3_ttf, FreeType |
+| **Build System**             | CMake                          |
+| **Helper Tools & Exporting** | Rust                           |
+
 ---
 
 ## 🚀 Build Instructions
 
 ### Prerequisites
-- A **C++20** compatible compiler (MSVC, GCC, or Clang).
-- **CMake** 4.1 or higher.
-- **vcpkg** (recommended for dependency management).
-- External libraries cloned into `External/`: `glad`, `imgui`, `tracy`.
+
+* A **C++20** compatible compiler.
+* **CMake**.
+* **vcpkg** for dependency management.
+* **Rust/Cargo** for helper tools and exporting.
+* External libraries cloned into `External/`: `glad`, `imgui`, `tracy`.
 
 ### Building
 
@@ -76,59 +91,74 @@ cmake --build . --config Release
 
 ### CMake Targets
 
-| Target | Description |
-| :--- | :--- |
-| `Tilky_Launcher` | Manages project files and localisation. |
-| `Tilky_Engine` | The core Editor and Runtime environment. |
-| `Tilky_All` | Builds the entire suite for development convenience. |
+| Target           | Description                                                        |
+| :--------------- | :----------------------------------------------------------------- |
+| `Tilky_Launcher` | Manages projects, project settings, assets, and localisation data. |
+| `Tilky_Engine`   | The main editor and runtime environment.                           |
+| `Tilky_All`      | Builds the full Tilky toolchain for development convenience.       |
 
 ---
 
 ## 🎮 Editor Workflow
 
 1. **Launch:** Open `Tilky_Launcher` and create or open a `.tilky` project.
-2. **Design:** Use the Editor modes to draw walls, define sectors, and place entities.
-3. **Script:** Attach Lua scripts to entities for custom gameplay logic.
-4. **Test:** Use the **Save & Play** function to jump directly into the 3D runtime.
-5. **Profile:** Connect the Tracy profiler to analyze frame times and system bottlenecks.
+2. **Design:** Use the editor modes to draw walls, define sectors, and place entities.
+3. **Customize:** Add textures, components, scripts, and audio settings.
+4. **Script:** Attach Lua scripts to entities for custom gameplay logic.
+5. **Test:** Use **Save & Play** to jump directly into the runtime.
+6. **Profile:** Connect Tracy to inspect frame times and system bottlenecks.
+7. **Export:** Package the project into a standalone build.
 
 ### Hotkeys
 
-| Key | Action |
-| :--- | :--- |
-| `Q` | Cycle Modes (Wall, Sector, Entity) |
-| `LMB` | Place / Select / Edit |
-| `MMB` | Pan Editor Camera |
-| `Scroll` | Zoom In / Out |
-| `Ctrl + Z` | Undo Action |
-| `Escape` | Release mouse in Runtime |
+| Key        | Action                   |
+| :--------- | :----------------------- |
+| `Q`        | Cycle Modes              |
+| `LMB`      | Place / Select / Edit    |
+| `MMB`      | Pan Editor Camera        |
+| `Scroll`   | Zoom In / Out            |
+| `Ctrl + Z` | Undo Action              |
+| `Escape`   | Release mouse in Runtime |
 
 ---
 
 ## 🗺 Roadmap
 
-- [✅] **Lua Scripting:** Custom scripting with Lua
-- [✅] **Visual UI Editor:** In-engine tools for creating HUDs and menus.
-- [✅] **Standalone Export:** Capability to package projects into a single executable.
-- [ ] **Asset Encoding:** Encoding assets for profit games
-- [ ] **Networking:** Initial support for multiplayer sector synchronization.
-- [ ] **Vulkan Support:** Vulkan support for high performance with the ability to switch back to OpenGL
-- [ ] **Editor Overhaul:** Remaking the editor based on user feedback to maximize quality of life
+### 🏁 Completed Milestones
+* [x] **Lua Scripting Integration:** Embedded custom gameplay scripting runtime via Lua for decoupled game logic.
+* [x] **Visual UI Editor:** Designed in-engine canvas tools for real-time creation and editing of HUDs, menus, and text elements.
+* [x] **Standalone Export Execution:** Implemented a pipeline to package game assets and runtime binaries into optimized, standalone distribution builds.
+* [x] **Rust Localization Toolchain:** Developed an external Rust-based pipeline for compiling translator-friendly JSON localization assets.
+* [x] **Tracy Profiler Instrumentation:** Integrated deep source-level profiling across rendering, physics, collision, and scripting systems.
+
+## 🔨 Future Milestones
+* [ ] **Binary Asset Virtualization & Encoding:** Develop an offline asset packer to compress and serialize maps, textures, and audio files into a unified binary format for commercial exports.
+* [ ] **Steam P2P Multiplayer Networking:** Integrate Steam NetworkingSockets to handle low-latency peer-to-peer session connection, matchmaking, and sector state replication.
+* [ ] **Vulkan Rendering Hardware Layer:** Architect a modern Vulkan backend rendering path parallel to the existing OpenGL pipeline, introducing explicit command buffers and manual frame synchronization.
+* [ ] **Offline BSP Compiler & Map Processor:** Build a dedicated command-line utility to parse raw sector geometry, execute recursive hyper-plane splitting, and output highly optimized Binary Space Partitioning (BSP) trees for zero-overdraw rendering pipelines.
+* [ ] **Deferred Rendering Pipeline (G-Buffer):** Re-architect the core fragment shading pass to separate geometry from lighting using Framebuffer Objects (FBOs) to output Albedo, Normals, and Screen-Space Depth channels for high-density dynamic light rendering.
+* [ ] **UX/Editor Overhaul:** Redesign the Dear ImGui workspace layout to support docking, multi-view
+* [ ] **Offline BSP Compiler & Map Processor:** Build a dedicated tool to parse raw sector geometry, execute recursive hyper-plane splitting, and output optimized BSP trees for zero-overdraw rendering pipelines.
+* [ ] **Multiplayer Support:** Implement a easy-to-use but highly customizable networking support
+* [ ] **Steamworks Core API Integration:** Integrate native Steam API bindings to support achievements, cloud saves, and native overlay hooks for the commercial retail build.
 ---
 
 ## 🤝 Contributing & Credits
 
-Contributions are welcome! Whether it's bug fixes, feature requests, or documentation, feel free to open an issue or submit a pull request.
+Contributions are welcome. Bug reports, feature requests, documentation improvements, translations, and code contributions are all appreciated.
 
 **Author:** Berke Memioğlu
 
 ### Translations
-- **Ilya Brezhnev** — Russian & Kazakh
-- **ThatGuyMiki** — Polish
+
+* **Ilya Brezhnev** — Russian & Kazakh
+* **ThatGuyMiki** — Polish
+
 ---
 
 ### Special Thanks
-- **Roger Peterson** for community management, bug-testing and suggesting ideas 
+
+* **Roger Peterson** for community management, bug testing, and suggesting ideas.
 
 ## 📄 License
 
