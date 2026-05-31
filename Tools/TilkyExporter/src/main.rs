@@ -8,8 +8,7 @@ Arguments:
  */
 
 use std::{env, fs};
-use std::ascii::AsciiExt;
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 
 fn copy_dir_recursive(from: &Path, to: &Path) -> Result<()> {
@@ -69,7 +68,7 @@ fn copy_all_dlls(from: &Path, to: &Path) -> Result<()> {
        Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
        let args: Vec<String> = env::args().collect();
 
        if args.len() != 4 { return Err(anyhow!("Usage: TilkyExporter <project_metadata_path> <destination_path> <standalone_exe_path>")); }
@@ -80,6 +79,16 @@ fn main() -> anyhow::Result<()> {
 
        let project_dir = metadata_path.parent().ok_or_else(|| anyhow!("Could not get project directory from metadata path"))?;
        let standalone_dir = standalone_exe_path.parent().ok_or_else(|| anyhow!("Could not get Standalone.exe directory"))?;
+
+       // Copy:
+       // OriginalProject/project.tilky
+       // into:
+       // ExportFolder/project.tilky
+       let metadata_destination = destination_path.join("project.tilky");
+
+       copy_file(&metadata_path, &metadata_destination)?;
+
+       println!("Copied project metadata from {} to {}", metadata_path.display(), metadata_destination.display());
 
        // This copies:
        // Project/Assets/*

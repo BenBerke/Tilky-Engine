@@ -756,3 +756,57 @@ copy_runtime_dlls(Tilky_All)
 if(TARGET Tilky_Exporter)
     copy_runtime_dlls(Tilky_Exporter)
 endif()
+
+# ============================================================
+# Rust exporter tool
+# Builds Tools/TilkyExporter with Cargo and copies it beside
+# the editor executable.
+# ============================================================
+
+find_program(CARGO_EXECUTABLE cargo REQUIRED)
+
+set(TILKY_RUST_EXPORTER_PACKAGE tilky_exporter)
+
+set(TILKY_CARGO_TARGET_DIR
+        "${CMAKE_BINARY_DIR}/cargo-target"
+)
+
+set(TILKY_RUST_PROFILE "debug")
+set(TILKY_RUST_PROFILE_ARG "")
+
+if(TILKY_BUILD_TYPE_UPPER STREQUAL "RELEASE"
+        OR TILKY_BUILD_TYPE_UPPER STREQUAL "MINSIZEREL"
+        OR TILKY_BUILD_TYPE_UPPER STREQUAL "RELWITHDEBINFO")
+    set(TILKY_RUST_PROFILE "release")
+    set(TILKY_RUST_PROFILE_ARG "--release")
+endif()
+
+if(WIN32)
+    set(TILKY_RUST_EXPORTER_EXE
+            "${TILKY_CARGO_TARGET_DIR}/${TILKY_RUST_PROFILE}/tilky_exporter.exe"
+    )
+else()
+    set(TILKY_RUST_EXPORTER_EXE
+            "${TILKY_CARGO_TARGET_DIR}/${TILKY_RUST_PROFILE}/tilky_exporter"
+    )
+endif()
+
+add_custom_target(Tilky_RustExporter
+        COMMAND ${CMAKE_COMMAND} -E env
+        "CARGO_TARGET_DIR=${TILKY_CARGO_TARGET_DIR}"
+        ${CARGO_EXECUTABLE} build ${TILKY_RUST_PROFILE_ARG} -p ${TILKY_RUST_EXPORTER_PACKAGE}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        BYPRODUCTS "${TILKY_RUST_EXPORTER_EXE}"
+        COMMENT "Building Rust Tilky exporter"
+        VERBATIM
+)
+
+add_custom_command(TARGET Tilky_RustExporter POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${TILKY_RUST_EXPORTER_EXE}"
+        "$<TARGET_FILE_DIR:Tilky_Engine>/tilky_exporter.exe"
+        COMMENT "Copying tilky_exporter.exe beside Tilky_Engine.exe"
+)
+
+add_dependencies(Tilky_Engine Tilky_RustExporter)
+add_dependencies(Tilky_All Tilky_RustExporter)

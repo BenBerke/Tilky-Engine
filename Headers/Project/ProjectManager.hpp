@@ -13,8 +13,6 @@ namespace fs = std::filesystem;
 namespace ProjectManager {
     void LaunchEngine(const fs::path &projectFile);
 
-
-
     // Returns the current user's home folder.
     // On Windows this usually comes from the USERPROFILE environment variable.
     // Example:
@@ -159,6 +157,11 @@ namespace ProjectManager {
 
     // Returns Launcher.tilky inside Documents\TilkyEngine which stores metadata about the launcher, such as the language
     fs::path GetLauncherVariables();
+
+    // Returns the default export folder for the currently loaded project.
+    // Example:
+    // C:\Users\x\Documents\Tilky Engine\Exports\TestProject
+    fs::path GetDefaultExportFolder();
 
     std::string GetCurrentLanguageInLauncher();
 

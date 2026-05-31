@@ -18,6 +18,143 @@
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "misc/cpp/imgui_stdlib.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+namespace fs = std::filesystem;
+
+static bool RunExporter() {
+    const fs::path engineBasePath = ProjectManager::GetEngineBasePath();
+
+#ifdef _WIN32
+    const fs::path exporterExe = engineBasePath / "tilky_exporter.exe";
+    const fs::path standaloneExe = engineBasePath / "Standalone.exe";
+#else
+    const fs::path exporterExe = engineBasePath / "tilky_exporter";
+    const fs::path standaloneExe = engineBasePath / "Standalone";
+#endif
+
+    const fs::path projectMetadata = ProjectManager::GetProjectFiles();
+    const fs::path exportFolder = ProjectManager::GetDefaultExportFolder();
+
+    if (!fs::exists(exporterExe)) {
+        spdlog::error("Exporter executable not found: {}", exporterExe.string());
+        return false;
+    }
+
+    if (!fs::exists(standaloneExe)) {
+        spdlog::error("Standalone executable not found: {}", standaloneExe.string());
+        return false;
+    }
+
+    if (!fs::exists(projectMetadata)) {
+        spdlog::error("Project metadata not found: {}", projectMetadata.string());
+        return false;
+    }
+
+    try {
+        fs::create_directories(exportFolder);
+    }
+    catch (const std::exception& e) {
+        spdlog::error("Failed to create export folder '{}': {}", exportFolder.string(), e.what());
+        return false;
+    }
+
+#ifdef _WIN32
+    std::wstring commandLine =
+        L"\"" + exporterExe.wstring() + L"\" " +
+        L"\"" + projectMetadata.wstring() + L"\" " +
+        L"\"" + exportFolder.wstring() + L"\" " +
+        L"\"" + standaloneExe.wstring() + L"\"";
+
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+
+    PROCESS_INFORMATION processInfo{};
+
+    spdlog::info("Running exporter to {}", exportFolder.string());
+
+    BOOL success = CreateProcessW(
+        exporterExe.wstring().c_str(),
+        commandLine.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        0,
+        nullptr,
+        engineBasePath.wstring().c_str(),
+        &startupInfo,
+        &processInfo
+    );
+
+    if (!success) {
+        spdlog::error("Failed to run exporter. Windows error: {}", GetLastError());
+        return false;
+    }
+
+    WaitForSingleObject(processInfo.hProcess, INFINITE);
+
+    DWORD exitCode = 1;
+    GetExitCodeProcess(processInfo.hProcess, &exitCode);
+
+    CloseHandle(processInfo.hProcess);
+    CloseHandle(processInfo.hThread);
+
+    if (exitCode != 0) {
+        spdlog::error("Exporter failed with exit code {}", exitCode);
+        return false;
+    }
+
+#else
+    spdlog::info("Running exporter to {}", exportFolder.string());
+
+    const pid_t pid = fork();
+
+    if (pid < 0) {
+        spdlog::error("Failed to fork exporter process");
+        return false;
+    }
+
+    if (pid == 0) {
+        execl(
+            exporterExe.c_str(),
+            exporterExe.c_str(),
+            projectMetadata.c_str(),
+            exportFolder.c_str(),
+            standaloneExe.c_str(),
+            static_cast<char*>(nullptr)
+        );
+
+        _exit(127);
+    }
+
+    int status = 0;
+
+    if (waitpid(pid, &status, 0) < 0) {
+        spdlog::error("Failed while waiting for exporter process");
+        return false;
+    }
+
+    if (!WIFEXITED(status)) {
+        spdlog::error("Exporter process did not exit normally");
+        return false;
+    }
+
+    const int exitCode = WEXITSTATUS(status);
+
+    if (exitCode != 0) {
+        spdlog::error("Exporter failed with exit code {}", exitCode);
+        return false;
+    }
+#endif
+
+    spdlog::info("Export completed successfully to {}", exportFolder.string());
+    return true;
+}
 
 //todo overhaul
 namespace Editor {
@@ -1060,9 +1197,7 @@ namespace MapEditorInternal {
 
         if (ImGui::Button(Get("editor.switch_to_ui").c_str())) currentState = STATE_UI;
 
-        if (ImGui::Button(Get("editor.export").c_str())) {
-            //todo export game by running ToolsTilkyExporter/src/main.rs
-        }
+        if (ImGui::Button(Get("editor.export").c_str())) RunExporter();
 
         ImGui::End(); // Editor
 
