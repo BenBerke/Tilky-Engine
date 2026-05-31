@@ -424,7 +424,7 @@ bool OpenGL::CreateMap() {
 
     spdlog::info("Creating OpenGL renderer map data");
 
-    Editor::TriangulateSectors();
+    LevelManager::TriangulateCurrentLevelSectors();
 
     BuildFlatTrianglesFromSectors();
     BuildGpuWallsFromMap();

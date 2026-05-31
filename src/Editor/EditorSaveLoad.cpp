@@ -16,6 +16,7 @@
 #include "Headers/Objects/Sector.hpp"
 #include "config.h"
 #include "Headers/Editor/EditorTextureCache.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Objects/Loadables.hpp"
 
 constexpr EntityID INVALID_ENTITY_ID = static_cast<EntityID>(-1);
@@ -875,7 +876,7 @@ namespace {
                 }
             }
 
-            sector.triangles = Editor::Triangulate(sector.vertices);
+            sector.triangles = Geometry::Triangulate(sector.vertices);
 
             level.sectors.push_back(sector);
         }

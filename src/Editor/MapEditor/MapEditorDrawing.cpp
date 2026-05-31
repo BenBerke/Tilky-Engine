@@ -6,6 +6,8 @@
 #include <cmath>
 #include <spdlog/spdlog.h>
 
+#include "Headers/Math/Geometry/Geometry.hpp"
+
 namespace MapEditorInternal {
     void DrawThickLine(SDL_Renderer* renderer, const Vector2 start, const Vector2 end, const float thickness) {
         const float dx = end.x - start.x;
@@ -65,7 +67,7 @@ namespace MapEditorInternal {
             return;
         }
 
-        const std::vector<Triangle> previewTriangles = Editor::Triangulate(previewVertices);
+        const std::vector<Triangle> previewTriangles = Geometry::Triangulate(previewVertices);
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 

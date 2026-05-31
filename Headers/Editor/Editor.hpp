@@ -45,5 +45,4 @@ namespace Editor {
     );
 
     void TriangulateSectors();
-    std::vector<Triangle> Triangulate(std::vector<Vector2> vertices);
 }
