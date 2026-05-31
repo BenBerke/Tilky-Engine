@@ -9,58 +9,25 @@
 
 #include <filesystem>
 #include <iostream>
-#include <string>
 
 namespace fs = std::filesystem;
-
-static fs::path GetProjectFileFromArgs(int argc, char** argv) {
-    fs::path projectFile;
-
-    for (int i = 1; i < argc; i++) {
-        const std::string arg = argv[i];
-
-        if (arg == "--project" && i + 1 < argc) {
-            projectFile = argv[i + 1];
-            i++;
-            continue;
-        }
-
-        if (projectFile.empty()) {
-            projectFile = arg;
-        }
-    }
-
-    return projectFile;
-}
-
-int main(int argc, char** argv) {
-    const fs::path projectFile = GetProjectFileFromArgs(argc, argv);
-
-    if (projectFile.empty()) {
-        std::cerr << "No project file provided.\n";
-        std::cerr << "Usage:\n";
-        std::cerr << "  Standalone.exe --project \"C:/path/to/project.tilky\"\n";
-        return 1;
-    }
+int main() {
+    const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
     if (!fs::exists(projectFile)) {
-        std::cerr << "Project file does not exist: "
+        std::cerr << "Missing project.tilky beside executable:\n"
                   << projectFile.string()
                   << "\n";
         return 1;
     }
 
     if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-        std::cerr << "Failed to load project metadata from: "
-                  << projectFile.string()
-                  << "\n";
+        std::cerr << "Failed to load project metadata\n";
         return 1;
     }
 
     if (!LevelManager::LoadFirstProjectLevel()) {
-        std::cerr << "Failed to load startup level for project: "
-                  << projectFile.string()
-                  << "\n";
+        std::cerr << "Failed to load startup level for the project\n";
         return 1;
     }
 

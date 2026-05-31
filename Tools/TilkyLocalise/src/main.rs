@@ -4,13 +4,22 @@ use std::path::PathBuf;
 use std::{env, fs, io};
 
 fn get_local_dir() -> Result<PathBuf> {
-    // This points to: ...\Wolfy Engine\Tools\TilkyLocalise
-    let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // CARGO_MANIFEST_DIR points to:
+    // ...\Wolfy Engine\Tools\TilkyLocalise
+    let tool_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    let local_dir = project_dir
+    // Go from:
+    // ...\Wolfy Engine\Tools\TilkyLocalise
+    // to:
+    // ...\Wolfy Engine
+    let project_root = tool_dir
         .parent()
-        .ok_or_else(|| anyhow!("Could not resolve Local directory"))?
-        .to_path_buf();
+        .and_then(|tools_dir| tools_dir.parent())
+        .ok_or_else(|| anyhow!("Could not resolve project root directory"))?;
+
+    let local_dir = project_root
+        .join("EngineAssets")
+        .join("Local");
 
     if !local_dir.exists() {
         fs::create_dir_all(&local_dir)?;
@@ -100,7 +109,7 @@ fn main() -> Result<()> {
     let destination_path = local_dir.join(format!("{}.json", second));
     fs::write(&destination_path, output)?;
 
-    println!("Successfully processed and updated target file!");
+    println!("Successfully processed and updated target file! Press Enter to exit");
     let mut wait = String::new();
     io::stdin().read_line(&mut wait)?;
     Ok(())

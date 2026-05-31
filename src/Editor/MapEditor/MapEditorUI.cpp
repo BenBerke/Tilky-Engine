@@ -19,6 +19,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "misc/cpp/imgui_stdlib.h"
 
+//todo overhaul
 namespace Editor {
     void RefreshLevelSoundsFromFolder() {
         Level &level = LevelManager::CurrentLevel();
@@ -239,6 +240,54 @@ namespace {
         PutSpace(5);
 
         ImGui::InputInt(Get("editor.background_texture").c_str(), &Editor::backgroundTextureIndex);
+
+        ImGui::End();
+    }
+
+    void DrawLevelsMenu() {
+
+        ImGui::Begin(Get("levels.title").c_str());
+
+        for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
+            ImGui::PushID(i);
+
+            std::string cleanName = Editor::maps[i];
+
+            ImGui::Text("%s", cleanName.c_str());
+
+            if (ImGui::Button(Get("levels.load").c_str())) {
+                if (!Editor::currentMap.empty()) {
+                    Save(Editor::currentMap);
+                }
+
+                QueueLevelLoad(cleanName);
+
+                spdlog::info("Queued level load: {}", cleanName);
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button(Get("levels.delete").c_str())) {
+                const std::filesystem::path path =
+                        ProjectManager::GetLevelsPath() / (cleanName + ".json");
+
+                try {
+                    if (std::filesystem::remove(path)) {
+                        spdlog::info("Deleted level: {}", path.string());
+
+                        if (Editor::currentMap == cleanName) {
+                            Editor::currentMap = "";
+                        }
+
+                        UpdateLevels();
+                    } else spdlog::error("Failed to delete level, file may not exist: {}", path.string());
+                } catch (const std::filesystem::filesystem_error &e) {
+                    spdlog::error("Failed to delete level: {}", e.what());
+                }
+            }
+
+            ImGui::PopID();
+        }
 
         ImGui::End();
     }
@@ -1011,53 +1060,13 @@ namespace MapEditorInternal {
 
         if (ImGui::Button(Get("editor.switch_to_ui").c_str())) currentState = STATE_UI;
 
-        ImGui::End(); // Editor
-
-        ImGui::Begin(Get("levels.title").c_str());
-
-        for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
-            ImGui::PushID(i);
-
-            std::string cleanName = Editor::maps[i];
-
-            ImGui::Text("%s", cleanName.c_str());
-
-            if (ImGui::Button(Get("levels.load").c_str())) {
-                if (!Editor::currentMap.empty()) {
-                    Save(Editor::currentMap);
-                }
-
-                QueueLevelLoad(cleanName);
-
-                spdlog::info("Queued level load: {}", cleanName);
-            }
-
-            ImGui::SameLine();
-
-            if (ImGui::Button(Get("levels.delete").c_str())) {
-                const std::filesystem::path path =
-                        ProjectManager::GetLevelsPath() / (cleanName + ".json");
-
-                try {
-                    if (std::filesystem::remove(path)) {
-                        spdlog::info("Deleted level: {}", path.string());
-
-                        if (Editor::currentMap == cleanName) {
-                            Editor::currentMap = "";
-                        }
-
-                        UpdateLevels();
-                    } else spdlog::error("Failed to delete level, file may not exist: {}", path.string());
-                } catch (const std::filesystem::filesystem_error &e) {
-                    spdlog::error("Failed to delete level: {}", e.what());
-                }
-            }
-
-            ImGui::PopID();
+        if (ImGui::Button(Get("editor.export").c_str())) {
+            //todo export game by running ToolsTilkyExporter/src/main.rs
         }
 
-        ImGui::End(); // Levels
+        ImGui::End(); // Editor
 
+        DrawLevelsMenu();
         DrawWorldSettings();
     }
 }
