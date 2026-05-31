@@ -36,7 +36,7 @@ Unlike modern triangle-mesh engines, Tilky defines the world through sectors. Th
 
 | Category | Library |
 | :--- | :--- |
-| **Language** | C++20 |
+| **Language** | C++20, Rust |
 | **Graphics** | OpenGL (GLAD) |
 | **Framework** | SDL3 |
 | **UI** | Dear ImGui |
@@ -47,7 +47,7 @@ Unlike modern triangle-mesh engines, Tilky defines the world through sectors. Th
 | **Logging** | spdlog |
 | **Assets** | SDL3_image, SDL3_ttf, FreeType |
 | **Profiling** | Tracy Profiler |
-
+| **Helper Tools & Exporintg** | Rust |
 ---
 
 ## 🚀 Build Instructions
@@ -107,8 +107,10 @@ cmake --build . --config Release
 
 ## 🗺 Roadmap
 
+- [✅] **Lua Scripting:** Custom scripting with Lua
 - [✅] **Visual UI Editor:** In-engine tools for creating HUDs and menus.
-- [ ] **Standalone Export:** Capability to package projects into a single executable.
+- [✅] **Standalone Export:** Capability to package projects into a single executable.
+- [ ] **Asset Encoding:** Encoding assets for profit games
 - [ ] **Networking:** Initial support for multiplayer sector synchronization.
 - [ ] **Vulkan Support:** Vulkan support for high performance with the ability to switch back to OpenGL
 - [ ] **Editor Overhaul:** Remaking the editor based on user feedback to maximize quality of life
