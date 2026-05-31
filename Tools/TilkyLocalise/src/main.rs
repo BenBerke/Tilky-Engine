@@ -11,7 +11,7 @@ fn get_local_dir() -> Result<PathBuf> {
         .parent()
         .ok_or_else(|| anyhow!("Could not resolve Local directory"))?
         .to_path_buf();
-    
+
     if !local_dir.exists() {
         fs::create_dir_all(&local_dir)?;
     }
