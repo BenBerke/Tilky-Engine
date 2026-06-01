@@ -9,8 +9,10 @@
 
 #include <filesystem>
 #include <iostream>
+#include <string>
 
 namespace fs = std::filesystem;
+
 int main() {
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
@@ -31,7 +33,9 @@ int main() {
         return 1;
     }
 
-    if (!RuntimeSession::Start()) {
+    const std::string projectName = ProjectManager::GetProjectName();
+
+    if (!RuntimeSession::Start(projectName)) {
         std::cerr << "Failed to start standalone runtime session.\n";
         return 1;
     }

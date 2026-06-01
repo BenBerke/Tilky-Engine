@@ -104,7 +104,7 @@ public:
     OpenGL() = default;
     ~OpenGL() override = default;
 
-    bool Initialize() override;
+    bool Initialize(std::string windowName) override;
     void Shutdown() override;
 
     void BeginFrame() override;
@@ -218,7 +218,7 @@ private:
     bool InitializeOpenGL();
     bool InitializeFont();
 
-    bool InitSDL();
+    bool InitSDL(const std::string& windowName);
     bool InitImGui() const;
     bool InitProjection();
     bool InitUI();

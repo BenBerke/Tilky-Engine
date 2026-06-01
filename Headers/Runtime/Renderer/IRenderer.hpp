@@ -5,7 +5,7 @@ class IRenderer {
 public:
     virtual ~IRenderer() = default;
 
-    virtual bool Initialize() = 0;
+    virtual bool Initialize(std::string windowName) = 0;
     virtual void Shutdown() = 0;
 
     virtual void BeginFrame() = 0;

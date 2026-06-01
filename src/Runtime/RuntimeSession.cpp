@@ -47,7 +47,7 @@ namespace {
 }
 
 namespace RuntimeSession {
-    bool Start() {
+    bool Start(const std::string &windowName) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -66,7 +66,7 @@ namespace RuntimeSession {
 
         renderer = std::make_unique<OpenGL>();
 
-        if (!renderer->Initialize()) {
+        if (!renderer->Initialize(windowName)) {
             spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
             renderer.reset();
             return false;

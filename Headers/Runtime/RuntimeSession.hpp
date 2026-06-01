@@ -6,7 +6,7 @@
 #define TILKY_ENGINE_RUNTIMESESSION_H
 
 namespace RuntimeSession {
-    bool Start();
+    bool Start(const std::string &windowName);
     void Update();
     void Shutdown();
 }

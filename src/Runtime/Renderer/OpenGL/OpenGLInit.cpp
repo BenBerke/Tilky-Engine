@@ -102,7 +102,7 @@ bool OpenGL::InitializeOpenGL() {
     return true;
 }
 
-bool OpenGL::InitSDL() {
+bool OpenGL::InitSDL(const std::string& windowName) {
     using namespace OpenGLRendererInternal;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -114,7 +114,7 @@ bool OpenGL::InitSDL() {
     }
 
     window = SDL_CreateWindow(
-        Localisation::Get("screen.title.engine").c_str(),
+        windowName.c_str(),
         screenWidth,
         screenHeight,
         WINDOW_FLAGS
@@ -533,8 +533,8 @@ bool OpenGL::InitText() {
     return true;
 }
 
-bool OpenGL::Initialize() {
-    if (!InitSDL()) {
+bool OpenGL::Initialize(const std::string windowName) {
+    if (!InitSDL(windowName)) {
         spdlog::critical("Renderer initialization stopped at InitSDL");
         return false;
     }

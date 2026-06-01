@@ -46,7 +46,7 @@ static void SwitchModes(const Mode mode) {
             Editor::Start();
             break;
         case ENGINE:
-            if(!RuntimeSession::Start()) {
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"))) {
                 spdlog::critical("Failed to start the session");
                 return;
             }
