@@ -683,6 +683,8 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
                 ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
+
+                ImGui::InputFloat(Get("component.collider.step_size").c_str(), &c->stepSize);
             } else [[unlikely]] {
                 ImGui::Text("Collider component missing");
             }

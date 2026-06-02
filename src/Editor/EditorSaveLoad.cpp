@@ -292,8 +292,9 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
                 {"isTrigger", c.isTrigger},
-                    {"type", c.type},
-                {"scale", {c.scale.x, c.scale.y, c.scale.z}}
+                {"type", c.type},
+                {"scale", {c.scale.x, c.scale.y, c.scale.z}},
+                {"stepSize", c.stepSize}
             });
         }
 
@@ -731,6 +732,7 @@ namespace {
                         colliderJson["scale"][2].get<float>(),
                     };
                 }
+                c.stepSize = colliderJson.value("stepSize", 1.0f);
             }
         }
 

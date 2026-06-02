@@ -187,6 +187,7 @@
   "component.collider.sphere.scale": "Radius",
   "&Context_45": "Length, width and height of the AABB box as in (x, y, z)",
   "component.collider.box.scale": "Scale",
+  "component.collider.step_size": "Step Size",
 
   "&Context_46": "A rigidbody is a component that stores information about the physics-related part of the entity. Such as its velocity & mass",
   "component.rigidbody": "Rigidbody",

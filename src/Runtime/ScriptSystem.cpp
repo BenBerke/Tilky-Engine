@@ -20,6 +20,8 @@
 
 #include "Headers/Math/Vector/Vector2Math.hpp"
 
+//todo add more functionality
+
 namespace {
     SDL_Scancode GetScancodeFromString(const std::string& key) {
         static const std::unordered_map<std::string, SDL_Scancode> keys = {

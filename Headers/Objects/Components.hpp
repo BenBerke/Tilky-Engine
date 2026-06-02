@@ -100,6 +100,8 @@ struct ComponentCollider {
 
     // Type = Box -> Use these values as AABB; Type = Sphere -> Use size.x as the radius
     Vector3 scale = {1.0f, 1.0f, 1.0f};
+
+    float stepSize = 0.0f;
 };
 struct ComponentPlayerController {
     EntityID ownerID = static_cast<EntityID>(-1);
