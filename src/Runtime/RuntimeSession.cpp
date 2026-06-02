@@ -19,13 +19,12 @@
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
-#include "Headers/Runtime/Gameplay/GameFunctions.hpp"
+#include "Headers/Runtime/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
-#include "src/Editor/EditorInternal.hpp"
 
 namespace {
     float timer = 0.0f;
@@ -49,7 +48,7 @@ namespace {
 }
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName, bool isEngine) {
+    bool Start(const std::string &windowName, const bool isEngine) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -60,6 +59,7 @@ namespace RuntimeSession {
         if (isEngine) {
             editorLevelSnapshot = std::make_unique<Level>(level);
             spdlog::info("Runtime level snapshot created");
+            RuntimeEditor::Start(level);
         }
 
         MapQueries::AssignWallsToSectors(
@@ -131,13 +131,7 @@ namespace RuntimeSession {
 
             RenderDebugText();
 
-            //temp
-            if (!relativeMouseMode) {
-                if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
-                    // todo raycast to mouse
-                    // todo know when the player is in edit mode
-                }
-            }
+            RuntimeEditor::Update(LevelManager::CurrentLevel());
         }
 
         Level& level = LevelManager::CurrentLevel();
@@ -163,8 +157,9 @@ namespace RuntimeSession {
         }
 
         {
+            //todo remove the relative mousemode from standalone
             ZoneScopedN("Level");
-            if (relativeMouseMode) LevelSystem::Update(level);
+            if (!isEngine) if (relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
@@ -188,6 +183,8 @@ namespace RuntimeSession {
                 spdlog::info("Runtime ended. Level restored to editor snapshot");
             }
             else spdlog::error("Couldn't find editor level snapshot");
+
+            RuntimeEditor::Shutdown(LevelManager::CurrentLevel());
         }
 
         if (renderer) {

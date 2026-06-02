@@ -97,10 +97,16 @@ namespace {
 }
 
 namespace GameFunctions {
-    std::optional<RayHit> Raycast(Level &level, const Vector3 pos, const Vector3 dir, const float length, const EntityID ignoredEntity) {
+    std::optional<RayHit> Raycast(
+        Level &level,
+        const Vector3 pos,
+        const Vector3 dir,
+        const float length,
+        const EntityID ignoredEntity
+    ) {
         if (dir.IsZero()) return std::nullopt;
 
-        Vector3 normalizedDir = Vector3Math::Normalized(dir);
+        const Vector3 normalizedDir = Vector3Math::Normalized(dir);
 
         std::optional<RayHit> rayHit;
         float closestDistance = length;
@@ -133,14 +139,14 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
-        for (Wall &wall: level.walls) {
+        for (Wall &wall : level.walls) {
             for (int j = 0; j < wall.quad3DCount; ++j) {
                 const auto &quad = wall.quads3D[j];
 
                 const Vector3 &bottomStart = quad[0];
-                const Vector3 &bottomEnd = quad[1];
-                const Vector3 &topEnd = quad[2];
-                const Vector3 &topStart = quad[3];
+                const Vector3 &bottomEnd   = quad[1];
+                const Vector3 &topEnd      = quad[2];
+                const Vector3 &topStart    = quad[3];
 
                 const std::optional<float> hitA = RayTriangleIntersection(
                     pos,
@@ -151,7 +157,9 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitA.has_value()) submitWallHit(wall, *hitA);
+                if (hitA.has_value()) {
+                    submitWallHit(wall, *hitA);
+                }
 
                 const std::optional<float> hitB = RayTriangleIntersection(
                     pos,
@@ -162,24 +170,54 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitB.has_value()) submitWallHit(wall, *hitB);
+                if (hitB.has_value()) {
+                    submitWallHit(wall, *hitB);
+                }
             }
         }
 
-        //todo sort entities by colliderful/colliderless to optimize for branch prediction
-        for (Entity &entity: level.entities) {
-            const ComponentTransform *transform = level.transforms.Get(entity.id);
+        // Entity positions use:
+        // position.x = world X
+        // position.y = world Z / horizontal depth
+        // position.z = height above the current sector floor
+        for (Entity &entity : level.entities) {
+            if (entity.id == ignoredEntity) continue;
 
+            const ComponentTransform *transform = level.transforms.Get(entity.id);
             if (transform == nullptr) [[unlikely]] continue;
 
             const ComponentCollider *collider = level.colliders.Get(entity.id);
-
             if (collider == nullptr) continue;
             if (collider->isTrigger) continue;
 
+            float sectorFloorHeight = 0.0f;
+
+            if (
+                transform->sectorIndex >= 0 &&
+                transform->sectorIndex < static_cast<int>(level.sectors.size())
+            ) {
+                sectorFloorHeight = level.sectors[transform->sectorIndex].floorHeight;
+            }
+
+            const float entityBottomWorldHeight =
+                sectorFloorHeight + transform->position.z;
+
+            const Vector3 entityWorldBasePosition = {
+                transform->position.x,
+                transform->position.y,
+                entityBottomWorldHeight
+            };
+
             if (collider->type == COLLIDERTYPE_SPHERE) {
-                const Vector3 center = transform->position;
                 const float radius = transform->scale.x;
+
+                // transform->position.z is treated as the entity bottom/feet height,
+                // so the sphere center is radius units above that.
+                const Vector3 center = {
+                    entityWorldBasePosition.x,
+                    entityWorldBasePosition.y,
+                    entityWorldBasePosition.z + radius
+                };
 
                 const std::optional<float> hitDistance = RaySphereIntersection(
                     pos,
@@ -193,13 +231,26 @@ namespace GameFunctions {
                     submitEntityHit(entity, *hitDistance);
                 }
             }
+            else if (collider->type == COLLIDERTYPE_BOX) {
+                // Box collider convention:
+                // collider->scale.x = width along world X
+                // collider->scale.y = depth along world Z
+                // collider->scale.z = height upward
+                //
+                // transform->position.z is the bottom of the entity relative to the floor.
+                const Vector3 halfSize = collider->scale * 0.5f;
 
-            if (collider->type == COLLIDERTYPE_BOX) {
-                //todo make it so transform scale also affects collider scale
-                const Vector3 halfSize = collider->scale * .5f;
+                const Vector3 boxMin = {
+                    entityWorldBasePosition.x - halfSize.x,
+                    entityWorldBasePosition.y - halfSize.y,
+                    entityWorldBasePosition.z
+                };
 
-                const Vector3 boxMin = transform->position - halfSize;
-                const Vector3 boxMax = transform->position + halfSize;
+                const Vector3 boxMax = {
+                    entityWorldBasePosition.x + halfSize.x,
+                    entityWorldBasePosition.y + halfSize.y,
+                    entityWorldBasePosition.z + collider->scale.z
+                };
 
                 const std::optional<float> hitDistance = RayAABBIntersection(
                     pos,
@@ -209,7 +260,9 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+                if (hitDistance.has_value()) {
+                    submitEntityHit(entity, *hitDistance);
+                }
             }
         }
 
