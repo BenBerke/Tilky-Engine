@@ -289,6 +289,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
         Headers/UISystem.hpp
         src/Runtime/Gameplay/GameFunctions.cpp
+        src/Editor/ImGuiDrawFunctions.cpp
 )
 
 # ============================================================
@@ -315,6 +316,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Editor/EditorTextureCache.hpp
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Objects/RayHit.hpp
+        Headers/Editor/ImGuiDrawFunctions.hpp
 )
 
 # ============================================================

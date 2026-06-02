@@ -20,23 +20,6 @@ namespace {
         for (int i = 0; i < n; i++) ImGui::Spacing();
     }
 
-    void DrawTextureCategory() {
-        const Level &level = LevelManager::CurrentLevel();
-
-        if (ImGui::Button(Get("editor.refresh_textures").c_str())) {
-            EditorTextureCache::RefreshLevelTexturesFromFolder();
-        }
-
-        for (int i = 0; i < static_cast<int>(level.textures.size()); i++) {
-            ImGui::PushID(i);
-
-            ImGui::Text("%d: %s", i, level.textures[i].fileName.c_str());
-
-            ImGui::PopID();
-        }
-        PutSpace(2);
-    }
-
     void EditingEntity() {
         Entity *entityPtr = nullptr;
         Level &level = LevelManager::CurrentLevel();

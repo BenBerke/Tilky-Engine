@@ -54,7 +54,7 @@ namespace RuntimeSession {
         }
 
         Level& level = LevelManager::CurrentLevel();
-        
+
         if (isEngine) {
             editorLevelSnapshot = std::make_unique<Level>(level);
             spdlog::info("Runtime level snapshot created");
@@ -116,7 +116,7 @@ namespace RuntimeSession {
         timer = GameTime::time;
 
         if (isEngine) {
-            if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) [[unlikely]] {
+            if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
                 relativeMouseMode = false;
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
                 SDL_ShowCursor();

@@ -28,7 +28,7 @@ enum Mode {
 };
 
 static Mode currentMode = EDITOR;
-static constexpr bool IS_ENGINE = false;
+static constexpr bool IS_ENGINE = true;
 
 static void DestroyModes() {
     switch (currentMode) {
