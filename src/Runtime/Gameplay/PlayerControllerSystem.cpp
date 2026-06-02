@@ -2,19 +2,19 @@
 // Created by berke on 4/13/2026.
 //
 
-#include "../../Headers/Runtime/PlayerControllerSystem.hpp"
+#include "../../../Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
-#include "../../Headers/Engine/InputManager.hpp"
-#include "../../Headers/Engine/GameTime.hpp"
+#include "../../../Headers/Engine/InputManager.hpp"
+#include "../../../Headers/Engine/GameTime.hpp"
 
-#include "../../Headers/Math/Vector/Vector2Math.hpp"
-#include "../../Headers/Math/Geometry/Geometry.hpp"
+#include "../../../Headers/Math/Vector/Vector2Math.hpp"
+#include "../../../Headers/Math/Geometry/Geometry.hpp"
 
-#include "../../Headers/Map/MapQueries.hpp"
+#include "../../../Headers/Map/MapQueries.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 

@@ -169,12 +169,16 @@ namespace {
     }
 }
 
+//todo put this function to a seperate script because it might also be used by the vulkan renderer
 void OpenGL::BuildGpuWallsFromMap() {
     Level& level = LevelManager::CurrentLevel();
 
     gpuWalls.clear();
 
-    for (const Wall& wall : level.walls) {
+    for (Wall& wall : level.walls) {
+        wall.quads3D = {};
+        wall.quad3DCount = 0;
+
         if (IsPortalWall(wall)) {
             const Sector& front = level.sectors[wall.frontSector];
             const Sector& back = level.sectors[wall.backSector];
@@ -194,23 +198,24 @@ void OpenGL::BuildGpuWallsFromMap() {
                 backFloorCount
             );
 
-            const float frontFloor =
-                GetSectorBoundaryHeight(front, frontFloorBoundary);
-
-            const float backFloor =
-                GetSectorBoundaryHeight(back, backFloorBoundary);
-
-            const float frontTopCeiling =
-                GetSectorBoundaryHeight(front, frontFloorCount);
-
-            const float backTopCeiling =
-                GetSectorBoundaryHeight(back, backFloorCount);
+            const float frontFloor = GetSectorBoundaryHeight(front, frontFloorBoundary);
+            const float backFloor = GetSectorBoundaryHeight(back, backFloorBoundary);
+            const float frontTopCeiling = GetSectorBoundaryHeight(front, frontFloorCount);
+            const float backTopCeiling = GetSectorBoundaryHeight(back, backFloorCount);
 
             const float lowFloor = std::min(frontFloor, backFloor);
             const float highFloor = std::max(frontFloor, backFloor);
 
             const float lowCeiling = std::min(frontTopCeiling, backTopCeiling);
             const float highCeiling = std::max(frontTopCeiling, backTopCeiling);
+
+            // Lower solid portal piece
+            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
+                Vector3{ wall.start.x, wall.start.y, lowFloor },
+                Vector3{ wall.end.x,   wall.end.y,   lowFloor },
+                Vector3{ wall.end.x,   wall.end.y,   highFloor },
+                Vector3{ wall.start.x, wall.start.y, highFloor }
+            };
 
             PushGpuWallPiece(
                 gpuWalls,
@@ -222,6 +227,14 @@ void OpenGL::BuildGpuWallsFromMap() {
                 highFloor,
                 -1.0f
             );
+
+            // Upper solid portal piece
+            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
+                Vector3{ wall.start.x, wall.start.y, lowCeiling },
+                Vector3{ wall.end.x,   wall.end.y,   lowCeiling },
+                Vector3{ wall.end.x,   wall.end.y,   highCeiling },
+                Vector3{ wall.start.x, wall.start.y, highCeiling }
+            };
 
             PushGpuWallPiece(
                 gpuWalls,
@@ -246,6 +259,13 @@ void OpenGL::BuildGpuWallsFromMap() {
         }
 
         if (sectorIndex == -1) {
+            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
+                Vector3{ wall.start.x, wall.start.y, 0.0f },
+                Vector3{ wall.end.x,   wall.end.y,   0.0f },
+                Vector3{ wall.end.x,   wall.end.y,   32.0f },
+                Vector3{ wall.start.x, wall.start.y, 32.0f }
+            };
+
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
@@ -270,6 +290,13 @@ void OpenGL::BuildGpuWallsFromMap() {
 
         const float wallBottom = GetWallBandBottomHeight(sector, wall.floor);
         const float wallTop = GetWallBandTopHeight(sector, wall.floor);
+
+        wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
+            Vector3{ wall.start.x, wall.start.y, wallBottom },
+            Vector3{ wall.end.x,   wall.end.y,   wallBottom },
+            Vector3{ wall.end.x,   wall.end.y,   wallTop },
+            Vector3{ wall.start.x, wall.start.y, wallTop }
+        };
 
         PushGpuWallPiece(
             gpuWalls,

@@ -5,6 +5,8 @@
 #ifndef TILKY_ENGINE_WALL_H
 #define TILKY_ENGINE_WALL_H
 
+#include <array>
+
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector4.hpp"
@@ -23,6 +25,12 @@ struct Wall {
     Vector2 dir, normal, vector;
     float lengthSq;
     float length;
+
+    std::array<std::array<Vector3, 4>, 2> quads3D = {};
+    int quad3DCount = 0;
+
+    //quads3D[0] // first quad
+    //quads3D[1] // second quad
 
     Wall(
     const Vector2& start,

@@ -231,7 +231,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Objects/Components.cpp
         src/Objects/Level.cpp
 
-        src/Runtime/PlayerControllerSystem.cpp
+        src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/RuntimeSession.cpp
         src/Runtime/ScriptSystem.cpp
         src/Runtime/LevelSystem.cpp
@@ -280,7 +280,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/RuntimeSession.hpp
         Headers/Runtime/ScriptSystem.hpp
         Headers/Runtime/LevelSystem.hpp
-        Headers/Runtime/CameraSystem.hpp
+        Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Renderer/IRenderer.hpp
         Headers/Runtime/Renderer/RendererBackend.hpp
         Headers/Runtime/Renderer/RendererFactory.hpp
@@ -288,6 +288,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Renderer/OpenGL/OpenGL.hpp
         Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
         Headers/UISystem.hpp
+        src/Runtime/Gameplay/GameFunctions.cpp
 )
 
 # ============================================================
@@ -312,6 +313,8 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/UIEditor/UiEditorDraw.cpp
 
         Headers/Editor/EditorTextureCache.hpp
+        Headers/Runtime/Gameplay/GameFunctions.hpp
+        Headers/Objects/RayHit.hpp
 )
 
 # ============================================================

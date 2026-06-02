@@ -9,7 +9,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/UISystem.hpp"
-#include "Headers/Runtime/CameraSystem.hpp"
+#include "../../../../Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
 

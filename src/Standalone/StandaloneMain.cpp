@@ -33,9 +33,7 @@ int main() {
         return 1;
     }
 
-    const std::string projectName = ProjectManager::GetProjectName();
-
-    if (!RuntimeSession::Start(projectName)) {
+    if (!RuntimeSession::Start(ProjectManager::GetProjectName())) {
         std::cerr << "Failed to start standalone runtime session.\n";
         return 1;
     }
@@ -47,9 +45,7 @@ int main() {
 
         RuntimeSession::Update();
 
-        if (InputManager::QuitRequested()) {
-            quit = true;
-        }
+        if (InputManager::QuitRequested()) quit = true; // When the X button is clicked on the window for the respective OS
     }
 
     RuntimeSession::Shutdown();

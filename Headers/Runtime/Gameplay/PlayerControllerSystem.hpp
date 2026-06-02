@@ -7,9 +7,9 @@
 
 #include <vector>
 
-#include "../Objects/Components.hpp"
-#include "../Objects/Wall.hpp"
-#include "../Objects/Sector.hpp"
+#include "../../Objects/Components.hpp"
+#include "../../Objects/Wall.hpp"
+#include "../../Objects/Sector.hpp"
 
 #include "Headers/Math/Vector/Vector2.hpp"
 

@@ -1,9 +1,6 @@
 #include "Headers/Math/Geometry/Geometry.hpp"
-
 #include <algorithm>
 #include <cmath>
-#include <ranges>
-
 #include "Headers/Math/Vector/Vector2Math.hpp"
 
 namespace Geometry {

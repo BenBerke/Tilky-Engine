@@ -2,7 +2,6 @@
 
 #include "../../Headers/Editor/Editor.hpp"
 
-#include <array>
 #include <vector>
 
 #include <SDL3/SDL_render.h>
