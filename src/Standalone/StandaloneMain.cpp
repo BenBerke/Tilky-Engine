@@ -16,6 +16,8 @@ namespace fs = std::filesystem;
 int main() {
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
+    constexpr bool IS_ENGINE = false;
+
     if (!fs::exists(projectFile)) {
         std::cerr << "Missing project.tilky beside executable:\n"
                   << projectFile.string()
@@ -33,7 +35,7 @@ int main() {
         return 1;
     }
 
-    if (!RuntimeSession::Start(ProjectManager::GetProjectName())) {
+    if (!RuntimeSession::Start(ProjectManager::GetProjectName(), IS_ENGINE)) {
         std::cerr << "Failed to start standalone runtime session.\n";
         return 1;
     }
@@ -43,12 +45,12 @@ int main() {
     while (!quit) {
         InputManager::BeginFrame();
 
-        RuntimeSession::Update();
+        RuntimeSession::Update(IS_ENGINE);
 
         if (InputManager::QuitRequested()) quit = true; // When the X button is clicked on the window for the respective OS
     }
 
-    RuntimeSession::Shutdown();
+    RuntimeSession::Shutdown(IS_ENGINE);
 
     return 0;
 }

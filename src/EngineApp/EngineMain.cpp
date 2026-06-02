@@ -14,6 +14,9 @@
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 
+/// This script is only used in the engine.
+/// For running exported games, Standalone.exe is used
+
 #define SCREEN_WIDTH 1080
 #define SCREEN_HEIGHT 960
 
@@ -25,6 +28,7 @@ enum Mode {
 };
 
 static Mode currentMode = EDITOR;
+static constexpr bool IS_ENGINE = false;
 
 static void DestroyModes() {
     switch (currentMode) {
@@ -34,7 +38,7 @@ static void DestroyModes() {
             Editor::LoadLevel(Editor::currentMap);
             break;
         case ENGINE:
-            RuntimeSession::Shutdown();
+            RuntimeSession::Shutdown(IS_ENGINE);
             break;
     }
 }
@@ -46,7 +50,7 @@ static void SwitchModes(const Mode mode) {
             Editor::Start();
             break;
         case ENGINE:
-            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"))) {
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), IS_ENGINE)) {
                 spdlog::critical("Failed to start the session");
                 return;
             }
@@ -78,7 +82,7 @@ static bool InitEngineLogger() {
             fileSink
         };
 
-        auto logger = std::make_shared<spdlog::logger>(
+        const auto logger = std::make_shared<spdlog::logger>(
             "Engine",
             sinks.begin(),
             sinks.end()
@@ -96,13 +100,13 @@ static bool InitEngineLogger() {
         return true;
     }
     catch (const spdlog::spdlog_ex& e) {
-        SDL_Log("Failed to initalize engine logger %s", e.what());
+        SDL_Log("Failed to initialize engine logger %s", e.what());
         return false;
     }
 }
 
 static void EngineUpdate() {
-    RuntimeSession::Update();
+    RuntimeSession::Update(IS_ENGINE);
 }
 
 static void EditorUpdate() {

@@ -47,15 +47,18 @@ namespace {
 }
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName) {
+    bool Start(const std::string &windowName, bool isEngine) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
         }
 
         Level& level = LevelManager::CurrentLevel();
-        editorLevelSnapshot = std::make_unique<Level>(level);
-        spdlog::info("Runtime level snapshot created");
+        
+        if (isEngine) {
+            editorLevelSnapshot = std::make_unique<Level>(level);
+            spdlog::info("Runtime level snapshot created");
+        }
 
         MapQueries::AssignWallsToSectors(
             level.sectors,
@@ -104,25 +107,25 @@ namespace RuntimeSession {
         return true;
     }
 
-    void Update() {
-        if (!renderer) {
-            return;
-        }
+    void Update(const bool isEngine) {
+        if (!renderer) return;
 
         ZoneScoped;
 
         GameTime::Update();
         timer = GameTime::time;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) [[unlikely]] {
-            relativeMouseMode = false;
-            InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
-            SDL_ShowCursor();
-        }
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) [[unlikely]] {
-            relativeMouseMode = true;
-            InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
-            SDL_HideCursor();
+        if (isEngine) {
+            if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE) && relativeMouseMode) [[unlikely]] {
+                relativeMouseMode = false;
+                InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
+                SDL_ShowCursor();
+            }
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) [[unlikely]] {
+                relativeMouseMode = true;
+                InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
+                SDL_HideCursor();
+            }
         }
 
         Level& level = LevelManager::CurrentLevel();
@@ -156,21 +159,19 @@ namespace RuntimeSession {
         }
     }
 
-    void Shutdown() {
-        if (LevelManager::HasCurrentLevel()) {
-            AudioSystem::Shutdown(LevelManager::CurrentLevel());
-        }
+    void Shutdown(const bool isEngine) {
+        if (LevelManager::HasCurrentLevel()) AudioSystem::Shutdown(LevelManager::CurrentLevel());
 
         SoundManager::DestroyOpenAL();
 
-        if (editorLevelSnapshot) {
-            LevelManager::CurrentLevel() = *editorLevelSnapshot;
-            editorLevelSnapshot.reset();
+        if (isEngine) {
+            if (editorLevelSnapshot) {
+                LevelManager::CurrentLevel() = *editorLevelSnapshot;
+                editorLevelSnapshot.reset();
 
-            spdlog::info("Runtime ended. Level restored to editor snapshot");
-        }
-        else {
-            spdlog::error("Couldn't find editor level snapshot");
+                spdlog::info("Runtime ended. Level restored to editor snapshot");
+            }
+            else spdlog::error("Couldn't find editor level snapshot");
         }
 
         if (renderer) {
