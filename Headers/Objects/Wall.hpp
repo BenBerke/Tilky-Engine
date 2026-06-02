@@ -32,15 +32,20 @@ struct Wall {
     //quads3D[0] // first quad
     //quads3D[1] // second quad
 
+    // quad[0] = bottomStart
+    // quad[1] = bottomEnd
+    // quad[2] = topEnd
+    // quad[3] = topStart
+
     Wall(
-    const Vector2& start,
-    const Vector2& end,
-    const Vector4 color,
-    const int fs = -1,
-    const int bs = -1,
-    const int textureIndex = -1,
-    const int floor = 0
-)
+        const Vector2 &start,
+        const Vector2 &end,
+        const Vector4 color,
+        const int fs = -1,
+        const int bs = -1,
+        const int textureIndex = -1,
+        const int floor = 0
+    )
     : start(start),
       end(end),
       color(color),

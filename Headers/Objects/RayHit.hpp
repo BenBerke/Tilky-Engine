@@ -5,15 +5,14 @@
 #ifndef TILKY_ENGINE_RAYHIT_HPP
 #define TILKY_ENGINE_RAYHIT_HPP
 
+#include "../Math/Vector/Vector3.hpp"
+
 struct Wall;
-struct Vector3;
 struct Entity;
 
 struct RayHit {
-     union {
-         Entity* entity = nullptr;
-         Wall* wall;
-     } object;
+    Entity* entity = nullptr;
+    Wall* wall = nullptr;
 
     Vector3 position;
     float distance = .0f;

@@ -6,9 +6,9 @@ struct Vector3 {
     float x, y, z;
 
     Vector3(float x = 0.0f, float y = 0.0f, float z = 0.0f) : x(x), y(y), z(z) {}
+    Vector3(const Vector2& vec2, const float z = 0.0f) : x(vec2.x), y(vec2.y), z(z) {}
 
     // --- Basic Arithmetic Operators ---
-    // FIXED BUG: Changed 'z - other.z' to 'z + other.z'
     Vector3 operator+(const Vector3& other) const { return Vector3(x + other.x, y + other.y, z + other.z); }
     Vector3 operator-(const Vector3& other) const { return Vector3(x - other.x, y - other.y, z - other.z); }
 
