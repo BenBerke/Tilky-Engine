@@ -409,8 +409,7 @@ namespace LevelSystem {
                     ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
 
                     if (selfTransform == nullptr) [[unlikely]] continue;
-
-                   // if (!selfTransform->isDirty) [[unlikely]] continue;
+                    if (!selfTransform->isDirty) [[unlikely]] continue;
 
                     if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.
                             size()))

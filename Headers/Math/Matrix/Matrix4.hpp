@@ -9,12 +9,12 @@ struct Matrix4 {
 
     Matrix4() = default;
 
-    Matrix4(std::initializer_list<std::initializer_list<float>> rows) {
+    Matrix4(std::initializer_list<std::initializer_list<float> > rows) {
         int r = 0;
-        for (const auto& row : rows) {
+        for (const auto &row: rows) {
             if (r >= 4) break;
             int c = 0;
-            for (float val : row) {
+            for (float val: row) {
                 if (c >= 4) break;
                 m[r][c++] = val;
             }
@@ -27,15 +27,17 @@ struct Matrix4 {
     }
 
     static Matrix4 Identity() {
-        return {{
-            {1, 0, 0, 0},
-            {0, 1, 0, 0},
-            {0, 0, 1, 0},
-            {0, 0, 0, 1}
-        }};
+        return {
+            {
+                {1, 0, 0, 0},
+                {0, 1, 0, 0},
+                {0, 0, 1, 0},
+                {0, 0, 0, 1}
+            }
+        };
     }
 
-    Matrix4 operator+(const Matrix4& other) const {
+    Matrix4 operator+(const Matrix4 &other) const {
         Matrix4 result;
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 4; ++j)
@@ -43,7 +45,7 @@ struct Matrix4 {
         return result;
     }
 
-    Matrix4 operator-(const Matrix4& other) const {
+    Matrix4 operator-(const Matrix4 &other) const {
         Matrix4 result;
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 4; ++j)
@@ -51,7 +53,7 @@ struct Matrix4 {
         return result;
     }
 
-    Matrix4 operator*(const Matrix4& other) const {
+    Matrix4 operator*(const Matrix4 &other) const {
         Matrix4 result;
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 4; ++j) {
@@ -64,21 +66,21 @@ struct Matrix4 {
         return result;
     }
 
-    Matrix4& operator+=(const Matrix4& other) {
+    Matrix4 &operator+=(const Matrix4 &other) {
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 4; ++j)
                 m[i][j] += other.m[i][j];
         return *this;
     }
 
-    Matrix4& operator-=(const Matrix4& other) {
+    Matrix4 &operator-=(const Matrix4 &other) {
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 4; ++j)
                 m[i][j] -= other.m[i][j];
         return *this;
     }
 
-    Matrix4& operator*=(const Matrix4& other) {
+    Matrix4 &operator*=(const Matrix4 &other) {
         Matrix4 result;
         for (int i = 0; i < 4; ++i) {
             for (int j = 0; j < 4; ++j) {
@@ -92,11 +94,11 @@ struct Matrix4 {
         return *this;
     }
 
-    [[nodiscard]] const float* Data() const {
+    [[nodiscard]] const float *Data() const {
         return &m[0][0];
     }
 
-    float* Data() {
+    float *Data() {
         return &m[0][0];
     }
 
@@ -105,8 +107,8 @@ struct Matrix4 {
                                 float nearPlane, float farPlane) {
         Matrix4 result = Identity();
 
-        result.m[0][0] =  2.0f / (right - left);
-        result.m[1][1] =  2.0f / (top - bottom);
+        result.m[0][0] = 2.0f / (right - left);
+        result.m[1][1] = 2.0f / (top - bottom);
         result.m[2][2] = -2.0f / (farPlane - nearPlane);
 
         result.m[0][3] = -(right + left) / (right - left);
@@ -159,9 +161,9 @@ struct Matrix4 {
     }
 
     static Matrix4 LookAt(
-        const Vector3& eye,
-        const Vector3& target,
-        const Vector3& up
+        const Vector3 &eye,
+        const Vector3 &target,
+        const Vector3 &up
     ) {
         const Vector3 forward = Vector3Math::Normalized(target - eye);
         const Vector3 right = Vector3Math::Normalized(Vector3Math::Cross(forward, up));
@@ -188,6 +190,66 @@ struct Matrix4 {
         result.m[3][1] = 0.0f;
         result.m[3][2] = 0.0f;
         result.m[3][3] = 1.0f;
+
+        return result;
+    }
+
+    static std::optional<Matrix4> Invert(const Matrix4& mat) {
+        float augmented[4][8];
+        const float* src = mat.Data();
+
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                augmented[row][col] = src[row * 4 + col];
+                augmented[row][col + 4] = row == col ? 1.0f : 0.0f;
+            }
+        }
+
+        constexpr float EPSILON = 0.000001f;
+
+        for (int i = 0; i < 4; ++i) {
+            int pivotRow = i;
+
+            for (int row = i + 1; row < 4; ++row) {
+                if (std::abs(augmented[row][i]) > std::abs(augmented[pivotRow][i])) {
+                    pivotRow = row;
+                }
+            }
+
+            if (std::abs(augmented[pivotRow][i]) < EPSILON) {
+                return std::nullopt;
+            }
+
+            if (pivotRow != i) {
+                for (int col = 0; col < 8; ++col) {
+                    std::swap(augmented[i][col], augmented[pivotRow][col]);
+                }
+            }
+
+            const float pivotValue = augmented[i][i];
+
+            for (int col = 0; col < 8; ++col) {
+                augmented[i][col] /= pivotValue;
+            }
+
+            for (int row = 0; row < 4; ++row) {
+                if (row == i) continue;
+
+                const float factor = augmented[row][i];
+
+                for (int col = 0; col < 8; ++col) {
+                    augmented[row][col] -= factor * augmented[i][col];
+                }
+            }
+        }
+
+        Matrix4 result;
+
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                result.SetValue(row, col, augmented[row][col + 4]);
+            }
+        }
 
         return result;
     }

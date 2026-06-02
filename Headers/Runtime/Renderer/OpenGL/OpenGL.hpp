@@ -23,9 +23,6 @@
 struct Texture;
 
 namespace OpenGLRendererInternal {
-    inline int screenWidth = 1680;
-    inline int screenHeight = 960;
-
     inline constexpr float FLAT_NEAR_PLANE = 0.1f;
 
     inline constexpr int RENDER_WALL = 0;

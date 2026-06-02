@@ -35,10 +35,13 @@ void OpenGL::OnResize(const int width, const int height) {
         return;
     }
 
+    screenWidth = width;
+    screenHeight = height;
+
     glViewport(
         0,
         0,
-        width,
-        height
+        screenWidth,
+        screenHeight
     );
 }

@@ -19,11 +19,13 @@
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
+#include "src/Editor/EditorInternal.hpp"
 
 namespace {
     float timer = 0.0f;
@@ -39,7 +41,7 @@ namespace {
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            {0.0f, static_cast<float>(OpenGLRendererInternal::screenHeight - 7)},
+            {0.0f, static_cast<float>(renderer->screenHeight - 7)},
             {.5f, .5f},
              Vector3{255.0f, .0f, 255.0f}
         );
@@ -126,6 +128,16 @@ namespace RuntimeSession {
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
                 SDL_HideCursor();
             }
+
+            RenderDebugText();
+
+            //temp
+            if (!relativeMouseMode) {
+                if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+                    // todo raycast to mouse
+                    // todo know when the player is in edit mode
+                }
+            }
         }
 
         Level& level = LevelManager::CurrentLevel();
@@ -134,7 +146,9 @@ namespace RuntimeSession {
             ZoneScopedN("Renderer");
             renderer->BeginFrame();
             renderer->Update();
-            RenderDebugText();
+
+            if (isEngine) RenderDebugText();
+
             renderer->EndFrame();
         }
 
@@ -160,6 +174,8 @@ namespace RuntimeSession {
     }
 
     void Shutdown(const bool isEngine) {
+        //todo saving
+        //MapEditorInternal::Save(Editor::currentMap);
         if (LevelManager::HasCurrentLevel()) AudioSystem::Shutdown(LevelManager::CurrentLevel());
 
         SoundManager::DestroyOpenAL();
