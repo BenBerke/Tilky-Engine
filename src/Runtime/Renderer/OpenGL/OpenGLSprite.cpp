@@ -37,7 +37,7 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.positionSize = {
             transform->position.x,
-            transform->position.z,
+            transform->position.z + level.sectors[transform->sectorIndex].floorHeight,
             transform->position.y, // Intentionally swapped
             transform->scale.y
         };

@@ -51,7 +51,7 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     if (!isDirty && currentSectorValid) {
         auto& inside = sectors[sectorIndex].entitiesInside;
 
-        if (std::find(inside.begin(), inside.end(), owner) == inside.end()) {
+        if (std::ranges::find(inside, owner) == inside.end()) {
             inside.push_back(owner);
         }
 
@@ -93,6 +93,9 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
         0,
         std::max(1, sectors[newSector].floorCount) - 1
     );
+
+    //todo add floor support
+    absHeight = sectors[newSector].floorHeight + position.z;
 
     isDirty = false;
     return true;

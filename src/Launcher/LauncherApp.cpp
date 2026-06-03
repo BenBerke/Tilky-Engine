@@ -363,7 +363,6 @@ namespace LauncherApp {
 
         ImGui::SameLine();
 
-
         //region Languages
 
         if (languages.empty()) {

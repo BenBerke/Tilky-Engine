@@ -87,7 +87,8 @@ namespace {
     // circleCollider.scale.x = radius
     // squareCollider.scale.xyz = full box size
     bool CircleAABBCollision(Level &level, ComponentCollider &squareCollider, ComponentCollider &circleCollider) {
-        if (squareCollider.type != COLLIDERTYPE_BOX || circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] return false;
+        if (squareCollider.type != COLLIDERTYPE_BOX || circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] return
+                false;
         if (squareCollider.isTrigger || circleCollider.isTrigger) return false;
 
         ComponentTransform *squareTransform = level.transforms.Get(squareCollider.ownerID);
@@ -99,7 +100,7 @@ namespace {
         ComponentRigidbody *circleRb = level.rigidbodies.Get(circleCollider.ownerID);
 
         const Vector3 squarePos = {
-              squareTransform->position.x,
+            squareTransform->position.x,
             squareTransform->position.z,
             squareTransform->position.y
         };
@@ -179,8 +180,7 @@ namespace {
             }
 
             overlap = circleRadius + smallestDistance;
-        }
-        else {
+        } else {
             const float distance = std::sqrt(distanceSquared);
             overlap = circleRadius - distance;
             pushDirection = (circlePos - closestPoint) / distance;
@@ -207,7 +207,8 @@ namespace {
 
         bool squareBlockedByWall = false;
 
-        if (squareWeight > 0.0f && squareTransform->sectorIndex >= 0 && squareTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
+        if (squareWeight > 0.0f && squareTransform->sectorIndex >= 0 && squareTransform->sectorIndex < static_cast<int>(
+                level.sectors.size())) {
             const Sector &squareSector =
                     level.sectors[squareTransform->sectorIndex];
 
@@ -584,9 +585,7 @@ namespace LevelSystem {
                                     });
                                 }
                             }
-                        }
-
-                        else if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_BOX)
+                        } else if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_BOX)
                             CircleAABBCollision(level, *otherCollider, selfCollider);
 
                         else if (selfCollider.type == COLLIDERTYPE_BOX && otherCollider->type == COLLIDERTYPE_SPHERE)
@@ -800,22 +799,22 @@ namespace LevelSystem {
                             targetSectorIndex < 0 ||
                             targetSectorIndex >= static_cast<int>(level.sectors.size())) {
                             return false;
-                            }
+                        }
 
                         const Sector &currentSector = level.sectors[currentSectorIndex];
                         const Sector &targetSector = level.sectors[targetSectorIndex];
 
                         const float currentFloorHeight =
-                            GetSectorFloorWorldHeight(currentSector, transform.floor);
+                                GetSectorFloorWorldHeight(currentSector, transform.floor);
 
                         const float targetFloorHeight =
-                            GetSectorFloorWorldHeight(targetSector, transform.floor);
+                                GetSectorFloorWorldHeight(targetSector, transform.floor);
 
                         const float targetGap =
-                            targetSector.ceilingHeight - targetSector.floorHeight;
+                                targetSector.ceilingHeight - targetSector.floorHeight;
 
                         const float requiredGap =
-                            GetColliderRequiredGap(collider);
+                                GetColliderRequiredGap(collider);
 
                         if (targetGap < requiredGap) {
                             return false;
@@ -833,90 +832,90 @@ namespace LevelSystem {
                     };
 
                     auto FindPortalTransition = [&level, selfTransform, selfRb](
-    const Vector2& pointOnWall,
-    const float probeDistance,
-    int& outFromSector,
-    int& outTargetSector
-) -> bool {
-    outFromSector = -1;
-    outTargetSector = -1;
+                        const Vector2 &pointOnWall,
+                        const float probeDistance,
+                        int &outFromSector,
+                        int &outTargetSector
+                    ) -> bool {
+                        outFromSector = -1;
+                        outTargetSector = -1;
 
-    if (selfTransform == nullptr || selfRb == nullptr) [[unlikely]] {
-        return false;
-    }
+                        if (selfTransform == nullptr || selfRb == nullptr) [[unlikely]] {
+                            return false;
+                        }
 
-    const Vector2 currentPos = {
-        selfTransform->position.x,
-        selfTransform->position.y
-    };
+                        const Vector2 currentPos = {
+                            selfTransform->position.x,
+                            selfTransform->position.y
+                        };
 
-    const Vector2 velocity = {
-        selfRb->velocity.x,
-        selfRb->velocity.y
-    };
+                        const Vector2 velocity = {
+                            selfRb->velocity.x,
+                            selfRb->velocity.y
+                        };
 
-    const float velocityLengthSquared = Vector2Math::Dot(velocity, velocity);
+                        const float velocityLengthSquared = Vector2Math::Dot(velocity, velocity);
 
-    if (velocityLengthSquared <= 0.000001f) {
-        return false;
-    }
+                        if (velocityLengthSquared <= 0.000001f) {
+                            return false;
+                        }
 
-    const Vector2 moveDir =
-        velocity / std::sqrt(velocityLengthSquared);
+                        const Vector2 moveDir =
+                                velocity / std::sqrt(velocityLengthSquared);
 
-    // Approximate where the object was before physics moved it this frame.
-    const Vector2 previousPos =
-        currentPos - velocity * GameTime::deltaTime;
+                        // Approximate where the object was before physics moved it this frame.
+                        const Vector2 previousPos =
+                                currentPos - velocity * GameTime::deltaTime;
 
-    outFromSector = MapQueries::FindSectorContainingPoint(
-        level.sectors,
-        previousPos
-    );
+                        outFromSector = MapQueries::FindSectorContainingPoint(
+                            level.sectors,
+                            previousPos
+                        );
 
-    if (outFromSector < 0) {
-        outFromSector = selfTransform->sectorIndex;
-    }
+                        if (outFromSector < 0) {
+                            outFromSector = selfTransform->sectorIndex;
+                        }
 
-    if (outFromSector < 0 ||
-        outFromSector >= static_cast<int>(level.sectors.size())) {
-        return false;
-    }
+                        if (outFromSector < 0 ||
+                            outFromSector >= static_cast<int>(level.sectors.size())) {
+                            return false;
+                        }
 
-    // If the center is already in another sector, use that.
-    const int sectorAtCurrentPos = MapQueries::FindSectorContainingPoint(
-        level.sectors,
-        currentPos
-    );
+                        // If the center is already in another sector, use that.
+                        const int sectorAtCurrentPos = MapQueries::FindSectorContainingPoint(
+                            level.sectors,
+                            currentPos
+                        );
 
-    if (sectorAtCurrentPos >= 0 && sectorAtCurrentPos != outFromSector) {
-        outTargetSector = sectorAtCurrentPos;
-        return true;
-    }
+                        if (sectorAtCurrentPos >= 0 && sectorAtCurrentPos != outFromSector) {
+                            outTargetSector = sectorAtCurrentPos;
+                            return true;
+                        }
 
-    const float distances[] = {
-        0.05f,
-        0.25f,
-        probeDistance,
-        probeDistance * 2.0f
-    };
+                        const float distances[] = {
+                            0.05f,
+                            0.25f,
+                            probeDistance,
+                            probeDistance * 2.0f
+                        };
 
-    for (const float distance : distances) {
-        const Vector2 probePoint =
-            pointOnWall + moveDir * distance;
+                        for (const float distance: distances) {
+                            const Vector2 probePoint =
+                                    pointOnWall + moveDir * distance;
 
-        const int sectorIndex = MapQueries::FindSectorContainingPoint(
-            level.sectors,
-            probePoint
-        );
+                            const int sectorIndex = MapQueries::FindSectorContainingPoint(
+                                level.sectors,
+                                probePoint
+                            );
 
-        if (sectorIndex >= 0 && sectorIndex != outFromSector) {
-            outTargetSector = sectorIndex;
-            return true;
-        }
-    }
+                            if (sectorIndex >= 0 && sectorIndex != outFromSector) {
+                                outTargetSector = sectorIndex;
+                                return true;
+                            }
+                        }
 
-    return false;
-};
+                        return false;
+                    };
 
                     // Wall collision
                     for (const Wall &wall: sector.walls) {
@@ -961,12 +960,12 @@ namespace LevelSystem {
                             int targetSectorIndex = -1;
 
                             const bool foundPortalTransition =
-                                FindPortalTransition(
-                                    closestPoint,
-                                    radius + 0.05f,
-                                    fromSectorIndex,
-                                    targetSectorIndex
-                                );
+                                    FindPortalTransition(
+                                        closestPoint,
+                                        radius + 0.05f,
+                                        fromSectorIndex,
+                                        targetSectorIndex
+                                    );
 
                             if (foundPortalTransition &&
                                 CanStepIntoSector(
@@ -976,15 +975,7 @@ namespace LevelSystem {
                                     targetSectorIndex
                                 )) {
                                 continue;
-                                }
-
-                            spdlog::info(
-    "Portal check | current sector: {} | target sector: {} | pos: {}, {}",
-    selfTransform->sectorIndex,
-    targetSectorIndex,
-    selfTransform->position.x,
-    selfTransform->position.y
-);
+                            }
 
                             const Vector2 push = pushDirection * overlap;
 
@@ -998,8 +989,7 @@ namespace LevelSystem {
                                 selfRb->velocity.x -= pushDirection.x * velocityIntoWall;
                                 selfRb->velocity.y -= pushDirection.y * velocityIntoWall;
                             }
-                        }
-                        else if (selfCollider.type == COLLIDERTYPE_BOX) {
+                        } else if (selfCollider.type == COLLIDERTYPE_BOX) {
                             const Vector2 halfSize = {
                                 selfSize.x * 0.5f,
                                 selfSize.y * 0.5f
@@ -1064,12 +1054,12 @@ namespace LevelSystem {
                             int targetSectorIndex = -1;
 
                             const bool foundPortalTransition =
-                                FindPortalTransition(
-                                    closestPoint,
-                                    boxProbeDistance,
-                                    fromSectorIndex,
-                                    targetSectorIndex
-                                );
+                                    FindPortalTransition(
+                                        closestPoint,
+                                        boxProbeDistance,
+                                        fromSectorIndex,
+                                        targetSectorIndex
+                                    );
 
                             if (foundPortalTransition &&
                                 CanStepIntoSector(
@@ -1079,7 +1069,7 @@ namespace LevelSystem {
                                     targetSectorIndex
                                 )) {
                                 continue;
-                                }
+                            }
 
                             const Vector2 push = pushDirection * overlap;
 
