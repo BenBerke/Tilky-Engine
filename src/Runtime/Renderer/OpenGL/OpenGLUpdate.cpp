@@ -18,7 +18,9 @@ void OpenGL::Update() {
 
     Level& level = LevelManager::CurrentLevel();
 
-    ComponentCamera* camera = LevelSystem::GetActiveCamera(level);
+    ComponentCamera* camera;
+
+    camera = LevelSystem::GetActiveCamera(level);
 
     if (camera == nullptr) [[unlikely]] {
         spdlog::error("OpenGL::Update failed: no active camera");

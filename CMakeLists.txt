@@ -290,7 +290,6 @@ set(TILKY_RUNTIME_SOURCES
         Headers/UISystem.hpp
         src/Runtime/Gameplay/GameFunctions.cpp
         src/Editor/ImGuiDrawFunctions.cpp
-        src/Runtime/RuntimeEditor.cpp
 )
 
 # ============================================================
@@ -318,7 +317,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Objects/RayHit.hpp
         Headers/Editor/ImGuiDrawFunctions.hpp
-        Headers/Runtime/RuntimeEditor.hpp
+        "src/Runtime/Runtime Editor/RuntimeEditor.cpp"
+        "Headers/Runtime/Runtime Editor/RuntimeEditor.hpp"
 )
 
 # ============================================================

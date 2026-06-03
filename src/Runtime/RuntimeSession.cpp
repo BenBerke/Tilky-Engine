@@ -19,7 +19,7 @@
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
-#include "Headers/Runtime/RuntimeEditor.hpp"
+#include "Headers/Runtime/Runtime Editor/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include <tracy/Tracy.hpp>
@@ -159,7 +159,7 @@ namespace RuntimeSession {
         {
             //todo remove the relative mousemode from standalone
             ZoneScopedN("Level");
-            if (relativeMouseMode) LevelSystem::Update(level);
+            if (isEngine) if (relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {

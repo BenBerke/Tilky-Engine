@@ -347,7 +347,6 @@ namespace LevelSystem {
             }
         }
 
-
         if (activeController != nullptr && activeController->isActive) {
             ComponentTransform *playerTransform = level.transforms.Get(activeController->ownerID);
             ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
