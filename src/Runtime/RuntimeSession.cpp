@@ -159,7 +159,7 @@ namespace RuntimeSession {
         {
             //todo remove the relative mousemode from standalone
             ZoneScopedN("Level");
-            if (!isEngine) if (relativeMouseMode) LevelSystem::Update(level);
+            if (relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {

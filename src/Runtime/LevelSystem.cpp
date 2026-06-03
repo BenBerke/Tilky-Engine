@@ -12,6 +12,8 @@
 
 #include <tracy/Tracy.hpp>
 
+#include "Headers/Map/MapQueries.hpp"
+
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
         for (ComponentPlayerController &controller: level.playerControllers.components)
@@ -763,6 +765,158 @@ namespace LevelSystem {
                             }
                         }
                     }
+                    auto GetSectorFloorWorldHeight = [](const Sector &sector, int floorIndex) -> float {
+                        const int clampedFloor = std::clamp(
+                            floorIndex,
+                            0,
+                            std::max(1, sector.floorCount) - 1
+                        );
+
+                        const float sectorHeight = sector.ceilingHeight - sector.floorHeight;
+
+                        return sector.floorHeight + sectorHeight * static_cast<float>(clampedFloor);
+                    };
+
+                    auto GetColliderRequiredGap = [](const ComponentCollider &collider) -> float {
+                        if (collider.type == COLLIDERTYPE_SPHERE) {
+                            return collider.scale.x; // radius
+                        }
+
+                        if (collider.type == COLLIDERTYPE_BOX) {
+                            return collider.scale.y;
+                        }
+
+                        return 0.0f;
+                    };
+
+                    auto CanStepIntoSector = [&level, &GetSectorFloorWorldHeight, &GetColliderRequiredGap](
+                        const ComponentTransform &transform,
+                        const ComponentCollider &collider,
+                        int currentSectorIndex,
+                        int targetSectorIndex
+                    ) -> bool {
+                        if (currentSectorIndex < 0 ||
+                            currentSectorIndex >= static_cast<int>(level.sectors.size()) ||
+                            targetSectorIndex < 0 ||
+                            targetSectorIndex >= static_cast<int>(level.sectors.size())) {
+                            return false;
+                            }
+
+                        const Sector &currentSector = level.sectors[currentSectorIndex];
+                        const Sector &targetSector = level.sectors[targetSectorIndex];
+
+                        const float currentFloorHeight =
+                            GetSectorFloorWorldHeight(currentSector, transform.floor);
+
+                        const float targetFloorHeight =
+                            GetSectorFloorWorldHeight(targetSector, transform.floor);
+
+                        const float targetGap =
+                            targetSector.ceilingHeight - targetSector.floorHeight;
+
+                        const float requiredGap =
+                            GetColliderRequiredGap(collider);
+
+                        if (targetGap < requiredGap) {
+                            return false;
+                        }
+
+                        const float stepHeight = targetFloorHeight - currentFloorHeight;
+
+                        // Going down should always be allowed as long as the target sector has enough vertical gap.
+                        if (stepHeight <= 0.0f) {
+                            return true;
+                        }
+
+                        // Going up requires step size + current local height.
+                        return stepHeight <= collider.stepSize + transform.position.z;
+                    };
+
+                    auto FindPortalTransition = [&level, selfTransform, selfRb](
+    const Vector2& pointOnWall,
+    const float probeDistance,
+    int& outFromSector,
+    int& outTargetSector
+) -> bool {
+    outFromSector = -1;
+    outTargetSector = -1;
+
+    if (selfTransform == nullptr || selfRb == nullptr) [[unlikely]] {
+        return false;
+    }
+
+    const Vector2 currentPos = {
+        selfTransform->position.x,
+        selfTransform->position.y
+    };
+
+    const Vector2 velocity = {
+        selfRb->velocity.x,
+        selfRb->velocity.y
+    };
+
+    const float velocityLengthSquared = Vector2Math::Dot(velocity, velocity);
+
+    if (velocityLengthSquared <= 0.000001f) {
+        return false;
+    }
+
+    const Vector2 moveDir =
+        velocity / std::sqrt(velocityLengthSquared);
+
+    // Approximate where the object was before physics moved it this frame.
+    const Vector2 previousPos =
+        currentPos - velocity * GameTime::deltaTime;
+
+    outFromSector = MapQueries::FindSectorContainingPoint(
+        level.sectors,
+        previousPos
+    );
+
+    if (outFromSector < 0) {
+        outFromSector = selfTransform->sectorIndex;
+    }
+
+    if (outFromSector < 0 ||
+        outFromSector >= static_cast<int>(level.sectors.size())) {
+        return false;
+    }
+
+    // If the center is already in another sector, use that.
+    const int sectorAtCurrentPos = MapQueries::FindSectorContainingPoint(
+        level.sectors,
+        currentPos
+    );
+
+    if (sectorAtCurrentPos >= 0 && sectorAtCurrentPos != outFromSector) {
+        outTargetSector = sectorAtCurrentPos;
+        return true;
+    }
+
+    const float distances[] = {
+        0.05f,
+        0.25f,
+        probeDistance,
+        probeDistance * 2.0f
+    };
+
+    for (const float distance : distances) {
+        const Vector2 probePoint =
+            pointOnWall + moveDir * distance;
+
+        const int sectorIndex = MapQueries::FindSectorContainingPoint(
+            level.sectors,
+            probePoint
+        );
+
+        if (sectorIndex >= 0 && sectorIndex != outFromSector) {
+            outTargetSector = sectorIndex;
+            return true;
+        }
+    }
+
+    return false;
+};
 
                     // Wall collision
                     for (const Wall &wall: sector.walls) {
@@ -803,6 +957,35 @@ namespace LevelSystem {
                                 pushDirection = {-wallDir.y, wallDir.x};
                             }
 
+                            int fromSectorIndex = -1;
+                            int targetSectorIndex = -1;
+
+                            const bool foundPortalTransition =
+                                FindPortalTransition(
+                                    closestPoint,
+                                    radius + 0.05f,
+                                    fromSectorIndex,
+                                    targetSectorIndex
+                                );
+
+                            if (foundPortalTransition &&
+                                CanStepIntoSector(
+                                    *selfTransform,
+                                    selfCollider,
+                                    fromSectorIndex,
+                                    targetSectorIndex
+                                )) {
+                                continue;
+                                }
+
+                            spdlog::info(
+    "Portal check | current sector: {} | target sector: {} | pos: {}, {}",
+    selfTransform->sectorIndex,
+    targetSectorIndex,
+    selfTransform->position.x,
+    selfTransform->position.y
+);
+
                             const Vector2 push = pushDirection * overlap;
 
                             selfTransform->AddPosition({push.x, push.y, 0.0f});
@@ -836,7 +1019,6 @@ namespace LevelSystem {
 
                             float normalDistance = Vector2Math::Dot(wallToBox, wallNormal);
 
-                            // Make the normal point from the wall toward the box.
                             if (normalDistance < 0.0f) {
                                 wallNormal = wallNormal * -1.0f;
                                 normalDistance = -normalDistance;
@@ -853,13 +1035,11 @@ namespace LevelSystem {
                             const float boxCenterAlongWall =
                                     Vector2Math::Dot(wallToBox, wallDir);
 
-                            // No overlap along the wall segment.
                             if (boxCenterAlongWall < -boxExtentAlongWall ||
                                 boxCenterAlongWall > wallLength + boxExtentAlongWall) {
                                 continue;
                             }
 
-                            // No overlap against the wall line.
                             if (normalDistance >= boxExtentAlongNormal) {
                                 continue;
                             }
@@ -867,6 +1047,40 @@ namespace LevelSystem {
                             const float overlap = boxExtentAlongNormal - normalDistance;
 
                             const Vector2 pushDirection = wallNormal;
+
+                            const float clampedAlongWall = std::clamp(
+                                boxCenterAlongWall,
+                                0.0f,
+                                wallLength
+                            );
+
+                            const Vector2 closestPoint =
+                                    wall.start + wallDir * clampedAlongWall;
+
+                            const float boxProbeDistance =
+                                    std::max(halfSize.x, halfSize.y) + 0.05f;
+
+                            int fromSectorIndex = -1;
+                            int targetSectorIndex = -1;
+
+                            const bool foundPortalTransition =
+                                FindPortalTransition(
+                                    closestPoint,
+                                    boxProbeDistance,
+                                    fromSectorIndex,
+                                    targetSectorIndex
+                                );
+
+                            if (foundPortalTransition &&
+                                CanStepIntoSector(
+                                    *selfTransform,
+                                    selfCollider,
+                                    fromSectorIndex,
+                                    targetSectorIndex
+                                )) {
+                                continue;
+                                }
+
                             const Vector2 push = pushDirection * overlap;
 
                             selfTransform->AddPosition({push.x, push.y, 0.0f});

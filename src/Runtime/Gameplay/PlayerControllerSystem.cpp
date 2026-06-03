@@ -17,9 +17,6 @@
 #include "../../../Headers/Map/MapQueries.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
-
-constexpr int COLLISION_ITERATIONS = 4;
-
 namespace {
     bool IsValidSectorIndex(const int index, const std::vector<Sector> &sectors) {
         return index >= 0 && index < static_cast<int>(sectors.size());

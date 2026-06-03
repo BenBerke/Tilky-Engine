@@ -88,7 +88,11 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
         inside.push_back(owner);
     }
 
-    floor = sectors[newSector].floorHeight;
+    floor = std::clamp(
+        floor,
+        0,
+        std::max(1, sectors[newSector].floorCount) - 1
+    );
 
     isDirty = false;
     return true;
