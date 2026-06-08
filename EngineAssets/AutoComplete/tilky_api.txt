@@ -4,6 +4,11 @@
 ---@field x number
 ---@field y number
 
+---@class Vector3
+--@field x number
+--@field y number
+--@field z number
+
 ---@alias Key
 ---| '"A"'
 ---| '"B"'
@@ -84,6 +89,9 @@ function Input.GetMouseButton(button) end
 ---@return boolean
 function Input.GetMouseButtonUp(button) end
 
+---@return Vector2
+function Input.GetMousePosition() end
+
 --@class Math
 --@param value number
 --@return number
@@ -115,28 +123,140 @@ function Math.Vector2Distance(a, b) end
 ---@return number
 function Math.Vector2DistanceSquared(a, b) end
 
----@return Vector2
-function Input.GetMousePosition() end
+---@param a Vector3
+---@param b Vector3
+---@return number
+function Math.Vector3Distance(a, b) end
+
+---@param a Vector2
+---@param b Vector2
+---@return number
+function Math.Vector3DistanceSquared(a, b) end
+
 
 --@class Entities
 --@field id integer
 ---@field hasTransform boolean
----@field transform Transform?
 ---@field hasSprite boolean
----@field sprite Sprite?
 ---@field hasDecal boolean
+---@field hasAudioSource boolean
+---@field hasScript boolean
+---@field hasPlayerController boolean
+---@field hasCamera boolean
+---@field hasCollider boolean
+---@field hasRigidbody boolean
+---@field hasUITransform boolean
+---@field hasUISprite boolean
+---@field hasUIText boolean
+
+---@field transform Transform?
+---@field sprite Sprite?
 ---@field decal Decal?
+---@field audioSource AudioSource?
+---@field script Script?
+---@field playerController PlayerController?
+---@field camera Camera?
+---@field collider Collider?
+---@field rigidbody Rigidbody?
+---@field uiTransform UITransform?
+---@field uiSprite UISprite?
+---@field uiText UIText?
 
---@class Sprite
---@field textureIndex integer
+---@class ComponentUIText
+---@field ownerID integer
+---@field text string
 
----@class Transform
+---@class ComponentUISprite
+---@field ownerID integer
+---@field textureIndex integer
+
+---@class ComponentUITransform
+---@field ownerID integer
+---@field anchorMin Vector2
+---@field anchorMax Vector2
+---@field pivot Vector2
 ---@field position Vector2
----@field x number
----@field y number
+---@field scale Vector2
+---@field rotation number
 
----@class Decal
----@field level Level
+---@class ComponentRigidbody
+---@field ownerID integer
+---@field isStatic boolean
+---@field mass number
+---@param a Vector3
+function AddVelocity(a) end
+
+---@class ComponentCollider
+---@field ownerID integer
+---@field type integer // TODO fix
+---@field isActive boolean
+---@field isTrigger boolean
+---@field Scale Vector3
+---@field stepSize number
+
+---@class ComponentPlayerController
+---@field ownerID integer
+---@field isActive boolean
+---@field velocity Vector3
+---@field speed number
+---@field runningSpeed number
+---@field eyeHeight number
+---@field stepSize number
+---@field friction number
+---@field sensitivityX number
+---@field sensitivityY number
+---@field noClip boolean
+
+---@class ComponentCamera
+---@field ownerID integer
+---@field isActive boolean
+---@field yaw number
+---@field pitch number
+---@field target Vector3
+---@field fov number
+---@field nearPlane number
+---@field farPlane number
+
+---@class ComponentScript
+---@field ownerID integer
+---@field fileName string
+---@field enabled boolean
+
+---@class ComponentAudioSource
+---@field onwerID integer
+---@field name string
+---@field pitch number
+---@field gain number
+---@field looping boolean
+---@field playOnStart boolean
+---@field referenceDistance number
+---@field maxDistance number
+---@field rollOffFactor number
+---@field innerConeAngel number
+---@field outerConeAngle number
+---@field outerGain number
+function PlaySound() end
+---@param a number
+function SetSourcePitch(a) end
+---@param a number
+function SetSourceGain(a) end
+---@param a boolean
+function SetSourceLooping(a) end
+---@param a Vector3
+function SetSourcePosition(q) end
+
+---@class ComponentSprite
+---@field textureIndex integer
+
+---@class ComponentTransform
+---@field ownerID integer
+---@field position Vector3
+---@field absHeight number
+---@field floor integer
+---@field scale Vector2
+---@field sectorIndex integer
+
+---@class ComponentDecal
 ---@field ownerID integer
 ---@field wallIndex integer
 ---@field verticalPos number

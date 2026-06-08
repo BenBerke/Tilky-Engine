@@ -19,7 +19,7 @@
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
-#include "Headers/Runtime/Runtime Editor/RuntimeEditor.hpp"
+#include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include <tracy/Tracy.hpp>

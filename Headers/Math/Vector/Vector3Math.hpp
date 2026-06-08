@@ -5,6 +5,8 @@
 #ifndef TILKY_ENGINE_VECTOR3MATH_HPP
 #define TILKY_ENGINE_VECTOR3MATH_HPP
 
+#include <stdio.h>
+
 #include "Vector3.hpp"
 
 namespace Vector3Math {

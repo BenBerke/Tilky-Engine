@@ -111,9 +111,7 @@ namespace {
         inputManager.set_function("GetKeyDown", [](const std::string& key) -> bool {
             const SDL_Scancode scancode = GetScancodeFromString(key);
 
-            if (scancode == SDL_SCANCODE_UNKNOWN) {
-                return false;
-            }
+            if (scancode == SDL_SCANCODE_UNKNOWN) return false;
 
             return InputManager::GetKeyDown(scancode);
         });
@@ -121,9 +119,7 @@ namespace {
         inputManager.set_function("GetKey", [](const std::string& key) -> bool {
             const SDL_Scancode scancode = GetScancodeFromString(key);
 
-            if (scancode == SDL_SCANCODE_UNKNOWN) {
-                return false;
-            }
+            if (scancode == SDL_SCANCODE_UNKNOWN) return false;
 
             return InputManager::GetKey(scancode);
         });
@@ -131,22 +127,20 @@ namespace {
         inputManager.set_function("GetKeyUp", [](const std::string& key) -> bool {
             const SDL_Scancode scancode = GetScancodeFromString(key);
 
-            if (scancode == SDL_SCANCODE_UNKNOWN) {
-                return false;
-            }
+            if (scancode == SDL_SCANCODE_UNKNOWN) return false;
 
             return InputManager::GetKeyUp(scancode);
         });
 
-        inputManager.set_function("GetMouseButtonDown", [](int button) -> bool {
+        inputManager.set_function("GetMouseButtonDown", [](const int button) -> bool {
             return InputManager::GetMouseButtonDown(button);
         });
 
-        inputManager.set_function("GetMouseButton", [](int button) -> bool {
+        inputManager.set_function("GetMouseButton", [](const int button) -> bool {
             return InputManager::GetMouseButton(button);
         });
 
-        inputManager.set_function("GetMouseButtonUp", [](int button) -> bool {
+        inputManager.set_function("GetMouseButtonUp", [](const int button) -> bool {
             return InputManager::GetMouseButtonUp(button);
         });
 
@@ -204,6 +198,26 @@ namespace {
             return Vector2Math::DistanceSquared(a, b);
         });
 
+        math.set_function("Vector2Dot", [](const Vector2& a, const Vector2& b) -> float {
+           return Vector2Math::Dot(a, b);
+        });
+
+        math.set_function("Vector3Dot", [](const Vector3& a, const Vector3& b) -> float {
+           return Vector3Math::Dot(a, b);
+        });
+
+        math.set_function("Vector3Distance", [](const Vector3& a, const Vector3& b) -> float {
+            return Vector3Math::Distance(a, b);
+        });
+
+        math.set_function("Vector3DistanceSquared", [](const Vector3& a, const Vector3& b) -> float {
+            return Vector3Math::DistanceSquared(a, b);
+        });
+
+        math.set_function("Vector3Cross", [](const Vector3& a, const Vector3& b) -> Vector3 {
+            return Vector3Math::Cross(a, b);
+        });
+
         tilky["Math"] = math;
     }
 
@@ -217,7 +231,39 @@ namespace {
             // Properties
             "length", sol::property([](const Vector2 &self) {
                 return Vector2Math::Length(self);
+            }),
+            "lengthSquared", sol::property([](const Vector2 &self) {
+                return Vector2Math::LengthSquared(self);
+            }),
+            "normalized", sol::property([](const Vector2 &self) {
+                return Vector2Math::Normalized(self);
             })
+        );
+
+        lua.new_usertype<Vector3>(
+            "Vector3",
+            sol::constructors<Vector3(), Vector3(float, float, float)>(),
+            "x", &Vector3::x,
+            "y", &Vector3::y,
+             "z", &Vector3::z,
+             "length", sol::property([](const Vector3 &self) {
+                 return Vector3Math::Length(self);
+             }),
+             "lengthSquared", sol::property([](const Vector3 &self) {
+                 return Vector3Math::LengthSquared(self);
+             }),
+             "normalized", sol::property([](const Vector3 &self) {
+                 return Vector3Math::Normalized(self);
+             })
+        );
+
+        lua.new_usertype<Vector4>(
+            "Vector4",
+            sol::constructors<Vector4(), Vector4(float, float, float)>(),
+            "x", &Vector4::x,
+            "y", &Vector4::y,
+             "z", &Vector4::z,
+             "w", &Vector4::w
         );
 
         lua.new_usertype<ScriptTransform>(
@@ -226,21 +272,6 @@ namespace {
             "position", sol::property(
                 &ScriptTransform::GetPosition,
                 &ScriptTransform::SetPosition
-            ),
-
-            "x", sol::property(
-                &ScriptTransform::GetX,
-                &ScriptTransform::SetX
-            ),
-
-            "y", sol::property(
-                &ScriptTransform::GetY,
-                &ScriptTransform::SetY
-            ),
-
-            "z", sol::property(
-                &ScriptTransform::GetZ,
-                &ScriptTransform::SetZ
             )
         );
 

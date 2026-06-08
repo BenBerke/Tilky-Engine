@@ -2,7 +2,7 @@
 // Created by berke on 6/3/2026.
 //
 
-#include "../../../Headers/Runtime/Runtime Editor/RuntimeEditor.hpp"
+#include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Engine/InputManager.hpp"
