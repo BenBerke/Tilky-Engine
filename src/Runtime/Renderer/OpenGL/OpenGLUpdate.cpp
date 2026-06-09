@@ -6,6 +6,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl3.h"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/UISystem.hpp"
@@ -18,9 +21,7 @@ void OpenGL::Update() {
 
     Level& level = LevelManager::CurrentLevel();
 
-    ComponentCamera* camera;
-
-    camera = LevelSystem::GetActiveCamera(level);
+    ComponentCamera *camera = LevelSystem::GetActiveCamera(level);
 
     if (camera == nullptr) [[unlikely]] {
         spdlog::error("OpenGL::Update failed: no active camera");
@@ -180,4 +181,15 @@ void OpenGL::Update() {
             RenderUIText(text, *transform);
         }
     }
+}
+
+void OpenGL::BeginImGuiFrame() const {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+}
+
+void OpenGL::EndImGuiFrame() const {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

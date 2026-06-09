@@ -147,6 +147,9 @@ public:
 
     bool BuildTextureAtlasFromLevel();
 
+    void BeginImGuiFrame() const;
+    void EndImGuiFrame() const;
+
 private:
     using Character = OpenGLRendererInternal::Character;
     using GpuFlatTriangle = OpenGLRendererInternal::GpuFlatTriangle;

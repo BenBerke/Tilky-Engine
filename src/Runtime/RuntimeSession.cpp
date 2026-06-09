@@ -136,8 +136,16 @@ namespace RuntimeSession {
 
         {
             ZoneScopedN("Renderer");
+
             renderer->BeginFrame();
+
             renderer->Update();
+
+            renderer->BeginImGuiFrame();
+
+            if (runtimeType == EDITOR) RuntimeEditor::Draw(level);
+
+            renderer->EndImGuiFrame();
 
             if (runtimeType != STANDALONE) RenderDebugText();
 

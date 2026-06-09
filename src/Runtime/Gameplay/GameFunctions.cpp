@@ -188,21 +188,16 @@ namespace GameFunctions {
             if (transform == nullptr) [[unlikely]] continue;
 
             const ComponentCollider *collider = level.colliders.Get(entity.id);
-            if (requireCollider) {
-                if (collider == nullptr) continue;
-                if (collider->isTrigger) continue;
-            }
+
+            if (collider == nullptr) continue;
+            if (collider->isTrigger) continue;
+
             float sectorFloorHeight = 0.0f;
 
-            if (
-                transform->sectorIndex >= 0 &&
-                transform->sectorIndex < static_cast<int>(level.sectors.size())
-            ) {
+            if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size()))
                 sectorFloorHeight = level.sectors[transform->sectorIndex].floorHeight;
-            }
 
-            const float entityBottomWorldHeight =
-                sectorFloorHeight + transform->position.z;
+            const float entityBottomWorldHeight =sectorFloorHeight + transform->position.z;
 
             const Vector3 entityWorldBasePosition = {
                 transform->position.x,

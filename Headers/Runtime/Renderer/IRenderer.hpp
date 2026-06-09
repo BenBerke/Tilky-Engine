@@ -12,6 +12,9 @@ public:
     virtual void Update() = 0;
     virtual void EndFrame() = 0;
 
+    virtual void BeginImGuiFrame() const = 0;
+    virtual void EndImGuiFrame() const = 0;
+
     int screenWidth = 1600, screenHeight = 900;
     virtual void OnResize(int width, int height) = 0;
 

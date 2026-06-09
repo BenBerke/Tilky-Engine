@@ -10,6 +10,7 @@ struct Level;
 namespace RuntimeEditor {
     void Start(Level& level);
     void Update(Level& level);
+    void Draw(Level& level);
     void Shutdown(Level& level);
 }
 
