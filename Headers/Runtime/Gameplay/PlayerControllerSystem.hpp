@@ -60,7 +60,7 @@ namespace PlayerControllerSystem {
         const ComponentTransform &playerTransform,
         ComponentCamera &camera,
         ComponentRigidbody &rigidbody,
-        ComponentCollider &sphereCollider,
+        ComponentCollider* sphereCollider,
         const std::vector<Sector> &sectors
     );
 }

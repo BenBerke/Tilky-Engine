@@ -341,32 +341,49 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Transform setup");
-            for (ComponentTransform &transform: level.transforms.components) {
-                transform.UpdateObjectSectorAndFloor(level.sectors, level.GetEntity(transform.ownerID));
+            for (ComponentTransform& transform : level.transforms.components) {
+                Entity* owner = level.GetEntity(transform.ownerID);
+
+                if (!owner) [[unlikely]] {
+                    spdlog::error("Transform owner {} does not exist", transform.ownerID);
+                    continue;
+                }
+
+                transform.UpdateObjectSectorAndFloor(level.sectors, owner);
             }
         }
 
         if (activeController != nullptr && activeController->isActive) {
-            ComponentTransform *playerTransform = level.transforms.Get(activeController->ownerID);
-            ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
-            ComponentCollider *playerSphereCollider = level.colliders.Get(activeController->ownerID);
+            const EntityID ownerID = activeController->ownerID;
 
-            if (playerTransform != nullptr) [[likely]]{
-                ComponentCamera *activeCamera = GetActiveCamera(level);
+            ComponentTransform* playerTransform = level.transforms.Get(ownerID);
+            if (!playerTransform) [[unlikely]] {
+                spdlog::error("Player controller entity {} has no transform", ownerID);
+                return;
+            }
 
-                if (activeCamera != nullptr) {
-                    PlayerControllerSystem::Update(
-                        *activeController,
-                        *playerTransform,
-                        *activeCamera,
-                        *playerRigidbody,
-                        *playerSphereCollider,
-                        level.sectors
-                    );
-                } else spdlog::warn("Level::Update skipped player controller: no active camera");
-            } else
-                spdlog::error("Level::Update skipped player controller: entity {} has no transform",
-                              activeController->ownerID);
+            ComponentRigidbody* playerRigidbody = level.rigidbodies.Get(ownerID);
+            if (!playerRigidbody) [[unlikely]] {
+                spdlog::error("Player controller entity {} has no rigidbody", ownerID);
+                return;
+            }
+
+            ComponentCollider* playerCollider = level.colliders.Get(ownerID);
+
+            ComponentCamera* activeCamera = GetActiveCamera(level);
+            if (!activeCamera) [[unlikely]] {
+                spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
+                return;
+            }
+
+            PlayerControllerSystem::Update(
+                *activeController,
+                *playerTransform,
+                *activeCamera,
+                *playerRigidbody,
+                playerCollider,
+                level.sectors
+            );
         }
 
         {
@@ -375,19 +392,29 @@ namespace LevelSystem {
 
             ZoneScopedN("Physics");
 
-            for (ComponentRigidbody &r: level.rigidbodies.components) {
-                ComponentTransform *transform = level.transforms.Get(r.ownerID);
+            for (ComponentRigidbody& r : level.rigidbodies.components) {
+                ComponentTransform* transform = level.transforms.Get(r.ownerID);
 
-                if (transform->position.z > 0) r.ApplyGravity(friction);
+                if (!transform) {
+                    spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
+                    continue;
+                }
+
+                if (transform->position.z > 0.0f) {
+                    r.ApplyGravity(friction);
+                }
 
                 if (transform->position.z <= 0.0f) {
                     transform->position.z = 0.0f;
 
-                    if (r.velocity.z < 0.0f)
+                    if (r.velocity.z < 0.0f) {
                         r.velocity.z = 0.0f;
+                    }
                 }
 
-                if (r.velocity.IsZero()) continue;
+                if (r.velocity.IsZero()) {
+                    continue;
+                }
 
                 transform->AddPosition(r.velocity * GameTime::deltaTime);
 

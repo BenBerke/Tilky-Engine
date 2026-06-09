@@ -23,7 +23,7 @@
   "editor.save": "Save",
   "editor.save_and_play": "Save & Play",
   "editor.save_and_quit": "Save & Quit",
-  "editor.realtime_editor": "Realtime Editor",
+  "editor.runtime_editor": "Runtime Editor",
   "&Context_4": "-Shutdown- is forcing the engine to instantly close without saving or safety checks",
   "editor.shutdown": "Shutdown",
   "editor.level_name": "Level Name",

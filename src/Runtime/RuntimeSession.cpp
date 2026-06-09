@@ -130,8 +130,6 @@ namespace RuntimeSession {
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
                 SDL_HideCursor();
             }
-
-            RenderDebugText();
         }
 
         if (runtimeType == EDITOR) RuntimeEditor::Update(level);
@@ -175,7 +173,7 @@ namespace RuntimeSession {
 
         SoundManager::DestroyOpenAL();
 
-        if (runtimeType == STANDALONE) {
+        if (runtimeType == PLAY) {
             if (editorLevelSnapshot) {
                 LevelManager::CurrentLevel() = *editorLevelSnapshot;
                 editorLevelSnapshot.reset();

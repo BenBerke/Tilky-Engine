@@ -102,7 +102,8 @@ namespace GameFunctions {
         const Vector3 pos,
         const Vector3 dir,
         const float length,
-        const EntityID ignoredEntity
+        const EntityID ignoredEntity,
+        const bool requireCollider
     ) {
         if (dir.IsZero()) return std::nullopt;
 
@@ -187,9 +188,10 @@ namespace GameFunctions {
             if (transform == nullptr) [[unlikely]] continue;
 
             const ComponentCollider *collider = level.colliders.Get(entity.id);
-            if (collider == nullptr) continue;
-            if (collider->isTrigger) continue;
-
+            if (requireCollider) {
+                if (collider == nullptr) continue;
+                if (collider->isTrigger) continue;
+            }
             float sectorFloorHeight = 0.0f;
 
             if (

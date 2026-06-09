@@ -242,7 +242,7 @@ namespace Editor {
     }
 
     bool SwitchToRuntimeEditorRequested() {
-        return MapEditorInternal::switchToRuntime || InputManager::QuitRequested();
+        return MapEditorInternal::switchToRuntime;
     }
 
     void Destroy() {

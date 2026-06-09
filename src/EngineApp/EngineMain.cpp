@@ -173,6 +173,7 @@ int main(int argc, char** argv) {
                     DestroyModes();
                     if (Editor::PlayRequested()) SwitchModes(PLAY);
                 }
+
                 if (Editor::SwitchToRuntimeEditorRequested()) {
                     DestroyModes();
                     SwitchModes(RUNTIME_EDITOR);

@@ -202,7 +202,7 @@ namespace PlayerControllerSystem {
         const ComponentTransform &playerTransform,
         ComponentCamera &camera,
         ComponentRigidbody &rigidbody,
-        ComponentCollider &sphereCollider,
+        ComponentCollider* sphereCollider,
         const std::vector<Sector> &sectors
     ) {
         (void) playerTransform;
@@ -222,7 +222,8 @@ namespace PlayerControllerSystem {
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
-        sphereCollider.isActive = !controller.noClip;
+        if (sphereCollider != nullptr)
+        sphereCollider->isActive = !controller.noClip;
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;

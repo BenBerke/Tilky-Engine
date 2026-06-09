@@ -680,7 +680,7 @@ namespace MapEditorInternal {
             Save(Editor::currentMap);
         }
 
-        if (ImGui::Button(Get("editor.realtime_editor").c_str())) {
+        if (ImGui::Button(Get("editor.runtime_editor").c_str())) {
             if (Save(Editor::currentMap)) {
                 SDL_Log("%s", Editor::currentMap.c_str());
                 switchToRuntime = true;
