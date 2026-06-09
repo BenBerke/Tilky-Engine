@@ -27,6 +27,7 @@ namespace Editor {
         quit = false;
         play = false;
         shutdown = false;
+        switchToRuntime = false;
 
         editingSector = false;
         selectedSector = -1;
@@ -229,15 +230,19 @@ namespace Editor {
     }
 
     bool QuitRequested() {
-        return MapEditorInternal::quit  || InputManager::QuitRequested();
+        return MapEditorInternal::quit || InputManager::QuitRequested();
     }
 
     bool PlayRequested() {
-        return MapEditorInternal::quit  || MapEditorInternal::play;
+        return MapEditorInternal::quit || MapEditorInternal::play;
     }
 
     bool ShutdownRequested() {
-        return MapEditorInternal::shutdown  || InputManager::QuitRequested();
+        return MapEditorInternal::shutdown || InputManager::QuitRequested();
+    }
+
+    bool SwitchToRuntimeEditorRequested() {
+        return MapEditorInternal::switchToRuntime || InputManager::QuitRequested();
     }
 
     void Destroy() {

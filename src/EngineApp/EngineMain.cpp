@@ -24,12 +24,11 @@ namespace fs = std::filesystem;
 
 enum Mode {
     EDITOR,
-    ENGINE,
+    PLAY,
     RUNTIME_EDITOR,
 };
 
 static Mode currentMode = EDITOR;
-static constexpr bool IS_PLAYMODE = true;
 
 static void DestroyModes() {
     switch (currentMode) {
@@ -38,8 +37,11 @@ static void DestroyModes() {
             if (Editor::ShutdownRequested()) break;
             Editor::LoadLevel(Editor::currentMap);
             break;
-        case ENGINE:
-            RuntimeSession::Shutdown(IS_PLAYMODE);
+        case PLAY:
+            RuntimeSession::Shutdown(RuntimeSession::PLAY);
+            break;
+            case RUNTIME_EDITOR:
+            RuntimeSession::Shutdown(RuntimeSession::EDITOR);
             break;
     }
 }
@@ -50,15 +52,15 @@ static void SwitchModes(const Mode mode) {
         case EDITOR:
             Editor::Start();
             break;
-        case ENGINE:
-            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), IS_PLAYMODE)) {
+        case PLAY:
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), RuntimeSession::PLAY)) {
                 spdlog::critical("Failed to start the session");
                 return;
             }
             spdlog::info("Starting the game loop");
             break;
         case RUNTIME_EDITOR:
-            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), !IS_PLAYMODE)) {
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), RuntimeSession::EDITOR)) {
                 spdlog::critical("Failed to start the session");
                 return;
             }
@@ -113,11 +115,11 @@ static bool InitEngineLogger() {
 }
 
 static void RealTimeEditorUpdate() {
-    RuntimeSession::Update(!IS_PLAYMODE);
+    RuntimeSession::Update(RuntimeSession::EDITOR);
 }
 
 static void EngineUpdate() {
-    RuntimeSession::Update(IS_PLAYMODE);
+    RuntimeSession::Update(RuntimeSession::PLAY);
 }
 
 static void EditorUpdate() {
@@ -162,18 +164,30 @@ int main(int argc, char** argv) {
     bool quit = false;
     while (!quit) {
         InputManager::BeginFrame();
-        quit = InputManager::QuitRequested() && currentMode != ENGINE;
+        quit = InputManager::QuitRequested() && currentMode == EDITOR;
         switch (currentMode) {
             case EDITOR:
                 EditorUpdate();
                 if (Editor::ShutdownRequested()) return 0;
                 if (Editor::QuitRequested()) {
                     DestroyModes();
-                    if (Editor::PlayRequested()) SwitchModes(ENGINE);
+                    if (Editor::PlayRequested()) SwitchModes(PLAY);
+                }
+                if (Editor::SwitchToRuntimeEditorRequested()) {
+                    DestroyModes();
+                    SwitchModes(RUNTIME_EDITOR);
+                    spdlog::info("SwitchToRuntimeEditorRequested");
                 }
                 break;
-            case ENGINE:
+            case PLAY:
                 EngineUpdate();
+                if (InputManager::QuitRequested()) {
+                    DestroyModes();
+                    SwitchModes(EDITOR);
+                }
+                break;
+            case RUNTIME_EDITOR:
+                RealTimeEditorUpdate();
                 if (InputManager::QuitRequested()) {
                     DestroyModes();
                     SwitchModes(EDITOR);

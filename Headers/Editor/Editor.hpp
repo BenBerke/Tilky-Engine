@@ -26,6 +26,7 @@ namespace Editor {
     bool ShutdownRequested();
     bool QuitRequested();
     bool PlayRequested();
+    bool SwitchToRuntimeEditorRequested();
     bool LoadLevel(const std::string& levelName);
     void RefreshLevelSoundsFromFolder();
 

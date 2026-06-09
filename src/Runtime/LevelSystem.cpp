@@ -4,7 +4,6 @@
 
 /// This script handles the runtime renderer. Does not run in the editor
 
-
 #include "../../Headers/Runtime/LevelSystem.hpp"
 
 #include "Headers/Engine/GameTime.hpp"

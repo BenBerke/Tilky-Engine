@@ -6,9 +6,15 @@
 #define TILKY_ENGINE_RUNTIMESESSION_H
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName, bool playMode);
-    void Update(bool playMode);
-    void Shutdown(bool playMode);
+    enum RuntimeType {
+        STANDALONE,
+        EDITOR,
+        PLAY
+    };
+
+    bool Start(const std::string &windowName, RuntimeType runtimeType);
+    void Update(RuntimeType runtimeType);
+    void Shutdown(RuntimeType runtimeType);
 }
 
 #endif //TILKY_ENGINE_RUNTIMESESSION_H

@@ -55,4 +55,5 @@ namespace MapEditorInternal {
     bool quit = false;
     bool play = false;
     bool shutdown = false;
+    bool switchToRuntime = false;
 }

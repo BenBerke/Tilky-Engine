@@ -48,7 +48,7 @@ namespace {
 }
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName, const bool playMode) {
+    bool Start(const std::string &windowName, const RuntimeType runtimeType) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -56,11 +56,11 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        if (!playMode) {
+        if (runtimeType == PLAY) {
             editorLevelSnapshot = std::make_unique<Level>(level);
             spdlog::info("Runtime level snapshot created");
-            RuntimeEditor::Start(level);
         }
+        else if (runtimeType == EDITOR) RuntimeEditor::Start(level);
 
         MapQueries::AssignWallsToSectors(
             level.sectors,
@@ -109,7 +109,7 @@ namespace RuntimeSession {
         return true;
     }
 
-    void Update(const bool playMode) {
+    void Update(const RuntimeType runtimeType) {
         if (!renderer) return;
 
         ZoneScoped;
@@ -117,7 +117,9 @@ namespace RuntimeSession {
         GameTime::Update();
         timer = GameTime::time;
 
-        if (!playMode) {
+        Level& level = LevelManager::CurrentLevel();
+
+        if (runtimeType != STANDALONE) {
             if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
                 relativeMouseMode = false;
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
@@ -130,18 +132,16 @@ namespace RuntimeSession {
             }
 
             RenderDebugText();
-
-            RuntimeEditor::Update(LevelManager::CurrentLevel());
         }
 
-        Level& level = LevelManager::CurrentLevel();
+        if (runtimeType == EDITOR) RuntimeEditor::Update(level);
 
         {
             ZoneScopedN("Renderer");
             renderer->BeginFrame();
             renderer->Update();
 
-            if (!playMode) RenderDebugText();
+            if (runtimeType != STANDALONE) RenderDebugText();
 
             renderer->EndFrame();
         }
@@ -157,9 +157,9 @@ namespace RuntimeSession {
         }
 
         {
-            //todo remove the relative mousemode from standalone
             ZoneScopedN("Level");
-            if (playMode) if (relativeMouseMode) LevelSystem::Update(level);
+            if (runtimeType == STANDALONE) LevelSystem::Update(level);
+            else if (runtimeType == PLAY) if (relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
@@ -168,14 +168,14 @@ namespace RuntimeSession {
         }
     }
 
-    void Shutdown(const bool playMode) {
+    void Shutdown(const RuntimeType runtimeType) {
         //todo saving
         //MapEditorInternal::Save(Editor::currentMap);
         if (LevelManager::HasCurrentLevel()) AudioSystem::Shutdown(LevelManager::CurrentLevel());
 
         SoundManager::DestroyOpenAL();
 
-        if (playMode) {
+        if (runtimeType == STANDALONE) {
             if (editorLevelSnapshot) {
                 LevelManager::CurrentLevel() = *editorLevelSnapshot;
                 editorLevelSnapshot.reset();
@@ -183,9 +183,8 @@ namespace RuntimeSession {
                 spdlog::info("Runtime ended. Level restored to editor snapshot");
             }
             else spdlog::error("Couldn't find editor level snapshot");
-
-            RuntimeEditor::Shutdown(LevelManager::CurrentLevel());
         }
+        else if (runtimeType == EDITOR) RuntimeEditor::Shutdown(LevelManager::CurrentLevel());
 
         if (renderer) {
             renderer->Shutdown();

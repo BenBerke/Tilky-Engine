@@ -85,6 +85,7 @@ namespace MapEditorInternal {
     extern bool quit;
     extern bool play;
     extern bool shutdown;
+    extern bool switchToRuntime;
 
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
