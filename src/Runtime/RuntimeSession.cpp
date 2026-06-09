@@ -48,7 +48,7 @@ namespace {
 }
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName, const bool isEngine) {
+    bool Start(const std::string &windowName, const bool playMode) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -56,7 +56,7 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        if (isEngine) {
+        if (!playMode) {
             editorLevelSnapshot = std::make_unique<Level>(level);
             spdlog::info("Runtime level snapshot created");
             RuntimeEditor::Start(level);
@@ -109,7 +109,7 @@ namespace RuntimeSession {
         return true;
     }
 
-    void Update(const bool isEngine) {
+    void Update(const bool playMode) {
         if (!renderer) return;
 
         ZoneScoped;
@@ -117,7 +117,7 @@ namespace RuntimeSession {
         GameTime::Update();
         timer = GameTime::time;
 
-        if (isEngine) {
+        if (!playMode) {
             if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
                 relativeMouseMode = false;
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
@@ -141,7 +141,7 @@ namespace RuntimeSession {
             renderer->BeginFrame();
             renderer->Update();
 
-            if (isEngine) RenderDebugText();
+            if (!playMode) RenderDebugText();
 
             renderer->EndFrame();
         }
@@ -159,7 +159,7 @@ namespace RuntimeSession {
         {
             //todo remove the relative mousemode from standalone
             ZoneScopedN("Level");
-            if (isEngine) if (relativeMouseMode) LevelSystem::Update(level);
+            if (playMode) if (relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
@@ -168,14 +168,14 @@ namespace RuntimeSession {
         }
     }
 
-    void Shutdown(const bool isEngine) {
+    void Shutdown(const bool playMode) {
         //todo saving
         //MapEditorInternal::Save(Editor::currentMap);
         if (LevelManager::HasCurrentLevel()) AudioSystem::Shutdown(LevelManager::CurrentLevel());
 
         SoundManager::DestroyOpenAL();
 
-        if (isEngine) {
+        if (playMode) {
             if (editorLevelSnapshot) {
                 LevelManager::CurrentLevel() = *editorLevelSnapshot;
                 editorLevelSnapshot.reset();

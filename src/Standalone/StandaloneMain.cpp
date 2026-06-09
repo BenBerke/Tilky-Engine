@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 int main() {
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
-    constexpr bool IS_ENGINE = false;
+    constexpr bool IS_PLAYMODE = true;
 
     if (!fs::exists(projectFile)) {
         std::cerr << "Missing project.tilky beside executable:\n"
@@ -35,7 +35,7 @@ int main() {
         return 1;
     }
 
-    if (!RuntimeSession::Start(ProjectManager::GetProjectName(), IS_ENGINE)) {
+    if (!RuntimeSession::Start(ProjectManager::GetProjectName(), IS_PLAYMODE)) {
         std::cerr << "Failed to start standalone runtime session.\n";
         return 1;
     }
@@ -45,12 +45,12 @@ int main() {
     while (!quit) {
         InputManager::BeginFrame();
 
-        RuntimeSession::Update(IS_ENGINE);
+        RuntimeSession::Update(IS_PLAYMODE);
 
         if (InputManager::QuitRequested()) quit = true; // When the X button is clicked on the window for the respective OS
     }
 
-    RuntimeSession::Shutdown(IS_ENGINE);
+    RuntimeSession::Shutdown(IS_PLAYMODE);
 
     return 0;
 }

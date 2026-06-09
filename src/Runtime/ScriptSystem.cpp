@@ -272,7 +272,17 @@ namespace {
             "position", sol::property(
                 &ScriptTransform::GetPosition,
                 &ScriptTransform::SetPosition
-            )
+            ),
+
+            "floor", sol::property(
+                &ScriptTransform::GetFloor,
+                &ScriptTransform::SetFloor
+            ),
+
+            "scale", sol::property(
+                &ScriptTransform::GetScale,
+                &ScriptTransform::SetScale
+                )
         );
 
         lua.new_usertype<ScriptSprite>(

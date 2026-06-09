@@ -23,7 +23,7 @@ struct ScriptTransform {
     }
 
     [[nodiscard]] Vector3 GetPosition() const {
-        ComponentTransform* transform = GetComponent();
+        const ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
             return {0.0f, 0.0f};
@@ -42,65 +42,46 @@ struct ScriptTransform {
         transform->position = position;
     }
 
-    [[nodiscard]] float GetX() const {
-        ComponentTransform* transform = GetComponent();
+    [[nodiscard]] Vector2 GetScale() const {
+        const ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
-            return 0.0f;
+            return {0.0f, 0.0f};
         }
 
-        return transform->position.x;
+        return transform->scale;
     }
 
-    void SetX(const float x) const {
-        ComponentTransform* transform = GetComponent();
-
-        if (transform == nullptr) {
-            return;
-        }
-
-        transform->position.x = x;
-    }
-
-    [[nodiscard]] float GetY() const {
-        ComponentTransform* transform = GetComponent();
-
-        if (transform == nullptr) {
-            return 0.0f;
-        }
-
-        return transform->position.y;
-    }
-
-    void SetY(const float y) const {
+    void SetScale(const Vector2& scale) const {
         ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
             return;
         }
 
-        transform->position.y = y;
+        transform->scale = scale;
     }
 
-    [[nodiscard]] float GetZ() const {
-        ComponentTransform* transform = GetComponent();
+    [[nodiscard]] float GetFloor() const {
+        const ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
-            return 0.0f;
+            return 0;
         }
 
-        return transform->position.z;
+        return transform->floor;
     }
 
-    void SetZ(const float z) const {
+    void SetFloor(const float floor) const {
         ComponentTransform* transform = GetComponent();
 
         if (transform == nullptr) {
             return;
         }
 
-        transform->position.z = z;
+        transform->floor = floor;
     }
+
 };
 
 struct ScriptSprite {

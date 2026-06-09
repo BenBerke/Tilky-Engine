@@ -24,11 +24,12 @@ namespace fs = std::filesystem;
 
 enum Mode {
     EDITOR,
-    ENGINE
+    ENGINE,
+    RUNTIME_EDITOR,
 };
 
 static Mode currentMode = EDITOR;
-static constexpr bool IS_ENGINE = true;
+static constexpr bool IS_PLAYMODE = true;
 
 static void DestroyModes() {
     switch (currentMode) {
@@ -38,7 +39,7 @@ static void DestroyModes() {
             Editor::LoadLevel(Editor::currentMap);
             break;
         case ENGINE:
-            RuntimeSession::Shutdown(IS_ENGINE);
+            RuntimeSession::Shutdown(IS_PLAYMODE);
             break;
     }
 }
@@ -50,12 +51,18 @@ static void SwitchModes(const Mode mode) {
             Editor::Start();
             break;
         case ENGINE:
-            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), IS_ENGINE)) {
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), IS_PLAYMODE)) {
                 spdlog::critical("Failed to start the session");
                 return;
             }
             spdlog::info("Starting the game loop");
             break;
+        case RUNTIME_EDITOR:
+            if(!RuntimeSession::Start(Localisation::Get("screen.title.engine"), !IS_PLAYMODE)) {
+                spdlog::critical("Failed to start the session");
+                return;
+            }
+            spdlog::info("Starting the runtime editor loop");
     }
 }
 
@@ -105,8 +112,12 @@ static bool InitEngineLogger() {
     }
 }
 
+static void RealTimeEditorUpdate() {
+    RuntimeSession::Update(!IS_PLAYMODE);
+}
+
 static void EngineUpdate() {
-    RuntimeSession::Update(IS_ENGINE);
+    RuntimeSession::Update(IS_PLAYMODE);
 }
 
 static void EditorUpdate() {
