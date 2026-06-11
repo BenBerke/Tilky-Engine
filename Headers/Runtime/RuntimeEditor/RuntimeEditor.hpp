@@ -9,7 +9,7 @@ struct Level;
 
 namespace RuntimeEditor {
     void Start(Level& level);
-    void Update(Level& level);
+    void Update(Level& level, bool relativeMouseMod, bool mouseBlockedByImGui);
     void Draw(Level& level);
     void Shutdown(Level& level);
 }

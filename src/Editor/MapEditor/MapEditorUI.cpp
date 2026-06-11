@@ -578,10 +578,7 @@ namespace {
             return;
         }
 
-        if (
-            entityInspectorState.editingComponent &&
-            entityInspectorState.selectedComponent != -1
-        ) {
+        if (entityInspectorState.editingComponent && entityInspectorState.selectedComponent != -1) {
             ImGuiDrawFunctions::DrawComponentEditor(
                 entity,
                 entityInspectorState,

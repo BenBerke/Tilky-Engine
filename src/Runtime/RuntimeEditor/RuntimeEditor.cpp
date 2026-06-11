@@ -20,8 +20,6 @@ namespace {
     ComponentCamera* camera = nullptr;
     ComponentTransform* transform = nullptr;
 
-    bool relativeMouseMode;
-
     constexpr float MOUSE_SENSITIVITY = 0.5f;
     constexpr float MOVE_SPEED = 50.0f;
     constexpr float FAST_MOVE_SPEED = 75.0f;
@@ -191,14 +189,16 @@ namespace RuntimeEditor {
         }
     }
 
-    void Update(Level& level) {
+    void Update(Level& level, const bool relativeMouseMod, const bool mouseBlockedByImGui) {
         if (camera == nullptr || transform == nullptr) return;
 
-        camera->yaw -= InputManager::GetMouseDelta().x * MOUSE_SENSITIVITY;
-        camera->pitch -= InputManager::GetMouseDelta().y * MOUSE_SENSITIVITY;
+        if (relativeMouseMod && !mouseBlockedByImGui) {
+            camera->yaw -= InputManager::GetMouseDelta().x * MOUSE_SENSITIVITY;
+            camera->pitch -= InputManager::GetMouseDelta().y * MOUSE_SENSITIVITY;
 
-        camera->pitch = std::clamp(camera->pitch, -89.0f, 89.0f);
-        camera->yaw = std::fmod(camera->yaw, 360.0f);
+            camera->pitch = std::clamp(camera->pitch, -89.0f, 89.0f);
+            camera->yaw = std::fmod(camera->yaw, 360.0f);
+        }
 
         const float yawRadians = camera->yaw * std::numbers::pi_v<float> / 180.0f;
 

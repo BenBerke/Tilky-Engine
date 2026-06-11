@@ -25,6 +25,7 @@
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
+#include <imgui.h>
 
 namespace {
     float timer = 0.0f;
@@ -119,20 +120,26 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
-        if (runtimeType != STANDALONE) {
+        const ImGuiIO& io = ImGui::GetIO();
+        const bool mouseBlockedByImGui = io.WantCaptureMouse;
+        const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
+
+        if (runtimeType == PLAY || runtimeType == EDITOR) {
             if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
                 relativeMouseMode = false;
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
                 SDL_ShowCursor();
             }
-            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode) [[unlikely]] {
+
+            const bool mouseClickAllowed = runtimeType == PLAY || !mouseBlockedByImGui;
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode && mouseClickAllowed) [[unlikely]] {
                 relativeMouseMode = true;
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
                 SDL_HideCursor();
             }
         }
 
-        if (runtimeType == EDITOR) RuntimeEditor::Update(level);
+        if (runtimeType == EDITOR) RuntimeEditor::Update(level, relativeMouseMode, mouseBlockedByImGui);
 
         {
             ZoneScopedN("Renderer");
