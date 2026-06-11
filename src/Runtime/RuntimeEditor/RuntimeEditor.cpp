@@ -47,6 +47,64 @@ namespace {
         });
     }
 
+    namespace {
+        Vector3 GetMouseRayDirection(
+            const ComponentCamera& camera,
+            const Vector2 mousePosition,
+            const Vector2 viewportSize
+        ) {
+            if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) {
+                return GetFreecamForward();
+            }
+
+            // Mouse position -> Normalized Device Coordinates
+            // SDL mouse Y is top-to-bottom, so Y must be flipped.
+            const float ndcX = (2.0f * mousePosition.x / viewportSize.x) - 1.0f;
+            const float ndcY = 1.0f - (2.0f * mousePosition.y / viewportSize.y);
+
+            const float yawRadians =
+                camera.yaw * std::numbers::pi_v<float> / 180.0f;
+
+            const float pitchRadians =
+                camera.pitch * std::numbers::pi_v<float> / 180.0f;
+
+            const float yawSin = std::sin(yawRadians);
+            const float yawCos = std::cos(yawRadians);
+
+            const float pitchSin = std::sin(pitchRadians);
+            const float pitchCos = std::cos(pitchRadians);
+
+            const Vector3 forward = Vector3Math::Normalized({
+                yawSin * pitchCos,
+                yawCos * pitchCos,
+                pitchSin
+            });
+
+            const Vector3 right = Vector3Math::Normalized({
+                yawCos,
+                -yawSin,
+                0.0f
+            });
+
+            const Vector3 up = Vector3Math::Normalized(
+                Vector3Math::Cross(right, forward)
+            );
+
+            const float aspect = viewportSize.x / viewportSize.y;
+
+            const float fovRadians =
+                camera.fov * std::numbers::pi_v<float> / 180.0f;
+
+            const float tanHalfFov = std::tan(fovRadians * 0.5f);
+
+            return Vector3Math::Normalized(
+                forward +
+                right * (-ndcX * tanHalfFov * aspect) +
+                up * (ndcY * tanHalfFov)
+            );
+        }
+    }
+
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
 
     bool editingEntity = false;
@@ -190,7 +248,12 @@ namespace RuntimeEditor {
         spdlog::info("Runtime editor is using renderer editor-only camera");
     }
 
-    void Update(Level& level, IRenderer& renderer, const bool relativeMouseMod,const bool mouseBlockedByImGui) {
+    void Update(Level& level,
+        IRenderer& renderer,
+        const bool relativeMouseMod,
+        const bool mouseBlockedByImGui,
+        const float screenWidth,
+        const float screenHeight) {
         if (!renderer.IsUsingEditorCamera()) renderer.SetUseEditorCamera(true);
 
         if (camera == nullptr || transform == nullptr) {
@@ -265,7 +328,19 @@ namespace RuntimeEditor {
 
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
             const Vector3 rayOrigin = transform->position;
-            const Vector3 rayDirection = GetFreecamForward();
+
+            const Vector2 mousePosition = InputManager::GetMousePosition();
+
+            const Vector2 viewportSize = {
+                static_cast<float>(screenWidth),
+                static_cast<float>(screenHeight)
+            };
+
+            const Vector3 rayDirection = GetMouseRayDirection(
+                *camera,
+                mousePosition,
+                viewportSize
+            );
 
             const std::optional<RayHit> hit = GameFunctions::Raycast(
                 level,
@@ -275,7 +350,6 @@ namespace RuntimeEditor {
                 camera->ownerID,
                 false
             );
-
 
             if (!hit.has_value()) {
                 spdlog::info("Runtime editor ray missed");

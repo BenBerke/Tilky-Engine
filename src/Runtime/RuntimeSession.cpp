@@ -183,7 +183,9 @@ namespace RuntimeSession {
                 level,
                 *renderer,
                 relativeMouseMode,
-                mouseBlockedByImGui
+                mouseBlockedByImGui,
+                renderer->screenWidth,
+                renderer->screenHeight
             );
         }
 

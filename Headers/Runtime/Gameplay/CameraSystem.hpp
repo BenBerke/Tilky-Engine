@@ -80,6 +80,12 @@ namespace CameraSystem {
             {0.0f, 1.0f, 0.0f} // render-space up
         );
 
+        // camera.projection = Matrix4::PerspectiveReverseZ(
+        //     camera.fov,
+        //     camera.aspectRatio,
+        //     camera.nearPlane
+        // );
+
         camera.projection = Matrix4::PerspectiveReverseZ(
             camera.fov,
             camera.aspectRatio,

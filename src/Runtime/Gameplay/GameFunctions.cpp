@@ -140,14 +140,14 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
-        for (Wall &wall : level.walls) {
+        for (Wall &wall: level.walls) {
             for (int j = 0; j < wall.quad3DCount; ++j) {
                 const auto &quad = wall.quads3D[j];
 
                 const Vector3 &bottomStart = quad[0];
-                const Vector3 &bottomEnd   = quad[1];
-                const Vector3 &topEnd      = quad[2];
-                const Vector3 &topStart    = quad[3];
+                const Vector3 &bottomEnd = quad[1];
+                const Vector3 &topEnd = quad[2];
+                const Vector3 &topStart = quad[3];
 
                 const std::optional<float> hitA = RayTriangleIntersection(
                     pos,
@@ -181,29 +181,75 @@ namespace GameFunctions {
         // position.x = world X
         // position.y = world Z / horizontal depth
         // position.z = height above the current sector floor
-        for (Entity &entity : level.entities) {
+        for (Entity &entity: level.entities) {
             if (entity.id == ignoredEntity) continue;
 
             const ComponentTransform *transform = level.transforms.Get(entity.id);
             if (transform == nullptr) [[unlikely]] continue;
 
-            const ComponentCollider *collider = level.colliders.Get(entity.id);
-
-            if (collider == nullptr) continue;
-            if (collider->isTrigger) continue;
-
             float sectorFloorHeight = 0.0f;
 
-            if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size()))
+            if (
+                transform->sectorIndex >= 0 &&
+                transform->sectorIndex < static_cast<int>(level.sectors.size())
+            ) {
                 sectorFloorHeight = level.sectors[transform->sectorIndex].floorHeight;
+            }
 
-            const float entityBottomWorldHeight =sectorFloorHeight + transform->position.z;
+            const float entityBottomWorldHeight =
+                    sectorFloorHeight + transform->position.z;
 
             const Vector3 entityWorldBasePosition = {
                 transform->position.x,
                 transform->position.y,
                 entityBottomWorldHeight
             };
+
+            // If requireCollider is false, raycast every entity as an AABB.
+            // transform->scale is Vector2:
+            // scale.x = width along world X
+            // scale.y = depth along world Z AND height upward
+            if (!requireCollider) {
+                const Vector3 boxSize = {
+                    transform->scale.x,
+                    transform->scale.y,
+                    transform->scale.y
+                };
+
+                const Vector3 halfSize = boxSize * 0.5f;
+
+                const Vector3 boxMin = {
+                    entityWorldBasePosition.x - halfSize.x,
+                    entityWorldBasePosition.y - halfSize.y,
+                    entityWorldBasePosition.z
+                };
+
+                const Vector3 boxMax = {
+                    entityWorldBasePosition.x + halfSize.x,
+                    entityWorldBasePosition.y + halfSize.y,
+                    entityWorldBasePosition.z + boxSize.z
+                };
+
+                const std::optional<float> hitDistance = RayAABBIntersection(
+                    pos,
+                    normalizedDir,
+                    boxMin,
+                    boxMax,
+                    closestDistance
+                );
+
+                if (hitDistance.has_value()) {
+                    submitEntityHit(entity, *hitDistance);
+                }
+
+                continue;
+            }
+
+            // Normal collider-required behavior.
+            const ComponentCollider *collider = level.colliders.Get(entity.id);
+
+            if (collider == nullptr) continue;
+            if (collider->isTrigger) continue;
 
             if (collider->type == COLLIDERTYPE_SPHERE) {
                 const float radius = transform->scale.x;
@@ -227,8 +273,7 @@ namespace GameFunctions {
                 if (hitDistance.has_value()) {
                     submitEntityHit(entity, *hitDistance);
                 }
-            }
-            else if (collider->type == COLLIDERTYPE_BOX) {
+            } else if (collider->type == COLLIDERTYPE_BOX) {
                 // Box collider convention:
                 // collider->scale.x = width along world X
                 // collider->scale.y = depth along world Z

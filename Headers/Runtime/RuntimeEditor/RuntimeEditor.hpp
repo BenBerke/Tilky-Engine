@@ -14,7 +14,9 @@ namespace RuntimeEditor {
         Level& level,
         IRenderer& renderer,
         bool relativeMouseMod,
-        bool mouseBlockedByImGui
+        bool mouseBlockedByImGui,
+        float screenWidth,
+        float screenHeight
     );
     void Draw(Level& level);
     void Shutdown(const Level& level);

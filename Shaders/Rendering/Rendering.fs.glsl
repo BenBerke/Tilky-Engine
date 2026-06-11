@@ -35,7 +35,7 @@ out vec4 FragColor;
 
 vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
     if (textureIndex < 0 || textureIndex >= uTextureCount) {
-        return vec4(.0, .0, .0, 1.0);
+        return vec4(0.0, 0.0, 0.0, 1.0);
     }
 
     TextureRegion region = textureRegions[textureIndex];
@@ -44,13 +44,22 @@ vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
         return vec4(1.0);
     }
 
-    vec2 localUV = repeatUV ? fract(uv) : clamp(uv, vec2(0.0), vec2(1.0));
+    vec2 regionMin = region.uvRect.xy;
+    vec2 regionMax = region.uvRect.zw;
+    vec2 regionSize = regionMax - regionMin;
 
-    vec2 atlasUV = mix(
-    region.uvRect.xy,
-    region.uvRect.zw,
-    localUV
-    );
+    vec2 localUV = repeatUV
+    ? fract(uv)
+    : clamp(uv, vec2(0.0), vec2(1.0));
+
+    vec2 atlasUV = regionMin + localUV * regionSize;
+
+    if (repeatUV) {
+        vec2 dx = dFdx(uv) * regionSize;
+        vec2 dy = dFdy(uv) * regionSize;
+
+        return textureGrad(uAtlas, atlasUV, dx, dy);
+    }
 
     return texture(uAtlas, atlasUV);
 }

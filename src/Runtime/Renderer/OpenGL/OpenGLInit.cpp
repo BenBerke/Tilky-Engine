@@ -53,7 +53,7 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
-    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 32)) {
+    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 64)) {
         spdlog::critical(
             "SDL_GL_SetAttribute failed while setting depth buffer size: {}",
             SDL_GetError()
@@ -196,6 +196,19 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         0
     );
 
+    auto copyPixel = [&](int dstX, int dstY, int srcX, int srcY) {
+        if (dstX < 0 || dstX >= ATLAS_SIZE || dstY < 0 || dstY >= ATLAS_SIZE) return;
+        if (srcX < 0 || srcX >= ATLAS_SIZE || srcY < 0 || srcY >= ATLAS_SIZE) return;
+
+        unsigned char* dst =
+            atlasPixels.data() + (dstY * ATLAS_SIZE + dstX) * 4;
+
+        const unsigned char* src =
+            atlasPixels.data() + (srcY * ATLAS_SIZE + srcX) * 4;
+
+        std::memcpy(dst, src, 4);
+    };
+
     for (int i = 0; i < static_cast<int>(level.textures.size()); ++i) {
         const Texture& texture = level.textures[i];
 
@@ -273,15 +286,39 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             );
         }
 
-        const float uMin = static_cast<float>(cursorX) / static_cast<float>(ATLAS_SIZE);
-        const float vMin = static_cast<float>(cursorY) / static_cast<float>(ATLAS_SIZE);
-        const float uMax = static_cast<float>(cursorX + textureWidth) / static_cast<float>(ATLAS_SIZE);
-        const float vMax = static_cast<float>(cursorY + textureHeight) / static_cast<float>(ATLAS_SIZE);
+        constexpr float halfTexel = .5f;
+
+        const float uMin = static_cast<float>(cursorX + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMin = static_cast<float>(cursorY + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float uMax = static_cast<float>(cursorX + textureWidth - halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMax = static_cast<float>(cursorY + textureHeight - halfTexel) / static_cast<float>(ATLAS_SIZE);
 
         textureRegions[i] = {
             {uMin, vMin, uMax, vMax},
             {1.0f, 0.0f, 0.0f, 0.0f}
         };
+
+        for (int pad = 1; pad <= ATLAS_PADDING; ++pad) {
+            // Left and right padding
+            for (int y = 0; y < textureHeight; ++y) {
+                copyPixel(cursorX - pad, y + cursorY, cursorX, y + cursorY);
+                copyPixel(cursorX + textureWidth - 1 + pad, y + cursorY, cursorX + textureWidth - 1, y + cursorY);
+            }
+
+            // Top and bottom padding
+            for (int x = 0; x < textureWidth; ++x) {
+                copyPixel(x + cursorX, cursorY - pad, x + cursorX, cursorY);
+                copyPixel(x + cursorX, cursorY + textureHeight - 1 + pad, x + cursorX, cursorY + textureHeight - 1);
+            }
+
+            // Corners
+            for (int yPad = 1; yPad <= ATLAS_PADDING; ++yPad) {
+                copyPixel(cursorX - pad, cursorY - yPad, cursorX, cursorY);
+                copyPixel(cursorX + textureWidth - 1 + pad, cursorY - yPad, cursorX + textureWidth - 1, cursorY);
+                copyPixel(cursorX - pad, cursorY + textureHeight - 1 + yPad, cursorX, cursorY + textureHeight - 1);
+                copyPixel(cursorX + textureWidth - 1 + pad, cursorY + textureHeight - 1 + yPad, cursorX + textureWidth - 1, cursorY + textureHeight - 1);
+            }
+        }
 
         spdlog::info(
             "Packed texture '{}' at atlas position {}, {} size {}x{}",
@@ -316,8 +353,43 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    //todo Create a renderer settings and make these prefab configurations
+
+    // For Pixel Art, shimmery
+    // No mipmaps
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // For Pixel art, less moire
+    // Sharp close-up, mipmapped far away
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // For pixel art but smoother distance transitions
+    //Sharp close-up, smoother mip transition
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // Normal realistic textures
+    // Smooth close-up and smooth far-away
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // For PS1 / crunchy retro textures
+    // // Crunchy nearby, smoother far away
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    // For low-res blurry N64-ish textures
+    // // Blurry/soft
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glGenBuffers(1, &textureRegionSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, textureRegionSSBO);

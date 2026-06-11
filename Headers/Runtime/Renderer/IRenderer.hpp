@@ -82,7 +82,7 @@ protected:
         editorCamera->pitch = 0.0f;
 
         editorCamera->fov = 90.0f;
-        editorCamera->nearPlane = 0.1f;
+        editorCamera->nearPlane = 1.0f;
         editorCamera->farPlane = 10000.0f;
 
         editorCamera->isActive = true;
