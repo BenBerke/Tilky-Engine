@@ -32,6 +32,8 @@ namespace ImGuiDrawFunctions {
     bool DrawEntityEditor(Entity& entity, EntityInspectorState& state, bool* open);
 
     void DrawComponentEditor(Entity& entity, EntityInspectorState& state, bool* open);
+
+    void SetImGuiFocus(bool focus);
 }
 
 #endif //TILKY_ENGINE_IMGUIDRAWFUNCTIONS_HPP

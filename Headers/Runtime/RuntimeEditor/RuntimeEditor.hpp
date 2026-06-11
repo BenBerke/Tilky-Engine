@@ -17,7 +17,7 @@ namespace RuntimeEditor {
         bool mouseBlockedByImGui
     );
     void Draw(Level& level);
-    void Shutdown(Level& level);
+    void Shutdown(const Level& level);
 }
 
 #endif //TILKY_ENGINE_RUNTIMEEDITOR_H

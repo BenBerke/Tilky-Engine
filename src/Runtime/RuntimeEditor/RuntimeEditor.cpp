@@ -325,13 +325,15 @@ namespace RuntimeEditor {
                 spdlog::info("Selected wall {}", selectedWall);
             }
         }
+
+        ImGuiDrawFunctions::SetImGuiFocus(!relativeMouseMod);
     } // Update
 
     void Draw(Level& level) {
         RuntimeEditorUi::Draw(level);
     }
 
-    void Shutdown(Level& level) {
+    void Shutdown(const Level& level) {
         (void)level;
 
         camera = nullptr;

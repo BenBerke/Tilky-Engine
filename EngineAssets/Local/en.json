@@ -179,6 +179,7 @@
 
   "component.collider": "Collider",
   "component.collider.is_active": "Is Active",
+  "component.collider.type" : "Collider Type",
   "&Context_42": "Is trigger means the collider will register collision detection, but will not do collision resolution",
   "component.collider.is_trigger": "Is Trigger",
   "component.collider.type.sphere": "Sphere",
