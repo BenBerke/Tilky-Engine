@@ -1,8 +1,10 @@
 //
 // Created by berke on 5/14/2026.
+//
 
-/// This script manages everything that happens after opening a project. The editor and the runtime renderer
-/// This script does not run any logic. It simply starts, updates and ends the necessary functions
+/// This script manages everything that happens after opening a project.
+/// The editor and the runtime renderer.
+/// This script does not run any logic. It simply starts, updates and ends the necessary functions.
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 
@@ -11,28 +13,31 @@
 
 #include <SDL3/SDL_error.h>
 #include <spdlog/spdlog.h>
+#include <tracy/Tracy.hpp>
+#include <imgui.h>
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
+
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
+
 #include "Headers/Editor/Editor.hpp"
+
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
-#include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
-#include <tracy/Tracy.hpp>
-
-#include "Headers/Map/MapQueries.hpp"
-#include <imgui.h>
+#include "Headers/Runtime/Renderer/IRenderer.hpp"
+#include "Headers/Runtime/Renderer/RendererFactory.hpp"
 
 namespace {
     float timer = 0.0f;
     float timerHelper = 0.0f;
     int fps = 0;
 
-    std::unique_ptr<OpenGL> renderer;
+    std::unique_ptr<IRenderer> renderer;
 
     std::unique_ptr<Level> editorLevelSnapshot;
 
@@ -42,14 +47,14 @@ namespace {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
             {0.0f, static_cast<float>(renderer->screenHeight - 7)},
-            {.5f, .5f},
-             Vector3{255.0f, .0f, 255.0f}
+            {0.5f, 0.5f},
+            Vector3{255.0f, 0.0f, 255.0f}
         );
     }
 }
 
 namespace RuntimeSession {
-    bool Start(const std::string &windowName, const RuntimeType runtimeType) {
+    bool Start(const std::string& windowName, const RuntimeType runtimeType) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -57,11 +62,12 @@ namespace RuntimeSession {
 
         Level& level = LevelManager::CurrentLevel();
 
+        relativeMouseMode = true;
+
         if (runtimeType == PLAY) {
             editorLevelSnapshot = std::make_unique<Level>(level);
             spdlog::info("Runtime level snapshot created");
         }
-        else if (runtimeType == EDITOR) RuntimeEditor::Start(level);
 
         MapQueries::AssignWallsToSectors(
             level.sectors,
@@ -70,25 +76,45 @@ namespace RuntimeSession {
 
         MapQueries::AssignNeighborsToSectors(level.sectors);
 
-        renderer = std::make_unique<OpenGL>();
+        renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
+
+        if (renderer == nullptr) {
+            spdlog::critical("Failed to create renderer");
+            return false;
+        }
+
+        renderer->SetUseEditorCamera(runtimeType == EDITOR);
 
         if (!renderer->Initialize(windowName)) {
-            spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
+            spdlog::critical(
+                "Failed to initialize {} renderer: {}",
+                renderer->GetName(),
+                SDL_GetError()
+            );
+
             renderer.reset();
             return false;
         }
 
         if (!renderer->CreateMap()) {
             spdlog::critical("Failed to create map");
+
             renderer->Shutdown();
             renderer.reset();
+
             return false;
+        }
+
+        if (runtimeType == EDITOR) {
+            RuntimeEditor::Start(level, *renderer);
         }
 
         if (!SoundManager::InitializeOpenAL()) {
             spdlog::critical("OpenAL failed");
+
             renderer->Shutdown();
             renderer.reset();
+
             return false;
         }
 
@@ -97,12 +123,19 @@ namespace RuntimeSession {
 
         if (!ScriptSystem::Initialize()) {
             spdlog::critical("Failed to initialize script system");
+
+            SoundManager::DestroyOpenAL();
+
+            renderer->Shutdown();
+            renderer.reset();
+
             return false;
         }
 
         ScriptSystem::Start(level);
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
+        SDL_HideCursor();
 
         LevelSystem::Start(level);
 
@@ -122,24 +155,37 @@ namespace RuntimeSession {
 
         const ImGuiIO& io = ImGui::GetIO();
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
-        const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
 
         if (runtimeType == PLAY || runtimeType == EDITOR) {
             if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
                 relativeMouseMode = false;
+
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
                 SDL_ShowCursor();
             }
 
             const bool mouseClickAllowed = runtimeType == PLAY || !mouseBlockedByImGui;
-            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !relativeMouseMode && mouseClickAllowed) [[unlikely]] {
+
+            if (
+                InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
+                !relativeMouseMode &&
+                mouseClickAllowed
+            ) [[unlikely]] {
                 relativeMouseMode = true;
+
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
                 SDL_HideCursor();
             }
         }
 
-        if (runtimeType == EDITOR) RuntimeEditor::Update(level, relativeMouseMode, mouseBlockedByImGui);
+        if (runtimeType == EDITOR) {
+            RuntimeEditor::Update(
+                level,
+                *renderer,
+                relativeMouseMode,
+                mouseBlockedByImGui
+            );
+        }
 
         {
             ZoneScopedN("Renderer");
@@ -150,11 +196,15 @@ namespace RuntimeSession {
 
             renderer->BeginImGuiFrame();
 
-            if (runtimeType == EDITOR) RuntimeEditor::Draw(level);
+            if (runtimeType == EDITOR) {
+                RuntimeEditor::Draw(level);
+            }
 
             renderer->EndImGuiFrame();
 
-            if (runtimeType != STANDALONE) RenderDebugText();
+            if (runtimeType != STANDALONE) {
+                RenderDebugText();
+            }
 
             renderer->EndFrame();
         }
@@ -171,8 +221,13 @@ namespace RuntimeSession {
 
         {
             ZoneScopedN("Level");
-            if (runtimeType == STANDALONE) LevelSystem::Update(level);
-            else if (runtimeType == PLAY) if (relativeMouseMode) LevelSystem::Update(level);
+
+            if (runtimeType == STANDALONE) {
+                LevelSystem::Update(level);
+            }
+            else if (runtimeType == PLAY && relativeMouseMode) {
+                LevelSystem::Update(level);
+            }
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
@@ -182,9 +237,15 @@ namespace RuntimeSession {
     }
 
     void Shutdown(const RuntimeType runtimeType) {
-        //todo saving
-        //MapEditorInternal::Save(Editor::currentMap);
-        if (LevelManager::HasCurrentLevel()) AudioSystem::Shutdown(LevelManager::CurrentLevel());
+        if (LevelManager::HasCurrentLevel()) {
+            Level& level = LevelManager::CurrentLevel();
+
+            if (runtimeType == EDITOR) {
+                RuntimeEditor::Shutdown(level);
+            }
+
+            AudioSystem::Shutdown(level);
+        }
 
         SoundManager::DestroyOpenAL();
 
@@ -195,9 +256,10 @@ namespace RuntimeSession {
 
                 spdlog::info("Runtime ended. Level restored to editor snapshot");
             }
-            else spdlog::error("Couldn't find editor level snapshot");
+            else {
+                spdlog::error("Couldn't find editor level snapshot");
+            }
         }
-        else if (runtimeType == EDITOR) RuntimeEditor::Shutdown(LevelManager::CurrentLevel());
 
         if (renderer) {
             renderer->Shutdown();

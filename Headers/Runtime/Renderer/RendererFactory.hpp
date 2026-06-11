@@ -12,7 +12,7 @@
 
 class RendererFactory {
 public:
-    static std::unique_ptr<IRenderer> Create(RendererBackend backend);
+    static std::unique_ptr<IRenderer> CreateRenderer(RendererBackend backend);
 };
 
 #endif //TILKY_ENGINE_RENDERERFACTORY_HPP

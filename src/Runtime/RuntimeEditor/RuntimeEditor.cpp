@@ -12,6 +12,8 @@
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
+#include "Headers/Runtime/Renderer/IRenderer.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -170,26 +172,32 @@ namespace RuntimeEditorUi {
 }
 
 namespace RuntimeEditor {
-    void Start(Level& level) {
+    void Start(Level& level, IRenderer& renderer) {
+        (void)level;
+
         spdlog::info("Runtime editor started");
 
-        camera = nullptr;
-        transform = nullptr;
+        renderer.SetUseEditorCamera(true);
 
-        for (ComponentCamera& _camera : level.cameras.components) {
-            if (_camera.isActive) {
-                camera = &_camera;
-                transform = level.transforms.Get(camera->ownerID);
-                break;
-            }
-        }
+        camera = renderer.GetEditorCamera();
+        transform = renderer.GetEditorCameraTransform();
 
         if (camera == nullptr || transform == nullptr) {
-            spdlog::error("RuntimeEditor::Start failed: no active camera or camera transform");
+            spdlog::error("RuntimeEditor::Start failed: editor camera or transform was not created");
+            return;
         }
+
+        spdlog::info("Runtime editor is using renderer editor-only camera");
     }
 
-    void Update(Level& level, const bool relativeMouseMod, const bool mouseBlockedByImGui) {
+    void Update(Level& level, IRenderer& renderer, const bool relativeMouseMod,const bool mouseBlockedByImGui) {
+        if (!renderer.IsUsingEditorCamera()) renderer.SetUseEditorCamera(true);
+
+        if (camera == nullptr || transform == nullptr) {
+            camera = renderer.GetEditorCamera();
+            transform = renderer.GetEditorCameraTransform();
+        }
+
         if (camera == nullptr || transform == nullptr) return;
 
         if (relativeMouseMod && !mouseBlockedByImGui) {
@@ -259,7 +267,6 @@ namespace RuntimeEditor {
             const Vector3 rayOrigin = transform->position;
             const Vector3 rayDirection = GetFreecamForward();
 
-
             const std::optional<RayHit> hit = GameFunctions::Raycast(
                 level,
                 rayOrigin,
@@ -325,6 +332,8 @@ namespace RuntimeEditor {
     }
 
     void Shutdown(Level& level) {
+        (void)level;
+
         camera = nullptr;
         transform = nullptr;
 

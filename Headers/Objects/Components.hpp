@@ -84,11 +84,11 @@ struct ComponentRigidbody {
     void ApplyGravity(float gravity);
 };
 
+
 enum ColliderType {
     COLLIDERTYPE_SPHERE,
     COLLIDERTYPE_BOX
 };
-
 struct ComponentCollider {
     // Sphere Collider
     EntityID ownerID = static_cast<EntityID>(-1);
@@ -113,9 +113,6 @@ struct ComponentPlayerController {
 
     bool isActive = false;
 
-    // Movement velocity.
-    Vector3 velocity = {0.0f, 0.0f, 0.0f};
-
     float speed = 46.0f;
     float runningSpeed = 90.0f;
 
@@ -124,13 +121,16 @@ struct ComponentPlayerController {
 
     float stepSize = 8.0f;
 
-    float currentSpeed = 0.0f;
-    float currentEyeHeight = 0.0f;
-
     float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;
 
     bool noClip = false;
+
+    // Read only, do not change
+    Vector3 velocity = {0.0f, 0.0f, 0.0f};
+
+    float currentSpeed = 0.0f;
+    float currentEyeHeight = 0.0f;
 };
 
 struct ComponentCamera {
@@ -144,18 +144,21 @@ struct ComponentCamera {
     // pitch = up/down rotation.
     float pitch = 0.0f;
 
+    float fov = 90.0f;
+    float aspectRatio = 1680.0f / 960.0f;
+    float nearPlane = 0.1f;
+    float farPlane = 10000.0f;
+
+    // Read-only, do not change
     Vector3 forward = {0.0f, 0.0f, 1.0f};
     Vector3 target = {0.0f, 0.0f, 1.0f};
 
     Matrix4 view = Matrix4::Identity();
     Matrix4 projection = Matrix4::Identity();
 
-    float fov = 90.0f;
-    float aspectRatio = 1680.0f / 960.0f;
-    float nearPlane = 0.1f;
-    float farPlane = 10000.0f;
 };
 
+// Custom Lua script written by the user
 struct ComponentScript {
     EntityID ownerID = static_cast<EntityID>(-1);
 
@@ -164,6 +167,7 @@ struct ComponentScript {
     bool enabled = true;
 };
 
+// OpenAL Audio source. What sound it will play can change during gameplay.
 struct ComponentAudioSource {
     EntityID ownerID = static_cast<EntityID>(-1);
 

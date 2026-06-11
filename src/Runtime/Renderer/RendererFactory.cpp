@@ -8,17 +8,17 @@
 // Later:
 // #include "Runtime/Renderer/Vulkan/VulkanRenderer.hpp"
 
-std::unique_ptr<IRenderer> RendererFactory::Create(RendererBackend backend) {
+std::unique_ptr<IRenderer> RendererFactory::CreateRenderer(RendererBackend backend) {
     switch (backend) {
-        case RendererBackend::OpenGL:
+        case RendererBackend::OPENGL:
             return std::make_unique<OpenGL>();
 
-        case RendererBackend::Vulkan:
+        case RendererBackend::VULKAN:
             // Later:
             // return std::make_unique<VulkanRenderer>();
             return nullptr;
 
-        case RendererBackend::Auto:
+        case RendererBackend::AUTO:
             return nullptr;
     }
 

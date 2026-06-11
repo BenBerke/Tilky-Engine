@@ -6,9 +6,9 @@
 #define TILKY_ENGINE_RENDERERBACKEND_HPP
 
 enum class RendererBackend {
-    Auto,
-    Vulkan,
-    OpenGL,
+    AUTO,
+    VULKAN,
+    OPENGL,
 };
 
 #endif //TILKY_ENGINE_RENDERERBACKEND_HPP

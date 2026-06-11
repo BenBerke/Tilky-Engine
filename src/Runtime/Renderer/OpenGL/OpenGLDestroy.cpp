@@ -9,8 +9,9 @@
 void OpenGL::Shutdown() {
     // Textures must be deleted while the OpenGL context still exists.
     DestroyAllTextures();
+    DestroyEditorCamera();
 
-    for (auto& [character, glyph] : Characters) {
+    for (auto &glyph: Characters | std::views::values) {
         if (glyph.textureID != 0) {
             glDeleteTextures(1, &glyph.textureID);
             glyph.textureID = 0;

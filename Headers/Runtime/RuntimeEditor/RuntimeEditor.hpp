@@ -6,10 +6,16 @@
 #define TILKY_ENGINE_RUNTIMEEDITOR_H
 
 struct Level;
+class IRenderer;
 
 namespace RuntimeEditor {
-    void Start(Level& level);
-    void Update(Level& level, bool relativeMouseMod, bool mouseBlockedByImGui);
+    void Start(Level& level, IRenderer& renderer);
+    void Update(
+        Level& level,
+        IRenderer& renderer,
+        bool relativeMouseMod,
+        bool mouseBlockedByImGui
+    );
     void Draw(Level& level);
     void Shutdown(Level& level);
 }

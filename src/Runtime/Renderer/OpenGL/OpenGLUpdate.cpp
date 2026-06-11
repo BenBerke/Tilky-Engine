@@ -12,7 +12,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/UISystem.hpp"
-#include "../../../../Headers/Runtime/Gameplay/CameraSystem.hpp"
+#include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
 
@@ -21,21 +21,34 @@ void OpenGL::Update() {
 
     Level& level = LevelManager::CurrentLevel();
 
-    ComponentCamera *camera = LevelSystem::GetActiveCamera(level);
+    ComponentCamera* camera = nullptr;
+    ComponentTransform* cameraTransform = nullptr;
 
-    if (camera == nullptr) [[unlikely]] {
-        spdlog::error("OpenGL::Update failed: no active camera");
-        return;
-    }
+    if (useEditorCamera) {
+        camera = GetEditorCamera();
+        cameraTransform = GetEditorCameraTransform();
 
-    const ComponentTransform* cameraTransform = level.transforms.Get(camera->ownerID);
+        if (camera == nullptr || cameraTransform == nullptr) [[unlikely]] {
+            spdlog::error("OpenGL::Update failed: editor camera was not created");
+            return;
+        }
+    } else {
+        camera = LevelSystem::GetActiveCamera(level);
 
-    if (cameraTransform == nullptr) [[unlikely]] {
-        spdlog::error(
-            "OpenGL::Update failed: active camera entity {} does not have a transform",
-            camera->ownerID
-        );
-        return;
+        if (camera == nullptr) [[unlikely]] {
+            spdlog::error("OpenGL::Update failed: no active camera");
+            return;
+        }
+
+        cameraTransform = level.transforms.Get(camera->ownerID);
+
+        if (cameraTransform == nullptr) [[unlikely]] {
+            spdlog::error(
+                "OpenGL::Update failed: active camera entity {} does not have a transform",
+                camera->ownerID
+            );
+            return;
+        }
     }
 
     SDL_GetWindowSize(window, &screenWidth, &screenHeight);

@@ -110,24 +110,25 @@ public:
 
     void OnResize(int width, int height) override;
 
-    bool CreateMap();
     int CreateTexture(const std::string& fileName) override;
 
+    bool CreateMap() override;
+
     void RenderText(
-        const Shader& shader,
-        const std::string& text,
+        const Shader &shader,
+        const std::string &text,
         float x,
         float y,
         Vector2 scale,
         Vector3 color
-        );
+    );
 
     void RenderTextRaw(
-        const std::string& text,
+        const std::string &text,
         Vector2 position,
         Vector2 scale,
         Vector3 color
-    );
+    ) override;
 
     void DrawUIRectangle(
         const Vector2& position,
@@ -142,13 +143,13 @@ public:
     }
 
     [[nodiscard]] const char* GetName() const override {
-        return "OpenGL";
+        return "OPENGL";
     }
 
     bool BuildTextureAtlasFromLevel();
 
-    void BeginImGuiFrame() const;
-    void EndImGuiFrame() const;
+    void BeginImGuiFrame() const override;
+    void EndImGuiFrame() const override;
 
 private:
     using Character = OpenGLRendererInternal::Character;
