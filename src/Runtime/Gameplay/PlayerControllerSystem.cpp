@@ -259,6 +259,25 @@ namespace PlayerControllerSystem {
         }
 
         RefreshCurrentEyeHeight(controller, playerTransform, sectors);
+
+        // RebuildCameraMatrices (CameraSystem) computes eye position as:
+        //   transform.position.z + transform.scale.y * 0.5f
+        // But that ignores the sector floor offset.  Write the correct
+        // local-Z back so the view matrix is always floor-aware.
+        {
+            const float floorBase =
+                IsValidSectorIndex(playerTransform.sectorIndex, sectors)
+                    ? GetFloorBaseHeight(
+                          sectors[playerTransform.sectorIndex],
+                          playerTransform.floor)
+                    : 0.0f;
+
+            const_cast<ComponentTransform &>(playerTransform).position.z =
+                controller.currentEyeHeight
+                - controller.eyeHeight          // strip eye offset
+                - floorBase;                    // strip floor offset → local Z
+        }
+
         UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 }

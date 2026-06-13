@@ -256,8 +256,9 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Math/Geometry/Geometry.cpp
 
-        src/Map/MapQueries.cpp
         src/Map/LevelManager.cpp
+        src/Map/LevelSerialization.cpp
+        src/Map/MapQueries.cpp
 
         src/UISytem.cpp
 
@@ -270,6 +271,8 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Wall.hpp
         Headers/Objects/Loadables.hpp
         Headers/Objects/Wrappers.hpp
+        Headers/Map/LevelManager.hpp
+        Headers/Map/LevelSerialization.hpp
         Headers/Map/MapQueries.hpp
         Headers/Map/LevelManager.hpp
         Headers/Math/Geometry/Geometry.hpp
@@ -308,7 +311,6 @@ set(TILKY_EDITOR_SOURCES
 
         src/Editor/Editor.cpp
         src/Editor/EditorState.cpp
-        src/Editor/EditorSaveLoad.cpp
         src/Editor/EditorTextureCache.cpp
 
         src/Editor/UIEditor/UIEditorUI.cpp
@@ -319,6 +321,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Objects/RayHit.hpp
         Headers/Editor/ImGuiDrawFunctions.hpp
+        src/Editor/EditorSaveLoad.cpp
+        Headers/Map/LevelSerialization.hpp
 )
 
 # ============================================================
