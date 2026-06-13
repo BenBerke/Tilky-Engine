@@ -428,7 +428,7 @@ namespace {
 
             if (ImGui::Button(Get("levels.delete").c_str())) {
                 const std::filesystem::path path =
-                    ProjectManager::GetLevelsPath() / (cleanName + ".json");
+                    ProjectManager::GetLevelsPath() / (cleanName + ".bson");
 
                 try {
                     if (std::filesystem::remove(path)) {
