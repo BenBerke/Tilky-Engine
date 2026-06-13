@@ -103,6 +103,7 @@ struct ComponentCollider {
 
     float stepSize = 0.0f;
 };
+
 struct ComponentPlayerController {
     EntityID ownerID = static_cast<EntityID>(-1);
 
@@ -118,8 +119,6 @@ struct ComponentPlayerController {
 
     // Eye height above the current floor.
     float eyeHeight = 12.0f;
-
-    float stepSize = 8.0f;
 
     float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;

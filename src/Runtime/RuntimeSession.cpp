@@ -155,6 +155,7 @@ namespace RuntimeSession {
 
         const ImGuiIO& io = ImGui::GetIO();
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
+        const bool keyboardBlockedByImGui = io.WantCaptureKeyboard;
 
         if (runtimeType == PLAY || runtimeType == EDITOR) {
             if (InputManager::GetKeyDown(SDL_SCANCODE_TAB) && relativeMouseMode) [[unlikely]] {
@@ -184,6 +185,7 @@ namespace RuntimeSession {
                 *renderer,
                 relativeMouseMode,
                 mouseBlockedByImGui,
+                keyboardBlockedByImGui,
                 renderer->screenWidth,
                 renderer->screenHeight
             );

@@ -14,6 +14,7 @@
 struct Wall {
     Vector2 start, end;
     Vector4 color;
+    Vector2 textureOffset;
 
     int frontSector = -1;
     int backSector = -1;

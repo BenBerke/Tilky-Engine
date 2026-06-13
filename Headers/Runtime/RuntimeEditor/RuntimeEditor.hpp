@@ -15,6 +15,7 @@ namespace RuntimeEditor {
         IRenderer& renderer,
         bool relativeMouseMod,
         bool mouseBlockedByImGui,
+        bool keyboardBlockedByImGui,
         float screenWidth,
         float screenHeight
     );

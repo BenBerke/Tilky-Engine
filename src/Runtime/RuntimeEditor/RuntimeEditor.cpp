@@ -252,6 +252,7 @@ namespace RuntimeEditor {
         IRenderer& renderer,
         const bool relativeMouseMod,
         const bool mouseBlockedByImGui,
+        const bool keyboardBlockedByImGui,
         const float screenWidth,
         const float screenHeight) {
         if (!renderer.IsUsingEditorCamera()) renderer.SetUseEditorCamera(true);
@@ -303,8 +304,10 @@ namespace RuntimeEditor {
             movement.y -= right.y;
         }
 
-        if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.z += 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.z -= 1.0f;
+        if (!keyboardBlockedByImGui) {
+            if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.z += 1.0f;
+            if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.z -= 1.0f;
+        }
 
         const float length = std::sqrt(
             movement.x * movement.x +
@@ -326,7 +329,7 @@ namespace RuntimeEditor {
 
         //endregion
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !mouseBlockedByImGui) {
             const Vector3 rayOrigin = transform->position;
 
             const Vector2 mousePosition = InputManager::GetMousePosition();

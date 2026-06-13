@@ -84,6 +84,8 @@
   "&Context_15": "As in the floors in a building. So if wall.floor = 2, this means the walls is on the second story",
   "wall.floor": "Floor",
   "wall.color": "Wall Color",
+  "&Context_15_a": "UV offset of the wall texture",
+  "wall.texture_offset": "Texture Offset",
 
   "&Context_16": "Cartesian Coordinates",
   "math.vector2.x" : "X",
@@ -157,8 +159,6 @@
   "component.player_controller.running_speed": "Running Speed",
   "&Context_34": "Y position of the camera relative to the floor's height",
   "component.player_controller.eye_height": "Eye Height",
-  "&Context_35": "The maximum step height the player can go up to. As in stairs",
-  "component.player_controller.step_size": "Step Size",
   "&Context_36": "Ground friction when moving",
   "component.player_controller.friction": "Friction",
   "&Context_37": "Camera sensitivity",

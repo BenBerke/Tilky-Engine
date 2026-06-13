@@ -353,7 +353,6 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-
     //todo Create a renderer settings and make these prefab configurations
 
     // For Pixel Art, shimmery

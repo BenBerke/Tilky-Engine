@@ -1,20 +1,16 @@
 //
 // Created by berke on 4/13/2026.
 //
-
-#include "../../../Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
+#include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <limits>
 
-#include "../../../Headers/Engine/InputManager.hpp"
-#include "../../../Headers/Engine/GameTime.hpp"
-
-#include "../../../Headers/Math/Vector/Vector2Math.hpp"
-#include "../../../Headers/Math/Geometry/Geometry.hpp"
-
-#include "../../../Headers/Map/MapQueries.hpp"
+#include "Headers/Engine/InputManager.hpp"
+#include "Headers/Math/Vector/Vector2Math.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 namespace {
@@ -107,6 +103,15 @@ namespace {
         return bestFloor;
     }
 
+    void RefreshCurrentEyeHeight(
+        ComponentPlayerController &controller,
+        const ComponentTransform &playerTransform,
+        const std::vector<Sector> &sectors
+    ) {
+        controller.currentEyeHeight =
+                GetWorldEyeHeight(controller, playerTransform, sectors);
+    }
+
     void EnterSectorKeepingWorldEyeHeight(
         ComponentPlayerController &controller,
         ComponentTransform &playerTransform,
@@ -139,7 +144,7 @@ namespace {
             playerTransform.position.z = 0.0f;
         }
 
-        controller.currentEyeHeight = GetWorldEyeHeight(controller, playerTransform, sectors);
+        RefreshCurrentEyeHeight(controller, playerTransform, sectors);
     }
 
     void UpdateAudioListener(
@@ -148,7 +153,11 @@ namespace {
     const ComponentCamera& camera,
     const ComponentRigidbody& rigidbody
 ) {
-        SoundManager::SetListenerPosition(playerTransform.position);
+        Vector3 listenerPosition = playerTransform.position;
+
+        listenerPosition.z = controller.currentEyeHeight;
+
+        SoundManager::SetListenerPosition(listenerPosition);
         SoundManager::SetListenerOrientation(camera.forward);
         SoundManager::SetListenerVelocity(rigidbody.velocity);
     }
@@ -186,12 +195,11 @@ namespace PlayerControllerSystem {
                 playerTransform.position.z = 0.0f;
             }
 
-            controller.currentEyeHeight =
-                    GetWorldEyeHeight(controller, playerTransform, sectors);
-        } else {
+            RefreshCurrentEyeHeight(controller, playerTransform, sectors);
+        }
+        else {
             playerTransform.floor = 0;
-            controller.currentEyeHeight =
-                    playerTransform.position.z + controller.eyeHeight;
+            RefreshCurrentEyeHeight(controller, playerTransform, sectors);
         }
 
         UpdateAudioListener(playerTransform, controller, camera, rigidbody);
@@ -205,9 +213,6 @@ namespace PlayerControllerSystem {
         ComponentCollider* sphereCollider,
         const std::vector<Sector> &sectors
     ) {
-        (void) playerTransform;
-        (void) sectors;
-
         Vector2 input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
@@ -253,8 +258,7 @@ namespace PlayerControllerSystem {
             rigidbody.velocity.y = 0.0f;
         }
 
-        SoundManager::SetListenerPosition(playerTransform.position);
-        SoundManager::SetListenerOrientation(camera.forward);
-        SoundManager::SetListenerVelocity(rigidbody.velocity);
+        RefreshCurrentEyeHeight(controller, playerTransform, sectors);
+        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 }

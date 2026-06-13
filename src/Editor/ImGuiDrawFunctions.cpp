@@ -96,25 +96,14 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        Vector4 color = wall.color;
+        ImGui::InputInt(Get("wall.front_sector").c_str(), &wall.frontSector);
+        ImGui::InputInt(Get("wall.back_sector").c_str(), &wall.backSector);
+        ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex);
+        ImGui::InputInt(Get("wall.floor").c_str(), &wall.floor);
 
-        int frontSector = wall.frontSector;
-        int backSector = wall.backSector;
-        int textureIndex = wall.textureIndex;
-        int floor = wall.floor;
+        ImGui::InputFloat4(Get("wall.color").c_str(), &wall.color.x);
 
-        ImGui::InputInt(Get("wall.front_sector").c_str(), &frontSector);
-        ImGui::InputInt(Get("wall.back_sector").c_str(), &backSector);
-        ImGui::InputInt(Get("wall.texture_index").c_str(), &textureIndex);
-        ImGui::InputInt(Get("wall.floor").c_str(), &floor);
-
-        ImGui::InputFloat4(Get("wall.color").c_str(), &color.x);
-
-        wall.color = color;
-        wall.textureIndex = textureIndex;
-        wall.frontSector = frontSector;
-        wall.backSector = backSector;
-        wall.floor = floor;
+        ImGui::DragFloat2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x);
 
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
@@ -580,7 +569,6 @@ namespace ImGuiDrawFunctions {
                 ImGui::InputFloat(Get("component.player_controller.speed").c_str(), &c->speed);
                 ImGui::InputFloat(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed);
                 ImGui::InputFloat(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight);
-                ImGui::InputFloat(Get("component.player_controller.step_size").c_str(), &c->stepSize);
 
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
 

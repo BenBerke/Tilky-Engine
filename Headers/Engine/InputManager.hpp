@@ -3,8 +3,6 @@
 #include <SDL3/SDL_scancode.h>
 #include "../Math/Vector/Vector2.hpp"
 
-//todo: Custom wrapper around SDL'S keycode
-
 namespace InputManager {
     void BeginFrame(); // Must be called at the start of every frame
 
@@ -18,6 +16,11 @@ namespace InputManager {
     bool GetMouseButtonDown(Uint32 button);
     bool GetMouseButton(Uint32 button);
     bool GetMouseButtonUp(Uint32 button);
+
+    // Returns 0 (SDL_SCANCODE_UNKNOWN) if false
+    SDL_Scancode GetAnyKey();
+    SDL_Scancode GetAnyKeyDown();
+    SDL_Scancode GetAnyKeyUp();
 
     bool GetMouseWheelScrollUp(); // if wheelScroll > 0
     bool GetMouseWheelScrollDown(); // if wheelScroll < 0

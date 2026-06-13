@@ -23,6 +23,7 @@ struct Wall {
     vec4 color;
     vec4 heights;
     vec4 data;
+    vec4 textureOffset_padding;
 };
 
 struct FlatTriangle {
@@ -102,29 +103,10 @@ void renderDecal() {
 
     int textureIndex = int(decal.data.x);
 
-    vec3 bottomLeft = vec3(
-    decalStart2D.x,
-    bottomHeight,
-    decalStart2D.y
-    );
-
-    vec3 topLeft = vec3(
-    decalStart2D.x,
-    topHeight,
-    decalStart2D.y
-    );
-
-    vec3 bottomRight = vec3(
-    decalEnd2D.x,
-    bottomHeight,
-    decalEnd2D.y
-    );
-
-    vec3 topRight = vec3(
-    decalEnd2D.x,
-    topHeight,
-    decalEnd2D.y
-    );
+    vec3 bottomLeft = vec3(decalStart2D.x, bottomHeight, decalStart2D.y);
+    vec3 topLeft = vec3(decalStart2D.x, topHeight, decalStart2D.y);
+    vec3 bottomRight = vec3(decalEnd2D.x, bottomHeight, decalEnd2D.y);
+    vec3 topRight = vec3(decalEnd2D.x, topHeight, decalEnd2D.y);
 
     vec3 positions[6] = vec3[6](
     bottomLeft,
@@ -303,6 +285,10 @@ void renderWall() {
 
     float rightU = wallLength / tileSize;
 
+    // Positive offset moves the sampled texture.
+    // Flip the sign if it moves visually opposite to what you want.
+    vec2 uvOffset = wall.textureOffset_padding.xy / tileSize;
+
     vec3 bottomLeft = vec3(wallStart2D.x, bottomHeight, wallStart2D.y);
     vec3 topLeft = vec3(wallStart2D.x, topHeight, wallStart2D.y);
     vec3 bottomRight = vec3(wallEnd2D.x, bottomHeight, wallEnd2D.y);
@@ -319,22 +305,25 @@ void renderWall() {
     );
 
     vec2 uvs[6] = vec2[6](
-    vec2(0.0, bottomV),
-    vec2(0.0, topV),
-    vec2(rightU, bottomV),
+    vec2(0.0, bottomV) + uvOffset,
+    vec2(0.0, topV) + uvOffset,
+    vec2(rightU, bottomV) + uvOffset,
 
-    vec2(rightU, bottomV),
-    vec2(0.0, topV),
-    vec2(rightU, topV)
+    vec2(rightU, bottomV) + uvOffset,
+    vec2(0.0, topV) + uvOffset,
+    vec2(rightU, topV) + uvOffset
     );
 
     vec3 worldPos = positions[gl_VertexID];
 
     vWallUV = uvs[gl_VertexID];
     vFlatUV = vec2(0.0);
+    vSpriteUV = vec2(0.0);
+    vDecalUV = vec2(0.0);
 
     vTextureIndex = int(wall.data.x);
     vFlatTextureIndex = -1;
+    vSpriteTextureIndex = -1;
     vColor = wall.color / 255.0;
 
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
