@@ -174,17 +174,17 @@ namespace MapEditorInternal {
         sectorBeingCreated.push_back(point);
     }
 
-    Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPosition) {
+    Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos) {
         return {
-            (worldPos.x - cameraPosition.x) * editorZoom + screenWidth * 0.5f,
-            screenHeight * 0.5f - (worldPos.y - cameraPosition.y) * editorZoom
+            (worldPos.x - cameraPos.x) * editorZoom + screenWidth * 0.5f,
+            screenHeight * 0.5f - (worldPos.y - cameraPos.y) * editorZoom
         };
     }
 
-    Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPosition) {
+    Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos) {
         return {
-            (screenPos.x - screenWidth * 0.5f) / editorZoom + cameraPosition.x,
-            (screenHeight * 0.5f - screenPos.y) / editorZoom + cameraPosition.y
+            (screenPos.x - screenWidth * 0.5f) / editorZoom + cameraPos.x,
+            (screenHeight * 0.5f - screenPos.y) / editorZoom + cameraPos.y
         };
     }
 
@@ -309,9 +309,10 @@ namespace Editor {
         LevelManager::CurrentLevel().walls.push_back(wall);
     }
 
-    void AddSector(Sector& sector) {
-        sector.id = LevelManager::CurrentLevel().sectors.size();
-        LevelManager::CurrentLevel().sectors.push_back(sector);
+    void AddSector(const Sector& sector) {
+        Sector copy = sector;
+        copy.id = LevelManager::CurrentLevel().sectors.size();
+        LevelManager::CurrentLevel().sectors.push_back(copy);
     }
 
     void CreateSector(
