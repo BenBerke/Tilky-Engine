@@ -12,6 +12,7 @@
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Runtime/ScriptSystem.hpp"
 
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
@@ -312,7 +313,7 @@ namespace LevelSystem {
 
         if (activeController != nullptr) {
             ComponentTransform *playerTransform = level.transforms.Get(activeController->ownerID);
-            ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
+            const ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
 
             if (playerTransform != nullptr) [[likely]]{
                 ComponentCamera *activeCamera = GetActiveCamera(level);
@@ -330,6 +331,8 @@ namespace LevelSystem {
                 spdlog::error("Level::Start skipped player controller: entity {} has no transform",
                               activeController->ownerID);
         }
+
+        ScriptSystem::Start(level);
 
         // Future level start systems will run here.
     }
@@ -386,9 +389,15 @@ namespace LevelSystem {
             );
         }
 
+
+        {
+            ZoneScopedN("Scripts");
+            ScriptSystem::Update(level);
+        }
+
+
         {
             //todo make a world setting
-            constexpr float friction = 9.8f;
 
             ZoneScopedN("Physics");
 
@@ -401,7 +410,7 @@ namespace LevelSystem {
                 }
 
                 if (transform->position.z > 0.0f) {
-                    r.ApplyGravity(friction);
+                    r.ApplyGravity(level.worldSettings.gravity);
                 }
 
                 if (transform->position.z <= 0.0f) {
@@ -418,8 +427,8 @@ namespace LevelSystem {
 
                 transform->AddPosition(r.velocity * GameTime::deltaTime);
 
-                r.ApplyFriction(friction);
-                r.ApplyAirResistance(friction);
+                r.ApplyFriction(0); // Applies rigidbody's base friction
+                r.ApplyAirResistance(0);
             }
         }
 

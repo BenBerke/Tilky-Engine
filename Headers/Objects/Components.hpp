@@ -75,6 +75,8 @@ struct ComponentRigidbody {
 
     bool isStatic = false;
     float mass = 1.0f;
+    float gravityScale = 9.8f;
+    float friction  = 1.0f;
 
     Vector3 velocity = {.0f, .0f, .0f};
 

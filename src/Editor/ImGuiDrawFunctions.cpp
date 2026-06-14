@@ -674,6 +674,8 @@ namespace ImGuiDrawFunctions {
             if (c != nullptr) [[likely]] {
                 ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
                 ImGui::InputFloat(Get("component.rigidbody.mass").c_str(), &c->mass);
+                ImGui::InputFloat(Get("component.rigidbody.gravityScale").c_str(), &c->gravityScale);
+                ImGui::InputFloat(Get("component.rigidbody.friction").c_str(), &c->friction);
             } else [[unlikely]] {
                 ImGui::Text("Rigidbody component missing");
             }

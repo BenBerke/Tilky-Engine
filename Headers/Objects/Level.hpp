@@ -23,6 +23,10 @@ struct ListenerSettings {
     ALenum distanceModel = AL_INVERSE_DISTANCE_CLAMPED;
 };
 
+struct WorldSettings {
+    float gravity;
+};
+
 struct Level {
     LevelID id = 0;
     std::string name;
@@ -38,6 +42,7 @@ struct Level {
     std::vector<Sound> sounds;
 
     ListenerSettings listenerSettings;
+    WorldSettings worldSettings;
 
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;

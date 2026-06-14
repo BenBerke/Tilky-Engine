@@ -105,6 +105,10 @@ namespace {
     sol::state lua;
     std::vector<ScriptInstance> scriptInstances;
 
+    void ResetLuaScriptRegistry() {
+        lua["Public"] = lua.create_table();
+    }
+
     void RegisterInputManager() {
         sol::table inputManager = lua.create_table();
 
@@ -451,10 +455,15 @@ namespace ScriptSystem {
     void Start(Level &level) {
         scriptInstances.clear();
 
+        ResetLuaScriptRegistry();
+
+        sol::table scripts = lua["Scripts"];
+
+        // PASS 1:
+        // Load every script file and run its top-level code.
+        // This lets scripts register shared variables/functions into Scripts.
         for (const ComponentScript &script: level.scripts.components) {
-            if (!script.enabled) {
-                continue;
-            }
+            // if (!script.enabled) continue; The script should load even if its disabled
 
             const std::string cleanFileName = CleanScriptFileName(script.fileName);
 
@@ -483,10 +492,15 @@ namespace ScriptSystem {
                 lua.globals()
             );
 
-            instance.environment["owner"] = ScriptEntity{
+            ScriptEntity ownerEntity{
                 &level,
                 script.ownerID
             };
+
+            instance.environment["Owner"] = ownerEntity;
+
+            // Every script sees the exact same shared table.
+            instance.environment["Scripts"] = scripts;
 
             sol::load_result loadedScript = lua.load_file(path.string());
 
@@ -502,9 +516,6 @@ namespace ScriptSystem {
 
             sol::protected_function scriptFunction = loadedScript;
 
-            // IMPORTANT:
-            // This makes the Lua file use instance.environment as its _ENV.
-            // Without this, owner is nil inside Start/Update.
             sol::set_environment(instance.environment, scriptFunction);
 
             sol::protected_function_result result = scriptFunction();
@@ -522,23 +533,26 @@ namespace ScriptSystem {
             instance.startFunction = instance.environment["Start"];
             instance.updateFunction = instance.environment["Update"];
 
-            if (instance.startFunction.valid()) {
-                sol::protected_function_result startResult =
-                        instance.startFunction();
-
-                if (!startResult.valid()) {
-                    sol::error error = startResult;
-                    spdlog::error(
-                        "Lua Start error in '{}': {}",
-                        path.string(),
-                        error.what()
-                    );
-                }
-            }
-
             scriptInstances.push_back(std::move(instance));
 
-            spdlog::info("Started Lua script: {}", path.string());
+            spdlog::info("Loaded Lua script: {}", path.string());
+        }
+
+        // Call Start only after every script has had a chance to register into Scripts.
+        for (ScriptInstance &instance: scriptInstances) {
+            if (!instance.startFunction.valid()) continue;
+
+
+            sol::protected_function_result startResult = instance.startFunction();
+
+            if (!startResult.valid()) {
+                sol::error error = startResult;
+                spdlog::error(
+                    "Lua Start error in '{}': {}",
+                    instance.scriptFile,
+                    error.what()
+                );
+            }
         }
     }
 

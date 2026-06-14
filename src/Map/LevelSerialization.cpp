@@ -86,39 +86,55 @@ namespace {
 
         const json& levelStatsJson = levelData["levelStats"];
 
-        if (!levelStatsJson.contains("listenerSettings") ||
-            !levelStatsJson["listenerSettings"].is_object()) {
+        if (!levelStatsJson.contains("listenerSettings") || !levelStatsJson["listenerSettings"].is_object())
             return;
-        }
+
+        if (!levelStatsJson.contains("worldSettings") || !levelStatsJson["worldSettings"].is_object())
+            return;
+
 
         const json& listenerJson = levelStatsJson["listenerSettings"];
-        ListenerSettings& settings = level.listenerSettings;
+        ListenerSettings& listenerSettings = level.listenerSettings;
 
-        settings.masterGain = listenerJson.value("masterGain", 1.0f);
-        settings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
-        settings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
+        listenerSettings.masterGain = listenerJson.value("masterGain", 1.0f);
+        listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
+        listenerSettings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
 
         const int distanceModel = listenerJson.value(
             "distanceModel",
             static_cast<int>(AL_INVERSE_DISTANCE_CLAMPED)
         );
 
-        settings.distanceModel = ValidateDistanceModel(distanceModel);
+        listenerSettings.distanceModel = ValidateDistanceModel(distanceModel);
 
-        settings.masterGain = std::max(0.0f, settings.masterGain);
-        settings.dopplerFactor = std::max(0.0f, settings.dopplerFactor);
-        settings.speedOfSound = std::max(1.0f, settings.speedOfSound);
+        listenerSettings.masterGain = std::max(0.0f, listenerSettings.masterGain);
+        listenerSettings.dopplerFactor = std::max(0.0f, listenerSettings.dopplerFactor);
+        listenerSettings.speedOfSound = std::max(1.0f, listenerSettings.speedOfSound);
+
+        const json& worldSettingsJson = levelStatsJson["worldSettings"];
+        WorldSettings& worldSettings = level.worldSettings;
+
+        worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+
     }
 
     void SaveLevelStats(json& levelData, const Level& level) {
-        const ListenerSettings& settings = level.listenerSettings;
+        const ListenerSettings& listenerSettings = level.listenerSettings;
 
         levelData["levelStats"] = {
             {"listenerSettings", {
-                {"masterGain", settings.masterGain},
-                {"dopplerFactor", settings.dopplerFactor},
-                {"speedOfSound", settings.speedOfSound},
-                {"distanceModel", static_cast<int>(settings.distanceModel)}
+                {"masterGain", listenerSettings.masterGain},
+                {"dopplerFactor", listenerSettings.dopplerFactor},
+                {"speedOfSound", listenerSettings.speedOfSound},
+                {"distanceModel", static_cast<int>(listenerSettings.distanceModel)}
+            }}
+        };
+
+        const WorldSettings& worldSettings = level.worldSettings;
+
+        levelData["levelStats"] = {
+            {"worldSettings", {
+                {"gravity", worldSettings.gravity}
             }}
         };
     }
@@ -810,6 +826,8 @@ namespace {
 
                 c.isStatic = rigidBodyJson.value("isStatic", true);
                 c.mass = rigidBodyJson.value("mass", 1.0f);
+                c.gravityScale = rigidBodyJson.value("gravityScale", 1.0f);
+                c.friction = rigidBodyJson.value("friction", 1.0f);
             }
         }
     }
@@ -956,7 +974,9 @@ namespace {
             componentsJson["rigidbodies"].push_back({
                 {"ownerID", c.ownerID},
                 {"isStatic", c.isStatic},
-                {"mass", c.mass}
+                {"mass", c.mass},
+                {"gravityScale", c.gravityScale},
+                {"friction", c.friction}
             });
         }
 

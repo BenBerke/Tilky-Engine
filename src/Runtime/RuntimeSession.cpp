@@ -25,8 +25,8 @@
 #include "Headers/Editor/Editor.hpp"
 
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
-#include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/ScriptSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
@@ -132,8 +132,6 @@ namespace RuntimeSession {
             return false;
         }
 
-        ScriptSystem::Start(level);
-
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
         SDL_HideCursor();
 
@@ -216,11 +214,6 @@ namespace RuntimeSession {
         {
             ZoneScopedN("Audio");
             AudioSystem::Update(level);
-        }
-
-        {
-            ZoneScopedN("Scripts");
-            ScriptSystem::Update(level);
         }
 
         {

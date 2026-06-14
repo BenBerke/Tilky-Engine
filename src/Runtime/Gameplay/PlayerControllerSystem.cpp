@@ -13,6 +13,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
+
 namespace {
     bool IsValidSectorIndex(const int index, const std::vector<Sector> &sectors) {
         return index >= 0 && index < static_cast<int>(sectors.size());
@@ -36,20 +37,12 @@ namespace {
                sectorHeight * static_cast<float>(floorIndex);
     }
 
-    float GetEyeHeightForFloor(
-        const ComponentPlayerController &controller,
-        const Sector &sector,
-        const int floorIndex
-    ) {
-        return GetFloorBaseHeight(sector, floorIndex) + controller.eyeHeight;
-    }
-
-    float GetWorldBodyZ(
+    float GetCurrentFloorBaseHeight(
         const ComponentTransform &transform,
         const std::vector<Sector> &sectors
     ) {
         if (!IsValidSectorIndex(transform.sectorIndex, sectors)) {
-            return transform.position.z;
+            return 0.0f;
         }
 
         const Sector &sector = sectors[transform.sectorIndex];
@@ -60,15 +53,35 @@ namespace {
             GetSafeFloorCount(sector) - 1
         );
 
-        return GetFloorBaseHeight(sector, floor) + transform.position.z;
+        return GetFloorBaseHeight(sector, floor);
     }
 
-    float GetWorldEyeHeight(
+    float GetWorldBodyZ(
+        const ComponentTransform &transform,
+        const std::vector<Sector> &sectors
+    ) {
+        return GetCurrentFloorBaseHeight(transform, sectors) +
+               transform.position.z;
+    }
+
+    float GetWorldEyeZ(
         const ComponentPlayerController &controller,
         const ComponentTransform &transform,
         const std::vector<Sector> &sectors
     ) {
         return GetWorldBodyZ(transform, sectors) + controller.eyeHeight;
+    }
+
+    Vector3 GetWorldEyePosition(
+        const ComponentPlayerController &controller,
+        const ComponentTransform &transform,
+        const std::vector<Sector> &sectors
+    ) {
+        return {
+            transform.position.x,
+            transform.position.y,
+            GetWorldEyeZ(controller, transform, sectors)
+        };
     }
 
     int GetFloorFromWorldEyeHeight(
@@ -89,7 +102,7 @@ namespace {
 
         for (int floor = 0; floor < floorCount; ++floor) {
             const float candidateEyeHeight =
-                    GetEyeHeightForFloor(controller, sector, floor);
+                    GetFloorBaseHeight(sector, floor) + controller.eyeHeight;
 
             const float difference =
                     std::abs(candidateEyeHeight - worldEyeHeight);
@@ -109,7 +122,7 @@ namespace {
         const std::vector<Sector> &sectors
     ) {
         controller.currentEyeHeight =
-                GetWorldEyeHeight(controller, playerTransform, sectors);
+                GetWorldEyeZ(controller, playerTransform, sectors);
     }
 
     void EnterSectorKeepingWorldEyeHeight(
@@ -122,22 +135,28 @@ namespace {
             return;
         }
 
-        const float oldWorldBodyZ = GetWorldBodyZ(playerTransform, sectors);
-        const float oldWorldEyeHeight = oldWorldBodyZ + controller.eyeHeight;
+        const float oldWorldBodyZ =
+                GetWorldBodyZ(playerTransform, sectors);
 
-        const Sector &sector = sectors[newSector];
+        const float oldWorldEyeZ =
+                oldWorldBodyZ + controller.eyeHeight;
+
+        const Sector &newSectorData = sectors[newSector];
 
         const int newFloor = GetFloorFromWorldEyeHeight(
             controller,
-            sector,
-            oldWorldEyeHeight
+            newSectorData,
+            oldWorldEyeZ
         );
 
-        const float newFloorBase = GetFloorBaseHeight(sector, newFloor);
+        const float newFloorBase =
+                GetFloorBaseHeight(newSectorData, newFloor);
 
         playerTransform.sectorIndex = newSector;
         playerTransform.floor = newFloor;
 
+        // Keep the same world body height, but convert it into local height
+        // relative to the new sector floor.
         playerTransform.position.z = oldWorldBodyZ - newFloorBase;
 
         if (playerTransform.position.z < 0.0f) {
@@ -148,14 +167,14 @@ namespace {
     }
 
     void UpdateAudioListener(
-    const ComponentTransform& playerTransform,
-    const ComponentPlayerController& controller,
-    const ComponentCamera& camera,
-    const ComponentRigidbody& rigidbody
-) {
-        Vector3 listenerPosition = playerTransform.position;
-
-        listenerPosition.z = controller.currentEyeHeight;
+        const ComponentTransform &playerTransform,
+        const ComponentPlayerController &controller,
+        const ComponentCamera &camera,
+        const ComponentRigidbody &rigidbody,
+        const std::vector<Sector> &sectors
+    ) {
+        const Vector3 listenerPosition =
+                GetWorldEyePosition(controller, playerTransform, sectors);
 
         SoundManager::SetListenerPosition(listenerPosition);
         SoundManager::SetListenerOrientation(camera.forward);
@@ -171,7 +190,10 @@ namespace PlayerControllerSystem {
         const ComponentCamera &camera,
         const std::vector<Sector> &sectors
     ) {
-        const Vector2 planarPosition = GetPlanarPosition(playerTransform);
+        const Vector2 planarPosition = {
+            playerTransform.position.x,
+            playerTransform.position.y
+        };
 
         int foundSector = MapQueries::FindSectorContainingPoint(
             sectors,
@@ -196,23 +218,45 @@ namespace PlayerControllerSystem {
             }
 
             RefreshCurrentEyeHeight(controller, playerTransform, sectors);
-        }
-        else {
+        } else {
             playerTransform.floor = 0;
             RefreshCurrentEyeHeight(controller, playerTransform, sectors);
         }
 
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
+        UpdateAudioListener(playerTransform, controller, camera, rigidbody, sectors);
     }
 
     void Update(
         ComponentPlayerController &controller,
-        const ComponentTransform &playerTransform,
+        ComponentTransform &playerTransform,
         ComponentCamera &camera,
         ComponentRigidbody &rigidbody,
-        ComponentCollider* sphereCollider,
+        ComponentCollider *sphereCollider,
         const std::vector<Sector> &sectors
     ) {
+        // Use x/y for map lookup.
+        // In your engine:
+        // x = world X
+        // y = world Z / planar depth
+        // z = height
+        const Vector2 planarPosition = {
+            playerTransform.position.x,
+            playerTransform.position.y
+        };
+
+        const int detectedSector =
+                MapQueries::FindSectorContainingPoint(sectors, planarPosition);
+
+        if (detectedSector != -1 &&
+            detectedSector != playerTransform.sectorIndex) {
+            EnterSectorKeepingWorldEyeHeight(
+                controller,
+                playerTransform,
+                detectedSector,
+                sectors
+            );
+        }
+
         Vector2 input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
@@ -221,14 +265,18 @@ namespace PlayerControllerSystem {
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
         controller.currentSpeed =
-                InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)
+                InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
+                InputManager::GetKey(SDL_SCANCODE_W)
                     ? controller.runningSpeed
                     : controller.speed;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
+        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
+            controller.noClip = !controller.noClip;
+        }
 
-        if (sphereCollider != nullptr)
-        sphereCollider->isActive = !controller.noClip;
+        if (sphereCollider != nullptr) {
+            sphereCollider->isActive = !controller.noClip;
+        }
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
@@ -236,7 +284,8 @@ namespace PlayerControllerSystem {
         camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
         camera.yaw = std::fmod(camera.yaw, 360.0f);
 
-        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float yawRadians =
+                camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
@@ -246,10 +295,12 @@ namespace PlayerControllerSystem {
 
         if (input.x != 0.0f || input.y != 0.0f) {
             const Vector2 moveDirection =
-                Vector2Math::Normalized(right * input.x + forward * input.y);
+                    Vector2Math::Normalized(
+                        right * input.x + forward * input.y
+                    );
 
             const Vector2 desiredVelocity =
-                moveDirection * controller.currentSpeed;
+                    moveDirection * controller.currentSpeed;
 
             rigidbody.velocity.x = desiredVelocity.x;
             rigidbody.velocity.y = desiredVelocity.y;
@@ -260,24 +311,6 @@ namespace PlayerControllerSystem {
 
         RefreshCurrentEyeHeight(controller, playerTransform, sectors);
 
-        // RebuildCameraMatrices (CameraSystem) computes eye position as:
-        //   transform.position.z + transform.scale.y * 0.5f
-        // But that ignores the sector floor offset.  Write the correct
-        // local-Z back so the view matrix is always floor-aware.
-        {
-            const float floorBase =
-                IsValidSectorIndex(playerTransform.sectorIndex, sectors)
-                    ? GetFloorBaseHeight(
-                          sectors[playerTransform.sectorIndex],
-                          playerTransform.floor)
-                    : 0.0f;
-
-            const_cast<ComponentTransform &>(playerTransform).position.z =
-                controller.currentEyeHeight
-                - controller.eyeHeight          // strip eye offset
-                - floorBase;                    // strip floor offset → local Z
-        }
-
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
+        UpdateAudioListener(playerTransform, controller, camera, rigidbody, sectors);
     }
 }

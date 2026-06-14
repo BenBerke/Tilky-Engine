@@ -311,6 +311,8 @@ namespace {
 
         ImGui::Begin(Get("editor.world_settings").c_str());
 
+        ImGui::Text(Get("settings.audio.title").c_str());
+
         ImGui::SliderFloat(
             Get("settings.audio.master_gain").c_str(),
             &settings.masterGain,
@@ -396,6 +398,10 @@ namespace {
             settings.distanceModel = alModels[currentModel];
             // SoundManager::SetListenerDistanceModel(settings.distanceModel);
         }
+
+        ImGuiDrawFunctions::PutSpace(5);
+        ImGui::Text(Get("settings.physics.title").c_str());
+        ImGui::InputFloat(Get("settings.physics.gravity").c_str(), &level.worldSettings.gravity);
 
         ImGuiDrawFunctions::PutSpace(5);
 

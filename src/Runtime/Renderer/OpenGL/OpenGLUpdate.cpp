@@ -58,7 +58,24 @@ void OpenGL::Update() {
         camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
     }
 
-    CameraSystem::RebuildCameraMatrices(*cameraTransform, *camera);
+    ComponentTransform renderCameraTransform = *cameraTransform;
+
+    if (!useEditorCamera) {
+        for (const ComponentPlayerController& controller : level.playerControllers.components) {
+            if (!controller.isActive) {
+                continue;
+            }
+
+            // If the active camera is attached to the active player,
+            // use the player's world eye height for rendering.
+            if (controller.ownerID == camera->ownerID) {
+                renderCameraTransform.position.z = controller.currentEyeHeight;
+                break;
+            }
+        }
+    }
+
+    CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 
     {
         const float cameraYaw = camera->yaw;
@@ -133,9 +150,9 @@ void OpenGL::Update() {
         glUniform1i(renderModeUniform, RENDER_SPRITE);
         glUniform3f(
             glGetUniformLocation(projectionShader->ID, "uCameraWorldPos"),
-            cameraTransform->position.x,
-            cameraTransform->position.z, // Intentionally swapped
-            cameraTransform->position.y
+            renderCameraTransform.position.x,
+            renderCameraTransform.position.z, // Intentionally swapped
+            renderCameraTransform.position.y
         );
 
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);

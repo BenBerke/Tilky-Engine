@@ -38,6 +38,7 @@
 
   "ui_editor.title": "UI Editor",
 
+  "settings.audio.title": "Listener Settings",
   "&Context_7": "Master Gain is basically the absolute volume slider for the entire game.",
   "settings.audio.master_gain" : "Master Gain",
   "settings.audio.global_physics_header" : "Global Audio Physics",
@@ -50,6 +51,9 @@
   "settings.audio.distance_model.linear": "Linear Distance",
   "settings.audio.distance_model.linear_clamped": "Linear Distance Clamped",
   "settings.audio.distance_model.none": "None",
+
+  "settings.physics.title": "Physics",
+  "settings.physics.gravity": "Gravity",
 
   "&Context_8": "Level as in a video game level. It consists of entities and rooms",
   "levels.title": "Levels",
@@ -196,6 +200,8 @@
   "&Context_47": "If rigidbody.is_static = true then the object will not move",
   "component.rigidbody.is_static": "Is Static",
   "component.rigidbody.mass": "Mass",
+  "component.rigidbody.gravity": "Gravity Scale",
+  "component.rigidbody.friction": "Friction",
 
   "&Context_48": "A UI transform is a component that defines the position, size, and alignment of an entity within a user interface layout, relative to its parent container.",
   "component.ui_transform" : "UI Transform",

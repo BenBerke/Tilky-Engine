@@ -57,10 +57,10 @@ namespace PlayerControllerSystem {
 
     void Update(
         ComponentPlayerController &controller,
-        const ComponentTransform &playerTransform,
+        ComponentTransform &playerTransform,
         ComponentCamera &camera,
         ComponentRigidbody &rigidbody,
-        ComponentCollider* sphereCollider,
+        ComponentCollider *sphereCollider,
         const std::vector<Sector> &sectors
     );
 }
