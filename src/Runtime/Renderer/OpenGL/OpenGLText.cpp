@@ -8,6 +8,37 @@
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+namespace {
+    void SetTextProjection(
+        const Shader& shader,
+        const int screenWidth,
+        const int screenHeight
+    ) {
+        if (screenWidth <= 0 || screenHeight <= 0) {
+            return;
+        }
+
+        const float w = static_cast<float>(screenWidth);
+        const float h = static_cast<float>(screenHeight);
+
+        // Top-left origin:
+        // x: 0 -> left, screenWidth -> right
+        // y: 0 -> top,  screenHeight -> bottom
+        const float projection[16] = {
+            2.0f / w, 0.0f,     0.0f, 0.0f,
+            0.0f,    -2.0f / h, 0.0f, 0.0f,
+            0.0f,     0.0f,    -1.0f, 0.0f,
+           -1.0f,     1.0f,     0.0f, 1.0f
+        };
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(shader.ID, "projection"),
+            1,
+            GL_FALSE,
+            projection
+        );
+    }
+}
 
 bool OpenGL::InitializeFont() {
     if (FT_Init_FreeType(&ft)) {
@@ -122,12 +153,21 @@ void OpenGL::RenderText(
     const Vector2 scale,
     const Vector3 color
 ) {
+    if (screenWidth <= 0 || screenHeight <= 0) {
+        return;
+    }
+
+    const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
+
     glDisable(GL_DEPTH_TEST);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     shader.use();
+
+    SetTextProjection(shader, screenWidth, screenHeight);
 
     glActiveTexture(GL_TEXTURE0);
     glUniform1i(glGetUniformLocation(shader.ID, "text"), 0);
@@ -184,8 +224,15 @@ void OpenGL::RenderText(
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    if (!blendWasEnabled) {
+        glDisable(GL_BLEND);
+    }
+
+    if (depthWasEnabled) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
 }
 
 void OpenGL::RenderTextRaw(

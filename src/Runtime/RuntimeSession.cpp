@@ -31,6 +31,7 @@
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/Renderer/RendererFactory.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 namespace {
     float timer = 0.0f;
@@ -46,7 +47,7 @@ namespace {
     void RenderDebugText() {
         renderer->RenderTextRaw(
             "FPS:" + std::to_string(fps),
-            {0.0f, static_cast<float>(renderer->screenHeight - 7)},
+            {0.0f, 20},
             {0.5f, 0.5f},
             Vector3{255.0f, 0.0f, 255.0f}
         );
@@ -165,16 +166,14 @@ namespace RuntimeSession {
 
             const bool mouseClickAllowed = runtimeType == PLAY || !mouseBlockedByImGui;
 
-            if (
-                InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
-                !relativeMouseMode &&
-                mouseClickAllowed
-            ) [[unlikely]] {
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&!relativeMouseMode && mouseClickAllowed) [[unlikely]] {
                 relativeMouseMode = true;
 
                 InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
                 SDL_HideCursor();
             }
+
+            EditorFunctions::UpdateConsole(GameTime::deltaTime);
         }
 
         if (runtimeType == EDITOR) {
@@ -206,6 +205,11 @@ namespace RuntimeSession {
 
             if (runtimeType != STANDALONE) {
                 RenderDebugText();
+                EditorFunctions::RenderConsole(renderer.get());
+                if (InputManager::GetKeyDown(SDL_SCANCODE_P)) {
+                    std::string msg = std::format("Time: {}", GameTime::time);
+                    EditorFunctions::Print(msg);
+                }
             }
 
             renderer->EndFrame();

@@ -389,7 +389,6 @@ namespace LevelSystem {
             );
         }
 
-
         {
             ZoneScopedN("Scripts");
             ScriptSystem::Update(level);
@@ -397,33 +396,25 @@ namespace LevelSystem {
 
 
         {
-            //todo make a world setting
-
             ZoneScopedN("Physics");
 
             for (ComponentRigidbody& r : level.rigidbodies.components) {
                 ComponentTransform* transform = level.transforms.Get(r.ownerID);
 
-                if (!transform) {
+                if (!transform) [[unlikely]] {
                     spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
                     continue;
                 }
 
-                if (transform->position.z > 0.0f) {
-                    r.ApplyGravity(level.worldSettings.gravity);
-                }
+                if (transform->position.z > 0.0f) r.ApplyGravity(level.worldSettings.gravity);
 
                 if (transform->position.z <= 0.0f) {
                     transform->position.z = 0.0f;
 
-                    if (r.velocity.z < 0.0f) {
-                        r.velocity.z = 0.0f;
-                    }
+                    if (r.velocity.z < 0.0f) r.velocity.z = 0.0f;
                 }
 
-                if (r.velocity.IsZero()) {
-                    continue;
-                }
+                if (r.velocity.IsZero()) continue;
 
                 transform->AddPosition(r.velocity * GameTime::deltaTime);
 

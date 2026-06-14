@@ -51,7 +51,11 @@ void OpenGL::Update() {
         }
     }
 
-    SDL_GetWindowSize(window, &screenWidth, &screenHeight);
+    if (!SDL_GetWindowSizeInPixels(window, &screenWidth, &screenHeight)) {
+        spdlog::error("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
+        return;
+    }
+
     glViewport(0, 0, screenWidth, screenHeight);
 
     if (screenHeight > 0) [[likely]] {
@@ -80,7 +84,16 @@ void OpenGL::Update() {
     {
         const float cameraYaw = camera->yaw;
         ZoneScopedN("Background");
+
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_BLEND);
+
         DrawBackground(cameraYaw);
+
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_GREATER);
     }
 
     {

@@ -293,6 +293,8 @@ set(TILKY_RUNTIME_SOURCES
         Headers/UISystem.hpp
         src/Runtime/Gameplay/GameFunctions.cpp
         src/Editor/ImGuiDrawFunctions.cpp
+        src/Runtime/RuntimeEditor/EditorFunctions.cpp
+        Headers/Runtime/RuntimeEditor/EditorFunctions.hpp
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
         Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
 )

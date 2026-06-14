@@ -78,23 +78,18 @@ namespace {
         };
     }
 
-    void LoadLevelStats(const json& levelData, Level& level) {
+    void LoadLevelStats(const json &levelData, Level &level) {
         if (!levelData.contains("levelStats") ||
             !levelData["levelStats"].is_object()) {
             return;
         }
 
-        const json& levelStatsJson = levelData["levelStats"];
+    const json& levelStatsJson = levelData["levelStats"];
 
-        if (!levelStatsJson.contains("listenerSettings") || !levelStatsJson["listenerSettings"].is_object())
-            return;
-
-        if (!levelStatsJson.contains("worldSettings") || !levelStatsJson["worldSettings"].is_object())
-            return;
-
-
-        const json& listenerJson = levelStatsJson["listenerSettings"];
-        ListenerSettings& listenerSettings = level.listenerSettings;
+    if (levelStatsJson.contains("listenerSettings") &&
+        levelStatsJson["listenerSettings"].is_object()) {
+        const json &listenerJson = levelStatsJson["listenerSettings"];
+        ListenerSettings &listenerSettings = level.listenerSettings;
 
         listenerSettings.masterGain = listenerJson.value("masterGain", 1.0f);
         listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
@@ -110,32 +105,35 @@ namespace {
         listenerSettings.masterGain = std::max(0.0f, listenerSettings.masterGain);
         listenerSettings.dopplerFactor = std::max(0.0f, listenerSettings.dopplerFactor);
         listenerSettings.speedOfSound = std::max(1.0f, listenerSettings.speedOfSound);
-
-        const json& worldSettingsJson = levelStatsJson["worldSettings"];
-        WorldSettings& worldSettings = level.worldSettings;
-
-        worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
-
     }
 
-    void SaveLevelStats(json& levelData, const Level& level) {
-        const ListenerSettings& listenerSettings = level.listenerSettings;
+    if (levelStatsJson.contains("worldSettings") &&
+        levelStatsJson["worldSettings"].is_object()) {
+        const json &worldSettingsJson = levelStatsJson["worldSettings"];
+        WorldSettings &worldSettings = level.worldSettings;
+
+        worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+    }
+    }
+
+    void SaveLevelStats(json &levelData, const Level &level) {
+        const ListenerSettings &listenerSettings = level.listenerSettings;
+        const WorldSettings &worldSettings = level.worldSettings;
 
         levelData["levelStats"] = {
-            {"listenerSettings", {
-                {"masterGain", listenerSettings.masterGain},
-                {"dopplerFactor", listenerSettings.dopplerFactor},
-                {"speedOfSound", listenerSettings.speedOfSound},
-                {"distanceModel", static_cast<int>(listenerSettings.distanceModel)}
-            }}
-        };
-
-        const WorldSettings& worldSettings = level.worldSettings;
-
-        levelData["levelStats"] = {
-            {"worldSettings", {
-                {"gravity", worldSettings.gravity}
-            }}
+            {
+                "listenerSettings", {
+                    {"masterGain", listenerSettings.masterGain},
+                    {"dopplerFactor", listenerSettings.dopplerFactor},
+                    {"speedOfSound", listenerSettings.speedOfSound},
+                    {"distanceModel", static_cast<int>(listenerSettings.distanceModel)}
+                }
+            },
+            {
+                "worldSettings", {
+                    {"gravity", worldSettings.gravity}
+                }
+            }
         };
     }
 
