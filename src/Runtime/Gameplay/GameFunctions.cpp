@@ -102,7 +102,7 @@ namespace GameFunctions {
         const Vector3 pos,
         const Vector3 dir,
         const float length,
-        const EntityID ignoredEntity,
+        const ID ignoredEntity,
         const bool requireCollider
     ) {
         if (dir.IsZero()) return std::nullopt;

@@ -11,8 +11,8 @@ using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 struct Entity {
     std::string name;
-    EntityID id = static_cast<EntityID>(-1);
-    EntityID attachedLevelId = static_cast<EntityID>(-1);
+    ID id = static_cast<ID>(-1);
+    ID attachedLevelId = static_cast<ID>(-1);
 
     ComponentMask componentsMask;
 

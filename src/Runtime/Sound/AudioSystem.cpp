@@ -9,7 +9,7 @@
 #include "Headers/Objects/Level.hpp"
 
 namespace {
-    std::string MakeAudioSourceName(const EntityID ownerID) {
+    std::string MakeAudioSourceName(const ID ownerID) {
         return "entity_" + std::to_string(ownerID) + "_audio";
     }
 }
@@ -17,7 +17,7 @@ namespace {
 namespace AudioSystem {
     void Start(Level& level) {
          for (ComponentAudioSource& audio : level.audioSources.components) {
-             if (audio.ownerID == static_cast<EntityID>(-1)) {
+             if (audio.ownerID == static_cast<ID>(-1)) {
                  spdlog::error("Audio source has no valid owner");
                  continue;
              }
@@ -48,7 +48,7 @@ namespace AudioSystem {
 
     void Update(Level& level) {
         for (ComponentAudioSource& audio : level.audioSources.components) {
-            if (audio.ownerID == static_cast<EntityID>(-1)) {
+            if (audio.ownerID == static_cast<ID>(-1)) {
                 spdlog::error("Audio source has no valid owner");
                 continue;
             }

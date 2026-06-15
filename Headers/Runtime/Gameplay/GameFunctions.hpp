@@ -9,7 +9,7 @@
 #include "../../Objects/RayHit.hpp"
 
 namespace GameFunctions {
-    std::optional<RayHit> Raycast(Level &level, Vector3 pos, Vector3 dir, float length, EntityID ignoredEntity, bool requireCollider);
+    std::optional<RayHit> Raycast(Level &level, Vector3 pos, Vector3 dir, float length, ID ignoredEntity, bool requireCollider);
 }
 
 #endif //TILKY_ENGINE_GAMEFUNCTIONS_HPP

@@ -4,7 +4,7 @@
 
 #include "Headers/Objects/Level.hpp"
 
-Entity* Level::GetEntity(const EntityID entityID) {
+Entity* Level::GetEntity(const ID entityID) {
     for (Entity& entity : entities) {
         if (entity.id == entityID) {
             return &entity;
@@ -14,7 +14,7 @@ Entity* Level::GetEntity(const EntityID entityID) {
     return nullptr;
 }
 
-const Entity* Level::GetEntity(const EntityID entityID) const {
+const Entity* Level::GetEntity(const ID entityID) const {
     for (const Entity& entity : entities) {
         if (entity.id == entityID) {
             return &entity;
@@ -24,7 +24,7 @@ const Entity* Level::GetEntity(const EntityID entityID) const {
     return nullptr;
 }
 
-EntityID Level::CreateEntity(const bool uiEntity) {
+ID Level::CreateEntity(const bool uiEntity) {
     Entity entity;
     entity.id = nextEntityID++;
     entity.name = "Entity";
@@ -32,7 +32,7 @@ EntityID Level::CreateEntity(const bool uiEntity) {
 
     entities.push_back(entity);
 
-    const EntityID newId = entity.id;
+    const ID newId = entity.id;
 
     if (uiEntity) [[unlikely]] {
         ui_transforms.Add(newId);
@@ -45,7 +45,7 @@ EntityID Level::CreateEntity(const bool uiEntity) {
     return newId;
 }
 
-void Level::DestroyEntity(const EntityID entityID) {
+void Level::DestroyEntity(const ID entityID) {
     std::erase_if(entities, [entityID](const Entity& entity) {
         return entity.id == entityID;
     });

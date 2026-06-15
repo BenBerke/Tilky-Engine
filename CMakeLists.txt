@@ -297,6 +297,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/RuntimeEditor/EditorFunctions.hpp
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
         Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
+        src/Runtime/CollisionSystem.cpp
 )
 
 # ============================================================
@@ -325,6 +326,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Editor/ImGuiDrawFunctions.hpp
         src/Editor/EditorSaveLoad.cpp
         Headers/Map/LevelSerialization.hpp
+        Headers/Runtime/CollisionSystem.hpp
 )
 
 # ============================================================

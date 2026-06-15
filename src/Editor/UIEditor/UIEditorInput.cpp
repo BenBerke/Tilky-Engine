@@ -27,7 +27,7 @@ namespace MapEditorInternal {
                     holdingEntity = true;
                 } else {
                     static constexpr bool isUIEntity = true;
-                    const EntityID id = level.CreateEntity(isUIEntity);
+                    const ID id = level.CreateEntity(isUIEntity);
                     selectedEntity = *level.GetEntity(id); // This gives the entity ComponentUITransform
 
                     auto* t = selectedEntity.GetComponent<ComponentUITransform>();

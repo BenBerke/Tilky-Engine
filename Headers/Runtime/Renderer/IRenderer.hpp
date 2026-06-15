@@ -58,7 +58,7 @@ public:
 protected:
     bool useEditorCamera = false;
 
-    static constexpr EntityID EDITOR_CAMERA_ENTITY_ID = 0;
+    static constexpr ID EDITOR_CAMERA_ENTITY_ID = 0;
 
     inline static ComponentCamera* editorCamera = nullptr;
     inline static ComponentTransform* editorCameraTransform = nullptr;

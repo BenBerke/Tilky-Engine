@@ -10,7 +10,7 @@
 #include "Headers/Map/LevelManager.hpp"
 
 struct Level;
-using EntityID = uint32_t;
+using ID = uint32_t;
 
 namespace Editor {
     extern Vector3 playerStartPos;

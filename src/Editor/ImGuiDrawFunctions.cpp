@@ -12,7 +12,21 @@
 #include <string>
 
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
+
+namespace {
+    bool InputID(const char *label, ID &value) {
+        int displayValue = (value == INVALID_ID) ? -1 : static_cast<int>(value);
+
+        if (!ImGui::InputInt(label, &displayValue)) return false;
+
+        value = (displayValue < 0) ? INVALID_ID : static_cast<ID>(displayValue);
+
+        return true;
+    }
+}
 
 namespace ImGuiDrawFunctions {
     using namespace Localisation;
@@ -31,38 +45,23 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        float ceilHeight = sector.ceilingHeight;
-        float floorHeight = sector.floorHeight;
-        int floorTexture = sector.floorTextureIndex;
-        int floorCount = sector.floorCount;
+        ImGui::InputFloat(Get("sector.ceil_height").c_str(), &sector.ceilingHeight);
+        ImGui::InputFloat(Get("sector.floor_height").c_str(), &sector.floorHeight);
+        ImGui::InputInt(Get("sector.floor_count").c_str(), &sector.floorCount);
 
-        Vector3 ceilColor = sector.ceilingColor;
-        Vector3 floorColor = sector.floorColor;
+        sector.floorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
 
-        ImGui::InputFloat(Get("sector.ceil_height").c_str(), &ceilHeight);
-        ImGui::InputFloat(Get("sector.floor_height").c_str(), &floorHeight);
-        ImGui::InputInt(Get("sector.floor_count").c_str(), &floorCount);
+        ImGui::InputInt(Get("sector.ground_floor_texture").c_str(), &sector.floorTextureIndex);
 
-        floorCount = std::clamp(floorCount, 1, MAX_FLOOR_COUNT);
-
-        ImGui::InputInt(Get("sector.ground_floor_texture").c_str(), &floorTexture);
-
-        for (int i = 0; i < floorCount; ++i) {
+        for (int i = 0; i < sector.floorCount; ++i) {
             const std::string label =
                     Get("sector.ceiling_texture") + " " + std::to_string(i + 1);
 
             ImGui::InputInt(label.c_str(), &sector.ceilingTextureIndices[i]);
         }
 
-        ImGui::InputFloat3(Get("sector.ceiling_color").c_str(), &ceilColor.x);
-        ImGui::InputFloat3(Get("sector.floor_color").c_str(), &floorColor.x);
-
-        sector.ceilingHeight = ceilHeight;
-        sector.floorHeight = floorHeight;
-        sector.floorTextureIndex = floorTexture;
-        sector.ceilingColor = ceilColor;
-        sector.floorColor = floorColor;
-        sector.floorCount = floorCount;
+        ImGui::InputFloat3(Get("sector.ceiling_color").c_str(), &sector.ceilingColor.x);
+        ImGui::InputFloat3(Get("sector.floor_color").c_str(), &sector.floorColor.x);
 
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
@@ -79,9 +78,7 @@ namespace ImGuiDrawFunctions {
             }
         }
 
-        if (sectorId >= 0) {
-            ImGui::Text("%s: %d", Get("common.id").c_str(), sectorId);
-        }
+        if (sectorId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), sector.id);
 
         ImGui::End();
 
@@ -96,14 +93,17 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        ImGui::InputInt(Get("wall.front_sector").c_str(), &wall.frontSector);
-        ImGui::InputInt(Get("wall.back_sector").c_str(), &wall.backSector);
+        bool wallSectorChanged = false;
+
+        wallSectorChanged |= InputID(Get("wall.front_sector").c_str(), wall.frontSector);
+        wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
+
         ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex);
         ImGui::InputInt(Get("wall.floor").c_str(), &wall.floor);
-
         ImGui::InputFloat4(Get("wall.color").c_str(), &wall.color.x);
-
         ImGui::DragFloat2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x);
+
+        if (wallSectorChanged) MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
 
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
@@ -120,9 +120,7 @@ namespace ImGuiDrawFunctions {
             }
         }
 
-        if (wallId >= 0) {
-            ImGui::Text("%s: %d", Get("common.id").c_str(), wallId);
-        }
+        if (wallId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), wall.id);
 
         ImGui::End();
 
@@ -439,8 +437,7 @@ namespace ImGuiDrawFunctions {
             } else {
                 ImGui::Text("Transform component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_SPRITE) {
+        } else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
 
             if (c != nullptr) [[likely]] {
@@ -454,8 +451,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Sprite component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_DECAL) {
+        } else if (state.selectedComponent == CMP_DECAL) {
             auto *c = entity.GetComponent<ComponentDecal>();
 
             if (c != nullptr) [[likely]] {
@@ -474,8 +470,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Decal component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
+        } else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
             auto *c = entity.GetComponent<ComponentAudioSource>();
 
             if (c != nullptr) [[likely]] {
@@ -546,8 +541,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Audio component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_SCRIPT) {
+        } else if (state.selectedComponent == CMP_SCRIPT) {
             auto *c = entity.GetComponent<ComponentScript>();
 
             if (c != nullptr) [[likely]] {
@@ -561,8 +555,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Script component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
+        } else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
             auto *c = entity.GetComponent<ComponentPlayerController>();
 
             if (c != nullptr) [[likely]] {
@@ -598,8 +591,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Player Controller component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_CAMERA) {
+        } else if (state.selectedComponent == CMP_CAMERA) {
             auto *c = entity.GetComponent<ComponentCamera>();
 
             if (c != nullptr) [[likely]] {
@@ -618,8 +610,7 @@ namespace ImGuiDrawFunctions {
             } else [[unlikely]] {
                 ImGui::Text("Camera component missing");
             }
-        }
-        else if (state.selectedComponent == CMP_COLLIDER) {
+        } else if (state.selectedComponent == CMP_COLLIDER) {
             auto *c = entity.GetComponent<ComponentCollider>();
 
             if (c != nullptr) [[likely]] {
@@ -667,8 +658,7 @@ namespace ImGuiDrawFunctions {
                 entity.RemoveComponent<ComponentCollider>();
                 CloseEditor();
             }
-        }
-        else if (state.selectedComponent == CMP_RIGIDBODY) {
+        } else if (state.selectedComponent == CMP_RIGIDBODY) {
             auto *c = entity.GetComponent<ComponentRigidbody>();
 
             if (c != nullptr) [[likely]] {
@@ -708,7 +698,7 @@ namespace ImGuiDrawFunctions {
     }
 
     void SetImGuiFocus(const bool focus) {
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO &io = ImGui::GetIO();
         if (focus) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
         else io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
     }

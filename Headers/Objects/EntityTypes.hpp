@@ -5,8 +5,10 @@
 
 #include <cstdint>
 
-using EntityID = uint32_t;
-using LevelID = EntityID;
-using UIElementID = EntityID;
+using ID = uint32_t;
+using LevelID = ID; // Legacy. //todo remove
+using UIElementID = ID;
+
+constexpr ID INVALID_ID = std::numeric_limits<ID>::max();
 
 #endif // TILKY_ENGINE_ENTITY_TYPES_HPP

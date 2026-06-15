@@ -40,19 +40,19 @@ enum ComponentType {
 // region UI Components
 
 struct ComponentUIText {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     std::string text;
 };
 
 struct ComponentUISprite {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     int textureIndex{};
 };
 
 struct ComponentUITransform {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     Vector2 anchorMin = {0.5f, 0.5f};
     Vector2 anchorMax = {0.5f, 0.5f};
@@ -71,7 +71,7 @@ struct ComponentUITransform {
 // endregion
 
 struct ComponentRigidbody {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     bool isStatic = false;
     float mass = 1.0f;
@@ -93,7 +93,7 @@ enum ColliderType {
 };
 struct ComponentCollider {
     // Sphere Collider
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     ColliderType type = COLLIDERTYPE_SPHERE;
 
@@ -107,7 +107,7 @@ struct ComponentCollider {
 };
 
 struct ComponentPlayerController {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     // Physical player/camera-body position.
     // x = world/map X
@@ -137,7 +137,7 @@ struct ComponentPlayerController {
 };
 
 struct ComponentCamera {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     bool isActive = true;
 
@@ -163,7 +163,7 @@ struct ComponentCamera {
 
 // Custom Lua script written by the user
 struct ComponentScript {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     std::string fileName = "";
 
@@ -172,7 +172,7 @@ struct ComponentScript {
 
 // OpenAL Audio source. What sound it will play can change during gameplay.
 struct ComponentAudioSource {
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     std::string name; // OpenAL source name, e.g. "entity_4_audio"
     int soundIndex = -1;
@@ -208,7 +208,7 @@ struct ComponentAudioSource {
 // Every entity MUST have a transform component
 struct Sector;
 struct ComponentTransform {
-    EntityID ownerID = -1;
+    ID ownerID = -1;
     //                 World X, World Z, Height relative to the sector's floor
     Vector3 position = {.0f, .0f, .0f};
     float absHeight = .0f;
@@ -227,14 +227,14 @@ struct ComponentTransform {
 
 // Stores things related to the entity's visuals
 struct ComponentSprite {
-    EntityID ownerID = -1;
+    ID ownerID = -1;
 
     int textureIndex;
 };
 
 // MUST have a sprite component to work properly
 struct ComponentDecal {
-    EntityID ownerID = -1;
+    ID ownerID = -1;
 
     int wallIndex = -1;
 
@@ -251,21 +251,21 @@ struct ComponentDecal {
 template<typename T>
 struct ComponentStorage {
     std::vector<T> components;
-    std::unordered_map<EntityID, size_t> entityToIndex;
+    std::unordered_map<ID, size_t> entityToIndex;
 
-    T* Get(const EntityID id) {
+    T* Get(const ID id) {
         const auto it = entityToIndex.find(id);
         if (it == entityToIndex.end()) return nullptr;
         return &components[it->second];
     }
 
-    const T* Get(EntityID id) const {
+    const T* Get(ID id) const {
         const auto it = entityToIndex.find(id);
         if (it == entityToIndex.end()) return nullptr;
         return &components[it->second];
     }
 
-    T& Add(const EntityID id) {
+    T& Add(const ID id) {
         if (T* existing = Get(id)) return *existing;
         T component {};
         component.ownerID = id;
@@ -277,7 +277,7 @@ struct ComponentStorage {
         return components.back();
     }
 
-    bool Remove(const EntityID id) {
+    bool Remove(const ID id) {
         const auto it = entityToIndex.find(id);
         if (it == entityToIndex.end()) return false;
 
@@ -287,7 +287,7 @@ struct ComponentStorage {
         if (removeIndex != lastIndex) {
             components[removeIndex] = components[lastIndex];
 
-            const EntityID movedOwnerID = components[removeIndex].ownerID;
+            const ID movedOwnerID = components[removeIndex].ownerID;
             entityToIndex[movedOwnerID] = removeIndex;
         }
 
@@ -297,7 +297,7 @@ struct ComponentStorage {
         return true;
     }
 
-    bool Has(const EntityID id) const {
+    bool Has(const ID id) const {
         return entityToIndex.contains(id);
     }
 

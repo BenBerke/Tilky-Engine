@@ -108,7 +108,7 @@ namespace {
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
 
     bool editingEntity = false;
-    std::optional<EntityID> selectedEntityId;
+    std::optional<ID> selectedEntityId;
 
     bool editingWall = false;
     int selectedWall = -1;
@@ -120,7 +120,7 @@ namespace {
         entityInspectorState = {};
     }
 
-    Entity* FindEntityById(Level& level, const EntityID entityId) {
+    Entity* FindEntityById(Level& level, const ID entityId) {
         for (Entity& entity : level.entities) {
             if (entity.id == entityId) {
                 return &entity;
@@ -169,7 +169,7 @@ namespace RuntimeEditorUi {
                 );
 
             if (deleteRequested) {
-                const EntityID idToDelete = entityToEdit->id;
+                const ID idToDelete = entityToEdit->id;
 
                 editingEntity = false;
                 selectedEntityId.reset();
@@ -366,7 +366,7 @@ namespace RuntimeEditor {
             );
 
             if (hit->entity != nullptr) {
-                const EntityID hitEntityId = hit->entity->id;
+                const ID hitEntityId = hit->entity->id;
 
                 spdlog::info("Selected entity {}", hitEntityId);
 

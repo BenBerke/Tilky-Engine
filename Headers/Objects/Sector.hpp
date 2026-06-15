@@ -32,7 +32,7 @@ struct Sector {
     std::array<int, MAX_FLOOR_COUNT> ceilingTextureIndices = {};
     int floorTextureIndex = -1;
 
-    ID id = -1;
+    ID id = INVALID_ID;
     std::vector<Entity*> entitiesInside;
     std::vector<Sector*> neighbors;
 

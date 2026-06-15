@@ -16,13 +16,40 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "config.h"
+#include "Headers/Map/MapQueries.hpp"
 
-constexpr EntityID INVALID_ENTITY_ID = static_cast<EntityID>(-1);
+constexpr ID INVALID_ENTITY_ID = static_cast<ID>(-1);
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 namespace {
+    ID LoadIDField(const json& object, const char* key, const ID fallback = INVALID_ID) {
+        if (!object.contains(key)) return fallback;
+
+        const json& value = object[key];
+
+        if (value.is_number_integer()) {
+            const std::int64_t signedValue = value.get<std::int64_t>();
+
+            if (signedValue < 0)  return INVALID_ID;
+
+            if (signedValue > static_cast<std::int64_t>(std::numeric_limits<ID>::max())) return fallback;
+
+            return static_cast<ID>(signedValue);
+        }
+
+        if (value.is_number_unsigned()) {
+            const std::uint64_t unsignedValue = value.get<std::uint64_t>();
+
+            if (unsignedValue > static_cast<std::uint64_t>(std::numeric_limits<ID>::max())) return fallback;
+
+            return static_cast<ID>(unsignedValue);
+        }
+
+        return fallback;
+    }
+
     void SetError(std::string* errorMessage, const std::string& message) {
         if (errorMessage != nullptr) {
             *errorMessage = message;
@@ -43,7 +70,7 @@ namespace {
     }
 
     void RebuildNextEntityID(Level& level) {
-        EntityID highestID = 0;
+        ID highestID = 0;
 
         for (const Entity& entity : level.entities) {
             highestID = std::max(highestID, entity.id);
@@ -144,12 +171,12 @@ namespace {
             return;
         }
 
-        EntityID highestEntityID = 0;
+        ID highestEntityID = 0;
 
         for (const json& entityJson : levelData["entities"]) {
             Entity entity;
 
-            entity.id = entityJson.at("id").get<EntityID>();
+            entity.id = entityJson.at("id").get<ID>();
             entity.name = entityJson.value("name", "Entity");
             entity.attachedLevelId = level.id;
 
@@ -251,7 +278,11 @@ namespace {
             return;
         }
 
-        for (const json& wallJson : levelData["walls"]) {
+        ID highestWallID = 0;
+
+        for (int i = 0; i < static_cast<int>(levelData["walls"].size()); ++i) {
+            const json& wallJson = levelData["walls"][i];
+
             Vector2 start = {
                 wallJson["start"][0].get<float>(),
                 wallJson["start"][1].get<float>()
@@ -262,12 +293,7 @@ namespace {
                 wallJson["end"][1].get<float>()
             };
 
-            Vector4 color = {
-                255.0f,
-                255.0f,
-                255.0f,
-                255.0f
-            };
+            Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
 
             if (wallJson.contains("color")) {
                 color = {
@@ -278,31 +304,36 @@ namespace {
                 };
             }
 
-            const int frontSector = wallJson.value("frontSector", -1);
-            const int backSector = wallJson.value("backSector", -1);
-            const int textureIndex = wallJson.value("textureIndex", -1);
-            const int floor = wallJson.value("floor", 0);
-
-            level.walls.emplace_back(
+            Wall wall(
                 start,
                 end,
                 color,
-                frontSector,
-                backSector,
-                textureIndex,
-                floor
+                LoadIDField(wallJson, "frontSector", INVALID_ID),
+                LoadIDField(wallJson, "backSector", INVALID_ID),
+                wallJson.value("textureIndex", -1),
+                wallJson.value("floor", 0)
             );
+
+            wall.id = LoadIDField(wallJson, "id", static_cast<ID>(i));
+
+            if (wall.id == INVALID_ID) {
+                wall.id = static_cast<ID>(i);
+            }
+
+            highestWallID = std::max(highestWallID, wall.id);
+
+            level.walls.push_back(wall);
         }
+
+        level.nextWallID = std::max(level.nextWallID, highestWallID + 1);
     }
 
     void SaveWalls(json& levelData, const Level& level) {
         levelData["walls"] = json::array();
 
-        for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
-            const Wall& wall = level.walls[i];
-
+        for (const Wall& wall : level.walls) {
             levelData["walls"].push_back({
-                {"id", i},
+                {"id", wall.id},
                 {"start", {wall.start.x, wall.start.y}},
                 {"end", {wall.end.x, wall.end.y}},
                 {"color", {wall.color.x, wall.color.y, wall.color.z, wall.color.w}},
@@ -314,18 +345,30 @@ namespace {
         }
     }
 
-    void LoadSectors(const json& levelData, Level& level) {
+    void LoadSectors(const json &levelData, Level &level) {
         level.sectors.clear();
 
-        if (!levelData.contains("sectors")) {
-            return;
-        }
+        if (!levelData.contains("sectors")) return;
 
-        for (const json& sectorJson : levelData["sectors"]) {
+        ID highestSectorID = 0;
+
+        for (int i = 0; i < static_cast<int>(levelData["sectors"].size()); ++i) {
+            const json &sectorJson = levelData["sectors"][i];
+
             Sector sector;
             std::vector<Vector2> corners;
 
-            for (const json& cornerJson : sectorJson["corners"]) {
+            sector.id = LoadIDField(
+                sectorJson,
+                "id",
+                static_cast<ID>(i)
+            );
+
+            if (sector.id == INVALID_ID) sector.id = static_cast<ID>(i);
+
+            highestSectorID = std::max(highestSectorID, sector.id);
+
+            for (const json &cornerJson: sectorJson["corners"]) {
                 corners.emplace_back(
                     cornerJson["x"].get<float>(),
                     cornerJson["y"].get<float>()
@@ -361,36 +404,27 @@ namespace {
             sector.floorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
             sector.floorTextureIndex = sectorJson.value("floorTextureIndex", -1);
 
-            const int oldCeilingTexture =
-                sectorJson.value("ceilingTextureIndex", -1);
+            const int oldCeilingTexture = sectorJson.value("ceilingTextureIndex", -1);
 
             sector.ceilingTextureIndices.fill(oldCeilingTexture);
 
             if (sectorJson.contains("ceilingTextureIndices")) {
-                const json& ceilingTextureArray =
-                    sectorJson["ceilingTextureIndices"];
+                const json &ceilingTextureArray = sectorJson["ceilingTextureIndices"];
 
-                for (int i = 0;
-                     i < std::min<int>(
-                         static_cast<int>(ceilingTextureArray.size()),
-                         MAX_FLOOR_COUNT
-                     );
-                     ++i) {
-                    sector.ceilingTextureIndices[i] =
-                        ceilingTextureArray[i].get<int>();
-                }
+                for (int j = 0; j < std::min<int>(static_cast<int>(ceilingTextureArray.size()), MAX_FLOOR_COUNT); ++j)
+                    sector.ceilingTextureIndices[j] =ceilingTextureArray[j].get<int>();
             }
 
             level.sectors.push_back(sector);
         }
+
+        level.nextSectorID = std::max(level.nextSectorID, highestSectorID + 1);
     }
 
     void SaveSectors(json& levelData, const Level& level) {
         levelData["sectors"] = json::array();
 
-        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) {
-            const Sector& sector = level.sectors[i];
-
+        for (const Sector& sector : level.sectors) {
             json cornerArray = json::array();
 
             for (const Vector2& point : sector.vertices) {
@@ -407,7 +441,7 @@ namespace {
             }
 
             levelData["sectors"].push_back({
-                {"id", i},
+                {"id", sector.id},
                 {"corners", cornerArray},
                 {"ceilingHeight", sector.ceilingHeight},
                 {"floorHeight", sector.floorHeight},
@@ -443,7 +477,7 @@ namespace {
 
         if (componentsJson.contains("transforms")) {
             for (const json& transformJson : componentsJson["transforms"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -480,7 +514,7 @@ namespace {
 
         if (componentsJson.contains("sprites")) {
             for (const json& spriteJson : componentsJson["sprites"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -501,7 +535,7 @@ namespace {
 
         if (componentsJson.contains("decals")) {
             for (const json& decalJson : componentsJson["decals"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     decalJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -528,7 +562,7 @@ namespace {
 
         if (componentsJson.contains("audioSources")) {
             for (const json& audioSourceJson : componentsJson["audioSources"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -569,7 +603,7 @@ namespace {
 
         if (componentsJson.contains("scripts")) {
             for (const json& scriptJson : componentsJson["scripts"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     scriptJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -594,7 +628,7 @@ namespace {
 
         if (componentsJson.contains("uiTransforms")) {
             for (const json& transformJson : componentsJson["uiTransforms"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -650,7 +684,7 @@ namespace {
 
         if (componentsJson.contains("uiSprites")) {
             for (const json& spriteJson : componentsJson["uiSprites"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -671,7 +705,7 @@ namespace {
 
         if (componentsJson.contains("uiTexts")) {
             for (const json& textJson : componentsJson["uiTexts"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     textJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -692,7 +726,7 @@ namespace {
 
         if (componentsJson.contains("playerControllers")) {
             for (const json& controllerJson : componentsJson["playerControllers"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     controllerJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -731,7 +765,7 @@ namespace {
 
         if (componentsJson.contains("cameras")) {
             for (const json& cameraJson : componentsJson["cameras"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     cameraJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -776,7 +810,7 @@ namespace {
 
         if (componentsJson.contains("colliders")) {
             for (const json& colliderJson : componentsJson["colliders"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     colliderJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -808,7 +842,7 @@ namespace {
 
         if (componentsJson.contains("rigidbodies")) {
             for (const json& rigidBodyJson : componentsJson["rigidbodies"]) {
-                const EntityID ownerID =
+                const ID ownerID =
                     rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
@@ -1002,12 +1036,7 @@ namespace LevelSerialization {
         return ProjectManager::GetLevelsPath() / (cleanName + ".bson");
     }
 
-    bool LoadLevelFromFile(
-        const fs::path& levelFile,
-        Level& outLevel,
-        LevelExtraData* outExtraData,
-        std::string* errorMessage
-    ) {
+    bool LoadLevelFromFile(const fs::path& levelFile, Level& outLevel, LevelExtraData* outExtraData,std::string* errorMessage) {
         if (!fs::exists(levelFile)) {
             SetError(
                 errorMessage,
@@ -1058,9 +1087,9 @@ namespace LevelSerialization {
             LoadExtraData(levelData, outExtraData);
 
             LoadEntities(levelData, loadedLevel);
-            LoadComponents(levelData, loadedLevel);
             LoadWalls(levelData, loadedLevel);
             LoadSectors(levelData, loadedLevel);
+            LoadComponents(levelData, loadedLevel);
             LoadTextures(levelData, loadedLevel);
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
@@ -1083,6 +1112,9 @@ namespace LevelSerialization {
         }
 
         RebuildNextEntityID(loadedLevel);
+        RebuildNextEntityID(loadedLevel);
+        MapQueries::RebuildSectorRuntimeLinks(loadedLevel);
+
         outLevel = std::move(loadedLevel);
 
         return true;

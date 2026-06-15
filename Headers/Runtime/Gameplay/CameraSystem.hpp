@@ -61,7 +61,12 @@ namespace CameraSystem {
             camera.pitch
         );
 
-        const Vector3 cameraPositionEngine = {transform.position.x, transform.position.y, transform.position.z + transform.scale.y * .5f};
+        const Vector3 cameraPositionEngine = {
+            transform.position.x,
+            transform.position.y,
+            transform.position.z
+        };
+
         const Vector3 targetEngine = {
             cameraPositionEngine.x + camera.forward.x,
             cameraPositionEngine.y + camera.forward.y,

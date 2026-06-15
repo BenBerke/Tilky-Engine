@@ -6,177 +6,30 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
-#include <limits>
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp"
-#include "Headers/Map/MapQueries.hpp"
-#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
 namespace {
-    bool IsValidSectorIndex(const int index, const std::vector<Sector> &sectors) {
-        return index >= 0 && index < static_cast<int>(sectors.size());
-    }
-
-    float GetSectorHeight(const Sector &sector) {
-        return sector.ceilingHeight - sector.floorHeight;
-    }
-
-    int GetSafeFloorCount(const Sector &sector) {
-        return std::max(1, sector.floorCount);
-    }
-
-    float GetFloorBaseHeight(
-        const Sector &sector,
-        const int floorIndex
-    ) {
-        const float sectorHeight = GetSectorHeight(sector);
-
-        return sector.floorHeight +
-               sectorHeight * static_cast<float>(floorIndex);
-    }
-
-    float GetCurrentFloorBaseHeight(
-        const ComponentTransform &transform,
-        const std::vector<Sector> &sectors
-    ) {
-        if (!IsValidSectorIndex(transform.sectorIndex, sectors)) {
-            return 0.0f;
-        }
-
-        const Sector &sector = sectors[transform.sectorIndex];
-
-        const int floor = std::clamp(
-            transform.floor,
-            0,
-            GetSafeFloorCount(sector) - 1
-        );
-
-        return GetFloorBaseHeight(sector, floor);
-    }
-
-    float GetWorldBodyZ(
-        const ComponentTransform &transform,
-        const std::vector<Sector> &sectors
-    ) {
-        return GetCurrentFloorBaseHeight(transform, sectors) +
-               transform.position.z;
-    }
-
-    float GetWorldEyeZ(
-        const ComponentPlayerController &controller,
-        const ComponentTransform &transform,
-        const std::vector<Sector> &sectors
-    ) {
-        return GetWorldBodyZ(transform, sectors) + controller.eyeHeight;
-    }
-
-    Vector3 GetWorldEyePosition(
-        const ComponentPlayerController &controller,
-        const ComponentTransform &transform,
-        const std::vector<Sector> &sectors
+    Vector3 GetCameraPosition(
+        const ComponentPlayerController& controller,
+        const ComponentTransform& playerTransform
     ) {
         return {
-            transform.position.x,
-            transform.position.y,
-            GetWorldEyeZ(controller, transform, sectors)
+            playerTransform.position.x,
+            playerTransform.position.y,
+            playerTransform.absHeight + controller.eyeHeight
         };
     }
 
-    int GetFloorFromWorldEyeHeight(
-        const ComponentPlayerController &controller,
-        const Sector &sector,
-        const float worldEyeHeight
-    ) {
-        const float sectorHeight = GetSectorHeight(sector);
-
-        if (sectorHeight <= 0.0001f) {
-            return 0;
-        }
-
-        const int floorCount = GetSafeFloorCount(sector);
-
-        int bestFloor = 0;
-        float bestDifference = std::numeric_limits<float>::max();
-
-        for (int floor = 0; floor < floorCount; ++floor) {
-            const float candidateEyeHeight =
-                    GetFloorBaseHeight(sector, floor) + controller.eyeHeight;
-
-            const float difference =
-                    std::abs(candidateEyeHeight - worldEyeHeight);
-
-            if (difference < bestDifference) {
-                bestDifference = difference;
-                bestFloor = floor;
-            }
-        }
-
-        return bestFloor;
-    }
-
-    void RefreshCurrentEyeHeight(
-        ComponentPlayerController &controller,
-        const ComponentTransform &playerTransform,
-        const std::vector<Sector> &sectors
-    ) {
-        controller.currentEyeHeight =
-                GetWorldEyeZ(controller, playerTransform, sectors);
-    }
-
-    void EnterSectorKeepingWorldEyeHeight(
-        ComponentPlayerController &controller,
-        ComponentTransform &playerTransform,
-        const int newSector,
-        const std::vector<Sector> &sectors
-    ) {
-        if (!IsValidSectorIndex(newSector, sectors)) {
-            return;
-        }
-
-        const float oldWorldBodyZ =
-                GetWorldBodyZ(playerTransform, sectors);
-
-        const float oldWorldEyeZ =
-                oldWorldBodyZ + controller.eyeHeight;
-
-        const Sector &newSectorData = sectors[newSector];
-
-        const int newFloor = GetFloorFromWorldEyeHeight(
-            controller,
-            newSectorData,
-            oldWorldEyeZ
-        );
-
-        const float newFloorBase =
-                GetFloorBaseHeight(newSectorData, newFloor);
-
-        playerTransform.sectorIndex = newSector;
-        playerTransform.floor = newFloor;
-
-        // Keep the same world body height, but convert it into local height
-        // relative to the new sector floor.
-        playerTransform.position.z = oldWorldBodyZ - newFloorBase;
-
-        if (playerTransform.position.z < 0.0f) {
-            playerTransform.position.z = 0.0f;
-        }
-
-        RefreshCurrentEyeHeight(controller, playerTransform, sectors);
-    }
-
     void UpdateAudioListener(
-        const ComponentTransform &playerTransform,
-        const ComponentPlayerController &controller,
-        const ComponentCamera &camera,
-        const ComponentRigidbody &rigidbody,
-        const std::vector<Sector> &sectors
+        const ComponentTransform& playerTransform,
+        const ComponentPlayerController& controller,
+        const ComponentCamera& camera,
+        const ComponentRigidbody& rigidbody
     ) {
-        const Vector3 listenerPosition =
-                GetWorldEyePosition(controller, playerTransform, sectors);
-
-        SoundManager::SetListenerPosition(listenerPosition);
+        SoundManager::SetListenerPosition(GetCameraPosition(controller, playerTransform));
         SoundManager::SetListenerOrientation(camera.forward);
         SoundManager::SetListenerVelocity(rigidbody.velocity);
     }
@@ -185,45 +38,14 @@ namespace {
 namespace PlayerControllerSystem {
     void Start(
         ComponentPlayerController &controller,
-        ComponentTransform &playerTransform,
+        const ComponentTransform &playerTransform,
         const ComponentRigidbody &rigidbody,
         const ComponentCamera &camera,
         const std::vector<Sector> &sectors
     ) {
-        const Vector2 planarPosition = {
-            playerTransform.position.x,
-            playerTransform.position.y
-        };
+        (void) sectors;
 
-        int foundSector = MapQueries::FindSectorContainingPoint(
-            sectors,
-            planarPosition
-        );
-
-        if (foundSector == -1) foundSector = sectors.empty() ? -1 : 0;
-
-        playerTransform.sectorIndex = foundSector;
-
-        if (IsValidSectorIndex(playerTransform.sectorIndex, sectors)) {
-            const Sector &sector = sectors[playerTransform.sectorIndex];
-
-            playerTransform.floor = std::clamp(
-                playerTransform.floor,
-                0,
-                GetSafeFloorCount(sector) - 1
-            );
-
-            if (playerTransform.position.z < 0.0f) {
-                playerTransform.position.z = 0.0f;
-            }
-
-            RefreshCurrentEyeHeight(controller, playerTransform, sectors);
-        } else {
-            playerTransform.floor = 0;
-            RefreshCurrentEyeHeight(controller, playerTransform, sectors);
-        }
-
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody, sectors);
+        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 
     void Update(
@@ -239,23 +61,6 @@ namespace PlayerControllerSystem {
         // x = world X
         // y = world Z / planar depth
         // z = height
-        const Vector2 planarPosition = {
-            playerTransform.position.x,
-            playerTransform.position.y
-        };
-
-        const int detectedSector =
-                MapQueries::FindSectorContainingPoint(sectors, planarPosition);
-
-        if (detectedSector != -1 &&
-            detectedSector != playerTransform.sectorIndex) {
-            EnterSectorKeepingWorldEyeHeight(
-                controller,
-                playerTransform,
-                detectedSector,
-                sectors
-            );
-        }
 
         Vector2 input = {0.0f, 0.0f};
 
@@ -309,8 +114,8 @@ namespace PlayerControllerSystem {
             rigidbody.velocity.y = 0.0f;
         }
 
-        RefreshCurrentEyeHeight(controller, playerTransform, sectors);
+        (void)sectors;
 
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody, sectors);
+        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 }

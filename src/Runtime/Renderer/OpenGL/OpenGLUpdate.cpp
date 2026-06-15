@@ -10,7 +10,6 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/Objects/Wall.hpp"
 #include "Headers/UISystem.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -66,14 +65,10 @@ void OpenGL::Update() {
 
     if (!useEditorCamera) {
         for (const ComponentPlayerController& controller : level.playerControllers.components) {
-            if (!controller.isActive) {
-                continue;
-            }
+            if (!controller.isActive) continue;
 
-            // If the active camera is attached to the active player,
-            // use the player's world eye height for rendering.
             if (controller.ownerID == camera->ownerID) {
-                renderCameraTransform.position.z = controller.currentEyeHeight;
+                renderCameraTransform.position.z = cameraTransform->absHeight + controller.eyeHeight;
                 break;
             }
         }

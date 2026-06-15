@@ -13,15 +13,15 @@
 #include "../Math/Vector/Vector4.hpp"
 
 struct Wall {
-    EntityID id;
+    ID id = INVALID_ID;
 
     Vector2 start, end;
     Vector4 color;
     Vector2 textureOffset;
 
-    int frontSector = -1;
-    int backSector = -1;
-    int textureIndex = -1;
+    ID frontSector = INVALID_ID;
+    ID backSector = INVALID_ID;
+    int textureIndex = INVALID_ID;
 
     int floor = 0;
 

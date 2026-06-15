@@ -219,7 +219,7 @@ namespace {
 
     std::optional<std::string> pendingLevelToLoad;
 
-    Entity* FindEntityById(Level& level, const EntityID entityId) {
+    Entity* FindEntityById(Level& level, const ID entityId) {
         for (Entity& entity : level.entities) {
             if (entity.id == entityId) {
                 return &entity;
@@ -570,7 +570,7 @@ namespace {
         editingComponent = entityInspectorState.editingComponent;
 
         if (deleteRequested) {
-            const EntityID idToDelete = entity.id;
+            const ID idToDelete = entity.id;
 
             editingEntity = false;
             ResetInspectorState();

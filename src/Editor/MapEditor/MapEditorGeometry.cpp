@@ -311,20 +311,21 @@ namespace Editor {
 
         Wall copy = wall;
 
-        if (copy.id < 0) copy.id = level.nextWallID++;
-        level.nextWallID = std::max(level.nextWallID, copy.id + 1);
+        if (copy.id == INVALID_ID) copy.id = level.nextWallID++;
+        else level.nextWallID = std::max(level.nextWallID, copy.id + 1);
 
         level.walls.push_back(copy);
 
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
+
     void AddSector(const Sector& sector) {
         Level& level = LevelManager::CurrentLevel();
 
         Sector copy = sector;
 
-        if (copy.id < 0) copy.id = level.nextSectorID++;
-        level.nextSectorID = std::max(level.nextSectorID, copy.id + 1);
+        if (copy.id == INVALID_ID) copy.id = level.nextSectorID++;
+        else level.nextSectorID = std::max(level.nextSectorID, copy.id + 1);
 
         level.sectors.push_back(copy);
 

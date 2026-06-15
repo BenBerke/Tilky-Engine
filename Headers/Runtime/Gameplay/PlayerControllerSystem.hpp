@@ -49,7 +49,7 @@ namespace PlayerControllerSystem {
 
     void Start(
         ComponentPlayerController &controller,
-        ComponentTransform &playerTransform,
+        const ComponentTransform &playerTransform,
         const ComponentRigidbody &rigidbody,
         const ComponentCamera &camera,
         const std::vector<Sector> &sectors

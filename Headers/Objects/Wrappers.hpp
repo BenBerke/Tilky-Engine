@@ -12,7 +12,7 @@
 
 struct ScriptTransform {
     Level* level = nullptr;
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     [[nodiscard]] ComponentTransform* GetComponent() const {
         if (level == nullptr) {
@@ -86,7 +86,7 @@ struct ScriptTransform {
 
 struct ScriptSprite {
     Level* level = nullptr;
-    EntityID ownerID = -1;
+    ID ownerID = -1;
 
     int textureIndex{};
 
@@ -96,7 +96,7 @@ struct ScriptSprite {
 
 struct ScriptDecal {
     Level* level = nullptr;
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
     int wallIndex = -1;
 
@@ -111,7 +111,7 @@ struct ScriptDecal {
 
     // --- Getters ---
     [[nodiscard]] Level* GetLevel() const { return level; }
-    [[nodiscard]] EntityID GetOwnerID() const { return ownerID; }
+    [[nodiscard]] ID GetOwnerID() const { return ownerID; }
 
     [[nodiscard]] int GetWallIndex() const { return wallIndex; }
 
@@ -126,7 +126,7 @@ struct ScriptDecal {
 
     // --- Setters ---
     void SetLevel(Level* lvl) { level = lvl; }
-    void SetOwnerID(const EntityID id) { ownerID = id; }
+    void SetOwnerID(const ID id) { ownerID = id; }
 
     void SetWallIndex(const int index) { wallIndex = index; }
 
@@ -142,9 +142,9 @@ struct ScriptDecal {
 
 struct ScriptEntity {
     Level* level = nullptr;
-    EntityID ownerID = static_cast<EntityID>(-1);
+    ID ownerID = static_cast<ID>(-1);
 
-    [[nodiscard]] EntityID GetID() const {
+    [[nodiscard]] ID GetID() const {
         return ownerID;
     }
 

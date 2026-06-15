@@ -155,7 +155,7 @@ namespace {
             ImGui::PushID("entity_buttons");
 
             if (ImGui::Button(Get("common.delete").c_str())) {
-                const EntityID idToDelete = entity.id;
+                const ID idToDelete = entity.id;
 
                 editingComponent = false;
                 selectedComponent = -1;

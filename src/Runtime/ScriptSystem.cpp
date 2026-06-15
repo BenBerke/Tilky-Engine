@@ -94,7 +94,7 @@ namespace {
 
 namespace {
     struct ScriptInstance {
-        EntityID ownerID = static_cast<EntityID>(-1);
+        ID ownerID = static_cast<ID>(-1);
         std::string scriptFile;
 
         sol::environment environment;

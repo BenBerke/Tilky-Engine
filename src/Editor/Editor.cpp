@@ -19,7 +19,7 @@
 
 namespace Editor {
     std::vector<Level> levels;
-    EntityID currentLevels = 0;
+    ID currentLevels = 0;
 
     void Start() {
         using namespace MapEditorInternal;

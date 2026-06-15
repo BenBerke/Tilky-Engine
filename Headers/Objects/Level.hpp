@@ -33,7 +33,7 @@ struct Level {
 
     std::vector<Entity> entities;
 
-    EntityID nextEntityID = 1;
+    ID nextEntityID = 1;
 
     std::vector<Wall> walls;
     std::vector<Sector> sectors;
@@ -64,10 +64,10 @@ struct Level {
     ComponentStorage<ComponentUISprite> ui_sprites;
     ComponentStorage<ComponentUIText> ui_texts;
 
-    Entity* GetEntity(EntityID entityID);
-    const Entity* GetEntity(EntityID entityID) const;
-    EntityID CreateEntity(bool uiEntity);
-    void DestroyEntity(EntityID entityID);
+    Entity* GetEntity(ID entityID);
+    const Entity* GetEntity(ID entityID) const;
+    ID CreateEntity(bool uiEntity);
+    void DestroyEntity(ID entityID);
     void DestroyEntity(const Entity& entity);
 };
 
