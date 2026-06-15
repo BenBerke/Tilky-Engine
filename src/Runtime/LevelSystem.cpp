@@ -15,6 +15,200 @@
 #include "Headers/Runtime/ScriptSystem.hpp"
 
 namespace {
+    constexpr float FLOOR_EPSILON = 0.0001f;
+
+    int GetSafeFloorCount(const Sector &sector) {
+        return std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
+    }
+
+    int GetTransformFloorIndex(const ComponentTransform &transform) {
+        return static_cast<int>(transform.floor);
+    }
+
+    int ClampFloorIndex(const Sector &sector, const int floorIndex) {
+        return std::clamp(floorIndex, 0, GetSafeFloorCount(sector) - 1);
+    }
+
+    float GetSectorStoreyHeight(const Sector &sector) {
+        return sector.ceilingHeight - sector.floorHeight;
+    }
+
+    float GetFloorWorldHeight(const Sector &sector, const int floorIndex) {
+        const int clampedFloor = ClampFloorIndex(sector, floorIndex);
+        return sector.floorHeight + GetSectorStoreyHeight(sector) * static_cast<float>(clampedFloor);
+    }
+
+    float GetCeilingWorldHeight(const Sector &sector, const int floorIndex) {
+        const int clampedFloor = ClampFloorIndex(sector, floorIndex);
+        return sector.floorHeight + GetSectorStoreyHeight(sector) * static_cast<float>(clampedFloor + 1);
+    }
+
+    int GetFloorIndexFromWorldHeight(const Sector &sector, const float worldHeight) {
+        const float storeyHeight = GetSectorStoreyHeight(sector);
+
+        if (storeyHeight <= FLOOR_EPSILON) {
+            return 0;
+        }
+
+        const float localHeightFromSectorBase = worldHeight - sector.floorHeight;
+
+        int floorIndex = static_cast<int>(std::floor(localHeightFromSectorBase / storeyHeight));
+
+        return ClampFloorIndex(sector, floorIndex);
+    }
+
+    float GetColliderHeight(const ComponentCollider *collider) {
+        if (collider == nullptr) {
+            return 0.0f;
+        }
+
+        if (collider->type == COLLIDERTYPE_SPHERE) {
+            return collider->scale.x * 2.0f; // scale.x is radius in your sphere code
+        }
+
+        if (collider->type == COLLIDERTYPE_BOX) {
+            return collider->scale.z; // transform.z is vertical, so collider.scale.z is vertical height
+        }
+
+        return 0.0f;
+    }
+
+    float GetColliderCenterOffsetFromBottom(const ComponentCollider &collider) {
+        if (collider.type == COLLIDERTYPE_SPHERE) {
+            return collider.scale.x;
+        }
+
+        if (collider.type == COLLIDERTYPE_BOX) {
+            return collider.scale.z * 0.5f;
+        }
+
+        return 0.0f;
+    }
+
+    Vector3 GetColliderCollisionSize(const ComponentCollider &collider) {
+        if (collider.type == COLLIDERTYPE_BOX) {
+            // Collision-space:
+            // x = world X
+            // y = world height
+            // z = world depth
+            return {
+                collider.scale.x,
+                collider.scale.z,
+                collider.scale.y
+            };
+        }
+
+        if (collider.type == COLLIDERTYPE_SPHERE) {
+            const float diameter = collider.scale.x * 2.0f;
+            return {diameter, diameter, diameter};
+        }
+
+        return {0.0f, 0.0f, 0.0f};
+    }
+
+    bool HasValidSector(const Level &level, const ComponentTransform &transform) {
+        return transform.sectorIndex >= 0 &&
+               transform.sectorIndex < static_cast<int>(level.sectors.size());
+    }
+
+    float GetTransformFloorWorldHeight(const Level &level, const ComponentTransform &transform) {
+        if (!HasValidSector(level, transform)) {
+            return 0.0f;
+        }
+
+        const Sector &sector = level.sectors[transform.sectorIndex];
+        return GetFloorWorldHeight(sector, GetTransformFloorIndex(transform));
+    }
+
+    float GetTransformWorldBottomHeight(const Level &level, const ComponentTransform &transform) {
+        return GetTransformFloorWorldHeight(level, transform) + transform.position.z;
+    }
+
+    Vector3 GetColliderWorldCenter(
+        const Level &level,
+        const ComponentTransform &transform,
+        const ComponentCollider &collider
+    ) {
+        return {
+            transform.position.x,
+            GetTransformWorldBottomHeight(level, transform) + GetColliderCenterOffsetFromBottom(collider),
+            transform.position.y
+        };
+    }
+
+    bool AreOnSameCollisionFloor(
+        const ComponentTransform &a,
+        const ComponentTransform &b
+    ) {
+        return GetTransformFloorIndex(a) == GetTransformFloorIndex(b);
+    }
+
+    void UpdateTransformAbsHeight(Level &level, ComponentTransform &transform) {
+        if (!HasValidSector(level, transform)) {
+            transform.absHeight = transform.position.z;
+            return;
+        }
+
+        const Sector &sector = level.sectors[transform.sectorIndex];
+
+        transform.floor = ClampFloorIndex(
+            sector,
+            GetTransformFloorIndex(transform)
+        );
+
+        transform.absHeight =
+                GetFloorWorldHeight(sector, GetTransformFloorIndex(transform)) +
+                transform.position.z;
+    }
+
+    void ResolveTransformAgainstCurrentFloor(
+        Level &level,
+        ComponentTransform &transform,
+        const ComponentCollider *collider,
+        ComponentRigidbody *rigidbody
+    ) {
+        if (!HasValidSector(level, transform)) {
+            return;
+        }
+
+        Sector &sector = level.sectors[transform.sectorIndex];
+
+        transform.floor = ClampFloorIndex(
+            sector,
+            GetTransformFloorIndex(transform)
+        );
+
+        const float storeyHeight = GetSectorStoreyHeight(sector);
+        const float colliderHeight = GetColliderHeight(collider);
+
+        // position.z is local bottom height inside the current floor.
+        const float maxBottomZ = std::max(0.0f, storeyHeight - colliderHeight);
+
+        if (transform.position.z < 0.0f) {
+            transform.position.z = 0.0f;
+
+            if (rigidbody != nullptr && rigidbody->velocity.z < 0.0f) {
+                rigidbody->velocity.z = 0.0f;
+            }
+
+            transform.isDirty = true;
+        }
+
+        if (transform.position.z > maxBottomZ) {
+            transform.position.z = maxBottomZ;
+
+            if (rigidbody != nullptr && rigidbody->velocity.z > 0.0f) {
+                rigidbody->velocity.z = 0.0f;
+            }
+
+            transform.isDirty = true;
+        }
+
+        UpdateTransformAbsHeight(level, transform);
+    }
+}
+
+namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
         for (ComponentPlayerController &controller: level.playerControllers.components)
             if (controller.isActive) return &controller;
@@ -87,35 +281,40 @@ namespace {
     // circleCollider.scale.x = radius
     // squareCollider.scale.xyz = full box size
     bool CircleAABBCollision(Level &level, ComponentCollider &squareCollider, ComponentCollider &circleCollider) {
-        if (squareCollider.type != COLLIDERTYPE_BOX || circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] return
-                false;
-        if (squareCollider.isTrigger || circleCollider.isTrigger) return false;
+        if (squareCollider.type != COLLIDERTYPE_BOX ||
+            circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] {
+            return false;
+        }
+
+        if (squareCollider.isTrigger || circleCollider.isTrigger) {
+            return false;
+        }
 
         ComponentTransform *squareTransform = level.transforms.Get(squareCollider.ownerID);
         ComponentTransform *circleTransform = level.transforms.Get(circleCollider.ownerID);
 
-        if (squareTransform == nullptr || circleTransform == nullptr) [[unlikely]] return false;
+        if (squareTransform == nullptr || circleTransform == nullptr) [[unlikely]] {
+            return false;
+        }
+
+        // New: do not collide across different sector floors.
+        if (!AreOnSameCollisionFloor(*squareTransform, *circleTransform)) {
+            return false;
+        }
 
         ComponentRigidbody *squareRb = level.rigidbodies.Get(squareCollider.ownerID);
         ComponentRigidbody *circleRb = level.rigidbodies.Get(circleCollider.ownerID);
 
-        const Vector3 squarePos = {
-            squareTransform->position.x,
-            squareTransform->position.z,
-            squareTransform->position.y
-        };
+        const Vector3 squarePos =
+                GetColliderWorldCenter(level, *squareTransform, squareCollider);
 
-        const Vector3 circlePos = {
-            circleTransform->position.x,
-            circleTransform->position.z,
-            circleTransform->position.y
-        };
+        const Vector3 circlePos =
+                GetColliderWorldCenter(level, *circleTransform, circleCollider);
 
-        const Vector3 halfSize = {
-            squareCollider.scale.x * 0.5f,
-            squareCollider.scale.z * 0.5f,
-            squareCollider.scale.y * 0.5f
-        };
+        const Vector3 squareSize =
+                GetColliderCollisionSize(squareCollider);
+
+        const Vector3 halfSize = squareSize * 0.5f;
 
         const float circleRadius = circleCollider.scale.x;
 
@@ -136,9 +335,12 @@ namespace {
         closestPoint.y = std::max(boxMin.y, std::min(circlePos.y, boxMax.y));
         closestPoint.z = std::max(boxMin.z, std::min(circlePos.z, boxMax.z));
 
-        const float distanceSquared = Vector3Math::DistanceSquared(circlePos, closestPoint);
+        const float distanceSquared =
+                Vector3Math::DistanceSquared(circlePos, closestPoint);
 
-        if (distanceSquared >= circleRadius * circleRadius) return false;
+        if (distanceSquared >= circleRadius * circleRadius) {
+            return false;
+        }
 
         Vector3 pushDirection;
         float overlap = 0.0f;
@@ -182,6 +384,7 @@ namespace {
             overlap = circleRadius + smallestDistance;
         } else {
             const float distance = std::sqrt(distanceSquared);
+
             overlap = circleRadius - distance;
             pushDirection = (circlePos - closestPoint) / distance;
         }
@@ -192,7 +395,9 @@ namespace {
         const bool squareStatic = squareRb == nullptr || squareRb->isStatic;
         const bool circleStatic = circleRb == nullptr || circleRb->isStatic;
 
-        if (squareStatic && circleStatic) [[unlikely]] return true;
+        if (squareStatic && circleStatic) [[unlikely]] {
+            return true;
+        }
 
         if (squareStatic) {
             squareWeight = 0.0f;
@@ -202,44 +407,82 @@ namespace {
             circleWeight = 0.0f;
         }
 
+        // Collision-space:
+        // x = world X
+        // y = world height
+        // z = world depth
         const Vector3 squarePush = pushDirection * -overlap * squareWeight;
         const Vector3 circlePush = pushDirection * overlap * circleWeight;
 
-        bool squareBlockedByWall = false;
+        auto IsPushBlockedByWall = [&level](
+            ComponentTransform *transform,
+            const Vector3 &push,
+            const float horizontalRadius
+        ) -> bool {
+            if (transform == nullptr) [[unlikely]] {
+                return false;
+            }
 
-        if (squareWeight > 0.0f && squareTransform->sectorIndex >= 0 && squareTransform->sectorIndex < static_cast<int>(
-                level.sectors.size())) {
-            const Sector &squareSector =
-                    level.sectors[squareTransform->sectorIndex];
+            // Vertical-only push cannot hit a wall.
+            if (std::abs(push.x) < 0.000001f &&
+                std::abs(push.z) < 0.000001f) {
+                return false;
+            }
 
-            const Vector2 candidateSquarePos = {
-                squareTransform->position.x + squarePush.x,
-                squareTransform->position.y + squarePush.z
+            if (transform->sectorIndex < 0 ||
+                transform->sectorIndex >= static_cast<int>(level.sectors.size())) {
+                return false;
+            }
+
+            const Sector &sector = level.sectors[transform->sectorIndex];
+
+            const Vector2 candidatePos = {
+                transform->position.x + push.x,
+                transform->position.y + push.z
             };
 
-            // Horizontal footprint uses collision-space x/z.
-            const float squareRadius = std::max(halfSize.x, halfSize.z);
-
-            for (const Wall &wall: squareSector.walls) {
+            for (const Wall &wall: sector.walls) {
                 const Vector2 v = wall.vector;
 
                 const float vDotV = Vector2Math::Dot(v, v);
-                if (vDotV <= 0.001f) continue;
+                if (vDotV <= 0.001f) {
+                    continue;
+                }
 
-                const Vector2 w = candidateSquarePos - wall.start;
+                const Vector2 w = candidatePos - wall.start;
 
                 float t = Vector2Math::Dot(w, v) / vDotV;
                 t = std::max(0.0f, std::min(1.0f, t));
 
                 const Vector2 closestWallPoint = wall.start + t * v;
 
-                const float wallDistanceSquared = Vector2Math::DistanceSquared(candidateSquarePos, closestWallPoint);
+                const float wallDistanceSquared =
+                        Vector2Math::DistanceSquared(candidatePos, closestWallPoint);
 
-                if (wallDistanceSquared < squareRadius * squareRadius) {
-                    squareBlockedByWall = true;
-                    break;
+                if (wallDistanceSquared < horizontalRadius * horizontalRadius) {
+                    return true;
                 }
             }
+
+            return false;
+        };
+
+        const float squareHorizontalRadius =
+                std::max(halfSize.x, halfSize.z);
+
+        const float circleHorizontalRadius =
+                circleRadius;
+
+        const bool squareBlockedByWall =
+                squareWeight > 0.0f &&
+                IsPushBlockedByWall(squareTransform, squarePush, squareHorizontalRadius);
+
+        const bool circleBlockedByWall =
+                circleWeight > 0.0f &&
+                IsPushBlockedByWall(circleTransform, circlePush, circleHorizontalRadius);
+
+        if (squareBlockedByWall && circleBlockedByWall) {
+            return true;
         }
 
         if (squareBlockedByWall) {
@@ -251,19 +494,67 @@ namespace {
                     fullCirclePush.z,
                     fullCirclePush.y
                 });
+
+                ResolveTransformAgainstCurrentFloor(
+                    level,
+                    *circleTransform,
+                    &circleCollider,
+                    circleRb
+                );
             }
-        } else {
+
+            return true;
+        }
+
+        if (circleBlockedByWall) {
+            if (!squareStatic) {
+                const Vector3 fullSquarePush = pushDirection * -overlap;
+
+                squareTransform->AddPosition({
+                    fullSquarePush.x,
+                    fullSquarePush.z,
+                    fullSquarePush.y
+                });
+
+                ResolveTransformAgainstCurrentFloor(
+                    level,
+                    *squareTransform,
+                    &squareCollider,
+                    squareRb
+                );
+            }
+
+            return true;
+        }
+
+        if (squareWeight > 0.0f) {
             squareTransform->AddPosition({
                 squarePush.x,
                 squarePush.z,
                 squarePush.y
             });
 
+            ResolveTransformAgainstCurrentFloor(
+                level,
+                *squareTransform,
+                &squareCollider,
+                squareRb
+            );
+        }
+
+        if (circleWeight > 0.0f) {
             circleTransform->AddPosition({
                 circlePush.x,
                 circlePush.z,
                 circlePush.y
             });
+
+            ResolveTransformAgainstCurrentFloor(
+                level,
+                *circleTransform,
+                &circleCollider,
+                circleRb
+            );
         }
 
         return true;
@@ -344,8 +635,8 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Transform setup");
-            for (ComponentTransform& transform : level.transforms.components) {
-                Entity* owner = level.GetEntity(transform.ownerID);
+            for (ComponentTransform &transform: level.transforms.components) {
+                Entity *owner = level.GetEntity(transform.ownerID);
 
                 if (!owner) [[unlikely]] {
                     spdlog::error("Transform owner {} does not exist", transform.ownerID);
@@ -359,21 +650,21 @@ namespace LevelSystem {
         if (activeController != nullptr && activeController->isActive) {
             const EntityID ownerID = activeController->ownerID;
 
-            ComponentTransform* playerTransform = level.transforms.Get(ownerID);
+            ComponentTransform *playerTransform = level.transforms.Get(ownerID);
             if (!playerTransform) [[unlikely]] {
                 spdlog::error("Player controller entity {} has no transform", ownerID);
                 return;
             }
 
-            ComponentRigidbody* playerRigidbody = level.rigidbodies.Get(ownerID);
+            ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
             if (!playerRigidbody) [[unlikely]] {
                 spdlog::error("Player controller entity {} has no rigidbody", ownerID);
                 return;
             }
 
-            ComponentCollider* playerCollider = level.colliders.Get(ownerID);
+            ComponentCollider *playerCollider = level.colliders.Get(ownerID);
 
-            ComponentCamera* activeCamera = GetActiveCamera(level);
+            ComponentCamera *activeCamera = GetActiveCamera(level);
             if (!activeCamera) [[unlikely]] {
                 spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
                 return;
@@ -394,31 +685,39 @@ namespace LevelSystem {
             ScriptSystem::Update(level);
         }
 
-
         {
             ZoneScopedN("Physics");
 
-            for (ComponentRigidbody& r : level.rigidbodies.components) {
-                ComponentTransform* transform = level.transforms.Get(r.ownerID);
+            for (ComponentRigidbody &r: level.rigidbodies.components) {
+                ComponentTransform *transform = level.transforms.Get(r.ownerID);
 
                 if (!transform) [[unlikely]] {
                     spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
                     continue;
                 }
 
-                if (transform->position.z > 0.0f) r.ApplyGravity(level.worldSettings.gravity);
+                ComponentCollider *collider = level.colliders.Get(r.ownerID);
 
-                if (transform->position.z <= 0.0f) {
-                    transform->position.z = 0.0f;
-
-                    if (r.velocity.z < 0.0f) r.velocity.z = 0.0f;
+                if (!HasValidSector(level, *transform)) {
+                    continue;
                 }
 
-                if (r.velocity.IsZero()) continue;
+                ResolveTransformAgainstCurrentFloor(level, *transform, collider, &r);
 
-                transform->AddPosition(r.velocity * GameTime::deltaTime);
+                const bool isOnCurrentFloor = transform->position.z <= FLOOR_EPSILON;
 
-                r.ApplyFriction(0); // Applies rigidbody's base friction
+                // Apply gravity if airborne, falling, or moving upward.
+                if (!isOnCurrentFloor || r.velocity.z > 0.0f || r.velocity.z < 0.0f) {
+                    r.ApplyGravity(level.worldSettings.gravity);
+                }
+
+                if (!r.velocity.IsZero()) {
+                    transform->AddPosition(r.velocity * GameTime::deltaTime);
+                }
+
+                ResolveTransformAgainstCurrentFloor(level, *transform, collider, &r);
+
+                r.ApplyFriction(0);
                 r.ApplyAirResistance(0);
             }
         }
@@ -462,18 +761,8 @@ namespace LevelSystem {
                     }
 
                     const Vector3 selfSize = selfCollider.scale;
-
-                    const Vector3 selfCollisionPos = {
-                        selfTransform->position.x,
-                        selfTransform->position.z,
-                        selfTransform->position.y
-                    };
-
-                    const Vector3 selfCollisionSize = {
-                        selfCollider.scale.x,
-                        selfCollider.scale.z,
-                        selfCollider.scale.y
-                    };
+                    const Vector3 selfCollisionPos = GetColliderWorldCenter(level, *selfTransform, selfCollider);
+                    const Vector3 selfCollisionSize = GetColliderCollisionSize(selfCollider);
 
                     for (Entity *otherEntity: allEntities) {
                         if (otherEntity == nullptr) [[unlikely]] continue;
@@ -491,18 +780,12 @@ namespace LevelSystem {
                         if (otherTransform == nullptr) [[unlikely]] continue;
 
                         const Vector3 otherSize = otherCollider->scale;
+                        if (!AreOnSameCollisionFloor(*selfTransform, *otherTransform)) continue;
 
-                        const Vector3 otherCollisionPos = {
-                            otherTransform->position.x,
-                            otherTransform->position.z,
-                            otherTransform->position.y
-                        };
+                        const Vector3 otherCollisionPos =
+                                GetColliderWorldCenter(level, *otherTransform, *otherCollider);
 
-                        const Vector3 otherCollisionSize = {
-                            otherCollider->scale.x,
-                            otherCollider->scale.z,
-                            otherCollider->scale.y
-                        };
+                        const Vector3 otherCollisionSize = GetColliderCollisionSize(*otherCollider);
 
                         if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_SPHERE) {
                             const float minDistance = otherSize.x + selfSize.x;
@@ -596,6 +879,13 @@ namespace LevelSystem {
                                         fullPush.z,
                                         fullPush.y
                                     });
+
+                                    ResolveTransformAgainstCurrentFloor(
+                                        level,
+                                        *selfTransform,
+                                        &selfCollider,
+                                        selfRb
+                                    );
                                 } else {
                                     selfTransform->AddPosition({
                                         selfPush.x,
@@ -608,6 +898,20 @@ namespace LevelSystem {
                                         otherPush.z,
                                         otherPush.y
                                     });
+
+                                    ResolveTransformAgainstCurrentFloor(
+                                        level,
+                                        *selfTransform,
+                                        &selfCollider,
+                                        selfRb
+                                    );
+
+                                    ResolveTransformAgainstCurrentFloor(
+                                        level,
+                                        *otherTransform,
+                                        otherCollider,
+                                        otherRb
+                                    );
                                 }
                             }
                         } else if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_BOX)
@@ -749,9 +1053,7 @@ namespace LevelSystem {
                                         otherWeight > 0.0f &&
                                         IsBoxBlockedByWall(otherTransform, otherPush, otherHalfSize);
 
-                                if (selfBlockedByWall && otherBlockedByWall) {
-                                    continue;
-                                }
+                                if (selfBlockedByWall && otherBlockedByWall) continue;
 
                                 if (selfBlockedByWall) {
                                     if (!bStatic) {
@@ -762,6 +1064,13 @@ namespace LevelSystem {
                                             fullOtherPush.z,
                                             fullOtherPush.y
                                         });
+
+                                        ResolveTransformAgainstCurrentFloor(
+                                            level,
+                                            *otherTransform,
+                                            otherCollider,
+                                            otherRb
+                                        );
                                     }
                                 } else if (otherBlockedByWall) {
                                     if (!aStatic) {
@@ -772,6 +1081,13 @@ namespace LevelSystem {
                                             fullSelfPush.z,
                                             fullSelfPush.y
                                         });
+
+                                        ResolveTransformAgainstCurrentFloor(
+                                            level,
+                                            *selfTransform,
+                                            &selfCollider,
+                                            selfRb
+                                        );
                                     }
                                 } else {
                                     selfTransform->AddPosition({
@@ -785,35 +1101,29 @@ namespace LevelSystem {
                                         otherPush.z,
                                         otherPush.y
                                     });
+
+                                    ResolveTransformAgainstCurrentFloor(
+                                        level,
+                                        *selfTransform,
+                                        &selfCollider,
+                                        selfRb
+                                    );
+
+                                    ResolveTransformAgainstCurrentFloor(
+                                        level,
+                                        *otherTransform,
+                                        otherCollider,
+                                        otherRb
+                                    );
                                 }
                             }
                         }
                     }
-                    auto GetSectorFloorWorldHeight = [](const Sector &sector, int floorIndex) -> float {
-                        const int clampedFloor = std::clamp(
-                            floorIndex,
-                            0,
-                            std::max(1, sector.floorCount) - 1
-                        );
-
-                        const float sectorHeight = sector.ceilingHeight - sector.floorHeight;
-
-                        return sector.floorHeight + sectorHeight * static_cast<float>(clampedFloor);
-                    };
-
                     auto GetColliderRequiredGap = [](const ComponentCollider &collider) -> float {
-                        if (collider.type == COLLIDERTYPE_SPHERE) {
-                            return collider.scale.x; // radius
-                        }
-
-                        if (collider.type == COLLIDERTYPE_BOX) {
-                            return collider.scale.y;
-                        }
-
-                        return 0.0f;
+                        return GetColliderHeight(&collider);
                     };
 
-                    auto CanStepIntoSector = [&level, &GetSectorFloorWorldHeight, &GetColliderRequiredGap](
+                    auto CanStepIntoSector = [&level, &GetColliderRequiredGap](
                         const ComponentTransform &transform,
                         const ComponentCollider &collider,
                         int currentSectorIndex,
@@ -829,30 +1139,46 @@ namespace LevelSystem {
                         const Sector &currentSector = level.sectors[currentSectorIndex];
                         const Sector &targetSector = level.sectors[targetSectorIndex];
 
-                        const float currentFloorHeight =
-                                GetSectorFloorWorldHeight(currentSector, transform.floor);
+                        const int currentFloor = ClampFloorIndex(
+                            currentSector,
+                            GetTransformFloorIndex(transform)
+                        );
 
-                        const float targetFloorHeight =
-                                GetSectorFloorWorldHeight(targetSector, transform.floor);
+                        // For now, horizontal portals keep the same floor index.
+                        if (currentFloor >= GetSafeFloorCount(targetSector)) return false;
 
-                        const float targetGap =
-                                targetSector.ceilingHeight - targetSector.floorHeight;
-
-                        const float requiredGap =
-                                GetColliderRequiredGap(collider);
+                        const float currentFloorHeight = GetFloorWorldHeight(currentSector, currentFloor);
+                        const float targetFloorHeight = GetFloorWorldHeight(targetSector, currentFloor);
+                        const float targetCeilingHeight = GetCeilingWorldHeight(targetSector, currentFloor);
+                        const float targetGap = targetCeilingHeight - targetFloorHeight;
+                        const float requiredGap = GetColliderRequiredGap(collider);
 
                         if (targetGap < requiredGap) {
                             return false;
                         }
 
-                        const float stepHeight = targetFloorHeight - currentFloorHeight;
+                        const float currentWorldBottom =
+                                currentFloorHeight + transform.position.z;
 
-                        // Going down should always be allowed as long as the target sector has enough vertical gap.
+                        const float targetLocalBottom =
+                                currentWorldBottom - targetFloorHeight;
+
+                        // Would the object fit vertically inside the target floor?
+                        if (targetLocalBottom < -collider.stepSize) {
+                            return false;
+                        }
+
+                        if (targetLocalBottom + requiredGap > targetGap + collider.stepSize) {
+                            return false;
+                        }
+
+                        const float stepHeight =
+                                targetFloorHeight - currentFloorHeight;
+
                         if (stepHeight <= 0.0f) {
                             return true;
                         }
 
-                        // Going up requires step size + current local height.
                         return stepHeight <= collider.stepSize + transform.position.z;
                     };
 
@@ -1006,6 +1332,13 @@ namespace LevelSystem {
 
                             selfTransform->AddPosition({push.x, push.y, 0.0f});
 
+                            ResolveTransformAgainstCurrentFloor(
+                                level,
+                                *selfTransform,
+                                &selfCollider,
+                                selfRb
+                            );
+
                             const float velocityIntoWall =
                                     selfRb->velocity.x * pushDirection.x +
                                     selfRb->velocity.y * pushDirection.y;
@@ -1114,14 +1447,6 @@ namespace LevelSystem {
             }
         } // Zone Collision
 
-        for (ComponentTransform &transform: level.transforms.components) {
-            transform.isDirty = false;
-        }
-
-        // Future systems should still run here.
-        // Example:
-        // PhysicsSystem::Update(*this);
-        // AnimationSystem::Update(*this);
-        // TriggerSystem::Update(*this);
+        for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;
     }
 }

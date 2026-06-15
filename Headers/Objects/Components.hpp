@@ -119,6 +119,8 @@ struct ComponentPlayerController {
     float speed = 46.0f;
     float runningSpeed = 90.0f;
 
+    float jumpPower = 100.0f;
+
     // Eye height above the current floor.
     float eyeHeight = 12.0f;
 

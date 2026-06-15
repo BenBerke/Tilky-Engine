@@ -107,13 +107,13 @@ namespace {
         listenerSettings.speedOfSound = std::max(1.0f, listenerSettings.speedOfSound);
     }
 
-    if (levelStatsJson.contains("worldSettings") &&
-        levelStatsJson["worldSettings"].is_object()) {
-        const json &worldSettingsJson = levelStatsJson["worldSettings"];
-        WorldSettings &worldSettings = level.worldSettings;
+        if (levelStatsJson.contains("worldSettings") &&
+            levelStatsJson["worldSettings"].is_object()) {
+            const json &worldSettingsJson = levelStatsJson["worldSettings"];
+            WorldSettings &worldSettings = level.worldSettings;
 
-        worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
-    }
+            worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+        }
     }
 
     void SaveLevelStats(json &levelData, const Level &level) {
@@ -712,6 +712,7 @@ namespace {
                 c.isActive = controllerJson.value("isActive", true);
                 c.speed = controllerJson.value("speed", 46.0f);
                 c.runningSpeed = controllerJson.value("runningSpeed", 90.0f);
+                c.jumpPower = controllerJson.value("jumpPower", 100.0f);
                 c.eyeHeight = controllerJson.value("eyeHeight", 12.0f);
                 c.friction = controllerJson.value("friction", 0.8f);
                 c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
@@ -933,6 +934,7 @@ namespace {
                 {"isActive", c.isActive},
                 {"velocity", {c.velocity.x, c.velocity.y, c.velocity.z}},
                 {"speed", c.speed},
+                {"jumpPower", c.jumpPower},
                 {"runningSpeed", c.runningSpeed},
                 {"eyeHeight", c.eyeHeight},
                 {"friction", c.friction},

@@ -264,19 +264,19 @@ namespace PlayerControllerSystem {
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE) && rigidbody.velocity.z <= 0.0001f)
+            rigidbody.velocity.z += controller.jumpPower;
+
         controller.currentSpeed =
                 InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
                 InputManager::GetKey(SDL_SCANCODE_W)
                     ? controller.runningSpeed
                     : controller.speed;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
-            controller.noClip = !controller.noClip;
-        }
+        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
-        if (sphereCollider != nullptr) {
-            sphereCollider->isActive = !controller.noClip;
-        }
+
+        if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;

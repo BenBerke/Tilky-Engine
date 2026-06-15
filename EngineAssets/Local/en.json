@@ -170,6 +170,7 @@
   "component.player_controller.sensitivity_y": "Sensitivity Y",
   "&Context_38": "If no clip is on, the player will not collide with anything",
   "component.player_controller.no_clip": "No Clip",
+  "component.player_controller.jump_power": "Jump Strength",
 
   "component.camera": "Camera",
   "component.camera.is_active":"Is Active",

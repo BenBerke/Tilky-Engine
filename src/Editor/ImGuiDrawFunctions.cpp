@@ -568,10 +568,10 @@ namespace ImGuiDrawFunctions {
             if (c != nullptr) [[likely]] {
                 ImGui::InputFloat(Get("component.player_controller.speed").c_str(), &c->speed);
                 ImGui::InputFloat(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed);
+                ImGui::InputFloat(Get("component.player_controller.jump_power").c_str(), &c->jumpPower);
                 ImGui::InputFloat(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight);
 
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
-
                 ImGui::SliderFloat(
                     Get("component.player_controller.sensitivity_x").c_str(),
                     &c->sensitivityX,
