@@ -2,9 +2,10 @@
 // Created by berke on 4/30/2026.
 //
 
-#include "../../Headers/Map/MapQueries.hpp"
-#include "../../Headers/Math/Geometry/Geometry.hpp"
+#include "Headers/Map/MapQueries.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Objects/Wall.hpp"
+#include "Headers/Objects/Level.hpp"
 
 namespace MapQueries {
     int FindSectorContainingPoint(const std::vector<Sector>& sectors, const Vector2 position) {
@@ -27,34 +28,155 @@ namespace MapQueries {
         return bestSector;
     }
 
-    void AssignWallsToSectors(std::vector<Sector>& sectors, const std::vector<Wall>& walls) {
-        for (Sector& sector : sectors) {
+    void AssignWallsToSectors(Level& level) {
+        for (Sector& sector : level.sectors) {
             sector.walls.clear();
         }
 
-        for (const Wall& wall : walls) {
-            if (wall.frontSector >= 0 &&
-                wall.frontSector < static_cast<int>(sectors.size())) {
-                sectors[wall.frontSector].walls.push_back(wall);
-                }
+        RebuildSectorIDLookup(level);
 
-            if (wall.backSector >= 0 &&
-                wall.backSector < static_cast<int>(sectors.size()) &&
-                wall.backSector != wall.frontSector) {
-                sectors[wall.backSector].walls.push_back(wall);
-                }
+        for (Wall& wall : level.walls) {
+            Sector* frontSector = GetSectorByID(level, wall.frontSector);
+            Sector* backSector = GetSectorByID(level, wall.backSector);
+
+            if (frontSector != nullptr) {
+                frontSector->walls.push_back(&wall);
+            }
+
+            if (backSector != nullptr && backSector != frontSector) {
+                backSector->walls.push_back(&wall);
+            }
         }
     }
 
-    void AssignNeighborsToSectors(std::vector<Sector>& sectors) {
-        for (Sector& sector : sectors) {
+    void AssignNeighborsToSectors(Level& level) {
+        for (Sector& sector : level.sectors) {
             sector.neighbors.clear();
-            for (Wall& wall : sector.walls) {
-                if (!(wall.frontSector == -1 || wall.frontSector == sector.id))
-                    sector.neighbors.push_back(&sectors[wall.frontSector]);
-                else if (!(wall.backSector == -1 || wall.backSector == sector.id))
-                    sector.neighbors.push_back(&sectors[wall.backSector]);
+        }
+
+        RebuildSectorIDLookup(level);
+
+        for (Sector& sector : level.sectors) {
+            for (Wall* wall : sector.walls) {
+                if (wall == nullptr) {
+                    continue;
+                }
+
+                ID neighborSectorID = -1;
+
+                if (wall->frontSector == sector.id) {
+                    neighborSectorID = wall->backSector;
+                } else if (wall->backSector == sector.id) {
+                    neighborSectorID = wall->frontSector;
+                } else {
+                    continue;
+                }
+
+                if (neighborSectorID < 0 || neighborSectorID == sector.id) {
+                    continue;
+                }
+
+                Sector* neighbor = GetSectorByID(level, neighborSectorID);
+
+                if (neighbor == nullptr) {
+                    continue;
+                }
+
+                if (std::ranges::find(sector.neighbors, neighbor) == sector.neighbors.end()) {
+                    sector.neighbors.push_back(neighbor);
+                }
             }
         }
+    }
+
+    void RebuildSectorIDLookup(Level &level) {
+        level.sectorIDToIndex.clear();
+
+        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) {
+            level.sectorIDToIndex[level.sectors[i].id] = i;
+        }
+    }
+
+    void RebuildWallIDLookup(Level &level) {
+        level.wallIDToIndex.clear();
+
+        for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
+            level.wallIDToIndex[level.walls[i].id] = i;
+        }
+    }
+
+    void RebuildLevelLookups(Level &level) {
+        RebuildSectorIDLookup(level);
+        RebuildWallIDLookup(level);
+    }
+
+    Sector* GetSectorByID(Level &level, const ID sectorID) {
+        const auto it = level.sectorIDToIndex.find(sectorID);
+
+        if (it == level.sectorIDToIndex.end()) {
+            return nullptr;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(level.sectors.size())) {
+            return nullptr;
+        }
+
+        return &level.sectors[index];
+    }
+
+    const Sector* GetSectorByID(const Level &level, const ID sectorID) {
+        const auto it = level.sectorIDToIndex.find(sectorID);
+
+        if (it == level.sectorIDToIndex.end()) {
+            return nullptr;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(level.sectors.size())) {
+            return nullptr;
+        }
+
+        return &level.sectors[index];
+    }
+
+    Wall* GetWallByID(Level &level, const ID wallID) {
+        const auto it = level.wallIDToIndex.find(wallID);
+
+        if (it == level.wallIDToIndex.end()) {
+            return nullptr;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) {
+            return nullptr;
+        }
+
+        return &level.walls[index];
+    }
+
+    const Wall* GetWallByID(const Level &level, const ID wallID) {
+        const auto it = level.wallIDToIndex.find(wallID);
+
+        if (it == level.wallIDToIndex.end()) {
+            return nullptr;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) {
+            return nullptr;
+        }
+
+        return &level.walls[index];
+    }
+
+    void RebuildSectorRuntimeLinks(Level& level) {
+        RebuildLevelLookups(level);
+        AssignWallsToSectors(level);
+        AssignNeighborsToSectors(level);
     }
 }

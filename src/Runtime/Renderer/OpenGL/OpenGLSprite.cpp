@@ -17,8 +17,7 @@ void OpenGL::BuildGpuSprites() {
 
         if (level.decals.Has(spriteComponent.ownerID)) continue;
 
-        //todo do proper update loop
-        transform->UpdateObjectSectorAndFloor(level.sectors, level.GetEntity(spriteComponent.ownerID));
+        //transform->UpdateObjectSectorAndFloor(level.sectors, level.GetEntity(spriteComponent.ownerID));
 
         if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] continue;
 

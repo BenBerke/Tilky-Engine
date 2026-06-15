@@ -38,6 +38,12 @@ struct Level {
     std::vector<Wall> walls;
     std::vector<Sector> sectors;
 
+    std::unordered_map<ID, int> sectorIDToIndex;
+    std::unordered_map<ID, int> wallIDToIndex;
+
+    ID nextSectorID = 0;
+    ID nextWallID = 0;
+
     std::vector<Texture> textures;
     std::vector<Sound> sounds;
 

@@ -70,13 +70,9 @@ namespace RuntimeSession {
             spdlog::info("Runtime level snapshot created");
         }
 
-        MapQueries::AssignWallsToSectors(
-            level.sectors,
-            level.walls
-        );
+        MapQueries::RebuildSectorRuntimeLinks(level);
 
-        MapQueries::AssignNeighborsToSectors(level.sectors);
-
+        //todo try vulkan first
         renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
 
         if (renderer == nullptr) {

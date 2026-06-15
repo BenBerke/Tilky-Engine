@@ -32,73 +32,40 @@ float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& secto
 
 
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner) {
-    if (owner == nullptr) {
+    if (owner == nullptr || sectors.empty()) {
         sectorIndex = -1;
         floor = 0;
         absHeight = position.z;
         return false;
-    }
-
-    if (sectors.empty()) {
-        sectorIndex = -1;
-        floor = 0;
-        absHeight = position.z;
-        return false;
-    }
-
-    const bool currentSectorValid =
-        sectorIndex >= 0 &&
-        sectorIndex < static_cast<int>(sectors.size());
-
-    float worldHeight = absHeight;
-
-    if (currentSectorValid) {
-        const Sector& currentSector = sectors[sectorIndex];
-
-        const int currentFloor = std::clamp(
-            static_cast<int>(floor),
-            0,
-            std::clamp(currentSector.floorCount, 1, MAX_FLOOR_COUNT) - 1
-        );
-
-        const float storeyHeight =
-            currentSector.ceilingHeight - currentSector.floorHeight;
-
-        const float currentFloorWorldHeight =
-            currentSector.floorHeight + storeyHeight * static_cast<float>(currentFloor);
-
-        worldHeight = currentFloorWorldHeight + position.z;
-    } else {
-        worldHeight = position.z;
-    }
-
-    if (!isDirty && currentSectorValid) {
-        auto& inside = sectors[sectorIndex].entitiesInside;
-
-        if (std::ranges::find(inside, owner) == inside.end()) {
-            inside.push_back(owner);
-        }
-
-        const Sector& sector = sectors[sectorIndex];
-
-        floor = std::clamp(
-            static_cast<int>(floor),
-            0,
-            std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT) - 1
-        );
-
-        const float storeyHeight =
-            sector.ceilingHeight - sector.floorHeight;
-
-        absHeight =
-            sector.floorHeight +
-            storeyHeight * static_cast<float>(static_cast<int>(floor)) +
-            position.z;
-
-        return true;
     }
 
     const int oldSector = sectorIndex;
+
+    const bool oldSectorValid =
+        oldSector >= 0 &&
+        oldSector < static_cast<int>(sectors.size());
+
+    float worldHeight = position.z;
+
+    if (oldSectorValid) {
+        const Sector& oldSectorRef = sectors[oldSector];
+
+        const int oldSafeFloorCount =
+            std::clamp(oldSectorRef.floorCount, 1, MAX_FLOOR_COUNT);
+
+        const int oldFloor =
+            std::clamp(static_cast<int>(floor), 0, oldSafeFloorCount - 1);
+
+        const float oldStoreyHeight =
+            oldSectorRef.ceilingHeight - oldSectorRef.floorHeight;
+
+        const float oldFloorWorldHeight =
+            oldSectorRef.floorHeight + oldStoreyHeight * static_cast<float>(oldFloor);
+
+        worldHeight = oldFloorWorldHeight + position.z;
+    } else {
+        worldHeight = absHeight;
+    }
 
     const int newSector = MapQueries::FindSectorContainingPoint(
         sectors,
@@ -106,36 +73,27 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
-        if (currentSectorValid) {
-            std::erase(sectors[oldSector].entitiesInside, owner);
-        }
+        if (oldSectorValid) std::erase(sectors[oldSector].entitiesInside, owner);
 
         sectorIndex = -1;
         floor = 0;
         absHeight = worldHeight;
-        isDirty = false;
         return false;
     }
 
-    if (currentSectorValid && oldSector != newSector) {
-        std::erase(sectors[oldSector].entitiesInside, owner);
-    }
+    if (oldSectorValid && oldSector != newSector) std::erase(sectors[oldSector].entitiesInside, owner);
 
     sectorIndex = newSector;
 
     Sector& sector = sectors[newSector];
 
-    auto& inside = sector.entitiesInside;
-
-    if (std::ranges::find(inside, owner) == inside.end()) {
-        inside.push_back(owner);
+    if (std::ranges::find(sector.entitiesInside, owner) == sector.entitiesInside.end()) {
+        sector.entitiesInside.push_back(owner);
     }
 
-    const int safeFloorCount =
-        std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
+    const int safeFloorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
 
-    const float storeyHeight =
-        sector.ceilingHeight - sector.floorHeight;
+    const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
 
     int newFloor = 0;
 
@@ -149,17 +107,14 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 
     floor = newFloor;
 
-    const float newFloorWorldHeight =
-        sector.floorHeight + storeyHeight * static_cast<float>(newFloor);
+    const float newFloorWorldHeight = sector.floorHeight + storeyHeight * static_cast<float>(newFloor);
 
     position.z = worldHeight - newFloorWorldHeight;
 
-    // Do not allow invalid local height after changing sectors.
     position.z = std::clamp(position.z, 0.0f, std::max(0.0f, storeyHeight));
 
     absHeight = newFloorWorldHeight + position.z;
 
-    isDirty = false;
     return true;
 }
 

@@ -7,11 +7,14 @@
 
 #include <array>
 
+#include "EntityTypes.hpp"
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector4.hpp"
 
 struct Wall {
+    EntityID id;
+
     Vector2 start, end;
     Vector4 color;
     Vector2 textureOffset;

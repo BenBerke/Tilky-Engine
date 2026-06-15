@@ -15,7 +15,6 @@ using ID = uint32_t;
 struct Triangle {
     Vector2 a, b, c;
 };
-
 struct Entity;
 
 struct Sector {
@@ -37,7 +36,7 @@ struct Sector {
     std::vector<Entity*> entitiesInside;
     std::vector<Sector*> neighbors;
 
-    std::vector<Wall> walls = {};
+    std::vector<Wall*> walls = {};
 };
 
 #endif

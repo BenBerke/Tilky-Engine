@@ -15,200 +15,6 @@
 #include "Headers/Runtime/ScriptSystem.hpp"
 
 namespace {
-    constexpr float FLOOR_EPSILON = 0.0001f;
-
-    int GetSafeFloorCount(const Sector &sector) {
-        return std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
-    }
-
-    int GetTransformFloorIndex(const ComponentTransform &transform) {
-        return static_cast<int>(transform.floor);
-    }
-
-    int ClampFloorIndex(const Sector &sector, const int floorIndex) {
-        return std::clamp(floorIndex, 0, GetSafeFloorCount(sector) - 1);
-    }
-
-    float GetSectorStoreyHeight(const Sector &sector) {
-        return sector.ceilingHeight - sector.floorHeight;
-    }
-
-    float GetFloorWorldHeight(const Sector &sector, const int floorIndex) {
-        const int clampedFloor = ClampFloorIndex(sector, floorIndex);
-        return sector.floorHeight + GetSectorStoreyHeight(sector) * static_cast<float>(clampedFloor);
-    }
-
-    float GetCeilingWorldHeight(const Sector &sector, const int floorIndex) {
-        const int clampedFloor = ClampFloorIndex(sector, floorIndex);
-        return sector.floorHeight + GetSectorStoreyHeight(sector) * static_cast<float>(clampedFloor + 1);
-    }
-
-    int GetFloorIndexFromWorldHeight(const Sector &sector, const float worldHeight) {
-        const float storeyHeight = GetSectorStoreyHeight(sector);
-
-        if (storeyHeight <= FLOOR_EPSILON) {
-            return 0;
-        }
-
-        const float localHeightFromSectorBase = worldHeight - sector.floorHeight;
-
-        int floorIndex = static_cast<int>(std::floor(localHeightFromSectorBase / storeyHeight));
-
-        return ClampFloorIndex(sector, floorIndex);
-    }
-
-    float GetColliderHeight(const ComponentCollider *collider) {
-        if (collider == nullptr) {
-            return 0.0f;
-        }
-
-        if (collider->type == COLLIDERTYPE_SPHERE) {
-            return collider->scale.x * 2.0f; // scale.x is radius in your sphere code
-        }
-
-        if (collider->type == COLLIDERTYPE_BOX) {
-            return collider->scale.z; // transform.z is vertical, so collider.scale.z is vertical height
-        }
-
-        return 0.0f;
-    }
-
-    float GetColliderCenterOffsetFromBottom(const ComponentCollider &collider) {
-        if (collider.type == COLLIDERTYPE_SPHERE) {
-            return collider.scale.x;
-        }
-
-        if (collider.type == COLLIDERTYPE_BOX) {
-            return collider.scale.z * 0.5f;
-        }
-
-        return 0.0f;
-    }
-
-    Vector3 GetColliderCollisionSize(const ComponentCollider &collider) {
-        if (collider.type == COLLIDERTYPE_BOX) {
-            // Collision-space:
-            // x = world X
-            // y = world height
-            // z = world depth
-            return {
-                collider.scale.x,
-                collider.scale.z,
-                collider.scale.y
-            };
-        }
-
-        if (collider.type == COLLIDERTYPE_SPHERE) {
-            const float diameter = collider.scale.x * 2.0f;
-            return {diameter, diameter, diameter};
-        }
-
-        return {0.0f, 0.0f, 0.0f};
-    }
-
-    bool HasValidSector(const Level &level, const ComponentTransform &transform) {
-        return transform.sectorIndex >= 0 &&
-               transform.sectorIndex < static_cast<int>(level.sectors.size());
-    }
-
-    float GetTransformFloorWorldHeight(const Level &level, const ComponentTransform &transform) {
-        if (!HasValidSector(level, transform)) {
-            return 0.0f;
-        }
-
-        const Sector &sector = level.sectors[transform.sectorIndex];
-        return GetFloorWorldHeight(sector, GetTransformFloorIndex(transform));
-    }
-
-    float GetTransformWorldBottomHeight(const Level &level, const ComponentTransform &transform) {
-        return GetTransformFloorWorldHeight(level, transform) + transform.position.z;
-    }
-
-    Vector3 GetColliderWorldCenter(
-        const Level &level,
-        const ComponentTransform &transform,
-        const ComponentCollider &collider
-    ) {
-        return {
-            transform.position.x,
-            GetTransformWorldBottomHeight(level, transform) + GetColliderCenterOffsetFromBottom(collider),
-            transform.position.y
-        };
-    }
-
-    bool AreOnSameCollisionFloor(
-        const ComponentTransform &a,
-        const ComponentTransform &b
-    ) {
-        return GetTransformFloorIndex(a) == GetTransformFloorIndex(b);
-    }
-
-    void UpdateTransformAbsHeight(Level &level, ComponentTransform &transform) {
-        if (!HasValidSector(level, transform)) {
-            transform.absHeight = transform.position.z;
-            return;
-        }
-
-        const Sector &sector = level.sectors[transform.sectorIndex];
-
-        transform.floor = ClampFloorIndex(
-            sector,
-            GetTransformFloorIndex(transform)
-        );
-
-        transform.absHeight =
-                GetFloorWorldHeight(sector, GetTransformFloorIndex(transform)) +
-                transform.position.z;
-    }
-
-    void ResolveTransformAgainstCurrentFloor(
-        Level &level,
-        ComponentTransform &transform,
-        const ComponentCollider *collider,
-        ComponentRigidbody *rigidbody
-    ) {
-        if (!HasValidSector(level, transform)) {
-            return;
-        }
-
-        Sector &sector = level.sectors[transform.sectorIndex];
-
-        transform.floor = ClampFloorIndex(
-            sector,
-            GetTransformFloorIndex(transform)
-        );
-
-        const float storeyHeight = GetSectorStoreyHeight(sector);
-        const float colliderHeight = GetColliderHeight(collider);
-
-        // position.z is local bottom height inside the current floor.
-        const float maxBottomZ = std::max(0.0f, storeyHeight - colliderHeight);
-
-        if (transform.position.z < 0.0f) {
-            transform.position.z = 0.0f;
-
-            if (rigidbody != nullptr && rigidbody->velocity.z < 0.0f) {
-                rigidbody->velocity.z = 0.0f;
-            }
-
-            transform.isDirty = true;
-        }
-
-        if (transform.position.z > maxBottomZ) {
-            transform.position.z = maxBottomZ;
-
-            if (rigidbody != nullptr && rigidbody->velocity.z > 0.0f) {
-                rigidbody->velocity.z = 0.0f;
-            }
-
-            transform.isDirty = true;
-        }
-
-        UpdateTransformAbsHeight(level, transform);
-    }
-}
-
-namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
         for (ComponentPlayerController &controller: level.playerControllers.components)
             if (controller.isActive) return &controller;
@@ -276,288 +82,57 @@ namespace {
 
     ComponentPlayerController *activeController;
 
-    // squareCollider = BOX / AABB
-    // circleCollider = SPHERE
-    // circleCollider.scale.x = radius
-    // squareCollider.scale.xyz = full box size
-    bool CircleAABBCollision(Level &level, ComponentCollider &squareCollider, ComponentCollider &circleCollider) {
-        if (squareCollider.type != COLLIDERTYPE_BOX ||
-            circleCollider.type != COLLIDERTYPE_SPHERE) [[unlikely]] {
-            return false;
+    Vector3 ClosestPointOnSegment(const Vector3& p, const Vector3& a, const Vector3& b) {
+        const Vector3 ab = b - a;
+        const Vector3 ap = p - a;
+        float t = Vector3Math::Dot(ap, ab) / Vector3Math::Dot(ab, ab);
+        t = std::max(0.0f, std::min(1.0f, t)); // Clamp to segment bounds
+        return Vector3{ a.x + t * ab.x, a.y + t * ab.y, a.z + t * ab.z };
+    }
+
+    Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
+        const Vector3 ab = b - a;
+        const Vector3 ac = c - a;
+        const Vector3 ap = p - a;
+
+        const float d1 = Vector3Math::Dot(ab, ap);
+        const float d2 = Vector3Math::Dot(ac, ap);
+        if (d1 <= 0.0f && d2 <= 0.0f) return a;
+
+        const Vector3 bp = p - b;
+        const float d3 = Vector3Math::Dot(ab, bp);
+        const float d4 = Vector3Math::Dot(ac, bp);
+        if (d3 >= 0.0f && d4 <= d3) return b;
+
+        const float vc = d1 * d4 - d3 * d2;
+        if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+            const float v = d1 / (d1 - d3);
+            return Vector3{ a.x + v * ab.x, a.y + v * ab.y, a.z + v * ab.z };
         }
 
-        if (squareCollider.isTrigger || circleCollider.isTrigger) {
-            return false;
+        const Vector3 cp = p - c;
+        const float d5 = Vector3Math::Dot(ab, cp);
+        const float d6 = Vector3Math::Dot(ac, cp);
+        if (d6 >= 0.0f && d5 <= d6) return c;
+
+        const float vb = d5 * d2 - d1 * d6;
+        if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+            const float w = d2 / (d2 - d6);
+            return Vector3{ a.x + w * ac.x, a.y + w * ac.y, a.z + w * ac.z };
         }
 
-        ComponentTransform *squareTransform = level.transforms.Get(squareCollider.ownerID);
-        ComponentTransform *circleTransform = level.transforms.Get(circleCollider.ownerID);
-
-        if (squareTransform == nullptr || circleTransform == nullptr) [[unlikely]] {
-            return false;
+        const float va = d3 * d6 - d5 * d4;
+        if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+            float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            Vector3 bc = { c.x - b.x, c.y - b.y, c.z - b.z };
+            return Vector3{ b.x + w * bc.x, b.y + w * bc.y, b.z + w * bc.z };
         }
 
-        // New: do not collide across different sector floors.
-        if (!AreOnSameCollisionFloor(*squareTransform, *circleTransform)) {
-            return false;
-        }
-
-        ComponentRigidbody *squareRb = level.rigidbodies.Get(squareCollider.ownerID);
-        ComponentRigidbody *circleRb = level.rigidbodies.Get(circleCollider.ownerID);
-
-        const Vector3 squarePos =
-                GetColliderWorldCenter(level, *squareTransform, squareCollider);
-
-        const Vector3 circlePos =
-                GetColliderWorldCenter(level, *circleTransform, circleCollider);
-
-        const Vector3 squareSize =
-                GetColliderCollisionSize(squareCollider);
-
-        const Vector3 halfSize = squareSize * 0.5f;
-
-        const float circleRadius = circleCollider.scale.x;
-
-        const Vector3 boxMin = {
-            squarePos.x - halfSize.x,
-            squarePos.y - halfSize.y,
-            squarePos.z - halfSize.z
-        };
-
-        const Vector3 boxMax = {
-            squarePos.x + halfSize.x,
-            squarePos.y + halfSize.y,
-            squarePos.z + halfSize.z
-        };
-
-        Vector3 closestPoint;
-        closestPoint.x = std::max(boxMin.x, std::min(circlePos.x, boxMax.x));
-        closestPoint.y = std::max(boxMin.y, std::min(circlePos.y, boxMax.y));
-        closestPoint.z = std::max(boxMin.z, std::min(circlePos.z, boxMax.z));
-
-        const float distanceSquared =
-                Vector3Math::DistanceSquared(circlePos, closestPoint);
-
-        if (distanceSquared >= circleRadius * circleRadius) {
-            return false;
-        }
-
-        Vector3 pushDirection;
-        float overlap = 0.0f;
-
-        if (distanceSquared < 0.000001f) {
-            const float distToMinX = std::abs(circlePos.x - boxMin.x);
-            const float distToMaxX = std::abs(boxMax.x - circlePos.x);
-            const float distToMinY = std::abs(circlePos.y - boxMin.y);
-            const float distToMaxY = std::abs(boxMax.y - circlePos.y);
-            const float distToMinZ = std::abs(circlePos.z - boxMin.z);
-            const float distToMaxZ = std::abs(boxMax.z - circlePos.z);
-
-            float smallestDistance = distToMinX;
-            pushDirection = {-1.0f, 0.0f, 0.0f};
-
-            if (distToMaxX < smallestDistance) {
-                smallestDistance = distToMaxX;
-                pushDirection = {1.0f, 0.0f, 0.0f};
-            }
-
-            if (distToMinY < smallestDistance) {
-                smallestDistance = distToMinY;
-                pushDirection = {0.0f, -1.0f, 0.0f};
-            }
-
-            if (distToMaxY < smallestDistance) {
-                smallestDistance = distToMaxY;
-                pushDirection = {0.0f, 1.0f, 0.0f};
-            }
-
-            if (distToMinZ < smallestDistance) {
-                smallestDistance = distToMinZ;
-                pushDirection = {0.0f, 0.0f, -1.0f};
-            }
-
-            if (distToMaxZ < smallestDistance) {
-                smallestDistance = distToMaxZ;
-                pushDirection = {0.0f, 0.0f, 1.0f};
-            }
-
-            overlap = circleRadius + smallestDistance;
-        } else {
-            const float distance = std::sqrt(distanceSquared);
-
-            overlap = circleRadius - distance;
-            pushDirection = (circlePos - closestPoint) / distance;
-        }
-
-        float squareWeight = 0.5f;
-        float circleWeight = 0.5f;
-
-        const bool squareStatic = squareRb == nullptr || squareRb->isStatic;
-        const bool circleStatic = circleRb == nullptr || circleRb->isStatic;
-
-        if (squareStatic && circleStatic) [[unlikely]] {
-            return true;
-        }
-
-        if (squareStatic) {
-            squareWeight = 0.0f;
-            circleWeight = 1.0f;
-        } else if (circleStatic) {
-            squareWeight = 1.0f;
-            circleWeight = 0.0f;
-        }
-
-        // Collision-space:
-        // x = world X
-        // y = world height
-        // z = world depth
-        const Vector3 squarePush = pushDirection * -overlap * squareWeight;
-        const Vector3 circlePush = pushDirection * overlap * circleWeight;
-
-        auto IsPushBlockedByWall = [&level](
-            ComponentTransform *transform,
-            const Vector3 &push,
-            const float horizontalRadius
-        ) -> bool {
-            if (transform == nullptr) [[unlikely]] {
-                return false;
-            }
-
-            // Vertical-only push cannot hit a wall.
-            if (std::abs(push.x) < 0.000001f &&
-                std::abs(push.z) < 0.000001f) {
-                return false;
-            }
-
-            if (transform->sectorIndex < 0 ||
-                transform->sectorIndex >= static_cast<int>(level.sectors.size())) {
-                return false;
-            }
-
-            const Sector &sector = level.sectors[transform->sectorIndex];
-
-            const Vector2 candidatePos = {
-                transform->position.x + push.x,
-                transform->position.y + push.z
-            };
-
-            for (const Wall &wall: sector.walls) {
-                const Vector2 v = wall.vector;
-
-                const float vDotV = Vector2Math::Dot(v, v);
-                if (vDotV <= 0.001f) {
-                    continue;
-                }
-
-                const Vector2 w = candidatePos - wall.start;
-
-                float t = Vector2Math::Dot(w, v) / vDotV;
-                t = std::max(0.0f, std::min(1.0f, t));
-
-                const Vector2 closestWallPoint = wall.start + t * v;
-
-                const float wallDistanceSquared =
-                        Vector2Math::DistanceSquared(candidatePos, closestWallPoint);
-
-                if (wallDistanceSquared < horizontalRadius * horizontalRadius) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
-
-        const float squareHorizontalRadius =
-                std::max(halfSize.x, halfSize.z);
-
-        const float circleHorizontalRadius =
-                circleRadius;
-
-        const bool squareBlockedByWall =
-                squareWeight > 0.0f &&
-                IsPushBlockedByWall(squareTransform, squarePush, squareHorizontalRadius);
-
-        const bool circleBlockedByWall =
-                circleWeight > 0.0f &&
-                IsPushBlockedByWall(circleTransform, circlePush, circleHorizontalRadius);
-
-        if (squareBlockedByWall && circleBlockedByWall) {
-            return true;
-        }
-
-        if (squareBlockedByWall) {
-            if (!circleStatic) {
-                const Vector3 fullCirclePush = pushDirection * overlap;
-
-                circleTransform->AddPosition({
-                    fullCirclePush.x,
-                    fullCirclePush.z,
-                    fullCirclePush.y
-                });
-
-                ResolveTransformAgainstCurrentFloor(
-                    level,
-                    *circleTransform,
-                    &circleCollider,
-                    circleRb
-                );
-            }
-
-            return true;
-        }
-
-        if (circleBlockedByWall) {
-            if (!squareStatic) {
-                const Vector3 fullSquarePush = pushDirection * -overlap;
-
-                squareTransform->AddPosition({
-                    fullSquarePush.x,
-                    fullSquarePush.z,
-                    fullSquarePush.y
-                });
-
-                ResolveTransformAgainstCurrentFloor(
-                    level,
-                    *squareTransform,
-                    &squareCollider,
-                    squareRb
-                );
-            }
-
-            return true;
-        }
-
-        if (squareWeight > 0.0f) {
-            squareTransform->AddPosition({
-                squarePush.x,
-                squarePush.z,
-                squarePush.y
-            });
-
-            ResolveTransformAgainstCurrentFloor(
-                level,
-                *squareTransform,
-                &squareCollider,
-                squareRb
-            );
-        }
-
-        if (circleWeight > 0.0f) {
-            circleTransform->AddPosition({
-                circlePush.x,
-                circlePush.z,
-                circlePush.y
-            });
-
-            ResolveTransformAgainstCurrentFloor(
-                level,
-                *circleTransform,
-                &circleCollider,
-                circleRb
-            );
-        }
-
-        return true;
+        // P is inside face region
+        const float denom = 1.0f / (va + vb + vc);
+        const float v = vb * denom;
+        const float w = vc * denom;
+        return Vector3{ a.x + ab.x * v + ac.x * w, a.y + ab.y * v + ac.y * w, a.z + ab.z * v + ac.z * w };
     }
 }
 
@@ -698,25 +273,14 @@ namespace LevelSystem {
 
                 ComponentCollider *collider = level.colliders.Get(r.ownerID);
 
-                if (!HasValidSector(level, *transform)) {
-                    continue;
-                }
-
-                ResolveTransformAgainstCurrentFloor(level, *transform, collider, &r);
-
-                const bool isOnCurrentFloor = transform->position.z <= FLOOR_EPSILON;
+                const bool isOnCurrentFloor = transform->position.z <= .00001f;
 
                 // Apply gravity if airborne, falling, or moving upward.
-                if (!isOnCurrentFloor || r.velocity.z > 0.0f || r.velocity.z < 0.0f) {
-                    r.ApplyGravity(level.worldSettings.gravity);
-                }
+                //r.ApplyGravity(level.worldSettings.gravity);
 
-                if (!r.velocity.IsZero()) {
-                    transform->AddPosition(r.velocity * GameTime::deltaTime);
-                }
+                if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * GameTime::deltaTime);
 
-                ResolveTransformAgainstCurrentFloor(level, *transform, collider, &r);
-
+                // Apply Rb's base friction
                 r.ApplyFriction(0);
                 r.ApplyAirResistance(0);
             }
@@ -727,7 +291,9 @@ namespace LevelSystem {
             ZoneScopedN("Collision");
 
             //todo make this a world setting
-            constexpr int COLLISION_ITERATIONS = 4;
+
+            constexpr int COLLISION_ITERATIONS = 6;
+
             for (int i = 0; i < COLLISION_ITERATIONS; i++) {
                 for (ComponentCollider &selfCollider: level.colliders.components) {
                     if (!selfCollider.isActive) continue;
@@ -736,710 +302,168 @@ namespace LevelSystem {
                     ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
 
                     if (selfTransform == nullptr) [[unlikely]] continue;
-                    if (!selfTransform->isDirty) [[unlikely]] continue;
-
-                    if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.
-                            size()))
-                        continue;
-
-                    Sector &sector = level.sectors[selfTransform->sectorIndex];
 
                     ComponentRigidbody *selfRb = level.rigidbodies.Get(selfCollider.ownerID);
-                    if (selfRb == nullptr) continue; // collision checks should only happen on entities with rigidbodies
 
+                    if (selfRb == nullptr) continue;
+                    if (selfRb->isStatic) continue;
+
+                    //selfTransform->isDirty = true;
+
+                    if (selfTransform->sectorIndex < 0 ||
+                        selfTransform->sectorIndex >= static_cast<int>(level.sectors.size())) {
+                        continue;
+                    }
+
+                    Sector &sector = level.sectors[selfTransform->sectorIndex];
                     Entity *selfEntity = level.GetEntity(selfCollider.ownerID);
+
                     if (selfEntity == nullptr) [[unlikely]] continue;
 
                     std::vector<Entity *> allEntities;
+
+                    allEntities.reserve(sector.entitiesInside.size() + 16);
                     allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
-                    //Neighboring sectors.
-                    //Can be potentially commented-out in exchange for better performance but potential glitches between sectors
+
                     for (const Sector *nSector: sector.neighbors) {
-                        if (!nSector) [[unlikely]] continue;
+                        if (nSector == nullptr) [[unlikely]] continue;
+
                         allEntities.insert(allEntities.end(), nSector->entitiesInside.begin(),
                                            nSector->entitiesInside.end());
                     }
 
-                    const Vector3 selfSize = selfCollider.scale;
-                    const Vector3 selfCollisionPos = GetColliderWorldCenter(level, *selfTransform, selfCollider);
-                    const Vector3 selfCollisionSize = GetColliderCollisionSize(selfCollider);
+                    std::vector<EntityID> processedOtherIDs;
 
-                    for (Entity *otherEntity: allEntities) {
+                    processedOtherIDs.reserve(allEntities.size());
+
+                    Vector3 selfPos = {
+                        selfTransform->position.x,
+                        selfTransform->position.y,
+                        selfTransform->absHeight
+                    };
+
+                    for (const Entity *otherEntity: allEntities) {
                         if (otherEntity == nullptr) [[unlikely]] continue;
-                        if (otherEntity == selfEntity) continue;
+                        if (otherEntity->id == selfEntity->id) continue;
 
-                        if (!otherEntity->HasComponent<ComponentCollider>()) continue;
+                        if (std::ranges::find(processedOtherIDs, otherEntity->id) != processedOtherIDs.end()) continue;
 
-                        auto *otherCollider = otherEntity->GetComponent<ComponentCollider>();
+                        processedOtherIDs.push_back(otherEntity->id);
 
-                        if (!otherCollider->isActive) continue;
+                        ComponentCollider *otherCollider = level.colliders.Get(otherEntity->id);
 
-                        if (otherCollider->isTrigger) continue;
+                        if (otherCollider == nullptr) continue;
+                        if (!otherCollider->isActive || otherCollider->isTrigger) continue;
 
-                        auto *otherTransform = otherEntity->GetComponent<ComponentTransform>();
+                        ComponentTransform *otherTransform = level.transforms.Get(otherEntity->id);
                         if (otherTransform == nullptr) [[unlikely]] continue;
 
-                        const Vector3 otherSize = otherCollider->scale;
-                        if (!AreOnSameCollisionFloor(*selfTransform, *otherTransform)) continue;
+                        const ComponentRigidbody *otherRb = level.rigidbodies.Get(otherEntity->id);
 
-                        const Vector3 otherCollisionPos =
-                                GetColliderWorldCenter(level, *otherTransform, *otherCollider);
+                        // Treat missing rigidbodies as static colliders.
+                        const bool otherIsStatic = (otherRb == nullptr || otherRb->isStatic);
 
-                        const Vector3 otherCollisionSize = GetColliderCollisionSize(*otherCollider);
+                        if (!otherIsStatic && selfEntity->id > otherEntity->id) continue;
 
+                        Vector3 otherPos = {
+                            otherTransform->position.x,
+                            otherTransform->position.y,
+                            otherTransform->absHeight
+                        };
+
+                        // This block currently only supports sphere-vs-sphere collision.
                         if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_SPHERE) {
-                            const float minDistance = otherSize.x + selfSize.x;
+                            const float selfRadius = std::max(0.0f, selfCollider.scale.x);
+                            const float otherRadius = std::max(0.0f, otherCollider->scale.x);
 
-                            const float distanceSquared =
-                                    Vector3Math::DistanceSquared(otherCollisionPos, selfCollisionPos);
+                            const float radiusSum = selfRadius + otherRadius;
 
-                            if (distanceSquared < minDistance * minDistance) [[unlikely]] {
-                                ComponentRigidbody *otherRb = nullptr;
-                                if (otherEntity->HasComponent<ComponentRigidbody>())
-                                    otherRb = otherEntity->GetComponent<ComponentRigidbody>();
+                            const float distSqr = Vector3Math::DistanceSquared(selfPos, otherPos);
 
-                                Vector3 delta = selfCollisionPos - otherCollisionPos;
-                                float fixedDistanceSquared = distanceSquared;
+                            if (distSqr >= radiusSum * radiusSum) continue;
 
-                                if (fixedDistanceSquared < 0.000001f) {
-                                    delta = {1.0f, 0.0f, 0.0f};
-                                    fixedDistanceSquared = 1.0f;
-                                }
+                            constexpr float EPSILON = 0.00001f;
 
-                                const float distance = std::sqrt(fixedDistanceSquared);
-                                const float overlap = minDistance - distance;
+                            const float distance = std::sqrt(std::max(distSqr, EPSILON));
 
-                                Vector3 pushDirection = delta / distance;
+                            const float penetration = radiusSum - distance;
 
-                                float selfWeight = 0.5f;
-                                float otherWeight = 0.5f;
+                            if (penetration <= EPSILON) continue;
 
-                                const bool aStatic = selfRb->isStatic;
-                                const bool bStatic = (otherRb == nullptr) || otherRb->isStatic;
+                            // Choose a stable fallback normal when both sphere centers are almost identical.
+                            Vector3 pushDirection = (distSqr <= EPSILON)
+                                                        ? Vector3{1.0f, 0.0f, 0.0f}
+                                                        : (selfPos - otherPos) * (1.0f / distance);
 
-                                if (bStatic && aStatic) [[unlikely]] continue;
+                            const float selfPush = otherIsStatic ? 1.0f : 0.5f;
+                            const float otherPush = otherIsStatic ? 0.0f : 0.5f;
 
-                                if (aStatic) {
-                                    selfWeight = 0.0f;
-                                    otherWeight = 1.0f;
-                                } else if (bStatic) {
-                                    selfWeight = 1.0f;
-                                    otherWeight = 0.0f;
-                                }
+                            // Add a tiny slop so resting contacts do not constantly micro-correct.
+                            constexpr float PENETRATION_SLOP = 0.001f;
+                            const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
 
-                                // Collision-space push:
-                                // x = world X
-                                // y = height
-                                // z = world depth
-                                Vector3 selfPush = pushDirection * overlap * selfWeight;
-                                Vector3 otherPush = pushDirection * -overlap * otherWeight;
+                            const Vector3 selfCorrection = pushDirection * (correctedPenetration * selfPush);
+                            const Vector3 otherCorrection = pushDirection * (correctedPenetration * otherPush);
 
-                                bool otherBlockedByWall = false;
+                            selfTransform->AddPosition(selfCorrection);
 
-                                if (otherTransform->sectorIndex >= 0 &&
-                                    otherTransform->sectorIndex < static_cast<int>(level.sectors.size())) {
-                                    const Sector &otherSector = level.sectors[otherTransform->sectorIndex];
+                            if (!otherIsStatic) otherTransform->AddPosition(-otherCorrection);
 
-                                    // Convert collision-space push back to engine horizontal x/y.
-                                    const Vector2 candidateOtherPos = {
-                                        otherTransform->position.x + otherPush.x,
-                                        otherTransform->position.y + otherPush.z
-                                    };
-
-                                    const float otherRadius = otherCollider->scale.x;
-
-                                    for (const Wall &wall: otherSector.walls) {
-                                        const Vector2 v = wall.vector;
-
-                                        const float vDotV = Vector2Math::Dot(v, v);
-                                        if (vDotV <= 0.001f) continue;
-
-                                        const Vector2 w = candidateOtherPos - wall.start;
-
-                                        float t = Vector2Math::Dot(w, v) / vDotV;
-                                        t = std::max(0.0f, std::min(1.0f, t));
-
-                                        const Vector2 closestPoint = wall.start + t * v;
-
-                                        const float wallDistanceSquared =
-                                                Vector2Math::DistanceSquared(candidateOtherPos, closestPoint);
-
-                                        if (wallDistanceSquared < otherRadius * otherRadius) {
-                                            otherBlockedByWall = true;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (otherBlockedByWall) {
-                                    const Vector3 fullPush = pushDirection * overlap;
-
-                                    selfTransform->AddPosition({
-                                        fullPush.x,
-                                        fullPush.z,
-                                        fullPush.y
-                                    });
-
-                                    ResolveTransformAgainstCurrentFloor(
-                                        level,
-                                        *selfTransform,
-                                        &selfCollider,
-                                        selfRb
-                                    );
-                                } else {
-                                    selfTransform->AddPosition({
-                                        selfPush.x,
-                                        selfPush.z,
-                                        selfPush.y
-                                    });
-
-                                    otherTransform->AddPosition({
-                                        otherPush.x,
-                                        otherPush.z,
-                                        otherPush.y
-                                    });
-
-                                    ResolveTransformAgainstCurrentFloor(
-                                        level,
-                                        *selfTransform,
-                                        &selfCollider,
-                                        selfRb
-                                    );
-
-                                    ResolveTransformAgainstCurrentFloor(
-                                        level,
-                                        *otherTransform,
-                                        otherCollider,
-                                        otherRb
-                                    );
-                                }
-                            }
-                        } else if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_BOX)
-                            CircleAABBCollision(level, *otherCollider, selfCollider);
-
-                        else if (selfCollider.type == COLLIDERTYPE_BOX && otherCollider->type == COLLIDERTYPE_SPHERE)
-                            CircleAABBCollision(level, selfCollider, *otherCollider);
-
-                        else if (selfCollider.type == COLLIDERTYPE_BOX && otherCollider->type == COLLIDERTYPE_BOX) {
-                            const Vector3 selfHalfSize = selfCollisionSize * 0.5f;
-                            const Vector3 otherHalfSize = otherCollisionSize * 0.5f;
-
-                            const Vector3 delta = selfCollisionPos - otherCollisionPos;
-
-                            const float overlapX =
-                                    selfHalfSize.x + otherHalfSize.x - std::abs(delta.x);
-
-                            const float overlapY =
-                                    selfHalfSize.y + otherHalfSize.y - std::abs(delta.y);
-
-                            const float overlapZ =
-                                    selfHalfSize.z + otherHalfSize.z - std::abs(delta.z);
-
-                            if (overlapX > 0.0f &&
-                                overlapY > 0.0f &&
-                                overlapZ > 0.0f) {
-                                ComponentRigidbody *otherRb = nullptr;
-                                if (otherEntity->HasComponent<ComponentRigidbody>())
-                                    otherRb = otherEntity->GetComponent<ComponentRigidbody>();
-
-                                Vector3 pushDirection;
-                                float overlap;
-
-                                if (overlapX <= overlapY && overlapX <= overlapZ) {
-                                    overlap = overlapX;
-                                    pushDirection = {
-                                        delta.x >= 0.0f ? 1.0f : -1.0f,
-                                        0.0f,
-                                        0.0f
-                                    };
-                                } else if (overlapY <= overlapX && overlapY <= overlapZ) {
-                                    overlap = overlapY;
-                                    pushDirection = {
-                                        0.0f,
-                                        delta.y >= 0.0f ? 1.0f : -1.0f,
-                                        0.0f
-                                    };
-                                } else {
-                                    overlap = overlapZ;
-                                    pushDirection = {
-                                        0.0f,
-                                        0.0f,
-                                        delta.z >= 0.0f ? 1.0f : -1.0f
-                                    };
-                                }
-
-                                float selfWeight = 0.5f;
-                                float otherWeight = 0.5f;
-
-                                const bool aStatic = selfRb == nullptr || selfRb->isStatic;
-                                const bool bStatic = otherRb == nullptr || otherRb->isStatic;
-
-                                if (aStatic && bStatic) [[unlikely]] continue;
-
-                                if (aStatic) {
-                                    selfWeight = 0.0f;
-                                    otherWeight = 1.0f;
-                                } else if (bStatic) {
-                                    selfWeight = 1.0f;
-                                    otherWeight = 0.0f;
-                                }
-
-                                // Collision-space push.
-                                Vector3 selfPush = pushDirection * overlap * selfWeight;
-                                Vector3 otherPush = pushDirection * -overlap * otherWeight;
-
-                                auto IsBoxBlockedByWall = [&level](
-                                    ComponentTransform *transform,
-                                    const Vector3 &push,
-                                    const Vector3 &halfSize
-                                ) -> bool {
-                                    if (transform == nullptr) [[unlikely]] return false;
-
-                                    // Collision-space:
-                                    // push.x = world X
-                                    // push.y = height
-                                    // push.z = world depth
-                                    //
-                                    // So if x and z are zero, the push is vertical only.
-                                    if (std::abs(push.x) < 0.000001f &&
-                                        std::abs(push.z) < 0.000001f) {
-                                        return false;
-                                    }
-
-                                    if (transform->sectorIndex < 0 ||
-                                        transform->sectorIndex >= static_cast<int>(level.sectors.size())) {
-                                        return false;
-                                    }
-
-                                    const Sector &sector = level.sectors[transform->sectorIndex];
-
-                                    const Vector2 candidatePos = {
-                                        transform->position.x + push.x,
-                                        transform->position.y + push.z
-                                    };
-
-                                    // Horizontal footprint uses collision-space x/z.
-                                    const float radius = std::max(halfSize.x, halfSize.z);
-
-                                    for (const Wall &wall: sector.walls) {
-                                        const Vector2 v = wall.vector;
-
-                                        const float vDotV = Vector2Math::Dot(v, v);
-                                        if (vDotV <= 0.001f) continue;
-
-                                        const Vector2 w = candidatePos - wall.start;
-
-                                        float t = Vector2Math::Dot(w, v) / vDotV;
-                                        t = std::max(0.0f, std::min(1.0f, t));
-
-                                        const Vector2 closestWallPoint = wall.start + t * v;
-
-                                        const float wallDistanceSquared =
-                                                Vector2Math::DistanceSquared(candidatePos, closestWallPoint);
-
-                                        if (wallDistanceSquared < radius * radius) {
-                                            return true;
-                                        }
-                                    }
-
-                                    return false;
-                                };
-
-                                const bool selfBlockedByWall =
-                                        selfWeight > 0.0f &&
-                                        IsBoxBlockedByWall(selfTransform, selfPush, selfHalfSize);
-
-                                const bool otherBlockedByWall =
-                                        otherWeight > 0.0f &&
-                                        IsBoxBlockedByWall(otherTransform, otherPush, otherHalfSize);
-
-                                if (selfBlockedByWall && otherBlockedByWall) continue;
-
-                                if (selfBlockedByWall) {
-                                    if (!bStatic) {
-                                        const Vector3 fullOtherPush = pushDirection * -overlap;
-
-                                        otherTransform->AddPosition({
-                                            fullOtherPush.x,
-                                            fullOtherPush.z,
-                                            fullOtherPush.y
-                                        });
-
-                                        ResolveTransformAgainstCurrentFloor(
-                                            level,
-                                            *otherTransform,
-                                            otherCollider,
-                                            otherRb
-                                        );
-                                    }
-                                } else if (otherBlockedByWall) {
-                                    if (!aStatic) {
-                                        const Vector3 fullSelfPush = pushDirection * overlap;
-
-                                        selfTransform->AddPosition({
-                                            fullSelfPush.x,
-                                            fullSelfPush.z,
-                                            fullSelfPush.y
-                                        });
-
-                                        ResolveTransformAgainstCurrentFloor(
-                                            level,
-                                            *selfTransform,
-                                            &selfCollider,
-                                            selfRb
-                                        );
-                                    }
-                                } else {
-                                    selfTransform->AddPosition({
-                                        selfPush.x,
-                                        selfPush.z,
-                                        selfPush.y
-                                    });
-
-                                    otherTransform->AddPosition({
-                                        otherPush.x,
-                                        otherPush.z,
-                                        otherPush.y
-                                    });
-
-                                    ResolveTransformAgainstCurrentFloor(
-                                        level,
-                                        *selfTransform,
-                                        &selfCollider,
-                                        selfRb
-                                    );
-
-                                    ResolveTransformAgainstCurrentFloor(
-                                        level,
-                                        *otherTransform,
-                                        otherCollider,
-                                        otherRb
-                                    );
-                                }
-                            }
+                            selfPos = {
+                                selfTransform->position.x,
+                                selfTransform->position.y,
+                                selfTransform->absHeight
+                            };
                         }
                     }
-                    auto GetColliderRequiredGap = [](const ComponentCollider &collider) -> float {
-                        return GetColliderHeight(&collider);
-                    };
 
-                    auto CanStepIntoSector = [&level, &GetColliderRequiredGap](
-                        const ComponentTransform &transform,
-                        const ComponentCollider &collider,
-                        int currentSectorIndex,
-                        int targetSectorIndex
-                    ) -> bool {
-                        if (currentSectorIndex < 0 ||
-                            currentSectorIndex >= static_cast<int>(level.sectors.size()) ||
-                            targetSectorIndex < 0 ||
-                            targetSectorIndex >= static_cast<int>(level.sectors.size())) {
-                            return false;
-                        }
-
-                        const Sector &currentSector = level.sectors[currentSectorIndex];
-                        const Sector &targetSector = level.sectors[targetSectorIndex];
-
-                        const int currentFloor = ClampFloorIndex(
-                            currentSector,
-                            GetTransformFloorIndex(transform)
-                        );
-
-                        // For now, horizontal portals keep the same floor index.
-                        if (currentFloor >= GetSafeFloorCount(targetSector)) return false;
-
-                        const float currentFloorHeight = GetFloorWorldHeight(currentSector, currentFloor);
-                        const float targetFloorHeight = GetFloorWorldHeight(targetSector, currentFloor);
-                        const float targetCeilingHeight = GetCeilingWorldHeight(targetSector, currentFloor);
-                        const float targetGap = targetCeilingHeight - targetFloorHeight;
-                        const float requiredGap = GetColliderRequiredGap(collider);
-
-                        if (targetGap < requiredGap) {
-                            return false;
-                        }
-
-                        const float currentWorldBottom =
-                                currentFloorHeight + transform.position.z;
-
-                        const float targetLocalBottom =
-                                currentWorldBottom - targetFloorHeight;
-
-                        // Would the object fit vertically inside the target floor?
-                        if (targetLocalBottom < -collider.stepSize) {
-                            return false;
-                        }
-
-                        if (targetLocalBottom + requiredGap > targetGap + collider.stepSize) {
-                            return false;
-                        }
-
-                        const float stepHeight =
-                                targetFloorHeight - currentFloorHeight;
-
-                        if (stepHeight <= 0.0f) {
-                            return true;
-                        }
-
-                        return stepHeight <= collider.stepSize + transform.position.z;
-                    };
-
-                    auto FindPortalTransition = [&level, selfTransform, selfRb](
-                        const Vector2 &pointOnWall,
-                        const float probeDistance,
-                        int &outFromSector,
-                        int &outTargetSector
-                    ) -> bool {
-                        outFromSector = -1;
-                        outTargetSector = -1;
-
-                        if (selfTransform == nullptr || selfRb == nullptr) [[unlikely]] {
-                            return false;
-                        }
-
-                        const Vector2 currentPos = {
-                            selfTransform->position.x,
-                            selfTransform->position.y
-                        };
-
-                        const Vector2 velocity = {
-                            selfRb->velocity.x,
-                            selfRb->velocity.y
-                        };
-
-                        const float velocityLengthSquared = Vector2Math::Dot(velocity, velocity);
-
-                        if (velocityLengthSquared <= 0.000001f) {
-                            return false;
-                        }
-
-                        const Vector2 moveDir =
-                                velocity / std::sqrt(velocityLengthSquared);
-
-                        // Approximate where the object was before physics moved it this frame.
-                        const Vector2 previousPos =
-                                currentPos - velocity * GameTime::deltaTime;
-
-                        outFromSector = MapQueries::FindSectorContainingPoint(
-                            level.sectors,
-                            previousPos
-                        );
-
-                        if (outFromSector < 0) {
-                            outFromSector = selfTransform->sectorIndex;
-                        }
-
-                        if (outFromSector < 0 ||
-                            outFromSector >= static_cast<int>(level.sectors.size())) {
-                            return false;
-                        }
-
-                        // If the center is already in another sector, use that.
-                        const int sectorAtCurrentPos = MapQueries::FindSectorContainingPoint(
-                            level.sectors,
-                            currentPos
-                        );
-
-                        if (sectorAtCurrentPos >= 0 && sectorAtCurrentPos != outFromSector) {
-                            outTargetSector = sectorAtCurrentPos;
-                            return true;
-                        }
-
-                        const float distances[] = {
-                            0.05f,
-                            0.25f,
-                            probeDistance,
-                            probeDistance * 2.0f
-                        };
-
-                        for (const float distance: distances) {
-                            const Vector2 probePoint =
-                                    pointOnWall + moveDir * distance;
-
-                            const int sectorIndex = MapQueries::FindSectorContainingPoint(
-                                level.sectors,
-                                probePoint
-                            );
-
-                            if (sectorIndex >= 0 && sectorIndex != outFromSector) {
-                                outTargetSector = sectorIndex;
-                                return true;
-                            }
-                        }
-
-                        return false;
-                    };
-
-                    // Wall collision
-                    for (const Wall &wall: sector.walls) {
-                        const Vector2 selfVector2 = {
-                            selfTransform->position.x,
-                            selfTransform->position.y
-                        };
-
-                        const Vector2 v = wall.vector;
-
-                        const float vDotV = Vector2Math::Dot(v, v);
-                        if (vDotV <= 0.001f) continue;
-
-                        if (selfCollider.type == COLLIDERTYPE_SPHERE) {
-                            const Vector2 w = selfVector2 - wall.start;
-
-                            float t = Vector2Math::Dot(w, v) / vDotV;
-                            t = std::max(0.0f, std::min(1.0f, t));
-
-                            const Vector2 closestPoint = wall.start + t * v;
-
-                            const Vector2 delta = selfVector2 - closestPoint;
-                            const float distanceSquared = Vector2Math::Dot(delta, delta);
-
-                            const float radius = selfSize.x;
-
-                            if (distanceSquared >= radius * radius) continue;
-
-                            const float distance = std::sqrt(distanceSquared);
-                            const float overlap = radius - distance;
-
-                            Vector2 pushDirection;
-
-                            if (distance > 0.0001f) {
-                                pushDirection = delta / distance;
-                            } else {
-                                const Vector2 wallDir = Vector2Math::Normalized(wall.vector);
-                                pushDirection = {-wallDir.y, wallDir.x};
-                            }
-
-                            int fromSectorIndex = -1;
-                            int targetSectorIndex = -1;
-
-                            const bool foundPortalTransition =
-                                    FindPortalTransition(
-                                        closestPoint,
-                                        radius + 0.05f,
-                                        fromSectorIndex,
-                                        targetSectorIndex
-                                    );
-
-                            if (foundPortalTransition &&
-                                CanStepIntoSector(
-                                    *selfTransform,
-                                    selfCollider,
-                                    fromSectorIndex,
-                                    targetSectorIndex
-                                )) {
-                                continue;
-                            }
-
-                            const Vector2 push = pushDirection * overlap;
-
-                            selfTransform->AddPosition({push.x, push.y, 0.0f});
-
-                            ResolveTransformAgainstCurrentFloor(
-                                level,
-                                *selfTransform,
-                                &selfCollider,
-                                selfRb
-                            );
-
-                            const float velocityIntoWall =
-                                    selfRb->velocity.x * pushDirection.x +
-                                    selfRb->velocity.y * pushDirection.y;
-
-                            if (velocityIntoWall < 0.0f) {
-                                selfRb->velocity.x -= pushDirection.x * velocityIntoWall;
-                                selfRb->velocity.y -= pushDirection.y * velocityIntoWall;
-                            }
-                        } else if (selfCollider.type == COLLIDERTYPE_BOX) {
-                            const Vector2 halfSize = {
-                                selfSize.x * 0.5f,
-                                selfSize.y * 0.5f
-                            };
-
-                            const float wallLength = std::sqrt(vDotV);
-                            if (wallLength <= 0.001f) continue;
-
-                            const Vector2 wallDir = v / wallLength;
-
-                            Vector2 wallNormal = {
-                                -wallDir.y,
-                                wallDir.x
-                            };
-
-                            const Vector2 wallToBox = selfVector2 - wall.start;
-
-                            float normalDistance = Vector2Math::Dot(wallToBox, wallNormal);
-
-                            if (normalDistance < 0.0f) {
-                                wallNormal = wallNormal * -1.0f;
-                                normalDistance = -normalDistance;
-                            }
-
-                            const float boxExtentAlongNormal =
-                                    std::abs(wallNormal.x) * halfSize.x +
-                                    std::abs(wallNormal.y) * halfSize.y;
-
-                            const float boxExtentAlongWall =
-                                    std::abs(wallDir.x) * halfSize.x +
-                                    std::abs(wallDir.y) * halfSize.y;
-
-                            const float boxCenterAlongWall =
-                                    Vector2Math::Dot(wallToBox, wallDir);
-
-                            if (boxCenterAlongWall < -boxExtentAlongWall ||
-                                boxCenterAlongWall > wallLength + boxExtentAlongWall) {
-                                continue;
-                            }
-
-                            if (normalDistance >= boxExtentAlongNormal) {
-                                continue;
-                            }
-
-                            const float overlap = boxExtentAlongNormal - normalDistance;
-
-                            const Vector2 pushDirection = wallNormal;
-
-                            const float clampedAlongWall = std::clamp(
-                                boxCenterAlongWall,
-                                0.0f,
-                                wallLength
-                            );
-
-                            const Vector2 closestPoint =
-                                    wall.start + wallDir * clampedAlongWall;
-
-                            const float boxProbeDistance =
-                                    std::max(halfSize.x, halfSize.y) + 0.05f;
-
-                            int fromSectorIndex = -1;
-                            int targetSectorIndex = -1;
-
-                            const bool foundPortalTransition =
-                                    FindPortalTransition(
-                                        closestPoint,
-                                        boxProbeDistance,
-                                        fromSectorIndex,
-                                        targetSectorIndex
-                                    );
-
-                            if (foundPortalTransition &&
-                                CanStepIntoSector(
-                                    *selfTransform,
-                                    selfCollider,
-                                    fromSectorIndex,
-                                    targetSectorIndex
-                                )) {
-                                continue;
-                            }
-
-                            const Vector2 push = pushDirection * overlap;
-
-                            selfTransform->AddPosition({push.x, push.y, 0.0f});
-
-                            const float velocityIntoWall =
-                                    selfRb->velocity.x * pushDirection.x +
-                                    selfRb->velocity.y * pushDirection.y;
-
-                            if (velocityIntoWall < 0.0f) {
-                                selfRb->velocity.x -= pushDirection.x * velocityIntoWall;
-                                selfRb->velocity.y -= pushDirection.y * velocityIntoWall;
+                    for (const Wall* wall : sector.walls) {
+                        if (wall == nullptr) continue;
+                        for (int i = 0; i < wall->quad3DCount; ++i) {
+                            const auto& quad = wall->quads3D[i];
+
+                            // Split the quad into two triangles: (V0, V1, V2) and (V0, V2, V3)
+                            const Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
+                            const Vector3 closestT2 = ClosestPointOnTriangle(selfPos, quad[0], quad[2], quad[3]);
+
+                            // Determine which triangle yielded the absolute closest point to the sphere center
+                            Vector3 diff1 = { selfPos.x - closestT1.x, selfPos.y - closestT1.y, selfPos.z - closestT1.z };
+                            Vector3 diff2 = { selfPos.x - closestT2.x, selfPos.y - closestT2.y, selfPos.z - closestT2.z };
+
+                            float distSq1 = Vector3Math::LengthSquared(diff1);
+                            float distSq2 = Vector3Math::LengthSquared(diff2);
+
+                            Vector3 absoluteClosestPoint = (distSq1 < distSq2) ? closestT1 : closestT2;
+                            float minDistanceSq = (distSq1 < distSq2) ? distSq1 : distSq2;
+
+                            if (minDistanceSq <= (selfCollider.scale.x * selfCollider.scale.x)) {
+                                // Wall collision detected
+                                if (selfRb->isStatic) break;
+
+                                float distance = std::sqrt(minDistanceSq);
+                                float penetrationDepth = selfCollider.scale.x - distance;
+
+                                Vector3 bestDiff = (distSq1 < distSq2) ? diff1 : diff2;
+                                Vector3 collisionNormal = { 0.0f, 0.0f, 1.0f }; // Fallback
+                                if (distance > 0.0001f) {
+                                    collisionNormal = Vector3{
+                                        bestDiff.x / distance,
+                                        bestDiff.y / distance,
+                                        bestDiff.z / distance
+                                    };
+                                }
+                                else {
+                                    // Edge case: Sphere center is perfectly on the quad face.
+                                    // Generate a fallback normal using the quad's winding direction
+                                    Vector3 edge1 = quad[1] - quad[0];
+                                    Vector3 edge2 = quad[2] - quad[0];
+
+                                    Vector3 cross = Vector3Math::Cross(edge1, edge2);
+                                    collisionNormal = Vector3Math::Normalized(cross);
+                                }
+
+                                selfTransform->AddPosition(collisionNormal * penetrationDepth);
+                                // Resolve collision here or break out
                             }
                         }
                     }

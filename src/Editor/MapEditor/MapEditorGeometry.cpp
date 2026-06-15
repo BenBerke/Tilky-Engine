@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Entity.hpp"
 
 // This is an internal file for functions related ot mathematical calculations about the map
@@ -306,17 +307,32 @@ namespace MapEditorInternal {
 
 namespace Editor {
     void AddWall(const Wall& wall) {
-        LevelManager::CurrentLevel().walls.push_back(wall);
-    }
+        Level& level = LevelManager::CurrentLevel();
 
+        Wall copy = wall;
+
+        if (copy.id < 0) copy.id = level.nextWallID++;
+        level.nextWallID = std::max(level.nextWallID, copy.id + 1);
+
+        level.walls.push_back(copy);
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
+    }
     void AddSector(const Sector& sector) {
+        Level& level = LevelManager::CurrentLevel();
+
         Sector copy = sector;
-        copy.id = LevelManager::CurrentLevel().sectors.size();
-        LevelManager::CurrentLevel().sectors.push_back(copy);
+
+        if (copy.id < 0) copy.id = level.nextSectorID++;
+        level.nextSectorID = std::max(level.nextSectorID, copy.id + 1);
+
+        level.sectors.push_back(copy);
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
     void CreateSector(
-        const std::vector<Vector2>& vertices,
+        const std::vector<Vector2> &vertices,
         const float ceilHeight,
         const float floorHeight,
         const Vector3 ceilColor,
@@ -324,23 +340,29 @@ namespace Editor {
         const int ceilTextureIndex,
         const int floorTextureIndex
     ) {
-        Sector newSector = {
-            vertices,
-            {},
-            ceilHeight,
-            floorHeight,
-            ceilColor,
-            floorColor,
-            ceilTextureIndex,
-            floorTextureIndex
-        };
+        Sector newSector{};
 
+        newSector.vertices = vertices;
         newSector.triangles = Geometry::Triangulate(newSector.vertices);
+
+        newSector.ceilingHeight = ceilHeight;
+        newSector.floorHeight = floorHeight;
+
+        newSector.ceilingColor = ceilColor;
+        newSector.floorColor = floorColor;
+
+        newSector.floorCount = 1;
+
+        newSector.ceilingTextureIndices.fill(-1);
+        newSector.ceilingTextureIndices[0] = ceilTextureIndex;
+
+        newSector.floorTextureIndex = floorTextureIndex;
 
         AddSector(newSector);
     }
 
     // Legacy, probably should be removed in the future
+    //todo remove
     void TriangulateSectors() {
         LevelManager::TriangulateCurrentLevelSectors();
     }

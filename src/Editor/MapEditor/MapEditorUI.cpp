@@ -657,9 +657,8 @@ namespace MapEditorInternal {
         if (creatableSector) {
             if (ImGui::Button(Get("editor.create_sector").c_str())) {
                 if (sectorBeingCreated.size() >= 3) {
-                    if (!SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back())) {
+                    if (!SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back()))
                         sectorBeingCreated.push_back(sectorBeingCreated.front());
-                    }
 
                     FinishSectorSelection();
                     actions.push_back(ACTION_CREATE_SECTOR);
