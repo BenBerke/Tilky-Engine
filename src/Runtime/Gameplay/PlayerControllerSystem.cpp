@@ -69,7 +69,7 @@ namespace PlayerControllerSystem {
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE) && rigidbody.velocity.z <= 0.0001f)
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE))
             rigidbody.velocity.z += controller.jumpPower;
 
         controller.currentSpeed =
@@ -80,7 +80,6 @@ namespace PlayerControllerSystem {
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
-
         if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
@@ -89,8 +88,7 @@ namespace PlayerControllerSystem {
         camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
         camera.yaw = std::fmod(camera.yaw, 360.0f);
 
-        const float yawRadians =
-                camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);

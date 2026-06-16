@@ -12,7 +12,8 @@
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Runtime/ScriptSystem.hpp"
-#include "Headers/Runtime/CollisionSystem.hpp"
+#include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
@@ -219,13 +220,15 @@ namespace LevelSystem {
                     continue;
                 }
 
-
                 ComponentCollider *collider = level.colliders.Get(r.ownerID);
 
-                const bool isOnCurrentFloor = transform->position.z <= .00001f;
-
-                if (transform->sectorIndex != -1) [[unlikely]]
-                r.ApplyGravity(level.worldSettings.gravity);
+                if (transform->sectorIndex != -1) [[unlikely]]{
+                    std::string formatted = std::format("{} {} {}",
+                        transform->position.z,r.velocity.z, transform->sectorIndex);
+                    EditorFunctions::Print(formatted, {100.0f, 100.0f, 100.0f});
+                    if (transform->position.z > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
+                    //else r.velocity.z = .0f;
+                }
 
                 // Apply Rb's base friction
                 r.ApplyFriction(0);

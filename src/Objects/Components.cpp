@@ -30,7 +30,6 @@ float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& secto
     return sector.floorHeight + sectorHeight * static_cast<float>(floor);
 }
 
-
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner) {
     if (owner == nullptr || sectors.empty()) {
         sectorIndex = -1;

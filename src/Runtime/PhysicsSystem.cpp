@@ -2,8 +2,9 @@
 // Created by berke on 6/15/2026.
 //
 
-#include "Headers/Runtime/CollisionSystem.hpp"
+#include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 
 namespace {
         Vector3 ClosestPointOnSegment(const Vector3& p, const Vector3& a, const Vector3& b) {
@@ -13,8 +14,7 @@ namespace {
         t = std::max(0.0f, std::min(1.0f, t)); // Clamp to segment bounds
         return Vector3{ a.x + t * ab.x, a.y + t * ab.y, a.z + t * ab.z };
     }
-
-    Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
+        Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
         const Vector3 ab = b - a;
         const Vector3 ac = c - a;
         const Vector3 ap = p - a;
@@ -77,10 +77,8 @@ namespace CollisionSystem {
 
             //selfTransform->isDirty = true;
 
-            if (selfTransform->sectorIndex < 0 ||
-                selfTransform->sectorIndex >= static_cast<int>(level.sectors.size())) {
+            if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.size()))
                 continue;
-            }
 
             Sector &sector = level.sectors[selfTransform->sectorIndex];
             Entity *selfEntity = level.GetEntity(selfCollider.ownerID);
@@ -184,62 +182,149 @@ namespace CollisionSystem {
                 }
             }
 
-            spdlog::info(
-                "Collision sectorIndex={}, sectorID={}, wallCount={}, pos=({}, {}, {})",
-                selfTransform->sectorIndex,
-                sector.id,
-                sector.walls.size(),
-                selfTransform->position.x,
-                selfTransform->position.y,
-                selfTransform->absHeight
-            );
             for (const Wall *wall: sector.walls) {
                 if (wall == nullptr) continue;
+
                 for (int i = 0; i < wall->quad3DCount; ++i) {
                     const auto &quad = wall->quads3D[i];
 
-                    // Split the quad into two triangles: (V0, V1, V2) and (V0, V2, V3)
+                    const Vector3 edge1 = quad[1] - quad[0];
+                    const Vector3 edge2 = quad[2] - quad[0];
+
+                    Vector3 quadNormal = Vector3Math::Normalized(Vector3Math::Cross(edge1, edge2));
+
+                    // Skip floor/ceiling-style horizontal quads.
+                    // Wall collision should only handle mostly vertical faces.
+                    if (std::abs(quadNormal.z) > 0.75f) continue;
+
                     const Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
                     const Vector3 closestT2 = ClosestPointOnTriangle(selfPos, quad[0], quad[2], quad[3]);
 
-                    // Determine which triangle yielded the absolute closest point to the sphere center
-                    Vector3 diff1 = {selfPos.x - closestT1.x, selfPos.y - closestT1.y, selfPos.z - closestT1.z};
-                    Vector3 diff2 = {selfPos.x - closestT2.x, selfPos.y - closestT2.y, selfPos.z - closestT2.z};
+                    Vector3 diff1 = selfPos - closestT1;
+                    Vector3 diff2 = selfPos - closestT2;
 
-                    float distSq1 = Vector3Math::LengthSquared(diff1);
-                    float distSq2 = Vector3Math::LengthSquared(diff2);
+                    const float distSq1 = Vector3Math::LengthSquared(diff1);
+                    const float distSq2 = Vector3Math::LengthSquared(diff2);
 
-                    Vector3 absoluteClosestPoint = (distSq1 < distSq2) ? closestT1 : closestT2;
-                    float minDistanceSq = (distSq1 < distSq2) ? distSq1 : distSq2;
+                    const float minDistanceSq = (distSq1 < distSq2) ? distSq1 : distSq2;
 
-                    if (minDistanceSq <= (selfCollider.scale.x * selfCollider.scale.x)) {
-                        // Wall collision detected
+                    const float radius = selfCollider.scale.x;
+
+                    if (minDistanceSq <= radius * radius) {
                         if (selfRb->isStatic) break;
 
-                        float distance = std::sqrt(minDistanceSq);
-                        float penetrationDepth = selfCollider.scale.x - distance;
+                        const float distance = std::sqrt(minDistanceSq);
+                        const float penetrationDepth = radius - distance;
 
                         Vector3 bestDiff = (distSq1 < distSq2) ? diff1 : diff2;
-                        Vector3 collisionNormal = {0.0f, 0.0f, 1.0f}; // Fallback
+
+                        Vector3 collisionNormal = {0.0f, 0.0f, 0.0f};
+
                         if (distance > 0.0001f) {
-                            collisionNormal = Vector3{
+                            collisionNormal = {
                                 bestDiff.x / distance,
                                 bestDiff.y / distance,
-                                bestDiff.z / distance
+                                0.0f
                             };
                         } else {
-                            // Edge case: Sphere center is perfectly on the quad face.
-                            // Generate a fallback normal using the quad's winding direction
-                            Vector3 edge1 = quad[1] - quad[0];
-                            Vector3 edge2 = quad[2] - quad[0];
-
-                            Vector3 cross = Vector3Math::Cross(edge1, edge2);
-                            collisionNormal = Vector3Math::Normalized(cross);
+                            collisionNormal = {
+                                quadNormal.x,
+                                quadNormal.y,
+                                0.0f
+                            };
                         }
 
+                        const float horizontalNormalLengthSq =
+                                collisionNormal.x * collisionNormal.x +
+                                collisionNormal.y * collisionNormal.y;
+
+                        if (horizontalNormalLengthSq <= 0.000001f) {
+                            continue;
+                        }
+
+                        const float invHorizontalNormalLength =
+                                1.0f / std::sqrt(horizontalNormalLengthSq);
+
+                        collisionNormal.x *= invHorizontalNormalLength;
+                        collisionNormal.y *= invHorizontalNormalLength;
+                        collisionNormal.z = 0.0f;
+
                         selfTransform->AddPosition(collisionNormal * penetrationDepth);
-                        // Resolve collision here or break out
+
+                        selfPos = {
+                            selfTransform->position.x,
+                            selfTransform->position.y,
+                            selfTransform->absHeight
+                        };
                     }
+                }
+            }
+
+            // Floor/ceiling collision.
+            // The floor and ceiling shape is the sector polygon/triangulated area in XY.
+            // Z collision is handled separately because sector floors/ceilings are flat heights.
+            {
+                const Vector2 feetPoint2D = {
+                    selfTransform->position.x,
+                    selfTransform->position.y
+                };
+
+                // If the entity is not horizontally inside this sector shape,
+                // do not apply this sector's floor/ceiling clamp.
+                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) {
+                    continue;
+                }
+
+                // Feet height relative to this sector's floor.
+                const float feetRelativeHeight = selfTransform->position.z;
+
+                // Head height relative to this sector's floor.
+                const float headRelativeHeight =
+                        selfTransform->position.z + selfTransform->scale.y;
+
+                // If ceilingHeight is absolute, convert it to floor-relative height.
+                const float ceilingRelativeHeight =
+                        sector.ceilingHeight - sector.floorHeight;
+
+                // Floor collision: feet cannot go below the sector floor.
+                if (feetRelativeHeight < 0.0f) {
+                    selfTransform->AddPosition({
+                        0.0f,
+                        0.0f,
+                        -feetRelativeHeight
+                    });
+
+                    if (selfRb->velocity.z < 0.0f) {
+                        selfRb->velocity.z = 0.0f;
+                    }
+
+                    selfPos = {
+                        selfTransform->position.x,
+                        selfTransform->position.y,
+                        selfTransform->absHeight
+                    };
+                }
+
+                // Ceiling collision: head cannot go above the sector ceiling.
+                if (headRelativeHeight > ceilingRelativeHeight) {
+                    const float ceilingCorrection =
+                            ceilingRelativeHeight - headRelativeHeight;
+
+                    selfTransform->AddPosition({
+                        0.0f,
+                        0.0f,
+                        ceilingCorrection
+                    });
+
+                    if (selfRb->velocity.z > 0.0f) {
+                        selfRb->velocity.z = 0.0f;
+                    }
+
+                    selfPos = {
+                        selfTransform->position.x,
+                        selfTransform->position.y,
+                        selfTransform->absHeight
+                    };
                 }
             }
         }

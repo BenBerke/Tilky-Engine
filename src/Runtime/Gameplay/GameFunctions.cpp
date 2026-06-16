@@ -171,9 +171,7 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitB.has_value()) {
-                    submitWallHit(wall, *hitB);
-                }
+                if (hitB.has_value()) submitWallHit(wall, *hitB);
             }
         }
 
