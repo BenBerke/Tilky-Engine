@@ -202,10 +202,6 @@ namespace RuntimeSession {
             if (runtimeType != STANDALONE) {
                 RenderDebugText();
                 EditorFunctions::RenderConsole(renderer.get());
-                if (InputManager::GetKeyDown(SDL_SCANCODE_P)) {
-                    std::string msg = std::format("Time: {}", GameTime::time);
-                    EditorFunctions::Print(msg);
-                }
             }
 
             renderer->EndFrame();

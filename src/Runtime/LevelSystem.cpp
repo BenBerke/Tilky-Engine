@@ -225,7 +225,7 @@ namespace LevelSystem {
                 if (transform->sectorIndex != -1) [[unlikely]]{
                     std::string formatted = std::format("{} {} {}",
                         transform->position.z,r.velocity.z, transform->sectorIndex);
-                    EditorFunctions::Print(formatted, {100.0f, 100.0f, 100.0f});
+                    EditorFunctions::Print(formatted, {255.0f, 255.0f, 255.0f});
                     if (transform->position.z > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
                     //else r.velocity.z = .0f;
                 }

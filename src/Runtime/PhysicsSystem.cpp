@@ -85,16 +85,23 @@ namespace CollisionSystem {
 
             if (selfEntity == nullptr) [[unlikely]] continue;
 
-            std::vector<Entity *> allEntities;
+            std::vector<Entity*> allEntities;
+            std::vector<const Wall*> allWalls;
 
             allEntities.reserve(sector.entitiesInside.size() + 16);
             allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
+
+            allEntities.reserve(32);
+            allWalls.insert(allWalls.end(), sector.walls.begin(), sector.walls.end());
 
             for (const Sector *nSector: sector.neighbors) {
                 if (nSector == nullptr) [[unlikely]] continue;
 
                 allEntities.insert(allEntities.end(), nSector->entitiesInside.begin(),
                                    nSector->entitiesInside.end());
+
+                allWalls.insert(allWalls.end(), nSector->walls.begin(),
+                                   nSector->walls.end());
             }
 
             std::vector<ID> processedOtherIDs;
@@ -104,7 +111,7 @@ namespace CollisionSystem {
             Vector3 selfPos = {
                 selfTransform->position.x,
                 selfTransform->position.y,
-                selfTransform->absHeight
+                selfTransform->absHeight + (selfTransform->scale.y * .5f)
             };
 
             for (const Entity *otherEntity: allEntities) {
@@ -182,7 +189,7 @@ namespace CollisionSystem {
                 }
             }
 
-            for (const Wall *wall: sector.walls) {
+            for (const Wall *wall: allWalls) {
                 if (wall == nullptr) continue;
 
                 for (int i = 0; i < wall->quad3DCount; ++i) {

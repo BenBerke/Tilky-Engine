@@ -69,7 +69,7 @@ namespace PlayerControllerSystem {
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE))
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE) && playerTransform.position.z < 0.0001f)
             rigidbody.velocity.z += controller.jumpPower;
 
         controller.currentSpeed =
