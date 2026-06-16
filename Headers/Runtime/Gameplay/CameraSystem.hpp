@@ -73,11 +73,9 @@ namespace CameraSystem {
             cameraPositionEngine.z + camera.forward.z
         };
 
-        const Vector3 cameraPositionRender =
-            EngineToRenderSpace(cameraPositionEngine);
+        const Vector3 cameraPositionRender = EngineToRenderSpace(cameraPositionEngine);
 
-        const Vector3 targetRender =
-            EngineToRenderSpace(targetEngine);
+        const Vector3 targetRender = EngineToRenderSpace(targetEngine);
 
         camera.view = Matrix4::LookAt(
             cameraPositionRender,

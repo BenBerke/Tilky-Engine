@@ -223,10 +223,7 @@ namespace LevelSystem {
                 ComponentCollider *collider = level.colliders.Get(r.ownerID);
 
                 if (transform->sectorIndex != -1) [[unlikely]]{
-                    std::string formatted = std::format("{} {} {}",
-                        transform->position.z,r.velocity.z, transform->sectorIndex);
-                    EditorFunctions::Print(formatted, {255.0f, 255.0f, 255.0f});
-                    if (transform->position.z > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
+                    if (transform->relativeHeight > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
                     //else r.velocity.z = .0f;
                 }
 
@@ -240,12 +237,12 @@ namespace LevelSystem {
 
         {
             //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
-            ZoneScopedN("Collision");
+            ZoneScopedN("Physics");
 
             //todo make this a world setting
             constexpr int COLLISION_ITERATIONS = 6;
 
-            for (int i = 0; i < COLLISION_ITERATIONS; i++) CollisionSystem::Run(level);
+            for (int i = 0; i < COLLISION_ITERATIONS; i++) PhysicsSystem::Run(level);
         } // Zone Collision
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;

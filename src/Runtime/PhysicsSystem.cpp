@@ -3,8 +3,11 @@
 //
 
 #include "Headers/Runtime/PhysicsSystem.hpp"
+
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Math/Geometry/Geometry.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 namespace {
         Vector3 ClosestPointOnSegment(const Vector3& p, const Vector3& a, const Vector3& b) {
@@ -60,7 +63,7 @@ namespace {
     }
 }
 
-namespace CollisionSystem {
+namespace PhysicsSystem {
     void Run(Level& level) {
         for (ComponentCollider &selfCollider: level.colliders.components) {
             if (!selfCollider.isActive) continue;
@@ -111,7 +114,7 @@ namespace CollisionSystem {
             Vector3 selfPos = {
                 selfTransform->position.x,
                 selfTransform->position.y,
-                selfTransform->absHeight + (selfTransform->scale.y * .5f)
+                selfTransform->position.z + (selfTransform->scale.y * .5f)
             };
 
             for (const Entity *otherEntity: allEntities) {
@@ -140,7 +143,7 @@ namespace CollisionSystem {
                 Vector3 otherPos = {
                     otherTransform->position.x,
                     otherTransform->position.y,
-                    otherTransform->absHeight
+                    otherTransform->position.z + (otherTransform->scale.y * .5f)
                 };
 
                 // This block currently only supports sphere-vs-sphere collision.
@@ -175,16 +178,18 @@ namespace CollisionSystem {
                     const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
 
                     const Vector3 selfCorrection = pushDirection * (correctedPenetration * selfPush);
-                    const Vector3 otherCorrection = pushDirection * (correctedPenetration * otherPush);
+                    const Vector3 otherCorrection = -pushDirection * (correctedPenetration * otherPush);
+
+                   // EditorFunctions::Print("collision with entity detected");
 
                     selfTransform->AddPosition(selfCorrection);
 
-                    if (!otherIsStatic) otherTransform->AddPosition(-otherCorrection);
+                    if (!otherIsStatic) otherTransform->AddPosition(otherCorrection);
 
                     selfPos = {
                         selfTransform->position.x,
                         selfTransform->position.y,
-                        selfTransform->absHeight
+                        selfTransform->position.z
                     };
                 }
             }
@@ -233,24 +238,16 @@ namespace CollisionSystem {
                                 bestDiff.y / distance,
                                 0.0f
                             };
-                        } else {
-                            collisionNormal = {
-                                quadNormal.x,
-                                quadNormal.y,
-                                0.0f
-                            };
                         }
+                        else collisionNormal = {quadNormal.x, quadNormal.y, 0.0f};
 
                         const float horizontalNormalLengthSq =
                                 collisionNormal.x * collisionNormal.x +
                                 collisionNormal.y * collisionNormal.y;
 
-                        if (horizontalNormalLengthSq <= 0.000001f) {
-                            continue;
-                        }
+                        if (horizontalNormalLengthSq <= 0.000001f) continue;
 
-                        const float invHorizontalNormalLength =
-                                1.0f / std::sqrt(horizontalNormalLengthSq);
+                        const float invHorizontalNormalLength = 1.0f / std::sqrt(horizontalNormalLengthSq);
 
                         collisionNormal.x *= invHorizontalNormalLength;
                         collisionNormal.y *= invHorizontalNormalLength;
@@ -261,7 +258,7 @@ namespace CollisionSystem {
                         selfPos = {
                             selfTransform->position.x,
                             selfTransform->position.y,
-                            selfTransform->absHeight
+                            selfTransform->position.z
                         };
                     }
                 }
@@ -276,63 +273,51 @@ namespace CollisionSystem {
                     selfTransform->position.y
                 };
 
-                // If the entity is not horizontally inside this sector shape,
-                // do not apply this sector's floor/ceiling clamp.
                 if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) {
                     continue;
                 }
 
-                // Feet height relative to this sector's floor.
-                const float feetRelativeHeight = selfTransform->position.z;
+                const float storeyHeight =
+                    sector.ceilingHeight - sector.floorHeight;
 
-                // Head height relative to this sector's floor.
-                const float headRelativeHeight =
-                        selfTransform->position.z + selfTransform->scale.y;
+                const float currentFloorWorldHeight =
+                    sector.floorHeight + storeyHeight * static_cast<float>(selfTransform->floor);
 
-                // If ceilingHeight is absolute, convert it to floor-relative height.
-                const float ceilingRelativeHeight =
-                        sector.ceilingHeight - sector.floorHeight;
+                const float currentCeilingWorldHeight =
+                    currentFloorWorldHeight + storeyHeight;
 
-                // Floor collision: feet cannot go below the sector floor.
-                if (feetRelativeHeight < 0.0f) {
+                const float feetWorldHeight =
+                    selfTransform->position.z;
+
+                const float headWorldHeight =
+                    selfTransform->position.z + selfTransform->scale.y;
+
+                if (feetWorldHeight < currentFloorWorldHeight) {
                     selfTransform->AddPosition({
                         0.0f,
                         0.0f,
-                        -feetRelativeHeight
+                        currentFloorWorldHeight - feetWorldHeight
                     });
 
                     if (selfRb->velocity.z < 0.0f) {
                         selfRb->velocity.z = 0.0f;
                     }
-
-                    selfPos = {
-                        selfTransform->position.x,
-                        selfTransform->position.y,
-                        selfTransform->absHeight
-                    };
                 }
 
-                // Ceiling collision: head cannot go above the sector ceiling.
-                if (headRelativeHeight > ceilingRelativeHeight) {
-                    const float ceilingCorrection =
-                            ceilingRelativeHeight - headRelativeHeight;
-
+                if (headWorldHeight > currentCeilingWorldHeight) {
                     selfTransform->AddPosition({
                         0.0f,
                         0.0f,
-                        ceilingCorrection
+                        currentCeilingWorldHeight - headWorldHeight
                     });
 
                     if (selfRb->velocity.z > 0.0f) {
                         selfRb->velocity.z = 0.0f;
                     }
-
-                    selfPos = {
-                        selfTransform->position.x,
-                        selfTransform->position.y,
-                        selfTransform->absHeight
-                    };
                 }
+
+                selfTransform->relativeHeight =
+                    selfTransform->position.z - currentFloorWorldHeight;
             }
         }
     }

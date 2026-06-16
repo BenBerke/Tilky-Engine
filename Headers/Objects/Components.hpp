@@ -211,7 +211,7 @@ struct ComponentTransform {
     ID ownerID = -1;
     //                 World X, World Z, Height relative to the sector's floor
     Vector3 position = {.0f, .0f, .0f};
-    float absHeight = .0f;
+    float relativeHeight = .0f;
     Vector2 forward = {1.0f, .0f};
     int floor = 0;
     Vector2 scale = {32.0f, 32.0f};

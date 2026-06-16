@@ -86,9 +86,7 @@ namespace EditorFunctions {
     }
 
     void RenderConsole(IRenderer* renderer) {
-        if (renderer == nullptr) {
-            return;
-        }
+        if (renderer == nullptr) return;
 
         std::scoped_lock lock(linesMutex);
 

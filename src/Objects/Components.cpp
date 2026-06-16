@@ -19,22 +19,31 @@ void ComponentTransform::AddPosition(const Vector3& position) {
 }
 
 float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& sectors) {
-    if (this->sectorIndex < 0 || this->sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]] return 0.0f;
+    if (this->sectorIndex < 0 || this->sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]] {
+        return 0.0f;
+    }
 
     const Sector& sector = sectors[this->sectorIndex];
 
-    const float sectorHeight = sector.ceilingHeight - sector.floorHeight;
+    const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
 
-    this->floor = std::clamp(this->floor, 0, std::max(1, sector.floorCount) - 1);
+    this->floor = std::clamp(
+        this->floor,
+        0,
+        std::max(1, sector.floorCount) - 1
+    );
 
-    return sector.floorHeight + sectorHeight * static_cast<float>(floor);
+    return sector.floorHeight + storeyHeight * static_cast<float>(this->floor);
 }
 
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner) {
     if (owner == nullptr || sectors.empty()) {
         sectorIndex = -1;
         floor = 0;
-        absHeight = position.z;
+
+        // With no sector, relative height has no real floor reference.
+        relativeHeight = position.z;
+
         return false;
     }
 
@@ -44,27 +53,7 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
         oldSector >= 0 &&
         oldSector < static_cast<int>(sectors.size());
 
-    float worldHeight = position.z;
-
-    if (oldSectorValid) {
-        const Sector& oldSectorRef = sectors[oldSector];
-
-        const int oldSafeFloorCount =
-            std::clamp(oldSectorRef.floorCount, 1, MAX_FLOOR_COUNT);
-
-        const int oldFloor =
-            std::clamp(static_cast<int>(floor), 0, oldSafeFloorCount - 1);
-
-        const float oldStoreyHeight =
-            oldSectorRef.ceilingHeight - oldSectorRef.floorHeight;
-
-        const float oldFloorWorldHeight =
-            oldSectorRef.floorHeight + oldStoreyHeight * static_cast<float>(oldFloor);
-
-        worldHeight = oldFloorWorldHeight + position.z;
-    } else {
-        worldHeight = absHeight;
-    }
+    const float worldHeight = position.z;
 
     const int newSector = MapQueries::FindSectorContainingPoint(
         sectors,
@@ -72,15 +61,22 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
-        if (oldSectorValid) std::erase(sectors[oldSector].entitiesInside, owner);
+        if (oldSectorValid) {
+            std::erase(sectors[oldSector].entitiesInside, owner);
+        }
 
         sectorIndex = -1;
         floor = 0;
-        absHeight = worldHeight;
+
+        // Outside a sector, keep position.z absolute and store relativeHeight as fallback.
+        relativeHeight = position.z;
+
         return false;
     }
 
-    if (oldSectorValid && oldSector != newSector) std::erase(sectors[oldSector].entitiesInside, owner);
+    if (oldSectorValid && oldSector != newSector) {
+        std::erase(sectors[oldSector].entitiesInside, owner);
+    }
 
     sectorIndex = newSector;
 
@@ -90,7 +86,11 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
         sector.entitiesInside.push_back(owner);
     }
 
-    const int safeFloorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
+    const int safeFloorCount = std::clamp(
+        sector.floorCount,
+        1,
+        MAX_FLOOR_COUNT
+    );
 
     const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
 
@@ -106,13 +106,12 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 
     floor = newFloor;
 
-    const float newFloorWorldHeight = sector.floorHeight + storeyHeight * static_cast<float>(newFloor);
+    const float currentFloorWorldHeight =
+        sector.floorHeight + storeyHeight * static_cast<float>(floor);
 
-    position.z = worldHeight - newFloorWorldHeight;
-
-    position.z = std::clamp(position.z, 0.0f, std::max(0.0f, storeyHeight));
-
-    absHeight = newFloorWorldHeight + position.z;
+    // position.z remains absolute.
+    // relativeHeight is derived from the current sector floor.
+    relativeHeight = position.z - currentFloorWorldHeight;
 
     return true;
 }

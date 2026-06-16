@@ -68,7 +68,7 @@ void OpenGL::Update() {
             if (!controller.isActive) continue;
 
             if (controller.ownerID == camera->ownerID) {
-                renderCameraTransform.position.z = cameraTransform->absHeight + controller.eyeHeight;
+                renderCameraTransform.position.z = cameraTransform->position.z + controller.eyeHeight;
                 break;
             }
         }

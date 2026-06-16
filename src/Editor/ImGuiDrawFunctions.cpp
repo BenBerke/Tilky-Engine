@@ -163,19 +163,13 @@ namespace ImGuiDrawFunctions {
                 componentNames[state.componentToAdd].c_str()
             )) {
                 for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
-                    if (i == CMP_TRANSFORM) {
-                        continue;
-                    }
+                    if (i == CMP_TRANSFORM) continue;
 
                     const bool isSelected = state.componentToAdd == i;
 
-                    if (ImGui::Selectable(componentNames[i].c_str(), isSelected)) {
-                        state.componentToAdd = i;
-                    }
+                    if (ImGui::Selectable(componentNames[i].c_str(), isSelected)) state.componentToAdd = i;
 
-                    if (isSelected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
+                    if (isSelected) ImGui::SetItemDefaultFocus();
                 }
 
                 ImGui::EndCombo();
@@ -413,7 +407,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::Text("Height");
 
                 ImGui::SetNextItemWidth(200.0f);
-                ImGui::InputFloat("##positionz", &c->position.z);
+                ImGui::InputFloat("##relativeHeight", &c->relativeHeight);
 
                 ImGui::Spacing();
 
@@ -434,9 +428,7 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentTransform>();
                     CloseEditor();
                 }
-            } else {
-                ImGui::Text("Transform component missing");
-            }
+            } else  ImGui::Text("Transform component missing");
         } else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
 

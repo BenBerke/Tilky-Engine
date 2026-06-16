@@ -6,7 +6,7 @@
 #define TILKY_ENGINE_PHYSICSSYSTEM_HPP
 
 struct Level;
-namespace CollisionSystem {
+namespace PhysicsSystem {
     void Run(Level& level);
 }
 
