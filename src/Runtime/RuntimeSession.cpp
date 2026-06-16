@@ -193,9 +193,7 @@ namespace RuntimeSession {
 
             renderer->BeginImGuiFrame();
 
-            if (runtimeType == EDITOR) {
-                RuntimeEditor::Draw(level);
-            }
+            if (runtimeType == EDITOR) RuntimeEditor::Draw(level);
 
             renderer->EndImGuiFrame();
 
