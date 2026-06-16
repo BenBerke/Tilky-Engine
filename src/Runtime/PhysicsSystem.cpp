@@ -31,7 +31,7 @@ namespace {
         const float vc = d1 * d4 - d3 * d2;
         if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
             const float v = d1 / (d1 - d3);
-            return Vector3{ a.x + v * ab.x, a.y + v * ab.y, a.z + v * ab.z };
+            return a + ab * v;
         }
 
         const Vector3 cp = p - c;
@@ -42,14 +42,14 @@ namespace {
         const float vb = d5 * d2 - d1 * d6;
         if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
             const float w = d2 / (d2 - d6);
-            return Vector3{ a.x + w * ac.x, a.y + w * ac.y, a.z + w * ac.z };
+            return a + ac * w;
         }
 
         const float va = d3 * d6 - d5 * d4;
         if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
-            float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-            Vector3 bc = { c.x - b.x, c.y - b.y, c.z - b.z };
-            return Vector3{ b.x + w * bc.x, b.y + w * bc.y, b.z + w * bc.z };
+            const float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            const Vector3 bc = c - b;
+            return b + bc * w;
         }
 
         // P is inside face region
