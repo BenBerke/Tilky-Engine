@@ -429,7 +429,8 @@ namespace ImGuiDrawFunctions {
                     CloseEditor();
                 }
             } else  ImGui::Text("Transform component missing");
-        } else if (state.selectedComponent == CMP_SPRITE) {
+        }
+        else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
 
             if (c != nullptr) [[likely]] {
@@ -440,10 +441,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentSprite>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Sprite component missing");
-            }
-        } else if (state.selectedComponent == CMP_DECAL) {
+            } else [[unlikely]] ImGui::Text("Sprite component missing");
+        }
+        else if (state.selectedComponent == CMP_DECAL) {
             auto *c = entity.GetComponent<ComponentDecal>();
 
             if (c != nullptr) [[likely]] {
@@ -459,10 +459,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentDecal>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Decal component missing");
-            }
-        } else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
+            } else [[unlikely]] ImGui::Text("Decal component missing");
+        }
+        else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
             auto *c = entity.GetComponent<ComponentAudioSource>();
 
             if (c != nullptr) [[likely]] {
@@ -530,10 +529,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentAudioSource>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Audio component missing");
-            }
-        } else if (state.selectedComponent == CMP_SCRIPT) {
+            } else [[unlikely]] ImGui::Text("Audio component missing");
+        }
+        else if (state.selectedComponent == CMP_SCRIPT) {
             auto *c = entity.GetComponent<ComponentScript>();
 
             if (c != nullptr) [[likely]] {
@@ -544,10 +542,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentScript>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Script component missing");
-            }
-        } else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
+            } else [[unlikely]] ImGui::Text("Script component missing");
+        }
+        else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
             auto *c = entity.GetComponent<ComponentPlayerController>();
 
             if (c != nullptr) [[likely]] {
@@ -580,10 +577,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentPlayerController>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Player Controller component missing");
-            }
-        } else if (state.selectedComponent == CMP_CAMERA) {
+            } else [[unlikely]] ImGui::Text("Player Controller component missing");
+        }
+        else if (state.selectedComponent == CMP_CAMERA) {
             auto *c = entity.GetComponent<ComponentCamera>();
 
             if (c != nullptr) [[likely]] {
@@ -599,10 +595,9 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentCamera>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Camera component missing");
-            }
-        } else if (state.selectedComponent == CMP_COLLIDER) {
+            } else [[unlikely]] ImGui::Text("Camera component missing");
+        }
+        else if (state.selectedComponent == CMP_COLLIDER) {
             auto *c = entity.GetComponent<ComponentCollider>();
 
             if (c != nullptr) [[likely]] {
@@ -642,15 +637,14 @@ namespace ImGuiDrawFunctions {
                 ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
 
                 ImGui::InputFloat(Get("component.collider.step_size").c_str(), &c->stepSize);
-            } else [[unlikely]] {
-                ImGui::Text("Collider component missing");
-            }
+            } else [[unlikely]] ImGui::Text("Collider component missing");
 
             if (ImGui::Button(Get("common.delete").c_str())) {
                 entity.RemoveComponent<ComponentCollider>();
                 CloseEditor();
             }
-        } else if (state.selectedComponent == CMP_RIGIDBODY) {
+        }
+        else if (state.selectedComponent == CMP_RIGIDBODY) {
             auto *c = entity.GetComponent<ComponentRigidbody>();
 
             if (c != nullptr) [[likely]] {
@@ -658,9 +652,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::InputFloat(Get("component.rigidbody.mass").c_str(), &c->mass);
                 ImGui::InputFloat(Get("component.rigidbody.gravityScale").c_str(), &c->gravityScale);
                 ImGui::InputFloat(Get("component.rigidbody.friction").c_str(), &c->friction);
-            } else [[unlikely]] {
-                ImGui::Text("Rigidbody component missing");
-            }
+            } else [[unlikely]] ImGui::Text("Rigidbody component missing");
 
             if (ImGui::Button(Get("common.delete").c_str())) {
                 entity.RemoveComponent<ComponentRigidbody>();
@@ -671,9 +663,7 @@ namespace ImGuiDrawFunctions {
         if (!closeRequested) {
             ImGui::SameLine();
 
-            if (ImGui::Button(Get("common.close").c_str())) {
-                CloseEditor();
-            }
+            if (ImGui::Button(Get("common.close").c_str())) CloseEditor();
         }
 
         if (closeRequested || !*windowOpen) {

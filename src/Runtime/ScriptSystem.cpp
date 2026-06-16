@@ -179,11 +179,11 @@ namespace {
 
 
         math.set_function("DegToRad", [](const float value) -> float {
-            return value * (180.0f / 3.14159265358979323846f);
+            return value * (180.0f / std::numbers::pi);
         });
 
         math.set_function("RadToDeg", [](const float value) -> float {
-            return value * (3.14159265358979323846f / 180.0f);
+            return value * (std::numbers::pi / 180.0f);
         });
 
         math.set_function("Clamp", [](const float value, const float minValue, const float maxValue) -> float {
@@ -457,7 +457,7 @@ namespace ScriptSystem {
 
         ResetLuaScriptRegistry();
 
-        sol::table scripts = lua["Scripts"];
+        sol::table scripts = lua["Public"];
 
         // PASS 1:
         // Load every script file and run its top-level code.
@@ -500,7 +500,7 @@ namespace ScriptSystem {
             instance.environment["Owner"] = ownerEntity;
 
             // Every script sees the exact same shared table.
-            instance.environment["Scripts"] = scripts;
+            instance.environment["Public"] = scripts;
 
             sol::load_result loadedScript = lua.load_file(path.string());
 
