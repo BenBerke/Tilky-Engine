@@ -316,4 +316,154 @@ struct ComponentStorage {
     }
 };
 
+struct ColliderStorage : ComponentStorage<ComponentCollider> {
+    // components layout: [active spheres | active boxes | inactive]
+    //                     0        firstBoxIndex  firstInactiveIndex  size
+    size_t firstBoxIndex      = 0;
+    size_t firstInactiveIndex = 0;
+
+    // ── Public mutators ──────────────────────────────────────────────
+    // Call instead of directly writing collider.isActive
+    void SetActive(ID id, bool active) {
+        const auto it = entityToIndex.find(id);
+        if (it == entityToIndex.end()) return;
+        ComponentCollider& c = components[it->second];
+        if (c.isActive == active) return;
+        c.isActive = active;
+        active ? _activateComponent(it->second) : _deactivateComponent(it->second);
+    }
+
+    // Call instead of directly writing collider.type
+    void SetType(ID id, const ColliderType type) {
+        const auto it = entityToIndex.find(id);
+        if (it == entityToIndex.end()) return;
+        ComponentCollider& c = components[it->second];
+        if (c.type == type) return;
+        if (!c.isActive) { c.type = type; return; } // inactive: just change the field
+        c.type = type;
+        if (type == COLLIDERTYPE_SPHERE) _promoteToSphere(it->second);
+        else _demoteToBox(it->second);
+    }
+
+    // ── Overrides that keep boundaries consistent ────────────────────
+    ComponentCollider& Add(ID id) {
+        if (ComponentCollider* existing = Get(id)) return *existing;
+
+        ComponentCollider comp{};
+        comp.ownerID  = id;
+        // New components default to active sphere — insert at firstBoxIndex
+        // so they land in the sphere region.
+        const size_t insertAt = firstBoxIndex;
+        components.push_back(comp);                     // append at back first
+        entityToIndex[id] = components.size() - 1;
+
+        // Then swap into the sphere slot
+        _swapElements(insertAt, components.size() - 1);
+        firstBoxIndex++;
+        firstInactiveIndex++;
+
+        return components[insertAt];
+    }
+
+    bool Remove(ID id) {
+        const auto it = entityToIndex.find(id);
+        if (it == entityToIndex.end()) return false;
+
+        const size_t idx = it->second;
+
+        // Normalise: move whatever is at idx into the inactive tail first,
+        // then erase-swap with the very last element (standard pattern).
+        if (components[idx].isActive) {
+            if (components[idx].type == COLLIDERTYPE_SPHERE)
+                _deactivateComponent(_promoteToSphere(idx)); // sphere→box region first
+            else
+                _deactivateComponent(idx);
+        }
+        // idx is now in the inactive region
+        const size_t last = components.size() - 1;
+        if (idx != last) {
+            components[idx] = components[last];
+            entityToIndex[components[idx].ownerID] = idx;
+        }
+        components.pop_back();
+        entityToIndex.erase(id);
+        // lastIndex was inactive, so no boundary adjustment needed
+        return true;
+    }
+
+    ComponentCollider& InsertLoaded(const ComponentCollider& comp) {
+        // Respect the component's own isActive / type when loading a saved level.
+        ComponentCollider& ref = ComponentStorage<ComponentCollider>::InsertLoaded(comp);
+        const size_t idx = entityToIndex[comp.ownerID];
+
+        // It was appended at the back (inactive region by default).
+        // Promote it to the right region.
+        if (comp.isActive) {
+            _activateComponent(idx);
+        }
+        return ref;
+    }
+
+    void Clear() {
+        ComponentStorage<ComponentCollider>::Clear();
+        firstBoxIndex      = 0;
+        firstInactiveIndex = 0;
+    }
+
+private:
+    void _swapElements(size_t a, size_t b) {
+        if (a == b) return;
+        std::swap(components[a], components[b]);
+        entityToIndex[components[a].ownerID] = a;
+        entityToIndex[components[b].ownerID] = b;
+    }
+
+    // Returns new index after promotion into sphere region
+    size_t _promoteToSphere(size_t idx) {
+        // idx must already be in the active-box region [firstBoxIndex, firstInactiveIndex)
+        // Swap it to the boundary between sphere and box regions, then advance the boundary.
+        if (idx != firstBoxIndex)
+            _swapElements(idx, firstBoxIndex);
+        return firstBoxIndex++;
+    }
+
+    // Demote an active sphere at idx to the box region
+    void _demoteToBox(size_t idx) {
+        // idx must be in [0, firstBoxIndex)
+        if (firstBoxIndex == 0) return;
+        _swapElements(idx, firstBoxIndex - 1);
+        firstBoxIndex--;
+    }
+
+    // Move an inactive component at idx into the correct active region
+    void _activateComponent(size_t idx) {
+        // Swap into the inactive boundary slot, then advance firstInactiveIndex.
+        if (idx != firstInactiveIndex)
+            _swapElements(idx, firstInactiveIndex);
+        firstInactiveIndex++;
+
+        // Now it's in the box region. If it's a sphere, promote further.
+        const size_t newIdx = firstInactiveIndex - 1;
+        if (components[newIdx].type == COLLIDERTYPE_SPHERE)
+            _promoteToSphere(newIdx);
+    }
+
+    // Move an active component at idx out into the inactive region
+    void _deactivateComponent(size_t idx) {
+        const bool isSphere = components[idx].type == COLLIDERTYPE_SPHERE;
+
+        if (isSphere) {
+            // Move out of sphere region into box region first
+            _swapElements(idx, firstBoxIndex - 1);
+            idx = firstBoxIndex - 1;
+            firstBoxIndex--;
+        }
+        // Now idx is in active-box region [firstBoxIndex, firstInactiveIndex)
+        // Swap to just before the inactive boundary, retract the boundary
+        if (idx != firstInactiveIndex - 1)
+            _swapElements(idx, firstInactiveIndex - 1);
+        firstInactiveIndex--;
+    }
+};
+
 #endif //TILKY_ENGINE_COMPONENTS_HPP

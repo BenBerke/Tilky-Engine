@@ -6,37 +6,44 @@
 #define TILKY_ENGINE_VECTOR2MATH_HPP
 
 #include "Vector2.hpp"
-#include <immintrin.h>
+#include <emmintrin.h> // SSE2
 
 #include "../Constants.hpp"
 
 namespace Vector2Math {
 
+    // Helper: horizontal dot product of 2D vector (x*x + y*y style)
+    // Multiplies a * b elementwise, then sums x and y lanes into scalar.
+    inline float Dot2(const __m128 a, const __m128 b) {
+        const __m128 mul  = _mm_mul_ps(a, b);               // [ax*bx, ay*by, ?, ?]
+        const __m128 shuf = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1)); // [ay*by, ...]
+        const __m128 sum  = _mm_add_ss(mul, shuf);          // [ax*bx + ay*by, ...]
+        return _mm_cvtss_f32(sum);
+    }
+
     inline float Dot(const Vector2& a, const Vector2& b) {
-        const __m128 dotReg = _mm_dp_ps(a.reg, b.reg, 0x31);
-        return _mm_cvtss_f32(dotReg);
+        return Dot2(a.reg, b.reg);
     }
 
     inline float LengthSquared(const Vector2& v) {
-        const __m128 lenSqReg = _mm_dp_ps(v.reg, v.reg, 0x31);
-        return _mm_cvtss_f32(lenSqReg);
+        return Dot2(v.reg, v.reg);
     }
 
     inline float Length(const Vector2& v) {
-        const __m128 lenSqReg = _mm_dp_ps(v.reg, v.reg, 0x31);
+        const __m128 lenSqReg = _mm_set_ss(Dot2(v.reg, v.reg));
         const __m128 lenReg   = _mm_sqrt_ss(lenSqReg);
         return _mm_cvtss_f32(lenReg);
     }
 
     inline Vector2 Normalized(const Vector2& v) {
-        const __m128 lenSqReg = _mm_dp_ps(v.reg, v.reg, 0x31);
-        const __m128 lenReg   = _mm_sqrt_ss(lenSqReg);
+        const float lenSq = Dot2(v.reg, v.reg);
+        const __m128 lenReg = _mm_sqrt_ss(_mm_set_ss(lenSq));
 
         if (_mm_cvtss_f32(lenReg) == 0.0f) return Vector2();
 
-        const __m128 ones   = _mm_set1_ps(1.0f);
-        __m128 invLen = _mm_div_ps(ones, lenReg);
-        invLen = _mm_shuffle_ps(invLen, invLen, _MM_SHUFFLE(0, 0, 0, 0));
+        const __m128 ones  = _mm_set1_ps(1.0f);
+        __m128 invLen      = _mm_div_ss(ones, lenReg);
+        invLen             = _mm_shuffle_ps(invLen, invLen, _MM_SHUFFLE(0, 0, 0, 0));
 
         return {_mm_mul_ps(v.reg, invLen)};
     }
@@ -46,24 +53,22 @@ namespace Vector2Math {
     inline float Cross(const Vector2& a, const Vector2& b) {
         const __m128 switchedB = _mm_shuffle_ps(b.reg, b.reg, _MM_SHUFFLE(3, 2, 0, 1));
 
-        __m128 multiplied = _mm_mul_ps(a.reg, switchedB);
-        const __m128 shifted = _mm_shuffle_ps(multiplied, multiplied, _MM_SHUFFLE(3, 2, 1, 1));
-        const __m128 result = _mm_sub_ss(multiplied, shifted);
+        __m128 multiplied      = _mm_mul_ps(a.reg, switchedB);
+        const __m128 shifted   = _mm_shuffle_ps(multiplied, multiplied, _MM_SHUFFLE(3, 2, 1, 1));
+        const __m128 result    = _mm_sub_ss(multiplied, shifted);
 
         return _mm_cvtss_f32(result);
     }
 
     inline float DistanceSquared(const Vector2& a, const Vector2& b) {
-        __m128 delta = _mm_sub_ps(a.reg, b.reg);
-
-        const __m128 distSqReg = _mm_dp_ps(delta, delta, 0x31);
-        return _mm_cvtss_f32(distSqReg);
+        const __m128 delta = _mm_sub_ps(a.reg, b.reg);
+        return Dot2(delta, delta);
     }
 
     inline float Distance(const Vector2& a, const Vector2& b) {
-        __m128 delta     = _mm_sub_ps(a.reg, b.reg);
-        const __m128 distSqReg = _mm_dp_ps(delta, delta, 0x31);
-        __m128 distReg   = _mm_sqrt_ss(distSqReg);
+        const __m128 delta    = _mm_sub_ps(a.reg, b.reg);
+        const float distSq    = Dot2(delta, delta);
+        const __m128 distReg  = _mm_sqrt_ss(_mm_set_ss(distSq));
         return _mm_cvtss_f32(distReg);
     }
 }

@@ -210,37 +210,33 @@ namespace LevelSystem {
         }
 
         {
-            ZoneScopedN("Physics");
-
-            for (ComponentRigidbody &r: level.rigidbodies.components) {
-                ComponentTransform *transform = level.transforms.Get(r.ownerID);
-
-                if (!transform) [[unlikely]] {
-                    spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
-                    continue;
-                }
-
-                ComponentCollider *collider = level.colliders.Get(r.ownerID);
-
-                if (transform->sectorIndex != -1) [[unlikely]]
-                    if (transform->relativeHeight > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
-
-                // Apply Rb's base friction
-                r.ApplyFriction(0);
-                r.ApplyAirResistance(0);
-
-                if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * GameTime::deltaTime);
-            }
-        }
-
-        {
             //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
-            ZoneScopedN("Collision");
+            ZoneScopedN("Physics");
 
             //todo make this a world setting
             constexpr int COLLISION_ITERATIONS = 4;
+            const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
 
-            for (int i = 0; i < COLLISION_ITERATIONS; i++) PhysicsSystem::Run(level);
+            for (int i = 0; i < COLLISION_ITERATIONS; i++) {
+                for (ComponentRigidbody &r: level.rigidbodies.components) {
+                    ComponentTransform *transform = level.transforms.Get(r.ownerID);
+
+                    if (!transform) [[unlikely]] {
+                        spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
+                        continue;
+                    }
+
+                    if (transform->sectorIndex != -1) [[unlikely]]
+                        if (transform->relativeHeight > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
+
+                    // Apply Rb's base friction
+                    r.ApplyFriction(0);
+                    r.ApplyAirResistance(0);
+
+                    if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
+                }
+                PhysicsSystem::Run(level);
+            }
         } // Zone Collision
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;

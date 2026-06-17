@@ -1,18 +1,14 @@
 cmake_minimum_required(VERSION 4.1)
 
 project(Tilky_Engine LANGUAGES C CXX RC)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(MSVC)
-    add_compile_options(/arch:AVX2)
-else()
-    add_compile_options(-march=native)
-endif()
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
@@ -400,8 +396,8 @@ target_link_libraries(Tilky_RuntimeCore PUBLIC
         ${LUA_LIBRARIES}
 )
 
-target_compile_definitions(Tilky_RuntimeCore PUBLIC
-        TILKY_CONTENT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
+target_compile_options(Tilky_RuntimeCore PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
 )
 
 if (TILKY_USE_IMGUI)
@@ -578,6 +574,10 @@ target_link_libraries(Tilky_Engine PRIVATE
         Tilky_EngineCore
 )
 
+target_compile_options(Tilky_Engine PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
+)
+
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
         TILKY_STANDALONE=0
@@ -594,7 +594,9 @@ add_executable(Tilky_Standalone
         ${TILKY_ICON_OBJECTS}
 )
 
-target_compile_options(Tilky_Standalone PRIVATE -O3 -march=native)
+target_compile_options(Tilky_Standalone PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
+)
 
 set_target_properties(Tilky_Standalone PROPERTIES
         CXX_SCAN_FOR_MODULES OFF
@@ -645,11 +647,13 @@ add_executable(Tilky_All
         ${TILKY_ICON_OBJECTS}
 )
 
-target_compile_options(Tilky_All PRIVATE -O3 -march=native)
-
 target_link_libraries(Tilky_All PRIVATE
         Tilky_LauncherCore
         Tilky_EngineCore
+)
+
+target_compile_options(Tilky_All PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
 )
 
 set_target_properties(Tilky_All PROPERTIES CXX_SCAN_FOR_MODULES OFF)

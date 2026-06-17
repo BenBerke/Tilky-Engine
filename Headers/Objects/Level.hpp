@@ -57,7 +57,7 @@ struct Level {
     ComponentStorage<ComponentScript> scripts;
     ComponentStorage<ComponentPlayerController> playerControllers;
     ComponentStorage<ComponentCamera> cameras;
-    ComponentStorage<ComponentCollider> colliders;
+    ColliderStorage colliders;
     ComponentStorage<ComponentRigidbody> rigidbodies;
 
     ComponentStorage<ComponentUITransform> ui_transforms;

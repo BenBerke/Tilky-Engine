@@ -20,10 +20,10 @@ struct alignas(16) Vector3 {
 
     // --- Basic Arithmetic Operators ---
     Vector3 operator+(const Vector3& other) const {
-        return Vector3(_mm_add_ps(reg, other.reg));;
+        return {_mm_add_ps(reg, other.reg)};;
     }
     Vector3 operator-(const Vector3& other) const {
-        return Vector3(_mm_sub_ps(reg, other.reg));;
+        return {_mm_sub_ps(reg, other.reg)};;
     }
 
     Vector3 operator-() const {
