@@ -3,3 +3,4 @@ CompileFlags:
     - -target
     - x86_64-w64-windows-gnu
     - -msse2
+    - -DTILKY_CLANGD=1

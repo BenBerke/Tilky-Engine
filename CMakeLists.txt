@@ -331,6 +331,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Map/LevelSerialization.hpp
         Headers/Runtime/PhysicsSystem.hpp
         Headers/Math/Constants.hpp
+        Headers/Math/SIMD/SSECompat.hpp
 )
 
 # ============================================================

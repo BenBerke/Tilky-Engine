@@ -9,7 +9,7 @@
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 #include "Headers/Math/Constants.hpp"
-#include <emmintrin.h> // SSE2
+#include "Headers/Math/Simd/SSECompat.hpp"
 
 // ─── Newton-Raphson refined reciprocal (1 iteration) ────────────────────────
 static inline __m128 rcp_nr_ss(const __m128 x) {
@@ -35,16 +35,16 @@ static inline __m128 rsqrt_nr_ss(const __m128 x) {
 // Dot product of 3 lanes (x·y·z), result in lane 0.
 static inline __m128 dot3_ss(const __m128 a, const __m128 b) {
     const __m128 mul   = _mm_mul_ps(a, b);                              // [ax*bx, ay*by, az*bz, ?]
-    const __m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1,1,1,1)); // [ay*by, ...]
+    const __m128 shuf1 = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(1,1,1,1)); // [ay*by, ...]
     const __m128 sum1  = _mm_add_ss(mul, shuf1);                         // [ax*bx + ay*by, ...]
-    const __m128 shuf2 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(2,2,2,2)); // [az*bz, ...]
+    const __m128 shuf2 = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(2,2,2,2)); // [az*bz, ...]
     return _mm_add_ss(sum1, shuf2);                                      // [ax*bx + ay*by + az*bz, ...]
 }
 
 // Dot product of 2 lanes (x·y), result in lane 0.
 static inline __m128 dot2_ss(const __m128 a, const __m128 b) {
     const __m128 mul   = _mm_mul_ps(a, b);                              // [ax*bx, ay*by, ?, ?]
-    const __m128 shuf1 = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1,1,1,1)); // [ay*by, ...]
+    const __m128 shuf1 = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(1,1,1,1)); // [ay*by, ...]
     return _mm_add_ss(mul, shuf1);                                       // [ax*bx + ay*by, ...]
 }
 
@@ -202,7 +202,7 @@ namespace PhysicsSystem {
 
                 const __m128 safeDistSqr = _mm_max_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
                 __m128 invDistReg        = rsqrt_nr_ss(safeDistSqr);
-                invDistReg               = _mm_shuffle_ps(invDistReg, invDistReg, _MM_SHUFFLE(0,0,0,0));
+                invDistReg               = TILKY_MM_SHUFFLE_PS(invDistReg, invDistReg, _MM_SHUFFLE(0,0,0,0));
                 const float distance     = distSqr * _mm_cvtss_f32(invDistReg);
 
                 const float penetration = radiusSum - distance;
@@ -212,7 +212,7 @@ namespace PhysicsSystem {
                 const __m128 fallbackDir   = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
                 // _mm_blendv_ps replacement: select calculatedDir where distSqr > Epsilon
                 const __m128 isSafe        = _mm_cmpgt_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
-                const __m128 isSafeBroad   = _mm_shuffle_ps(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
+                const __m128 isSafeBroad   = TILKY_MM_SHUFFLE_PS(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
                 const __m128 pushDirReg    = blend_ps(fallbackDir, calculatedDir, isSafeBroad);
 
                 constexpr float PENETRATION_SLOP    = 0.001f;
@@ -246,10 +246,10 @@ namespace PhysicsSystem {
                     const __m128 edge2 = _mm_sub_ps(quad[2].reg, quad[0].reg);
 
                     // Cross product (edge1 × edge2) — already SSE2, unchanged
-                    const __m128 e1_yzx    = _mm_shuffle_ps(edge1, edge1, _MM_SHUFFLE(3,0,2,1));
-                    const __m128 e2_zxy    = _mm_shuffle_ps(edge2, edge2, _MM_SHUFFLE(3,1,0,2));
-                    const __m128 e1_zxy    = _mm_shuffle_ps(edge1, edge1, _MM_SHUFFLE(3,1,0,2));
-                    const __m128 e2_yzx    = _mm_shuffle_ps(edge2, edge2, _MM_SHUFFLE(3,0,2,1));
+                    const __m128 e1_yzx    = TILKY_MM_SHUFFLE_PS(edge1, edge1, _MM_SHUFFLE(3,0,2,1));
+                    const __m128 e2_zxy    = TILKY_MM_SHUFFLE_PS(edge2, edge2, _MM_SHUFFLE(3,1,0,2));
+                    const __m128 e1_zxy    = TILKY_MM_SHUFFLE_PS(edge1, edge1, _MM_SHUFFLE(3,1,0,2));
+                    const __m128 e2_yzx    = TILKY_MM_SHUFFLE_PS(edge2, edge2, _MM_SHUFFLE(3,0,2,1));
                     const __m128 crossReg  = _mm_sub_ps(
                         _mm_mul_ps(e1_yzx, e2_zxy),
                         _mm_mul_ps(e1_zxy, e2_yzx));
@@ -257,12 +257,12 @@ namespace PhysicsSystem {
                     // Normalise the cross product
                     const __m128 quadNormSq     = dot3_ss(crossReg, crossReg);
                     __m128       quadNormInvLen  = rsqrt_nr_ss(quadNormSq);
-                    quadNormInvLen               = _mm_shuffle_ps(quadNormInvLen, quadNormInvLen,
+                    quadNormInvLen               = TILKY_MM_SHUFFLE_PS(quadNormInvLen, quadNormInvLen,
                                                                   _MM_SHUFFLE(0,0,0,0));
                     const __m128 quadNormalReg   = _mm_mul_ps(crossReg, quadNormInvLen);
 
                     const float quadNormalZ = _mm_cvtss_f32(
-                        _mm_shuffle_ps(quadNormalReg, quadNormalReg, _MM_SHUFFLE(2,2,2,2)));
+                       TILKY_MM_SHUFFLE_PS(quadNormalReg, quadNormalReg, _MM_SHUFFLE(2,2,2,2)));
                     if (std::abs(quadNormalZ) > 0.75f) continue;
 
                     const Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
@@ -289,14 +289,14 @@ namespace PhysicsSystem {
                     // Zero out z lane (keep only XY for wall push)
                     const __m128 xyMask = _mm_castsi128_ps(_mm_setr_epi32(-1, -1, 0, 0));
 
-                    const __m128 invD            = _mm_shuffle_ps(invDistanceReg, invDistanceReg,
+                    const __m128 invD            = TILKY_MM_SHUFFLE_PS(invDistanceReg, invDistanceReg,
                                                                    _MM_SHUFFLE(0,0,0,0));
                     const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(bestDiff, invD), xyMask);
                     const __m128 fallbackNormal   = _mm_and_ps(quadNormalReg, xyMask);
                     // _mm_blendv_ps replacement
                     const __m128 isSafe2          = _mm_cmpgt_ss(_mm_set_ss(distance),
                                                                   _mm_set_ss(0.0001f));
-                    const __m128 isSafe2Broad     = _mm_shuffle_ps(isSafe2, isSafe2,
+                    const __m128 isSafe2Broad     = TILKY_MM_SHUFFLE_PS(isSafe2, isSafe2,
                                                                     _MM_SHUFFLE(0,0,0,0));
                     const __m128 collisionNormalReg = blend_ps(fallbackNormal, calculatedNormal,
                                                                isSafe2Broad);
@@ -307,7 +307,7 @@ namespace PhysicsSystem {
                     if (horizontalLenSq <= 0.000001f) continue;
 
                     __m128 invHorizLen = rsqrt_nr_ss(horizLenSqReg);
-                    invHorizLen        = _mm_shuffle_ps(invHorizLen, invHorizLen, _MM_SHUFFLE(0,0,0,0));
+                    invHorizLen        = TILKY_MM_SHUFFLE_PS(invHorizLen, invHorizLen, _MM_SHUFFLE(0,0,0,0));
                     const __m128 normalisedCollisionNormal = _mm_mul_ps(collisionNormalReg, invHorizLen);
 
                     selfTransform->AddPosition(Vector3(normalisedCollisionNormal) * penetrationDepth);

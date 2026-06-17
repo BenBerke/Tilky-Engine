@@ -6,9 +6,7 @@
 #define TILKY_ENGINE_VECTOR2MATH_HPP
 
 #include "Vector2.hpp"
-#include <emmintrin.h> // SSE2
-
-#include "../Constants.hpp"
+#include "../SIMD/SSECompat.hpp"
 
 namespace Vector2Math {
 
@@ -16,7 +14,7 @@ namespace Vector2Math {
     // Multiplies a * b elementwise, then sums x and y lanes into scalar.
     inline float Dot2(const __m128 a, const __m128 b) {
         const __m128 mul  = _mm_mul_ps(a, b);               // [ax*bx, ay*by, ?, ?]
-        const __m128 shuf = _mm_shuffle_ps(mul, mul, _MM_SHUFFLE(1, 1, 1, 1)); // [ay*by, ...]
+        const __m128 shuf = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(1, 1, 1, 1)); // [ay*by, ...]
         const __m128 sum  = _mm_add_ss(mul, shuf);          // [ax*bx + ay*by, ...]
         return _mm_cvtss_f32(sum);
     }
@@ -43,7 +41,7 @@ namespace Vector2Math {
 
         const __m128 ones  = _mm_set1_ps(1.0f);
         __m128 invLen      = _mm_div_ss(ones, lenReg);
-        invLen             = _mm_shuffle_ps(invLen, invLen, _MM_SHUFFLE(0, 0, 0, 0));
+        invLen             = TILKY_MM_SHUFFLE_PS(invLen, invLen, _MM_SHUFFLE(0, 0, 0, 0));
 
         return {_mm_mul_ps(v.reg, invLen)};
     }
@@ -51,10 +49,10 @@ namespace Vector2Math {
     inline void Normalize(Vector2& v) { v = Normalized(v); }
 
     inline float Cross(const Vector2& a, const Vector2& b) {
-        const __m128 switchedB = _mm_shuffle_ps(b.reg, b.reg, _MM_SHUFFLE(3, 2, 0, 1));
+        const __m128 switchedB = TILKY_MM_SHUFFLE_PS(b.reg, b.reg, _MM_SHUFFLE(3, 2, 0, 1));
 
         __m128 multiplied      = _mm_mul_ps(a.reg, switchedB);
-        const __m128 shifted   = _mm_shuffle_ps(multiplied, multiplied, _MM_SHUFFLE(3, 2, 1, 1));
+        const __m128 shifted   = TILKY_MM_SHUFFLE_PS(multiplied, multiplied, _MM_SHUFFLE(3, 2, 1, 1));
         const __m128 result    = _mm_sub_ss(multiplied, shifted);
 
         return _mm_cvtss_f32(result);
