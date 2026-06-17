@@ -213,12 +213,8 @@ namespace RuntimeSession {
         {
             ZoneScopedN("Level");
 
-            if (runtimeType == STANDALONE) {
-                LevelSystem::Update(level);
-            }
-            else if (runtimeType == PLAY && relativeMouseMode) {
-                LevelSystem::Update(level);
-            }
+            if (runtimeType == STANDALONE) LevelSystem::Update(level);
+            else if (runtimeType == PLAY && relativeMouseMode) LevelSystem::Update(level);
         }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
@@ -231,9 +227,7 @@ namespace RuntimeSession {
         if (LevelManager::HasCurrentLevel()) {
             Level& level = LevelManager::CurrentLevel();
 
-            if (runtimeType == EDITOR) {
-                RuntimeEditor::Shutdown(level);
-            }
+            if (runtimeType == EDITOR) RuntimeEditor::Shutdown(level);
 
             AudioSystem::Shutdown(level);
         }
@@ -247,9 +241,7 @@ namespace RuntimeSession {
 
                 spdlog::info("Runtime ended. Level restored to editor snapshot");
             }
-            else {
-                spdlog::error("Couldn't find editor level snapshot");
-            }
+            else spdlog::error("Couldn't find editor level snapshot");
         }
 
         if (renderer) {

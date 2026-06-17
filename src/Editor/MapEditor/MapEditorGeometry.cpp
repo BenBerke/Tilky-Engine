@@ -28,7 +28,7 @@ namespace MapEditorInternal {
     }
 
     bool SamePoint(const Vector2& a, const Vector2& b) {
-        return a.x == b.x && a.y == b.y;
+        return a == b;
     }
 
     bool WithinRadius(const Vector2& a, const Vector2& b, const float radius) {
@@ -36,37 +36,41 @@ namespace MapEditorInternal {
     }
 
     bool AABBCollisionWithEntity(const ComponentUITransform& transform, const Vector2& mousePosition) {
-        const float entityLeft   = transform.resolvedPosition.x;
-        const float entityRight  = transform.resolvedPosition.x + transform.resolvedSize.x;
-        const float entityTop    = transform.resolvedPosition.y;
-        const float entityBottom = transform.resolvedPosition.y + transform.resolvedSize.y;
+        const __m128 pos = transform.resolvedPosition.reg;
+        const __m128 size = transform.resolvedSize.reg;
+        const __m128 mouse = mousePosition.reg;
 
-        return mousePosition.x >= entityLeft &&
-               mousePosition.x <= entityRight &&
-               mousePosition.y >= entityTop &&
-               mousePosition.y <= entityBottom;
+        const __m128 bottomRight = _mm_add_ps(pos, size);
+
+        const __m128 gte = _mm_cmpge_ps(mouse, pos);
+
+        const __m128 lte = _mm_cmple_ps(mouse, bottomRight);
+
+        const __m128 result = _mm_and_ps(gte, lte);
+
+        return (_mm_movemask_ps(result) & 3) == 3;
     }
     bool AABBCollisionWithEntity(const ComponentTransform& transform, const Vector2& mousePosition) {
-        constexpr float mouseSize = 0.1f;
-        constexpr float mouseHalfSize = mouseSize * 0.5f;
+        const __m128 entityPos = transform.position.reg;
+        const __m128 entityScale = transform.scale.reg;
+        const __m128 mousePos = mousePosition.reg;
 
-        const float entityHalfWidth  = transform.scale.x * 0.5f;
-        const float entityHalfHeight = transform.scale.y * 0.5f;
+        const __m128 halfOnes = _mm_set1_ps(0.5f);
+        const __m128 entityHalfSize = _mm_mul_ps(entityScale, halfOnes);
+        const __m128 mouseHalfSize = _mm_set1_ps(0.05f);
 
-        const float entityLeft   = transform.position.x - entityHalfWidth;
-        const float entityRight  = transform.position.x + entityHalfWidth;
-        const float entityBottom = transform.position.y - entityHalfHeight;
-        const float entityTop    = transform.position.y + entityHalfHeight;
+        const __m128 entityMin = _mm_sub_ps(entityPos, entityHalfSize);
+        const __m128 entityMax = _mm_add_ps(entityPos, entityHalfSize);
 
-        const float mouseLeft   = mousePosition.x - mouseHalfSize;
-        const float mouseRight  = mousePosition.x + mouseHalfSize;
-        const float mouseBottom = mousePosition.y - mouseHalfSize;
-        const float mouseTop    = mousePosition.y + mouseHalfSize;
+        const __m128 mouseMin = _mm_sub_ps(mousePos, mouseHalfSize);
+        const __m128 mouseMax = _mm_add_ps(mousePos, mouseHalfSize);
 
-        return entityLeft <= mouseRight &&
-               entityRight >= mouseLeft &&
-               entityBottom <= mouseTop &&
-               entityTop >= mouseBottom;
+        const __m128 c1 = _mm_cmple_ps(entityMin, mouseMax);
+        const __m128 c2 = _mm_cmpge_ps(entityMax, mouseMin);
+
+        const __m128 result = _mm_and_ps(c1, c2);
+
+        return (_mm_movemask_ps(result) & 3) == 3;
     }
 
     Entity* EntityAt(const Vector2& mouseClick) {
@@ -79,20 +83,16 @@ namespace MapEditorInternal {
             if (transform != nullptr ) {
                 if (AABBCollisionWithEntity(*transform, mouseClick)) return &entity;
             }
-            else if (uiTransform != nullptr) {
-                if (AABBCollisionWithEntity(*uiTransform, mouseClick)) return &entity;
-            }
+            else if (uiTransform != nullptr) if (AABBCollisionWithEntity(*uiTransform, mouseClick)) return &entity;
         }
 
         return nullptr;
     }
 
     bool CornerExistsAt(const Vector2& point) {
-        for (const Vector2& placedCorner : placedCorners) {
-            if (SamePoint(placedCorner, point)) {
+        for (const Vector2& placedCorner : placedCorners)
+            if (SamePoint(placedCorner, point))
                 return true;
-            }
-        }
 
         return false;
     }
@@ -100,15 +100,11 @@ namespace MapEditorInternal {
     bool IsCornerConnectedToLine(const Vector2& point) {
         Level& level = LevelManager::CurrentLevel();
 
-        for (const Wall& wall : level.walls) {
-            if (SamePoint(wall.start, point) || SamePoint(wall.end, point)) {
+        for (const Wall& wall : level.walls)
+            if (SamePoint(wall.start, point) || SamePoint(wall.end, point))
                 return true;
-            }
-        }
 
-        if (drawingLine && SamePoint(lineStartWorld, point)) {
-            return true;
-        }
+        if (drawingLine && SamePoint(lineStartWorld, point)) return true;
 
         return false;
     }
@@ -120,9 +116,7 @@ namespace MapEditorInternal {
             const bool sameDirection = SamePoint(wall.start, a) && SamePoint(wall.end, b);
             const bool oppositeDirection = SamePoint(wall.start, b) && SamePoint(wall.end, a);
 
-            if (sameDirection || oppositeDirection) {
-                return true;
-            }
+            if (sameDirection || oppositeDirection) return true;
         }
 
         return false;
@@ -131,30 +125,22 @@ namespace MapEditorInternal {
     std::vector<Vector2> GetSectorVerticesWithoutClosingDuplicate() {
         std::vector<Vector2> result = sectorBeingCreated;
 
-        if (result.size() >= 2 && SamePoint(result.front(), result.back())) {
-            result.pop_back();
-        }
+        if (result.size() >= 2 && SamePoint(result.front(), result.back())) result.pop_back();
 
         return result;
     }
 
     bool IsSectorClosed(const std::vector<Vector2>& vertices) {
-        if (vertices.size() < 3) {
-            return false;
-        }
+        if (vertices.size() < 3) return false;
 
-        if (sectorBeingCreated.size() >= 4 &&
-            SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back())) {
+        if (sectorBeingCreated.size() >= 4 && SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back()))
             return true;
-        }
 
         for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
             const Vector2& a = vertices[i];
             const Vector2& b = vertices[(i + 1) % vertices.size()];
 
-            if (!HasLineBetween(a, b)) {
-                return false;
-            }
+            if (!HasLineBetween(a, b)) return false;
         }
 
         return true;
@@ -166,11 +152,9 @@ namespace MapEditorInternal {
             return;
         }
 
-        for (const Vector2& existingPoint : sectorBeingCreated) {
-            if (SamePoint(existingPoint, point)) {
+        for (const Vector2& existingPoint : sectorBeingCreated)
+            if (SamePoint(existingPoint, point))
                 return;
-            }
-        }
 
         sectorBeingCreated.push_back(point);
     }

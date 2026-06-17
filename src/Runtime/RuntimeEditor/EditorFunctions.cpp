@@ -17,7 +17,7 @@ namespace {
     constexpr float TOP_PADDING = 8.0f;
     constexpr float LINE_HEIGHT = 20.0f;
 
-    constexpr Vector2 TEXT_SCALE{0.5f, 0.5f};
+    const Vector2 TEXT_SCALE{0.5f, 0.5f};
     const Vector3 DEFAULT_COLOR{255.0f, 255.0f, 255.0f};
 
     struct ConsoleLine {

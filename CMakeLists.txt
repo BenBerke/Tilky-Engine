@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 4.1)
 
 project(Tilky_Engine LANGUAGES C CXX RC)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-march=native)
+if(MSVC)
+    add_compile_options(/arch:AVX2)
+else()
+    add_compile_options(-march=native)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -329,6 +334,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/EditorSaveLoad.cpp
         Headers/Map/LevelSerialization.hpp
         Headers/Runtime/PhysicsSystem.hpp
+        Headers/Math/Constants.hpp
 )
 
 # ============================================================

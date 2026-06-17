@@ -6,6 +6,7 @@
 #define TILKY_ENGINE_WALL_H
 
 #include <array>
+#include <cmath>
 
 #include "EntityTypes.hpp"
 #include "../Math/Vector/Vector2.hpp"

@@ -4,9 +4,9 @@
 
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 
-namespace {
-    constexpr float EPSILON = 0.000001f;
+#include "Headers/Math/Constants.hpp"
 
+namespace {
     std::optional<float> RayTriangleIntersection(const Vector3 &origin, const Vector3 &dir,
                                                  const Vector3 &v0, const Vector3 &v1, const Vector3 &v2,
                                                  const float maxDistance) {
@@ -16,7 +16,7 @@ namespace {
         const Vector3 pvec = Vector3Math::Cross(dir, edge2);
         const float det = Vector3Math::Dot(pvec, edge1);
 
-        if (std::abs(det) < EPSILON) return std::nullopt;
+        if (std::abs(det) < Constants::Epsilon) return std::nullopt;
 
         const float invDet = 1.0f / det;
 
@@ -74,7 +74,7 @@ namespace {
             const float minAxis,
             const float maxAxis
         ) -> bool {
-            if (std::abs(dirAxis) < EPSILON) return originAxis >= minAxis && originAxis <= maxAxis;
+            if (std::abs(dirAxis) < Constants::Epsilon) return originAxis >= minAxis && originAxis <= maxAxis;
 
             float t1 = (minAxis - originAxis) / dirAxis;
             float t2 = (maxAxis - originAxis) / dirAxis;
@@ -140,6 +140,8 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
+
+        //todo binary space partioning for visible wall check
         for (Wall& wall: level.walls) {
             for (int j = 0; j < wall.quad3DCount; ++j) {
                 const auto &quad = wall.quads3D[j];
@@ -291,7 +293,7 @@ namespace GameFunctions {
         }
 
         for (Sector& sector : level.sectors) {
-            // Sector floor/ceiling raycast
+            // todo Sector floor/ceiling raycast
         }
 
         return rayHit;

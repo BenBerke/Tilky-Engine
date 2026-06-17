@@ -3,10 +3,10 @@
 #include <cmath>
 #include "Headers/Math/Vector/Vector2Math.hpp"
 
+#include "Headers/Math/Constants.hpp"
+
 namespace Geometry {
     namespace {
-        constexpr float EPSILON = 0.00001f;
-
         float CrossAtPoint(const Vector2 a, const Vector2 b, const Vector2 c) {
             return Vector2Math::Cross(b - a, c - a);
         }
@@ -32,9 +32,9 @@ namespace Geometry {
             const float cp2 = CrossAtPoint(b, c, p);
             const float cp3 = CrossAtPoint(c, a, p);
 
-            return cp1 >= -EPSILON &&
-                   cp2 >= -EPSILON &&
-                   cp3 >= -EPSILON;
+            return cp1 >= -Constants::Epsilon &&
+                   cp2 >= -Constants::Epsilon &&
+                   cp3 >= -Constants::Epsilon;
         }
 
         bool IsEar(
@@ -47,57 +47,37 @@ namespace Geometry {
             const Vector2 b = vertices[curr];
             const Vector2 c = vertices[next];
 
-            if (CrossAtPoint(a, b, c) <= EPSILON) {
-                return false;
-            }
+            if (CrossAtPoint(a, b, c) <= Constants::Epsilon) return false;
 
             for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
-                if (i == prev || i == curr || i == next) {
-                    continue;
-                }
+                if (i == prev || i == curr || i == next) continue;
+                if (IsInsideTriangle(a, b, c, vertices[i])) return false;
 
-                if (IsInsideTriangle(a, b, c, vertices[i])) {
-                    return false;
-                }
             }
 
             return true;
         }
     }
 
-    bool IsPointInPolygon(
-        const std::vector<Vector2>& polygon,
-        const Vector2& point
-    ) {
+    bool IsPointInPolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
         bool inside = false;
         const size_t n = polygon.size();
 
-        if (n < 3) {
-            return false;
-        }
+        if (n < 3) return false;
 
         for (size_t i = 0, j = n - 1; i < n; j = i++) {
-            const bool isBetweenY =
-                (polygon[i].y > point.y) != (polygon[j].y > point.y);
+            const bool isBetweenY =(polygon[i].y > point.y) != (polygon[j].y > point.y);
 
-            if (
-                isBetweenY &&
-                point.x <
-                    (polygon[j].x - polygon[i].x) *
-                    (point.y - polygon[i].y) /
-                    (polygon[j].y - polygon[i].y) +
-                    polygon[i].x
-            ) {
-                inside = !inside;
-            }
+            const float value = (polygon[j].x - polygon[i].x) * (point.y - polygon[i].y) / (polygon[j].y - polygon[i].y) +
+                polygon[i].x;
+
+            if (isBetweenY && point.x < value) inside = !inside;
         }
 
         return inside;
     }
 
-    float PolygonAreaAbs(
-        const std::vector<Vector2>& polygon
-    ) {
+    float PolygonAreaAbs(const std::vector<Vector2>& polygon) {
         float area = 0.0f;
 
         for (int i = 0; i < static_cast<int>(polygon.size()); ++i) {
@@ -113,27 +93,17 @@ namespace Geometry {
     std::vector<Triangle> Triangulate(std::vector<Vector2> vertices) {
         std::vector<Triangle> triangles;
 
-        if (vertices.size() < 3) {
-            return triangles;
-        }
+        if (vertices.size() < 3) return triangles;
 
-        if (PolygonAreaSigned(vertices) < 0.0f) {
-            std::ranges::reverse(vertices);
-        }
+        if (PolygonAreaSigned(vertices) < 0.0f) std::ranges::reverse(vertices);
 
         while (vertices.size() > 3) {
             bool earFound = false;
 
             for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
-                const int prev =
-                    (i == 0)
-                        ? static_cast<int>(vertices.size()) - 1
-                        : i - 1;
+                const int prev = (i == 0) ? static_cast<int>(vertices.size()) - 1 : i - 1;
 
-                const int next =
-                    (i == static_cast<int>(vertices.size()) - 1)
-                        ? 0
-                        : i + 1;
+                const int next = (i == static_cast<int>(vertices.size()) - 1) ? 0 : i + 1;
 
                 if (IsEar(vertices, prev, i, next)) {
                     triangles.push_back({
@@ -149,13 +119,11 @@ namespace Geometry {
                 }
             }
 
-            if (!earFound) {
-                break;
-            }
+            if (!earFound) break;
         }
 
         if (vertices.size() == 3) {
-            if (CrossAtPoint(vertices[0], vertices[1], vertices[2]) > EPSILON) {
+            if (CrossAtPoint(vertices[0], vertices[1], vertices[2]) > Constants::Epsilon) {
                 triangles.push_back({
                     vertices[0],
                     vertices[1],

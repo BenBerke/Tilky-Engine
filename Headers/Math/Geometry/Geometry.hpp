@@ -7,18 +7,11 @@
 #include "Headers/Objects/Sector.hpp"
 
 namespace Geometry {
-    bool IsPointInPolygon(
-        const std::vector<Vector2>& polygon,
-        const Vector2& point
-    );
+    bool IsPointInPolygon(const std::vector<Vector2>& polygon,const Vector2& point);
 
-    float PolygonAreaAbs(
-        const std::vector<Vector2>& polygon
-    );
+    float PolygonAreaAbs(const std::vector<Vector2>& polygon);
 
-    std::vector<Triangle> Triangulate(
-        std::vector<Vector2> vertices
-    );
+    std::vector<Triangle> Triangulate(std::vector<Vector2> vertices);
 }
 
 #endif // TILKY_ENGINE_GEOMETRY_HPP

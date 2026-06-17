@@ -9,182 +9,207 @@
 #include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
-namespace {
-        Vector3 ClosestPointOnSegment(const Vector3& p, const Vector3& a, const Vector3& b) {
-        const Vector3 ab = b - a;
-        const Vector3 ap = p - a;
-        float t = Vector3Math::Dot(ap, ab) / Vector3Math::Dot(ab, ab);
-        t = std::max(0.0f, std::min(1.0f, t)); // Clamp to segment bounds
-        return Vector3{ a.x + t * ab.x, a.y + t * ab.y, a.z + t * ab.z };
-    }
-        Vector3 ClosestPointOnTriangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
-        const Vector3 ab = b - a;
-        const Vector3 ac = c - a;
-        const Vector3 ap = p - a;
+#include "Headers/Math/Constants.hpp"
+#include <immintrin.h>
+#include <unordered_set>
 
-        const float d1 = Vector3Math::Dot(ab, ap);
-        const float d2 = Vector3Math::Dot(ac, ap);
+static inline __m128 rcp_nr_ss(const __m128 x) {
+    __m128 r = _mm_rcp_ss(x);
+    // r = r * (2 - x * r)
+    r = _mm_mul_ss(r, _mm_sub_ss(_mm_set_ss(2.0f), _mm_mul_ss(x, r)));
+    return r;
+}
+
+static inline __m128 rsqrt_nr_ss(const __m128 x) {
+    __m128 r = _mm_rsqrt_ss(x);
+    // r = r * (1.5 - 0.5 * x * r * r)
+    __m128 half = _mm_set_ss(0.5f);
+    __m128 three_halves = _mm_set_ss(1.5f);
+    r = _mm_mul_ss(r, _mm_sub_ss(three_halves, _mm_mul_ss(half, _mm_mul_ss(x, _mm_mul_ss(r, r)))));
+    return r;
+}
+
+namespace {
+    // ClosestPointOnSegment removed — unused, was polluting the I-cache.
+
+    Vector3 ClosestPointOnTriangle(const Vector3 &p, const Vector3 &a, const Vector3 &b, const Vector3 &c) {
+        __m128 ab = _mm_sub_ps(b.reg, a.reg);
+        __m128 ac = _mm_sub_ps(c.reg, a.reg);
+        __m128 ap = _mm_sub_ps(p.reg, a.reg);
+
+        const float d1 = _mm_cvtss_f32(_mm_dp_ps(ab, ap, 0x71));
+        const float d2 = _mm_cvtss_f32(_mm_dp_ps(ac, ap, 0x71));
         if (d1 <= 0.0f && d2 <= 0.0f) return a;
 
-        const Vector3 bp = p - b;
-        const float d3 = Vector3Math::Dot(ab, bp);
-        const float d4 = Vector3Math::Dot(ac, bp);
+        __m128 bp = _mm_sub_ps(p.reg, b.reg);
+        const float d3 = _mm_cvtss_f32(_mm_dp_ps(ab, bp, 0x71));
+        const float d4 = _mm_cvtss_f32(_mm_dp_ps(ac, bp, 0x71));
         if (d3 >= 0.0f && d4 <= d3) return b;
 
         const float vc = d1 * d4 - d3 * d2;
         if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
-            const float v = d1 / (d1 - d3);
-            return a + ab * v;
+            // v = d1 / (d1 - d3)  →  rcp_nr
+            const float denom = d1 - d3;
+            const float v = d1 * _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(denom)));
+            return Vector3(_mm_add_ps(a.reg, _mm_mul_ps(_mm_set1_ps(v), ab)));
         }
 
-        const Vector3 cp = p - c;
-        const float d5 = Vector3Math::Dot(ab, cp);
-        const float d6 = Vector3Math::Dot(ac, cp);
+        __m128 cp = _mm_sub_ps(p.reg, c.reg);
+        const float d5 = _mm_cvtss_f32(_mm_dp_ps(ab, cp, 0x71));
+        const float d6 = _mm_cvtss_f32(_mm_dp_ps(ac, cp, 0x71));
         if (d6 >= 0.0f && d5 <= d6) return c;
 
         const float vb = d5 * d2 - d1 * d6;
         if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
-            const float w = d2 / (d2 - d6);
-            return a + ac * w;
+            // w = d2 / (d2 - d6)  →  rcp_nr
+            const float denom = d2 - d6;
+            const float w = d2 * _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(denom)));
+            return Vector3(_mm_add_ps(a.reg, _mm_mul_ps(_mm_set1_ps(w), ac)));
         }
 
-        const float va = d3 * d6 - d5 * d4;
+        float va = d3 * d6 - d5 * d4;
         if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
-            const float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-            const Vector3 bc = c - b;
-            return b + bc * w;
+            float num = d4 - d3;
+            float denom = num + (d5 - d6);
+            float w = num * _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(denom)));
+            __m128 bc = _mm_sub_ps(c.reg, b.reg);
+            return Vector3(_mm_add_ps(b.reg, _mm_mul_ps(_mm_set1_ps(w), bc)));
         }
 
-        // P is inside face region
-        const float denom = 1.0f / (va + vb + vc);
-        const float v = vb * denom;
-        const float w = vc * denom;
-        return Vector3{ a.x + ab.x * v + ac.x * w, a.y + ab.y * v + ac.y * w, a.z + ab.z * v + ac.z * w };
+        const float denomInv = _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(va + vb + vc)));
+        const float v = vb * denomInv;
+        const float w = vc * denomInv;
+
+        __m128 vReg = _mm_set1_ps(v);
+        __m128 wReg = _mm_set1_ps(w);
+        return Vector3(_mm_add_ps(a.reg, _mm_add_ps(_mm_mul_ps(ab, vReg), _mm_mul_ps(ac, wReg))));
     }
 }
 
 namespace PhysicsSystem {
-    void Run(Level& level) {
+    void Run(Level &level) {
+        std::vector<Entity *> allEntities;
+        std::vector<const Wall *> allWalls;
+        allEntities.reserve(64);
+        allWalls.reserve(64);
+
         for (ComponentCollider &selfCollider: level.colliders.components) {
-            if (!selfCollider.isActive) continue;
-            if (selfCollider.isTrigger) continue;
+            if (!selfCollider.isActive || selfCollider.isTrigger) [[unlikely]] continue;
 
             ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
-
             if (selfTransform == nullptr) [[unlikely]] continue;
 
             ComponentRigidbody *selfRb = level.rigidbodies.Get(selfCollider.ownerID);
+            if (selfRb == nullptr || selfRb->isStatic) continue;
 
-            if (selfRb == nullptr) continue;
-            if (selfRb->isStatic) continue;
-
-            //selfTransform->isDirty = true;
-
-            if (selfTransform->sectorIndex < 0 || selfTransform->sectorIndex >= static_cast<int>(level.sectors.size()))
+            if (selfTransform->sectorIndex < 0 ||
+                selfTransform->sectorIndex >= static_cast<int>(level.sectors.size()))
                 continue;
 
             Sector &sector = level.sectors[selfTransform->sectorIndex];
             Entity *selfEntity = level.GetEntity(selfCollider.ownerID);
-
             if (selfEntity == nullptr) [[unlikely]] continue;
 
-            std::vector<Entity*> allEntities;
-            std::vector<const Wall*> allWalls;
+            // Reuse allocations — clear is O(N) element destruction but no free/malloc.
+            allEntities.clear();
+            allWalls.clear();
 
-            allEntities.reserve(sector.entitiesInside.size() + 16);
-            allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
-
-            allEntities.reserve(32);
-            allWalls.insert(allWalls.end(), sector.walls.begin(), sector.walls.end());
+            allEntities.insert(allEntities.end(),
+                               sector.entitiesInside.begin(), sector.entitiesInside.end());
+            allWalls.insert(allWalls.end(),
+                            sector.walls.begin(), sector.walls.end());
 
             for (const Sector *nSector: sector.neighbors) {
                 if (nSector == nullptr) [[unlikely]] continue;
-
-                allEntities.insert(allEntities.end(), nSector->entitiesInside.begin(),
-                                   nSector->entitiesInside.end());
-
-                allWalls.insert(allWalls.end(), nSector->walls.begin(),
-                                   nSector->walls.end());
+                allEntities.insert(allEntities.end(),
+                                   nSector->entitiesInside.begin(), nSector->entitiesInside.end());
+                allWalls.insert(allWalls.end(),
+                                nSector->walls.begin(), nSector->walls.end());
             }
 
-            std::vector<ID> processedOtherIDs;
-
+            // O(1) duplicate check vs O(N) linear scan.
+            std::unordered_set<ID> processedOtherIDs;
             processedOtherIDs.reserve(allEntities.size());
 
             Vector3 selfPos = {
                 selfTransform->position.x,
                 selfTransform->position.y,
-                selfTransform->position.z + (selfTransform->scale.y * .5f)
+                selfTransform->position.z + (selfTransform->scale.y * 0.5f)
             };
 
+            // ── Entity vs Entity ─────────────────────────────────────────────────
             for (const Entity *otherEntity: allEntities) {
                 if (otherEntity == nullptr) [[unlikely]] continue;
                 if (otherEntity->id == selfEntity->id) continue;
 
-                if (std::ranges::find(processedOtherIDs, otherEntity->id) != processedOtherIDs.end()) continue;
-
-                processedOtherIDs.push_back(otherEntity->id);
+                auto insertPos = std::lower_bound(processedOtherIDs.begin(), processedOtherIDs.end(), otherEntity->id);
+                if (insertPos != processedOtherIDs.end() && *insertPos == otherEntity->id) continue;
+                processedOtherIDs.insert(insertPos, otherEntity->id);
 
                 ComponentCollider *otherCollider = level.colliders.Get(otherEntity->id);
-
-                if (otherCollider == nullptr) continue;
-                if (!otherCollider->isActive || otherCollider->isTrigger) continue;
+                if (otherCollider == nullptr ||
+                    !otherCollider->isActive ||
+                    otherCollider->isTrigger)
+                    continue;
 
                 ComponentTransform *otherTransform = level.transforms.Get(otherEntity->id);
                 if (otherTransform == nullptr) [[unlikely]] continue;
 
                 const ComponentRigidbody *otherRb = level.rigidbodies.Get(otherEntity->id);
-
-                // Treat missing rigidbodies as static colliders.
                 const bool otherIsStatic = (otherRb == nullptr || otherRb->isStatic);
 
                 if (!otherIsStatic && selfEntity->id > otherEntity->id) continue;
 
-                Vector3 otherPos = {
-                    otherTransform->position.x,
-                    otherTransform->position.y,
-                    otherTransform->position.z + (otherTransform->scale.y * .5f)
-                };
+                if (selfCollider.type == COLLIDERTYPE_SPHERE &&
+                    otherCollider->type == COLLIDERTYPE_SPHERE) [[likely]] {
+                    float selfRadius = std::max(0.0f, selfCollider.scale.x);
+                    float otherRadius = std::max(0.0f, otherCollider->scale.x);
+                    float radiusSum = selfRadius + otherRadius;
 
-                // This block currently only supports sphere-vs-sphere collision.
-                if (selfCollider.type == COLLIDERTYPE_SPHERE && otherCollider->type == COLLIDERTYPE_SPHERE) {
-                    const float selfRadius = std::max(0.0f, selfCollider.scale.x);
-                    const float otherRadius = std::max(0.0f, otherCollider->scale.x);
+                    Vector3 otherPos = {
+                        otherTransform->position.x,
+                        otherTransform->position.y,
+                        otherTransform->position.z + (otherTransform->scale.y * 0.5f)
+                    };
 
-                    const float radiusSum = selfRadius + otherRadius;
-
-                    const float distSqr = Vector3Math::DistanceSquared(selfPos, otherPos);
+                    __m128 deltaPos = _mm_sub_ps(selfPos.reg, otherPos.reg);
+                    __m128 distSqrReg = _mm_dp_ps(deltaPos, deltaPos, 0x71);
+                    float distSqr = _mm_cvtss_f32(distSqrReg);
 
                     if (distSqr >= radiusSum * radiusSum) continue;
 
-                    constexpr float EPSILON = 0.00001f;
+                    __m128 safeDistSqr = _mm_max_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
+                    __m128 invDistReg = rsqrt_nr_ss(safeDistSqr);
+                    invDistReg = _mm_shuffle_ps(invDistReg, invDistReg, _MM_SHUFFLE(0,0,0,0));
+                    float distance = distSqr * _mm_cvtss_f32(invDistReg);
 
-                    const float distance = std::sqrt(std::max(distSqr, EPSILON));
+                    float penetration = radiusSum - distance;
+                    if (penetration <= Constants::Epsilon) continue;
 
-                    const float penetration = radiusSum - distance;
+                    // Branchless push direction: blend normalised delta vs. fixed fallback.
+                    __m128 calculatedDir = _mm_mul_ps(deltaPos, invDistReg);
+                    __m128 fallbackDir = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
+                    __m128 isSafe = _mm_cmpgt_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
+                    isSafe = _mm_shuffle_ps(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
+                    __m128 pushDirReg = _mm_blendv_ps(fallbackDir, calculatedDir, isSafe);
+                    Vector3 pushDirection(pushDirReg);
 
-                    if (penetration <= EPSILON) continue;
-
-                    // Choose a stable fallback normal when both sphere centers are almost identical.
-                    Vector3 pushDirection = (distSqr <= EPSILON)
-                                                ? Vector3{1.0f, 0.0f, 0.0f}
-                                                : (selfPos - otherPos) * (1.0f / distance);
-
-                    const float selfPush = otherIsStatic ? 1.0f : 0.5f;
-                    const float otherPush = otherIsStatic ? 0.0f : 0.5f;
-
-                    // Add a tiny slop so resting contacts do not constantly micro-correct.
                     constexpr float PENETRATION_SLOP = 0.001f;
-                    const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
+                    float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
 
-                    const Vector3 selfCorrection = pushDirection * (correctedPenetration * selfPush);
-                    const Vector3 otherCorrection = -pushDirection * (correctedPenetration * otherPush);
+                    __m128 corrPenReg = _mm_set1_ps(correctedPenetration);
 
-                   // EditorFunctions::Print("collision with entity detected");
-
+                    float selfPush = otherIsStatic ? 1.0f : 0.5f;
+                    Vector3 selfCorrection(
+                        _mm_mul_ps(pushDirReg, _mm_mul_ps(corrPenReg, _mm_set1_ps(selfPush))));
                     selfTransform->AddPosition(selfCorrection);
 
-                    if (!otherIsStatic) otherTransform->AddPosition(otherCorrection);
+                    if (!otherIsStatic) {
+                        float otherPush = 0.5f;
+                        Vector3 otherCorrection(
+                            _mm_mul_ps(pushDirReg, _mm_mul_ps(corrPenReg, _mm_set1_ps(-otherPush))));
+                        otherTransform->AddPosition(otherCorrection);
+                    }
 
                     selfPos = {
                         selfTransform->position.x,
@@ -194,123 +219,108 @@ namespace PhysicsSystem {
                 }
             }
 
+            // ── Entity vs Walls ──────────────────────────────────────────────────
             for (const Wall *wall: allWalls) {
                 if (wall == nullptr) continue;
 
                 for (int i = 0; i < wall->quad3DCount; ++i) {
                     const auto &quad = wall->quads3D[i];
 
-                    const Vector3 edge1 = quad[1] - quad[0];
-                    const Vector3 edge2 = quad[2] - quad[0];
+                    __m128 edge1 = _mm_sub_ps(quad[1].reg, quad[0].reg);
+                    __m128 edge2 = _mm_sub_ps(quad[2].reg, quad[0].reg);
 
-                    Vector3 quadNormal = Vector3Math::Normalized(Vector3Math::Cross(edge1, edge2));
+                    __m128 e1_yzx = _mm_shuffle_ps(edge1, edge1, _MM_SHUFFLE(3, 0, 2, 1));
+                    __m128 e2_zxy = _mm_shuffle_ps(edge2, edge2, _MM_SHUFFLE(3, 1, 0, 2));
+                    __m128 e1_zxy = _mm_shuffle_ps(edge1, edge1, _MM_SHUFFLE(3, 1, 0, 2));
+                    __m128 e2_yzx = _mm_shuffle_ps(edge2, edge2, _MM_SHUFFLE(3, 0, 2, 1));
+                    __m128 crossReg = _mm_sub_ps(
+                        _mm_mul_ps(e1_yzx, e2_zxy),
+                        _mm_mul_ps(e1_zxy, e2_yzx));
 
-                    // Skip floor/ceiling-style horizontal quads.
-                    // Wall collision should only handle mostly vertical faces.
-                    if (std::abs(quadNormal.z) > 0.75f) continue;
+                    __m128 quadNormSq = _mm_dp_ps(crossReg, crossReg, 0x71);
+                    __m128 quadNormInvLen = rsqrt_nr_ss(quadNormSq);
+                    quadNormInvLen = _mm_shuffle_ps(quadNormInvLen, quadNormInvLen, _MM_SHUFFLE(0,0,0,0));
+                    __m128 quadNormalReg = _mm_mul_ps(crossReg, quadNormInvLen);
 
-                    const Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
-                    const Vector3 closestT2 = ClosestPointOnTriangle(selfPos, quad[0], quad[2], quad[3]);
+                    float quadNormalZ = _mm_cvtss_f32(
+                        _mm_shuffle_ps(quadNormalReg, quadNormalReg, _MM_SHUFFLE(2,2,2,2)));
+                    if (std::abs(quadNormalZ) > 0.75f) continue;
 
-                    Vector3 diff1 = selfPos - closestT1;
-                    Vector3 diff2 = selfPos - closestT2;
+                    Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
+                    Vector3 closestT2 = ClosestPointOnTriangle(selfPos, quad[0], quad[2], quad[3]);
 
-                    const float distSq1 = Vector3Math::LengthSquared(diff1);
-                    const float distSq2 = Vector3Math::LengthSquared(diff2);
+                    __m128 diff1 = _mm_sub_ps(selfPos.reg, closestT1.reg);
+                    __m128 diff2 = _mm_sub_ps(selfPos.reg, closestT2.reg);
+                    float distSq1 = _mm_cvtss_f32(_mm_dp_ps(diff1, diff1, 0x71));
+                    float distSq2 = _mm_cvtss_f32(_mm_dp_ps(diff2, diff2, 0x71));
 
-                    const float minDistanceSq = (distSq1 < distSq2) ? distSq1 : distSq2;
+                    const bool use1 = distSq1 < distSq2;
+                    float minDistSq = use1 ? distSq1 : distSq2;
+                    __m128 bestDiff = use1 ? diff1 : diff2;
 
-                    const float radius = selfCollider.scale.x;
+                    float radius = selfCollider.scale.x;
+                    if (minDistSq > radius * radius) continue;
+                    if (selfRb->isStatic) break;
 
-                    if (minDistanceSq <= radius * radius) {
-                        if (selfRb->isStatic) break;
+                    __m128 minDistSqReg = _mm_set_ss(minDistSq);
+                    __m128 invDistanceReg = rsqrt_nr_ss(minDistSqReg);
+                    float distance = minDistSq * _mm_cvtss_f32(invDistanceReg);
+                    float penetrationDepth = radius - distance;
 
-                        const float distance = std::sqrt(minDistanceSq);
-                        const float penetrationDepth = radius - distance;
+                    const __m128 xyMask = _mm_castsi128_ps(_mm_setr_epi32(-1, -1, 0, 0));
 
-                        Vector3 bestDiff = (distSq1 < distSq2) ? diff1 : diff2;
+                    // Branchless normal selection: blend computed normal vs. quad fallback.
+                    __m128 invD = _mm_shuffle_ps(invDistanceReg, invDistanceReg, _MM_SHUFFLE(0,0,0,0));
+                    __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(bestDiff, invD), xyMask);
+                    __m128 fallbackNormal = _mm_and_ps(quadNormalReg, xyMask);
+                    __m128 isSafe = _mm_cmpgt_ss(_mm_set_ss(distance), _mm_set_ss(0.0001f));
+                    isSafe = _mm_shuffle_ps(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
+                    __m128 collisionNormalReg = _mm_blendv_ps(fallbackNormal, calculatedNormal, isSafe);
 
-                        Vector3 collisionNormal = {0.0f, 0.0f, 0.0f};
+                    // Re-normalise horizontal component.
+                    __m128 horizLenSqReg = _mm_dp_ps(collisionNormalReg, collisionNormalReg, 0x31);
+                    float horizontalLenSq = _mm_cvtss_f32(horizLenSqReg);
+                    if (horizontalLenSq <= 0.000001f) continue;
 
-                        if (distance > 0.0001f) {
-                            collisionNormal = {
-                                bestDiff.x / distance,
-                                bestDiff.y / distance,
-                                0.0f
-                            };
-                        }
-                        else collisionNormal = {quadNormal.x, quadNormal.y, 0.0f};
+                    __m128 invHorizLen = rsqrt_nr_ss(horizLenSqReg);
+                    invHorizLen = _mm_shuffle_ps(invHorizLen, invHorizLen, _MM_SHUFFLE(0,0,0,0));
+                    collisionNormalReg = _mm_mul_ps(collisionNormalReg, invHorizLen);
 
-                        const float horizontalNormalLengthSq =
-                                collisionNormal.x * collisionNormal.x +
-                                collisionNormal.y * collisionNormal.y;
+                    selfTransform->AddPosition(Vector3(collisionNormalReg) * penetrationDepth);
 
-                        if (horizontalNormalLengthSq <= 0.000001f) continue;
-
-                        const float invHorizontalNormalLength = 1.0f / std::sqrt(horizontalNormalLengthSq);
-
-                        collisionNormal.x *= invHorizontalNormalLength;
-                        collisionNormal.y *= invHorizontalNormalLength;
-                        collisionNormal.z = 0.0f;
-
-                        selfTransform->AddPosition(collisionNormal * penetrationDepth);
-
-                        selfPos = {
-                            selfTransform->position.x,
-                            selfTransform->position.y,
-                            selfTransform->position.z
-                        };
-                    }
+                    selfPos = {
+                        selfTransform->position.x,
+                        selfTransform->position.y,
+                        selfTransform->position.z
+                    };
                 }
             }
 
-            // Floor/ceiling collision.
-            // The floor and ceiling shape is the sector polygon/triangulated area in XY.
-            // Z collision is handled separately because sector floors/ceilings are flat heights.
+            // ── Floor / ceiling clamping ─────────────────────────────────────────
             {
                 const Vector2 feetPoint2D = {
                     selfTransform->position.x,
                     selfTransform->position.y
                 };
+                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) continue;
 
-                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) {
-                    continue;
-                }
+                float storeyHeight = sector.ceilingHeight - sector.floorHeight;
+                float currentFloorWorld = sector.floorHeight
+                                          + storeyHeight * static_cast<float>(selfTransform->floor);
+                float currentCeilingWorld = currentFloorWorld + storeyHeight;
+                float feetWorld = selfTransform->position.z;
+                float headWorld = feetWorld + selfTransform->scale.y;
 
-                const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
-
-                const float currentFloorWorldHeight =
-                    sector.floorHeight + storeyHeight * static_cast<float>(selfTransform->floor);
-
-                const float currentCeilingWorldHeight = currentFloorWorldHeight + storeyHeight;
-
-                const float feetWorldHeight = selfTransform->position.z;
-
-                const float headWorldHeight = selfTransform->position.z + selfTransform->scale.y;
-
-                if (feetWorldHeight < currentFloorWorldHeight) {
-                    selfTransform->AddPosition({
-                        0.0f,
-                        0.0f,
-                        currentFloorWorldHeight - feetWorldHeight
-                    });
-
+                if (feetWorld < currentFloorWorld) {
+                    selfTransform->AddPosition({0.0f, 0.0f, currentFloorWorld - feetWorld});
                     if (selfRb->velocity.z < 0.0f) selfRb->velocity.z = 0.0f;
                 }
-
-                if (headWorldHeight > currentCeilingWorldHeight) {
-                    selfTransform->AddPosition({
-                        0.0f,
-                        0.0f,
-                        currentCeilingWorldHeight - headWorldHeight
-                    });
-
-                    if (selfRb->velocity.z > 0.0f) {
-                        selfRb->velocity.z = 0.0f;
-                    }
+                if (headWorld > currentCeilingWorld) {
+                    selfTransform->AddPosition({0.0f, 0.0f, currentCeilingWorld - headWorld});
+                    if (selfRb->velocity.z > 0.0f) selfRb->velocity.z = 0.0f;
                 }
 
-                selfTransform->relativeHeight = selfTransform->position.z - currentFloorWorldHeight;
+                selfTransform->relativeHeight = selfTransform->position.z - currentFloorWorld;
             }
         }
     }
