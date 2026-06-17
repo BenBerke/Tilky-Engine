@@ -140,7 +140,7 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
-        for (Wall &wall: level.walls) {
+        for (Wall& wall: level.walls) {
             for (int j = 0; j < wall.quad3DCount; ++j) {
                 const auto &quad = wall.quads3D[j];
 
@@ -179,7 +179,7 @@ namespace GameFunctions {
         // position.x = world X
         // position.y = world Z / horizontal depth
         // position.z = height above the current sector floor
-        for (Entity &entity: level.entities) {
+        for (Entity& entity: level.entities) {
             if (entity.id == ignoredEntity) continue;
 
             const ComponentTransform *transform = level.transforms.Get(entity.id);
@@ -187,21 +187,8 @@ namespace GameFunctions {
 
             float sectorFloorHeight = 0.0f;
 
-            if (
-                transform->sectorIndex >= 0 &&
-                transform->sectorIndex < static_cast<int>(level.sectors.size())
-            ) {
+            if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size()))
                 sectorFloorHeight = level.sectors[transform->sectorIndex].floorHeight;
-            }
-
-            const float entityBottomWorldHeight =
-                    sectorFloorHeight + transform->position.z;
-
-            const Vector3 entityWorldBasePosition = {
-                transform->position.x,
-                transform->position.y,
-                entityBottomWorldHeight
-            };
 
             // If requireCollider is false, raycast every entity as an AABB.
             // transform->scale is Vector2:
@@ -217,15 +204,15 @@ namespace GameFunctions {
                 const Vector3 halfSize = boxSize * 0.5f;
 
                 const Vector3 boxMin = {
-                    entityWorldBasePosition.x - halfSize.x,
-                    entityWorldBasePosition.y - halfSize.y,
-                    entityWorldBasePosition.z
+                    transform->position.x - halfSize.x,
+                    transform->position.y - halfSize.y,
+                    transform->position.z
                 };
 
                 const Vector3 boxMax = {
-                    entityWorldBasePosition.x + halfSize.x,
-                    entityWorldBasePosition.y + halfSize.y,
-                    entityWorldBasePosition.z + boxSize.z
+                    transform->position.x + halfSize.x,
+                    transform->position.y + halfSize.y,
+                    transform->position.z + boxSize.z
                 };
 
                 const std::optional<float> hitDistance = RayAABBIntersection(
@@ -236,9 +223,8 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
+                if (hitDistance.has_value())
                     submitEntityHit(entity, *hitDistance);
-                }
 
                 continue;
             }
@@ -255,9 +241,9 @@ namespace GameFunctions {
                 // transform->position.z is treated as the entity bottom/feet height,
                 // so the sphere center is radius units above that.
                 const Vector3 center = {
-                    entityWorldBasePosition.x,
-                    entityWorldBasePosition.y,
-                    entityWorldBasePosition.z + radius
+                    transform->position.x,
+                    transform->position.y,
+                    transform->position.z + radius
                 };
 
                 const std::optional<float> hitDistance = RaySphereIntersection(
@@ -268,10 +254,10 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
+                if (hitDistance.has_value())
                     submitEntityHit(entity, *hitDistance);
-                }
-            } else if (collider->type == COLLIDERTYPE_BOX) {
+            }
+            else if (collider->type == COLLIDERTYPE_BOX) {
                 // Box collider convention:
                 // collider->scale.x = width along world X
                 // collider->scale.y = depth along world Z
@@ -281,15 +267,15 @@ namespace GameFunctions {
                 const Vector3 halfSize = collider->scale * 0.5f;
 
                 const Vector3 boxMin = {
-                    entityWorldBasePosition.x - halfSize.x,
-                    entityWorldBasePosition.y - halfSize.y,
-                    entityWorldBasePosition.z
+                    transform->position.x - halfSize.x,
+                    transform->position.y - halfSize.y,
+                    transform->position.z
                 };
 
                 const Vector3 boxMax = {
-                    entityWorldBasePosition.x + halfSize.x,
-                    entityWorldBasePosition.y + halfSize.y,
-                    entityWorldBasePosition.z + collider->scale.z
+                    transform->position.x + halfSize.x,
+                    transform->position.y + halfSize.y,
+                    transform->position.z + collider->scale.z
                 };
 
                 const std::optional<float> hitDistance = RayAABBIntersection(
@@ -300,10 +286,12 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
-                    submitEntityHit(entity, *hitDistance);
-                }
+                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
             }
+        }
+
+        for (Sector& sector : level.sectors) {
+            // Sector floor/ceiling raycast
         }
 
         return rayHit;

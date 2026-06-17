@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 4.1)
 
 project(Tilky_Engine LANGUAGES C CXX RC)
 
+add_compile_options(-march=native)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -586,6 +588,8 @@ add_executable(Tilky_Standalone
         ${TILKY_ICON_OBJECTS}
 )
 
+target_compile_options(Tilky_Standalone PRIVATE -O3 -march=native)
+
 set_target_properties(Tilky_Standalone PROPERTIES
         CXX_SCAN_FOR_MODULES OFF
         OUTPUT_NAME "Standalone"
@@ -634,6 +638,8 @@ add_executable(Tilky_All
         src/Launcher/LauncherMain.cpp
         ${TILKY_ICON_OBJECTS}
 )
+
+target_compile_options(Tilky_All PRIVATE -O3 -march=native)
 
 target_link_libraries(Tilky_All PRIVATE
         Tilky_LauncherCore
@@ -760,7 +766,7 @@ endfunction()
 
 make_gui_in_release(Tilky_Launcher)
 #make_gui_in_release(Tilky_Engine)
-#make_gui_in_release(Tilky_Standalone)
+make_gui_in_release(Tilky_Standalone)
 #make_gui_in_release(Tilky_All)
 
 copy_runtime_dlls(Tilky_Launcher)

@@ -222,10 +222,8 @@ namespace LevelSystem {
 
                 ComponentCollider *collider = level.colliders.Get(r.ownerID);
 
-                if (transform->sectorIndex != -1) [[unlikely]]{
+                if (transform->sectorIndex != -1) [[unlikely]]
                     if (transform->relativeHeight > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
-                    //else r.velocity.z = .0f;
-                }
 
                 // Apply Rb's base friction
                 r.ApplyFriction(0);
@@ -237,10 +235,10 @@ namespace LevelSystem {
 
         {
             //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
-            ZoneScopedN("Physics");
+            ZoneScopedN("Collision");
 
             //todo make this a world setting
-            constexpr int COLLISION_ITERATIONS = 6;
+            constexpr int COLLISION_ITERATIONS = 4;
 
             for (int i = 0; i < COLLISION_ITERATIONS; i++) PhysicsSystem::Run(level);
         } // Zone Collision

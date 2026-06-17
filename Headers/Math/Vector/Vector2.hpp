@@ -5,7 +5,7 @@ struct Vector2 {
     float x;
     float y;
 
-    constexpr Vector2(float x = 0.0f, float y = 0.0f) : x(x), y(y) {}
+    constexpr Vector2(const float x = 0.0f, const float y = 0.0f) : x(x), y(y) {}
 
     // --- Basic Arithmetic Operators ---
     constexpr Vector2 operator+(const Vector2& other) const { return {x + other.x, y + other.y}; }

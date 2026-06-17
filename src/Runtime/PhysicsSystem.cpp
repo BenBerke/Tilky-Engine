@@ -277,20 +277,16 @@ namespace PhysicsSystem {
                     continue;
                 }
 
-                const float storeyHeight =
-                    sector.ceilingHeight - sector.floorHeight;
+                const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
 
                 const float currentFloorWorldHeight =
                     sector.floorHeight + storeyHeight * static_cast<float>(selfTransform->floor);
 
-                const float currentCeilingWorldHeight =
-                    currentFloorWorldHeight + storeyHeight;
+                const float currentCeilingWorldHeight = currentFloorWorldHeight + storeyHeight;
 
-                const float feetWorldHeight =
-                    selfTransform->position.z;
+                const float feetWorldHeight = selfTransform->position.z;
 
-                const float headWorldHeight =
-                    selfTransform->position.z + selfTransform->scale.y;
+                const float headWorldHeight = selfTransform->position.z + selfTransform->scale.y;
 
                 if (feetWorldHeight < currentFloorWorldHeight) {
                     selfTransform->AddPosition({
@@ -299,9 +295,7 @@ namespace PhysicsSystem {
                         currentFloorWorldHeight - feetWorldHeight
                     });
 
-                    if (selfRb->velocity.z < 0.0f) {
-                        selfRb->velocity.z = 0.0f;
-                    }
+                    if (selfRb->velocity.z < 0.0f) selfRb->velocity.z = 0.0f;
                 }
 
                 if (headWorldHeight > currentCeilingWorldHeight) {
@@ -316,8 +310,7 @@ namespace PhysicsSystem {
                     }
                 }
 
-                selfTransform->relativeHeight =
-                    selfTransform->position.z - currentFloorWorldHeight;
+                selfTransform->relativeHeight = selfTransform->position.z - currentFloorWorldHeight;
             }
         }
     }
