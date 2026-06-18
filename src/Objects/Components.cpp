@@ -3,7 +3,6 @@
 //
 
 #include "Headers/Objects/Components.hpp"
-#include <spdlog/spdlog.h>
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -36,22 +35,17 @@ float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& secto
     return sector.floorHeight + storeyHeight * static_cast<float>(this->floor);
 }
 
-bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner) {
-    if (owner == nullptr || sectors.empty()) {
+bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors) {
+    if (this->ownerID == INVALID_ID || sectors.empty()) {
         sectorIndex = -1;
         floor = 0;
-
-        // With no sector, relative height has no real floor reference.
         relativeHeight = position.z;
-
         return false;
     }
 
     const int oldSector = sectorIndex;
 
-    const bool oldSectorValid =
-        oldSector >= 0 &&
-        oldSector < static_cast<int>(sectors.size());
+    const bool oldSectorValid = oldSector >= 0 && oldSector < static_cast<int>(sectors.size());
 
     const float worldHeight = position.z;
 
@@ -61,30 +55,22 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
-        if (oldSectorValid) {
-            std::erase(sectors[oldSector].entitiesInside, owner);
-        }
+        if (oldSectorValid) std::erase(sectors[oldSector].entitiesInside, this->ownerID);
 
         sectorIndex = -1;
         floor = 0;
-
-        // Outside a sector, keep position.z absolute and store relativeHeight as fallback.
         relativeHeight = position.z;
-
         return false;
     }
 
-    if (oldSectorValid && oldSector != newSector) {
-        std::erase(sectors[oldSector].entitiesInside, owner);
-    }
+    if (oldSectorValid && oldSector != newSector) std::erase(sectors[oldSector].entitiesInside, this->ownerID);
 
     sectorIndex = newSector;
 
     Sector& sector = sectors[newSector];
 
-    if (std::ranges::find(sector.entitiesInside, owner) == sector.entitiesInside.end()) {
-        sector.entitiesInside.push_back(owner);
-    }
+    if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
+        sector.entitiesInside.push_back(this->ownerID);
 
     const int safeFloorCount = std::clamp(
         sector.floorCount,
@@ -109,51 +95,51 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     const float currentFloorWorldHeight =
         sector.floorHeight + storeyHeight * static_cast<float>(floor);
 
-    // position.z remains absolute.
-    // relativeHeight is derived from the current sector floor.
+    // position.z is absolute world height.
+    // relativeHeight is relative to the current sector floor.
     relativeHeight = position.z - currentFloorWorldHeight;
 
     return true;
 }
 
 void ComponentAudioSource::PlaySound() const {
-    SoundManager::PlaySoundOnSource(name, soundIndex);
+    SoundManager::PlaySoundOnSource(this->name, this->soundIndex);
 }
 
-void ComponentAudioSource::SetSourcePitch(const float pitch) const {
-    SoundManager::SetSourcePitch(name, pitch);
+void ComponentAudioSource::SetSourcePitch(const float _pitch) const {
+    SoundManager::SetSourcePitch(this->name, _pitch);
 }
 
-void ComponentAudioSource::SetSourceGain(const float gain) const {
-    SoundManager::SetSourceGain(name, gain);
+void ComponentAudioSource::SetSourceGain(const float _gain) const {
+    SoundManager::SetSourceGain(this->name, _gain);
 }
 
-void ComponentAudioSource::SetSourceLooping(const bool looping) const {
-    SoundManager::SetSourceLooping(name, looping);
+void ComponentAudioSource::SetSourceLooping(const bool _looping) const {
+    SoundManager::SetSourceLooping(this->name, _looping);
 }
 
 void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {
-    SoundManager::SetSourcePosition(name, position);
+    SoundManager::SetSourcePosition(this->name, position);
 }
 
-void ComponentRigidbody::AddVelocity(const Vector3 velocity) {
-    this->velocity += velocity;
+void ComponentRigidbody::AddVelocity(const Vector3 &_velocity) {
+    this->velocity += _velocity;
 }
 
-void ComponentRigidbody::ApplyFriction(const float friction) {
+void ComponentRigidbody::ApplyFriction(const float _friction) {
     const float dt = GameTime::deltaTime;
-    const float _f = friction + this->friction;
+    const float _f = _friction + this->friction;
 
     auto applyAxis = [&](float& v) {
         if (v > 0.0f) v = std::max(0.0f, v - _f * dt);
         else if (v < 0.0f) v = std::min(0.0f, v + _f * dt);
     };
 
-    applyAxis(velocity.x);
-    applyAxis(velocity.y);
+    applyAxis(this->velocity.x);
+    applyAxis(this->velocity.y);
 }
 
-void ComponentRigidbody::ApplyAirResistance(float airResistance) {
+void ComponentRigidbody::ApplyAirResistance(float _airResistance) {
     //todo implement
 }
 

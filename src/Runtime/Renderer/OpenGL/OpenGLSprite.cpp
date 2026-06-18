@@ -17,26 +17,13 @@ void OpenGL::BuildGpuSprites() {
 
         if (level.decals.Has(spriteComponent.ownerID)) continue;
 
-        //transform->UpdateObjectSectorAndFloor(level.sectors, level.GetEntity(spriteComponent.ownerID));
-
         if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] continue;
-
-        /*
-            New Vector3 convention:
-
-            position.x = map/world x
-            position.y = vertical world height
-            position.z = map/world z
-
-            So an object in a sector with floorHeight = 10
-            and position.y = 15 is 5 units above the floor.
-        */
 
         GpuSprite gpuSprite;
 
         gpuSprite.positionSize = {
             transform->position.x,
-            transform->position.z + level.sectors[transform->sectorIndex].floorHeight,
+            transform->position.z + transform->scale.y * .5f,
             transform->position.y, // Intentionally swapped
             transform->scale.y
         };

@@ -185,6 +185,13 @@ namespace RuntimeSession {
         }
 
         {
+            ZoneScopedN("Level");
+
+            if (runtimeType == STANDALONE) LevelSystem::Update(level);
+            else if (runtimeType == PLAY && relativeMouseMode) LevelSystem::Update(level);
+        }
+
+        {
             ZoneScopedN("Renderer");
 
             renderer->BeginFrame();
@@ -210,12 +217,6 @@ namespace RuntimeSession {
             AudioSystem::Update(level);
         }
 
-        {
-            ZoneScopedN("Level");
-
-            if (runtimeType == STANDALONE) LevelSystem::Update(level);
-            else if (runtimeType == PLAY && relativeMouseMode) LevelSystem::Update(level);
-        }
 
         if (timer > timerHelper + 1.3f) [[unlikely]] {
             fps = static_cast<int>(GameTime::GetFPS());

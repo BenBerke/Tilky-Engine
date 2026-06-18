@@ -87,6 +87,9 @@ namespace MapEditorInternal {
     extern bool shutdown;
     extern bool switchToRuntime;
 
+    extern bool hasEntityInClipboard;
+    extern Entity entityInClipboard;
+
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);

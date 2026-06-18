@@ -5,7 +5,7 @@
 #ifndef TILKY_ENGINE_SSECOMPAT_HPP
 #define TILKY_ENGINE_SSECOMPAT_HPP
 
-/// Work around for CLION mitakenly calling _mm_shuffle as bug
+/// Work around for the IDE mistakenly reporting _mm_shuffle as a bug
 
 #include <xmmintrin.h>
 #include <emmintrin.h>

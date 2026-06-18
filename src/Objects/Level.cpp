@@ -45,10 +45,11 @@ ID Level::CreateEntity(const bool uiEntity) {
     return newId;
 }
 
+
 void Level::DestroyEntity(const ID entityID) {
-    std::erase_if(entities, [entityID](const Entity& entity) {
-        return entity.id == entityID;
-    });
+    if (entityID == INVALID_ID) return;
+
+    for (Sector& sector : sectors) std::erase(sector.entitiesInside, entityID);
 
     transforms.Remove(entityID);
     sprites.Remove(entityID);
@@ -63,6 +64,10 @@ void Level::DestroyEntity(const ID entityID) {
     ui_transforms.Remove(entityID);
     ui_sprites.Remove(entityID);
     ui_texts.Remove(entityID);
+
+    std::erase_if(entities, [entityID](const Entity& entity)->bool {
+        return entity.id == entityID;
+    });
 }
 
 void Level::DestroyEntity(const Entity& entity) {

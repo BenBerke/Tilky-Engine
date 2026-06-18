@@ -119,9 +119,8 @@ namespace LevelSystem {
         //     entity.Start(); // Currently does nothing
         // }
 
-        for (ComponentTransform &transform: level.transforms.components) {
-            transform.UpdateObjectSectorAndFloor(level.sectors, level.GetEntity(transform.ownerID));
-        }
+        for (ComponentTransform &transform: level.transforms.components)
+            transform.UpdateObjectSectorAndFloor(level.sectors);
 
         activeController = GetActivePlayerController(level);
 
@@ -167,7 +166,7 @@ namespace LevelSystem {
                     continue;
                 }
 
-                transform.UpdateObjectSectorAndFloor(level.sectors, owner);
+                transform.UpdateObjectSectorAndFloor(level.sectors);
             }
         }
 

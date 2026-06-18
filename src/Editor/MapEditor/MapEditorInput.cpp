@@ -45,6 +45,10 @@ namespace MapEditorInternal {
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+        const Vector2 snappedWorld = SnapToGrid(mouseWorld);
+
         if (!mouseBlockedByImGui) {
             if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) {
                 const Vector2 mouseDelta = InputManager::GetMouseDelta();
@@ -53,10 +57,6 @@ namespace MapEditorInternal {
                 cameraPos.y += mouseDelta.y / editorZoom;
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
-                const Vector2 mouseScreen = InputManager::GetMousePosition();
-                const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-                const Vector2 snappedWorld = SnapToGrid(mouseWorld);
-
                 if (currentMode == MODE_SECTOR) {
                     if (CornerExistsAt(snappedWorld)) {
                         AddSectorSelectionPoint(snappedWorld);
@@ -211,6 +211,17 @@ namespace MapEditorInternal {
                 default: break;
             }
             actions.pop_back();
+        }
+
+        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_C)) [[unlikely]] {
+            if (editingEntity || holdingEntity) {
+                entityInClipboard = selectedEntity;
+                hasEntityInClipboard = true;
+            }
+        }
+
+        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]] {
+            if (hasEntityInClipboard) level.CreateEntity(&entityInClipboard);
         }
     }
 }

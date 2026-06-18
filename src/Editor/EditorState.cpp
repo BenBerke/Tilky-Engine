@@ -56,4 +56,8 @@ namespace MapEditorInternal {
     bool play = false;
     bool shutdown = false;
     bool switchToRuntime = false;
+
+    bool hasEntityInClipboard = false;
+    Entity entityInClipboard;
+
 }

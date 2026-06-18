@@ -80,8 +80,8 @@ struct ComponentRigidbody {
 
     Vector3 velocity = {.0f, .0f, .0f};
 
-    void AddVelocity(Vector3 velocity);
-    void ApplyFriction(float friction);
+    void AddVelocity(const Vector3 &_velocity);
+    void ApplyFriction(float _friction);
     void ApplyAirResistance(float resistance);
     void ApplyGravity(float gravity);
 };
@@ -194,11 +194,11 @@ struct ComponentAudioSource {
 
     void PlaySound() const;
 
-    void SetSourcePitch(float pitch) const;
+    void SetSourcePitch(float _pitch) const;
 
-    void SetSourceGain(float gain) const;
+    void SetSourceGain(float _gain) const;
 
-    void SetSourceLooping(bool looping) const;
+    void SetSourceLooping(bool _looping) const;
 
     void SetSourcePosition(const Vector3& position) const;
 
@@ -209,7 +209,17 @@ struct ComponentAudioSource {
 struct Sector;
 struct ComponentTransform {
     ID ownerID = -1;
-    //                 World X, World Z, Height relative to the sector's floor
+    /*
+     * Engine coordinate convention:
+     *
+     * position.x = world X
+     * position.y = world Z / horizontal depth
+     * position.z = absolute world height
+     *
+     * relativeHeight = height relative to the current sector floor
+     *
+     * Transform origin is the object's feet
+     */
     Vector3 position = {.0f, .0f, .0f};
     float relativeHeight = .0f;
     Vector2 forward = {1.0f, .0f};
@@ -222,7 +232,7 @@ struct ComponentTransform {
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
     float GetObjectBottomHeight(const std::vector<Sector>& sectors);
-    bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors, Entity* owner);
+    bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
 };
 
 // Stores things related to the entity's visuals
