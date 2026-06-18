@@ -67,6 +67,7 @@ struct Level {
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;
     ID CreateEntity(bool uiEntity);
+    ID CreateEntity(Entity& entity);
     void DestroyEntity(ID entityID);
     void DestroyEntity(const Entity& entity);
 };

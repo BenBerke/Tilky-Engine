@@ -768,14 +768,10 @@ namespace {
                 const ID ownerID =
                     cameraJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentCamera& c = level.cameras.Add(ownerID);
                 entity->componentsMask.set(CMP_CAMERA);
@@ -813,14 +809,10 @@ namespace {
                 const ID ownerID =
                     colliderJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentCollider& c = level.colliders.Add(ownerID);
                 entity->componentsMask.set(CMP_COLLIDER);

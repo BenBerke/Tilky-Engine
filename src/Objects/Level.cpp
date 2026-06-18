@@ -45,6 +45,53 @@ ID Level::CreateEntity(const bool uiEntity) {
     return newId;
 }
 
+ID Level::CreateEntity(Entity& copy) {
+    Entity entity;
+    entity.id = nextEntityID++;
+    entity.name = copy.name + "Copy";
+
+    if (copy.HasComponent<ComponentTransform>())
+        entity.AddComponent<ComponentTransform>();
+
+    if (copy.HasComponent<ComponentSprite>())
+        entity.AddComponent<ComponentSprite>();
+
+    if (copy.HasComponent<ComponentDecal>())
+        entity.AddComponent<ComponentDecal>();
+
+    if (copy.HasComponent<ComponentAudioSource>())
+        entity.AddComponent<ComponentAudioSource>();
+
+    if (copy.HasComponent<ComponentScript>())
+        entity.AddComponent<ComponentScript>();
+
+    if (copy.HasComponent<ComponentPlayerController>())
+        entity.AddComponent<ComponentPlayerController>();
+
+    if (copy.HasComponent<ComponentCamera>())
+        entity.AddComponent<ComponentCamera>();
+
+    if (copy.HasComponent<ComponentCollider>())
+        entity.AddComponent<ComponentCollider>();
+
+    if (copy.HasComponent<ComponentRigidbody>())
+        entity.AddComponent<ComponentRigidbody>();
+
+    // UI Components
+    if (copy.HasComponent<ComponentUITransform>())
+        entity.AddComponent<ComponentUITransform>();
+
+    if (copy.HasComponent<ComponentUISprite>())
+        entity.AddComponent<ComponentUISprite>();
+
+    if (copy.HasComponent<ComponentUIText>())
+        entity.AddComponent<ComponentUIText>();
+
+
+    entities.push_back(entity);
+
+    return entity.id;
+}
 
 void Level::DestroyEntity(const ID entityID) {
     if (entityID == INVALID_ID) return;

@@ -221,7 +221,7 @@ namespace MapEditorInternal {
         }
 
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]] {
-            if (hasEntityInClipboard) level.CreateEntity(&entityInClipboard);
+            if (hasEntityInClipboard) level.CreateEntity(entityInClipboard);
         }
     }
 }

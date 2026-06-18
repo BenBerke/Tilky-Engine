@@ -16,6 +16,73 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
 
+#include "Headers/Objects/ComponentRegistry.hpp"
+#include <type_traits>
+
+static const char* GetComponentLabelKey(const int componentType) {
+    switch (componentType) {
+#define COMPONENT_LABEL_CASE(Type, Bit, Storage, LabelKey) \
+case Bit: return LabelKey;
+
+        TILKY_COMPONENTS(COMPONENT_LABEL_CASE)
+
+#undef COMPONENT_LABEL_CASE
+
+        default:
+        return "bug.unknown";
+    }
+}
+
+static std::string GetComponentDisplayName(const int componentType) {
+    return Localisation::Get(GetComponentLabelKey(componentType));
+}
+
+template<typename T>
+static void AddEditorComponent(Entity& entity) {
+    if constexpr (std::is_same_v<T, ComponentPlayerController>) {
+        if (!entity.HasComponent<ComponentPlayerController>()) {
+            auto* pc = entity.AddComponent<ComponentPlayerController>();
+
+            if (!entity.HasComponent<ComponentRigidbody>())
+                entity.AddComponent<ComponentRigidbody>();
+
+            if (!entity.HasComponent<ComponentCollider>())
+                entity.AddComponent<ComponentCollider>();
+
+            if (!entity.HasComponent<ComponentCamera>())
+                entity.AddComponent<ComponentCamera>();
+
+            pc->isActive = true;
+        }
+    }
+    else if constexpr (std::is_same_v<T, ComponentCamera>) {
+        if (!entity.HasComponent<ComponentCamera>()) {
+            auto* cam = entity.AddComponent<ComponentCamera>();
+            cam->isActive = true;
+        }
+    }
+    else {
+        if (!entity.HasComponent<T>())
+            entity.AddComponent<T>();
+    }
+}
+
+static void AddEditorComponentByType(Entity &entity, const int componentType) {
+    switch (componentType) {
+#define ADD_EDITOR_COMPONENT_CASE(Type, Bit, Storage, LabelKey) \
+case Bit: \
+AddEditorComponent<Type>(entity); \
+break;
+
+        TILKY_NORMAL_COMPONENTS(ADD_EDITOR_COMPONENT_CASE)
+
+#undef ADD_EDITOR_COMPONENT_CASE
+
+        default:
+            break;
+    }
+}
+
 namespace {
     bool InputID(const char *label, ID &value) {
         int displayValue = (value == INVALID_ID) ? -1 : static_cast<int>(value);
@@ -139,24 +206,20 @@ namespace ImGuiDrawFunctions {
         ImGui::SameLine();
         ImGui::InputText(Get("entity.name").c_str(), &entity.name);
 
-        if (ImGui::Button(Get("entity.add_component").c_str())) {
+        if (ImGui::Button(Get("entity.add_component").c_str()))
             state.addingComponent = !state.addingComponent;
-        }
 
         if (state.addingComponent) {
             ImGui::PushID("add_component_combo");
 
-            std::array<std::string, CMP_NORMAL_COUNT> componentNames;
+            std::array<std::string, CMP_NORMAL_COUNT> componentNames{};
 
-            componentNames[CMP_TRANSFORM] = Get("component.transform");
-            componentNames[CMP_SPRITE] = Get("component.sprite");
-            componentNames[CMP_DECAL] = Get("component.decal");
-            componentNames[CMP_AUDIO_SOURCE] = Get("component.audio_source");
-            componentNames[CMP_SCRIPT] = Get("component.script");
-            componentNames[CMP_PLAYER_CONTROLLER] = Get("component.player_controller");
-            componentNames[CMP_CAMERA] = Get("component.camera");
-            componentNames[CMP_COLLIDER] = Get("component.collider");
-            componentNames[CMP_RIGIDBODY] = Get("component.rigidbody");
+#define FILL_COMPONENT_NAME(Type, Bit, Storage, LabelKey) \
+componentNames[Bit] = Get(LabelKey);
+
+            TILKY_NORMAL_COMPONENTS(FILL_COMPONENT_NAME)
+
+#undef FILL_COMPONENT_NAME
 
             if (ImGui::BeginCombo(
                 Get("component.component").c_str(),
@@ -167,62 +230,18 @@ namespace ImGuiDrawFunctions {
 
                     const bool isSelected = state.componentToAdd == i;
 
-                    if (ImGui::Selectable(componentNames[i].c_str(), isSelected)) state.componentToAdd = i;
+                    if (ImGui::Selectable(componentNames[i].c_str(), isSelected))
+                        state.componentToAdd = i;
 
-                    if (isSelected) ImGui::SetItemDefaultFocus();
+                    if (isSelected)
+                        ImGui::SetItemDefaultFocus();
                 }
 
                 ImGui::EndCombo();
             }
 
             if (ImGui::Button(Get("common.add").c_str())) {
-                switch (state.componentToAdd) {
-                    case CMP_SPRITE:
-                        if (!entity.HasComponent<ComponentSprite>()) entity.AddComponent<ComponentSprite>();
-                        break;
-
-                    case CMP_DECAL:
-                        if (!entity.HasComponent<ComponentDecal>()) entity.AddComponent<ComponentDecal>();
-                        break;
-
-                    case CMP_AUDIO_SOURCE:
-                        if (!entity.HasComponent<ComponentAudioSource>()) entity.AddComponent<ComponentAudioSource>();
-                        break;
-
-                    case CMP_SCRIPT:
-                        if (!entity.HasComponent<ComponentScript>()) entity.AddComponent<ComponentScript>();
-                        break;
-
-                    case CMP_PLAYER_CONTROLLER:
-                        if (!entity.HasComponent<ComponentPlayerController>()) {
-                            auto *pc = entity.AddComponent<ComponentPlayerController>();
-
-                            if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
-                            if (!entity.HasComponent<ComponentCollider>()) entity.AddComponent<ComponentCollider>();
-                            if (!entity.HasComponent<ComponentCamera>()) entity.AddComponent<ComponentCamera>();
-
-                            pc->isActive = true;
-                        }
-                        break;
-
-                    case CMP_CAMERA:
-                        if (!entity.HasComponent<ComponentCamera>()) {
-                            auto *cam = entity.AddComponent<ComponentCamera>();
-                            cam->isActive = true;
-                        }
-                        break;
-
-                    case CMP_COLLIDER:
-                        if (!entity.HasComponent<ComponentCollider>()) entity.AddComponent<ComponentCollider>();
-                        break;
-
-                    case CMP_RIGIDBODY:
-                        if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
-                        break;
-
-                    default:
-                        break;
-                }
+                AddEditorComponentByType(entity, state.componentToAdd);
 
                 state.addingComponent = false;
                 state.componentToAdd = CMP_SPRITE;
@@ -256,32 +275,13 @@ namespace ImGuiDrawFunctions {
             ImGui::PopID();
         };
 
-        if (entity.HasComponent<ComponentTransform>())
-            DrawComponentRow(Get("component.transform").c_str(), CMP_TRANSFORM);
+#define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
+if (entity.HasComponent<Type>()) \
+DrawComponentRow(Get(LabelKey).c_str(), Bit);
 
-        if (entity.HasComponent<ComponentSprite>())
-            DrawComponentRow(Get("component.sprite").c_str(), CMP_SPRITE);
+        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
 
-        if (entity.HasComponent<ComponentDecal>())
-            DrawComponentRow(Get("component.decal").c_str(), CMP_DECAL);
-
-        if (entity.HasComponent<ComponentAudioSource>())
-            DrawComponentRow(Get("component.audio_source").c_str(), CMP_AUDIO_SOURCE);
-
-        if (entity.HasComponent<ComponentScript>())
-            DrawComponentRow(Get("component.script").c_str(), CMP_SCRIPT);
-
-        if (entity.HasComponent<ComponentPlayerController>())
-            DrawComponentRow(Get("component.player_controller").c_str(), CMP_PLAYER_CONTROLLER);
-
-        if (entity.HasComponent<ComponentCamera>())
-            DrawComponentRow(Get("component.camera").c_str(), CMP_CAMERA);
-
-        if (entity.HasComponent<ComponentCollider>())
-            DrawComponentRow(Get("component.collider").c_str(), CMP_COLLIDER);
-
-        if (entity.HasComponent<ComponentRigidbody>())
-            DrawComponentRow(Get("component.rigidbody").c_str(), CMP_RIGIDBODY);
+        #undef DRAW_ENTITY_COMPONENT_ROW
 
         PutSpace(2);
 
@@ -322,49 +322,7 @@ namespace ImGuiDrawFunctions {
             return;
         }
 
-        std::string componentName;
-
-        switch (state.selectedComponent) {
-            case CMP_TRANSFORM:
-                componentName = Get("component.transform");
-                break;
-
-            case CMP_SPRITE:
-                componentName = Get("component.sprite");
-                break;
-
-            case CMP_DECAL:
-                componentName = Get("component.decal");
-                break;
-
-            case CMP_AUDIO_SOURCE:
-                componentName = Get("component.audio_source");
-                break;
-
-            case CMP_SCRIPT:
-                componentName = Get("component.script");
-                break;
-
-            case CMP_PLAYER_CONTROLLER:
-                componentName = Get("component.player_controller");
-                break;
-
-            case CMP_CAMERA:
-                componentName = Get("component.camera");
-                break;
-
-            case CMP_COLLIDER:
-                componentName = Get("component.collider");
-                break;
-
-            case CMP_RIGIDBODY:
-                componentName = Get("component.rigidbody");
-                break;
-
-            default:
-                componentName = Get("bug.unknown");
-                break;
-        }
+        const std::string componentName = GetComponentDisplayName(state.selectedComponent);
 
         const std::string windowTitle = componentName + "##component_editor";
 
