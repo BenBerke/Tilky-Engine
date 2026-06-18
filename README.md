@@ -61,7 +61,7 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 | **Build System**             | CMake                                             |
 | **Helper Tools & Exporting** | Rust                                              |
 | **Math**                     | Custom Headers (with SIMD Intrinsics)             |
-| **Physics & Collisions**	   | Custom AA (Lightweight, SIMD-Accelerated)|
+| **Physics & Collisions**	   | Custom, Lightweight, SIMD-Accelerated             |
 
 ---
 
