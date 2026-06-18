@@ -46,20 +46,22 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 
 ## 🛠 Tech Stack
 
-| Category                     | Library                        |
-| :--------------------------- | :----------------------------- |
-| **Language**                 | C++20, Rust                    |
-| **Graphics**                 | OpenGL, GLSL, GLAD             |
-| **Framework**                | SDL3                           |
-| **UI**                       | Dear ImGui                     |
-| **Audio**                    | OpenAL                         |
-| **Scripting**                | Lua, sol2                      |
-| **Profiling**                | Tracy                          |
-| **Data**                     | nlohmann/json                  |
-| **Logging**                  | spdlog                         |
-| **Assets**                   | SDL3_image, SDL3_ttf, FreeType |
-| **Build System**             | CMake                          |
-| **Helper Tools & Exporting** | Rust                           |
+| Category                     | Library                                           |
+| :--------------------------- | :-----------------------------                    |
+| **Language**                 | C++20, Rust                                       |
+| **Graphics**                 | OpenGL, GLSL, GLAD                                |
+| **Framework**                | SDL3                                              |
+| **UI**                       | Dear ImGui                                        |
+| **Audio**                    | OpenAL                                            |
+| **Scripting**                | Lua, sol2                                         |
+| **Profiling**                | Tracy                                             |
+| **Data**                     | nlohmann/json                                     |
+| **Logging**                  | spdlog                                            |
+| **Assets**                   | SDL3_image, SDL3_ttf, FreeType                    |
+| **Build System**             | CMake                                             |
+| **Helper Tools & Exporting** | Rust                                              |
+| **Math**                     | Custom Headers (with SIMD Intrinsics)             |
+| **Physics & Collisions**	   | Custom AA (Lightweight, SIMD-Accelerated)|
 
 ---
 
