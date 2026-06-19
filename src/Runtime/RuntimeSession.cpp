@@ -196,7 +196,8 @@ namespace RuntimeSession {
 
             renderer->BeginFrame();
 
-            renderer->Update();
+            //todo add proper debug view enadble/disable
+            renderer->Update(runtimeType == PLAY);
 
             renderer->BeginImGuiFrame();
 

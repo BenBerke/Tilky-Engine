@@ -4,6 +4,7 @@
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
 #define RENDER_DECAL 3
+#define RENDER_COLLIDER 4
 
 in vec2 vDecalUV;
 
@@ -68,44 +69,38 @@ void main() {
     if (renderMode == RENDER_FLAT) {
         vec4 texColor = SampleTexture(vFlatTextureIndex, vFlatUV, true);
 
-        if (texColor.a < 0.1) {
-            discard;
-        }
+        if (texColor.a < 0.1) discard;
 
         FragColor = texColor * vColor;
         return;
     }
-
-    if (renderMode == RENDER_WALL) {
+    else if (renderMode == RENDER_WALL) {
         vec4 texColor = SampleTexture(vTextureIndex, vWallUV, true);
 
-        if (texColor.a < 0.1) {
-            discard;
-        }
+        if (texColor.a < 0.1) discard;
 
         FragColor = texColor * vColor;
         return;
     }
-
-    if (renderMode == RENDER_SPRITE) {
+    else if (renderMode == RENDER_SPRITE) {
         vec4 texColor = SampleTexture(vSpriteTextureIndex, vSpriteUV, false);
 
-        if (texColor.a < 0.1) {
-            discard;
-        }
+        if (texColor.a < 0.1) discard;
 
         FragColor = texColor * vColor;
         return;
     }
-
-    if (renderMode == RENDER_DECAL) {
+    else if (renderMode == RENDER_DECAL) {
         vec4 texColor = SampleTexture(vTextureIndex, vDecalUV, false);
 
-        if (texColor.a < 0.1) {
-            discard;
-        }
+        if (texColor.a < 0.1) discard;
 
         FragColor = texColor * vColor;
+        return;
+    }
+    else if (renderMode == RENDER_COLLIDER){
+        FragColor = vColor;
+
         return;
     }
 

@@ -15,9 +15,7 @@ struct ScriptTransform {
     ID ownerID = static_cast<ID>(-1);
 
     [[nodiscard]] ComponentTransform* GetComponent() const {
-        if (level == nullptr) {
-            return nullptr;
-        }
+        if (level == nullptr) return nullptr;
 
         return level->transforms.Get(ownerID);
     }
@@ -25,9 +23,7 @@ struct ScriptTransform {
     [[nodiscard]] Vector3 GetPosition() const {
         const ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return {0.0f, 0.0f};
-        }
+        if (transform == nullptr) return {0.0f, 0.0f, 0.0f};
 
         return transform->position;
     }
@@ -35,29 +31,23 @@ struct ScriptTransform {
     void SetPosition(const Vector3& position) const {
         ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return;
-        }
+        if (transform == nullptr) return;
 
         transform->position = position;
     }
 
-    [[nodiscard]] Vector2 GetScale() const {
+    [[nodiscard]] Vector3 GetScale() const {
         const ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return {0.0f, 0.0f};
-        }
+        if (transform == nullptr) return {.0f, .0f, .0f};
 
         return transform->scale;
     }
 
-    void SetScale(const Vector2& scale) const {
+    void SetScale(const Vector3& scale) const {
         ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return;
-        }
+        if (transform == nullptr) return;
 
         transform->scale = scale;
     }
@@ -65,9 +55,7 @@ struct ScriptTransform {
     [[nodiscard]] float GetFloor() const {
         const ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return 0;
-        }
+        if (transform == nullptr) return 0;
 
         return transform->floor;
     }
@@ -75,9 +63,7 @@ struct ScriptTransform {
     void SetFloor(const float floor) const {
         ComponentTransform* transform = GetComponent();
 
-        if (transform == nullptr) {
-            return;
-        }
+        if (transform == nullptr) return;
 
         transform->floor = floor;
     }

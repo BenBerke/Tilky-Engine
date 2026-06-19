@@ -365,7 +365,7 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                 ImGui::Text("Height");
 
                 ImGui::SetNextItemWidth(200.0f);
-                ImGui::InputFloat("##relativeHeight", &c->relativeHeight);
+                ImGui::InputFloat("##relativeHeight", &c->position.z);
 
                 ImGui::Spacing();
 

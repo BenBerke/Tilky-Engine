@@ -15,7 +15,7 @@
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
 
-void OpenGL::Update() {
+void OpenGL::Update(const bool renderDebug) {
     using namespace OpenGLRendererInternal;
 
     Level& level = LevelManager::CurrentLevel();
@@ -180,6 +180,37 @@ void OpenGL::Update() {
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, decalCount);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
+    }
+
+    {
+        ZoneScopedN("Build Colliders");
+
+        if (renderDebug) {
+            BuildGpuColliders();
+
+            if (colliderCount > 0) {
+                constexpr GLsizei COLLIDER_VERTICES_PER_COLLIDER = 24 * 6;
+
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
+
+                glDisable(GL_DEPTH_TEST);
+                glDepthMask(GL_FALSE);
+
+                glUniform1i(renderModeUniform, RENDER_COLLIDER);
+                glDrawArrays(GL_LINES, 0, colliderCount * COLLIDER_VERTICES_PER_COLLIDER);
+
+                glDepthMask(GL_TRUE);
+                glEnable(GL_DEPTH_TEST);
+
+                glUniform1i(renderModeUniform, RENDER_COLLIDER);
+
+                glDrawArrays(
+                    GL_LINES,
+                    0,
+                    colliderCount * COLLIDER_VERTICES_PER_COLLIDER
+                );
+            }
+        }
     }
 
 

@@ -29,6 +29,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_FLAT = 1;
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_DECAL = 3;
+    inline constexpr int RENDER_COLLIDER = 4;
 
     constexpr int ATLAS_SIZE = 4096;
     constexpr int ATLAS_PADDING = 2;
@@ -78,6 +79,13 @@ namespace OpenGLRendererInternal {
         Vector4 textureData;
     };
 
+    struct GpuCollider {
+        Vector4 positionType; // World x, y, z; type. 0 = sphere, 1 = AABB
+        Vector4 scale; // if sphere, x = radius. if box use vec3 is x y z
+    };
+
+    static_assert(sizeof(GpuCollider) == sizeof(float) * 8);
+
     struct GPUTexture {
         GLuint id = 0;
         int width = 0;
@@ -106,7 +114,7 @@ public:
     void Shutdown() override;
 
     void BeginFrame() override;
-    void Update() override;
+    void Update(const bool renderDebug) override;
     void EndFrame() override;
 
     void OnResize(int width, int height) override;
@@ -160,6 +168,7 @@ private:
     using GpuDecal = OpenGLRendererInternal::GpuDecal;
     using GpuSector = OpenGLRendererInternal::GpuSector;
     using GPUTexture = OpenGLRendererInternal::GPUTexture;
+    using GpuCollider = OpenGLRendererInternal::GpuCollider;
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
@@ -173,9 +182,6 @@ private:
     GLuint uiVAO = 0;
     GLuint uiVBO = 0;
     GLuint uiEBO = 0;
-
-    GLuint sectorSSBO = 0;
-    std::vector<GpuSector> gpuSectors;
 
     std::unique_ptr<Shader> projectionShader;
     std::unique_ptr<Shader> textShader;
@@ -198,6 +204,11 @@ private:
     GLuint decalSSBO = 0;
     GLsizei decalCount = 0;
 
+    GLuint sectorSSBO = 0;
+
+    GLuint colliderSSBO = 0;
+    GLsizei colliderCount = 0;
+
     std::map<char, Character> Characters;
 
     std::vector<GpuWall> gpuWalls;
@@ -208,6 +219,8 @@ private:
 
     std::vector<GpuDecal> gpuDecals;
     std::vector<GpuSprite> gpuSprites;
+    std::vector<GpuSector> gpuSectors;
+    std::vector<GpuCollider> gpuColliders;
 
     std::vector<GPUTexture> textures;
     GLuint atlasTexture = 0;
@@ -230,6 +243,7 @@ private:
 
     void BuildGpuSprites();
     void BuildGpuDecals();
+    void BuildGpuColliders();
 
     void BuildGpuWallsFromMap();
     void UploadGpuWallsFromMap();

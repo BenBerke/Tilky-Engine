@@ -506,6 +506,11 @@ bool OpenGL::CreateMap() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
 
+    glGenBuffers(1, &colliderSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, colliderSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, colliderSSBO);
+
     projectionShader->use();
 
     renderModeUniform = glGetUniformLocation(

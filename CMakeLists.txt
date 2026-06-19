@@ -301,6 +301,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
         Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
         src/Runtime/PhysicsSystem.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
 )
 
 # ============================================================

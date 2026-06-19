@@ -4,6 +4,12 @@
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
 #define RENDER_DECAL 3
+#define RENDER_COLLIDER 4
+
+#define COLLIDER_BOX_VERTEX_COUNT 24
+#define COLLIDER_SPHERE_SEGMENTS 24
+#define COLLIDER_SPHERE_VERTEX_COUNT (COLLIDER_SPHERE_SEGMENTS * 6)
+#define COLLIDER_VERTICES_PER_COLLIDER COLLIDER_SPHERE_VERTEX_COUNT
 
 struct Decal {
     vec4 startEnd;
@@ -41,6 +47,11 @@ struct Sector {
     vec4 textureData;
 };
 
+struct Collider{
+    vec4 positionType; // World x, y, z; type. 0 = sphere, 1 = AABB
+    vec4 scale; // if sphere, x = radius. if box use vec3 is x y z
+};
+
 layout(std430, binding = 0) readonly buffer WallBuffer {
     Wall walls[];
 };
@@ -49,16 +60,21 @@ layout(std430, binding = 1) readonly buffer FlatTriangleBuffer {
     FlatTriangle flatTriangles[];
 };
 
-layout(std430, binding = 4) readonly buffer SectorBuffer {
-    Sector sectors[];
-};
-
 layout(std430, binding = 2) readonly buffer SpriteBuffer {
     Sprite sprites[];
 };
 
 layout(std430, binding = 3) readonly buffer DecalBuffer {
     Decal decals[];
+};
+
+layout(std430, binding = 4) readonly buffer SectorBuffer {
+    Sector sectors[];
+};
+
+// 5 is used in the fragment shader
+layout(std430, binding = 6) readonly buffer ColliderBuffer {
+    Collider colliders[];
 };
 
 uniform mat4 uView;
@@ -79,6 +95,104 @@ out vec2 vDecalUV;
 const float tileSize = 32.0;
 
 uniform vec3 uCameraWorldPos;
+
+const float PI = 3.14159265359;
+
+vec3 ToRenderWorld(vec3 entityWorld) {
+    return vec3(
+    entityWorld.x, // world X
+    entityWorld.z, // vertical height
+    entityWorld.y  // horizontal depth
+    );
+}
+
+vec3 GetBoxCorner(vec3 center, vec3 halfSize, int index) {
+    return center + vec3(
+    (index & 1) != 0 ? halfSize.x : -halfSize.x,
+    (index & 2) != 0 ? halfSize.y : -halfSize.y,
+    (index & 4) != 0 ? halfSize.z : -halfSize.z
+    );
+}
+
+vec3 GetBoxVertex(Collider collider, int localVertex) {
+    const int edgeIndices[24] = int[24](
+    0, 1,
+    1, 3,
+    3, 2,
+    2, 0,
+
+    4, 5,
+    5, 7,
+    7, 6,
+    6, 4,
+
+    0, 4,
+    1, 5,
+    2, 6,
+    3, 7
+    );
+
+    vec3 center = collider.positionType.xyz;
+    vec3 halfSize = collider.scale.xyz * 0.5;
+
+    if (localVertex >= COLLIDER_BOX_VERTEX_COUNT) {
+        return center;
+    }
+
+    return GetBoxCorner(center, halfSize, edgeIndices[localVertex]);
+}
+
+vec3 GetSphereVertex(Collider collider, int localVertex) {
+    vec3 center = collider.positionType.xyz;
+
+    // Assumes transform.scale is full diameter/size.
+    // If your physics uses scale.x as radius instead, remove the * 0.5 here.
+    vec3 radius = collider.scale.xyz * 0.5;
+
+    int ringVertexCount = COLLIDER_SPHERE_SEGMENTS * 2;
+
+    int ring = localVertex / ringVertexCount;
+    int ringLocal = localVertex % ringVertexCount;
+
+    int segment = ringLocal / 2;
+    bool secondPoint = (ringLocal & 1) != 0;
+
+    float t = float(segment + (secondPoint ? 1 : 0)) / float(COLLIDER_SPHERE_SEGMENTS);
+    float angle = t * PI * 2.0;
+
+    float c = cos(angle);
+    float s = sin(angle);
+
+    if (ring == 0) {
+        // XY ring
+        return center + vec3(c * radius.x, s * radius.y, 0.0);
+    }
+
+    if (ring == 1) {
+        // XZ ring
+        return center + vec3(c * radius.x, 0.0, s * radius.z);
+    }
+
+    // YZ ring
+    return center + vec3(0.0, c * radius.y, s * radius.z);
+}
+
+void RenderColliderVertex() {
+    int colliderIndex = gl_VertexID / COLLIDER_VERTICES_PER_COLLIDER;
+    int localVertex = gl_VertexID % COLLIDER_VERTICES_PER_COLLIDER;
+
+    Collider collider = colliders[colliderIndex];
+
+    // Use real position, force visible size/type
+    collider.scale.xyz = vec3(2.0, 2.0, 2.0);
+    collider.positionType.w = 0.0;
+
+    vec3 worldPosition = GetSphereVertex(collider, localVertex);
+    worldPosition = ToRenderWorld(worldPosition);
+
+    vColor = vec4(1.0, 0.0, 1.0, 1.0);
+    gl_Position = uProjection * uView * vec4(worldPosition, 1.0);
+}
 
 vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
     vec2 toCamera = uCameraWorldPos.xz - spriteWorldPos.xz;
@@ -330,19 +444,11 @@ void renderWall() {
 }
 
 void main() {
-    if (renderMode == RENDER_FLAT) {
-        renderFlat();
-    }
-    else if (renderMode == RENDER_WALL) {
-        renderWall();
-    }
-    else if (renderMode == RENDER_SPRITE) {
-        renderSprite();
-    }
-    else if (renderMode == RENDER_DECAL) {
-        renderDecal();
-    }
-    else {
-        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
-    }
+    if (renderMode == RENDER_FLAT) renderFlat();
+    else if (renderMode == RENDER_WALL) renderWall();
+    else if (renderMode == RENDER_SPRITE) renderSprite();
+    else if (renderMode == RENDER_DECAL) renderDecal();
+    else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
+    else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+
 }

@@ -224,7 +224,9 @@ struct ComponentTransform {
     float relativeHeight = .0f;
     Vector2 forward = {1.0f, .0f};
     int floor = 0;
-    Vector2 scale = {32.0f, 32.0f};
+
+    // Scale convention same as position. x, y = World x, z; z = World y. This does not affect Sprites but only Colliders
+    Vector3 scale = {32.0f, 32.0f, 32.0f};
 
     int sectorIndex = -1;
     bool isDirty = false;
@@ -331,6 +333,38 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     //                     0        firstBoxIndex  firstInactiveIndex  size
     size_t firstBoxIndex      = 0;
     size_t firstInactiveIndex = 0;
+
+    std::span<ComponentCollider> ActiveColliders() {
+        return { components.data(), firstInactiveIndex };
+    }
+
+    std::span<const ComponentCollider> ActiveColliders() const {
+        return { components.data(), firstInactiveIndex };
+    }
+
+    std::span<ComponentCollider> ActiveSpheres() {
+        return { components.data(), firstBoxIndex };
+    }
+
+    std::span<const ComponentCollider> ActiveSpheres() const {
+        return { components.data(), firstBoxIndex };
+    }
+
+    std::span<ComponentCollider> ActiveBoxes() {
+        return { components.data() + firstBoxIndex, firstInactiveIndex - firstBoxIndex };
+    }
+
+    std::span<const ComponentCollider> ActiveBoxes() const {
+        return { components.data() + firstBoxIndex, firstInactiveIndex - firstBoxIndex };
+    }
+
+    std::span<ComponentCollider> InactiveColliders() {
+        return { components.data() + firstInactiveIndex, components.size() - firstInactiveIndex };
+    }
+
+    std::span<const ComponentCollider> InactiveColliders() const {
+        return { components.data() + firstInactiveIndex, components.size() - firstInactiveIndex };
+    }
 
     // ── Public mutators ──────────────────────────────────────────────
     // Call instead of directly writing collider.isActive

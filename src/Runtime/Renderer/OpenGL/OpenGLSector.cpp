@@ -1,9 +1,8 @@
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
-
 #include "Headers/Map/LevelManager.hpp"
 
 void OpenGL::BuildGpuSectors() {
-    Level& level = LevelManager::CurrentLevel();
+    const Level& level = LevelManager::CurrentLevel();
 
     gpuSectors.clear();
     gpuSectors.reserve(level.sectors.size());

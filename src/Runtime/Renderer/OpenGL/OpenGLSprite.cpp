@@ -23,7 +23,7 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.positionSize = {
             transform->position.x,
-            transform->position.z + transform->scale.y * .5f,
+            transform->position.z, //+ transform->scale.y * .5f,
             transform->position.y, // Intentionally swapped
             transform->scale.y
         };

@@ -117,11 +117,7 @@ namespace PhysicsSystem {
         allEntities.reserve(64);
         allWalls.reserve(64);
 
-        // ═══════════════════════════════════════════════════════════════════
-        // PASS 1 — Sphere collider resolution
-        // ═══════════════════════════════════════════════════════════════════
-        for (size_t si = 0; si < col.firstBoxIndex; ++si) {
-            ComponentCollider &selfCollider = col.components[si];
+        for (ComponentCollider& selfCollider : col.ActiveSpheres()) {
             if (selfCollider.isTrigger) continue;
 
             ComponentTransform *selfTransform = level.transforms.Get(selfCollider.ownerID);
@@ -141,15 +137,16 @@ namespace PhysicsSystem {
 
             allEntities.insert(allEntities.end(),
                                sector.entitiesInside.begin(), sector.entitiesInside.end());
+
             allWalls.insert(allWalls.end(),
                             sector.walls.begin(), sector.walls.end());
 
             for (const Sector *nSector: sector.neighbors) {
-                if (nSector == nullptr) [[unlikely]] continue;
-                allEntities.insert(allEntities.end(),
-                                   nSector->entitiesInside.begin(), nSector->entitiesInside.end());
-                allWalls.insert(allWalls.end(),
-                                nSector->walls.begin(), nSector->walls.end());
+            if (nSector == nullptr) [[unlikely]] continue;
+            allEntities.insert(allEntities.end(),
+                               nSector->entitiesInside.begin(), nSector->entitiesInside.end());
+            allWalls.insert(allWalls.end(),
+                            nSector->walls.begin(), nSector->walls.end());
             }
 
             std::vector<ID> processedOtherIDs;
@@ -158,7 +155,7 @@ namespace PhysicsSystem {
             Vector3 selfPos = {
                 selfTransform->position.x,
                 selfTransform->position.y,
-                selfTransform->position.z + (selfTransform->scale.y * 0.5f)
+                selfTransform->position.z + (selfTransform->scale.z * 0.5f)
             };
 
             for (const ID otherID : allEntities) {
@@ -187,7 +184,7 @@ namespace PhysicsSystem {
                 Vector3 otherPos = {
                     otherTransform->position.x,
                     otherTransform->position.y,
-                    otherTransform->position.z + (otherTransform->scale.y * 0.5f)
+                    otherTransform->position.z + (otherTransform->scale.z * 0.5f)
                 };
 
                 const __m128 deltaPos = _mm_sub_ps(selfPos.reg, otherPos.reg);
@@ -196,6 +193,9 @@ namespace PhysicsSystem {
 
                 if (distSqr >= radiusSum * radiusSum) continue;
 
+                // Collision detected
+                //todo add a "OnCollisionEnter" function to Lua
+
                 const __m128 safeDistSqr = _mm_max_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
                 __m128 invDistReg = rsqrt_nr_ss(safeDistSqr);
                 invDistReg = TILKY_MM_SHUFFLE_PS(invDistReg, invDistReg, _MM_SHUFFLE(0,0,0,0));
@@ -203,8 +203,6 @@ namespace PhysicsSystem {
 
                 const float penetration = radiusSum - distance;
                 if (penetration <= Constants::Epsilon) continue;
-
-                EditorFunctions::Print("collision detected");
 
                 const __m128 calculatedDir = _mm_mul_ps(deltaPos, invDistReg);
                 const __m128 fallbackDir = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
@@ -228,7 +226,7 @@ namespace PhysicsSystem {
                 selfPos = {
                     selfTransform->position.x,
                     selfTransform->position.y,
-                    selfTransform->position.z + +(otherTransform->scale.y * 0.5f)
+                    selfTransform->position.z + +(selfTransform->scale.z * 0.5f)
                 };
             }
 
@@ -320,7 +318,7 @@ namespace PhysicsSystem {
                     selfPos = {
                         selfTransform->position.x,
                         selfTransform->position.y,
-                        selfTransform->position.z + selfTransform->scale.y * 0.5f
+                        selfTransform->position.z + selfTransform->scale.z * 0.5f
                     };
                 }
             }
@@ -353,24 +351,7 @@ namespace PhysicsSystem {
             }
         }
 
-        // ═══════════════════════════════════════════════════════════════════
-        // PASS 2 — Box vs Sphere
-        // ═══════════════════════════════════════════════════════════════════
-        for (size_t bi = col.firstBoxIndex; bi < col.firstInactiveIndex; ++bi) {
-            // TODO
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // PASS 3 — Box vs Wall
-        // ═══════════════════════════════════════════════════════════════════
-        for (size_t bi = col.firstBoxIndex; bi < col.firstInactiveIndex; ++bi) {
-            // TODO
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // PASS 4 — Box vs Box
-        // ═══════════════════════════════════════════════════════════════════
-        for (size_t bi = col.firstBoxIndex; bi < col.firstInactiveIndex; ++bi) {
+        for (ComponentCollider& boxCollider : col.ActiveBoxes()) {
             // TODO
         }
     }

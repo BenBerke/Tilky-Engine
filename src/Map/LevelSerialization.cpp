@@ -469,9 +469,7 @@ namespace {
         level.ui_sprites.Clear();
         level.ui_texts.Clear();
 
-        if (!levelData.contains("components")) {
-            return;
-        }
+        if (!levelData.contains("components")) return;
 
         const json& componentsJson = levelData["components"];
 
@@ -506,7 +504,8 @@ namespace {
                 if (transformJson.contains("scale")) {
                     c.scale = {
                         transformJson["scale"][0].get<float>(),
-                        transformJson["scale"][1].get<float>()
+                        transformJson["scale"][1].get<float>(),
+                        transformJson["scale"][2].get<float>()
                     };
                 }
             }
@@ -631,14 +630,10 @@ namespace {
                 const ID ownerID =
                     transformJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentUITransform& c = level.ui_transforms.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_TRANSFORM);
@@ -879,7 +874,7 @@ namespace {
                 {"position", {c.position.x, c.position.y, c.position.z}},
                 {"sectorIndex", c.sectorIndex},
                 {"floor", c.floor},
-                {"scale", {c.scale.x, c.scale.y}}
+                {"scale", {c.scale.x, c.scale.y, c.scale.z}}
             });
         }
 
