@@ -118,8 +118,10 @@ namespace GameFunctions {
             closestDistance = distance;
 
             RayHit hit;
+            hit.type = RayHitType::Wall;
             hit.wall = &wall;
             hit.entity = nullptr;
+            hit.sector = nullptr;
             hit.position = pos + normalizedDir * distance;
             hit.distance = distance;
 
@@ -132,8 +134,26 @@ namespace GameFunctions {
             closestDistance = distance;
 
             RayHit hit;
+            hit.type = RayHitType::Entity;
             hit.wall = nullptr;
             hit.entity = &entity;
+            hit.sector = nullptr;
+            hit.position = pos + normalizedDir * distance;
+            hit.distance = distance;
+
+            rayHit = hit;
+        };
+
+        auto submitSectorHit = [&](Sector &sector, const RayHitType type, const float distance) {
+            if (distance >= closestDistance) return;
+
+            closestDistance = distance;
+
+            RayHit hit;
+            hit.type = type;
+            hit.wall = nullptr;
+            hit.entity = nullptr;
+            hit.sector = &sector;
             hit.position = pos + normalizedDir * distance;
             hit.distance = distance;
 
@@ -180,7 +200,7 @@ namespace GameFunctions {
         // Entity positions use:
         // position.x = world X
         // position.y = world Z / horizontal depth
-        // position.z = height above the current sector floor
+        // position.z = world Y
         for (Entity& entity: level.entities) {
             if (entity.id == ignoredEntity) continue;
 
@@ -293,7 +313,39 @@ namespace GameFunctions {
         }
 
         for (Sector& sector : level.sectors) {
-            // todo Sector floor/ceiling raycast
+            for (const Triangle& triangle : sector.triangles) {
+                const Vector3 floorA = { triangle.a.x, triangle.a.y, sector.floorHeight };
+                const Vector3 floorB = { triangle.b.x, triangle.b.y, sector.floorHeight };
+                const Vector3 floorC = { triangle.c.x, triangle.c.y, sector.floorHeight };
+
+                const std::optional<float> floorHit = RayTriangleIntersection(
+                    pos,
+                    normalizedDir,
+                    floorA,
+                    floorB,
+                    floorC,
+                    closestDistance
+                );
+
+                if (floorHit.has_value())
+                    submitSectorHit(sector, RayHitType::SectorFloor, *floorHit);
+
+                const Vector3 ceilingA = { triangle.a.x, triangle.a.y, sector.ceilingHeight };
+                const Vector3 ceilingB = { triangle.b.x, triangle.b.y, sector.ceilingHeight };
+                const Vector3 ceilingC = { triangle.c.x, triangle.c.y, sector.ceilingHeight };
+
+                const std::optional<float> ceilingHit = RayTriangleIntersection(
+                    pos,
+                    normalizedDir,
+                    ceilingA,
+                    ceilingB,
+                    ceilingC,
+                    closestDistance
+                );
+
+                if (ceilingHit.has_value())
+                    submitSectorHit(sector, RayHitType::SectorCeiling, *ceilingHit);
+            }
         }
 
         return rayHit;

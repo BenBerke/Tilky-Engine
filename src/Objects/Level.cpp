@@ -98,21 +98,23 @@ void Level::DestroyEntity(const ID entityID) {
 
     for (Sector& sector : sectors) std::erase(sector.entitiesInside, entityID);
 
-    transforms.Remove(entityID);
+    colliders.Remove(entityID);
+    rigidbodies.Remove(entityID);
+
     sprites.Remove(entityID);
     decals.Remove(entityID);
     audioSources.Remove(entityID);
     scripts.Remove(entityID);
     playerControllers.Remove(entityID);
     cameras.Remove(entityID);
-    colliders.Remove(entityID);
-    rigidbodies.Remove(entityID);
+    transforms.Remove(entityID);
 
-    ui_transforms.Remove(entityID);
+    // UI components.
     ui_sprites.Remove(entityID);
     ui_texts.Remove(entityID);
+    ui_transforms.Remove(entityID);
 
-    std::erase_if(entities, [entityID](const Entity& entity)->bool {
+    std::erase_if(entities, [entityID](const Entity& entity) {
         return entity.id == entityID;
     });
 }

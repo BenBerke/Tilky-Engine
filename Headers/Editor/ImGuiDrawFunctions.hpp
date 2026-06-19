@@ -10,7 +10,6 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Components.hpp"
-
 namespace ImGuiDrawFunctions {
     struct EntityInspectorState {
         bool addingComponent = false;

@@ -413,39 +413,36 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
         const auto it = entityToIndex.find(id);
         if (it == entityToIndex.end()) return false;
 
-        const size_t idx = it->second;
+        size_t idx = it->second;
 
-        // Normalise: move whatever is at idx into the inactive tail first,
-        // then erase-swap with the very last element (standard pattern).
+        // Move active collider into inactive region first.
         if (components[idx].isActive) {
-            if (components[idx].type == COLLIDERTYPE_SPHERE)
-                _deactivateComponent(_promoteToSphere(idx)); // sphere→box region first
-            else
-                _deactivateComponent(idx);
+            _deactivateComponent(idx);
+            idx = entityToIndex[id];
         }
-        // idx is now in the inactive region
+
+        // Now idx is in inactive region. Remove by swap-with-last.
         const size_t last = components.size() - 1;
+
         if (idx != last) {
             components[idx] = components[last];
             entityToIndex[components[idx].ownerID] = idx;
         }
+
         components.pop_back();
         entityToIndex.erase(id);
-        // lastIndex was inactive, so no boundary adjustment needed
+
         return true;
     }
 
     ComponentCollider& InsertLoaded(const ComponentCollider& comp) {
-        // Respect the component's own isActive / type when loading a saved level.
-        ComponentCollider& ref = ComponentStorage<ComponentCollider>::InsertLoaded(comp);
+        ComponentStorage<ComponentCollider>::InsertLoaded(comp);
+
         const size_t idx = entityToIndex[comp.ownerID];
 
-        // It was appended at the back (inactive region by default).
-        // Promote it to the right region.
-        if (comp.isActive) {
-            _activateComponent(idx);
-        }
-        return ref;
+        if (comp.isActive) _activateComponent(idx);
+
+        return components[entityToIndex[comp.ownerID]];
     }
 
     void Clear() {

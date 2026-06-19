@@ -92,6 +92,7 @@ out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
 out vec2 vDecalUV;
 
+
 //todo makes this a world/per-wall setting
 const float tileSize = 32.0;
 

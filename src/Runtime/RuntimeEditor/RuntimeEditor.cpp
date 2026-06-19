@@ -29,10 +29,10 @@ namespace {
 
     Vector3 GetFreecamForward() {
         const float yawRadians =
-            camera->yaw * std::numbers::pi_v<float> / 180.0f;
+                camera->yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float pitchRadians =
-            camera->pitch * std::numbers::pi_v<float> / 180.0f;
+                camera->pitch * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
@@ -47,63 +47,63 @@ namespace {
         });
     }
 
-    namespace {
-        Vector3 GetMouseRayDirection(
-            const ComponentCamera& camera,
-            const Vector2 mousePosition,
-            const Vector2 viewportSize
-        ) {
-            if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) {
-                return GetFreecamForward();
-            }
 
-            // Mouse position -> Normalized Device Coordinates
-            // SDL mouse Y is top-to-bottom, so Y must be flipped.
-            const float ndcX = (2.0f * mousePosition.x / viewportSize.x) - 1.0f;
-            const float ndcY = 1.0f - (2.0f * mousePosition.y / viewportSize.y);
+    Vector3 GetMouseRayDirection(
+        const ComponentCamera &camera,
+        const Vector2 mousePosition,
+        const Vector2 viewportSize
+    ) {
+        if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) {
+            return GetFreecamForward();
+        }
 
-            const float yawRadians =
+        // Mouse position -> Normalized Device Coordinates
+        // SDL mouse Y is top-to-bottom, so Y must be flipped.
+        const float ndcX = (2.0f * mousePosition.x / viewportSize.x) - 1.0f;
+        const float ndcY = 1.0f - (2.0f * mousePosition.y / viewportSize.y);
+
+        const float yawRadians =
                 camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
-            const float pitchRadians =
+        const float pitchRadians =
                 camera.pitch * std::numbers::pi_v<float> / 180.0f;
 
-            const float yawSin = std::sin(yawRadians);
-            const float yawCos = std::cos(yawRadians);
+        const float yawSin = std::sin(yawRadians);
+        const float yawCos = std::cos(yawRadians);
 
-            const float pitchSin = std::sin(pitchRadians);
-            const float pitchCos = std::cos(pitchRadians);
+        const float pitchSin = std::sin(pitchRadians);
+        const float pitchCos = std::cos(pitchRadians);
 
-            const Vector3 forward = Vector3Math::Normalized({
-                yawSin * pitchCos,
-                yawCos * pitchCos,
-                pitchSin
-            });
+        const Vector3 forward = Vector3Math::Normalized({
+            yawSin * pitchCos,
+            yawCos * pitchCos,
+            pitchSin
+        });
 
-            const Vector3 right = Vector3Math::Normalized({
-                yawCos,
-                -yawSin,
-                0.0f
-            });
+        const Vector3 right = Vector3Math::Normalized({
+            yawCos,
+            -yawSin,
+            0.0f
+        });
 
-            const Vector3 up = Vector3Math::Normalized(
-                Vector3Math::Cross(right, forward)
-            );
+        const Vector3 up = Vector3Math::Normalized(
+            Vector3Math::Cross(right, forward)
+        );
 
-            const float aspect = viewportSize.x / viewportSize.y;
+        const float aspect = viewportSize.x / viewportSize.y;
 
-            const float fovRadians =
+        const float fovRadians =
                 camera.fov * std::numbers::pi_v<float> / 180.0f;
 
-            const float tanHalfFov = std::tan(fovRadians * 0.5f);
+        const float tanHalfFov = std::tan(fovRadians * 0.5f);
 
-            return Vector3Math::Normalized(
-                forward +
-                right * (-ndcX * tanHalfFov * aspect) +
-                up * (ndcY * tanHalfFov)
-            );
-        }
+        return Vector3Math::Normalized(
+            forward +
+            right * (-ndcX * tanHalfFov * aspect) +
+            up * (ndcY * tanHalfFov)
+        );
     }
+
 
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
 
@@ -113,6 +113,10 @@ namespace {
     bool editingWall = false;
     int selectedWall = -1;
 
+    bool editingSector = false;
+    int selectedSector = -1;
+
+    RayHitType selectedSectorSurface = RayHitType::None;
 }
 
 namespace {
@@ -138,6 +142,15 @@ namespace {
                 return i;
             }
         }
+
+        return -1;
+    }
+
+    int FindSectorIndex(Level& level, const Sector* sector) {
+        if (sector == nullptr) return -1;
+
+        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i)
+            if (&level.sectors[i] == sector) return i;
 
         return -1;
     }
@@ -186,10 +199,7 @@ namespace RuntimeEditorUi {
                 return;
             }
 
-            if (
-                entityInspectorState.editingComponent &&
-                entityInspectorState.selectedComponent != -1
-            ) {
+            if (entityInspectorState.editingComponent && entityInspectorState.selectedComponent != -1) {
                 ImGuiDrawFunctions::DrawComponentEditor(
                     *entityToEdit,
                     entityInspectorState,
@@ -225,6 +235,33 @@ namespace RuntimeEditorUi {
             if (!editingWall) {
                 selectedWall = -1;
                 return;
+            }
+        }
+
+        if (editingSector) {
+            if (
+                selectedSector < 0 ||
+                selectedSector >= static_cast<int>(level.sectors.size())
+            ) {
+                editingSector = false;
+                selectedSector = -1;
+                selectedSectorSurface = RayHitType::None;
+            }
+            else {
+                bool open = true;
+
+                ImGuiDrawFunctions::DrawSectorEditor(
+                    level.sectors[selectedSector],
+                    &open,
+                    selectedSector,
+                    true
+                );
+
+                if (!open) {
+                    editingSector = false;
+                    selectedSector = -1;
+                    selectedSectorSurface = RayHitType::None;
+                }
             }
         }
     }
@@ -330,7 +367,7 @@ namespace RuntimeEditor {
 
         //endregion
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !mouseBlockedByImGui) {
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
             const Vector3 rayOrigin = transform->position;
 
             const Vector2 mousePosition = InputManager::GetMousePosition();
@@ -361,46 +398,113 @@ namespace RuntimeEditor {
             }
 
             spdlog::info(
-                "Runtime editor ray hit. entity={}, wall={}",
+                "Runtime editor ray hit. type={}, entity={}, wall={}, sector={}",
+                static_cast<int>(hit->type),
                 hit->entity != nullptr,
-                hit->wall != nullptr
+                hit->wall != nullptr,
+                hit->sector != nullptr
             );
 
-            if (hit->entity != nullptr) {
-                const ID hitEntityId = hit->entity->id;
+            switch (hit->type) {
+                case RayHitType::Entity: {
+                    if (hit->entity == nullptr) {
+                        spdlog::error("RayHitType::Entity had null entity pointer");
+                        return;
+                    }
 
-                spdlog::info("Selected entity {}", hitEntityId);
+                    const ID hitEntityId = hit->entity->id;
 
-                if (!selectedEntityId.has_value() || *selectedEntityId != hitEntityId) {
-                    ResetEntityInspectorState();
-                }
+                    spdlog::info("Selected entity {}", hitEntityId);
 
-                editingEntity = true;
-                selectedEntityId = hitEntityId;
+                    if (!selectedEntityId.has_value() || *selectedEntityId != hitEntityId) {
+                        ResetEntityInspectorState();
+                    }
 
-                editingWall = false;
-                selectedWall = -1;
+                    editingEntity = true;
+                    selectedEntityId = hitEntityId;
 
-                spdlog::info("Entity selection finished");
-            }
-            else if (hit->wall != nullptr) {
-                const int wallIndex = FindWallIndex(level, hit->wall);
-
-                if (wallIndex == -1) {
-                    spdlog::error("Selected wall was not found in level.walls");
                     editingWall = false;
                     selectedWall = -1;
-                    return;
+
+                    editingSector = false;
+                    selectedSector = -1;
+                    selectedSectorSurface = RayHitType::None;
+
+                    spdlog::info("Entity selection finished");
+                    break;
                 }
 
-                editingWall = true;
-                selectedWall = wallIndex;
+                case RayHitType::Wall: {
+                    if (hit->wall == nullptr) {
+                        spdlog::error("RayHitType::Wall had null wall pointer");
+                        return;
+                    }
 
-                editingEntity = false;
-                selectedEntityId.reset();
-                ResetEntityInspectorState();
+                    const int wallIndex = FindWallIndex(level, hit->wall);
 
-                spdlog::info("Selected wall {}", selectedWall);
+                    if (wallIndex == -1) {
+                        spdlog::error("Selected wall was not found in level.walls");
+                        editingWall = false;
+                        selectedWall = -1;
+                        return;
+                    }
+
+                    editingWall = true;
+                    selectedWall = wallIndex;
+
+                    editingEntity = false;
+                    selectedEntityId.reset();
+                    ResetEntityInspectorState();
+
+                    editingSector = false;
+                    selectedSector = -1;
+                    selectedSectorSurface = RayHitType::None;
+
+                    spdlog::info("Selected wall {}", selectedWall);
+                    break;
+                }
+
+                case RayHitType::SectorFloor:
+                case RayHitType::SectorCeiling: {
+                    if (hit->sector == nullptr) {
+                        spdlog::error("Sector ray hit had null sector pointer");
+                        return;
+                    }
+
+                    const int sectorIndex = FindSectorIndex(level, hit->sector);
+
+                    if (sectorIndex == -1) {
+                        spdlog::error("Selected sector was not found in level.sectors");
+                        editingSector = false;
+                        selectedSector = -1;
+                        selectedSectorSurface = RayHitType::None;
+                        return;
+                    }
+
+                    editingSector = true;
+                    selectedSector = sectorIndex;
+                    selectedSectorSurface = hit->type;
+
+                    editingEntity = false;
+                    selectedEntityId.reset();
+                    ResetEntityInspectorState();
+
+                    editingWall = false;
+                    selectedWall = -1;
+
+                    spdlog::info(
+                        "Selected sector {} surface={}",
+                        selectedSector,
+                        hit->type == RayHitType::SectorFloor ? "floor" : "ceiling"
+                    );
+
+                    break;
+                }
+
+                case RayHitType::None:
+                default:
+                    spdlog::warn("Runtime editor ray hit had invalid hit type");
+                    break;
             }
         }
 

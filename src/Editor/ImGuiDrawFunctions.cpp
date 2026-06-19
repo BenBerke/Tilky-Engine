@@ -19,6 +19,8 @@
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include <type_traits>
 
+#include "Headers/Engine/InputManager.hpp"
+
 static const char *GetComponentLabelKey(const int componentType) {
     switch (componentType) {
 #define COMPONENT_LABEL_CASE(Type, Bit, Storage, LabelKey) \
@@ -185,7 +187,7 @@ namespace ImGuiDrawFunctions {
         wallSectorChanged |= InputID(Get("wall.front_sector").c_str(), wall.frontSector);
         wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
 
-        InputOrDrag(Get("wall.texture_index").c_str(), &wall.textureIndex, draggable);
+        ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex, 1);
         InputOrDrag(Get("wall.floor").c_str(), &wall.floor, draggable);
         InputOrDrag4(Get("wall.color").c_str(), &wall.color.x, draggable);
         InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
@@ -307,7 +309,7 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
 
         ImGui::PushID("entity_buttons");
 
-        if (ImGui::Button(Get("common.delete").c_str())) {
+        if (ImGui::Button(Get("common.delete").c_str()) || InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) {
             deleteRequested = true;
             state.editingComponent = false;
             state.selectedComponent = -1;
