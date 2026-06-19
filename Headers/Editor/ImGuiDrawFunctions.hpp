@@ -23,15 +23,15 @@ namespace ImGuiDrawFunctions {
     void PutSpace(int n);
 
     // Returns true when caller should delete the sector.
-    bool DrawSectorEditor(Sector& sector, bool* open, int sectorId = -1);
+    bool DrawSectorEditor(Sector& sector, bool* open, int sectorId = -1, bool draggable = false);
 
     // Returns true when caller should delete the wall.
-    bool DrawWallEditor(Wall& wall, bool* open, int wallId = -1);
+    bool DrawWallEditor(Wall& wall, bool* open, int wallId = -1, bool draggable = false);
 
     // Returns true when caller should delete the entity.
-    bool DrawEntityEditor(Entity& entity, EntityInspectorState& state, bool* open);
+    bool DrawEntityEditor(Entity& entity, EntityInspectorState& state, bool* open, bool draggable = false);
 
-    void DrawComponentEditor(Entity& entity, EntityInspectorState& state, bool* open);
+    void DrawComponentEditor(Entity& entity, EntityInspectorState& state, bool* open, bool draggable = false);
 
     void SetImGuiFocus(bool focus);
 }

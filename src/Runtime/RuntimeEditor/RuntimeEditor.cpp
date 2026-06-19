@@ -144,6 +144,7 @@ namespace {
 }
 
 namespace RuntimeEditorUi {
+    constexpr bool DRAGGABLE = true;
     void Draw(Level& level) {
         if (editingEntity) {
             if (!selectedEntityId.has_value()) {
@@ -165,7 +166,7 @@ namespace RuntimeEditorUi {
                 ImGuiDrawFunctions::DrawEntityEditor(
                     *entityToEdit,
                     entityInspectorState,
-                    &editingEntity
+                    &editingEntity, DRAGGABLE
                 );
 
             if (deleteRequested) {
@@ -192,7 +193,7 @@ namespace RuntimeEditorUi {
                 ImGuiDrawFunctions::DrawComponentEditor(
                     *entityToEdit,
                     entityInspectorState,
-                    &entityInspectorState.editingComponent
+                    &entityInspectorState.editingComponent, DRAGGABLE
                 );
             }
         }
@@ -210,7 +211,7 @@ namespace RuntimeEditorUi {
                 ImGuiDrawFunctions::DrawWallEditor(
                     wall,
                     &editingWall,
-                    selectedWall
+                    selectedWall, DRAGGABLE
                 );
 
             if (deleteRequested) {

@@ -212,6 +212,8 @@ namespace Editor {
 }
 
 namespace {
+    constexpr bool DRAGGABLE = false;
+
     using namespace Localisation;
     using namespace MapEditorInternal;
 
@@ -235,13 +237,13 @@ namespace {
     }
 
     void DrawDockSpace() {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::SetNextWindowViewport(viewport->ID);
 
-        ImGuiWindowFlags flags =
+        const ImGuiWindowFlags flags =
             ImGuiWindowFlags_NoDocking |
             ImGuiWindowFlags_NoTitleBar |
             ImGuiWindowFlags_NoCollapse |
@@ -515,7 +517,7 @@ namespace {
         Sector& sector = level.sectors[selectedSector];
 
         const bool deleteRequested =
-            ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, selectedSector);
+            ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, selectedSector, DRAGGABLE);
 
         if (deleteRequested) {
             level.sectors.erase(level.sectors.begin() + selectedSector);
@@ -526,9 +528,7 @@ namespace {
     }
 
     void DrawSelectedWallInspector(Level& level) {
-        if (!editingWall || currentMode != MODE_WALL) {
-            return;
-        }
+        if (!editingWall || currentMode != MODE_WALL) return;
 
         if (selectedWall < 0 || selectedWall >= static_cast<int>(level.walls.size())) {
             editingWall = false;
@@ -565,7 +565,7 @@ namespace {
         Entity& entity = *entityPtr;
 
         const bool deleteRequested =
-            ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity);
+            ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
         editingComponent = entityInspectorState.editingComponent;
 
@@ -588,7 +588,7 @@ namespace {
             ImGuiDrawFunctions::DrawComponentEditor(
                 entity,
                 entityInspectorState,
-                &entityInspectorState.editingComponent
+                &entityInspectorState.editingComponent, DRAGGABLE
             );
 
             editingComponent = entityInspectorState.editingComponent;

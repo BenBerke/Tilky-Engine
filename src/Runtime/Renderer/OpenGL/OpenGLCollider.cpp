@@ -23,10 +23,10 @@ void OpenGL::BuildGpuColliders() {
 
         gpuCollider.positionType.w = collider.type == COLLIDERTYPE_SPHERE ? 0.0f : 1.0f;
 
-        gpuCollider.scale.x = transform->scale.x;
-        gpuCollider.scale.y = transform->scale.y;
-        gpuCollider.scale.z = transform->scale.z;
-        gpuCollider.scale.w = transform->scale.w;
+        gpuCollider.scale.x = collider.scale.x;
+        gpuCollider.scale.y = collider.scale.y;
+        gpuCollider.scale.z = collider.scale.z;
+        gpuCollider.scale.w = .0f;
 
         gpuColliders.push_back(gpuCollider);
     }

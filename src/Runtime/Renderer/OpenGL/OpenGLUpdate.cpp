@@ -193,14 +193,11 @@ void OpenGL::Update(const bool renderDebug) {
 
                 glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
-                glDisable(GL_DEPTH_TEST);
-                glDepthMask(GL_FALSE);
+                glDepthMask(GL_TRUE);
+                glEnable(GL_DEPTH_TEST);
 
                 glUniform1i(renderModeUniform, RENDER_COLLIDER);
                 glDrawArrays(GL_LINES, 0, colliderCount * COLLIDER_VERTICES_PER_COLLIDER);
-
-                glDepthMask(GL_TRUE);
-                glEnable(GL_DEPTH_TEST);
 
                 glUniform1i(renderModeUniform, RENDER_COLLIDER);
 

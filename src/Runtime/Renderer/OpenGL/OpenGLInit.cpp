@@ -362,9 +362,9 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     // For Pixel art, less moire
     // Sharp close-up, mipmapped far away
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // glGenerateMipmap(GL_TEXTURE_2D);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     // For pixel art but smoother distance transitions
     //Sharp close-up, smoother mip transition
@@ -374,9 +374,9 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     // Normal realistic textures
     // Smooth close-up and smooth far-away
-    // glGenerateMipmap(GL_TEXTURE_2D);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     // For PS1 / crunchy retro textures
     // // Crunchy nearby, smoother far away

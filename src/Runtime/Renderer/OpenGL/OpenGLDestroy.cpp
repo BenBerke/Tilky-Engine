@@ -45,6 +45,11 @@ void OpenGL::Shutdown() {
         wallSSBO = 0;
     }
 
+    if (colliderSSBO != 0) {
+        glDeleteBuffers(1, &colliderSSBO);
+        colliderSSBO = 0;
+    }
+
     if (uiEBO != 0) {
         glDeleteBuffers(1, &uiEBO);
         uiEBO = 0;

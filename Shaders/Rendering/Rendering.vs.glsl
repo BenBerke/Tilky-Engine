@@ -92,6 +92,7 @@ out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
 out vec2 vDecalUV;
 
+//todo makes this a world/per-wall setting
 const float tileSize = 32.0;
 
 uniform vec3 uCameraWorldPos;
@@ -145,9 +146,7 @@ vec3 GetBoxVertex(Collider collider, int localVertex) {
 vec3 GetSphereVertex(Collider collider, int localVertex) {
     vec3 center = collider.positionType.xyz;
 
-    // Assumes transform.scale is full diameter/size.
-    // If your physics uses scale.x as radius instead, remove the * 0.5 here.
-    vec3 radius = collider.scale.xyz * 0.5;
+    float radius = collider.scale.x;
 
     int ringVertexCount = COLLIDER_SPHERE_SEGMENTS * 2;
 
@@ -163,18 +162,10 @@ vec3 GetSphereVertex(Collider collider, int localVertex) {
     float c = cos(angle);
     float s = sin(angle);
 
-    if (ring == 0) {
-        // XY ring
-        return center + vec3(c * radius.x, s * radius.y, 0.0);
-    }
+    if (ring == 0) return center + vec3(c * radius, s * radius, 0.0);
+    if (ring == 1) return center + vec3(c * radius, 0.0, s * radius);
 
-    if (ring == 1) {
-        // XZ ring
-        return center + vec3(c * radius.x, 0.0, s * radius.z);
-    }
-
-    // YZ ring
-    return center + vec3(0.0, c * radius.y, s * radius.z);
+    return center + vec3(0.0, c * radius, s * radius);
 }
 
 void RenderColliderVertex() {
@@ -183,14 +174,18 @@ void RenderColliderVertex() {
 
     Collider collider = colliders[colliderIndex];
 
-    // Use real position, force visible size/type
-    collider.scale.xyz = vec3(2.0, 2.0, 2.0);
-    collider.positionType.w = 0.0;
+    bool isSphere = collider.positionType.w < 0.5;
 
-    vec3 worldPosition = GetSphereVertex(collider, localVertex);
+    vec3 worldPosition = isSphere
+    ? GetSphereVertex(collider, localVertex)
+    : GetBoxVertex(collider, localVertex);
+
     worldPosition = ToRenderWorld(worldPosition);
 
-    vColor = vec4(1.0, 0.0, 1.0, 1.0);
+    vColor = isSphere
+    ? vec4(0.2, 0.8, 1.0, 1.0)
+    : vec4(1.0, 0.8, 0.2, 1.0);
+
     gl_Position = uProjection * uView * vec4(worldPosition, 1.0);
 }
 
