@@ -359,11 +359,7 @@ void renderFlat() {
     vFlatUV = point.xy / tileSize;
     vWallUV = vec2(0.0);
 
-    vec3 worldPos = vec3(
-    point.x,
-    point.z,
-    point.y
-    );
+    vec3 worldPos = vec3(point.x, point.z, point.y);
 
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }

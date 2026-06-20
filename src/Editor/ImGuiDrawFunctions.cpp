@@ -181,9 +181,7 @@ namespace ImGuiDrawFunctions {
 
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
-            if (open != nullptr) {
-                *open = false;
-            }
+            if (open != nullptr) *open = false;
         }
 
         ImGui::SameLine();

@@ -236,7 +236,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/RuntimeSession.cpp
-        src/Runtime/ScriptSystem.cpp
+        src/Runtime/Scripting/ScriptSystem.cpp
         src/Runtime/LevelSystem.cpp
 
         src/Runtime/Sound/SoundManager.cpp
@@ -283,7 +283,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Sound/SoundManager.hpp
         Headers/Runtime/Sound/AudioSystem.hpp
         Headers/Runtime/RuntimeSession.hpp
-        Headers/Runtime/ScriptSystem.hpp
+        Headers/Runtime/Scripting/ScriptSystem.hpp
         Headers/Runtime/LevelSystem.hpp
         Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Renderer/IRenderer.hpp
@@ -301,6 +301,11 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
         src/Runtime/PhysicsSystem.cpp
         src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
+        src/Runtime/Scripting/VectorBindings.cpp
+        src/Runtime/Scripting/ComponentBindings.cpp
+        src/Runtime/Scripting/EntityBindings.cpp
+        src/Runtime/Scripting/InputBindings.cpp
+        src/Runtime/Scripting/MathBindings.cpp
 )
 
 # ============================================================
@@ -401,6 +406,23 @@ target_link_libraries(Tilky_RuntimeCore PUBLIC
 target_compile_options(Tilky_RuntimeCore PRIVATE
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
 )
+
+if(MINGW)
+    target_compile_options(Tilky_RuntimeCore PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wa,-mbig-obj>
+    )
+
+    set_source_files_properties(
+            src/Runtime/Scripting/VectorBindings.cpp
+            src/Runtime/Scripting/ComponentBindings.cpp
+            src/Runtime/Scripting/EntityBindings.cpp
+            src/Runtime/Scripting/InputBindings.cpp
+            src/Runtime/Scripting/MathBindings.cpp
+
+            PROPERTIES
+            COMPILE_OPTIONS "-g0;-Wa,-mbig-obj"
+    )
+endif()
 
 if (TILKY_USE_IMGUI)
     target_compile_definitions(Tilky_RuntimeCore PUBLIC TILKY_USE_IMGUI=1)

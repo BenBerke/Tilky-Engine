@@ -26,7 +26,7 @@
 
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
-#include "Headers/Runtime/ScriptSystem.hpp"
+#include "../../Headers/Runtime/Scripting/ScriptSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"

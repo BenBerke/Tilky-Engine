@@ -11,7 +11,7 @@
 
 #include <tracy/Tracy.hpp>
 
-#include "Headers/Runtime/ScriptSystem.hpp"
+#include "../../Headers/Runtime/Scripting/ScriptSystem.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
