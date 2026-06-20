@@ -52,22 +52,6 @@ struct ScriptTransform {
         transform->scale = scale;
     }
 
-    [[nodiscard]] float GetFloor() const {
-        const ComponentTransform* transform = GetComponent();
-
-        if (transform == nullptr) return 0;
-
-        return transform->floor;
-    }
-
-    void SetFloor(const float floor) const {
-        ComponentTransform* transform = GetComponent();
-
-        if (transform == nullptr) return;
-
-        transform->floor = floor;
-    }
-
 };
 
 struct ScriptSprite {

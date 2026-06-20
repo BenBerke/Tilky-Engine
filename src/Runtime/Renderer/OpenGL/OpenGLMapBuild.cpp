@@ -9,65 +9,47 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
-#include "config.h"
-
 namespace {
     using OpenGLRendererInternal::GpuWall;
     using OpenGLRendererInternal::GpuFlatTriangle;
 
-    float GetSectorStoreyHeight(const Sector &sector) {
-        return sector.ceilingHeight - sector.floorHeight;
-    }
+    constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
-    float GetSectorBoundaryHeight(const Sector &sector, const int boundaryIndex) {
-        const float storeyHeight = GetSectorStoreyHeight(sector);
-
-        return sector.floorHeight + storeyHeight * static_cast<float>(boundaryIndex);
-    }
-
-    float GetWallBandBottomHeight(const Sector &sector, const int floorIndex) {
-        return GetSectorBoundaryHeight(sector, floorIndex);
-    }
-
-    float GetWallBandTopHeight(const Sector &sector, const int floorIndex) {
-        return GetSectorBoundaryHeight(sector, floorIndex + 1);
-    }
-
-    bool IsValidSectorIndex(const int index) {
-        Level &level = LevelManager::CurrentLevel();
-
+    bool IsValidSectorIndex(const Level& level, const int index) {
         return index >= 0 && index < static_cast<int>(level.sectors.size());
     }
 
-    bool IsPortalWall(const Wall &wall) {
-        return IsValidSectorIndex(wall.frontSector) &&
-               IsValidSectorIndex(wall.backSector) &&
+    bool IsPortalWall(const Level& level, const Wall& wall) {
+        return IsValidSectorIndex(level, wall.frontSector) &&
+               IsValidSectorIndex(level, wall.backSector) &&
                wall.frontSector != wall.backSector;
     }
 
-    int GetSafeSectorFloorCount(const Sector &sector) {
-        return std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
-    }
-
     void PushGpuWallPiece(
-        std::vector<GpuWall> &gpuWalls,
-        const Wall &wall,
+        std::vector<GpuWall>& gpuWalls,
+        Wall& wall,
         const float bottomHeight,
         const float topHeight,
-        const Vector4 &color,
-        const int floor,
+        const Vector4& color,
         const float textureAnchorHeight,
         const float textureDirection
     ) {
-        if (topHeight <= bottomHeight + 0.0001f) {
+        if (topHeight <= bottomHeight + MIN_WALL_HEIGHT) {
             return;
         }
+
+        wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
+            Vector3{wall.start.x, wall.start.y, bottomHeight},
+            Vector3{wall.end.x,   wall.end.y,   bottomHeight},
+            Vector3{wall.end.x,   wall.end.y,   topHeight},
+            Vector3{wall.start.x, wall.start.y, topHeight}
+        };
 
         GpuWall gpuWall;
 
         gpuWall.data = {
             static_cast<float>(wall.textureIndex),
-            static_cast<float>(floor),
+            0.0f,
             textureAnchorHeight,
             textureDirection
         };
@@ -99,9 +81,9 @@ namespace {
     }
 
     void ClipFlatTriangleAgainstNearPlane(
-        std::vector<GpuFlatTriangle> &visibleFlatTriangles,
-        const GpuFlatTriangle &triangle,
-        const Vector2 &playerPos,
+        std::vector<GpuFlatTriangle>& visibleFlatTriangles,
+        const GpuFlatTriangle& triangle,
+        const Vector2& playerPos,
         const float playerAngle
     ) {
         using namespace OpenGLRendererInternal;
@@ -119,24 +101,26 @@ namespace {
             const Vector4 next = input[(i + 1) % input.size()];
 
             const float currentDepth =
-                    RendererMath::GetViewDepth(current, playerPos, playerAngle);
+                RendererMath::GetViewDepth(current, playerPos, playerAngle);
 
             const float nextDepth =
-                    RendererMath::GetViewDepth(next, playerPos, playerAngle);
+                RendererMath::GetViewDepth(next, playerPos, playerAngle);
 
             const bool currentInside = currentDepth >= FLAT_NEAR_PLANE;
             const bool nextInside = nextDepth >= FLAT_NEAR_PLANE;
 
             if (currentInside && nextInside) {
                 output.push_back(next);
-            } else if (currentInside && !nextInside) {
+            }
+            else if (currentInside && !nextInside) {
                 const float t =
-                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                    (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
 
                 output.push_back(RendererMath::LerpVector4(current, next, t));
-            } else if (!currentInside && nextInside) {
+            }
+            else if (!currentInside && nextInside) {
                 const float t =
-                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                    (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
 
                 output.push_back(RendererMath::LerpVector4(current, next, t));
                 output.push_back(next);
@@ -155,7 +139,8 @@ namespace {
                 triangle.color,
                 triangle.data
             });
-        } else if (output.size() == 4) {
+        }
+        else if (output.size() == 4) {
             visibleFlatTriangles.push_back({
                 output[0],
                 output[1],
@@ -177,79 +162,48 @@ namespace {
 
 //todo put this function to a seperate script because it might also be used by the vulkan renderer
 void OpenGL::BuildGpuWallsFromMap() {
-    Level &level = LevelManager::CurrentLevel();
+    Level& level = LevelManager::CurrentLevel();
 
     gpuWalls.clear();
 
-    for (Wall &wall: level.walls) {
+    for (Wall& wall : level.walls) {
         wall.quads3D = {};
         wall.quad3DCount = 0;
 
-        if (IsPortalWall(wall)) {
-            const Sector &front = level.sectors[wall.frontSector];
-            const Sector &back = level.sectors[wall.backSector];
+        if (IsPortalWall(level, wall)) {
+            const Sector& front = level.sectors[wall.frontSector];
+            const Sector& back = level.sectors[wall.backSector];
 
-            const int frontFloorCount = GetSafeSectorFloorCount(front);
-            const int backFloorCount = GetSafeSectorFloorCount(back);
+            const float frontFloor = front.floorHeight;
+            const float backFloor = back.floorHeight;
 
-            const int frontFloorBoundary = std::clamp(
-                wall.floor,
-                0,
-                frontFloorCount
-            );
-
-            const int backFloorBoundary = std::clamp(
-                wall.floor,
-                0,
-                backFloorCount
-            );
-
-            const float frontFloor = GetSectorBoundaryHeight(front, frontFloorBoundary);
-            const float backFloor = GetSectorBoundaryHeight(back, backFloorBoundary);
-
-            const float frontTopCeiling = GetSectorBoundaryHeight(front, frontFloorCount);
-            const float backTopCeiling = GetSectorBoundaryHeight(back, backFloorCount);
+            const float frontCeiling = front.ceilingHeight;
+            const float backCeiling = back.ceilingHeight;
 
             const float lowFloor = std::min(frontFloor, backFloor);
             const float highFloor = std::max(frontFloor, backFloor);
 
-            const float lowCeiling = std::min(frontTopCeiling, backTopCeiling);
-            const float highCeiling = std::max(frontTopCeiling, backTopCeiling);
+            const float lowCeiling = std::min(frontCeiling, backCeiling);
+            const float highCeiling = std::max(frontCeiling, backCeiling);
 
-            // Lower solid portal piece
-            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
-                Vector3{wall.start.x, wall.start.y, lowFloor},
-                Vector3{wall.end.x, wall.end.y, lowFloor},
-                Vector3{wall.end.x, wall.end.y, highFloor},
-                Vector3{wall.start.x, wall.start.y, highFloor}
-            };
-
+            // Lower solid portal piece: floor height difference.
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
                 lowFloor,
                 highFloor,
                 wall.color,
-                wall.floor,
                 highFloor,
                 -1.0f
             );
 
-            // Upper solid portal piece
-            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
-                Vector3{wall.start.x, wall.start.y, lowCeiling},
-                Vector3{wall.end.x, wall.end.y, lowCeiling},
-                Vector3{wall.end.x, wall.end.y, highCeiling},
-                Vector3{wall.start.x, wall.start.y, highCeiling}
-            };
-
+            // Upper solid portal piece: ceiling height difference.
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
                 lowCeiling,
                 highCeiling,
                 wall.color,
-                std::max(frontFloorCount, backFloorCount),
                 lowCeiling,
                 1.0f
             );
@@ -259,27 +213,20 @@ void OpenGL::BuildGpuWallsFromMap() {
 
         int sectorIndex = -1;
 
-        if (IsValidSectorIndex(wall.frontSector)) {
+        if (IsValidSectorIndex(level, wall.frontSector)) {
             sectorIndex = wall.frontSector;
-        } else if (IsValidSectorIndex(wall.backSector)) {
+        }
+        else if (IsValidSectorIndex(level, wall.backSector)) {
             sectorIndex = wall.backSector;
         }
 
         if (sectorIndex == -1) {
-            wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
-                Vector3{wall.start.x, wall.start.y, 0.0f},
-                Vector3{wall.end.x, wall.end.y, 0.0f},
-                Vector3{wall.end.x, wall.end.y, 32.0f},
-                Vector3{wall.start.x, wall.start.y, 32.0f}
-            };
-
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
                 0.0f,
                 32.0f,
                 wall.color,
-                wall.floor,
                 32.0f,
                 -1.0f
             );
@@ -287,32 +234,15 @@ void OpenGL::BuildGpuWallsFromMap() {
             continue;
         }
 
-        const Sector &sector = level.sectors[sectorIndex];
-
-        const int sectorFloorCount = GetSafeSectorFloorCount(sector);
-
-        if (wall.floor < 0 || wall.floor >= sectorFloorCount) {
-            continue;
-        }
-
-        const float wallBottom = GetWallBandBottomHeight(sector, wall.floor);
-        const float wallTop = GetWallBandTopHeight(sector, wall.floor);
-
-        wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
-            Vector3{wall.start.x, wall.start.y, wallBottom},
-            Vector3{wall.end.x, wall.end.y, wallBottom},
-            Vector3{wall.end.x, wall.end.y, wallTop},
-            Vector3{wall.start.x, wall.start.y, wallTop}
-        };
+        const Sector& sector = level.sectors[sectorIndex];
 
         PushGpuWallPiece(
             gpuWalls,
             wall,
-            wallBottom,
-            wallTop,
+            sector.floorHeight,
+            sector.ceilingHeight,
             wall.color,
-            wall.floor,
-            wallTop,
+            sector.ceilingHeight,
             -1.0f
         );
     }
@@ -365,34 +295,22 @@ void OpenGL::BuildVisibleFlatTriangles(
 }
 
 void OpenGL::BuildFlatTrianglesFromSectors() {
-    Level &level = LevelManager::CurrentLevel();
+    Level& level = LevelManager::CurrentLevel();
 
     flatTriangles.clear();
     visibleFlatTriangles.clear();
 
-    for (int sectorIndex = 0;
-         sectorIndex < static_cast<int>(level.sectors.size());
-         ++sectorIndex) {
-        const Sector &sector = level.sectors[sectorIndex];
+    for (
+        int sectorIndex = 0;
+        sectorIndex < static_cast<int>(level.sectors.size());
+        ++sectorIndex
+    ) {
+        const Sector& sector = level.sectors[sectorIndex];
 
-        const int sectorFloorCount = GetSafeSectorFloorCount(sector);
-        const int sectorBoundaryCount = sectorFloorCount + 1;
-
-        for (const Triangle &triangle: sector.triangles) {
-            for (int boundaryIndex = 0;
-                 boundaryIndex < sectorBoundaryCount;
-                 ++boundaryIndex) {
+        for (const Triangle& triangle : sector.triangles) {
+            // Floor triangle.
+            {
                 GpuFlatTriangle flatTriangle;
-
-                int textureIndex = sector.floorTextureIndex;
-
-                if (boundaryIndex > 0) {
-                    const int ceilingIndex = boundaryIndex - 1;
-
-                    if (ceilingIndex >= 0 && ceilingIndex < MAX_FLOOR_COUNT) {
-                        textureIndex = sector.ceilingTextureIndices[ceilingIndex];
-                    }
-                }
 
                 flatTriangle.a = {
                     triangle.a.x,
@@ -401,35 +319,20 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
                     0.0f
                 };
 
-                if (boundaryIndex == 0) {
-                    flatTriangle.b = {
-                        triangle.c.x,
-                        triangle.c.y,
-                        0.0f,
-                        0.0f
-                    };
+                // Reversed winding for floor.
+                flatTriangle.b = {
+                    triangle.c.x,
+                    triangle.c.y,
+                    0.0f,
+                    0.0f
+                };
 
-                    flatTriangle.c = {
-                        triangle.b.x,
-                        triangle.b.y,
-                        0.0f,
-                        0.0f
-                    };
-                } else {
-                    flatTriangle.b = {
-                        triangle.b.x,
-                        triangle.b.y,
-                        0.0f,
-                        0.0f
-                    };
-
-                    flatTriangle.c = {
-                        triangle.c.x,
-                        triangle.c.y,
-                        0.0f,
-                        0.0f
-                    };
-                }
+                flatTriangle.c = {
+                    triangle.b.x,
+                    triangle.b.y,
+                    0.0f,
+                    0.0f
+                };
 
                 flatTriangle.color = {
                     255.0f,
@@ -440,8 +343,50 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
 
                 flatTriangle.data = {
                     static_cast<float>(sectorIndex),
-                    static_cast<float>(boundaryIndex),
-                    static_cast<float>(textureIndex),
+                    0.0f, // boundary index: floor
+                    static_cast<float>(sector.floorTextureIndex),
+                    0.0f
+                };
+
+                flatTriangles.push_back(flatTriangle);
+            }
+
+            // Ceiling triangle.
+            {
+                GpuFlatTriangle flatTriangle;
+
+                flatTriangle.a = {
+                    triangle.a.x,
+                    triangle.a.y,
+                    0.0f,
+                    0.0f
+                };
+
+                flatTriangle.b = {
+                    triangle.b.x,
+                    triangle.b.y,
+                    0.0f,
+                    0.0f
+                };
+
+                flatTriangle.c = {
+                    triangle.c.x,
+                    triangle.c.y,
+                    0.0f,
+                    0.0f
+                };
+
+                flatTriangle.color = {
+                    255.0f,
+                    255.0f,
+                    255.0f,
+                    255.0f
+                };
+
+                flatTriangle.data = {
+                    static_cast<float>(sectorIndex),
+                    1.0f, // boundary index: ceiling
+                    static_cast<float>(sector.ceilingTextureIndex),
                     0.0f
                 };
 
@@ -509,7 +454,7 @@ bool OpenGL::CreateMap() {
     glGenBuffers(1, &colliderSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, colliderSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, colliderSSBO);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
     projectionShader->use();
 

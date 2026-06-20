@@ -188,7 +188,6 @@ void OpenGL::Update(const bool renderDebug) {
         if (renderDebug) {
             BuildGpuColliders();
 
-
             if (colliderCount > 0) {
                 constexpr GLsizei COLLIDER_VERTICES_PER_COLLIDER = 24 * 6;
 

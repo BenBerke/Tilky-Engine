@@ -97,6 +97,28 @@ namespace MapEditorInternal {
         return false;
     }
 
+    bool CornerAtPoint(const Vector2& worldPoint, Vector2* outCorner) {
+        constexpr float cornerRadiusPixels = 10.0f;
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+
+        const float radiusWorld = cornerRadiusPixels / safeZoom;
+        const float radiusSq = radiusWorld * radiusWorld;
+
+        for (const Vector2& corner : placedCorners) {
+            const Vector2 diff = worldPoint - corner;
+
+            if (Vector2Math::Dot(diff, diff) <= radiusSq) {
+                if (outCorner != nullptr) {
+                    *outCorner = corner;
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool IsCornerConnectedToLine(const Vector2& point) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -263,15 +285,17 @@ namespace MapEditorInternal {
     int GetWallAtPoint(const Vector2& worldPoint) {
         Level& level = LevelManager::CurrentLevel();
 
-        constexpr float clickRadius = 12.0f;
-        constexpr float clickRadiusSq = clickRadius * clickRadius;
+        constexpr float clickRadiusPixels = 10.0f;
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+
+        const float clickRadiusWorld = clickRadiusPixels / safeZoom;
+        const float clickRadiusSq = clickRadiusWorld * clickRadiusWorld;
 
         int closestWallIndex = -1;
         float closestDistanceSq = clickRadiusSq;
 
         for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
             const Wall& wall = level.walls[i];
-            if (wall.floor != currentFloor) continue;
 
             const float distanceSq = DistancePointToSegmentSq(
                 worldPoint,
@@ -279,7 +303,7 @@ namespace MapEditorInternal {
                 wall.end
             );
 
-            if (distanceSq < closestDistanceSq) {
+            if (distanceSq <= closestDistanceSq) {
                 closestDistanceSq = distanceSq;
                 closestWallIndex = i;
             }
@@ -317,14 +341,14 @@ namespace Editor {
     }
 
     void CreateSector(
-        const std::vector<Vector2> &vertices,
-        const float ceilHeight,
-        const float floorHeight,
-        const Vector3 ceilColor,
-        const Vector3 floorColor,
-        const int ceilTextureIndex,
-        const int floorTextureIndex
-    ) {
+     const std::vector<Vector2>& vertices,
+     const float ceilHeight,
+     const float floorHeight,
+     const Vector3 ceilColor,
+     const Vector3 floorColor,
+     const int ceilTextureIndex,
+     const int floorTextureIndex
+ ) {
         Sector newSector{};
 
         newSector.vertices = vertices;
@@ -336,11 +360,7 @@ namespace Editor {
         newSector.ceilingColor = ceilColor;
         newSector.floorColor = floorColor;
 
-        newSector.floorCount = 1;
-
-        newSector.ceilingTextureIndices.fill(-1);
-        newSector.ceilingTextureIndices[0] = ceilTextureIndex;
-
+        newSector.ceilingTextureIndex = ceilTextureIndex;
         newSector.floorTextureIndex = floorTextureIndex;
 
         AddSector(newSector);

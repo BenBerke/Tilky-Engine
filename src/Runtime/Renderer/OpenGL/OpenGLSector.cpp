@@ -33,7 +33,7 @@ void OpenGL::BuildGpuSectors() {
 
         gpuSector.textureData = {
             static_cast<float>(sector.floorTextureIndex),
-            0.0f,
+            static_cast<float>(sector.ceilingTextureIndex),
             0.0f,
             0.0f
         };

@@ -102,37 +102,36 @@ namespace RuntimeSession {
             return false;
         }
 
-        if (runtimeType == EDITOR) {
-            RuntimeEditor::Start(level, *renderer);
-        }
+        if (runtimeType == EDITOR) RuntimeEditor::Start(level, *renderer);
+        else if(runtimeType == PLAY || runtimeType == STANDALONE) {
+            LevelSystem::Start(level);
 
-        if (!SoundManager::InitializeOpenAL()) {
-            spdlog::critical("OpenAL failed");
+            if (!SoundManager::InitializeOpenAL()) {
+                spdlog::critical("OpenAL failed");
 
-            renderer->Shutdown();
-            renderer.reset();
+                renderer->Shutdown();
+                renderer.reset();
 
-            return false;
-        }
+                return false;
+            }
 
-        AudioSystem::Start(level);
-        AudioSystem::ApplyListenerSettings(level);
+            AudioSystem::Start(level);
+            AudioSystem::ApplyListenerSettings(level);
 
-        if (!ScriptSystem::Initialize()) {
-            spdlog::critical("Failed to initialize script system");
+            if (!ScriptSystem::Initialize()) {
+                spdlog::critical("Failed to initialize script system");
 
-            SoundManager::DestroyOpenAL();
+                SoundManager::DestroyOpenAL();
 
-            renderer->Shutdown();
-            renderer.reset();
+                renderer->Shutdown();
+                renderer.reset();
 
-            return false;
+                return false;
+            }
         }
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
         SDL_HideCursor();
-
-        LevelSystem::Start(level);
 
         spdlog::info("Runtime started using {} renderer", renderer->GetName());
         return true;

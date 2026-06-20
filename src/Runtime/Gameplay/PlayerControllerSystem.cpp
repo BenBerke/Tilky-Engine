@@ -19,7 +19,7 @@ namespace {
         return {
             playerTransform.position.x,
             playerTransform.position.y,
-            playerTransform.relativeHeight + controller.eyeHeight
+            playerTransform.position.z + controller.eyeHeight
         };
     }
 

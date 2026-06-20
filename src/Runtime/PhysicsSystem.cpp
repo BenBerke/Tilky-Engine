@@ -329,25 +329,46 @@ namespace PhysicsSystem {
                     selfTransform->position.x,
                     selfTransform->position.y
                 };
-                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) continue;
 
-                const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
-                const float currentFloorWorld = sector.floorHeight +
-                                                storeyHeight * static_cast<float>(selfTransform->floor);
-                const float currentCeilingWorld = currentFloorWorld + storeyHeight;
+                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) {
+                    continue;
+                }
+
+                const float floorWorld = sector.floorHeight;
+                const float ceilingWorld = sector.ceilingHeight;
+
                 const float feetWorld = selfTransform->position.z;
-                const float headWorld = feetWorld + selfTransform->scale.y;
+                const float headWorld = feetWorld + selfTransform->scale.z;
 
-                if (feetWorld < currentFloorWorld) {
-                    selfTransform->AddPosition({0.0f, 0.0f, currentFloorWorld - feetWorld});
-                    if (selfRb->velocity.z < 0.0f) selfRb->velocity.z = 0.0f;
-                }
-                if (headWorld > currentCeilingWorld) {
-                    selfTransform->AddPosition({0.0f, 0.0f, currentCeilingWorld - headWorld});
-                    if (selfRb->velocity.z > 0.0f) selfRb->velocity.z = 0.0f;
+                if (feetWorld < floorWorld) {
+                    selfTransform->AddPosition({
+                        0.0f,
+                        0.0f,
+                        floorWorld - feetWorld
+                    });
+
+                    if (selfRb->velocity.z < 0.0f) {
+                        selfRb->velocity.z = 0.0f;
+                    }
                 }
 
-                selfTransform->relativeHeight = selfTransform->position.z - currentFloorWorld;
+                const float correctedFeetWorld = selfTransform->position.z;
+                const float correctedHeadWorld = correctedFeetWorld + selfTransform->scale.z;
+
+                if (correctedHeadWorld > ceilingWorld) {
+                    selfTransform->AddPosition({
+                        0.0f,
+                        0.0f,
+                        ceilingWorld - correctedHeadWorld
+                    });
+
+                    if (selfRb->velocity.z > 0.0f) {
+                        selfRb->velocity.z = 0.0f;
+                    }
+                }
+
+                selfTransform->relativeHeight =
+                    selfTransform->position.z - floorWorld;
             }
         }
 

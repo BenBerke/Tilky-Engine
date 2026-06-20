@@ -23,11 +23,12 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.positionSize = {
             transform->position.x,
-            transform->position.z, //+ transform->scale.y * .5f,
-            transform->position.y, // Intentionally swapped
-            transform->scale.y
+            transform->position.z,
+            transform->position.y, // intentionally swapped
+            transform->scale.z
         };
 
+        const Sector& sector = level.sectors[transform->sectorIndex];
 
         //todo add texture coloring
         gpuSprite.color = {

@@ -278,11 +278,6 @@ namespace {
                 &ScriptTransform::SetPosition
             ),
 
-            "floor", sol::property(
-                &ScriptTransform::GetFloor,
-                &ScriptTransform::SetFloor
-            ),
-
             "scale", sol::property(
                 &ScriptTransform::GetScale,
                 &ScriptTransform::SetScale

@@ -73,18 +73,18 @@ namespace MapEditorInternal {
                     }
                 }
                 else if (currentMode == MODE_WALL) {
-                    const bool clickedOnCorder = CornerExistsAt(snappedWorld);
-
-                    if (clickedOnCorder) {
-                        drawingLine = true;
-                        lineStartWorld = snappedWorld;
-                    }
+                    Vector2 clickedCorner{};
+                    const bool clickedOnCorner = CornerAtPoint(mouseWorld, &clickedCorner);
 
                     const int clickedWall = GetWallAtPoint(mouseWorld);
 
-                    if (clickedWall != -1 && !clickedOnCorder && level.walls[clickedWall].floor == currentFloor) {
+                    if (clickedWall != -1 && !clickedOnCorner) {
                         selectedWall = clickedWall;
                         editingWall = true;
+                    }
+                    else if (clickedOnCorner) {
+                        drawingLine = true;
+                        lineStartWorld = clickedCorner;
                     }
                 }
                 else if (currentMode == MODE_DOT) {
@@ -120,10 +120,7 @@ namespace MapEditorInternal {
                         selectedEntity = *level.GetEntity(id);
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
-                        if (t != nullptr) {
-                            t->SetPosition({mouseWorld.x, mouseWorld.y, 0.0f});
-                            t->floor = currentFloor;
-                        }
+                        if (t != nullptr) t->SetPosition({mouseWorld.x, mouseWorld.y, 0.0f});
                     }
 
                     editingEntity = true;
@@ -131,10 +128,6 @@ namespace MapEditorInternal {
                 }
             }
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
-                const Vector2 mouseScreen = InputManager::GetMousePosition();
-                const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-                const Vector2 snappedWorld = SnapToGrid(mouseWorld);
-
                 if (drawingLine && currentMode == MODE_WALL) {
                     const Vector2 startScreen = WorldToScreen(lineStartWorld, cameraPos);
                     const Vector2 endScreen = WorldToScreen(snappedWorld, cameraPos);

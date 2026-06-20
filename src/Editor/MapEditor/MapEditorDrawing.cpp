@@ -170,7 +170,6 @@ namespace MapEditorInternal {
         SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
 
         for (const Wall& wall : level.walls) {
-            if (wall.floor != currentFloor) continue;
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 
@@ -184,8 +183,7 @@ namespace MapEditorInternal {
         for (const Entity& entity : level.entities) {
             const ComponentTransform* transform = level.transforms.Get(entity.id);
 
-            if (transform == nullptr || transform->floor != currentFloor) continue;
-
+            if (transform == nullptr) continue;
 
             const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.y}, cameraPos);
 

@@ -17,37 +17,25 @@ void ComponentTransform::AddPosition(const Vector3& position) {
     SetPosition(this->position + position);
 }
 
-float ComponentTransform::GetObjectBottomHeight(const std::vector<Sector>& sectors) {
-    if (this->sectorIndex < 0 || this->sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]] {
+float ComponentTransform::GetSectorFloorHeight(const std::vector<Sector>& sectors) const {
+    if (sectorIndex < 0 || sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]]
         return 0.0f;
-    }
 
-    const Sector& sector = sectors[this->sectorIndex];
-
-    const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
-
-    this->floor = std::clamp(
-        this->floor,
-        0,
-        std::max(1, sector.floorCount) - 1
-    );
-
-    return sector.floorHeight + storeyHeight * static_cast<float>(this->floor);
+    return sectors[sectorIndex].floorHeight;
 }
 
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors) {
     if (this->ownerID == INVALID_ID || sectors.empty()) {
         sectorIndex = -1;
-        floor = 0;
         relativeHeight = position.z;
         return false;
     }
 
     const int oldSector = sectorIndex;
 
-    const bool oldSectorValid = oldSector >= 0 && oldSector < static_cast<int>(sectors.size());
-
-    const float worldHeight = position.z;
+    const bool oldSectorValid =
+        oldSector >= 0 &&
+        oldSector < static_cast<int>(sectors.size());
 
     const int newSector = MapQueries::FindSectorContainingPoint(
         sectors,
@@ -55,49 +43,28 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
-        if (oldSectorValid) std::erase(sectors[oldSector].entitiesInside, this->ownerID);
+        if (oldSectorValid)
+            std::erase(sectors[oldSector].entitiesInside, this->ownerID);
 
         sectorIndex = -1;
-        floor = 0;
         relativeHeight = position.z;
         return false;
     }
 
-    if (oldSectorValid && oldSector != newSector) std::erase(sectors[oldSector].entitiesInside, this->ownerID);
+    if (oldSectorValid && oldSector != newSector)
+        std::erase(sectors[oldSector].entitiesInside, this->ownerID);
 
     sectorIndex = newSector;
 
     Sector& sector = sectors[newSector];
 
-    if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
+    if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end()) {
         sector.entitiesInside.push_back(this->ownerID);
-
-    const int safeFloorCount = std::clamp(
-        sector.floorCount,
-        1,
-        MAX_FLOOR_COUNT
-    );
-
-    const float storeyHeight = sector.ceilingHeight - sector.floorHeight;
-
-    int newFloor = 0;
-
-    if (storeyHeight > 0.0001f) {
-        newFloor = static_cast<int>(
-            std::floor((worldHeight - sector.floorHeight) / storeyHeight)
-        );
     }
 
-    newFloor = std::clamp(newFloor, 0, safeFloorCount - 1);
-
-    floor = newFloor;
-
-    const float currentFloorWorldHeight =
-        sector.floorHeight + storeyHeight * static_cast<float>(floor);
-
     // position.z is absolute world height.
-    // relativeHeight is relative to the current sector floor.
-    relativeHeight = position.z - currentFloorWorldHeight;
+    // relativeHeight is height above the sector floor.
+    relativeHeight = position.z - sector.floorHeight;
 
     return true;
 }

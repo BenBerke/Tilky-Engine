@@ -223,7 +223,6 @@ struct ComponentTransform {
     Vector3 position = {.0f, .0f, .0f};
     float relativeHeight = .0f;
     Vector2 forward = {1.0f, .0f};
-    int floor = 0;
 
     // Scale convention same as position. x, y = World x, z; z = World y. This does not affect Sprites but only Colliders
     Vector3 scale = {32.0f, 32.0f, 32.0f};
@@ -233,7 +232,7 @@ struct ComponentTransform {
 
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
-    float GetObjectBottomHeight(const std::vector<Sector>& sectors);
+    float GetSectorFloorHeight(const std::vector<Sector>& sectors) const;
     bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
 };
 

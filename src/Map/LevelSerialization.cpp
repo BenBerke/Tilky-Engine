@@ -15,7 +15,6 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
-#include "config.h"
 #include "Headers/Map/MapQueries.hpp"
 
 constexpr ID INVALID_ENTITY_ID = static_cast<ID>(-1);
@@ -271,7 +270,7 @@ namespace {
         }
     }
 
-    void LoadWalls(const json& levelData, Level& level) {
+    void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
         if (!levelData.contains("walls")) {
@@ -281,7 +280,7 @@ namespace {
         ID highestWallID = 0;
 
         for (int i = 0; i < static_cast<int>(levelData["walls"].size()); ++i) {
-            const json& wallJson = levelData["walls"][i];
+            const json &wallJson = levelData["walls"][i];
 
             Vector2 start = {
                 wallJson["start"][0].get<float>(),
@@ -310,8 +309,7 @@ namespace {
                 color,
                 LoadIDField(wallJson, "frontSector", INVALID_ID),
                 LoadIDField(wallJson, "backSector", INVALID_ID),
-                wallJson.value("textureIndex", -1),
-                wallJson.value("floor", 0)
+                wallJson.value("textureIndex", -1)
             );
 
             wall.id = LoadIDField(wallJson, "id", static_cast<ID>(i));
@@ -328,10 +326,10 @@ namespace {
         level.nextWallID = std::max(level.nextWallID, highestWallID + 1);
     }
 
-    void SaveWalls(json& levelData, const Level& level) {
+    void SaveWalls(json &levelData, const Level &level) {
         levelData["walls"] = json::array();
 
-        for (const Wall& wall : level.walls) {
+        for (const Wall &wall: level.walls) {
             levelData["walls"].push_back({
                 {"id", wall.id},
                 {"start", {wall.start.x, wall.start.y}},
@@ -340,7 +338,6 @@ namespace {
                 {"textureIndex", wall.textureIndex},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
-                {"floor", wall.floor}
             });
         }
     }
@@ -364,7 +361,9 @@ namespace {
                 static_cast<ID>(i)
             );
 
-            if (sector.id == INVALID_ID) sector.id = static_cast<ID>(i);
+            if (sector.id == INVALID_ID) {
+                sector.id = static_cast<ID>(i);
+            }
 
             highestSectorID = std::max(highestSectorID, sector.id);
 
@@ -400,19 +399,18 @@ namespace {
                 };
             }
 
-            sector.floorCount = sectorJson.value("floorCount", 1);
-            sector.floorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
             sector.floorTextureIndex = sectorJson.value("floorTextureIndex", -1);
 
-            const int oldCeilingTexture = sectorJson.value("ceilingTextureIndex", -1);
+            // New format.
+            sector.ceilingTextureIndex = sectorJson.value("ceilingTextureIndex", -1);
 
-            sector.ceilingTextureIndices.fill(oldCeilingTexture);
+            // Backward compatibility for old saves that used ceilingTextureIndices.
+            if (sector.ceilingTextureIndex == -1 && sectorJson.contains("ceilingTextureIndices")) {
+                const json &oldCeilingTextureArray = sectorJson["ceilingTextureIndices"];
 
-            if (sectorJson.contains("ceilingTextureIndices")) {
-                const json &ceilingTextureArray = sectorJson["ceilingTextureIndices"];
-
-                for (int j = 0; j < std::min<int>(static_cast<int>(ceilingTextureArray.size()), MAX_FLOOR_COUNT); ++j)
-                    sector.ceilingTextureIndices[j] =ceilingTextureArray[j].get<int>();
+                if (!oldCeilingTextureArray.empty()) {
+                    sector.ceilingTextureIndex = oldCeilingTextureArray[0].get<int>();
+                }
             }
 
             level.sectors.push_back(sector);
@@ -434,22 +432,23 @@ namespace {
                 });
             }
 
-            json ceilingTextureArray = json::array();
-
-            for (int j = 0; j < MAX_FLOOR_COUNT; ++j) {
-                ceilingTextureArray.push_back(sector.ceilingTextureIndices[j]);
-            }
-
             levelData["sectors"].push_back({
                 {"id", sector.id},
                 {"corners", cornerArray},
                 {"ceilingHeight", sector.ceilingHeight},
                 {"floorHeight", sector.floorHeight},
-                {"ceilingColor", {sector.ceilingColor.x, sector.ceilingColor.y, sector.ceilingColor.z}},
-                {"floorColor", {sector.floorColor.x, sector.floorColor.y, sector.floorColor.z}},
+                {"ceilingColor", {
+                    sector.ceilingColor.x,
+                    sector.ceilingColor.y,
+                    sector.ceilingColor.z
+                }},
+                {"floorColor", {
+                    sector.floorColor.x,
+                    sector.floorColor.y,
+                    sector.floorColor.z
+                }},
                 {"floorTextureIndex", sector.floorTextureIndex},
-                {"floorCount", sector.floorCount},
-                {"ceilingTextureIndices", ceilingTextureArray}
+                {"ceilingTextureIndex", sector.ceilingTextureIndex}
             });
         }
     }
@@ -499,7 +498,6 @@ namespace {
                 }
 
                 c.sectorIndex = transformJson.value("sectorIndex", -1);
-                c.floor = transformJson.value("floor", 0);
 
                 if (transformJson.contains("scale")) {
                     c.scale = {
@@ -873,7 +871,6 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"position", {c.position.x, c.position.y, c.position.z}},
                 {"sectorIndex", c.sectorIndex},
-                {"floor", c.floor},
                 {"scale", {c.scale.x, c.scale.y, c.scale.z}}
             });
         }

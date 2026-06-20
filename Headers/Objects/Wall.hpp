@@ -24,8 +24,6 @@ struct Wall {
     ID backSector = INVALID_ID;
     int textureIndex = INVALID_ID;
 
-    int floor = 0;
-
     // Read only do not change
     Vector2 dir, normal, vector;
     float lengthSq;
@@ -56,8 +54,7 @@ struct Wall {
       color(color),
       frontSector(fs),
       backSector(bs),
-      textureIndex(textureIndex),
-      floor(floor)
+      textureIndex(textureIndex)
     {
         vector = end - start;
 

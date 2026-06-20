@@ -153,7 +153,7 @@ namespace LevelSystem {
 
     void Update(Level &level) {
         // for (Entity &entity: level.entities) {
-        //     entity.Update(); // currently does nothing
+        //     entity.Update(); // currently does nothing. Probably should do nothing
         // }
 
         {

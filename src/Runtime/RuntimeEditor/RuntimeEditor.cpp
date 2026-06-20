@@ -24,7 +24,7 @@ namespace {
 
     constexpr float MOUSE_SENSITIVITY = 0.5f;
     constexpr float MOVE_SPEED = 50.0f;
-    constexpr float FAST_MOVE_SPEED = 75.0f;
+    constexpr float FAST_MOVE_SPEED = 175.0f;
     constexpr float RAY_LENGTH = 10000.0f;
 
     Vector3 GetFreecamForward() {

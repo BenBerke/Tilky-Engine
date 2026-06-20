@@ -352,7 +352,8 @@ void renderFlat() {
         vColor = sector.ceilingColor / 255.0;
     }
 
-    vFlatTextureIndex = int(triangle.data.z);
+    vFlatTextureIndex = boundaryIndex == 0 ? int(sector.textureData.x)   // floorTextureIndex
+    : int(sector.textureData.y);  // ceilingTextureIndex
     vTextureIndex = -1;
 
     vFlatUV = point.xy / tileSize;

@@ -7,7 +7,6 @@
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 
-#include <algorithm>
 #include <array>
 #include <string>
 
@@ -136,20 +135,11 @@ namespace ImGuiDrawFunctions {
 
         InputOrDrag(Get("sector.ceil_height").c_str(), &sector.ceilingHeight, draggable);
         InputOrDrag(Get("sector.floor_height").c_str(), &sector.floorHeight, draggable);
-        InputOrDrag(Get("sector.floor_count").c_str(), &sector.floorCount, draggable);
 
-        sector.floorCount = std::clamp(sector.floorCount, 1, MAX_FLOOR_COUNT);
+        ImGui::InputInt(Get("sector.floor_texture").c_str(), &sector.floorTextureIndex, 1);
+        ImGui::InputInt(Get("sector.ceil_texture").c_str(), &sector.ceilingTextureIndex, 1);
 
-        InputOrDrag(Get("sector.ground_floor_texture").c_str(), &sector.floorTextureIndex, draggable);
-
-        for (int i = 0; i < sector.floorCount; ++i) {
-            const std::string label =
-                    Get("sector.ceiling_texture") + " " + std::to_string(i + 1);
-
-            InputOrDrag(label.c_str(), &sector.ceilingTextureIndices[i], draggable);
-        }
-
-        InputOrDrag3(Get("sector.ceiling_color").c_str(), &sector.ceilingColor.x, draggable);
+        InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
         InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
 
         if (ImGui::Button(Get("common.delete").c_str())) {
@@ -161,11 +151,7 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SameLine();
 
-        if (ImGui::Button(Get("common.close").c_str())) {
-            if (open != nullptr) {
-                *open = false;
-            }
-        }
+        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
 
         if (sectorId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), sector.id);
 
@@ -188,7 +174,6 @@ namespace ImGuiDrawFunctions {
         wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
 
         ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex, 1);
-        InputOrDrag(Get("wall.floor").c_str(), &wall.floor, draggable);
         InputOrDrag4(Get("wall.color").c_str(), &wall.color.x, draggable);
         InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
 
@@ -203,11 +188,7 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SameLine();
 
-        if (ImGui::Button(Get("common.close").c_str())) {
-            if (open != nullptr) {
-                *open = false;
-            }
-        }
+        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
 
         if (wallId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), wall.id);
 
@@ -392,15 +373,14 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                 ImGui::Spacing();
 
                 ImGui::Text("%s", Get("component.transform.scale").c_str());
-                ImGui::Text("X    Y");
+                ImGui::Text("X    Y    Z");
 
                 ImGui::SetNextItemWidth(220.0f);
-                InputOrDrag2("##scale", &c->scale.x, draggable);
+                InputOrDrag3("##scale", &c->scale.x, draggable);
 
                 ImGui::Spacing();
 
                 ImGui::SetNextItemWidth(120.0f);
-                InputOrDrag(Get("component.transform.floor").c_str(), &c->floor, draggable);
 
                 ImGui::Spacing();
 

@@ -265,7 +265,6 @@ set(TILKY_RUNTIME_SOURCES
 
         src/UISytem.cpp
 
-        config.h
         Headers/Objects/EntityTypes.hpp
         Headers/Objects/Entity.hpp
         Headers/Objects/Level.hpp
