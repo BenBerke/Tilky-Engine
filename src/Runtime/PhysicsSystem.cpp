@@ -9,7 +9,7 @@
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 #include "Headers/Math/Constants.hpp"
-#include "Headers/Math/Simd/SSECompat.hpp"
+#include "Headers/Math/SIMD/SSECompat.hpp"
 
 #include <tracy/Tracy.hpp>  // adjust to your Tracy include path
 

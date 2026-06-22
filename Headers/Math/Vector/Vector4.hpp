@@ -4,8 +4,7 @@
 #ifndef TILKY_ENGINE_VECTOR4_H
 #define TILKY_ENGINE_VECTOR4_H
 
-#include <immintrin.h>
-
+#include "../SIMD/SSECompat.hpp"
 #include "../Constants.hpp"
 
 struct alignas(16) Vector4 {

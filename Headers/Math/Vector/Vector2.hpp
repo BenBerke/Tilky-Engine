@@ -1,7 +1,6 @@
 #pragma once
 
-#include <immintrin.h>
-
+#include "../SIMD/SSECompat.hpp"
 #include "../Constants.hpp"
 
 struct alignas(16) Vector2 {

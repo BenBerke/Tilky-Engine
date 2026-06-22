@@ -593,6 +593,16 @@ add_executable(Tilky_Engine
         ${TILKY_ICON_OBJECTS}
 )
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    find_path(SSE2NEON_INCLUDE_DIR
+            NAMES sse2neon.h
+            PATH_SUFFIXES sse2neon
+            REQUIRED
+    )
+
+    target_include_directories(TilkyEngine PRIVATE ${SSE2NEON_INCLUDE_DIR})
+endif()
+
 set_target_properties(Tilky_Engine PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 target_link_libraries(Tilky_Engine PRIVATE
