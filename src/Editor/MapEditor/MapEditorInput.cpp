@@ -174,9 +174,7 @@ namespace MapEditorInternal {
         if (!keyboardBlockedByImgui) {
         }
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) {
-            ChangeMode();
-        }
+        if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
 
         if (InputManager::QuitRequested()) {
             shutdown = true;

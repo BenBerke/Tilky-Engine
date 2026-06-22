@@ -5,11 +5,10 @@
 #ifndef TILKY_ENGINE_GAMETIME_H
 #define TILKY_ENGINE_GAMETIME_H
 
-#include <SDL3/SDL.h>
-
 namespace GameTime {
     extern float deltaTime;
-    extern float time; // Times passed since game start
+    extern double time; // Seconds passed since game start
+    extern double frame; // Frames passed since game start
     extern float smoothedFPS;
 
     void Update();

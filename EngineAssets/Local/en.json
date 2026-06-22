@@ -168,10 +168,11 @@
   "&Context_38": "If no clip is on, the player will not collide with anything",
   "component.player_controller.no_clip": "No Clip",
   "component.player_controller.jump_power": "Jump Strength",
+  "component.player_controller.jump_buffer_ms": "Jump Buffer Milliseconds",
 
   "component.camera": "Camera",
   "component.camera.is_active":"Is Active",
-  "&Context_39": "Field of view",
+  "&Context_39": "Field of View",
   "component.camera.fov": "FOV",
   "component.camera.aspect_ratio": "Aspect Ratio",
   "&Context_40": "If the distance of an object to the camera is smaller than camera.near_plane, it will not render",

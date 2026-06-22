@@ -7,6 +7,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
@@ -35,7 +36,11 @@ namespace {
     }
 }
 
-    namespace PlayerControllerSystem {
+namespace {
+    double jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+}
+
+namespace PlayerControllerSystem {
     void Start(
         ComponentPlayerController &controller,
         const ComponentTransform &playerTransform,
@@ -62,6 +67,7 @@ namespace {
         // y = world Z / planar depth
         // z = height
 
+
         Vector2 input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
@@ -69,8 +75,35 @@ namespace {
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE))// && playerTransform.relativeHeight < Constants::Epsilon)
-            rigidbody.velocity.z += controller.jumpPower;
+        const bool grounded =
+        playerTransform.sectorIndex != -1 &&
+        std::abs(playerTransform.position.z - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
+        rigidbody.velocity.z <= 0.0f;
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) {
+            jumpPressedTimeStamp = GameTime::time;
+        }
+
+        // GameTime::time is seconds. controller.jumpBufferMs is milliseconds.
+        const double jumpBufferSeconds =
+                static_cast<double>(controller.jumpBufferMs) / 1000.0;
+
+        const double jumpBufferAge =
+                GameTime::time - jumpPressedTimeStamp;
+
+        const bool hasBufferedJump =
+                jumpBufferAge >= 0.0 &&
+                jumpBufferAge <= jumpBufferSeconds;
+
+        if (hasBufferedJump && grounded) {
+            rigidbody.velocity.z = controller.jumpPower;
+            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+        }
+
+        // Optional cleanup: expire old buffered input.
+        if (jumpBufferAge > jumpBufferSeconds) {
+            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+        }
 
         controller.currentSpeed =
                 InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&

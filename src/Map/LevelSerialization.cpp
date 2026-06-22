@@ -745,6 +745,7 @@ namespace {
                 c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
                 c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
                 c.noClip = controllerJson.value("noClip", false);
+                c.jumpBufferMs = controllerJson.value("jumpBufferMs", 100.0f);
 
                 if (controllerJson.contains("velocity")) {
                     c.velocity = {
@@ -958,7 +959,8 @@ namespace {
                 {"friction", c.friction},
                 {"sensitivityX", c.sensitivityX},
                 {"sensitivityY", c.sensitivityY},
-                {"noClip", c.noClip}
+                {"noClip", c.noClip},
+                {"jumpBufferMs", c.jumpBufferMs}
             });
         }
 

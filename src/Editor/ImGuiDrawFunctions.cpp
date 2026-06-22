@@ -387,7 +387,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                     CloseEditor();
                 }
             } else ImGui::Text("Transform component missing");
-        } else if (state.selectedComponent == CMP_SPRITE) {
+        }
+        else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
 
             if (c != nullptr) [[likely]] {
@@ -399,7 +400,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                     CloseEditor();
                 }
             } else [[unlikely]] ImGui::Text("Sprite component missing");
-        } else if (state.selectedComponent == CMP_DECAL) {
+        }
+        else if (state.selectedComponent == CMP_DECAL) {
             auto *c = entity.GetComponent<ComponentDecal>();
 
             if (c != nullptr) [[likely]] {
@@ -416,7 +418,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                     CloseEditor();
                 }
             } else [[unlikely]] ImGui::Text("Decal component missing");
-        } else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
+        }
+        else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
             auto *c = entity.GetComponent<ComponentAudioSource>();
 
             if (c != nullptr) [[likely]] {
@@ -445,7 +448,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                     CloseEditor();
                 }
             } else [[unlikely]] ImGui::Text("Audio component missing");
-        } else if (state.selectedComponent == CMP_SCRIPT) {
+        }
+        else if (state.selectedComponent == CMP_SCRIPT) {
             auto *c = entity.GetComponent<ComponentScript>();
 
             if (c != nullptr) [[likely]] {
@@ -457,7 +461,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                     CloseEditor();
                 }
             } else [[unlikely]] ImGui::Text("Script component missing");
-        } else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
+        }
+        else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
             auto *c = entity.GetComponent<ComponentPlayerController>();
 
             if (c != nullptr) [[likely]] {
@@ -465,6 +470,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
                 InputOrDrag(Get("component.player_controller.jump_power").c_str(), &c->jumpPower, draggable);
                 InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
+
+                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(), &c->jumpBufferMs, draggable);
 
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
                 ImGui::SliderFloat(

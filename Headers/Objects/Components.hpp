@@ -121,6 +121,8 @@ struct ComponentPlayerController {
 
     float jumpPower = 100.0f;
 
+    int jumpBufferMs = 5;
+
     // Eye height above the current floor.
     float eyeHeight = 12.0f;
 
