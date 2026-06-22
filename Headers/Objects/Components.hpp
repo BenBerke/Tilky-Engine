@@ -81,9 +81,9 @@ struct ComponentRigidbody {
     Vector3 velocity = {.0f, .0f, .0f};
 
     void AddVelocity(const Vector3 &_velocity);
-    void ApplyFriction(float _friction);
-    void ApplyAirResistance(float resistance);
-    void ApplyGravity(float gravity);
+    void ApplyFriction(float _friction, float dt);
+    void ApplyAirResistance(float resistance, float dt);
+    void ApplyGravity(float gravity, float dt);
 };
 
 

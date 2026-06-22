@@ -8,6 +8,7 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 
 namespace {
     using OpenGLRendererInternal::GpuWall;
@@ -34,16 +35,7 @@ namespace {
         const float textureAnchorHeight,
         const float textureDirection
     ) {
-        if (topHeight <= bottomHeight + MIN_WALL_HEIGHT) {
-            return;
-        }
-
-        wall.quads3D[wall.quad3DCount++] = std::array<Vector3, 4>{
-            Vector3{wall.start.x, wall.start.y, bottomHeight},
-            Vector3{wall.end.x,   wall.end.y,   bottomHeight},
-            Vector3{wall.end.x,   wall.end.y,   topHeight},
-            Vector3{wall.start.x, wall.start.y, topHeight}
-        };
+        if (!MapQueries::PushWallQuad3D(wall, bottomHeight, topHeight,MIN_WALL_HEIGHT)) return;
 
         GpuWall gpuWall;
 
@@ -213,12 +205,8 @@ void OpenGL::BuildGpuWallsFromMap() {
 
         int sectorIndex = -1;
 
-        if (IsValidSectorIndex(level, wall.frontSector)) {
-            sectorIndex = wall.frontSector;
-        }
-        else if (IsValidSectorIndex(level, wall.backSector)) {
-            sectorIndex = wall.backSector;
-        }
+        if (IsValidSectorIndex(level, wall.frontSector)) sectorIndex = wall.frontSector;
+        else if (IsValidSectorIndex(level, wall.backSector)) sectorIndex = wall.backSector;
 
         if (sectorIndex == -1) {
             PushGpuWallPiece(

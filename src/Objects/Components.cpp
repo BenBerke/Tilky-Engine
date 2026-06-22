@@ -58,9 +58,8 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 
     Sector& sector = sectors[newSector];
 
-    if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end()) {
+    if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
         sector.entitiesInside.push_back(this->ownerID);
-    }
 
     // position.z is absolute world height.
     // relativeHeight is height above the sector floor.
@@ -93,25 +92,21 @@ void ComponentRigidbody::AddVelocity(const Vector3 &_velocity) {
     this->velocity += _velocity;
 }
 
-void ComponentRigidbody::ApplyFriction(const float _friction) {
-    const float dt = GameTime::deltaTime;
+void ComponentRigidbody::ApplyFriction(const float _friction, const float dt) {
     const float _f = _friction + this->friction;
-
     auto applyAxis = [&](float& v) {
         if (v > 0.0f) v = std::max(0.0f, v - _f * dt);
         else if (v < 0.0f) v = std::min(0.0f, v + _f * dt);
     };
-
     applyAxis(this->velocity.x);
     applyAxis(this->velocity.y);
 }
 
-void ComponentRigidbody::ApplyAirResistance(float _airResistance) {
-    //todo implement
-}
 
-void ComponentRigidbody::ApplyGravity(const float gravity) {
+void ComponentRigidbody::ApplyGravity(const float gravity, const float dt) {
     if (isStatic) return;
-
-    velocity.z -= gravity * gravityScale * GameTime::deltaTime;
+    velocity.z -= gravity * gravityScale * dt;
+}
+void ComponentRigidbody::ApplyAirResistance(float _airResistance, const float dt) {
+    //todo implement
 }

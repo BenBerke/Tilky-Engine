@@ -8,17 +8,31 @@
 #include "Headers/Objects/Level.hpp"
 
 namespace MapQueries {
-    int FindSectorContainingPoint(const std::vector<Sector>& sectors, const Vector2 position) {
+    int FindSectorContainingPoint(const std::vector<Sector> &sectors,
+                                  const Vector2 position,
+                                  const int hintSector)
+    {
+        // Fast path: still in the same sector (overwhelmingly common)
+        if (hintSector >= 0 && hintSector < static_cast<int>(sectors.size())) {
+            if (Geometry::IsPointInPolygon(sectors[hintSector].vertices, position))
+                return hintSector;
+
+            // Check neighbours before doing a full scan
+            for (const Sector* nb : sectors[hintSector].neighbors) {
+                if (nb == nullptr) continue;
+                const int ni = static_cast<int>(nb - sectors.data());
+                if (Geometry::IsPointInPolygon(sectors[ni].vertices, position))
+                    return ni;
+            }
+        }
+
+        // Full scan fallback — only hits when entity moves far in one frame
         int bestSector = -1;
         float bestArea = std::numeric_limits<float>::max();
 
         for (int i = 0; i < static_cast<int>(sectors.size()); ++i) {
-            if (!Geometry::IsPointInPolygon(sectors[i].vertices, position)) {
-                continue;
-            }
-
+            if (!Geometry::IsPointInPolygon(sectors[i].vertices, position)) continue;
             const float area = Geometry::PolygonAreaAbs(sectors[i].vertices);
-
             if (area < bestArea) {
                 bestArea = area;
                 bestSector = i;
@@ -39,13 +53,9 @@ namespace MapQueries {
             Sector* frontSector = GetSectorByID(level, wall.frontSector);
             Sector* backSector = GetSectorByID(level, wall.backSector);
 
-            if (frontSector != nullptr) {
-                frontSector->walls.push_back(&wall);
-            }
+            if (frontSector != nullptr) frontSector->walls.push_back(&wall);
 
-            if (backSector != nullptr && backSector != frontSector) {
-                backSector->walls.push_back(&wall);
-            }
+            if (backSector != nullptr && backSector != frontSector) backSector->walls.push_back(&wall);
         }
     }
 

@@ -162,17 +162,8 @@ namespace LevelSystem {
         // }
 
         {
-            ZoneScopedN("Transform setup");
-            for (ComponentTransform &transform: level.transforms.components) {
-                Entity *owner = level.GetEntity(transform.ownerID);
-
-                if (!owner) [[unlikely]] {
-                    spdlog::error("Transform owner {} does not exist", transform.ownerID);
-                    continue;
-                }
-
-                transform.UpdateObjectSectorAndFloor(level.sectors);
-            }
+            ZoneScopedN("Scripts");
+            ScriptSystem::Update(level);
         }
 
         if (activeController != nullptr && activeController->isActive) {
@@ -209,16 +200,11 @@ namespace LevelSystem {
         }
 
         {
-            ZoneScopedN("Scripts");
-            ScriptSystem::Update(level);
-        }
-
-        {
             //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
             ZoneScopedN("Physics");
 
             //todo make this a world setting
-            constexpr int COLLISION_ITERATIONS = 4;
+            constexpr int COLLISION_ITERATIONS = 1;
             const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
 
             for (int i = 0; i < COLLISION_ITERATIONS; i++) {
@@ -231,17 +217,34 @@ namespace LevelSystem {
                     }
 
                     if (transform->sectorIndex != -1) [[unlikely]]
-                        if (transform->relativeHeight > 0.0001f) r.ApplyGravity(level.worldSettings.gravity);
+                        if (transform->relativeHeight > 0.0001f)
+                            r.ApplyGravity(level.worldSettings.gravity, subDeltaTime);
 
                     // Apply Rb's base friction
-                    r.ApplyFriction(0);
-                    r.ApplyAirResistance(0);
+                    r.ApplyFriction(0, subDeltaTime);
+                    r.ApplyAirResistance(0, subDeltaTime);
 
-                    if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
+                    if (!r.velocity.IsZero())
+                        transform->AddPosition(r.velocity * subDeltaTime);
                 }
                 PhysicsSystem::Run(level);
             }
-        } // Zone Collision
+        } // Zone Physics
+
+        {
+            ZoneScopedN("Transform setup");
+            for (ComponentTransform &transform: level.transforms.components) {
+                Entity *owner = level.GetEntity(transform.ownerID);
+
+                // if (!owner) [[unlikely]] {
+                //     spdlog::error("Transform owner {} does not exist", transform.ownerID);
+                //     continue;
+                // }
+
+                if (level.rigidbodies.Get(transform.ownerID) == nullptr || !transform.isDirty) continue;
+                transform.UpdateObjectSectorAndFloor(level.sectors);
+            }
+        }
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;
     }

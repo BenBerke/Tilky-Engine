@@ -7,7 +7,7 @@
 
 struct Level;
 namespace MapQueries {
-    int FindSectorContainingPoint(const std::vector<Sector>& sectors, Vector2 position);
+    int FindSectorContainingPoint(const std::vector<Sector> &sectors, Vector2 position, int hintSector = -1);
 
     void RebuildSectorIDLookup(Level& level);
     void RebuildWallIDLookup(Level& level);
@@ -22,4 +22,24 @@ namespace MapQueries {
     void AssignWallsToSectors(Level& level);
     void AssignNeighborsToSectors(Level& level);
     void RebuildSectorRuntimeLinks(Level& level);
+
+    inline std::array<Vector3, 4> CalculateWallQuad3D(const Wall &wall, const float bottomHeight,const float topHeight) {
+        return std::array<Vector3, 4>{
+            Vector3{wall.start.x, wall.start.y, bottomHeight},
+            Vector3{wall.end.x, wall.end.y, bottomHeight},
+            Vector3{wall.end.x, wall.end.y, topHeight},
+            Vector3{wall.start.x, wall.start.y, topHeight}
+        };
+    }
+
+    inline bool PushWallQuad3D(Wall &wall, const float bottomHeight, const float topHeight, const float minWallHeight) {
+        if (topHeight <= bottomHeight + minWallHeight) return false;
+        if (wall.quad3DCount >= static_cast<int>(wall.quads3D.size())) return false;
+
+        wall.quads3D[wall.quad3DCount++] = CalculateWallQuad3D(wall, bottomHeight, topHeight);
+
+        wall.RebuildQuadAabbs();
+
+        return true;
+    }
 }
