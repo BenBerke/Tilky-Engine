@@ -142,6 +142,7 @@ namespace ImGuiDrawFunctions {
         InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
         InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
 
+
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
             if (open != nullptr) {

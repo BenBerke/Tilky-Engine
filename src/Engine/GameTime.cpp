@@ -9,6 +9,7 @@ namespace GameTime {
     float deltaTime = 0.0f;
     double time = 0.0f;
     float smoothedFPS = 0.0f;
+    double frame = 0.0f;
 
     void Update() {
         const Uint64 now = SDL_GetPerformanceCounter();

@@ -448,7 +448,7 @@ namespace {
                     sector.floorColor.z
                 }},
                 {"floorTextureIndex", sector.floorTextureIndex},
-                {"ceilingTextureIndex", sector.ceilingTextureIndex}
+                {"ceilingTextureIndex", sector.ceilingTextureIndex},
             });
         }
     }

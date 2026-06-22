@@ -307,6 +307,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Scripting/InputBindings.cpp
         src/Runtime/Scripting/MathBindings.cpp
         src/Runtime/Scripting/EditorFunctionBindings.cpp
+        src/Runtime/Scripting/GameBindings.cpp
 )
 
 # ============================================================

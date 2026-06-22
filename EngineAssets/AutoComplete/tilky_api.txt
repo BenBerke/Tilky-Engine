@@ -5,9 +5,9 @@
 ---@field y number
 
 ---@class Vector3
---@field x number
---@field y number
---@field z number
+---@field x number
+---@field y number
+---@field z number
 
 ---@alias Key
 ---| '"A"'
@@ -64,12 +64,18 @@
 
 ---@class Debug
 Debug = {}
-
 ---@param text string
-function Debug.Print(string) end
+function Debug.Print(text) end
+function Debug.LogInfo(text) end
+function Debug.LogWarning(text) end
+function Debug.LogError(text) end
+function Debug.LogCritical(text) end
 
 ---@class Input
 Input = {}
+Input.MouseLeft = 1
+Input.MouseMiddle = 2
+Input.MouseRight = 3
 
 ---@param key Key
 ---@return boolean
@@ -98,50 +104,52 @@ function Input.GetMouseButtonUp(button) end
 ---@return Vector2
 function Input.GetMousePosition() end
 
---@class Math
---@param value number
---@return number
-function Math.DegToRad(value) end
+---@class Tmath
+Tmath = {}
 
 ---@param value number
 ---@return number
-function Math.RadToDeg(value) end
+function Tmath.DegToRad(value) end
+
+---@param value number
+---@return number
+function Tmath.RadToDeg(value) end
 
 ---@param value number
 ---@param minValue number
 ---@param maxValue number
 ---@return number
-function Math.Clamp(value, minValue, maxValue) end
+function Tmath.Clamp(value, minValue, maxValue) end
 
 ---@param a number
 ---@param b number
 ---@param t number
 ---@return number
-function Math.Lerp(a, b, t) end
+function Tmath.Lerp(a, b, t) end
 
 ---@param a Vector2
 ---@param b Vector2
 ---@return number
-function Math.Vector2Distance(a, b) end
+function Tmath.Vector2Distance(a, b) end
 
 ---@param a Vector2
 ---@param b Vector2
 ---@return number
-function Math.Vector2DistanceSquared(a, b) end
+function Tmath.Vector2DistanceSquared(a, b) end
 
 ---@param a Vector3
 ---@param b Vector3
 ---@return number
-function Math.Vector3Distance(a, b) end
+function Tmath.Vector3Distance(a, b) end
 
 ---@param a Vector2
 ---@param b Vector2
 ---@return number
-function Math.Vector3DistanceSquared(a, b) end
+function Tmath.Vector3DistanceSquared(a, b) end
 
 
---@class Entities
---@field id integer
+---@class Entities
+---@field id integer
 ---@field hasTransform boolean
 ---@field hasSprite boolean
 ---@field hasDecal boolean
@@ -154,19 +162,18 @@ function Math.Vector3DistanceSquared(a, b) end
 ---@field hasUITransform boolean
 ---@field hasUISprite boolean
 ---@field hasUIText boolean
-
----@field transform Transform?
----@field sprite Sprite?
----@field decal Decal?
----@field audioSource AudioSource?
----@field script Script?
----@field playerController PlayerController?
----@field camera Camera?
----@field collider Collider?
----@field rigidbody Rigidbody?
----@field uiTransform UITransform?
----@field uiSprite UISprite?
----@field uiText UIText?
+---@field transform ComponentTransform?
+---@field sprite ComponentSprite?
+---@field decal ComponentDecal?
+---@field audioSource ComponentAudioSource?
+---@field script ComponentScript?
+---@field playerController ComponentPlayerController?
+---@field camera ComponentCamera?
+---@field collider ComponentCollider?
+---@field rigidbody ComponentRigidbody?
+---@field uiTransform ComponentUITransform?
+---@field uiSprite ComponentUISprite?
+---@field uiText ComponentUIText?
 
 ---@class ComponentUIText
 ---@field ownerID integer
@@ -189,12 +196,13 @@ function Math.Vector3DistanceSquared(a, b) end
 ---@field ownerID integer
 ---@field isStatic boolean
 ---@field mass number
+local ComponentRigidbody = {}
 ---@param a Vector3
-function AddVelocity(a) end
+function ComponentRigidbody:AddVelocity(a) end
 
 ---@class ComponentCollider
 ---@field ownerID integer
----@field type integer // TODO fix
+---@field type integer -- TODO fix (Fixed C++ style comment)
 ---@field isActive boolean
 ---@field isTrigger boolean
 ---@field Scale Vector3
@@ -229,7 +237,7 @@ function AddVelocity(a) end
 ---@field enabled boolean
 
 ---@class ComponentAudioSource
----@field onwerID integer
+---@field ownerID integer
 ---@field name string
 ---@field pitch number
 ---@field gain number
@@ -241,15 +249,16 @@ function AddVelocity(a) end
 ---@field innerConeAngel number
 ---@field outerConeAngle number
 ---@field outerGain number
-function PlaySound() end
+local ComponentAudioSource = {}
+function ComponentAudioSource:PlaySound() end
 ---@param a number
-function SetSourcePitch(a) end
+function ComponentAudioSource:SetSourcePitch(a) end
 ---@param a number
-function SetSourceGain(a) end
+function ComponentAudioSource:SetSourceGain(a) end
 ---@param a boolean
-function SetSourceLooping(a) end
+function ComponentAudioSource:SetSourceLooping(a) end
 ---@param a Vector3
-function SetSourcePosition(q) end
+function ComponentAudioSource:SetSourcePosition(a) end
 
 ---@class ComponentSprite
 ---@field textureIndex integer
@@ -274,7 +283,3 @@ function SetSourcePosition(q) end
 
 ---@type Entities
 owner = nil
-
-Input.MouseLeft = 1
-Input.MouseMiddle = 2
-Input.MouseRight = 3

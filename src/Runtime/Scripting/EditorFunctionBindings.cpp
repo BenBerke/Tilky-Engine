@@ -32,7 +32,10 @@ namespace {
 }
 
 void ScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
-   sol::table debug = lua.create_table();
+    sol::table debug;
+
+    if (lua["Debug"].valid()) debug = lua["Debug"];
+    else debug = lua.create_named_table("Debug");
 
    debug.set_function("Print", [](const sol::variadic_args &args)->void {
        EditorFunctions::Print(LuaArgsToString(args));
@@ -53,6 +56,4 @@ void ScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
    debug.set_function("LogWarning", [](const sol::variadic_args &args)->void {
        spdlog::warn("{}", LuaArgsToString(args));
    });
-
-   lua["Debug"] = debug;
 }
