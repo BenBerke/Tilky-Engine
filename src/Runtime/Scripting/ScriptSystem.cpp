@@ -43,6 +43,7 @@ namespace {
         ScriptSystem::RegisterComponentBindings(lua);
         ScriptSystem::RegisterEntityBindings(lua);
         ScriptSystem::RegisterInputBindings(lua);
+        ScriptSystem::RegisterEditorFunctionBindings(lua);
     }
 
     namespace fs = std::filesystem;
@@ -159,7 +160,7 @@ namespace ScriptSystem {
 
             scriptInstances.push_back(std::move(instance));
 
-            spdlog::info("Loaded Lua script: {}", path.string());
+            //spdlog::info("Loaded Lua script: {}", path.string());
         }
 
         // Call Start only after every script has had a chance to register into Scripts.

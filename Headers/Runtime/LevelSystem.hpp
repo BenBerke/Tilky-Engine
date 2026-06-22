@@ -10,6 +10,7 @@
 namespace LevelSystem {
     void Start(Level& level);
     void Update(Level& level);
+    void Shutdown(Level& level);
 
     ComponentCamera* GetActiveCamera(Level& level);
 }

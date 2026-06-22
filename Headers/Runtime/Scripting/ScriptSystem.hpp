@@ -22,6 +22,7 @@ namespace ScriptSystem {
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);
     void RegisterMathBindings(sol::state& lua);
+    void RegisterEditorFunctionBindings(sol::state& lua);
 }
 
 #endif //TILKY_ENGINE_SCRIPTSYSTEM_HPP

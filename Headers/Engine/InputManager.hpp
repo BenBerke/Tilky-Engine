@@ -12,6 +12,7 @@ namespace InputManager {
     bool GetKey(SDL_Scancode key);
     bool GetKeyUp(SDL_Scancode key);
     bool GetDoubleKeyDown(SDL_Scancode key, SDL_Scancode keyTwo);
+    bool GetDoubleKey(SDL_Scancode key, SDL_Scancode keyTwo);
 
     bool GetMouseButtonDown(Uint32 button);
     bool GetMouseButton(Uint32 button);

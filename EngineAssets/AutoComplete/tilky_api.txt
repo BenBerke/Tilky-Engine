@@ -62,6 +62,12 @@
 ---| '"8"'
 ---| '"9"'
 
+---@class Debug
+Debug = {}
+
+---@param text string
+function Debug.Print(string) end
+
 ---@class Input
 Input = {}
 

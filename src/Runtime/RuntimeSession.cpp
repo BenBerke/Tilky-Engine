@@ -26,7 +26,6 @@
 
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
-#include "../../Headers/Runtime/Scripting/ScriptSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
@@ -117,17 +116,6 @@ namespace RuntimeSession {
 
             AudioSystem::Start(level);
             AudioSystem::ApplyListenerSettings(level);
-
-            if (!ScriptSystem::Initialize()) {
-                spdlog::critical("Failed to initialize script system");
-
-                SoundManager::DestroyOpenAL();
-
-                renderer->Shutdown();
-                renderer.reset();
-
-                return false;
-            }
         }
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
@@ -225,13 +213,7 @@ namespace RuntimeSession {
     }
 
     void Shutdown(const RuntimeType runtimeType) {
-        if (LevelManager::HasCurrentLevel()) {
-            Level& level = LevelManager::CurrentLevel();
-
-            if (runtimeType == EDITOR) RuntimeEditor::Shutdown(level);
-
-            AudioSystem::Shutdown(level);
-        }
+        Level& level = LevelManager::CurrentLevel();
 
         SoundManager::DestroyOpenAL();
 
@@ -244,6 +226,12 @@ namespace RuntimeSession {
             }
             else spdlog::error("Couldn't find editor level snapshot");
         }
+
+        if (runtimeType == PLAY || runtimeType == STANDALONE) LevelSystem::Shutdown(level);
+
+        if (runtimeType == EDITOR) RuntimeEditor::Shutdown(level);
+
+        AudioSystem::Shutdown(level);
 
         if (renderer) {
             renderer->Shutdown();

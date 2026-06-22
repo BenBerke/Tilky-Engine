@@ -104,6 +104,10 @@ namespace InputManager {
         return bothHeld && eitherFirstFrame;
     }
 
+    bool GetDoubleKey(const SDL_Scancode key, const SDL_Scancode keyTwo) {
+        return GetKey(key) && GetKey(keyTwo);
+    }
+
     bool GetMouseButtonDown(const Uint32 button) {
         return (mouseState & SDL_BUTTON_MASK(button)) &&
                !(prevMouseState & SDL_BUTTON_MASK(button));

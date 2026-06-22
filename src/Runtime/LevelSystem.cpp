@@ -94,6 +94,11 @@ namespace LevelSystem {
     }
 
     void Start(Level &level) {
+        if (!ScriptSystem::Initialize()) {
+            spdlog::critical("Failed to initialize script system");
+            return;
+        }
+
         SoundManager::SetListenerGain(level.listenerSettings.masterGain);
         SoundManager::SetListenerDopplerFactor(level.listenerSettings.dopplerFactor);
         SoundManager::SetListenerSpeedOfSound(level.listenerSettings.speedOfSound);
@@ -239,5 +244,9 @@ namespace LevelSystem {
         } // Zone Collision
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;
+    }
+
+    void Shutdown(Level &level) {
+        ScriptSystem::Shutdown();
     }
 }
