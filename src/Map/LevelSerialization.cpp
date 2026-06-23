@@ -15,8 +15,7 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
-
-constexpr ID INVALID_ENTITY_ID = static_cast<ID>(-1);
+#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;

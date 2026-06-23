@@ -41,5 +41,5 @@ void ScriptSystem::RegisterGameBindings(sol::state &lua) {
     //             }
     //         );
     //     }
-    );
+    //);
 }

@@ -94,9 +94,7 @@ namespace MapEditorInternal {
                         if (SamePoint(placedCorners[i], snappedWorld)) {
                             cornerAlreadyExists = true;
 
-                            if (IsCornerConnectedToLine(snappedWorld)) {
-                                break;
-                            }
+                            if (IsCornerConnectedToLine(snappedWorld)) break;
 
                             placedCorners.erase(placedCorners.begin() + i);
                             break;

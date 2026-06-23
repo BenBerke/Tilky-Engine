@@ -104,9 +104,8 @@ namespace MapEditorInternal {
     extern Vector3 ceilColor;
     extern Vector3 floorColor;
 
-
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
-    [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
+    [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);
     [[nodiscard]] bool CornerExistsAt(const Vector2& point);
     [[nodiscard]] bool IsCornerConnectedToLine(const Vector2& point);
