@@ -340,6 +340,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Math/Constants.hpp
         Headers/Math/SIMD/SSECompat.hpp
         Headers/Objects/ComponentRegistry.hpp
+        Headers/Objects/ScriptPublicType.hpp
 )
 
 # ============================================================

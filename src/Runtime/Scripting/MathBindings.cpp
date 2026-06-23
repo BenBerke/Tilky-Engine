@@ -75,9 +75,12 @@ void ScriptSystem::RegisterMathBindings(sol::state &lua) {
         return Vector3Math::Cross(a, b);
     });
 
+    math.set_function("getfirstentity", []() {
+        return // entity
+    });
+
     math.set_function("Random", sol::overload(
-        // No args: float 0.0 to 1.0
-        // One arg: int 1 to max
+        // One arg: int 0 to max
         [](const int max) -> int {
             if (max <= 0) return 0;
             return XorShift32() % max;

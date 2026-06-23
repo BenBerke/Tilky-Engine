@@ -21,17 +21,10 @@ struct alignas(16) Vector2 {
     Vector2 operator*(const Vector2& other) const { return {_mm_mul_ps(reg, other.reg)}; }
     Vector2 operator/(const Vector2& other) const { return {_mm_div_ps(reg, other.reg)}; }
 
-    Vector2 operator*(const float value) const {
-        return {_mm_mul_ps(reg, _mm_set1_ps(value))};
-    }
+    Vector2 operator*(const float value) const { return {_mm_mul_ps(reg, _mm_set1_ps(value))}; }
+    Vector2 operator/(const float value) const { return {_mm_div_ps(reg, _mm_set1_ps(value))}; }
 
-    Vector2 operator/(const float value) const {
-        return {_mm_div_ps(reg, _mm_set1_ps(value))};
-    }
-
-    Vector2 operator-() const {
-        return {_mm_xor_ps(reg, _mm_set1_ps(-0.0f))};
-    }
+    Vector2 operator-() const { return {_mm_xor_ps(reg, _mm_set1_ps(-0.0f))}; }
 
     // --- Assignment Operators ---
     Vector2& operator+=(const Vector2& other) {

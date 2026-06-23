@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
 
 static const char *GetComponentLabelKey(const int componentType) {
     switch (componentType) {
@@ -44,26 +45,32 @@ static void AddEditorComponent(Entity &entity) {
         if (!entity.HasComponent<ComponentPlayerController>()) {
             auto *pc = entity.AddComponent<ComponentPlayerController>();
 
-            if (!entity.HasComponent<ComponentRigidbody>())
-                entity.AddComponent<ComponentRigidbody>();
+            if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
 
-            if (!entity.HasComponent<ComponentCollider>())
-                entity.AddComponent<ComponentCollider>();
+            if (!entity.HasComponent<ComponentCollider>()) entity.AddComponent<ComponentCollider>();
 
-            if (!entity.HasComponent<ComponentCamera>())
-                entity.AddComponent<ComponentCamera>();
+            if (!entity.HasComponent<ComponentCamera>()) entity.AddComponent<ComponentCamera>();
 
             pc->isActive = true;
         }
-    } else if constexpr (std::is_same_v<T, ComponentCamera>) {
+    }
+    else if constexpr (std::is_same_v<T, ComponentCamera>) {
         if (!entity.HasComponent<ComponentCamera>()) {
             auto *cam = entity.AddComponent<ComponentCamera>();
             cam->isActive = true;
         }
-    } else {
-        if (!entity.HasComponent<T>())
-            entity.AddComponent<T>();
     }
+    else if constexpr (std::is_same_v<T, ComponentScript>) {
+        if (!entity.HasComponent<ComponentScript>()) {
+            auto *script = entity.AddComponent<ComponentScript>();
+
+            script->enabled = true;
+            script->fileName.clear();
+            script->publicValues.clear();
+            script->schemaHash = 0;
+        }
+    }
+    else if (!entity.HasComponent<T>()) entity.AddComponent<T>();
 }
 
 static void AddEditorComponentByType(Entity &entity, const int componentType) {
@@ -114,6 +121,46 @@ namespace {
     bool InputOrDrag4(const char *label, float *value, const bool draggable, const float speed = 1.0f) {
         return draggable ? ImGui::DragFloat4(label, value, speed) : ImGui::InputFloat4(label, value);
     }
+
+    void DrawScriptValueEditor(const ScriptPublicField &field, ScriptValue &value) {
+        switch (field.type) {
+            case ScriptValueType::Int: {
+                int *intValue = std::get_if<int>(&value);
+
+                if (intValue == nullptr) return;
+
+                ImGui::DragInt(field.displayName.c_str(), intValue);
+                break;
+            }
+
+            case ScriptValueType::Float: {
+                float *floatValue = std::get_if<float>(&value);
+
+                if (floatValue == nullptr) return;
+
+                ImGui::DragFloat(field.displayName.c_str(), floatValue, 0.1f);
+                break;
+            }
+
+            case ScriptValueType::Bool: {
+                bool *boolValue = std::get_if<bool>(&value);
+
+                if (boolValue == nullptr) return;
+
+                ImGui::Checkbox(field.displayName.c_str(), boolValue);
+                break;
+            }
+
+            case ScriptValueType::String: {
+                std::string *stringValue = std::get_if<std::string>(&value);
+
+                if (stringValue == nullptr) return;
+
+                ImGui::InputText(field.displayName.c_str(), stringValue);
+                break;
+            }
+        }
+    }
 }
 
 namespace ImGuiDrawFunctions {
@@ -142,12 +189,11 @@ namespace ImGuiDrawFunctions {
         InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
         InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
 
+        InputOrDrag(Get("sector.light_value").c_str(), &sector.lightValue, draggable);
 
         if (ImGui::Button(Get("common.delete").c_str())) {
             deleteRequested = true;
-            if (open != nullptr) {
-                *open = false;
-            }
+            if (open != nullptr) *open = false;
         }
 
         ImGui::SameLine();
@@ -317,9 +363,8 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
         if (state.selectedComponent == -1) {
             state.editingComponent = false;
 
-            if (open != nullptr) {
-                *open = false;
-            }
+            if (open != nullptr) *open = false;
+
 
             return;
         }
@@ -455,13 +500,86 @@ DrawComponentRow(Get(LabelKey).c_str(), Bit);
 
             if (c != nullptr) [[likely]] {
                 ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
+
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    c->fileName = fs::path(c->fileName).stem().string();
+                    ScriptSystem::ReconcileScriptPublicValues(*c);
+                }
+
                 ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
+
+                if (ImGui::Button("Refresh Script Fields")) {
+                    ScriptSystem::ReconcileScriptPublicValues(*c);
+                }
+
+                const std::vector<ScriptPublicField> *fields =
+                        ScriptSystem::GetPublicFieldsForScript(c->fileName);
+
+                if (fields == nullptr) {
+                    if (!c->fileName.empty()) {
+                        ImGui::TextDisabled("Script file not found or has no public fields.");
+                    }
+                } else {
+                    ImGui::SeparatorText("Public Variables");
+
+                    for (const ScriptPublicField &field: *fields) {
+                        auto valueIt = c->publicValues.find(field.name);
+
+                        if (valueIt == c->publicValues.end()) {
+                            c->publicValues[field.name] = field.defaultValue;
+                            valueIt = c->publicValues.find(field.name);
+                        }
+
+                        DrawScriptValueEditor(field, valueIt->second);
+                    }
+
+                    ImGui::SeparatorText("Orphaned Variables");
+
+                    bool hasOrphanedVariables = false;
+
+                    for (auto valueIt = c->publicValues.begin(); valueIt != c->publicValues.end();) {
+                        const std::string &valueName = valueIt->first;
+
+                        const bool existsInSchema = std::ranges::any_of(
+                            *fields,
+                            [&valueName](const ScriptPublicField &field) {
+                                return field.name == valueName;
+                            }
+                        );
+
+                        if (existsInSchema) {
+                            ++valueIt;
+                            continue;
+                        }
+
+                        hasOrphanedVariables = true;
+
+                        ImGui::TextDisabled("%s", valueName.c_str());
+                        ImGui::SameLine();
+
+                        const std::string deleteButtonLabel = "Remove##orphan_" + valueName;
+
+                        if (ImGui::Button(deleteButtonLabel.c_str())) {
+                            valueIt = c->publicValues.erase(valueIt);
+                        } else {
+                            ++valueIt;
+                        }
+                    }
+
+                    if (!hasOrphanedVariables) {
+                        ImGui::TextDisabled("None");
+                    }
+                }
+
+                ImGui::Separator();
 
                 if (ImGui::Button(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentScript>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Script component missing");
+            } else [[unlikely]] {
+                ImGui::Text("Script component missing");
+            }
         }
         else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
             auto *c = entity.GetComponent<ComponentPlayerController>();

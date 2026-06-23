@@ -32,10 +32,10 @@ void OpenGL::BuildGpuSprites() {
 
         //todo add texture coloring
         gpuSprite.color = {
-            255.0f,
-            255.0f,
-            255.0f,
-            255.0f
+            255.0f - (255.0f - sector.lightValue),
+            255.0f - (255.0f - sector.lightValue),
+            255.0f - (255.0f - sector.lightValue),
+            255.0
         };
 
         gpuSprite.data = {

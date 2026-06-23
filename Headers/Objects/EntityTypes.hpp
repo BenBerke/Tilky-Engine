@@ -10,5 +10,6 @@ using LevelID = ID; // Legacy. //todo remove
 using UIElementID = ID;
 
 constexpr ID INVALID_ID = std::numeric_limits<ID>::max();
+constexpr ID INVALID_ENTITY_ID = INVALID_ID;
 
 #endif // TILKY_ENGINE_ENTITY_TYPES_HPP

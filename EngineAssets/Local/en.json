@@ -76,6 +76,7 @@
   "sector.ceil_color": "Ceiling Color",
   "&Context_12": "As in the floor you walk on",
   "sector.floor_color": "Floor Color",
+  "sector.light_value": "Light",
 
   "wall.title": "Wall",
   "&Context_13": "The sector that is to the north of the wall when looking from a bird's eye view",

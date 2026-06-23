@@ -90,6 +90,21 @@ namespace MapEditorInternal {
     extern bool hasEntityInClipboard;
     extern Entity entityInClipboard;
 
+    //-- Sector to be created variables
+    extern int wallTextureIndex;
+    extern int ceilTextureIndex;
+    extern int floorTextureIndex;
+
+    extern float floorHeight;
+    extern float ceilHeight;
+
+    extern float lightValue;
+
+    extern Vector3 wallColor;
+    extern Vector3 ceilColor;
+    extern Vector3 floorColor;
+
+
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, const float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);
@@ -126,7 +141,7 @@ namespace MapEditorInternal {
     void DrawUIImages();
     void DrawEntities_UI();
     void DrawUIEditorUI();
-    void HandleUIEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui);
+    void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
     void ChangeMode();
 

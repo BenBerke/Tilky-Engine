@@ -7,7 +7,7 @@
 #include "sol/sol.hpp"
 
 namespace {
-    static const std::unordered_map<std::string, SDL_Scancode> keys = {
+    const std::unordered_map<std::string, SDL_Scancode> keys = {
         {"A", SDL_SCANCODE_A},
         {"B", SDL_SCANCODE_B},
         {"C", SDL_SCANCODE_C},

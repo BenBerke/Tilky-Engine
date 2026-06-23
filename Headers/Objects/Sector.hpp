@@ -29,6 +29,8 @@ struct Sector {
     int ceilingTextureIndex = -1;
     int floorTextureIndex = -1;
 
+    float lightValue = 255.0f; // Does not affect walls
+
     ID id = INVALID_ID;
 
     std::vector<ID> entitiesInside;

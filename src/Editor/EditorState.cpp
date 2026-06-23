@@ -60,4 +60,18 @@ namespace MapEditorInternal {
     bool hasEntityInClipboard = false;
     Entity entityInClipboard;
 
+    //-- Sector to be created variables
+    int wallTextureIndex = 1;
+    int ceilTextureIndex = 1;
+    int floorTextureIndex = 1;
+
+    float floorHeight = 40.0f;
+    float ceilHeight = 0.0f;
+
+    float lightValue = 255.0f;
+
+    Vector3 wallColor = {255.0f, 255.0f, 255.0f};
+    Vector3 ceilColor = {255.0f, 255.0f, 255.0f};
+    Vector3 floorColor = {255.0f, 255.0f, 255.0f};
+
 }

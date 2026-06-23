@@ -1036,14 +1036,21 @@ struct ScriptUIText {
 
 struct ScriptEntity {
     Level* level = nullptr;
-    ID ownerID = static_cast<ID>(-1);
+    ID ownerID = INVALID_ENTITY_ID;
+
+    [[nodiscard]] ScriptComponentRef GetScriptRef(const std::string& fileName) const {
+        return {
+            .ownerID = ownerID,
+            .scriptFile = std::filesystem::path(fileName).stem().string()
+        };
+    }
 
     [[nodiscard]] ID GetID() const {
         return ownerID;
     }
 
     [[nodiscard]] bool IsValid() const {
-        return level != nullptr && ownerID != static_cast<ID>(-1);
+        return level != nullptr && ownerID != INVALID_ENTITY_ID;
     }
 
     [[nodiscard]] bool HasTransform() const {

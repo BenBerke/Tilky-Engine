@@ -504,9 +504,7 @@ namespace {
     }
 
     void DrawSelectedSectorInspector(Level& level) {
-        if (!editingSector || currentMode != MODE_SECTOR) {
-            return;
-        }
+        if (!editingSector || currentMode != MODE_SECTOR) return;
 
         if (selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) {
             editingSector = false;
@@ -654,18 +652,39 @@ namespace MapEditorInternal {
 
         DrawSelectionInspectors(level);
 
-        if (creatableSector) {
-            if (ImGui::Button(Get("editor.create_sector").c_str())) {
-                if (sectorBeingCreated.size() >= 3) {
-                    if (!SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back()))
-                        sectorBeingCreated.push_back(sectorBeingCreated.front());
+        // Old
+        // if (creatableSector) {
+        //     if (ImGui::Button(Get("editor.create_sector").c_str())) {
+        //         if (sectorBeingCreated.size() >= 3) {
+        //             if (!SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back()))
+        //                 sectorBeingCreated.push_back(sectorBeingCreated.front());
+        //
+        //             FinishSectorSelection();
+        //             actions.push_back(ACTION_CREATE_SECTOR);
+        //
+        //             creatableSector = false;
+        //         }
+        //     }
+        // }
 
-                    FinishSectorSelection();
-                    actions.push_back(ACTION_CREATE_SECTOR);
+        ImGuiDrawFunctions::PutSpace(2);
 
-                    creatableSector = false;
-                }
-            }
+        if (currentMode == MODE_SECTOR) {
+
+            ImGui::InputInt("Wall Texture Index", &wallTextureIndex);
+            ImGui::InputInt("Ceiling Texture Index", &ceilTextureIndex);
+            ImGui::InputInt("Floor Texture Index", &floorTextureIndex);
+
+            ImGui::Separator();
+
+            ImGui::InputFloat("Floor Height", &floorHeight, 1.0f, 10.0f, "%.2f");
+            ImGui::InputFloat("Ceiling Height", &ceilHeight, 1.0f, 10.0f, "%.2f");
+            ImGui::InputFloat("Light Value", &lightValue, 1.0f, 10.0f, "%.2f");
+
+            ImGui::Separator();
+            ImGui::ColorEdit3("Wall Color", &wallColor.x);
+            ImGui::ColorEdit3("Ceiling Color", &ceilColor.x);
+            ImGui::ColorEdit3("Floor Color", &floorColor.x);
         }
 
         ImGuiDrawFunctions::PutSpace(2);
@@ -731,10 +750,10 @@ namespace MapEditorInternal {
         if (ImGui::Button(Get("editor.export").c_str())) {
             RunExporter();
         }
+        DrawLevelsMenu();
 
         ImGui::End();
 
-        DrawLevelsMenu();
         DrawWorldSettings();
     }
 }

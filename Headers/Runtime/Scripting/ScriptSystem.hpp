@@ -13,6 +13,7 @@ namespace sol {
 
 namespace ScriptSystem {
     bool Initialize();
+
     void Start(Level& level);
     void Update(Level& level);
     void Shutdown();
@@ -24,6 +25,10 @@ namespace ScriptSystem {
     void RegisterMathBindings(sol::state& lua);
     void RegisterEditorFunctionBindings(sol::state& lua);
     void RegisterGameBindings(sol::state& lua);
+
+    const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
+    bool ReconcileScriptPublicValues(ComponentScript& script);
+    void RefreshScriptAssets(Level& level);
 }
 
 #endif //TILKY_ENGINE_SCRIPTSYSTEM_HPP

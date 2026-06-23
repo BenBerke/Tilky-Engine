@@ -1,7 +1,6 @@
 #include "Headers/Map/LevelSerialization.hpp"
 
 #include <algorithm>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -21,6 +20,96 @@ constexpr ID INVALID_ENTITY_ID = static_cast<ID>(-1);
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
+
+namespace {
+    const char *ScriptValueTypeToString(const ScriptValueType type) {
+        switch (type) {
+            case ScriptValueType::Int: return "Int";
+            case ScriptValueType::Float: return "Float";
+            case ScriptValueType::Bool: return "Bool";
+            case ScriptValueType::String: return "String";
+        }
+
+        return "Unknown";
+    }
+
+    ScriptValueType ScriptValueTypeFromString(const std::string &type) {
+        if (type == "Int") return ScriptValueType::Int;
+        if (type == "Float") return ScriptValueType::Float;
+        if (type == "Bool") return ScriptValueType::Bool;
+        if (type == "String") return ScriptValueType::String;
+
+        return ScriptValueType::String;
+    }
+
+    json ScriptValueToJson(const ScriptValue &value) {
+        json valueJson;
+
+        std::visit(
+            [&]<typename T0>(const T0 &typedValue) {
+                using T = std::decay_t<T0>;
+
+                if constexpr (std::is_same_v<T, int>) {
+                    valueJson["type"] = "Int";
+                    valueJson["value"] = typedValue;
+                } else if constexpr (std::is_same_v<T, float>) {
+                    valueJson["type"] = "Float";
+                    valueJson["value"] = typedValue;
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    valueJson["type"] = "Bool";
+                    valueJson["value"] = typedValue;
+                } else if constexpr (std::is_same_v<T, std::string>) {
+                    valueJson["type"] = "String";
+                    valueJson["value"] = typedValue;
+                }
+            },
+            value
+        );
+
+        return valueJson;
+    }
+
+    ScriptValue ScriptValueFromJson(const json &valueJson) {
+        const std::string typeString = valueJson.value("type", "String");
+        const ScriptValueType type = ScriptValueTypeFromString(typeString);
+
+        switch (type) {
+            case ScriptValueType::Int:
+                return valueJson.value("value", 0);
+
+            case ScriptValueType::Float:
+                return valueJson.value("value", 0.0f);
+
+            case ScriptValueType::Bool:
+                return valueJson.value("value", false);
+
+            case ScriptValueType::String:
+                return valueJson.value("value", std::string{});
+        }
+
+        return std::string{};
+    }
+
+    json ScriptPublicValuesToJson(const std::unordered_map<std::string, ScriptValue> &publicValues) {
+        json publicValuesJson = json::object();
+
+        for (const auto &[name, value]: publicValues)
+            publicValuesJson[name] = ScriptValueToJson(value);
+
+        return publicValuesJson;
+    }
+
+    std::unordered_map<std::string, ScriptValue> ScriptPublicValuesFromJson(const json &publicValuesJson) {
+        std::unordered_map<std::string, ScriptValue> publicValues;
+
+        if (!publicValuesJson.is_object()) return publicValues;
+
+        for (const auto &[name, valueJson]: publicValuesJson.items())
+            publicValues[name] = ScriptValueFromJson(valueJson);
+
+        return publicValues;
+    }
+}
 
 namespace {
     ID LoadIDField(const json& object, const char* key, const ID fallback = INVALID_ID) {
@@ -383,6 +472,8 @@ namespace {
             sector.ceilingColor = {255.0f, 255.0f, 255.0f};
             sector.floorColor = {255.0f, 255.0f, 255.0f};
 
+            sector.lightValue = sectorJson.value("lightValue", 255.0f);
+
             if (sectorJson.contains("ceilingColor")) {
                 sector.ceilingColor = {
                     sectorJson["ceilingColor"][0].get<float>(),
@@ -449,6 +540,7 @@ namespace {
                 }},
                 {"floorTextureIndex", sector.floorTextureIndex},
                 {"ceilingTextureIndex", sector.ceilingTextureIndex},
+                    {"lightValue", sector.lightValue},
             });
         }
     }
@@ -600,14 +692,14 @@ namespace {
 
         if (componentsJson.contains("scripts")) {
             for (const json& scriptJson : componentsJson["scripts"]) {
-                const ID ownerID =
-                    scriptJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
                 Entity* entity = level.GetEntity(ownerID);
+
                 if (entity == nullptr) {
                     continue;
                 }
@@ -615,11 +707,20 @@ namespace {
                 ComponentScript& c = level.scripts.Add(ownerID);
                 entity->componentsMask.set(CMP_SCRIPT);
 
-                const std::string loadedName =
-                    scriptJson.value("fileName", "Test");
+                const std::string loadedName = scriptJson.value("fileName", std::string{});
 
                 c.enabled = scriptJson.value("enabled", true);
                 c.fileName = fs::path(loadedName).stem().string();
+                c.schemaHash = scriptJson.value("schemaHash", static_cast<std::uint64_t>(0));
+
+                if (scriptJson.contains("publicValues"))
+                    c.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
+                else c.publicValues.clear();
+
+
+                // This fills missing variables from the Lua schema and fixes wrong types.
+                // It does not delete orphaned old values.
+                ScriptSystem::ReconcileScriptPublicValues(c);
             }
         }
 
@@ -917,7 +1018,9 @@ namespace {
             componentsJson["scripts"].push_back({
                 {"ownerID", c.ownerID},
                 {"fileName", fs::path(c.fileName).stem().string()},
-                {"enabled", c.enabled}
+                {"enabled", c.enabled},
+                {"publicValues", ScriptPublicValuesToJson(c.publicValues)},
+                {"schemaHash", c.schemaHash}
             });
         }
 

@@ -21,7 +21,7 @@ namespace Vector2Math {
         return Dot2(a.reg, b.reg);
     }
 
-    inline float LengthSquared(const Vector2 &v) {
+        inline float LengthSquared(const Vector2 &v) {
         return Dot2(v.reg, v.reg);
     }
 

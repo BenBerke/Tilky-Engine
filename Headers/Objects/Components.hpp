@@ -11,6 +11,7 @@
 #include "../Math/Vector/Vector2.hpp"
 #include "../Objects/Sector.hpp"
 #include "EntityTypes.hpp"
+#include "ScriptPublicType.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
@@ -167,9 +168,14 @@ struct ComponentCamera {
 struct ComponentScript {
     ID ownerID = static_cast<ID>(-1);
 
-    std::string fileName = "";
-
+    std::string fileName;
     bool enabled = true;
+
+    // Serialized per entity.
+    std::unordered_map<std::string, ScriptValue> publicValues;
+
+    // Optional, useful for detecting schema changes.
+    std::uint64_t schemaHash = 0;
 };
 
 // OpenAL Audio source. What sound it will play can change during gameplay.
