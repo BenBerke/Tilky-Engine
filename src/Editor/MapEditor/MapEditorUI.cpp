@@ -21,6 +21,7 @@
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
@@ -221,6 +222,14 @@ namespace {
 
     std::optional<std::string> pendingLevelToLoad;
 
+    // Feature #1: Project Settings is a separate overlay window, toggled
+    // from a button anchored to the bottom-right of the editor UI.
+    bool projectSettingsOpen = false;
+
+    // Feature #3: "Create Level" opens a name-input modal before anything
+    // is actually cleared/switched.
+    bool createLevelModalRequested = false;
+
     Entity* FindEntityById(Level& level, const ID entityId) {
         for (Entity& entity : level.entities) {
             if (entity.id == entityId) {
@@ -271,6 +280,52 @@ namespace {
         ImGui::End();
     }
 
+    // Feature #8: small thumbnail + index + name, anywhere a texture is
+    // listed or picked. Never crashes on a missing/invalid texture - falls
+    // back to a flat placeholder box instead.
+    void DrawTextureThumbnailRow(const Level& level, const int textureIndex) {
+        constexpr float thumbnailSize = 32.0f;
+
+        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
+            ImGui::Dummy(ImVec2(thumbnailSize, thumbnailSize));
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", Get("editor.texture_none").c_str());
+            return;
+        }
+
+        SDL_Texture* texture = GetEditorTexture(textureIndex);
+
+        if (texture != nullptr) {
+            // NOTE: assumes the classic pointer-sized ImTextureID (pre-1.92
+            // ImGui texture API). If this project is on a newer ImGui with
+            // ImTextureRef/ImTextureData, this cast is the one line to update.
+            ImGui::Image(
+                reinterpret_cast<ImTextureID>(texture),
+                ImVec2(thumbnailSize, thumbnailSize)
+            );
+        }
+        else {
+            // Placeholder: see GetEditorTexture() in MapEditorDrawing.cpp /
+            // NOTES.md for exactly what renderer access this assumes.
+            const ImVec2 cursor = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(thumbnailSize, thumbnailSize));
+
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                cursor,
+                ImVec2(cursor.x + thumbnailSize, cursor.y + thumbnailSize),
+                IM_COL32(90, 90, 90, 255)
+            );
+            ImGui::GetWindowDrawList()->AddRect(
+                cursor,
+                ImVec2(cursor.x + thumbnailSize, cursor.y + thumbnailSize),
+                IM_COL32(150, 150, 150, 255)
+            );
+        }
+
+        ImGui::SameLine();
+        ImGui::Text("%d: %s", textureIndex, level.textures[textureIndex].fileName.c_str());
+    }
+
     void DrawTextureCategory() {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -281,7 +336,7 @@ namespace {
         for (int i = 0; i < static_cast<int>(level.textures.size()); i++) {
             ImGui::PushID(i);
 
-            ImGui::Text("%d: %s", i, level.textures[i].fileName.c_str());
+            DrawTextureThumbnailRow(level, i);
 
             ImGui::PopID();
         }
@@ -307,6 +362,9 @@ namespace {
         ImGuiDrawFunctions::PutSpace(2);
     }
 
+    // World Settings stays exactly as it was: it's already correctly
+    // level-specific (feature #1 says not to mix it with Project Settings),
+    // so nothing here needs to change.
     void DrawWorldSettings() {
         Level& level = LevelManager::CurrentLevel();
         ListenerSettings& settings = level.listenerSettings;
@@ -463,30 +521,292 @@ namespace {
         ImGui::End();
     }
 
+    // Feature #3: "Create Level". Saves the current level with the existing
+    // Save() function (if a level is currently open), then resets
+    // LevelManager::CurrentLevel() to a genuinely blank Level and switches
+    // the editor onto it.
+    //
+    // NOTE: this resets CurrentLevel() in place via `level = Level{}` rather
+    // than touching LevelManager::loadedLevels directly, since
+    // LevelManager.hpp wasn't part of the pasted source and relying on
+    // Level's own default constructor is the only way to guarantee every
+    // field/pool starts genuinely empty without guessing at the struct's
+    // exact contents. If LevelManager exposes its own dedicated "create a
+    // new level" API, prefer that instead. See NOTES.md.
+    void CreateNewLevel(const std::string& levelName) {
+        if (!Editor::currentMap.empty()) {
+            Save(Editor::currentMap);
+        }
+
+        Level& level = LevelManager::CurrentLevel();
+
+        level = Level{};
+        level.name = levelName;
+
+        level.nextEntityID = 1;
+        level.nextSectorID = 0;
+        level.nextWallID = 0;
+
+        sectorBeingCreated.clear();
+        pendingSectorParams = PendingSectorParams{};
+
+        dots.clear();
+        dotIDToIndex.clear();
+        nextDotID = 0;
+        selectedDotID = INVALID_ID;
+
+        editingSector = false;
+        selectedSectorID = INVALID_ID;
+
+        editingEntity = false;
+        ResetInspectorState();
+
+        actions.clear();
+
+        Editor::currentMap = levelName;
+
+        // Textures/sounds are folder-driven project assets, not user-authored
+        // level content (feature #3: "do not touch project-wide assets...
+        // unless the current code clearly stores them per-level" - here they
+        // are Level fields, but they're populated by scanning a shared
+        // folder). Re-scanning mirrors exactly what Editor::Start() already
+        // does for a freshly-created empty level.
+        EditorTextureCache::RefreshLevelTexturesFromFolder();
+        Editor::RefreshLevelSoundsFromFolder();
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
+
+        spdlog::info("Created new level: {}", levelName);
+    }
+
+    void DrawCreateLevelModal() {
+        static char newLevelNameBuf[64] = "";
+
+        constexpr const char* kCreateLevelPopupID = "Create Level";
+
+        if (createLevelModalRequested) {
+            ImGui::OpenPopup(kCreateLevelPopupID);
+            newLevelNameBuf[0] = '\0';
+            createLevelModalRequested = false;
+        }
+
+        if (ImGui::BeginPopupModal(kCreateLevelPopupID, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("%s", Get("editor.create_level_prompt").c_str());
+            ImGui::InputText("##NewLevelName", newLevelNameBuf, IM_ARRAYSIZE(newLevelNameBuf));
+
+            const bool nameValid = newLevelNameBuf[0] != '\0';
+
+            ImGui::BeginDisabled(!nameValid);
+
+            if (ImGui::Button(Get("editor.create").c_str())) {
+                CreateNewLevel(newLevelNameBuf);
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+
+            if (ImGui::Button(Get("editor.cancel").c_str())) {
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    // Feature #1: everything project-level lives here now - level
+    // name/management, Create Level, export, and shutdown/close. Nothing
+    // World-Settings-specific (level-specific) is mixed in here.
+    void DrawProjectSettingsWindow() {
+        ImGui::Begin(Get("editor.project_settings").c_str(), &projectSettingsOpen);
+
+        static char levelNameBuf[64] = "";
+
+        if (levelNameBuf[0] == '\0' && !Editor::currentMap.empty()) {
+            std::strncpy(levelNameBuf, Editor::currentMap.c_str(), sizeof(levelNameBuf) - 1);
+            levelNameBuf[sizeof(levelNameBuf) - 1] = '\0';
+        }
+
+        if (ImGui::InputText(Get("editor.level_name").c_str(), levelNameBuf, IM_ARRAYSIZE(levelNameBuf))) {
+            Editor::currentMap = levelNameBuf;
+        }
+
+        if (ImGui::Button(Get("editor.create_level").c_str())) {
+            createLevelModalRequested = true;
+        }
+
+        ImGuiDrawFunctions::PutSpace(2);
+
+        DrawLevelsMenu();
+
+        ImGuiDrawFunctions::PutSpace(2);
+
+        if (ImGui::Button(Get("editor.export").c_str())) {
+            RunExporter();
+        }
+
+        ImGuiDrawFunctions::PutSpace(3);
+
+        if (ImGui::Button(Get("editor.shutdown").c_str())) {
+            MapEditorInternal::shutdown = true;
+            quit = true;
+        }
+
+        ImGui::End();
+
+        DrawCreateLevelModal();
+    }
+
+    void DrawProjectSettingsButton() {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        constexpr float margin = 12.0f;
+
+        const ImVec2 anchor(
+            viewport->WorkPos.x + viewport->WorkSize.x - margin,
+            viewport->WorkPos.y + viewport->WorkSize.y - margin
+        );
+
+        ImGui::SetNextWindowPos(anchor, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+        ImGui::SetNextWindowBgAlpha(0.0f);
+
+        constexpr ImGuiWindowFlags overlayFlags =
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoFocusOnAppearing |
+            ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::Begin("##ProjectSettingsButtonOverlay", nullptr, overlayFlags);
+
+        if (ImGui::Button(Get("editor.project_settings").c_str(), ImVec2(180.0f, 0.0f))) {
+            projectSettingsOpen = !projectSettingsOpen;
+        }
+
+        ImGui::End();
+
+        if (projectSettingsOpen) {
+            DrawProjectSettingsWindow();
+        }
+    }
+
+    // Feature #10: hierarchy/outliner panel listing entities, sectors, and
+    // dots. Deletions are deferred until after each loop to avoid mutating
+    // the containers mid-iteration.
+    void DrawHierarchyPanel(Level& level) {
+        ImGui::Begin(Get("editor.hierarchy").c_str());
+
+        if (ImGui::CollapsingHeader(Get("editor.hierarchy.sectors").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ID sectorPendingDelete = INVALID_ID;
+
+            for (const Sector& sector : level.sectors) {
+                ImGui::PushID(static_cast<int>(sector.id));
+
+                const std::string label = "Sector #" + std::to_string(sector.id);
+                const bool isSelected = (selectedSectorID == sector.id);
+
+                if (ImGui::Selectable(label.c_str(), isSelected)) {
+                    selectedSectorID = sector.id;
+                    editingSector = true;
+                    currentMode = MODE_SECTOR;
+                }
+
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem(Get("editor.delete").c_str())) {
+                        sectorPendingDelete = sector.id;
+                    }
+                    ImGui::EndPopup();
+                }
+
+                ImGui::PopID();
+            }
+
+            if (sectorPendingDelete != INVALID_ID) {
+                DeleteSector(sectorPendingDelete);
+            }
+        }
+
+        if (ImGui::CollapsingHeader(Get("editor.hierarchy.entities").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ID entityPendingDelete = INVALID_ID;
+
+            for (const Entity& entity : level.entities) {
+                ImGui::PushID(static_cast<int>(entity.id));
+
+                const std::string label = entity.name + " (#" + std::to_string(entity.id) + ")";
+                const bool isSelected = editingEntity && (selectedEntity.id == entity.id);
+
+                if (ImGui::Selectable(label.c_str(), isSelected)) {
+                    selectedEntity = entity;
+                    editingEntity = true;
+                    currentMode = MODE_ENTITY;
+                }
+
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem(Get("editor.delete").c_str())) {
+                        entityPendingDelete = entity.id;
+                    }
+                    ImGui::EndPopup();
+                }
+
+                ImGui::PopID();
+            }
+
+            if (entityPendingDelete != INVALID_ID) {
+                if (editingEntity && selectedEntity.id == entityPendingDelete) {
+                    editingEntity = false;
+                    ResetInspectorState();
+                }
+
+                level.DestroyEntity(entityPendingDelete);
+            }
+        }
+
+        if (ImGui::CollapsingHeader(Get("editor.hierarchy.dots").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            ID dotPendingDelete = INVALID_ID;
+
+            for (const Dot& dot : dots) {
+                ImGui::PushID(static_cast<int>(dot.id));
+
+                const std::string label =
+                    "Dot #" + std::to_string(dot.id) +
+                    " (" + std::to_string(static_cast<int>(dot.position.x)) +
+                    ", " + std::to_string(static_cast<int>(dot.position.y)) + ")";
+
+                const bool isSelected = (selectedDotID == dot.id);
+
+                if (ImGui::Selectable(label.c_str(), isSelected)) {
+                    selectedDotID = dot.id;
+                    currentMode = MODE_DOT;
+                }
+
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem(Get("editor.delete").c_str())) {
+                        dotPendingDelete = dot.id;
+                    }
+                    ImGui::EndPopup();
+                }
+
+                ImGui::PopID();
+            }
+
+            if (dotPendingDelete != INVALID_ID) {
+                RemoveDot(dotPendingDelete);
+            }
+        }
+
+        ImGui::End();
+    }
+
     void DrawMode() {
         if (ImGui::Button(Get("editor.mode").c_str())) {
-            const Mode previousMode = currentMode;
-
             ChangeMode();
-
-            if (previousMode == MODE_SECTOR) {
-                FinishSectorSelection();
-                creatableSector = false;
-            }
-
-            if (currentMode == MODE_SECTOR) {
-                sectorBeingCreated.clear();
-                creatableSector = false;
-            }
         }
 
         auto GetModeName = [](const int mode) -> std::string {
             switch (mode) {
                 case MODE_DOT:
                     return Get("mode.dot");
-
-                case MODE_WALL:
-                    return Get("mode.wall");
 
                 case MODE_SECTOR:
                     return Get("mode.sector");
@@ -503,47 +823,28 @@ namespace {
         ImGui::Text("%s", modeName.c_str());
     }
 
+    // Feature #11: looks the sector up by stable ID through
+    // level.sectorIDToIndex every frame (the exact pattern requested),
+    // rather than persisting a raw vector index. Deletion now routes through
+    // DeleteSector() so wall references / ID maps get cleaned up correctly.
     void DrawSelectedSectorInspector(Level& level) {
         if (!editingSector || currentMode != MODE_SECTOR) return;
 
-        if (selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) {
+        const auto it = level.sectorIDToIndex.find(selectedSectorID);
+
+        if (it == level.sectorIDToIndex.end()) {
+            selectedSectorID = INVALID_ID;
             editingSector = false;
-            selectedSector = -1;
             return;
         }
 
-        Sector& sector = level.sectors[selectedSector];
+        Sector& sector = level.sectors[it->second];
 
         const bool deleteRequested =
-            ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, selectedSector, DRAGGABLE);
+            ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, it->second, DRAGGABLE);
 
         if (deleteRequested) {
-            level.sectors.erase(level.sectors.begin() + selectedSector);
-
-            editingSector = false;
-            selectedSector = -1;
-        }
-    }
-
-    void DrawSelectedWallInspector(Level& level) {
-        if (!editingWall || currentMode != MODE_WALL) return;
-
-        if (selectedWall < 0 || selectedWall >= static_cast<int>(level.walls.size())) {
-            editingWall = false;
-            selectedWall = -1;
-            return;
-        }
-
-        Wall& wall = level.walls[selectedWall];
-
-        const bool deleteRequested =
-            ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, selectedWall);
-
-        if (deleteRequested) {
-            level.walls.erase(level.walls.begin() + selectedWall);
-
-            editingWall = false;
-            selectedWall = -1;
+            DeleteSector(selectedSectorID);
         }
     }
 
@@ -593,9 +894,11 @@ namespace {
         }
     }
 
+    // Wall Mode is gone (feature #4), so there is no more user-facing wall
+    // inspector - DrawSelectedWallInspector has been removed along with the
+    // editingWall/selectedWall state it depended on.
     void DrawSelectionInspectors(Level& level) {
         DrawSelectedSectorInspector(level);
-        DrawSelectedWallInspector(level);
         DrawSelectedEntityInspector(level);
     }
 }
@@ -604,7 +907,77 @@ namespace MapEditorInternal {
     using namespace Localisation;
 
     void ChangeMode() {
+        const Mode previousMode = currentMode;
+
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
+
+        // Centralized here so leaving Sector Mode behaves the same way
+        // whether triggered by the UI button or the Q hotkey (previously
+        // only the UI button cleaned up the in-progress chain).
+        if (previousMode == MODE_SECTOR) {
+            CancelSectorChain();
+        }
+    }
+
+    // Feature #2: light/white theme toggle. StyleColorsLight() alone leaves
+    // disabled text, selected states, and borders low-contrast, so the
+    // trouble spots are explicitly overridden on top of it. Dark mode stays
+    // exactly as before (ImGui::StyleColorsDark()).
+    void ApplyEditorTheme(const EditorTheme theme) {
+        if (theme == THEME_DARK) {
+            ImGui::StyleColorsDark();
+            return;
+        }
+
+        ImGui::StyleColorsLight();
+
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImVec4* colors = style.Colors;
+
+        colors[ImGuiCol_Text]                 = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
+        colors[ImGuiCol_TextDisabled]         = ImVec4(0.45f, 0.45f, 0.47f, 1.00f);
+        colors[ImGuiCol_WindowBg]             = ImVec4(0.94f, 0.94f, 0.95f, 1.00f);
+        colors[ImGuiCol_ChildBg]              = ImVec4(0.97f, 0.97f, 0.98f, 1.00f);
+        colors[ImGuiCol_PopupBg]              = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
+        colors[ImGuiCol_Border]               = ImVec4(0.55f, 0.55f, 0.58f, 0.60f);
+        colors[ImGuiCol_FrameBg]              = ImVec4(0.86f, 0.86f, 0.88f, 1.00f);
+        colors[ImGuiCol_FrameBgHovered]       = ImVec4(0.78f, 0.84f, 0.97f, 1.00f);
+        colors[ImGuiCol_FrameBgActive]        = ImVec4(0.68f, 0.78f, 0.97f, 1.00f);
+        colors[ImGuiCol_TitleBg]              = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
+        colors[ImGuiCol_TitleBgActive]        = ImVec4(0.70f, 0.78f, 0.95f, 1.00f);
+        colors[ImGuiCol_TitleBgCollapsed]     = ImVec4(0.90f, 0.90f, 0.91f, 0.75f);
+        colors[ImGuiCol_MenuBarBg]            = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
+        colors[ImGuiCol_ScrollbarBg]          = ImVec4(0.90f, 0.90f, 0.91f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrab]        = ImVec4(0.65f, 0.65f, 0.68f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.55f, 0.55f, 0.58f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.45f, 0.45f, 0.48f, 1.00f);
+        colors[ImGuiCol_CheckMark]            = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
+        colors[ImGuiCol_SliderGrab]           = ImVec4(0.30f, 0.55f, 0.90f, 1.00f);
+        colors[ImGuiCol_SliderGrabActive]     = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
+        colors[ImGuiCol_Button]               = ImVec4(0.82f, 0.82f, 0.85f, 1.00f);
+        colors[ImGuiCol_ButtonHovered]        = ImVec4(0.72f, 0.80f, 0.96f, 1.00f);
+        colors[ImGuiCol_ButtonActive]         = ImVec4(0.60f, 0.72f, 0.95f, 1.00f);
+        colors[ImGuiCol_Header]               = ImVec4(0.75f, 0.80f, 0.93f, 1.00f);
+        colors[ImGuiCol_HeaderHovered]        = ImVec4(0.68f, 0.76f, 0.95f, 1.00f);
+        colors[ImGuiCol_HeaderActive]         = ImVec4(0.58f, 0.70f, 0.95f, 1.00f);
+        colors[ImGuiCol_Separator]            = ImVec4(0.60f, 0.60f, 0.63f, 0.60f);
+        colors[ImGuiCol_SeparatorHovered]     = ImVec4(0.40f, 0.55f, 0.85f, 0.78f);
+        colors[ImGuiCol_SeparatorActive]      = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+        colors[ImGuiCol_ResizeGrip]           = ImVec4(0.60f, 0.60f, 0.63f, 0.40f);
+        colors[ImGuiCol_ResizeGripHovered]    = ImVec4(0.40f, 0.55f, 0.85f, 0.65f);
+        colors[ImGuiCol_ResizeGripActive]     = ImVec4(0.30f, 0.50f, 0.85f, 0.90f);
+        colors[ImGuiCol_Tab]                  = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
+        colors[ImGuiCol_TabHovered]           = ImVec4(0.70f, 0.78f, 0.96f, 1.00f);
+        colors[ImGuiCol_TabActive]            = ImVec4(0.72f, 0.80f, 0.97f, 1.00f);
+        colors[ImGuiCol_TabUnfocused]         = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
+        colors[ImGuiCol_TabUnfocusedActive]   = ImVec4(0.80f, 0.84f, 0.93f, 1.00f);
+        colors[ImGuiCol_DockingPreview]       = ImVec4(0.30f, 0.50f, 0.85f, 0.55f);
+        colors[ImGuiCol_DockingEmptyBg]       = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
+        colors[ImGuiCol_PlotLines]            = ImVec4(0.30f, 0.30f, 0.33f, 1.00f);
+        colors[ImGuiCol_PlotHistogram]        = ImVec4(0.80f, 0.55f, 0.10f, 1.00f);
+        colors[ImGuiCol_TextSelectedBg]       = ImVec4(0.30f, 0.55f, 0.90f, 0.35f);
+        colors[ImGuiCol_DragDropTarget]       = ImVec4(0.90f, 0.70f, 0.10f, 0.90f);
+        colors[ImGuiCol_NavHighlight]         = ImVec4(0.30f, 0.55f, 0.90f, 0.80f);
     }
 
     void QueueLevelLoad(const std::string& levelName) {
@@ -623,16 +996,21 @@ namespace MapEditorInternal {
         ResetInspectorState();
 
         editingSector = false;
-        selectedSector = -1;
-
-        editingWall = false;
-        selectedWall = -1;
+        selectedSectorID = INVALID_ID;
 
         editingEntity = false;
 
-        creatableSector = false;
         sectorBeingCreated.clear();
+        pendingSectorParams = PendingSectorParams{};
         actions.clear();
+
+        // Dots are editor-session data tied to whatever level you're
+        // looking at (see NOTES.md) - they don't carry over to a different
+        // level file.
+        dots.clear();
+        dotIDToIndex.clear();
+        nextDotID = 0;
+        selectedDotID = INVALID_ID;
 
         spdlog::info("Processing queued level load: {}", levelToLoad);
 
@@ -650,30 +1028,33 @@ namespace MapEditorInternal {
 
         DrawMode();
 
-        DrawSelectionInspectors(level);
+        ImGuiDrawFunctions::PutSpace(1);
 
-        // Old
-        // if (creatableSector) {
-        //     if (ImGui::Button(Get("editor.create_sector").c_str())) {
-        //         if (sectorBeingCreated.size() >= 3) {
-        //             if (!SamePoint(sectorBeingCreated.front(), sectorBeingCreated.back()))
-        //                 sectorBeingCreated.push_back(sectorBeingCreated.front());
-        //
-        //             FinishSectorSelection();
-        //             actions.push_back(ACTION_CREATE_SECTOR);
-        //
-        //             creatableSector = false;
-        //         }
-        //     }
-        // }
+        bool lightModeActive = (currentTheme == THEME_LIGHT);
+
+        if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
+            currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
+            ApplyEditorTheme(currentTheme);
+        }
+
+        ImGui::SameLine();
+        ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
+
+        ImGuiDrawFunctions::PutSpace(2);
+
+        DrawSelectionInspectors(level);
 
         ImGuiDrawFunctions::PutSpace(2);
 
         if (currentMode == MODE_SECTOR) {
-
             ImGui::InputInt("Wall Texture Index", &wallTextureIndex);
+            DrawTextureThumbnailRow(level, wallTextureIndex);
+
             ImGui::InputInt("Ceiling Texture Index", &ceilTextureIndex);
+            DrawTextureThumbnailRow(level, ceilTextureIndex);
+
             ImGui::InputInt("Floor Texture Index", &floorTextureIndex);
+            DrawTextureThumbnailRow(level, floorTextureIndex);
 
             ImGui::Separator();
 
@@ -685,6 +1066,10 @@ namespace MapEditorInternal {
             ImGui::ColorEdit3("Wall Color", &wallColor.x);
             ImGui::ColorEdit3("Ceiling Color", &ceilColor.x);
             ImGui::ColorEdit3("Floor Color", &floorColor.x);
+
+            if (!sectorBeingCreated.empty()) {
+                ImGui::TextDisabled("%s", Get("editor.sector_chain_in_progress").c_str());
+            }
         }
 
         ImGuiDrawFunctions::PutSpace(2);
@@ -725,35 +1110,14 @@ namespace MapEditorInternal {
             }
         }
 
-        ImGuiDrawFunctions::PutSpace(3);
-
-        if (ImGui::Button(Get("editor.shutdown").c_str())) {
-            shutdown = true;
-            quit = true;
-        }
-
-        static char buf[64] = "";
-
-        if (buf[0] == '\0' && !Editor::currentMap.empty()) {
-            std::strncpy(buf, Editor::currentMap.c_str(), sizeof(buf) - 1);
-            buf[sizeof(buf) - 1] = '\0';
-        }
-
-        if (ImGui::InputText(Get("editor.level_name").c_str(), buf, IM_ARRAYSIZE(buf))) {
-            Editor::currentMap = buf;
-        }
-
         if (ImGui::Button(Get("editor.switch_to_ui").c_str())) {
             currentState = STATE_UI;
         }
 
-        if (ImGui::Button(Get("editor.export").c_str())) {
-            RunExporter();
-        }
-        DrawLevelsMenu();
-
         ImGui::End();
 
         DrawWorldSettings();
+        DrawHierarchyPanel(level);
+        DrawProjectSettingsButton();
     }
 }

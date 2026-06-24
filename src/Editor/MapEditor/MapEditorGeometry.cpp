@@ -6,12 +6,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <string>
+
+#include <spdlog/spdlog.h>
 
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Entity.hpp"
 
-// This is an internal file for functions related ot mathematical calculations about the map
-// Such as if a given point is inside a sector
+// This is an internal file for functions related to mathematical calculations about the map,
+// plus (after the editor revamp) the Sector Mode chain workflow and Dot lifecycle.
 namespace MapEditorInternal {
     float GetActiveGridSize() {
         constexpr float minPixelSpacing = 24.0f;
@@ -89,48 +93,6 @@ namespace MapEditorInternal {
         return nullptr;
     }
 
-    bool CornerExistsAt(const Vector2& point) {
-        for (const Vector2& placedCorner : placedCorners)
-            if (SamePoint(placedCorner, point))
-                return true;
-
-        return false;
-    }
-
-    bool CornerAtPoint(const Vector2& worldPoint, Vector2* outCorner) {
-        constexpr float cornerRadiusPixels = 10.0f;
-        const float safeZoom = std::max(editorZoom, 0.0001f);
-
-        const float radiusWorld = cornerRadiusPixels / safeZoom;
-        const float radiusSq = radiusWorld * radiusWorld;
-
-        for (const Vector2& corner : placedCorners) {
-            const Vector2 diff = worldPoint - corner;
-
-            if (Vector2Math::Dot(diff, diff) <= radiusSq) {
-                if (outCorner != nullptr) {
-                    *outCorner = corner;
-                }
-
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    bool IsCornerConnectedToLine(const Vector2& point) {
-        Level& level = LevelManager::CurrentLevel();
-
-        for (const Wall& wall : level.walls)
-            if (SamePoint(wall.start, point) || SamePoint(wall.end, point))
-                return true;
-
-        if (drawingLine && SamePoint(lineStartWorld, point)) return true;
-
-        return false;
-    }
-
     bool HasLineBetween(const Vector2& a, const Vector2& b) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -152,6 +114,11 @@ namespace MapEditorInternal {
         return result;
     }
 
+    // NOTE: kept from the original implementation. The new chain-creation
+    // flow (FinishSectorSelection below) no longer calls this - it validates
+    // the polygon itself and creates/reuses walls on the fly instead of
+    // requiring every edge to already exist as a wall beforehand. Left intact
+    // in case it's still useful elsewhere.
     bool IsSectorClosed(const std::vector<Vector2>& vertices) {
         if (vertices.size() < 3) return false;
 
@@ -168,6 +135,10 @@ namespace MapEditorInternal {
         return true;
     }
 
+    // Pushes `point` onto the in-progress chain, rejecting it if it
+    // duplicates any vertex already in the chain. Closing-on-the-first-point
+    // is intercepted earlier by TrySectorChainClick, so by the time this is
+    // called we know `point` isn't a valid closing click.
     void AddSectorSelectionPoint(const Vector2& point) {
         if (sectorBeingCreated.size() >= 3 && SamePoint(point, sectorBeingCreated.front())) {
             sectorBeingCreated.push_back(point);
@@ -204,6 +175,47 @@ namespace MapEditorInternal {
         };
     }
 
+    // Feature #7: snap priority is {dots, wall starts, wall ends} (nearest
+    // within radius wins), falling back to grid snapping when nothing is
+    // close enough. Does NOT snap to arbitrary points along a wall segment.
+    Vector2 ResolveSnapPoint(const Vector2& mouseWorld) {
+        constexpr float snapRadiusPixels = 12.0f;
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float snapRadiusWorld = snapRadiusPixels / safeZoom;
+        const float snapRadiusSq = snapRadiusWorld * snapRadiusWorld;
+
+        Vector2 best{};
+        float bestDistSq = std::numeric_limits<float>::max();
+        bool found = false;
+
+        const auto consider = [&](const Vector2& candidate) {
+            const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
+
+            if (distSq <= snapRadiusSq && distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = candidate;
+                found = true;
+            }
+        };
+
+        for (const Dot& dot : dots) {
+            consider(dot.position);
+        }
+
+        const Level& level = LevelManager::CurrentLevel();
+
+        for (const Wall& wall : level.walls) {
+            consider(wall.start);
+            consider(wall.end);
+        }
+
+        if (!found) {
+            return SnapToGrid(mouseWorld);
+        }
+
+        return best;
+    }
+
     bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
         bool inside = false;
 
@@ -229,34 +241,382 @@ namespace MapEditorInternal {
         return inside;
     }
 
+    namespace {
+        bool SegmentsProperlyIntersect(const Vector2& a1, const Vector2& a2, const Vector2& b1, const Vector2& b2) {
+            const auto cross = [](const Vector2& o, const Vector2& p, const Vector2& q) -> float {
+                return (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+            };
+
+            const float d1 = cross(b1, b2, a1);
+            const float d2 = cross(b1, b2, a2);
+            const float d3 = cross(a1, a2, b1);
+            const float d4 = cross(a1, a2, b2);
+
+            const bool straddlesB = (d1 > 0.0f && d2 < 0.0f) || (d1 < 0.0f && d2 > 0.0f);
+            const bool straddlesA = (d3 > 0.0f && d4 < 0.0f) || (d3 < 0.0f && d4 > 0.0f);
+
+            return straddlesB && straddlesA;
+        }
+
+        // Edges that share a vertex by construction (adjacent edges of the
+        // polygon) are deliberately skipped - we only care about *improper*
+        // crossings between non-adjacent edges.
+        bool IsChainSelfIntersecting(const std::vector<Vector2>& vertices) {
+            const int n = static_cast<int>(vertices.size());
+
+            for (int i = 0; i < n; ++i) {
+                const Vector2& a1 = vertices[i];
+                const Vector2& a2 = vertices[(i + 1) % n];
+
+                for (int j = i + 1; j < n; ++j) {
+                    if (j == i) continue;
+                    if (j == (i + 1) % n) continue;
+                    if ((j + 1) % n == i) continue;
+
+                    const Vector2& b1 = vertices[j];
+                    const Vector2& b2 = vertices[(j + 1) % n];
+
+                    if (SegmentsProperlyIntersect(a1, a2, b1, b2)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // Feature #5 "Validation before sector creation".
+        bool ValidateSectorChain(const std::vector<Vector2>& vertices, std::string* outReason) {
+            if (vertices.size() < 3) {
+                if (outReason != nullptr) *outReason = "fewer than 3 points";
+                return false;
+            }
+
+            const int n = static_cast<int>(vertices.size());
+
+            for (int i = 0; i < n; ++i) {
+                for (int j = i + 1; j < n; ++j) {
+                    if (SamePoint(vertices[i], vertices[j])) {
+                        if (outReason != nullptr) *outReason = "duplicate vertex";
+                        return false;
+                    }
+                }
+            }
+
+            for (int i = 0; i < n; ++i) {
+                const Vector2& a = vertices[i];
+                const Vector2& b = vertices[(i + 1) % n];
+
+                const Vector2 edge = b - a;
+
+                if (Vector2Math::Dot(edge, edge) <= 0.0001f) {
+                    if (outReason != nullptr) *outReason = "zero-length edge";
+                    return false;
+                }
+            }
+
+            if (Geometry::PolygonAreaAbs(vertices) <= 0.0001f) {
+                if (outReason != nullptr) *outReason = "zero-area polygon";
+                return false;
+            }
+
+            if (IsChainSelfIntersecting(vertices)) {
+                if (outReason != nullptr) *outReason = "self-intersecting polygon";
+                return false;
+            }
+
+            return true;
+        }
+
+        // Picks a point guaranteed to be inside the polygon by using the
+        // centroid of one of its own triangles (valid for any simple polygon
+        // triangulation, including concave ones - unlike a naive vertex
+        // average, which can land outside for concave shapes).
+        Vector2 ComputePolygonInteriorPoint(const std::vector<Vector2>& vertices, const std::vector<Triangle>& triangles) {
+            if (!triangles.empty()) {
+                const Triangle& t = triangles.front();
+                return {
+                    (t.a.x + t.b.x + t.c.x) / 3.0f,
+                    (t.a.y + t.b.y + t.c.y) / 3.0f
+                };
+            }
+
+            Vector2 sum{0.0f, 0.0f};
+
+            for (const Vector2& v : vertices) {
+                sum.x += v.x;
+                sum.y += v.y;
+            }
+
+            const float n = std::max(1.0f, static_cast<float>(vertices.size()));
+            return {sum.x / n, sum.y / n};
+        }
+
+        // Feature #5 "Sector creation": reuse an existing wall if its
+        // start/end match the edge in either direction, else nullptr.
+        Wall* FindWallForEdge(Level& level, const Vector2& a, const Vector2& b) {
+            for (Wall& wall : level.walls) {
+                const bool sameDirection = SamePoint(wall.start, a) && SamePoint(wall.end, b);
+                const bool oppositeDirection = SamePoint(wall.start, b) && SamePoint(wall.end, a);
+
+                if (sameDirection || oppositeDirection) {
+                    return &wall;
+                }
+            }
+
+            return nullptr;
+        }
+
+        // Feature #5 "Wall front/back assignment". Never silently overwrites
+        // an already-occupied frontSector/backSector with a *different*
+        // sector - it logs and bails instead.
+        void AssignWallSectorSide(Wall& wall, const ID sectorID, const Vector2& pointInsideSector) {
+            const Vector2 wallVec = wall.end - wall.start;
+            const Vector2 toSector = pointInsideSector - wall.start;
+
+            const float side =
+                wallVec.x * toSector.y -
+                wallVec.y * toSector.x;
+
+            if (side > 0.0f) {
+                if (wall.frontSector != INVALID_ID && wall.frontSector != sectorID) {
+                    spdlog::warn(
+                        "Wall {} already has front sector {}; refusing to overwrite with sector {}",
+                        wall.id, wall.frontSector, sectorID
+                    );
+                    return;
+                }
+
+                wall.frontSector = sectorID;
+            }
+            else if (side < 0.0f) {
+                if (wall.backSector != INVALID_ID && wall.backSector != sectorID) {
+                    spdlog::warn(
+                        "Wall {} already has back sector {}; refusing to overwrite with sector {}",
+                        wall.id, wall.backSector, sectorID
+                    );
+                    return;
+                }
+
+                wall.backSector = sectorID;
+            }
+            else {
+                spdlog::warn(
+                    "Wall {} produced a zero-magnitude side test against sector {} (degenerate edge?)",
+                    wall.id, sectorID
+                );
+            }
+        }
+
+        // Builds the sector itself plus every edge wall (creating new ones
+        // or reusing shared ones), assigns stable IDs, assigns front/back
+        // sides, and rebuilds the sector/wall ID maps exactly once at the end.
+        ID CreateSectorWithWalls(const std::vector<Vector2>& vertices, const PendingSectorParams& params) {
+            Level& level = LevelManager::CurrentLevel();
+
+            Sector newSector{};
+            newSector.id = level.nextSectorID++;
+            newSector.vertices = vertices;
+            newSector.triangles = Geometry::Triangulate(vertices);
+
+            newSector.floorHeight = params.floorHeight;
+            newSector.ceilingHeight = params.ceilHeight;
+
+            newSector.floorColor = params.floorColor;
+            newSector.ceilingColor = params.ceilColor;
+
+            newSector.floorTextureIndex = params.floorTextureIndex;
+            newSector.ceilingTextureIndex = params.ceilTextureIndex;
+
+            newSector.lightValue = params.lightValue;
+
+            level.sectors.push_back(newSector);
+
+            const Vector2 interiorPoint = ComputePolygonInteriorPoint(vertices, newSector.triangles);
+
+            const int n = static_cast<int>(vertices.size());
+
+            for (int i = 0; i < n; ++i) {
+                const Vector2& edgeStart = vertices[i];
+                const Vector2& edgeEnd = vertices[(i + 1) % n];
+
+                Wall* wall = FindWallForEdge(level, edgeStart, edgeEnd);
+
+                if (wall == nullptr) {
+                    Wall newWall(
+                        edgeStart,
+                        edgeEnd,
+                        {255.0f, 255.0f, 255.0f, 255.0f},
+                        INVALID_ID,
+                        INVALID_ID,
+                        params.wallTextureIndex,
+                        currentFloor
+                    );
+
+                    newWall.id = level.nextWallID++;
+
+                    level.walls.push_back(newWall);
+                    wall = &level.walls.back();
+                }
+
+                AssignWallSectorSide(*wall, newSector.id, interiorPoint);
+            }
+
+            MapQueries::RebuildSectorRuntimeLinks(level);
+
+            return newSector.id;
+        }
+
+        void RebuildDotIDLookup() {
+            dotIDToIndex.clear();
+
+            for (int i = 0; i < static_cast<int>(dots.size()); ++i) {
+                dotIDToIndex[dots[i].id] = i;
+            }
+        }
+    }
+
+    void TrySectorChainClick(const Vector2& point) {
+        if (sectorBeingCreated.empty()) {
+            // Snapshot the Editor menu's current sector params now, so
+            // fiddling with them mid-chain can't retroactively change the
+            // sector that's about to be created.
+            pendingSectorParams = PendingSectorParams{
+                wallTextureIndex,
+                ceilTextureIndex,
+                floorTextureIndex,
+                floorHeight,
+                ceilHeight,
+                lightValue,
+                wallColor,
+                ceilColor,
+                floorColor
+            };
+
+            sectorBeingCreated.push_back(point);
+            return;
+        }
+
+        if (sectorBeingCreated.size() >= 3 && SamePoint(point, sectorBeingCreated.front())) {
+            FinishSectorSelection();
+            return;
+        }
+
+        AddSectorSelectionPoint(point);
+    }
+
+    void CancelSectorChain() {
+        sectorBeingCreated.clear();
+    }
+
     void FinishSectorSelection() {
-        const std::vector<Vector2> finalVertices = GetSectorVerticesWithoutClosingDuplicate();
+        if (sectorBeingCreated.size() < 3) {
+            if (!sectorBeingCreated.empty()) {
+                SDL_Log("Sector cancelled: fewer than 3 points");
+            }
 
-        if (finalVertices.size() < 3) {
-            SDL_Log("Sector cancelled: fewer than 3 points");
             sectorBeingCreated.clear();
             return;
         }
 
-        if (!IsSectorClosed(finalVertices)) {
-            SDL_Log("Sector cancelled: shape is not closed");
+        std::string rejectReason;
+
+        if (!ValidateSectorChain(sectorBeingCreated, &rejectReason)) {
+            SDL_Log("Sector cancelled: %s", rejectReason.c_str());
             sectorBeingCreated.clear();
             return;
         }
 
-        Editor::CreateSector(
-            finalVertices,
-            40.0f,
-            0.0f,
-            {255.0f, 255.0f, 255.0f},
-            {255.0f, 255.0f, 255.0f},
-            -1,
-            -1
-        );
+        const ID newSectorID = CreateSectorWithWalls(sectorBeingCreated, pendingSectorParams);
 
-        SDL_Log("Sector created with %d vertices", static_cast<int>(finalVertices.size()));
+        SDL_Log("Sector created with %d vertices", static_cast<int>(sectorBeingCreated.size()));
 
         sectorBeingCreated.clear();
+
+        selectedSectorID = newSectorID;
+        editingSector = true;
+    }
+
+    void AddDot(const Vector2& position) {
+        Dot dot;
+        dot.id = nextDotID++;
+        dot.position = position;
+
+        dots.push_back(dot);
+        dotIDToIndex[dot.id] = static_cast<int>(dots.size()) - 1;
+
+        actions.push_back(ACTION_CREATE_CORNER);
+    }
+
+    void RemoveDot(const ID dotID) {
+        const auto it = dotIDToIndex.find(dotID);
+
+        if (it == dotIDToIndex.end()) {
+            return;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(dots.size())) {
+            return;
+        }
+
+        dots.erase(dots.begin() + index);
+
+        if (selectedDotID == dotID) {
+            selectedDotID = INVALID_ID;
+        }
+
+        RebuildDotIDLookup();
+    }
+
+    // Feature #11 "When deleting a sector": removes the sector, clears the
+    // selection if it pointed at this sector, detaches any walls that
+    // referenced it (dropping walls that become orphaned on both sides), and
+    // rebuilds the ID maps immediately.
+    void DeleteSector(const ID sectorID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const auto it = level.sectorIDToIndex.find(sectorID);
+
+        if (it == level.sectorIDToIndex.end()) {
+            return;
+        }
+
+        const int index = it->second;
+
+        if (index < 0 || index >= static_cast<int>(level.sectors.size())) {
+            return;
+        }
+
+        level.sectors.erase(level.sectors.begin() + index);
+
+        if (selectedSectorID == sectorID) {
+            selectedSectorID = INVALID_ID;
+            editingSector = false;
+        }
+
+        for (int i = static_cast<int>(level.walls.size()) - 1; i >= 0; --i) {
+            Wall& wall = level.walls[i];
+
+            bool touched = false;
+
+            if (wall.frontSector == sectorID) {
+                wall.frontSector = INVALID_ID;
+                touched = true;
+            }
+
+            if (wall.backSector == sectorID) {
+                wall.backSector = INVALID_ID;
+                touched = true;
+            }
+
+            if (touched && wall.frontSector == INVALID_ID && wall.backSector == INVALID_ID) {
+                level.walls.erase(level.walls.begin() + i);
+            }
+        }
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b) {
@@ -340,6 +700,11 @@ namespace Editor {
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
+    // NOTE: kept from before the revamp for backward compatibility. It does
+    // NOT create/reuse walls or assign front/back sectors, so it is no
+    // longer used by the Sector Mode chain workflow (see
+    // MapEditorInternal::FinishSectorSelection / CreateSectorWithWalls in
+    // this file instead, which does the full job described in feature #5).
     void CreateSector(
      const std::vector<Vector2>& vertices,
      const float ceilHeight,

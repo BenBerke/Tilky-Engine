@@ -11,7 +11,6 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
-#include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 namespace fs = std::filesystem;
@@ -81,21 +80,20 @@ namespace {
         return LevelManager::CurrentLevel();
     }
 
-    void RebuildPlacedCornersFromWalls(const Level& level) {
-        using namespace MapEditorInternal;
-
-        placedCorners.clear();
-
-        for (const Wall& wall : level.walls) {
-            if (!CornerExistsAt(wall.start)) {
-                placedCorners.push_back(wall.start);
-            }
-
-            if (!CornerExistsAt(wall.end)) {
-                placedCorners.push_back(wall.end);
-            }
-        }
-    }
+    // REMOVED: RebuildPlacedCornersFromWalls(const Level&) used to live here.
+    // It rebuilt the old flat `placedCorners` list (no IDs) from wall
+    // start/end points after loading a level, so Wall Mode had visible
+    // corners to click on.
+    //
+    // Wall Mode is gone, and the editor revamp's snapping
+    // (MapEditorInternal::ResolveSnapPoint in MapEditorGeometry.cpp) already
+    // reads wall start/end points straight from level.walls every time it
+    // resolves a snap point - it doesn't need a precomputed mirror of them.
+    // Dots (MapEditorInternal::dots) are a separate, deliberately
+    // user-placed set of points; auto-populating one Dot per wall endpoint
+    // on every level load would just clutter the Hierarchy panel for no
+    // benefit, so this helper (and its call in LoadLevel below) was removed
+    // rather than ported to the Dot system.
 }
 
 namespace MapEditorInternal {
@@ -191,15 +189,19 @@ namespace Editor {
         backgroundTextureIndex = extraData.backgroundTextureIndex;
         currentMap = cleanName;
 
-        placedCorners.clear();
+        // Dots are editor-session data scoped to whatever level is on
+        // screen (see NOTES.md from the revamp) - they don't carry over to
+        // a different level file, so they get cleared rather than rebuilt.
+        dots.clear();
+        dotIDToIndex.clear();
+        nextDotID = 0;
+        selectedDotID = INVALID_ID;
+
         sectorBeingCreated.clear();
+        pendingSectorParams = PendingSectorParams{};
 
         editingSector = false;
-        selectedSector = -1;
-        creatableSector = false;
-
-        editingWall = false;
-        selectedWall = -1;
+        selectedSectorID = INVALID_ID;
 
         actions.clear();
 
@@ -216,10 +218,6 @@ namespace Editor {
             LevelManager::loadedLevels[LevelManager::currentLevelIndex] =
                 std::move(loadedLevel);
         }
-
-        Level& activeLevel = LevelManager::CurrentLevel();
-
-        RebuildPlacedCornersFromWalls(activeLevel);
 
         EditorTextureCache::RefreshLevelTexturesFromFolder();
         RefreshLevelSoundsFromFolder();

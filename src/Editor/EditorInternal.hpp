@@ -2,6 +2,8 @@
 
 #include "../../Headers/Editor/Editor.hpp"
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <SDL3/SDL_render.h>
@@ -20,10 +22,13 @@ namespace MapEditorInternal {
 
     constexpr float ENTITY_SIZE = 32.0f;
 
+    // NOTE: MODE_WALL has been removed (feature #4). Walls are still real
+    // internal geometry (Wall struct / level.walls are untouched) but the
+    // user no longer enters a dedicated mode to draw them by hand - Sector
+    // Mode creates/reuses walls automatically as part of the chain workflow.
     enum Mode {
         MODE_DOT,
         MODE_SECTOR,
-        MODE_WALL,
         MODE_ENTITY,
 
         MODE_COUNT
@@ -32,7 +37,7 @@ namespace MapEditorInternal {
     enum Action {
         ACTION_CREATE_SECTOR,
         ACTION_CREATE_WALL,
-        ACTION_CREATE_CORNER,
+        ACTION_CREATE_CORNER, // historical name - now fires for Dot placement/undo.
         ACTION_CREATE_OBJECT,
     };
 
@@ -41,6 +46,37 @@ namespace MapEditorInternal {
         STATE_UI,
 
         STATE_COUNT,
+    };
+
+    enum EditorTheme {
+        THEME_DARK,
+        THEME_LIGHT
+    };
+
+    // A Dot (feature #6/#7/#10) is a free-floating, off-grid-capable editor
+    // reference point with a stable ID. It is editor-session data (kept in
+    // MapEditorInternal, NOT in Level/LevelSerialization - see NOTES.md for
+    // why) used as a visual aid and as a snap target for sector chains.
+    struct Dot {
+        ID id = INVALID_ID;
+        Vector2 position{};
+    };
+
+    // Snapshot of the sector-creation parameters from the Editor menu, taken
+    // the instant a chain starts (feature #5: "use the values currently
+    // picked in the Editor menu before the chain started").
+    struct PendingSectorParams {
+        int wallTextureIndex = -1;
+        int ceilTextureIndex = -1;
+        int floorTextureIndex = -1;
+
+        float floorHeight = 0.0f;
+        float ceilHeight = 0.0f;
+        float lightValue = 255.0f;
+
+        Vector3 wallColor{};
+        Vector3 ceilColor{};
+        Vector3 floorColor{};
     };
 
     // Internal variables do not touch
@@ -54,19 +90,19 @@ namespace MapEditorInternal {
     // --
 
     extern Vector2 cameraPos;
-    extern std::vector<Vector2> placedCorners;
 
-    extern bool drawingLine;
-    extern Vector2 lineStartWorld;
+    // Dots (feature #6/#7/#10). Replaces the old grid-only `placedCorners`.
+    extern std::vector<Dot> dots;
+    extern ID nextDotID;
+    extern std::unordered_map<ID, int> dotIDToIndex;
+    extern ID selectedDotID;
 
+    // Sector creation chain (feature #5).
     extern std::vector<Vector2> sectorBeingCreated;
+    extern PendingSectorParams pendingSectorParams;
 
     extern bool editingSector;
-    extern int selectedSector;
-    extern bool creatableSector;
-
-    extern bool editingWall;
-    extern int selectedWall;
+    extern ID selectedSectorID; // stable ID, NOT a vector index (feature #11)
 
     extern bool editingComponent;
     extern bool editingEntity;
@@ -77,6 +113,9 @@ namespace MapEditorInternal {
 
     extern Mode currentMode;
     extern State currentState;
+
+    extern EditorTheme currentTheme;  // feature #2
+    extern bool textureViewMode;      // feature #9
 
     extern bool playerPlaced;
 
@@ -107,19 +146,27 @@ namespace MapEditorInternal {
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);
-    [[nodiscard]] bool CornerExistsAt(const Vector2& point);
-    [[nodiscard]] bool IsCornerConnectedToLine(const Vector2& point);
     [[nodiscard]] bool HasLineBetween(const Vector2& a, const Vector2& b);
 
-    // Automatically if a sector's first and last vertices aren't the same
+    // Automatically strips a trailing duplicate-of-front vertex if one is
+    // ever present (defensive; the new chain flow never adds one - see
+    // NOTES.md). Used by the preview renderer.
     std::vector<Vector2> GetSectorVerticesWithoutClosingDuplicate();
     bool IsSectorClosed(const std::vector<Vector2>& vertices);
     void AddSectorSelectionPoint(const Vector2& point);
+
+    // Sector chain workflow (feature #5).
+    void TrySectorChainClick(const Vector2& resolvedPoint);
     void FinishSectorSelection();
+    void CancelSectorChain();
 
     Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos);
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos);
     Vector2 SnapToGrid(const Vector2& worldPos);
+
+    // Snapping (feature #7): nearest of {dots, wall starts, wall ends} within
+    // radius, else grid snap.
+    Vector2 ResolveSnapPoint(const Vector2& mouseWorld);
 
     [[nodiscard]] bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point);
 
@@ -127,9 +174,11 @@ namespace MapEditorInternal {
 
     void DrawThickLine(SDL_Renderer* renderer, Vector2 start, Vector2 end, float thickness);
     void DrawFilledTriangle(const Triangle& triangle, SDL_FColor color);
+    void DrawFilledTriangleTextured(const Triangle& triangle, SDL_Texture* texture, SDL_FColor tint);
     void DrawSectorPreview();
+    void DrawSnapIndicator();
     void DrawExistingSectors();
-    void DrawCorners();
+    void DrawDots(); // renamed from DrawCorners (feature #6)
     void DrawWalls();
     void DrawEntities();
     void DrawGridDots();
@@ -143,12 +192,25 @@ namespace MapEditorInternal {
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
     void ChangeMode();
+    void ApplyEditorTheme(EditorTheme theme); // feature #2
 
     bool Save(const std::string& saveTo);
 
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b);
     int GetWallAtPoint(const Vector2& worldPoint);
-    bool CornerAtPoint(const Vector2& worldPoint, Vector2* outCorner = nullptr);
+
+    // Dot lifecycle (feature #6/#10/#11).
+    void AddDot(const Vector2& position);
+    void RemoveDot(ID dotID);
+
+    // Sector deletion with full ID-safety cleanup (feature #11).
+    void DeleteSector(ID sectorID);
+
+    // Texture preview / Texture View Mode access point (feature #8/#9).
+    // Returns nullptr safely if the index is invalid or unavailable - never
+    // crashes on a missing texture. See NOTES.md for the one assumption this
+    // makes about EditorTextureCache's interface.
+    SDL_Texture* GetEditorTexture(int textureIndex);
 
     void QueueLevelLoad(const std::string& levelName);
     bool ProcessPendingLevelLoad();

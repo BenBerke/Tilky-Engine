@@ -29,6 +29,21 @@
   "editor.level_name": "Level Name",
   "editor.world_settings": "World Settings",
 
+  "editor.project_settings": "Project Settings",
+  "editor.create_level": "Create Level",
+  "editor.create_level_prompt": "Create Level Prompt",
+  "editor.create": "Create",
+  "editor.cancel": "Cancel",
+  "editor.light_mode": "Light Mode",
+  "editor.texture_view_mode": "Texture View Mode",
+  "editor.hierarchy": "Hierarchy",
+  "editor.hierarchy.sectors": "Sectors",
+  "editor.hierarchy.entities": "Entities",
+  "editor.hierarchy.dots": "Dots",
+  "editor.delete": "Delete",
+  "editor.texture_none": "Texture None",
+  "editor.sector_chain_in_progress": "Sector Chain In Progress",
+
   "&Context_5": "UI stands for User Interface. Clicking on this button opens up the UI Editor Screen",
   "editor.switch_to_ui": "Edit UI",
   "editor.switch_to_map": "Edit Map",
@@ -37,6 +52,8 @@
   "editor.export": "Export Game",
 
   "ui_editor.title": "UI Editor",
+
+
 
   "settings.audio.title": "Listener Settings",
   "&Context_7": "Master Gain is basically the absolute volume slider for the entire game.",
@@ -62,7 +79,6 @@
 
   "&Context_9": "If the user is in wall mode, then the editor creates walls. If in sector mode, then the editor creates sectors etc.",
   "mode.dot": "Dot Mode",
-  "mode.wall": "Wall Mode",
   "mode.sector": "Sector Mode",
   "mode.entity": "Entity Mode",
   "mode.unknown": "Unknown Mode",

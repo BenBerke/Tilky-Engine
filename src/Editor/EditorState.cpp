@@ -21,19 +21,17 @@ namespace MapEditorInternal {
     float GRID_SIZE = 32.0f;
 
     Vector2 cameraPos = {0.0f, 0.0f};
-    std::vector<Vector2> placedCorners;
 
-    bool drawingLine = false;
-    Vector2 lineStartWorld = {0.0f, 0.0f};
+    std::vector<Dot> dots;
+    ID nextDotID = 0;
+    std::unordered_map<ID, int> dotIDToIndex;
+    ID selectedDotID = INVALID_ID;
 
     std::vector<Vector2> sectorBeingCreated;
+    PendingSectorParams pendingSectorParams;
 
     bool editingSector = false;
-    int selectedSector = -1;
-    bool creatableSector = false;
-
-    bool editingWall = false;
-    int selectedWall = -1;
+    ID selectedSectorID = INVALID_ID;
 
     bool editingComponent = false;
     bool editingEntity = false;
@@ -45,6 +43,9 @@ namespace MapEditorInternal {
 
     Mode currentMode = MODE_DOT;
     State currentState = STATE_MAP;
+
+    EditorTheme currentTheme = THEME_DARK;
+    bool textureViewMode = false;
 
     bool playerPlaced = false;
 

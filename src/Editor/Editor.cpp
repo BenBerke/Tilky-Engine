@@ -30,17 +30,19 @@ namespace Editor {
         switchToRuntime = false;
 
         editingSector = false;
-        selectedSector = -1;
-
-        editingWall = false;
-        selectedWall = -1;
+        selectedSectorID = INVALID_ID;
 
         editingEntity = false;
         editingComponent = false;
 
-        creatableSector = false;
         sectorBeingCreated.clear();
+        pendingSectorParams = {};
         actions.clear();
+
+        dots.clear();
+        dotIDToIndex.clear();
+        nextDotID = 0;
+        selectedDotID = INVALID_ID;
 
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
             spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
@@ -105,7 +107,10 @@ namespace Editor {
             18.0f
         );
 
-        ImGui::StyleColorsDark();
+        // Feature #2: theme is now switchable at runtime; this just applies
+        // whichever theme is currently selected (defaults to dark, matching
+        // the previous hardcoded behavior).
+        ApplyEditorTheme(currentTheme);
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
         ImGui_ImplSDLRenderer3_Init(renderer);
@@ -200,7 +205,7 @@ namespace Editor {
 
             DrawGridDots();
             DrawExistingSectors();
-            DrawCorners();
+            DrawDots();
             DrawWalls();
             DrawEntities();
 
