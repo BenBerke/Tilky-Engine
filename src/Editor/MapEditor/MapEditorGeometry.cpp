@@ -370,42 +370,36 @@ namespace MapEditorInternal {
         // Feature #5 "Wall front/back assignment". Never silently overwrites
         // an already-occupied frontSector/backSector with a *different*
         // sector - it logs and bails instead.
-        void AssignWallSectorSide(Wall& wall, const ID sectorID, const Vector2& pointInsideSector) {
-            const Vector2 wallVec = wall.end - wall.start;
-            const Vector2 toSector = pointInsideSector - wall.start;
+        void AssignWallSectorSide(Wall& wall, const ID sectorID, const Vector2&) {
+            if (sectorID == INVALID_ID) {
+                return;
+            }
 
-            const float side =
-                wallVec.x * toSector.y -
-                wallVec.y * toSector.x;
+            // Already attached.
+            if (wall.frontSector == sectorID || wall.backSector == sectorID) {
+                return;
+            }
 
-            if (side > 0.0f) {
-                if (wall.frontSector != INVALID_ID && wall.frontSector != sectorID) {
-                    spdlog::warn(
-                        "Wall {} already has front sector {}; refusing to overwrite with sector {}",
-                        wall.id, wall.frontSector, sectorID
-                    );
-                    return;
-                }
-
+            // For a newly created wall, always make the creating sector the front side.
+            // This avoids winding-dependent bugs where every new wall gets only backSector set.
+            if (wall.frontSector == INVALID_ID) {
                 wall.frontSector = sectorID;
+                return;
             }
-            else if (side < 0.0f) {
-                if (wall.backSector != INVALID_ID && wall.backSector != sectorID) {
-                    spdlog::warn(
-                        "Wall {} already has back sector {}; refusing to overwrite with sector {}",
-                        wall.id, wall.backSector, sectorID
-                    );
-                    return;
-                }
 
+            // Shared wall: attach the new sector to the other side.
+            if (wall.backSector == INVALID_ID) {
                 wall.backSector = sectorID;
+                return;
             }
-            else {
-                spdlog::warn(
-                    "Wall {} produced a zero-magnitude side test against sector {} (degenerate edge?)",
-                    wall.id, sectorID
-                );
-            }
+
+            spdlog::warn(
+                "Wall {} already has two sectors: front={}, back={}; cannot attach sector {}",
+                wall.id,
+                wall.frontSector,
+                wall.backSector,
+                sectorID
+            );
         }
 
         // Builds the sector itself plus every edge wall (creating new ones
@@ -464,8 +458,62 @@ namespace MapEditorInternal {
 
             MapQueries::RebuildSectorRuntimeLinks(level);
 
+            // ---- TEMPORARY DIAGNOSTIC — remove once root cause is found ----
+            {
+                const auto sectorIt = level.sectorIDToIndex.find(newSector.id);
+                const int newSectorIndex =
+                    sectorIt != level.sectorIDToIndex.end() ? sectorIt->second : -1;
+
+                spdlog::warn(
+                    "CREATE SECTOR DIAG: id={} index={} floor={} ceil={} vertices={} triangles={} sectorCount={} wallCount={}",
+                    newSector.id,
+                    newSectorIndex,
+                    newSector.floorHeight,
+                    newSector.ceilingHeight,
+                    newSector.vertices.size(),
+                    newSector.triangles.size(),
+                    level.sectors.size(),
+                    level.walls.size()
+                );
+
+                if (newSectorIndex >= 0 && newSectorIndex < static_cast<int>(level.sectors.size())) {
+                    const Sector& createdSector = level.sectors[newSectorIndex];
+
+                    spdlog::warn(
+                        "CREATED SECTOR AFTER REBUILD: id={} floor={} ceil={} walls={}",
+                        createdSector.id,
+                        createdSector.floorHeight,
+                        createdSector.ceilingHeight,
+                        createdSector.walls.size()
+                    );
+
+                    for (const Wall* w : createdSector.walls) {
+                        if (w == nullptr) {
+                            spdlog::warn("  sector wall ptr=null");
+                            continue;
+                        }
+
+                        spdlog::warn(
+                            "  sector wall ptr id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
+                            w->id, w->frontSector, w->backSector, w->textureIndex,
+                            w->quad3DCount, w->start.x, w->start.y, w->end.x, w->end.y
+                        );
+                    }
+                }
+
+                for (const Wall& w : level.walls) {
+                    spdlog::warn(
+                        "LEVEL WALL: id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
+                        w.id, w.frontSector, w.backSector, w.textureIndex,
+                        w.quad3DCount, w.start.x, w.start.y, w.end.x, w.end.y
+                    );
+                }
+            }
+            // ---- END TEMPORARY DIAGNOSTIC ----
+
             return newSector.id;
         }
+        
 
         void RebuildDotIDLookup() {
             dotIDToIndex.clear();

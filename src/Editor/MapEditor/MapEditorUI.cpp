@@ -1484,6 +1484,7 @@ namespace MapEditorInternal {
         HoverTooltip("Overlay textures in the map viewport.");
 
         // ---- Sector creation params (only visible in Sector mode) ---------
+        // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {
             ImGui::Spacing();
             ImGui::Separator();
@@ -1530,6 +1531,20 @@ namespace MapEditorInternal {
             ImGui::ColorEdit3("Ceil Color",  &ceilColor.x);
             ImGui::ColorEdit3("Floor Color", &floorColor.x);
             ImGui::Spacing();
+
+            // FIX: keep pendingSectorParams in sync with the visible fields.
+            // Without this, pendingSectorParams stays at its default-constructed
+            // (zeroed) value from CreateNewLevel()/ProcessPendingLevelLoad(),
+            // which yields ceilingHeight <= floorHeight on every new sector.
+            pendingSectorParams.wallTextureIndex  = wallTextureIndex;
+            pendingSectorParams.ceilTextureIndex  = ceilTextureIndex;
+            pendingSectorParams.floorTextureIndex = floorTextureIndex;
+            pendingSectorParams.floorHeight       = floorHeight;
+            pendingSectorParams.ceilHeight        = ceilHeight;
+            pendingSectorParams.lightValue        = lightValue;
+            pendingSectorParams.wallColor         = wallColor;
+            pendingSectorParams.ceilColor         = ceilColor;
+            pendingSectorParams.floorColor        = floorColor;
         }
 
         // ---- Inspector ----------------------------------------------------
