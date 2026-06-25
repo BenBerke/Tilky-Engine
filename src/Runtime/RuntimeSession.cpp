@@ -103,8 +103,6 @@ namespace RuntimeSession {
 
         if (runtimeType == EDITOR) RuntimeEditor::Start(level, *renderer);
         else if(runtimeType == PLAY || runtimeType == STANDALONE) {
-            LevelSystem::Start(level);
-
             if (!SoundManager::InitializeOpenAL()) {
                 spdlog::critical("OpenAL failed");
 
@@ -115,6 +113,9 @@ namespace RuntimeSession {
             }
 
             AudioSystem::Start(level);
+            
+            LevelSystem::Start(level);
+
             AudioSystem::ApplyListenerSettings(level);
         }
 

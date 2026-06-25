@@ -162,21 +162,21 @@ static bool RunExporter() {
     const fs::path projectMetadata = ProjectManager::GetProjectFiles();
     const fs::path exportFolder = ProjectManager::GetDefaultExportFolder();
 
-    auto fail = [](const char *msg, const std::string &detail = "") -> bool {
-        spdlog::error("{}{}", msg, detail.empty() ? "" : ": " + detail);
-        ShowNotification(msg, /*isError=*/true);
+    auto fail = [](const char *logMsg, const char *userMsg, const std::string &detail = "") -> bool {
+        spdlog::error("{}{}", logMsg, detail.empty() ? "" : ": " + detail);
+        ShowNotification(userMsg, /*isError=*/true);
         return false;
     };
 
     if (!fs::exists(exporterExe))
-        return fail("Export failed: exporter not found.");
+        return fail("Export failed: exporter not found.", Localisation::Get("editor.notification.export_failed_exporter_not_found").c_str());
     if (!fs::exists(standaloneExe))
-        return fail("Export failed: Standalone not found.");
+        return fail("Export failed: Standalone not found.", Localisation::Get("editor.notification.export_failed_standalone_not_found").c_str());
     if (!fs::exists(projectMetadata))
-        return fail("Export failed: project metadata missing.");
+        return fail("Export failed: project metadata missing.", Localisation::Get("editor.notification.export_failed_project_metadata_missing").c_str());
 
     try { fs::create_directories(exportFolder); } catch (const std::exception &e) {
-        return fail("Export failed: can't create output folder.", e.what());
+        return fail("Export failed: can't create output folder.", Localisation::Get("editor.notification.export_failed_create_output_folder").c_str(), e.what());
     }
 
 #ifdef _WIN32
@@ -196,7 +196,7 @@ static bool RunExporter() {
                         nullptr, nullptr, FALSE, 0, nullptr,
                         engineBasePath.wstring().c_str(),
                         &startupInfo, &processInfo))
-        return fail("Export failed: could not launch process.");
+        return fail("Export failed: could not launch process.", Localisation::Get("editor.notification.export_failed_launch_process").c_str());
 
     WaitForSingleObject(processInfo.hProcess, INFINITE);
 
@@ -205,13 +205,13 @@ static bool RunExporter() {
     CloseHandle(processInfo.hProcess);
     CloseHandle(processInfo.hThread);
 
-    if (exitCode != 0) return fail("Export failed. Check logs.");
+    if (exitCode != 0) return fail("Export failed. Check logs.", Localisation::Get("editor.notification.export_failed_check_logs").c_str());
 
 #else
     spdlog::info("Running exporter to {}", exportFolder.string());
 
     const pid_t pid = fork();
-    if (pid < 0) return fail("Export failed: fork error.");
+    if (pid < 0) return fail("Export failed: fork error.", Localisation::Get("editor.notification.export_failed_fork_error").c_str());
 
     if (pid == 0) {
         execl(exporterExe.c_str(), exporterExe.c_str(),
@@ -221,15 +221,15 @@ static bool RunExporter() {
     }
 
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.");
-    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.");
+    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.", Localisation::Get("editor.notification.export_failed_wait_error").c_str());
+    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.", Localisation::Get("editor.notification.export_failed_abnormal_exit").c_str());
 
     const int exitCode = WEXITSTATUS(status);
-    if (exitCode != 0) return fail("Export failed. Check logs.");
+    if (exitCode != 0) return fail("Export failed. Check logs.", Localisation::Get("editor.notification.export_failed_check_logs").c_str());
 #endif
 
     spdlog::info("Export completed successfully to {}", exportFolder.string());
-    ShowNotification("Export complete!");
+    ShowNotification(Localisation::Get("editor.notification.export_complete").c_str());
     return true;
 }
 
@@ -474,7 +474,7 @@ namespace {
         ImGui::Spacing();
 
         if (level.textures.empty()) {
-            ImGui::TextDisabled("No textures found — add files to the Textures folder.");
+            ImGui::TextDisabled("%s", Get("editor.no_textures_found").c_str());
             return;
         }
 
@@ -494,14 +494,14 @@ namespace {
 
         if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
             Editor::RefreshLevelSoundsFromFolder();
-            ShowNotification("Sounds refreshed.");
+            ShowNotification(Get("editor.sounds_refreshed").c_str());
         }
-        HoverTooltip("Scan the project Sounds folder for .wav files.");
+        HoverTooltip(Get("editor.tooltip.sound_category").c_str());
 
         ImGui::Spacing();
 
         if (level.sounds.empty()) {
-            ImGui::TextDisabled("No sounds found — add .wav files to the Sounds folder.");
+            ImGui::TextDisabled("%s", Get("editor.no_sounds_found").c_str());
             return;
         }
 
@@ -542,7 +542,7 @@ namespace {
             Get("settings.audio.master_gain").c_str(),
             &settings.masterGain, 0.0f, 2.0f, "%.2f"
         );
-        HoverTooltip("Overall audio volume for this level. 1.0 = neutral.");
+        HoverTooltip(Get("settings.audio.tooltip.master_gain").c_str());
 
         ImGui::Spacing();
         ImGui::TextDisabled("%s", Get("settings.audio.global_physics_header").c_str());
@@ -554,7 +554,7 @@ namespace {
         )) {
             // SoundManager::SetListenerDopplerFactor(settings.dopplerFactor);
         }
-        HoverTooltip("Scales the Doppler effect. 0 = disabled, 1 = physically accurate.");
+        HoverTooltip(Get("settings.audio.tooltip.doppler_factor").c_str());
 
         if (ImGui::InputFloat(
             Get("settings.audio.speed_of_sound").c_str(),
@@ -562,11 +562,11 @@ namespace {
         )) {
             if (settings.speedOfSound < 1.0f) {
                 settings.speedOfSound = 1.0f;
-                ShowNotification("Speed of sound clamped to 1.", /*isError=*/true);
+                ShowNotification(Get("settings.audio.notification.speed_of_sound_clamped").c_str(), /*isError=*/true);
             }
             // SoundManager::SetListenerSpeedOfSound(settings.speedOfSound);
         }
-        HoverTooltip("Speed of sound (units/s). Real-world air ~343 m/s.  Clamped >= 1.");
+        HoverTooltip(Get("settings.audio.tooltip.speed_of_sound").c_str());
 
         ImGui::Spacing();
 
@@ -615,11 +615,7 @@ namespace {
                 // SoundManager::SetListenerDistanceModel(settings.distanceModel);
             }
 
-            HoverTooltip(
-                "OpenAL distance attenuation model.\n"
-                "Inverse Clamped is the standard choice for most games.\n"
-                "None = no distance attenuation at all."
-            );
+            HoverTooltip(Get("settings.audio.tooltip.distance_model").c_str());
         }
 
         ImGui::Spacing();
@@ -635,19 +631,19 @@ namespace {
             Get("settings.physics.gravity").c_str(),
             &level.worldSettings.gravity, 0.1f, 1.0f, "%.2f"
         );
-        HoverTooltip("Gravitational acceleration (units/s^2).  Negative = downward.");
+        HoverTooltip(Get("settings.physics.tooltip.gravity").c_str());
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
         // ---- Rendering ----------------------------------------------------
-        SectionHeader("Rendering");
+        SectionHeader(Get("settings.rendering.title").c_str());
         ImGui::Separator();
         ImGui::Spacing();
 
         ImGui::InputInt(Get("editor.background_texture").c_str(), &Editor::backgroundTextureIndex);
-        HoverTooltip("Texture index used for the skybox / background.  -1 = none.");
+        HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
 
         ImGui::Spacing();
 
@@ -672,7 +668,7 @@ namespace {
         ImGui::BeginChild("##LevelsList", ImVec2(0.0f, childHeight), /*border=*/true);
 
         if (Editor::maps.empty()) {
-            ImGui::TextDisabled("  No levels found.");
+            ImGui::TextDisabled("%s", Get("levels.none_found").c_str());
         }
 
         for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
@@ -696,23 +692,23 @@ namespace {
             ImGui::SameLine(available - buttonWidth * 2.0f - 4.0f);
 
             PushAccentStyle();
-            if (ImGui::Button("Load", ImVec2(buttonWidth, 0.0f))) {
+            if (ImGui::Button(Get("levels.load_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
                 if (!Editor::currentMap.empty()) Save(Editor::currentMap);
                 QueueLevelLoad(name);
                 spdlog::info("Queued level load: {}", name);
             }
             PopAccentStyle();
-            HoverTooltip("Save the current level and load this one.");
+            HoverTooltip(Get("levels.tooltip.load").c_str());
 
             ImGui::SameLine();
 
             PushDangerStyle();
-            if (ImGui::Button("Del", ImVec2(buttonWidth, 0.0f))) {
+            if (ImGui::Button(Get("levels.delete_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
                 deleteLevelPending = name;
                 deleteLevelConfirmOpen = true;
             }
             PopDangerStyle();
-            HoverTooltip("Delete this level file from disk. Cannot be undone.");
+            HoverTooltip(Get("levels.tooltip.delete").c_str());
 
             ImGui::PopID();
         }
@@ -728,12 +724,12 @@ namespace {
 
         if (ImGui::BeginPopupModal("##DeleteLevelConfirm", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Delete  \"%s\"?", deleteLevelPending.c_str());
-            ImGui::TextDisabled("This cannot be undone.");
+            ImGui::Text(Get("levels.delete_confirm").c_str(), deleteLevelPending.c_str());
+            ImGui::TextDisabled("%s", Get("common.cannot_be_undone").c_str());
             ImGui::Spacing();
 
             PushDangerStyle();
-            if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
+            if (ImGui::Button(Get("common.delete").c_str(), ImVec2(90.0f, 0.0f))) {
                 const std::filesystem::path path =
                         ProjectManager::GetLevelsPath() / (deleteLevelPending + ".bson");
 
@@ -742,14 +738,14 @@ namespace {
                         spdlog::info("Deleted level: {}", path.string());
                         if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
                         UpdateLevels();
-                        ShowNotification("Level deleted.");
+                        ShowNotification(Get("levels.notification.deleted").c_str());
                     } else {
                         spdlog::error("File not found: {}", path.string());
-                        ShowNotification("Delete failed: file not found.", /*isError=*/true);
+                        ShowNotification(Get("levels.notification.delete_failed_file_not_found").c_str(), /*isError=*/true);
                     }
                 } catch (const std::filesystem::filesystem_error &e) {
                     spdlog::error("Failed to delete level: {}", e.what());
-                    ShowNotification("Delete failed. Check logs.", /*isError=*/true);
+                    ShowNotification(Get("levels.notification.delete_failed_check_logs").c_str(), /*isError=*/true);
                 }
 
                 deleteLevelPending.clear();
@@ -759,7 +755,7 @@ namespace {
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(90.0f, 0.0f))) {
                 deleteLevelPending.clear();
                 ImGui::CloseCurrentPopup();
             }
@@ -774,7 +770,8 @@ namespace {
 
     void DrawCreateLevelModal() {
         static char newLevelNameBuf[64] = "";
-        constexpr const char *kPopupID = "Create Level";
+        const std::string popupID = Get("editor.create_level") + "##CreateLevelPopup";
+        const char *kPopupID = popupID.c_str();
 
         if (createLevelModalRequested) {
             ImGui::OpenPopup(kPopupID);
@@ -793,7 +790,7 @@ namespace {
 
             if (!nameValid) {
                 ImGui::SameLine();
-                ImGui::TextDisabled(" Name required");
+                ImGui::TextDisabled("%s", Get("editor.name_required").c_str());
             }
 
             ImGui::Spacing();
@@ -803,7 +800,7 @@ namespace {
             if (ImGui::Button(Get("editor.create").c_str(), ImVec2(100.0f, 0.0f))) {
                 CreateNewLevel(newLevelNameBuf);
                 UpdateLevels();
-                ShowNotification("Level created.");
+                ShowNotification(Get("levels.notification.created").c_str());
                 hasUnsavedChanges = false;
                 ImGui::CloseCurrentPopup();
             }
@@ -831,7 +828,7 @@ namespace {
 
         if (windowVisible) {
             // ---- Current level name -------------------------------------------
-            SectionHeader("Current Level");
+            SectionHeader(Get("editor.project.current_level").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
@@ -856,7 +853,7 @@ namespace {
                 hasUnsavedChanges = true;
             }
 
-            HoverTooltip("Name used when saving this level to disk.");
+            HoverTooltip(Get("editor.tooltip.level_name").c_str());
 
             ImGui::Spacing();
 
@@ -864,14 +861,14 @@ namespace {
                 createLevelModalRequested = true;
             }
 
-            HoverTooltip("Create a new blank level (saves the current one first).");
+            HoverTooltip(Get("editor.tooltip.create_level").c_str());
 
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
             // ---- Level list ---------------------------------------------------
-            SectionHeader("All Levels");
+            SectionHeader(Get("editor.project.all_levels").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
@@ -882,7 +879,7 @@ namespace {
             ImGui::Spacing();
 
             // ---- Build --------------------------------------------------------
-            SectionHeader("Build");
+            SectionHeader(Get("editor.project.build").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
@@ -894,14 +891,14 @@ namespace {
 
             PopSuccessStyle();
 
-            HoverTooltip("Package the project into a standalone executable.");
+            HoverTooltip(Get("editor.tooltip.export").c_str());
 
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
             // ---- Application --------------------------------------------------
-            SectionHeader("Application");
+            SectionHeader(Get("editor.project.application").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
@@ -912,7 +909,7 @@ namespace {
 
             PopDangerStyle();
 
-            HoverTooltip("Exit the editor. Unsaved changes will be lost.");
+            HoverTooltip(Get("editor.tooltip.shutdown").c_str());
 
             ImGui::Spacing();
 
@@ -937,7 +934,7 @@ namespace {
             nullptr,
             ImGuiWindowFlags_AlwaysAutoResize
         )) {
-            ImGui::Text("Exit the editor?");
+            ImGui::Text("%s", Get("editor.shutdown_confirm").c_str());
 
             if (hasUnsavedChanges) {
                 ImGui::Spacing();
@@ -945,7 +942,7 @@ namespace {
                     ImGuiCol_Text,
                     ImVec4(1.00f, 0.65f, 0.30f, 1.00f)
                 );
-                ImGui::Text("You have unsaved changes!");
+                ImGui::Text("%s", Get("editor.unsaved_changes_warning").c_str());
                 ImGui::PopStyleColor();
             }
 
@@ -953,7 +950,7 @@ namespace {
 
             PushDangerStyle();
 
-            if (ImGui::Button("Exit", ImVec2(80.0f, 0.0f))) {
+            if (ImGui::Button(Get("common.exit").c_str(), ImVec2(80.0f, 0.0f))) {
                 MapEditorInternal::shutdown = true;
                 quit = true;
                 ImGui::CloseCurrentPopup();
@@ -963,7 +960,7 @@ namespace {
 
             ImGui::SameLine();
 
-            if (ImGui::Button("Cancel", ImVec2(80.0f, 0.0f))) {
+            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(80.0f, 0.0f))) {
                 ImGui::CloseCurrentPopup();
             }
 
@@ -1002,9 +999,11 @@ namespace {
         const bool wasOpen = projectSettingsOpen;
         if (wasOpen) PushAccentStyle();
 
-        if (ImGui::Button(wasOpen ? "[ Project Settings ]" : Get("editor.project_settings").c_str(),
-                          ImVec2(180.0f, 0.0f)
-        ))
+        const std::string buttonLabel = wasOpen
+                                        ? Get("editor.project_settings_active")
+                                        : Get("editor.project_settings");
+
+        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f)))
             projectSettingsOpen = !projectSettingsOpen;
 
 
@@ -1026,11 +1025,11 @@ namespace {
         // Search bar
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
         ImGui::InputText("##HierarchySearch", hierarchySearchBuf, sizeof(hierarchySearchBuf));
-        HoverTooltip("Filter hierarchy by name or ID.");
+        HoverTooltip(Get("editor.hierarchy.tooltip.filter").c_str());
 
         ImGui::SameLine(0.0f, 4.0f);
         if (ImGui::SmallButton("x")) hierarchySearchBuf[0] = '\0';
-        HoverTooltip("Clear filter.");
+        HoverTooltip(Get("editor.hierarchy.tooltip.clear_filter").c_str());
 
         const std::string searchLower = [&] {
             std::string s = hierarchySearchBuf;
@@ -1069,7 +1068,7 @@ namespace {
                 ID sectorPendingDelete = INVALID_ID;
 
                 for (const Sector &sector: level.sectors) {
-                    const std::string label = "Sector #" + std::to_string(sector.id);
+                    const std::string label = Get("editor.hierarchy.sector") + " #" + std::to_string(sector.id);
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(sector.id));
@@ -1144,12 +1143,12 @@ namespace {
 
                         ImGui::Separator();
 
-                        if (ImGui::MenuItem("Copy ID")) {
+                        if (ImGui::MenuItem(Get("common.copy_id").c_str())) {
                             char buf[32];
                             std::snprintf(buf, sizeof(buf), "%u",
                                           static_cast<unsigned>(entity.id));
                             ImGui::SetClipboardText(buf);
-                            ShowNotification("Entity ID copied to clipboard.");
+                            ShowNotification(Get("editor.notification.entity_id_copied").c_str());
                         }
 
                         ImGui::EndPopup();
@@ -1186,7 +1185,7 @@ namespace {
 
                 for (const Dot &dot: dots) {
                     const std::string label =
-                            "Dot #" + std::to_string(dot.id) +
+                            Get("editor.hierarchy.dot") + " #" + std::to_string(dot.id) +
                             "  (" + std::to_string(static_cast<int>(dot.position.x)) +
                             ", " + std::to_string(static_cast<int>(dot.position.y)) + ")";
                     if (!matches(label)) continue;
@@ -1230,20 +1229,11 @@ namespace {
     // =========================================================================
 
     void DrawMode() {
-        struct ModeEntry {
-            int id;
-            const char *label;
-        };
-        constexpr ModeEntry modes[] = {
-            {MODE_DOT, "Dot Mode"},
-            {MODE_SECTOR, "Sector Mode"},
-            {MODE_ENTITY, "Entity Mode"},
-        };
-
         const float buttonWidth = (ImGui::GetContentRegionAvail().x - 8.0f) / 3.0f;
 
-        for (int i = 0; i < 3; ++i) {
-            const bool active = (currentMode == modes[i].id);
+        // Dot Mode button
+        {
+            const bool active = (currentMode == MODE_DOT);
 
             if (active) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
@@ -1255,11 +1245,75 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
             }
 
-            if (ImGui::Button(modes[i].label, ImVec2(buttonWidth, 0.0f)))
-                if (currentMode != modes[i].id) ChangeMode();
+            if (ImGui::Button(Get("mode.dot").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                if (currentMode != MODE_DOT) {
+                    const Mode previousMode = currentMode;
+                    currentMode = MODE_DOT;
+
+                    if (previousMode == MODE_SECTOR) {
+                        CancelSectorChain();
+                        ClearManualSectorSelection();
+                    }
+                }
+            }
 
             ImGui::PopStyleColor(3);
-            if (i < 2) ImGui::SameLine(0.0f, 4.0f);
+        }
+
+        ImGui::SameLine(0.0f, 4.0f);
+
+        // Sector Mode button
+        {
+            const bool active = (currentMode == MODE_SECTOR);
+
+            if (active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
+            }
+
+            if (ImGui::Button(Get("mode.sector").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                if (currentMode != MODE_SECTOR) {
+                    currentMode = MODE_SECTOR;
+                }
+            }
+
+            ImGui::PopStyleColor(3);
+        }
+
+        ImGui::SameLine(0.0f, 4.0f);
+
+        // Entity Mode button
+        {
+            const bool active = (currentMode == MODE_ENTITY);
+
+            if (active) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
+            }
+
+            if (ImGui::Button(Get("mode.entity").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                if (currentMode != MODE_ENTITY) {
+                    const Mode previousMode = currentMode;
+                    currentMode = MODE_ENTITY;
+
+                    if (previousMode == MODE_SECTOR) {
+                        CancelSectorChain();
+                        ClearManualSectorSelection();
+                    }
+                }
+            }
+
+            ImGui::PopStyleColor(3);
         }
 
         // In-progress sector chain reminder
@@ -1267,11 +1321,16 @@ namespace {
             const int n = static_cast<int>(sectorBeingCreated.size());
             ImGui::Spacing();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.80f, 0.30f, 1.00f));
-            ImGui::Text("  Placing sector... (%d dot%s)", n, n == 1 ? "" : "s");
-            ImGui::TextDisabled("  Right-click to close or cancel.");
+
+            const std::string placingText = (n == 1)
+                                                ? Get("editor.sector_chain_placing_singular")
+                                                : Get("editor.sector_chain_placing_plural");
+
+            ImGui::Text(placingText.c_str(), n);
+            ImGui::TextDisabled("%s", Get("editor.sector_chain_hint").c_str());
             ImGui::PopStyleColor();
         }
-    }
+}
 
     // =========================================================================
     //  Selection inspectors
@@ -1489,7 +1548,7 @@ namespace MapEditorInternal {
         ImGui::Begin(panelTitle.c_str());
 
         // ---- Mode ---------------------------------------------------------
-        SectionHeader("Mode");
+        SectionHeader(Get("editor.mode").c_str());
         ImGui::Spacing();
         DrawMode();
         ImGui::Spacing();
@@ -1498,41 +1557,43 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        HoverTooltip("Toggle dark / light theme.");
+        HoverTooltip(Get("editor.tooltip.theme_toggle").c_str());
 
         ImGui::SameLine(0.0f, 16.0f);
 
         ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
-        HoverTooltip("Overlay textures in the map viewport.");
+        HoverTooltip(Get("editor.tooltip.texture_view_mode").c_str());
 
-        // ---- Sector creation params (only visible in Sector mode) ---------
         // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
-            if (ImGui::Checkbox("Manual Mode", &manualSectorMode)) {
+            if (ImGui::Checkbox(Get("editor.manual_sector.mode").c_str(), &manualSectorMode)) {
                 if (manualSectorMode) CancelSectorChain();
                 else ClearManualSectorSelection();
             }
-            HoverTooltip("Pick existing dot/wall corners by hand instead of clicking out a new chain.");
+            HoverTooltip(Get("editor.manual_sector.tooltip.mode").c_str());
 
             if (manualSectorMode) {
                 const int picked = static_cast<int>(manualSectorDots.size());
                 ImGui::SameLine(0.0f, 16.0f);
-                ImGui::TextDisabled("%d corner%s selected", picked, picked == 1 ? "" : "s");
+                const std::string pickedText = (picked == 1)
+                                               ? Get("editor.manual_sector.corner_selected")
+                                               : Get("editor.manual_sector.corners_selected");
+                ImGui::TextDisabled(pickedText.c_str(), picked);
 
                 ImGui::Spacing();
 
                 if (picked >= 3) {
                     PushSuccessStyle();
-                    if (FullWidthButton("Create Sector")) CreateManualSector();
+                    if (FullWidthButton(Get("editor.create_sector").c_str())) CreateManualSector();
                     PopSuccessStyle();
-                    HoverTooltip("Create a sector from the selected corners. No new walls are created. (Enter)");
+                    HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
                 }
 
-                if (FullWidthButton("Clear Selected Dots")) ClearManualSectorSelection();
+                if (FullWidthButton(Get("editor.manual_sector.clear_selected_dots").c_str())) ClearManualSectorSelection();
 
                 if (!ImGui::GetIO().WantTextInput) {
                     if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
@@ -1546,23 +1607,23 @@ namespace MapEditorInternal {
 
             ImGui::Separator();
             ImGui::Spacing();
-            SectionHeader("New Sector Properties");
+            SectionHeader(Get("editor.new_sector_properties").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
             // Texture indices with inline thumbnail previews
             ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt("Wall Tex", &wallTextureIndex)) hasUnsavedChanges = true;
+            if (ImGui::InputInt((Get("editor.new_sector.wall_texture") + "##WallTex").c_str(), &wallTextureIndex)) hasUnsavedChanges = true;
             ImGui::SameLine(0.0f, 8.0f);
             DrawTextureThumbnailRow(level, wallTextureIndex);
 
             ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt("Ceil Tex", &ceilTextureIndex)) hasUnsavedChanges = true;
+            if (ImGui::InputInt((Get("editor.new_sector.ceil_texture") + "##CeilTex").c_str(), &ceilTextureIndex)) hasUnsavedChanges = true;
             ImGui::SameLine(0.0f, 8.0f);
             DrawTextureThumbnailRow(level, ceilTextureIndex);
 
             ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt("Floor Tex", &floorTextureIndex)) hasUnsavedChanges = true;
+            if (ImGui::InputInt((Get("editor.new_sector.floor_texture") + "##FloorTex").c_str(), &floorTextureIndex)) hasUnsavedChanges = true;
             ImGui::SameLine(0.0f, 8.0f);
             DrawTextureThumbnailRow(level, floorTextureIndex);
 
@@ -1572,21 +1633,21 @@ namespace MapEditorInternal {
 
             const float iw = 110.0f;
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Floor Height", &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
-            HoverTooltip("Floor plane height for new sectors.");
+            if (ImGui::InputFloat((Get("sector.floor_height") + "##NewSectorFloorHeight").c_str(), &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            HoverTooltip(Get("editor.tooltip.floor_height").c_str());
 
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Ceil Height", &ceilHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
-            HoverTooltip("Ceiling plane height for new sectors.");
+            if (ImGui::InputFloat((Get("sector.ceil_height") + "##NewSectorCeilHeight").c_str(), &ceilHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
 
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Light", &lightValue, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
-            HoverTooltip("Sector light level (0 = fully dark, 1 = full bright).");
+            if (ImGui::InputFloat((Get("sector.light_value") + "##NewSectorLight").c_str(), &lightValue, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            HoverTooltip(Get("editor.tooltip.light_value").c_str());
 
             ImGui::Spacing();
-            ImGui::ColorEdit3("Wall Color", &wallColor.x);
-            ImGui::ColorEdit3("Ceil Color", &ceilColor.x);
-            ImGui::ColorEdit3("Floor Color", &floorColor.x);
+            ImGui::ColorEdit3((Get("wall.color") + "##NewSectorWallColor").c_str(), &wallColor.x);
+            ImGui::ColorEdit3((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(), &ceilColor.x);
+            ImGui::ColorEdit3((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColor.x);
             ImGui::Spacing();
 
             // FIX: keep pendingSectorParams in sync with the visible fields.
@@ -1614,13 +1675,13 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (ImGui::CollapsingHeader("Sounds")) {
+        if (ImGui::CollapsingHeader(Get("editor.sounds").c_str())) {
             ImGui::Spacing();
             DrawSoundCategory();
             ImGui::Spacing();
         }
 
-        if (ImGui::CollapsingHeader("Textures")) {
+        if (ImGui::CollapsingHeader(Get("editor.textures").c_str())) {
             ImGui::Spacing();
             DrawTextureCategory();
             ImGui::Spacing();
@@ -1639,20 +1700,20 @@ namespace MapEditorInternal {
         ImGui::Spacing();
 
         // ---- Action buttons -----------------------------------------------
-        SectionHeader("Actions");
+        SectionHeader(Get("editor.actions").c_str());
         ImGui::Spacing();
 
         PushAccentStyle();
         if (FullWidthButton(Get("editor.save").c_str())) {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
-                ShowNotification("Level saved.");
+                ShowNotification(Get("levels.notification.saved").c_str());
             } else {
-                ShowNotification("Save failed. Check logs.", /*isError=*/true);
+                ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
             }
         }
         PopAccentStyle();
-        HoverTooltip("Save the current level to disk.");
+        HoverTooltip(Get("editor.tooltip.save").c_str());
 
         ImGui::Spacing();
 
@@ -1663,7 +1724,7 @@ namespace MapEditorInternal {
                 switchToRuntime = true;
             }
         }
-        HoverTooltip("Save and switch to the runtime editor view.");
+        HoverTooltip(Get("editor.tooltip.runtime_editor").c_str());
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -1679,7 +1740,7 @@ namespace MapEditorInternal {
             }
         }
         PopSuccessStyle();
-        HoverTooltip("Save and launch the game in play mode.");
+        HoverTooltip(Get("editor.tooltip.save_and_play").c_str());
 
         ImGui::Spacing();
 
@@ -1690,14 +1751,14 @@ namespace MapEditorInternal {
                 quit = true;
             }
         }
-        HoverTooltip("Save and exit the editor.");
+        HoverTooltip(Get("editor.tooltip.save_and_quit").c_str());
 
         ImGui::Spacing();
 
         if (FullWidthButton(Get("editor.switch_to_ui").c_str()))
             currentState = STATE_UI;
 
-        HoverTooltip("Switch to the UI editor state.");
+        HoverTooltip(Get("editor.tooltip.switch_to_ui").c_str());
 
         ImGui::End();
 
