@@ -121,9 +121,8 @@ int main() {
     LauncherApp::Start(launcherVariablesData["lang"]);
     spdlog::info("Starting the launcher app");
 
-    while (!LauncherApp::QuitRequested()) {
-        LauncherApp::Update();
-    }
+    while (!LauncherApp::QuitRequested()) LauncherApp::Update();
+
 
     spdlog::info("Quitting the launcher app. Starting the renderer");
 

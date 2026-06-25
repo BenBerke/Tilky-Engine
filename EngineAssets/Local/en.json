@@ -48,12 +48,14 @@
   "editor.switch_to_ui": "Edit UI",
   "editor.switch_to_map": "Edit Map",
 
+  "editor.none": "(none)",
+  "editor.textures_refreshed": "Textures Refreshed",
+  "editor.tooltip_texture_category": "Scan the project Textures folder and reload the list.",
+
   "&Context_6": "Exporting is turning the game into a stand-alone .exe",
   "editor.export": "Export Game",
 
   "ui_editor.title": "UI Editor",
-
-
 
   "settings.audio.title": "Listener Settings",
   "&Context_7": "Master Gain is basically the absolute volume slider for the entire game.",

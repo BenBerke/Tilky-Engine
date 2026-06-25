@@ -22,6 +22,7 @@
 
 using json = nlohmann::json;
 
+
 namespace {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -36,6 +37,73 @@ namespace {
     SDL_Texture* logo = nullptr;
 
     int windowWidth = 1080, windowHeight = 960;
+
+     constexpr int DEFAULT_LAUNCHER_WIDTH  = 1080;
+    constexpr int DEFAULT_LAUNCHER_HEIGHT = 960;
+
+    constexpr int MIN_LAUNCHER_WIDTH  = 640;
+    constexpr int MIN_LAUNCHER_HEIGHT = 480;
+
+    // Keep space for titlebar/borders/taskbar and avoid spawning edge-to-edge.
+    constexpr int LAUNCHER_WINDOW_MARGIN = 80;
+
+    void ClampLauncherWindowSizeToDisplay() {
+        windowWidth  = DEFAULT_LAUNCHER_WIDTH;
+        windowHeight = DEFAULT_LAUNCHER_HEIGHT;
+
+        const SDL_DisplayID display = SDL_GetPrimaryDisplay();
+        if (display == 0) {
+            spdlog::warn("Failed to get primary display: {}", SDL_GetError());
+            return;
+        }
+
+        SDL_Rect usableBounds{};
+        if (!SDL_GetDisplayUsableBounds(display, &usableBounds)) {
+            spdlog::warn("Failed to get display usable bounds: {}", SDL_GetError());
+            return;
+        }
+
+        const int maxWidth = std::max(
+            MIN_LAUNCHER_WIDTH,
+            usableBounds.w - LAUNCHER_WINDOW_MARGIN
+        );
+
+        const int maxHeight = std::max(
+            MIN_LAUNCHER_HEIGHT,
+            usableBounds.h - LAUNCHER_WINDOW_MARGIN
+        );
+
+        windowWidth = std::clamp(
+            DEFAULT_LAUNCHER_WIDTH,
+            MIN_LAUNCHER_WIDTH,
+            maxWidth
+        );
+
+        windowHeight = std::clamp(
+            DEFAULT_LAUNCHER_HEIGHT,
+            MIN_LAUNCHER_HEIGHT,
+            maxHeight
+        );
+    }
+
+    void CenterLauncherWindowOnDisplay() {
+        const SDL_DisplayID display = SDL_GetPrimaryDisplay();
+        if (display == 0) {
+            SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+            return;
+        }
+
+        SDL_Rect usableBounds{};
+        if (!SDL_GetDisplayUsableBounds(display, &usableBounds)) {
+            SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+            return;
+        }
+
+        const int x = usableBounds.x + (usableBounds.w - windowWidth) / 2;
+        const int y = usableBounds.y + (usableBounds.h - windowHeight) / 2;
+
+        SDL_SetWindowPosition(window, x, y);
+    }
 
     std::map<std::string, std::string> languages;
 
@@ -165,18 +233,22 @@ namespace LauncherApp {
             return;
         }
 
+        ClampLauncherWindowSizeToDisplay();
+
         if (!SDL_CreateWindowAndRenderer(
-                "Tilky_Engine Launcher",
-                windowWidth,
-                windowHeight,
-                SDL_WINDOW_RESIZABLE,
-                &window,
-                &renderer
-            )) {
+            "Tilky_Engine Launcher",
+            windowWidth,
+            windowHeight,
+            SDL_WINDOW_RESIZABLE,
+            &window,
+            &renderer
+        )) {
             spdlog::critical("Failed to create window or renderer for launcher: {}", SDL_GetError());
             SDL_Quit();
             return;
         }
+
+        CenterLauncherWindowOnDisplay();
 
         const fs::path basePath = ProjectManager::GetEngineBasePath();
 

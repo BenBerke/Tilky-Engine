@@ -39,28 +39,31 @@ namespace fs = std::filesystem;
 // =============================================================================
 
 static void PushDangerStyle() {
-    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.15f, 0.15f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.15f, 0.15f, 1.00f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.70f, 0.20f, 0.20f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.45f, 0.10f, 0.10f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.10f, 0.10f, 1.00f));
 }
-static void PopDangerStyle()  { ImGui::PopStyleColor(3); }
+
+static void PopDangerStyle() { ImGui::PopStyleColor(3); }
 
 static void PushSuccessStyle() {
-    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.15f, 0.45f, 0.20f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.20f, 1.00f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.58f, 0.26f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.10f, 0.35f, 0.15f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.35f, 0.15f, 1.00f));
 }
+
 static void PopSuccessStyle() { ImGui::PopStyleColor(3); }
 
 static void PushAccentStyle() {
-    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.13f, 0.28f, 0.52f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.13f, 0.28f, 0.52f, 1.00f));
 }
-static void PopAccentStyle()  { ImGui::PopStyleColor(3); }
+
+static void PopAccentStyle() { ImGui::PopStyleColor(3); }
 
 // Coloured ">> Label" used as a lightweight section heading.
-static void SectionHeader(const char* label) {
+static void SectionHeader(const char *label) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.75f, 1.00f, 1.00f));
     ImGui::TextUnformatted(">>");
     ImGui::PopStyleColor();
@@ -69,7 +72,7 @@ static void SectionHeader(const char* label) {
 }
 
 // Tooltip shown after a short hover. Call immediately after the widget.
-static void HoverTooltip(const char* text) {
+static void HoverTooltip(const char *text) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
@@ -80,7 +83,7 @@ static void HoverTooltip(const char* text) {
 }
 
 // Button that stretches to fill the available horizontal space.
-static bool FullWidthButton(const char* label) {
+static bool FullWidthButton(const char *label) {
     return ImGui::Button(label, ImVec2(ImGui::GetContentRegionAvail().x, 0.0f));
 }
 
@@ -90,26 +93,26 @@ static bool FullWidthButton(const char* label) {
 
 namespace {
     struct Toast {
-        char  message[128];
+        char message[128];
         float remainingSeconds;
-        bool  isError;
+        bool isError;
     };
 
-    static Toast s_toast{};
+    Toast s_toast{};
 
-    void ShowNotification(const char* msg, bool isError = false, float duration = 3.0f) {
+    void ShowNotification(const char *msg, const bool isError = false, float duration = 3.0f) {
         std::strncpy(s_toast.message, msg, sizeof(s_toast.message) - 1);
         s_toast.message[sizeof(s_toast.message) - 1] = '\0';
         s_toast.remainingSeconds = duration;
-        s_toast.isError          = isError;
+        s_toast.isError = isError;
     }
 
     void DrawNotification(const float dt) {
         if (s_toast.remainingSeconds <= 0.0f) return;
         s_toast.remainingSeconds -= dt;
 
-        const ImGuiViewport* vp     = ImGui::GetMainViewport();
-        const float          margin = 16.0f;
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        constexpr float margin = 16.0f;
 
         ImGui::SetNextWindowPos(
             ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f,
@@ -120,18 +123,18 @@ namespace {
         ImGui::SetNextWindowBgAlpha(0.88f);
 
         constexpr ImGuiWindowFlags flags =
-            ImGuiWindowFlags_NoDecoration      |
-            ImGuiWindowFlags_NoMove            |
-            ImGuiWindowFlags_NoSavedSettings   |
-            ImGuiWindowFlags_NoFocusOnAppearing |
-            ImGuiWindowFlags_NoNav             |
-            ImGuiWindowFlags_AlwaysAutoResize;
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoNav |
+                ImGuiWindowFlags_AlwaysAutoResize;
 
         ImGui::Begin("##Toast", nullptr, flags);
 
         const ImVec4 col = s_toast.isError
-            ? ImVec4(1.00f, 0.45f, 0.45f, 1.00f)
-            : ImVec4(0.55f, 1.00f, 0.65f, 1.00f);
+                               ? ImVec4(1.00f, 0.45f, 0.45f, 1.00f)
+                               : ImVec4(0.55f, 1.00f, 0.65f, 1.00f);
 
         ImGui::PushStyleColor(ImGuiCol_Text, col);
         ImGui::Text("  %s  ", s_toast.message);
@@ -149,17 +152,17 @@ static bool RunExporter() {
     const fs::path engineBasePath = ProjectManager::GetEngineBasePath();
 
 #ifdef _WIN32
-    const fs::path exporterExe  = engineBasePath / "tilky_exporter.exe";
+    const fs::path exporterExe = engineBasePath / "tilky_exporter.exe";
     const fs::path standaloneExe = engineBasePath / "Standalone.exe";
 #else
-    const fs::path exporterExe  = engineBasePath / "tilky_exporter";
+    const fs::path exporterExe = engineBasePath / "tilky_exporter";
     const fs::path standaloneExe = engineBasePath / "Standalone";
 #endif
 
     const fs::path projectMetadata = ProjectManager::GetProjectFiles();
-    const fs::path exportFolder    = ProjectManager::GetDefaultExportFolder();
+    const fs::path exportFolder = ProjectManager::GetDefaultExportFolder();
 
-    auto fail = [](const char* msg, const std::string& detail = "") -> bool {
+    auto fail = [](const char *msg, const std::string &detail = "") -> bool {
         spdlog::error("{}{}", msg, detail.empty() ? "" : ": " + detail);
         ShowNotification(msg, /*isError=*/true);
         return false;
@@ -172,17 +175,18 @@ static bool RunExporter() {
     if (!fs::exists(projectMetadata))
         return fail("Export failed: project metadata missing.");
 
-    try { fs::create_directories(exportFolder); }
-    catch (const std::exception& e) { return fail("Export failed: can't create output folder.", e.what()); }
+    try { fs::create_directories(exportFolder); } catch (const std::exception &e) {
+        return fail("Export failed: can't create output folder.", e.what());
+    }
 
 #ifdef _WIN32
     std::wstring commandLine =
-        L"\"" + exporterExe.wstring()   + L"\" " +
-        L"\"" + projectMetadata.wstring() + L"\" " +
-        L"\"" + exportFolder.wstring()   + L"\" " +
-        L"\"" + standaloneExe.wstring()  + L"\"";
+            L"\"" + exporterExe.wstring() + L"\" " +
+            L"\"" + projectMetadata.wstring() + L"\" " +
+            L"\"" + exportFolder.wstring() + L"\" " +
+            L"\"" + standaloneExe.wstring() + L"\"";
 
-    STARTUPINFOW     startupInfo{};
+    STARTUPINFOW startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo{};
 
@@ -207,21 +211,21 @@ static bool RunExporter() {
     spdlog::info("Running exporter to {}", exportFolder.string());
 
     const pid_t pid = fork();
-    if (pid < 0)  return fail("Export failed: fork error.");
+    if (pid < 0) return fail("Export failed: fork error.");
 
     if (pid == 0) {
         execl(exporterExe.c_str(), exporterExe.c_str(),
               projectMetadata.c_str(), exportFolder.c_str(),
-              standaloneExe.c_str(), static_cast<char*>(nullptr));
+              standaloneExe.c_str(), static_cast<char *>(nullptr));
         _exit(127);
     }
 
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0)    return fail("Export failed: wait error.");
-    if (!WIFEXITED(status))               return fail("Export failed: abnormal exit.");
+    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.");
+    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.");
 
     const int exitCode = WEXITSTATUS(status);
-    if (exitCode != 0)                    return fail("Export failed. Check logs.");
+    if (exitCode != 0) return fail("Export failed. Check logs.");
 #endif
 
     spdlog::info("Export completed successfully to {}", exportFolder.string());
@@ -235,7 +239,7 @@ static bool RunExporter() {
 
 namespace Editor {
     void RefreshLevelSoundsFromFolder() {
-        Level& level = LevelManager::CurrentLevel();
+        Level &level = LevelManager::CurrentLevel();
         level.sounds.clear();
 
         const std::filesystem::path soundsPath = ProjectManager::GetSoundsPath();
@@ -251,7 +255,7 @@ namespace Editor {
             return;
         }
 
-        for (const auto& entry : std::filesystem::directory_iterator(soundsPath)) {
+        for (const auto &entry: std::filesystem::directory_iterator(soundsPath)) {
             if (!entry.is_regular_file()) continue;
 
             const std::filesystem::path path = entry.path();
@@ -268,7 +272,7 @@ namespace Editor {
             level.sounds.push_back(sound);
         }
 
-        std::ranges::sort(level.sounds, [](const Sound& a, const Sound& b) {
+        std::ranges::sort(level.sounds, [](const Sound &a, const Sound &b) {
             return a.fileName < b.fileName;
         });
 
@@ -291,18 +295,18 @@ namespace {
     std::optional<std::string> pendingLevelToLoad;
 
     // Feature #1: Project Settings overlay
-    bool projectSettingsOpen       = false;
+    bool projectSettingsOpen = false;
 
     // Feature #3: Create Level modal gate
     bool createLevelModalRequested = false;
 
     // Confirmation guards
-    bool        shutdownConfirmOpen    = false;
-    bool        deleteLevelConfirmOpen = false;
+    bool shutdownConfirmOpen = false;
+    bool deleteLevelConfirmOpen = false;
     std::string deleteLevelPending;
 
     // Hierarchy search
-    static char hierarchySearchBuf[64] = "";
+    char hierarchySearchBuf[64] = "";
 
     // Unsaved-changes flag — set on any edit, cleared on Save / new level
     bool hasUnsavedChanges = false;
@@ -311,41 +315,41 @@ namespace {
     //  Utility
     // =========================================================================
 
-    Entity* FindEntityById(Level& level, const ID entityId) {
-        for (Entity& entity : level.entities)
+    Entity *FindEntityById(Level &level, const ID entityId) {
+        for (Entity &entity: level.entities)
             if (entity.id == entityId) return &entity;
         return nullptr;
     }
 
     void ResetInspectorState() {
         entityInspectorState = {};
-        editingComponent     = false;
+        editingComponent = false;
     }
 
     // =========================================================================
     //  CreateNewLevel — defined early so DrawCreateLevelModal can call it
     // =========================================================================
 
-    void CreateNewLevel(const std::string& levelName) {
+    void CreateNewLevel(const std::string &levelName) {
         if (!Editor::currentMap.empty()) Save(Editor::currentMap);
 
-        Level& level  = LevelManager::CurrentLevel();
-        level         = Level{};
-        level.name    = levelName;
+        Level &level = LevelManager::CurrentLevel();
+        level = Level{};
+        level.name = levelName;
 
         level.nextEntityID = 1;
         level.nextSectorID = 0;
-        level.nextWallID   = 0;
+        level.nextWallID = 0;
 
         sectorBeingCreated.clear();
         pendingSectorParams = PendingSectorParams{};
 
         dots.clear();
         dotIDToIndex.clear();
-        nextDotID     = 0;
+        nextDotID = 0;
         selectedDotID = INVALID_ID;
 
-        editingSector    = false;
+        editingSector = false;
         selectedSectorID = INVALID_ID;
 
         editingEntity = false;
@@ -373,12 +377,12 @@ namespace {
         std::snprintf(buf, sizeof(buf), " %d ", count);
 
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(0.85f, 0.92f, 1.00f, 1.00f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.92f, 1.00f, 1.00f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,  ImVec2(4.0f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 1.0f));
         ImGui::SmallButton(buf);
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(4);
@@ -389,25 +393,25 @@ namespace {
     // =========================================================================
 
     void DrawDockSpace() {
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
 
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::SetNextWindowViewport(viewport->ID);
 
         constexpr ImGuiWindowFlags flags =
-            ImGuiWindowFlags_NoDocking          |
-            ImGuiWindowFlags_NoTitleBar          |
-            ImGuiWindowFlags_NoCollapse          |
-            ImGuiWindowFlags_NoResize            |
-            ImGuiWindowFlags_NoMove              |
-            ImGuiWindowFlags_NoBringToFrontOnFocus |
-            ImGuiWindowFlags_NoNavFocus          |
-            ImGuiWindowFlags_NoBackground;
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoBringToFrontOnFocus |
+                ImGuiWindowFlags_NoNavFocus |
+                ImGuiWindowFlags_NoBackground;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,  0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,   ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
         ImGui::Begin("Dockspace##MainDockspaceHost", nullptr, flags);
         ImGui::PopStyleVar(3);
@@ -425,28 +429,27 @@ namespace {
     //  Texture thumbnail row
     // =========================================================================
 
-    void DrawTextureThumbnailRow(const Level& level, const int textureIndex) {
+    void DrawTextureThumbnailRow(const Level &level, const int textureIndex) {
         constexpr float thumb = 32.0f;
 
         if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
             ImGui::Dummy(ImVec2(thumb, thumb));
             ImGui::SameLine();
-            ImGui::TextDisabled("(none)");
+            ImGui::TextDisabled(Get("editor.none").c_str());
             return;
         }
 
-        SDL_Texture* texture = GetEditorTexture(textureIndex);
+        SDL_Texture *texture = GetEditorTexture(textureIndex);
 
         if (texture) {
             ImGui::Image(reinterpret_cast<ImTextureID>(texture), ImVec2(thumb, thumb));
-        }
-        else {
+        } else {
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
             ImGui::Dummy(ImVec2(thumb, thumb));
 
-            ImDrawList* dl = ImGui::GetWindowDrawList();
+            ImDrawList *dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(cursor, ImVec2(cursor.x + thumb, cursor.y + thumb), IM_COL32(90, 90, 90, 255));
-            dl->AddRect(      cursor, ImVec2(cursor.x + thumb, cursor.y + thumb), IM_COL32(150, 150, 150, 255));
+            dl->AddRect(cursor, ImVec2(cursor.x + thumb, cursor.y + thumb), IM_COL32(150, 150, 150, 255));
         }
 
         ImGui::SameLine(0.0f, 8.0f);
@@ -459,13 +462,14 @@ namespace {
     // =========================================================================
 
     void DrawTextureCategory() {
-        const Level& level = LevelManager::CurrentLevel();
+        const Level &level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_textures").c_str())) {
             EditorTextureCache::RefreshLevelTexturesFromFolder();
-            ShowNotification("Textures refreshed.");
+            ShowNotification(Get("editor.textures_refreshed").c_str());
         }
-        HoverTooltip("Scan the project Textures folder and reload the list.");
+
+        HoverTooltip(Get("editor.tooltip.texture_category").c_str());
 
         ImGui::Spacing();
 
@@ -486,7 +490,7 @@ namespace {
     }
 
     void DrawSoundCategory() {
-        const Level& level = LevelManager::CurrentLevel();
+        const Level &level = LevelManager::CurrentLevel();
 
         if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
             Editor::RefreshLevelSoundsFromFolder();
@@ -524,8 +528,8 @@ namespace {
     // =========================================================================
 
     void DrawWorldSettings() {
-        Level&            level    = LevelManager::CurrentLevel();
-        ListenerSettings& settings = level.listenerSettings;
+        Level &level = LevelManager::CurrentLevel();
+        ListenerSettings &settings = level.listenerSettings;
 
         ImGui::Begin(Get("editor.world_settings").c_str());
 
@@ -576,7 +580,7 @@ namespace {
                 Get("settings.audio.distance_model.none")
             };
 
-            const char* models[] = {
+            const char *models[] = {
                 modelLabels[0].c_str(), modelLabels[1].c_str(),
                 modelLabels[2].c_str(), modelLabels[3].c_str(),
                 modelLabels[4].c_str()
@@ -592,12 +596,12 @@ namespace {
 
             auto DistanceModelToIndex = [](ALenum model) -> int {
                 switch (model) {
-                    case AL_INVERSE_DISTANCE:         return 0;
+                    case AL_INVERSE_DISTANCE: return 0;
                     case AL_INVERSE_DISTANCE_CLAMPED: return 1;
-                    case AL_LINEAR_DISTANCE:          return 2;
-                    case AL_LINEAR_DISTANCE_CLAMPED:  return 3;
-                    case AL_NONE:                     return 4;
-                    default:                          return 1;
+                    case AL_LINEAR_DISTANCE: return 2;
+                    case AL_LINEAR_DISTANCE_CLAMPED: return 3;
+                    case AL_NONE: return 4;
+                    default: return 1;
                 }
             };
 
@@ -674,14 +678,14 @@ namespace {
         for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
             ImGui::PushID(i);
 
-            const std::string& name      = Editor::maps[i];
-            const bool         isCurrent = (Editor::currentMap == name);
+            const std::string &name = Editor::maps[i];
+            const bool isCurrent = (Editor::currentMap == name);
 
             // Accent the active level name
             if (isCurrent)
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 1.00f, 1.00f));
 
-            const float available   = ImGui::GetContentRegionAvail().x;
+            const float available = ImGui::GetContentRegionAvail().x;
             const float buttonWidth = 52.0f;
 
             ImGui::AlignTextToFramePadding();
@@ -704,7 +708,7 @@ namespace {
 
             PushDangerStyle();
             if (ImGui::Button("Del", ImVec2(buttonWidth, 0.0f))) {
-                deleteLevelPending     = name;
+                deleteLevelPending = name;
                 deleteLevelConfirmOpen = true;
             }
             PopDangerStyle();
@@ -723,8 +727,7 @@ namespace {
         }
 
         if (ImGui::BeginPopupModal("##DeleteLevelConfirm", nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize))
-        {
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Delete  \"%s\"?", deleteLevelPending.c_str());
             ImGui::TextDisabled("This cannot be undone.");
             ImGui::Spacing();
@@ -732,7 +735,7 @@ namespace {
             PushDangerStyle();
             if (ImGui::Button("Delete", ImVec2(90.0f, 0.0f))) {
                 const std::filesystem::path path =
-                    ProjectManager::GetLevelsPath() / (deleteLevelPending + ".bson");
+                        ProjectManager::GetLevelsPath() / (deleteLevelPending + ".bson");
 
                 try {
                     if (std::filesystem::remove(path)) {
@@ -740,13 +743,11 @@ namespace {
                         if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
                         UpdateLevels();
                         ShowNotification("Level deleted.");
-                    }
-                    else {
+                    } else {
                         spdlog::error("File not found: {}", path.string());
                         ShowNotification("Delete failed: file not found.", /*isError=*/true);
                     }
-                }
-                catch (const std::filesystem::filesystem_error& e) {
+                } catch (const std::filesystem::filesystem_error &e) {
                     spdlog::error("Failed to delete level: {}", e.what());
                     ShowNotification("Delete failed. Check logs.", /*isError=*/true);
                 }
@@ -773,11 +774,11 @@ namespace {
 
     void DrawCreateLevelModal() {
         static char newLevelNameBuf[64] = "";
-        constexpr const char* kPopupID  = "Create Level";
+        constexpr const char *kPopupID = "Create Level";
 
         if (createLevelModalRequested) {
             ImGui::OpenPopup(kPopupID);
-            newLevelNameBuf[0]        = '\0';
+            newLevelNameBuf[0] = '\0';
             createLevelModalRequested = false;
         }
 
@@ -977,8 +978,8 @@ namespace {
     // =========================================================================
 
     void DrawProjectSettingsButton() {
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
-        constexpr float      margin   = 12.0f;
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        constexpr float margin = 12.0f;
 
         ImGui::SetNextWindowPos(
             ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - margin,
@@ -990,21 +991,21 @@ namespace {
         ImGui::SetNextWindowBgAlpha(0.0f);
 
         constexpr ImGuiWindowFlags overlayFlags =
-            ImGuiWindowFlags_NoDecoration       |
-            ImGuiWindowFlags_NoMove             |
-            ImGuiWindowFlags_NoSavedSettings    |
-            ImGuiWindowFlags_NoFocusOnAppearing |
-            ImGuiWindowFlags_AlwaysAutoResize;
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_AlwaysAutoResize;
 
         ImGui::Begin("##ProjectSettingsButtonOverlay", nullptr, overlayFlags);
 
         const bool wasOpen = projectSettingsOpen;
         if (wasOpen) PushAccentStyle();
 
-        if (ImGui::Button(wasOpen ?
-            "[ Project Settings ]" : Get("editor.project_settings").c_str(),
-            ImVec2(180.0f, 0.0f)
-        )) projectSettingsOpen = !projectSettingsOpen;
+        if (ImGui::Button(wasOpen ? "[ Project Settings ]" : Get("editor.project_settings").c_str(),
+                          ImVec2(180.0f, 0.0f)
+        ))
+            projectSettingsOpen = !projectSettingsOpen;
 
 
         if (wasOpen) PopAccentStyle();
@@ -1019,7 +1020,7 @@ namespace {
     //  deferred deletion, copy-ID context menu
     // =========================================================================
 
-    void DrawHierarchyPanel(Level& level) {
+    void DrawHierarchyPanel(Level &level) {
         ImGui::Begin(Get("editor.hierarchy").c_str());
 
         // Search bar
@@ -1043,7 +1044,7 @@ namespace {
         ImGui::Spacing();
 
         // Helper: case-insensitive substring match for filtering
-        auto matches = [&](const std::string& label) -> bool {
+        auto matches = [&](const std::string &label) -> bool {
             if (!filtering) return true;
             std::string lower = label;
             std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
@@ -1067,7 +1068,7 @@ namespace {
 
                 ID sectorPendingDelete = INVALID_ID;
 
-                for (const Sector& sector : level.sectors) {
+                for (const Sector &sector: level.sectors) {
                     const std::string label = "Sector #" + std::to_string(sector.id);
                     if (!matches(label)) continue;
 
@@ -1082,8 +1083,8 @@ namespace {
                     const bool selected = (selectedSectorID == sector.id);
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         selectedSectorID = sector.id;
-                        editingSector    = true;
-                        currentMode      = MODE_SECTOR;
+                        editingSector = true;
+                        currentMode = MODE_SECTOR;
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1117,9 +1118,9 @@ namespace {
 
                 ID entityPendingDelete = INVALID_ID;
 
-                for (const Entity& entity : level.entities) {
+                for (const Entity &entity: level.entities) {
                     const std::string label =
-                        entity.name + "  (#" + std::to_string(entity.id) + ")";
+                            entity.name + "  (#" + std::to_string(entity.id) + ")";
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(entity.id));
@@ -1133,8 +1134,8 @@ namespace {
                     const bool selected = editingEntity && (selectedEntity.id == entity.id);
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         selectedEntity = entity;
-                        editingEntity  = true;
-                        currentMode    = MODE_ENTITY;
+                        editingEntity = true;
+                        currentMode = MODE_ENTITY;
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1146,7 +1147,7 @@ namespace {
                         if (ImGui::MenuItem("Copy ID")) {
                             char buf[32];
                             std::snprintf(buf, sizeof(buf), "%u",
-                                static_cast<unsigned>(entity.id));
+                                          static_cast<unsigned>(entity.id));
                             ImGui::SetClipboardText(buf);
                             ShowNotification("Entity ID copied to clipboard.");
                         }
@@ -1183,11 +1184,11 @@ namespace {
 
                 ID dotPendingDelete = INVALID_ID;
 
-                for (const Dot& dot : dots) {
+                for (const Dot &dot: dots) {
                     const std::string label =
-                        "Dot #" + std::to_string(dot.id) +
-                        "  (" + std::to_string(static_cast<int>(dot.position.x)) +
-                        ", " + std::to_string(static_cast<int>(dot.position.y)) + ")";
+                            "Dot #" + std::to_string(dot.id) +
+                            "  (" + std::to_string(static_cast<int>(dot.position.x)) +
+                            ", " + std::to_string(static_cast<int>(dot.position.y)) + ")";
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(dot.id));
@@ -1201,7 +1202,7 @@ namespace {
                     const bool selected = (selectedDotID == dot.id);
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         selectedDotID = dot.id;
-                        currentMode   = MODE_DOT;
+                        currentMode = MODE_DOT;
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1229,11 +1230,14 @@ namespace {
     // =========================================================================
 
     void DrawMode() {
-        struct ModeEntry { int id; const char* label; };
+        struct ModeEntry {
+            int id;
+            const char *label;
+        };
         constexpr ModeEntry modes[] = {
-            { MODE_DOT,    "Dot Mode"    },
-            { MODE_SECTOR, "Sector Mode" },
-            { MODE_ENTITY, "Entity Mode" },
+            {MODE_DOT, "Dot Mode"},
+            {MODE_SECTOR, "Sector Mode"},
+            {MODE_ENTITY, "Entity Mode"},
         };
 
         const float buttonWidth = (ImGui::GetContentRegionAvail().x - 8.0f) / 3.0f;
@@ -1242,14 +1246,13 @@ namespace {
             const bool active = (currentMode == modes[i].id);
 
             if (active) {
-                ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            }
-            else {
-                ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
             }
 
             if (ImGui::Button(modes[i].label, ImVec2(buttonWidth, 0.0f)))
@@ -1274,17 +1277,17 @@ namespace {
     //  Selection inspectors
     // =========================================================================
 
-    void DrawSelectedSectorInspector(Level& level) {
+    void DrawSelectedSectorInspector(Level &level) {
         if (!editingSector || currentMode != MODE_SECTOR) return;
 
         const auto it = level.sectorIDToIndex.find(selectedSectorID);
         if (it == level.sectorIDToIndex.end()) {
             selectedSectorID = INVALID_ID;
-            editingSector    = false;
+            editingSector = false;
             return;
         }
 
-        Sector& sector = level.sectors[it->second];
+        Sector &sector = level.sectors[it->second];
 
         if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, it->second, DRAGGABLE)) {
             DeleteSector(selectedSectorID);
@@ -1292,17 +1295,17 @@ namespace {
         }
     }
 
-    void DrawSelectedWallInspector(Level& level) {
+    void DrawSelectedWallInspector(Level &level) {
         if (!editingWall || currentMode != MODE_DOT) return;
 
         const auto it = level.wallIDToIndex.find(selectedWallID);
         if (it == level.wallIDToIndex.end()) {
             selectedWallID = INVALID_ID;
-            editingWall    = false;
+            editingWall = false;
             return;
         }
 
-        Wall& wall = level.walls[it->second];
+        Wall &wall = level.walls[it->second];
 
         if (ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE)) {
             DeleteWall(selectedWallID);
@@ -1310,37 +1313,39 @@ namespace {
         }
     }
 
-    void DrawSelectedEntityInspector(Level& level) {
+    void DrawSelectedEntityInspector(Level &level) {
         if (!editingEntity || currentMode != MODE_ENTITY) return;
 
-        Entity* entityPtr = FindEntityById(level, selectedEntity.id);
+        Entity *entityPtr = FindEntityById(level, selectedEntity.id);
         if (!entityPtr) {
             editingEntity = false;
             ResetInspectorState();
             return;
         }
 
-        Entity& entity = *entityPtr;
+        Entity &entity = *entityPtr;
 
         const bool deleteRequested =
-            ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
+                ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
         editingComponent = entityInspectorState.editingComponent;
 
         if (deleteRequested) {
             const ID idToDelete = entity.id;
-            editingEntity       = false;
+            editingEntity = false;
             ResetInspectorState();
             level.DestroyEntity(idToDelete);
             hasUnsavedChanges = true;
             return;
         }
 
-        if (!editingEntity) { ResetInspectorState(); return; }
+        if (!editingEntity) {
+            ResetInspectorState();
+            return;
+        }
 
         if (entityInspectorState.editingComponent &&
-            entityInspectorState.selectedComponent != -1)
-        {
+            entityInspectorState.selectedComponent != -1) {
             ImGuiDrawFunctions::DrawComponentEditor(
                 entity, entityInspectorState,
                 &entityInspectorState.editingComponent, DRAGGABLE
@@ -1349,12 +1354,11 @@ namespace {
         }
     }
 
-    void DrawSelectionInspectors(Level& level) {
+    void DrawSelectionInspectors(Level &level) {
         DrawSelectedSectorInspector(level);
         DrawSelectedEntityInspector(level);
         DrawSelectedWallInspector(level);
     }
-
 } // anonymous namespace
 
 // =============================================================================
@@ -1377,60 +1381,63 @@ namespace MapEditorInternal {
     // Feature #2: polished light theme (unchanged colour values from the
     // "pretty" reference).
     void ApplyEditorTheme(const EditorTheme theme) {
-        if (theme == THEME_DARK) { ImGui::StyleColorsDark(); return; }
+        if (theme == THEME_DARK) {
+            ImGui::StyleColorsDark();
+            return;
+        }
 
         ImGui::StyleColorsLight();
 
-        ImGuiStyle& style  = ImGui::GetStyle();
-        ImVec4*     colors = style.Colors;
+        ImGuiStyle &style = ImGui::GetStyle();
+        ImVec4 *colors = style.Colors;
 
-        colors[ImGuiCol_Text]                 = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
-        colors[ImGuiCol_TextDisabled]         = ImVec4(0.45f, 0.45f, 0.47f, 1.00f);
-        colors[ImGuiCol_WindowBg]             = ImVec4(0.94f, 0.94f, 0.95f, 1.00f);
-        colors[ImGuiCol_ChildBg]              = ImVec4(0.97f, 0.97f, 0.98f, 1.00f);
-        colors[ImGuiCol_PopupBg]              = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
-        colors[ImGuiCol_Border]               = ImVec4(0.55f, 0.55f, 0.58f, 0.60f);
-        colors[ImGuiCol_FrameBg]              = ImVec4(0.86f, 0.86f, 0.88f, 1.00f);
-        colors[ImGuiCol_FrameBgHovered]       = ImVec4(0.78f, 0.84f, 0.97f, 1.00f);
-        colors[ImGuiCol_FrameBgActive]        = ImVec4(0.68f, 0.78f, 0.97f, 1.00f);
-        colors[ImGuiCol_TitleBg]              = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
-        colors[ImGuiCol_TitleBgActive]        = ImVec4(0.70f, 0.78f, 0.95f, 1.00f);
-        colors[ImGuiCol_TitleBgCollapsed]     = ImVec4(0.90f, 0.90f, 0.91f, 0.75f);
-        colors[ImGuiCol_MenuBarBg]            = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
-        colors[ImGuiCol_ScrollbarBg]          = ImVec4(0.90f, 0.90f, 0.91f, 1.00f);
-        colors[ImGuiCol_ScrollbarGrab]        = ImVec4(0.65f, 0.65f, 0.68f, 1.00f);
+        colors[ImGuiCol_Text] = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
+        colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.45f, 0.47f, 1.00f);
+        colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.94f, 0.95f, 1.00f);
+        colors[ImGuiCol_ChildBg] = ImVec4(0.97f, 0.97f, 0.98f, 1.00f);
+        colors[ImGuiCol_PopupBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
+        colors[ImGuiCol_Border] = ImVec4(0.55f, 0.55f, 0.58f, 0.60f);
+        colors[ImGuiCol_FrameBg] = ImVec4(0.86f, 0.86f, 0.88f, 1.00f);
+        colors[ImGuiCol_FrameBgHovered] = ImVec4(0.78f, 0.84f, 0.97f, 1.00f);
+        colors[ImGuiCol_FrameBgActive] = ImVec4(0.68f, 0.78f, 0.97f, 1.00f);
+        colors[ImGuiCol_TitleBg] = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
+        colors[ImGuiCol_TitleBgActive] = ImVec4(0.70f, 0.78f, 0.95f, 1.00f);
+        colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.90f, 0.90f, 0.91f, 0.75f);
+        colors[ImGuiCol_MenuBarBg] = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
+        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.90f, 0.90f, 0.91f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.65f, 0.65f, 0.68f, 1.00f);
         colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.55f, 0.55f, 0.58f, 1.00f);
-        colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.45f, 0.45f, 0.48f, 1.00f);
-        colors[ImGuiCol_CheckMark]            = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
-        colors[ImGuiCol_SliderGrab]           = ImVec4(0.30f, 0.55f, 0.90f, 1.00f);
-        colors[ImGuiCol_SliderGrabActive]     = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
-        colors[ImGuiCol_Button]               = ImVec4(0.82f, 0.82f, 0.85f, 1.00f);
-        colors[ImGuiCol_ButtonHovered]        = ImVec4(0.72f, 0.80f, 0.96f, 1.00f);
-        colors[ImGuiCol_ButtonActive]         = ImVec4(0.60f, 0.72f, 0.95f, 1.00f);
-        colors[ImGuiCol_Header]               = ImVec4(0.75f, 0.80f, 0.93f, 1.00f);
-        colors[ImGuiCol_HeaderHovered]        = ImVec4(0.68f, 0.76f, 0.95f, 1.00f);
-        colors[ImGuiCol_HeaderActive]         = ImVec4(0.58f, 0.70f, 0.95f, 1.00f);
-        colors[ImGuiCol_Separator]            = ImVec4(0.60f, 0.60f, 0.63f, 0.60f);
-        colors[ImGuiCol_SeparatorHovered]     = ImVec4(0.40f, 0.55f, 0.85f, 0.78f);
-        colors[ImGuiCol_SeparatorActive]      = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-        colors[ImGuiCol_ResizeGrip]           = ImVec4(0.60f, 0.60f, 0.63f, 0.40f);
-        colors[ImGuiCol_ResizeGripHovered]    = ImVec4(0.40f, 0.55f, 0.85f, 0.65f);
-        colors[ImGuiCol_ResizeGripActive]     = ImVec4(0.30f, 0.50f, 0.85f, 0.90f);
-        colors[ImGuiCol_Tab]                  = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
-        colors[ImGuiCol_TabHovered]           = ImVec4(0.70f, 0.78f, 0.96f, 1.00f);
-        colors[ImGuiCol_TabActive]            = ImVec4(0.72f, 0.80f, 0.97f, 1.00f);
-        colors[ImGuiCol_TabUnfocused]         = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
-        colors[ImGuiCol_TabUnfocusedActive]   = ImVec4(0.80f, 0.84f, 0.93f, 1.00f);
-        colors[ImGuiCol_DockingPreview]       = ImVec4(0.30f, 0.50f, 0.85f, 0.55f);
-        colors[ImGuiCol_DockingEmptyBg]       = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
-        colors[ImGuiCol_PlotLines]            = ImVec4(0.30f, 0.30f, 0.33f, 1.00f);
-        colors[ImGuiCol_PlotHistogram]        = ImVec4(0.80f, 0.55f, 0.10f, 1.00f);
-        colors[ImGuiCol_TextSelectedBg]       = ImVec4(0.30f, 0.55f, 0.90f, 0.35f);
-        colors[ImGuiCol_DragDropTarget]       = ImVec4(0.90f, 0.70f, 0.10f, 0.90f);
-        colors[ImGuiCol_NavHighlight]         = ImVec4(0.30f, 0.55f, 0.90f, 0.80f);
+        colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.45f, 0.45f, 0.48f, 1.00f);
+        colors[ImGuiCol_CheckMark] = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
+        colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.55f, 0.90f, 1.00f);
+        colors[ImGuiCol_SliderGrabActive] = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
+        colors[ImGuiCol_Button] = ImVec4(0.82f, 0.82f, 0.85f, 1.00f);
+        colors[ImGuiCol_ButtonHovered] = ImVec4(0.72f, 0.80f, 0.96f, 1.00f);
+        colors[ImGuiCol_ButtonActive] = ImVec4(0.60f, 0.72f, 0.95f, 1.00f);
+        colors[ImGuiCol_Header] = ImVec4(0.75f, 0.80f, 0.93f, 1.00f);
+        colors[ImGuiCol_HeaderHovered] = ImVec4(0.68f, 0.76f, 0.95f, 1.00f);
+        colors[ImGuiCol_HeaderActive] = ImVec4(0.58f, 0.70f, 0.95f, 1.00f);
+        colors[ImGuiCol_Separator] = ImVec4(0.60f, 0.60f, 0.63f, 0.60f);
+        colors[ImGuiCol_SeparatorHovered] = ImVec4(0.40f, 0.55f, 0.85f, 0.78f);
+        colors[ImGuiCol_SeparatorActive] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
+        colors[ImGuiCol_ResizeGrip] = ImVec4(0.60f, 0.60f, 0.63f, 0.40f);
+        colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.40f, 0.55f, 0.85f, 0.65f);
+        colors[ImGuiCol_ResizeGripActive] = ImVec4(0.30f, 0.50f, 0.85f, 0.90f);
+        colors[ImGuiCol_Tab] = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
+        colors[ImGuiCol_TabHovered] = ImVec4(0.70f, 0.78f, 0.96f, 1.00f);
+        colors[ImGuiCol_TabActive] = ImVec4(0.72f, 0.80f, 0.97f, 1.00f);
+        colors[ImGuiCol_TabUnfocused] = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
+        colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.80f, 0.84f, 0.93f, 1.00f);
+        colors[ImGuiCol_DockingPreview] = ImVec4(0.30f, 0.50f, 0.85f, 0.55f);
+        colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
+        colors[ImGuiCol_PlotLines] = ImVec4(0.30f, 0.30f, 0.33f, 1.00f);
+        colors[ImGuiCol_PlotHistogram] = ImVec4(0.80f, 0.55f, 0.10f, 1.00f);
+        colors[ImGuiCol_TextSelectedBg] = ImVec4(0.30f, 0.55f, 0.90f, 0.35f);
+        colors[ImGuiCol_DragDropTarget] = ImVec4(0.90f, 0.70f, 0.10f, 0.90f);
+        colors[ImGuiCol_NavHighlight] = ImVec4(0.30f, 0.55f, 0.90f, 0.80f);
     }
 
-    void QueueLevelLoad(const std::string& levelName) {
+    void QueueLevelLoad(const std::string &levelName) {
         pendingLevelToLoad = levelName;
         spdlog::info("Queued level load: {}", levelName);
     }
@@ -1443,9 +1450,9 @@ namespace MapEditorInternal {
 
         ResetInspectorState();
 
-        editingSector    = false;
+        editingSector = false;
         selectedSectorID = INVALID_ID;
-        editingEntity    = false;
+        editingEntity = false;
 
         sectorBeingCreated.clear();
         pendingSectorParams = PendingSectorParams{};
@@ -1453,7 +1460,7 @@ namespace MapEditorInternal {
 
         dots.clear();
         dotIDToIndex.clear();
-        nextDotID     = 0;
+        nextDotID = 0;
         selectedDotID = INVALID_ID;
 
         hasUnsavedChanges = false;
@@ -1473,7 +1480,7 @@ namespace MapEditorInternal {
 
         DrawDockSpace();
 
-        Level& level = LevelManager::CurrentLevel();
+        Level &level = LevelManager::CurrentLevel();
 
         // Append * to the title bar when the level has unsaved changes
         std::string panelTitle = Get("editor.title");
@@ -1507,7 +1514,7 @@ namespace MapEditorInternal {
 
             if (ImGui::Checkbox("Manual Mode", &manualSectorMode)) {
                 if (manualSectorMode) CancelSectorChain();
-                else                  ClearManualSectorSelection();
+                else ClearManualSectorSelection();
             }
             HoverTooltip("Pick existing dot/wall corners by hand instead of clicking out a new chain.");
 
@@ -1565,20 +1572,20 @@ namespace MapEditorInternal {
 
             const float iw = 110.0f;
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Floor Height",   &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ImGui::InputFloat("Floor Height", &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip("Floor plane height for new sectors.");
 
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Ceil Height",    &ceilHeight,  1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ImGui::InputFloat("Ceil Height", &ceilHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip("Ceiling plane height for new sectors.");
 
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Light",     &lightValue,  1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ImGui::InputFloat("Light", &lightValue, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip("Sector light level (0 = fully dark, 1 = full bright).");
 
             ImGui::Spacing();
-            ImGui::ColorEdit3("Wall Color",  &wallColor.x);
-            ImGui::ColorEdit3("Ceil Color",  &ceilColor.x);
+            ImGui::ColorEdit3("Wall Color", &wallColor.x);
+            ImGui::ColorEdit3("Ceil Color", &ceilColor.x);
             ImGui::ColorEdit3("Floor Color", &floorColor.x);
             ImGui::Spacing();
 
@@ -1586,15 +1593,15 @@ namespace MapEditorInternal {
             // Without this, pendingSectorParams stays at its default-constructed
             // (zeroed) value from CreateNewLevel()/ProcessPendingLevelLoad(),
             // which yields ceilingHeight <= floorHeight on every new sector.
-            pendingSectorParams.wallTextureIndex  = wallTextureIndex;
-            pendingSectorParams.ceilTextureIndex  = ceilTextureIndex;
+            pendingSectorParams.wallTextureIndex = wallTextureIndex;
+            pendingSectorParams.ceilTextureIndex = ceilTextureIndex;
             pendingSectorParams.floorTextureIndex = floorTextureIndex;
-            pendingSectorParams.floorHeight       = floorHeight;
-            pendingSectorParams.ceilHeight        = ceilHeight;
-            pendingSectorParams.lightValue        = lightValue;
-            pendingSectorParams.wallColor         = wallColor;
-            pendingSectorParams.ceilColor         = ceilColor;
-            pendingSectorParams.floorColor        = floorColor;
+            pendingSectorParams.floorHeight = floorHeight;
+            pendingSectorParams.ceilHeight = ceilHeight;
+            pendingSectorParams.lightValue = lightValue;
+            pendingSectorParams.wallColor = wallColor;
+            pendingSectorParams.ceilColor = ceilColor;
+            pendingSectorParams.floorColor = floorColor;
         }
 
         // ---- Inspector ----------------------------------------------------
@@ -1640,8 +1647,7 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 ShowNotification("Level saved.");
-            }
-            else {
+            } else {
                 ShowNotification("Save failed. Check logs.", /*isError=*/true);
             }
         }
@@ -1703,5 +1709,4 @@ namespace MapEditorInternal {
         // ---- Toast notification -------------------------------------------
         DrawNotification(dt);
     }
-
 } // namespace MapEditorInternal
