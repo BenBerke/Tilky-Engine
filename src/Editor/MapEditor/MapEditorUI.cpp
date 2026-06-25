@@ -1515,11 +1515,11 @@ namespace MapEditorInternal {
 
             const float iw = 110.0f;
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Floor H",   &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ImGui::InputFloat("Floor Height",   &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip("Floor plane height for new sectors.");
 
             ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat("Ceil H",    &ceilHeight,  1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ImGui::InputFloat("Ceil Height",    &ceilHeight,  1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip("Ceiling plane height for new sectors.");
 
             ImGui::SetNextItemWidth(iw);
@@ -1573,9 +1573,9 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        ImGui::SetNextItemWidth(80.0f);
-        ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
-        HoverTooltip("Active editor floor / Z-layer.");
+        //ImGui::SetNextItemWidth(80.0f);
+        //ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
+        //HoverTooltip("Active editor floor / Z-layer.");
 
         ImGui::Spacing();
         ImGui::Separator();

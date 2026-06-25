@@ -143,6 +143,12 @@ namespace MapEditorInternal {
     extern Vector3 ceilColor;
     extern Vector3 floorColor;
 
+    extern bool manualSectorMode;
+    extern std::vector<Vector2> manualSectorDots;
+
+    extern bool editingWall;
+    extern ID selectedWallID;
+
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);

@@ -66,8 +66,8 @@ namespace MapEditorInternal {
     int ceilTextureIndex = 1;
     int floorTextureIndex = 1;
 
-    float floorHeight = 40.0f;
-    float ceilHeight = 0.0f;
+    float floorHeight = .0f;
+    float ceilHeight = 40.0f;
 
     float lightValue = 255.0f;
 

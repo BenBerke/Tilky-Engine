@@ -459,61 +459,61 @@ namespace MapEditorInternal {
             MapQueries::RebuildSectorRuntimeLinks(level);
 
             // ---- TEMPORARY DIAGNOSTIC — remove once root cause is found ----
-            {
-                const auto sectorIt = level.sectorIDToIndex.find(newSector.id);
-                const int newSectorIndex =
-                    sectorIt != level.sectorIDToIndex.end() ? sectorIt->second : -1;
-
-                spdlog::warn(
-                    "CREATE SECTOR DIAG: id={} index={} floor={} ceil={} vertices={} triangles={} sectorCount={} wallCount={}",
-                    newSector.id,
-                    newSectorIndex,
-                    newSector.floorHeight,
-                    newSector.ceilingHeight,
-                    newSector.vertices.size(),
-                    newSector.triangles.size(),
-                    level.sectors.size(),
-                    level.walls.size()
-                );
-
-                if (newSectorIndex >= 0 && newSectorIndex < static_cast<int>(level.sectors.size())) {
-                    const Sector& createdSector = level.sectors[newSectorIndex];
-
-                    spdlog::warn(
-                        "CREATED SECTOR AFTER REBUILD: id={} floor={} ceil={} walls={}",
-                        createdSector.id,
-                        createdSector.floorHeight,
-                        createdSector.ceilingHeight,
-                        createdSector.walls.size()
-                    );
-
-                    for (const Wall* w : createdSector.walls) {
-                        if (w == nullptr) {
-                            spdlog::warn("  sector wall ptr=null");
-                            continue;
-                        }
-
-                        spdlog::warn(
-                            "  sector wall ptr id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-                            w->id, w->frontSector, w->backSector, w->textureIndex,
-                            w->quad3DCount, w->start.x, w->start.y, w->end.x, w->end.y
-                        );
-                    }
-                }
-
-                for (const Wall& w : level.walls) {
-                    spdlog::warn(
-                        "LEVEL WALL: id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-                        w.id, w.frontSector, w.backSector, w.textureIndex,
-                        w.quad3DCount, w.start.x, w.start.y, w.end.x, w.end.y
-                    );
-                }
-            }
+            // {
+            //     const auto sectorIt = level.sectorIDToIndex.find(newSector.id);
+            //     const int newSectorIndex =
+            //         sectorIt != level.sectorIDToIndex.end() ? sectorIt->second : -1;
+            //
+            //     spdlog::warn(
+            //         "CREATE SECTOR DIAG: id={} index={} floor={} ceil={} vertices={} triangles={} sectorCount={} wallCount={}",
+            //         newSector.id,
+            //         newSectorIndex,
+            //         newSector.floorHeight,
+            //         newSector.ceilingHeight,
+            //         newSector.vertices.size(),
+            //         newSector.triangles.size(),
+            //         level.sectors.size(),
+            //         level.walls.size()
+            //     );
+            //
+            //     if (newSectorIndex >= 0 && newSectorIndex < static_cast<int>(level.sectors.size())) {
+            //         const Sector& createdSector = level.sectors[newSectorIndex];
+            //
+            //         spdlog::warn(
+            //             "CREATED SECTOR AFTER REBUILD: id={} floor={} ceil={} walls={}",
+            //             createdSector.id,
+            //             createdSector.floorHeight,
+            //             createdSector.ceilingHeight,
+            //             createdSector.walls.size()
+            //         );
+            //
+            //         for (const Wall* w : createdSector.walls) {
+            //             if (w == nullptr) {
+            //                 spdlog::warn("  sector wall ptr=null");
+            //                 continue;
+            //             }
+            //
+            //             spdlog::warn(
+            //                 "  sector wall ptr id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
+            //                 w->id, w->frontSector, w->backSector, w->textureIndex,
+            //                 w->quad3DCount, w->start.x, w->start.y, w->end.x, w->end.y
+            //             );
+            //         }
+            //     }
+            //
+            //     for (const Wall& w : level.walls) {
+            //         spdlog::warn(
+            //             "LEVEL WALL: id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
+            //             w.id, w.frontSector, w.backSector, w.textureIndex,
+            //             w.quad3DCount, w.start.x, w.start.y, w.end.x, w.end.y
+            //         );
+            //     }
+            // }
             // ---- END TEMPORARY DIAGNOSTIC ----
 
             return newSector.id;
         }
-        
+
 
         void RebuildDotIDLookup() {
             dotIDToIndex.clear();

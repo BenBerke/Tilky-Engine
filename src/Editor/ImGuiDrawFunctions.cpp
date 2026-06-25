@@ -1,6 +1,20 @@
+// ImGuiDrawFunctions.cpp  –  Revamped inspector UI
+// Created by berke on 6/2/2026.  Revamped for cleaner tool-style inspector.
 //
-// Created by berke on 6/2/2026.
-//
+// Changes vs original
+// ───────────────────
+// • Local helpers: DrawInspectorHeader, BeginSection/EndSection,
+//   DangerButton, SmallMetaText, Tooltip, FieldWidth, ResetDragFloat3
+// • Sector  : Heights / Textures / Colors / Lighting groups + validation warning
+// • Wall    : Sector Links / Appearance / Texture Offset groups
+// • Entity  : Summary card, component rows as cards, compact Add-Component panel
+// • Component: field groups per component type (Movement, Jumping, Attenuation…)
+// • Danger (Delete) buttons are red; Close is plain; both live at the bottom
+// • IDs shown as small disabled metadata text
+// • Input widths are consistent (FieldWidth helper)
+// • ImGui focus flags: inspector windows use ImGuiWindowFlags_NoNav so they
+//   do not hijack keyboard during runtime – WASD/Space/CTRL stay functional
+// • DrawRuntimeHUD: compact transparent overlay with keybind hints
 
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
@@ -9,94 +23,83 @@
 
 #include <array>
 #include <string>
+#include <algorithm>
 
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
-
 #include "Headers/Objects/ComponentRegistry.hpp"
-#include <type_traits>
-
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Scripting/ScriptSystem.hpp"
 
-static const char *GetComponentLabelKey(const int componentType) {
-    switch (componentType) {
-#define COMPONENT_LABEL_CASE(Type, Bit, Storage, LabelKey) \
-case Bit: return LabelKey;
-
-        TILKY_COMPONENTS(COMPONENT_LABEL_CASE)
-
-#undef COMPONENT_LABEL_CASE
-
-        default:
-            return "bug.unknown";
-    }
-}
-
-static std::string GetComponentDisplayName(const int componentType) {
-    return Localisation::Get(GetComponentLabelKey(componentType));
-}
-
-template<typename T>
-static void AddEditorComponent(Entity &entity) {
-    if constexpr (std::is_same_v<T, ComponentPlayerController>) {
-        if (!entity.HasComponent<ComponentPlayerController>()) {
-            auto *pc = entity.AddComponent<ComponentPlayerController>();
-
-            if (!entity.HasComponent<ComponentRigidbody>()) entity.AddComponent<ComponentRigidbody>();
-
-            if (!entity.HasComponent<ComponentCollider>()) entity.AddComponent<ComponentCollider>();
-
-            if (!entity.HasComponent<ComponentCamera>()) entity.AddComponent<ComponentCamera>();
-
-            pc->isActive = true;
-        }
-    }
-    else if constexpr (std::is_same_v<T, ComponentCamera>) {
-        if (!entity.HasComponent<ComponentCamera>()) {
-            auto *cam = entity.AddComponent<ComponentCamera>();
-            cam->isActive = true;
-        }
-    }
-    else if constexpr (std::is_same_v<T, ComponentScript>) {
-        if (!entity.HasComponent<ComponentScript>()) {
-            auto *script = entity.AddComponent<ComponentScript>();
-
-            script->enabled = true;
-            script->fileName.clear();
-            script->publicValues.clear();
-            script->schemaHash = 0;
-        }
-    }
-    else if (!entity.HasComponent<T>()) entity.AddComponent<T>();
-}
-
-static void AddEditorComponentByType(Entity &entity, const int componentType) {
-    switch (componentType) {
-#define ADD_EDITOR_COMPONENT_CASE(Type, Bit, Storage, LabelKey) \
-case Bit: \
-AddEditorComponent<Type>(entity); \
-break;
-
-        TILKY_NORMAL_COMPONENTS(ADD_EDITOR_COMPONENT_CASE)
-
-#undef ADD_EDITOR_COMPONENT_CASE
-
-        default:
-            break;
-    }
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+//  Internal helpers (anonymous namespace)
+// ─────────────────────────────────────────────────────────────────────────────
 namespace {
+
+    // ── Component label lookup ────────────────────────────────────────────────
+
+    static const char *GetComponentLabelKey(const int componentType) {
+        switch (componentType) {
+    #define COMPONENT_LABEL_CASE(Type, Bit, Storage, LabelKey) \
+    case Bit: return LabelKey;
+            TILKY_COMPONENTS(COMPONENT_LABEL_CASE)
+    #undef COMPONENT_LABEL_CASE
+            default: return "bug.unknown";
+        }
+    }
+
+    static std::string GetComponentDisplayName(const int componentType) {
+        return Localisation::Get(GetComponentLabelKey(componentType));
+    }
+
+    // ── AddEditorComponent (unchanged logic, just moved inside anon ns) ───────
+
+    template<typename T>
+    static void AddEditorComponent(Entity &entity) {
+        if constexpr (std::is_same_v<T, ComponentPlayerController>) {
+            if (!entity.HasComponent<ComponentPlayerController>()) {
+                auto *pc = entity.AddComponent<ComponentPlayerController>();
+                if (!entity.HasComponent<ComponentRigidbody>())  entity.AddComponent<ComponentRigidbody>();
+                if (!entity.HasComponent<ComponentCollider>())    entity.AddComponent<ComponentCollider>();
+                if (!entity.HasComponent<ComponentCamera>())      entity.AddComponent<ComponentCamera>();
+                pc->isActive = true;
+            }
+        } else if constexpr (std::is_same_v<T, ComponentCamera>) {
+            if (!entity.HasComponent<ComponentCamera>()) {
+                auto *cam = entity.AddComponent<ComponentCamera>();
+                cam->isActive = true;
+            }
+        } else if constexpr (std::is_same_v<T, ComponentScript>) {
+            if (!entity.HasComponent<ComponentScript>()) {
+                auto *script = entity.AddComponent<ComponentScript>();
+                script->enabled    = true;
+                script->fileName.clear();
+                script->publicValues.clear();
+                script->schemaHash = 0;
+            }
+        } else {
+            if (!entity.HasComponent<T>()) entity.AddComponent<T>();
+        }
+    }
+
+    static void AddEditorComponentByType(Entity &entity, const int componentType) {
+        switch (componentType) {
+    #define ADD_EDITOR_COMPONENT_CASE(Type, Bit, Storage, LabelKey) \
+    case Bit: AddEditorComponent<Type>(entity); break;
+            TILKY_NORMAL_COMPONENTS(ADD_EDITOR_COMPONENT_CASE)
+    #undef ADD_EDITOR_COMPONENT_CASE
+            default: break;
+        }
+    }
+
+    // ── Input helpers (unchanged signatures) ─────────────────────────────────
+
     bool InputID(const char *label, ID &value) {
         int displayValue = (value == INVALID_ID) ? -1 : static_cast<int>(value);
-
         if (!ImGui::InputInt(label, &displayValue)) return false;
-
         value = (displayValue < 0) ? INVALID_ID : static_cast<ID>(displayValue);
-
         return true;
     }
 
@@ -105,156 +108,398 @@ namespace {
         if constexpr (std::is_same_v<T, float>)
             return draggable ? ImGui::DragFloat(label, value, speed) : ImGui::InputFloat(label, value);
         else if constexpr (std::is_same_v<T, int>)
-            return draggable ? ImGui::DragInt(label, value, speed) : ImGui::InputInt(label, value);
-
+            return draggable ? ImGui::DragInt(label, value, static_cast<int>(speed)) : ImGui::InputInt(label, value);
         return false;
     }
 
-    bool InputOrDrag2(const char *label, float *value, const bool draggable, const float speed = 1.0f) {
-        return draggable ? ImGui::DragFloat2(label, value, speed) : ImGui::InputFloat2(label, value);
+    bool InputOrDrag2(const char *label, float *v, bool drag, float speed = 1.0f) {
+        return drag ? ImGui::DragFloat2(label, v, speed) : ImGui::InputFloat2(label, v);
+    }
+    bool InputOrDrag3(const char *label, float *v, bool drag, float speed = 1.0f) {
+        return drag ? ImGui::DragFloat3(label, v, speed) : ImGui::InputFloat3(label, v);
+    }
+    bool InputOrDrag4(const char *label, float *v, bool drag, float speed = 1.0f) {
+        return drag ? ImGui::DragFloat4(label, v, speed) : ImGui::InputFloat4(label, v);
     }
 
-    bool InputOrDrag3(const char *label, float *value, const bool draggable, const float speed = 1.0f) {
-        return draggable ? ImGui::DragFloat3(label, value, speed) : ImGui::InputFloat3(label, value);
+    // ─────────────────────────────────────────────────────────────────────────
+    //  NEW: UI primitive helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Standard field input width – call before the next widget
+    void FieldWidth(float width = 200.0f) { ImGui::SetNextItemWidth(width); }
+
+    // Small grey metadata text (IDs, read-only info)
+    void SmallMetaText(const char *fmt, ...) {
+        va_list args;
+        va_start(args, fmt);
+        char buf[256];
+        vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        ImGui::TextDisabled("%s", buf);
     }
 
-    bool InputOrDrag4(const char *label, float *value, const bool draggable, const float speed = 1.0f) {
-        return draggable ? ImGui::DragFloat4(label, value, speed) : ImGui::InputFloat4(label, value);
+    // Tooltip on last item
+    void Tooltip(const char *text) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s", text);
     }
 
+    // Section header with SeparatorText (falls back gracefully)
+    void BeginSection(const char *label) {
+        ImGui::Spacing();
+        ImGui::SeparatorText(label);
+    }
+
+    // (No-op closer kept for readability parity)
+    void EndSection() { ImGui::Spacing(); }
+
+    // Selection summary bar – compact coloured header line
+    // e.g.  DrawInspectorHeader("Sector", "#3")
+    void DrawInspectorHeader(const char *kind, const char *detail = nullptr) {
+        ImGuiStyle &style = ImGui::GetStyle();
+        // Slightly tinted background strip
+        ImVec2 pos  = ImGui::GetCursorScreenPos();
+        ImVec2 size = ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeightWithSpacing() + style.FramePadding.y * 2.0f);
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                          IM_COL32(60, 80, 110, 160), 4.0f);
+        ImGui::Indent(style.FramePadding.x);
+        ImGui::Spacing();
+        if (detail && detail[0] != '\0')
+            ImGui::Text("Selected: %s  %s", kind, detail);
+        else
+            ImGui::Text("Selected: %s", kind);
+        ImGui::Unindent(style.FramePadding.x);
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    }
+
+    // Red "danger" delete button
+    bool DangerButton(const char *label) {
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.50f, 0.08f, 0.08f, 1.0f));
+        bool pressed = ImGui::Button(label);
+        ImGui::PopStyleColor(3);
+        return pressed;
+    }
+
+    // Reset a float3 to zero with a small inline button
+    bool ResetFloat3Button(const char *id, float *v) {
+        ImGui::PushID(id);
+        ImGui::SameLine();
+        bool pressed = ImGui::SmallButton("Reset");
+        if (pressed) { v[0] = 0.0f; v[1] = 0.0f; v[2] = 0.0f; }
+        ImGui::PopID();
+        return pressed;
+    }
+
+    // Script public-field editor (unchanged logic)
     void DrawScriptValueEditor(const ScriptPublicField &field, ScriptValue &value) {
         switch (field.type) {
             case ScriptValueType::Int: {
-                int *intValue = std::get_if<int>(&value);
-
-                if (intValue == nullptr) return;
-
-                ImGui::DragInt(field.displayName.c_str(), intValue);
+                int *iv = std::get_if<int>(&value);
+                if (!iv) return;
+                ImGui::DragInt(field.displayName.c_str(), iv);
                 break;
             }
-
             case ScriptValueType::Float: {
-                float *floatValue = std::get_if<float>(&value);
-
-                if (floatValue == nullptr) return;
-
-                ImGui::DragFloat(field.displayName.c_str(), floatValue, 0.1f);
+                float *fv = std::get_if<float>(&value);
+                if (!fv) return;
+                ImGui::DragFloat(field.displayName.c_str(), fv, 0.1f);
                 break;
             }
-
             case ScriptValueType::Bool: {
-                bool *boolValue = std::get_if<bool>(&value);
-
-                if (boolValue == nullptr) return;
-
-                ImGui::Checkbox(field.displayName.c_str(), boolValue);
+                bool *bv = std::get_if<bool>(&value);
+                if (!bv) return;
+                ImGui::Checkbox(field.displayName.c_str(), bv);
                 break;
             }
-
             case ScriptValueType::String: {
-                std::string *stringValue = std::get_if<std::string>(&value);
-
-                if (stringValue == nullptr) return;
-
-                ImGui::InputText(field.displayName.c_str(), stringValue);
+                std::string *sv = std::get_if<std::string>(&value);
+                if (!sv) return;
+                ImGui::InputText(field.displayName.c_str(), sv);
                 break;
             }
         }
     }
-}
 
+} // anonymous namespace
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ImGuiDrawFunctions implementation
+// ─────────────────────────────────────────────────────────────────────────────
 namespace ImGuiDrawFunctions {
     using namespace Localisation;
 
+    // Runtime-safe inspector window flags:
+    // NoNav prevents the window from stealing keyboard focus (WASD stays functional).
+    static constexpr ImGuiWindowFlags kInspectorFlags =
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse;
+
     void PutSpace(const int n) {
-        for (int i = 0; i < n; i++) {
-            ImGui::Spacing();
-        }
+        for (int i = 0; i < n; i++) ImGui::Spacing();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Sector Editor
+    // ─────────────────────────────────────────────────────────────────────────
     bool DrawSectorEditor(Sector &sector, bool *open, const int sectorId, const bool draggable) {
         bool deleteRequested = false;
 
-        if (!ImGui::Begin(Get("sector.title").c_str(), open)) {
+        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin(Get("sector.title").c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
 
+        // ── Summary header ───────────────────────────────────────────────────
+        char idBuf[32] = "";
+        if (sectorId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", sectorId);
+        DrawInspectorHeader("Sector", idBuf);
+
+        // ── Heights ──────────────────────────────────────────────────────────
+        BeginSection("Heights");
+
+        FieldWidth(160.0f);
         InputOrDrag(Get("sector.ceil_height").c_str(), &sector.ceilingHeight, draggable);
+        Tooltip("Height of the ceiling plane in world units.");
+
+        FieldWidth(160.0f);
         InputOrDrag(Get("sector.floor_height").c_str(), &sector.floorHeight, draggable);
+        Tooltip("Height of the floor plane in world units.");
 
-        ImGui::InputInt(Get("sector.floor_texture").c_str(), &sector.floorTextureIndex, 1);
-        ImGui::InputInt(Get("sector.ceil_texture").c_str(), &sector.ceilingTextureIndex, 1);
-
-        InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
-        InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
-
-        InputOrDrag(Get("sector.light_value").c_str(), &sector.lightValue, draggable);
-
-        if (ImGui::Button(Get("common.delete").c_str())) {
-            deleteRequested = true;
-            if (open != nullptr) *open = false;
+        // Validation warning
+        if (sector.ceilingHeight <= sector.floorHeight) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
+            ImGui::TextWrapped("Warning: ceiling height <= floor height.");
+            ImGui::PopStyleColor();
         }
+
+        EndSection();
+
+        // ── Textures ─────────────────────────────────────────────────────────
+        BeginSection("Textures");
+
+        FieldWidth(120.0f);
+        ImGui::InputInt(Get("sector.floor_texture").c_str(),   &sector.floorTextureIndex,   1);
+        Tooltip("Index into the texture atlas for the floor.");
+
+        FieldWidth(120.0f);
+        ImGui::InputInt(Get("sector.ceil_texture").c_str(),    &sector.ceilingTextureIndex, 1);
+        Tooltip("Index into the texture atlas for the ceiling.");
+
+        EndSection();
+
+        // ── Colors ───────────────────────────────────────────────────────────
+        BeginSection("Colors");
+
+        FieldWidth(220.0f);
+        InputOrDrag3(Get("sector.ceil_color").c_str(),  &sector.ceilingColor.x, draggable);
+        ResetFloat3Button("reset_ceil_color", &sector.ceilingColor.x);
+
+        FieldWidth(220.0f);
+        InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x,   draggable);
+        ResetFloat3Button("reset_floor_color", &sector.floorColor.x);
+
+        EndSection();
+
+        // ── Lighting ─────────────────────────────────────────────────────────
+        BeginSection("Lighting");
+
+        FieldWidth(160.0f);
+        InputOrDrag(Get("sector.light_value").c_str(), &sector.lightValue, draggable);
+        Tooltip("Ambient light multiplier for this sector.");
+
+        EndSection();
+
+        // ── Meta ─────────────────────────────────────────────────────────────
+        if (sectorId >= 0) {
+            ImGui::Spacing();
+            SmallMetaText("ID: %d   internal id: %d", sectorId, sector.id);
+        }
+
+        // ── Actions ──────────────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        if (DangerButton(Get("common.delete").c_str())) {
+            deleteRequested = true;
+            if (open) *open = false;
+        }
+        Tooltip("Permanently remove this sector from the map.");
 
         ImGui::SameLine();
 
-        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
-
-        if (sectorId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), sector.id);
+        if (ImGui::Button(Get("common.close").c_str()))
+            if (open) *open = false;
 
         ImGui::End();
-
         return deleteRequested;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Wall Editor
+    // ─────────────────────────────────────────────────────────────────────────
     bool DrawWallEditor(Wall &wall, bool *open, const int wallId, const bool draggable) {
         bool deleteRequested = false;
 
-        if (!ImGui::Begin(Get("wall.title").c_str(), open)) {
+        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin(Get("wall.title").c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
+
+        // ── Summary header ───────────────────────────────────────────────────
+        char idBuf[32] = "";
+        if (wallId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", wallId);
+        DrawInspectorHeader("Wall", idBuf);
+
+        // ── Sector Links ─────────────────────────────────────────────────────
+        BeginSection("Sector Links");
 
         bool wallSectorChanged = false;
 
+        FieldWidth(100.0f);
         wallSectorChanged |= InputID(Get("wall.front_sector").c_str(), wall.frontSector);
+        Tooltip("Sector on the front (visible) side of this wall.");
+
+        FieldWidth(100.0f);
         wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
+        Tooltip("Sector on the back side – INVALID_ID for solid walls.");
 
+        if (wallSectorChanged)
+            MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
+
+        SmallMetaText("Front: %s   Back: %s",
+            wall.frontSector == INVALID_ID ? "none" : std::to_string(static_cast<int>(wall.frontSector)).c_str(),
+            wall.backSector  == INVALID_ID ? "none" : std::to_string(static_cast<int>(wall.backSector)).c_str());
+
+        EndSection();
+
+        // ── Appearance ───────────────────────────────────────────────────────
+        BeginSection("Appearance");
+
+        FieldWidth(120.0f);
         ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex, 1);
+        Tooltip("Texture atlas index applied to this wall face.");
+
+        FieldWidth(220.0f);
         InputOrDrag4(Get("wall.color").c_str(), &wall.color.x, draggable);
+        Tooltip("RGBA tint multiplied over the wall texture.");
+
+        EndSection();
+
+        // ── Texture Offset ───────────────────────────────────────────────────
+        BeginSection("Texture Offset");
+
+        FieldWidth(200.0f);
         InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
+        Tooltip("UV offset for scrolling or aligning the wall texture.");
 
-        if (wallSectorChanged) MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
+        EndSection();
 
-        if (ImGui::Button(Get("common.delete").c_str())) {
-            deleteRequested = true;
-            if (open != nullptr) *open = false;
+        // ── Meta ─────────────────────────────────────────────────────────────
+        if (wallId >= 0) {
+            ImGui::Spacing();
+            SmallMetaText("ID: %d   internal id: %d", wallId, wall.id);
         }
 
+        // ── Actions ──────────────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        if (DangerButton(Get("common.delete").c_str())) {
+            deleteRequested = true;
+            if (open) *open = false;
+        }
+        Tooltip("Remove this wall from the map.");
+
         ImGui::SameLine();
-
-        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
-
-        if (wallId >= 0) ImGui::Text("%s: %d", Get("common.id").c_str(), wall.id);
+        if (ImGui::Button(Get("common.close").c_str()))
+            if (open) *open = false;
 
         ImGui::End();
-
         return deleteRequested;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Entity Editor
+    // ─────────────────────────────────────────────────────────────────────────
     bool DrawEntityEditor(Entity &entity, EntityInspectorState &state, bool *open, const bool draggable) {
         bool deleteRequested = false;
 
-        if (!ImGui::Begin(Get("entity.title").c_str(), open)) {
+        ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin(Get("entity.title").c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
 
-        ImGui::Text("%u", entity.id);
-        ImGui::SameLine();
-        ImGui::InputText(Get("entity.name").c_str(), &entity.name);
+        // ── Identity card ────────────────────────────────────────────────────
+        {
+            char hdr[128];
+            snprintf(hdr, sizeof(hdr), "%s (#%u)",
+                     entity.name.empty() ? "unnamed" : entity.name.c_str(),
+                     entity.id);
+            DrawInspectorHeader("Entity", hdr);
+        }
 
-        if (ImGui::Button(Get("entity.add_component").c_str()))
+        BeginSection("Identity");
+        SmallMetaText("ID: %u", entity.id);
+        FieldWidth(220.0f);
+        ImGui::InputText(Get("entity.name").c_str(), &entity.name);
+        EndSection();
+
+        // ── Components list ──────────────────────────────────────────────────
+        BeginSection("Components");
+
+        // Each component rendered as a card-like row: [name]  [Edit ▶]
+        auto DrawComponentCard = [&](const char *label, const int componentType) {
+            ImGui::PushID(componentType);
+
+            // Subtle background for the row
+            ImVec2 rowMin = ImGui::GetCursorScreenPos();
+            float  rowW   = ImGui::GetContentRegionAvail().x;
+            float  rowH   = ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().FramePadding.y * 2.0f + 2.0f;
+
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(rowMin, ImVec2(rowMin.x + rowW, rowMin.y + rowH),
+                              IM_COL32(40, 50, 65, 130), 3.0f);
+
+            ImGui::Spacing();
+            ImGui::Indent(6.0f);
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(rowW - 56.0f);
+
+            if (ImGui::SmallButton("Edit")) {
+                state.selectedComponent  = componentType;
+                state.editingComponent   = true;
+            }
+
+            ImGui::Unindent(6.0f);
+            ImGui::Spacing();
+            ImGui::PopID();
+        };
+
+#define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
+        if (entity.HasComponent<Type>()) \
+            DrawComponentCard(Get(LabelKey).c_str(), Bit);
+
+        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
+
+#undef DRAW_ENTITY_COMPONENT_ROW
+
+        EndSection();
+
+        // ── Add Component panel ───────────────────────────────────────────────
+        BeginSection("Add Component");
+
+        if (ImGui::Button(state.addingComponent ? "Cancel" : Get("entity.add_component").c_str()))
             state.addingComponent = !state.addingComponent;
 
         if (state.addingComponent) {
@@ -263,462 +508,515 @@ namespace ImGuiDrawFunctions {
             std::array<std::string, CMP_NORMAL_COUNT> componentNames{};
 
 #define FILL_COMPONENT_NAME(Type, Bit, Storage, LabelKey) \
-componentNames[Bit] = Get(LabelKey);
-
+            componentNames[Bit] = Get(LabelKey);
             TILKY_NORMAL_COMPONENTS(FILL_COMPONENT_NAME)
-
 #undef FILL_COMPONENT_NAME
 
+            FieldWidth(200.0f);
             if (ImGui::BeginCombo(
-                Get("component.component").c_str(),
-                componentNames[state.componentToAdd].c_str()
-            )) {
+                    Get("component.component").c_str(),
+                    componentNames[state.componentToAdd].c_str()))
+            {
                 for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
                     if (i == CMP_TRANSFORM) continue;
-
-                    const bool isSelected = state.componentToAdd == i;
-
-                    if (ImGui::Selectable(componentNames[i].c_str(), isSelected))
+                    const bool isSel = (state.componentToAdd == i);
+                    if (ImGui::Selectable(componentNames[i].c_str(), isSel))
                         state.componentToAdd = i;
-
-                    if (isSelected)
-                        ImGui::SetItemDefaultFocus();
+                    if (isSel) ImGui::SetItemDefaultFocus();
                 }
-
                 ImGui::EndCombo();
             }
 
+            ImGui::SameLine();
             if (ImGui::Button(Get("common.add").c_str())) {
                 AddEditorComponentByType(entity, state.componentToAdd);
-
                 state.addingComponent = false;
-                state.componentToAdd = CMP_SPRITE;
-            }
-
-            ImGui::SameLine();
-
-            if (ImGui::Button(Get("common.cancel").c_str())) {
-                state.addingComponent = false;
-                state.componentToAdd = CMP_SPRITE;
+                state.componentToAdd  = CMP_SPRITE;
             }
 
             ImGui::PopID();
         }
 
-        PutSpace(2);
+        EndSection();
 
-        ImGui::Text("%s", Get("entity.components").c_str());
-
-        auto DrawComponentRow = [&](const char *label, const int componentType) {
-            ImGui::PushID(componentType);
-
-            ImGui::Text("%s", label);
-            ImGui::SameLine();
-
-            if (ImGui::Button(Get("common.edit").c_str())) {
-                state.selectedComponent = componentType;
-                state.editingComponent = true;
-            }
-
-            ImGui::PopID();
-        };
-
-#define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
-if (entity.HasComponent<Type>()) \
-DrawComponentRow(Get(LabelKey).c_str(), Bit);
-
-        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
-
-#undef DRAW_ENTITY_COMPONENT_ROW
-
-        PutSpace(2);
+        // ── Actions ──────────────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
 
         ImGui::PushID("entity_buttons");
 
-        if (ImGui::Button(Get("common.delete").c_str()) || InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) {
-            deleteRequested = true;
-            state.editingComponent = false;
-            state.selectedComponent = -1;
-
-            if (open != nullptr) *open = false;
+        if (DangerButton(Get("common.delete").c_str())
+            || InputManager::GetKeyDown(SDL_SCANCODE_DELETE))
+        {
+            deleteRequested            = true;
+            state.editingComponent     = false;
+            state.selectedComponent    = -1;
+            if (open) *open = false;
         }
+        Tooltip("Delete this entity from the level.");
 
         ImGui::SameLine();
-
         if (ImGui::Button(Get("common.close").c_str())) {
-            state.editingComponent = false;
+            state.editingComponent  = false;
             state.selectedComponent = -1;
-
-            if (open != nullptr) *open = false;
+            if (open) *open = false;
         }
 
         ImGui::PopID();
 
         ImGui::End();
-
         return deleteRequested;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Component Editor
+    // ─────────────────────────────────────────────────────────────────────────
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, const bool draggable) {
         if (state.selectedComponent == -1) {
             state.editingComponent = false;
-
-            if (open != nullptr) *open = false;
-
-
+            if (open) *open = false;
             return;
         }
 
-        const std::string componentName = GetComponentDisplayName(state.selectedComponent);
+        const std::string componentName  = GetComponentDisplayName(state.selectedComponent);
+        const std::string windowTitle    = componentName + "##component_editor";
 
-        const std::string windowTitle = componentName + "##component_editor";
+        bool fallbackOpen  = true;
+        bool *windowOpen   = open ? open : &fallbackOpen;
 
-        bool fallbackOpen = true;
-        bool *windowOpen = open != nullptr ? open : &fallbackOpen;
-
-        if (!ImGui::Begin(windowTitle.c_str(), windowOpen)) {
+        ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin(windowTitle.c_str(), windowOpen, kInspectorFlags)) {
             ImGui::End();
-
-            if (!*windowOpen) {
-                state.editingComponent = false;
-                state.selectedComponent = -1;
-            }
-
+            if (!*windowOpen) { state.editingComponent = false; state.selectedComponent = -1; }
             return;
         }
 
         ImGui::PushID(state.selectedComponent);
 
         bool closeRequested = false;
+        auto CloseEditor    = [&]() { closeRequested = true; };
 
-        auto CloseEditor = [&]() {
-            closeRequested = true;
-        };
+        // ── Summary header ────────────────────────────────────────────────────
+        DrawInspectorHeader("Component", componentName.c_str());
 
+        // ════════════════════════════════════════════════════════════════════
+        //  Transform
+        // ════════════════════════════════════════════════════════════════════
         if (state.selectedComponent == CMP_TRANSFORM) {
             auto *c = entity.GetComponent<ComponentTransform>();
+            if (c) {
+                BeginSection("Position");
+                ImGui::TextDisabled("X                Y               Z(height)");
+                FieldWidth(220.0f);
+                InputOrDrag3("##pos", &c->position.x, draggable);
+                ResetFloat3Button("rst_pos", &c->position.x);
+                EndSection();
 
-            if (c != nullptr) [[likely]] {
-                ImGui::Text("%s", Get("component.transform.position").c_str());
-                ImGui::Text("X       Y");
-
-                ImGui::SetNextItemWidth(200.0f);
-                InputOrDrag("##positionx", &c->position.x, draggable);
-
-                ImGui::SetNextItemWidth(200.0f);
-                ImGui::SameLine();
-                InputOrDrag("##positiony", &c->position.y, draggable);
-
-                ImGui::Text("Height");
-
-                ImGui::SetNextItemWidth(200.0f);
-                InputOrDrag("##relativeHeight", &c->position.z, draggable);
-
-                ImGui::Spacing();
-
-                ImGui::Text("%s", Get("component.transform.scale").c_str());
-                ImGui::Text("X    Y    Z");
-
-                ImGui::SetNextItemWidth(220.0f);
+                BeginSection("Scale");
+                ImGui::TextDisabled("X                Y               Z");
+                FieldWidth(220.0f);
                 InputOrDrag3("##scale", &c->scale.x, draggable);
+                ResetFloat3Button("rst_scale", &c->scale.x);
+                EndSection();
 
                 ImGui::Spacing();
-
-                ImGui::SetNextItemWidth(120.0f);
-
+                ImGui::Separator();
                 ImGui::Spacing();
-
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentTransform>();
                     CloseEditor();
                 }
-            } else ImGui::Text("Transform component missing");
+            } else { ImGui::TextDisabled("Transform component missing"); }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Sprite
+        // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
-
-            if (c != nullptr) [[likely]] {
-                ImGui::SetNextItemWidth(120.0f);
+            if (c) {
+                BeginSection("Rendering");
+                FieldWidth(120.0f);
                 InputOrDrag(Get("component.sprite.texture_index").c_str(), &c->textureIndex, draggable);
+                Tooltip("Index into the sprite/texture atlas.");
+                EndSection();
 
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentSprite>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Sprite component missing");
+            } else { ImGui::TextDisabled("Sprite component missing"); }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Decal
+        // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_DECAL) {
             auto *c = entity.GetComponent<ComponentDecal>();
+            if (c) {
+                BeginSection("Placement");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.decal.attached_wall").c_str(),    &c->wallIndex,        draggable);
+                InputOrDrag(Get("component.decal.wall_offset").c_str(),       &c->horizontalPos,    draggable);
+                InputOrDrag(Get("component.decal.wall_normal_offset").c_str(),&c->wallNormalOffset, draggable);
+                InputOrDrag("Wall T",    &c->wallT,      draggable);
+                Tooltip("Normalised position along the wall (0–1).");
+                EndSection();
 
-            if (c != nullptr) [[likely]] {
-                InputOrDrag(Get("component.decal.attached_wall").c_str(), &c->wallIndex, draggable);
-                InputOrDrag(Get("component.decal.wall_offset").c_str(), &c->horizontalPos, draggable);
-                InputOrDrag(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset, draggable);
+                BeginSection("Vertical");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.decal.z_offset").c_str(), &c->verticalPos, draggable);
-                InputOrDrag("Wall T", &c->wallT, draggable);
-                InputOrDrag("Base Height", &c->baseHeight, draggable);
+                InputOrDrag("Base Height",                             &c->baseHeight,  draggable);
                 ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &c->absHeight);
+                Tooltip("When enabled, verticalPos is an absolute world height instead of a relative offset.");
+                EndSection();
 
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentDecal>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Decal component missing");
+            } else { ImGui::TextDisabled("Decal component missing"); }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Audio Source
+        // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
             auto *c = entity.GetComponent<ComponentAudioSource>();
-
-            if (c != nullptr) [[likely]] {
+            if (c) {
+                BeginSection("Sound");
+                FieldWidth(120.0f);
                 InputOrDrag("Sound Index", &c->soundIndex, draggable);
-                InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable);
-                InputOrDrag(Get("component.audio_source.gain").c_str(), &c->gain, draggable);
-                ImGui::Checkbox(Get("component.audio_source.looping").c_str(), &c->looping);
+                FieldWidth(120.0f);
+                InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable, 0.01f);
+                FieldWidth(120.0f);
+                InputOrDrag(Get("component.audio_source.gain").c_str(),  &c->gain,  draggable, 0.01f);
+                ImGui::Checkbox(Get("component.audio_source.looping").c_str(),       &c->looping);
                 ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &c->playOnStart);
+                EndSection();
 
-                ImGui::Separator();
-                ImGui::TextDisabled("%s", Get("component.audio_source.attenuation_header").c_str());
-
+                BeginSection("Attenuation");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.ref_distance").c_str(), &c->referenceDistance, draggable, 0.1f);
-                InputOrDrag(Get("component.audio_source.max_distance").c_str(), &c->maxDistance, draggable, 1.0f);
-                InputOrDrag(Get("component.audio_source.rolloff").c_str(), &c->rollOffFactor, draggable, 0.01f);
+                Tooltip("Distance at which volume is at full gain.");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.audio_source.max_distance").c_str(), &c->maxDistance,       draggable, 1.0f);
+                Tooltip("Beyond this distance sound is inaudible.");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.audio_source.rolloff").c_str(),       &c->rollOffFactor,     draggable, 0.01f);
+                Tooltip("How quickly the volume drops with distance.");
+                EndSection();
 
-                ImGui::Separator();
-                ImGui::TextDisabled("%s", Get("component.audio_source.cone_header").c_str());
-
+                BeginSection("Cone");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.inner_angle").c_str(), &c->innerConeAngle, draggable, 1.0f);
+                Tooltip("Full-gain cone angle in degrees.");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.outer_angle").c_str(), &c->outerConeAngle, draggable, 1.0f);
-                InputOrDrag(Get("component.audio_source.outer_gain").c_str(), &c->outerGain, draggable, 0.01f);
+                Tooltip("Beyond this angle, outerGain applies.");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.audio_source.outer_gain").c_str(),  &c->outerGain,      draggable, 0.01f);
+                EndSection();
 
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentAudioSource>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Audio component missing");
+            } else { ImGui::TextDisabled("Audio component missing"); }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Script
+        // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SCRIPT) {
             auto *c = entity.GetComponent<ComponentScript>();
-
-            if (c != nullptr) [[likely]] {
+            if (c) {
+                BeginSection("Script File");
+                FieldWidth(200.0f);
                 ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
-
+                Tooltip("Lua script name (without extension) in the scripts folder.");
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                     c->fileName = fs::path(c->fileName).stem().string();
                     ScriptSystem::ReconcileScriptPublicValues(*c);
                 }
-
                 ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
-
-                if (ImGui::Button("Refresh Script Fields")) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Refresh Fields"))
                     ScriptSystem::ReconcileScriptPublicValues(*c);
-                }
+                EndSection();
 
                 const std::vector<ScriptPublicField> *fields =
                         ScriptSystem::GetPublicFieldsForScript(c->fileName);
 
                 if (fields == nullptr) {
-                    if (!c->fileName.empty()) {
-                        ImGui::TextDisabled("Script file not found or has no public fields.");
-                    }
+                    if (!c->fileName.empty())
+                        ImGui::TextDisabled("Script not found or has no public fields.");
                 } else {
-                    ImGui::SeparatorText("Public Variables");
-
-                    for (const ScriptPublicField &field: *fields) {
+                    BeginSection("Public Variables");
+                    for (const ScriptPublicField &field : *fields) {
                         auto valueIt = c->publicValues.find(field.name);
-
                         if (valueIt == c->publicValues.end()) {
                             c->publicValues[field.name] = field.defaultValue;
                             valueIt = c->publicValues.find(field.name);
                         }
-
                         DrawScriptValueEditor(field, valueIt->second);
                     }
+                    EndSection();
 
-                    ImGui::SeparatorText("Orphaned Variables");
-
-                    bool hasOrphanedVariables = false;
-
+                    BeginSection("Orphaned Variables");
+                    bool hasOrphans = false;
                     for (auto valueIt = c->publicValues.begin(); valueIt != c->publicValues.end();) {
                         const std::string &valueName = valueIt->first;
-
                         const bool existsInSchema = std::ranges::any_of(
                             *fields,
-                            [&valueName](const ScriptPublicField &field) {
-                                return field.name == valueName;
-                            }
-                        );
-
-                        if (existsInSchema) {
-                            ++valueIt;
-                            continue;
-                        }
-
-                        hasOrphanedVariables = true;
-
-                        ImGui::TextDisabled("%s", valueName.c_str());
+                            [&valueName](const ScriptPublicField &f){ return f.name == valueName; });
+                        if (existsInSchema) { ++valueIt; continue; }
+                        hasOrphans = true;
+                        SmallMetaText("%s", valueName.c_str());
                         ImGui::SameLine();
-
-                        const std::string deleteButtonLabel = "Remove##orphan_" + valueName;
-
-                        if (ImGui::Button(deleteButtonLabel.c_str())) {
+                        const std::string delLabel = "Remove##orphan_" + valueName;
+                        if (ImGui::SmallButton(delLabel.c_str()))
                             valueIt = c->publicValues.erase(valueIt);
-                        } else {
+                        else
                             ++valueIt;
-                        }
                     }
-
-                    if (!hasOrphanedVariables) {
-                        ImGui::TextDisabled("None");
-                    }
+                    if (!hasOrphans) ImGui::TextDisabled("None");
+                    EndSection();
                 }
 
-                ImGui::Separator();
-
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentScript>();
                     CloseEditor();
                 }
-            } else [[unlikely]] {
-                ImGui::Text("Script component missing");
-            }
+            } else { ImGui::TextDisabled("Script component missing"); }
         }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Player Controller
+        // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
             auto *c = entity.GetComponent<ComponentPlayerController>();
-
-            if (c != nullptr) [[likely]] {
-                InputOrDrag(Get("component.player_controller.speed").c_str(), &c->speed, draggable);
+            if (c) {
+                BeginSection("Movement");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.player_controller.speed").c_str(),         &c->speed,        draggable);
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
-                InputOrDrag(Get("component.player_controller.jump_power").c_str(), &c->jumpPower, draggable);
-                InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
-
-                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(), &c->jumpBufferMs, draggable);
-
+                FieldWidth(-1.0f); // full width slider
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
-                ImGui::SliderFloat(
-                    Get("component.player_controller.sensitivity_x").c_str(),
-                    &c->sensitivityX,
-                    0.001f,
-                    2.0f
-                );
+                Tooltip("Surface friction (0 = ice, 1 = full stop on release).");
+                EndSection();
 
-                ImGui::SliderFloat(
-                    Get("component.player_controller.sensitivity_y").c_str(),
-                    &c->sensitivityY,
-                    0.001f,
-                    2.0f
-                );
+                BeginSection("Jumping");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.player_controller.jump_power").c_str(),      &c->jumpPower,     draggable);
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(),  &c->jumpBufferMs,  draggable);
+                Tooltip("Milliseconds before landing where a jump input is buffered.");
+                EndSection();
 
-                ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(), &c->noClip);
+                BeginSection("Camera");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
+                Tooltip("Vertical offset from entity origin to the camera eye.");
+                FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
+                                   &c->sensitivityX, 0.001f, 2.0f);
+                FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
+                                   &c->sensitivityY, 0.001f, 2.0f);
+                EndSection();
+
+                BeginSection("State");
+                ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
+                Tooltip("When enabled, the player ignores collision and flies freely.");
                 ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive);
+                Tooltip("Whether this player controller is currently receiving input.");
+                EndSection();
 
-                ImGui::Separator();
-
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentPlayerController>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Player Controller component missing");
-        } else if (state.selectedComponent == CMP_CAMERA) {
+            } else { ImGui::TextDisabled("Player Controller component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Camera
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_CAMERA) {
             auto *c = entity.GetComponent<ComponentCamera>();
-
-            if (c != nullptr) [[likely]] {
+            if (c) {
+                BeginSection("Projection");
+                FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
+                Tooltip("Vertical field of view in degrees.");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio, draggable);
+                EndSection();
+
+                BeginSection("Clipping Planes");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.camera.near_plane").c_str(), &c->nearPlane, draggable);
-                InputOrDrag(Get("component.camera.far_plane").c_str(), &c->farPlane, draggable);
+                Tooltip("Closest distance rendered. Keep > 0.");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.camera.far_plane").c_str(),  &c->farPlane,  draggable);
+                Tooltip("Furthest distance rendered.");
+                EndSection();
+
+                BeginSection("State");
                 ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);
+                Tooltip("Whether this camera is currently rendering.");
+                EndSection();
 
-                ImGui::Separator();
-
-                if (ImGui::Button(Get("common.delete").c_str())) {
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentCamera>();
                     CloseEditor();
                 }
-            } else [[unlikely]] ImGui::Text("Camera component missing");
-        } else if (state.selectedComponent == CMP_COLLIDER) {
-            auto *c = entity.GetComponent<ComponentCollider>();
+            } else { ImGui::TextDisabled("Camera component missing"); }
+        }
 
-            if (c != nullptr) [[likely]] {
-                const std::array<std::string, 2> colliderTypeLabels = {
+        // ════════════════════════════════════════════════════════════════════
+        //  Collider
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_COLLIDER) {
+            auto *c = entity.GetComponent<ComponentCollider>();
+            if (c) {
+                BeginSection("Shape");
+
+                const std::array<std::string, 2> typeLabels = {
                     Get("component.collider.type.sphere"),
                     Get("component.collider.type.box")
                 };
-
-                const char *items[] = {
-                    colliderTypeLabels[0].c_str(),
-                    colliderTypeLabels[1].c_str()
-                };
-
+                const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
                 static int selectedColliderIndex = 0;
 
-                ImGui::Combo(
-                    Get("component.collider.type").c_str(),
-                    &selectedColliderIndex,
-                    items,
-                    IM_ARRAYSIZE(items)
-                );
+                FieldWidth(140.0f);
+                ImGui::Combo(Get("component.collider.type").c_str(),
+                             &selectedColliderIndex, items, IM_ARRAYSIZE(items));
 
                 if (selectedColliderIndex == 0) {
-                    InputOrDrag(
-                        Get("component.collider.sphere.scale").c_str(),
-                        &c->scale.x,
-                        draggable
-                    );
-                } else if (selectedColliderIndex == 1) {
-                    ImGui::Text("%s", Get("component.collider.box.scale").c_str());
-                    ImGui::Text("X           Y           Z");
-
-                    ImGui::SetNextItemWidth(200.0f);
+                    FieldWidth(120.0f);
+                    InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
+                    Tooltip("Sphere radius.");
+                } else {
+                    ImGui::TextDisabled("X                Y               Z");
+                    FieldWidth(220.0f);
                     InputOrDrag3("##collider_scale", &c->scale.x, draggable);
                 }
 
-                ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
-                ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
+                EndSection();
 
+                BeginSection("Behaviour");
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
-            } else [[unlikely]] ImGui::Text("Collider component missing");
+                Tooltip("Max height the collider can step up without being blocked.");
+                ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
+                Tooltip("Triggers detect overlap but do not physically block movement.");
+                ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
+                EndSection();
 
-            if (ImGui::Button(Get("common.delete").c_str())) {
-                entity.RemoveComponent<ComponentCollider>();
-                CloseEditor();
-            }
-        } else if (state.selectedComponent == CMP_RIGIDBODY) {
-            auto *c = entity.GetComponent<ComponentRigidbody>();
-
-            if (c != nullptr) [[likely]] {
-                ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
-                InputOrDrag(Get("component.rigidbody.mass").c_str(), &c->mass, draggable);
-                InputOrDrag(Get("component.rigidbody.gravityScale").c_str(), &c->gravityScale, draggable);
-                InputOrDrag(Get("component.rigidbody.friction").c_str(), &c->friction, draggable);
-            } else [[unlikely]] ImGui::Text("Rigidbody component missing");
-
-            if (ImGui::Button(Get("common.delete").c_str())) {
-                entity.RemoveComponent<ComponentRigidbody>();
-                CloseEditor();
-            }
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
+                    entity.RemoveComponent<ComponentCollider>();
+                    CloseEditor();
+                }
+            } else { ImGui::TextDisabled("Collider component missing"); }
         }
 
+        // ════════════════════════════════════════════════════════════════════
+        //  Rigidbody
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_RIGIDBODY) {
+            auto *c = entity.GetComponent<ComponentRigidbody>();
+            if (c) {
+                BeginSection("Physics");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.rigidbody.mass").c_str(),          &c->mass,         draggable);
+                Tooltip("Mass in arbitrary units. Must be > 0 for dynamic bodies.");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.rigidbody.gravityScale").c_str(),  &c->gravityScale, draggable);
+                Tooltip("Gravity multiplier (0 = floats, negative = repelled upward).");
+                FieldWidth(160.0f);
+                InputOrDrag(Get("component.rigidbody.friction").c_str(),      &c->friction,     draggable);
+                ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
+                Tooltip("Static bodies are unmovable by physics but still collide.");
+                EndSection();
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
+                    entity.RemoveComponent<ComponentRigidbody>();
+                    CloseEditor();
+                }
+            } else { ImGui::TextDisabled("Rigidbody component missing"); }
+        }
+
+        // ── Close button (only when delete was not pressed) ───────────────────
         if (!closeRequested) {
             ImGui::SameLine();
-
             if (ImGui::Button(Get("common.close").c_str())) CloseEditor();
         }
 
         if (closeRequested || !*windowOpen) {
-            state.editingComponent = false;
+            state.editingComponent  = false;
             state.selectedComponent = -1;
-
-            if (open != nullptr) {
-                *open = false;
-            }
+            if (open) *open = false;
         }
 
         ImGui::PopID();
         ImGui::End();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Runtime HUD hint overlay
+    //  Call every frame from the Runtime Editor tick (not the Map Editor).
+    //  Place it after all other ImGui windows are drawn.
+    // ─────────────────────────────────────────────────────────────────────────
+    void DrawRuntimeHUD() {
+        // Pin to bottom-left corner with a small margin
+        const float PAD = 10.0f;
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        ImVec2 workPos  = vp->WorkPos;
+        ImVec2 workSize = vp->WorkSize;
+
+        ImVec2 windowPos = ImVec2(workPos.x + PAD, workPos.y + workSize.y - PAD);
+        ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+        ImGui::SetNextWindowBgAlpha(0.35f);
+        ImGui::SetNextWindowSize(ImVec2(0, 0)); // auto-size
+
+        constexpr ImGuiWindowFlags hudFlags =
+            ImGuiWindowFlags_NoDecoration   |
+            ImGuiWindowFlags_NoInputs        |
+            ImGuiWindowFlags_NoNav           |
+            ImGuiWindowFlags_NoMove          |
+            ImGuiWindowFlags_NoSavedSettings |
+            //ImGuiWindowFlags_NoBringToDisplayFrontOnFocus |
+            ImGuiWindowFlags_NoFocusOnAppearing;
+
+        if (ImGui::Begin("##RuntimeHUD", nullptr, hudFlags)) {
+            ImGui::TextDisabled("WASD");      ImGui::SameLine(60); ImGui::TextUnformatted("Move");
+            ImGui::TextDisabled("Space");     ImGui::SameLine(60); ImGui::TextUnformatted("Jump");
+            ImGui::TextDisabled("CTRL");      ImGui::SameLine(60); ImGui::TextUnformatted("Crouch / Down");
+            ImGui::TextDisabled("RMB");       ImGui::SameLine(60); ImGui::TextUnformatted("Pick wall / entity");
+            ImGui::TextDisabled("ESC");       ImGui::SameLine(60); ImGui::TextUnformatted("Release mouse / close");
+        }
+        ImGui::End();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Focus helper (unchanged)
+    // ─────────────────────────────────────────────────────────────────────────
     void SetImGuiFocus(const bool focus) {
         ImGuiIO &io = ImGui::GetIO();
         if (focus) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-        else io.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+        else       io.ConfigFlags |=  ImGuiConfigFlags_NoMouse;
     }
-}
+
+} // namespace ImGuiDrawFunctions
