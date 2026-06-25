@@ -75,4 +75,11 @@ namespace MapEditorInternal {
     Vector3 ceilColor = {255.0f, 255.0f, 255.0f};
     Vector3 floorColor = {255.0f, 255.0f, 255.0f};
 
+    bool manualSectorMode = false;
+    std::vector<Vector2> manualSectorDots;
+
+    // Dot Mode — Wall inspector (right-click select)
+    bool editingWall = false;
+    ID selectedWallID = INVALID_ID;
+
 }

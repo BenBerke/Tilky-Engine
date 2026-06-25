@@ -524,34 +524,7 @@ namespace MapEditorInternal {
         }
     }
 
-    void TrySectorChainClick(const Vector2& point) {
-        if (sectorBeingCreated.empty()) {
-            // Snapshot the Editor menu's current sector params now, so
-            // fiddling with them mid-chain can't retroactively change the
-            // sector that's about to be created.
-            pendingSectorParams = PendingSectorParams{
-                wallTextureIndex,
-                ceilTextureIndex,
-                floorTextureIndex,
-                floorHeight,
-                ceilHeight,
-                lightValue,
-                wallColor,
-                ceilColor,
-                floorColor
-            };
 
-            sectorBeingCreated.push_back(point);
-            return;
-        }
-
-        if (sectorBeingCreated.size() >= 3 && SamePoint(point, sectorBeingCreated.front())) {
-            FinishSectorSelection();
-            return;
-        }
-
-        AddSectorSelectionPoint(point);
-    }
 
     void CancelSectorChain() {
         sectorBeingCreated.clear();
@@ -583,6 +556,124 @@ namespace MapEditorInternal {
 
         selectedSectorID = newSectorID;
         editingSector = true;
+    }
+
+    // Manual Mode: only accept a click that lands on a real existing
+    // corner (a Dot, or a wall's start/end) — no grid fallback.
+    bool FindExistingCorner(const Vector2& mouseWorld, Vector2* outPoint) {
+        constexpr float pickRadiusPixels = 12.0f;
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float pickRadiusWorld = pickRadiusPixels / safeZoom;
+        const float pickRadiusSq = pickRadiusWorld * pickRadiusWorld;
+
+        float bestDistSq = std::numeric_limits<float>::max();
+        bool found = false;
+
+        const auto consider = [&](const Vector2& candidate) {
+            const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
+            if (distSq <= pickRadiusSq && distSq < bestDistSq) {
+                bestDistSq = distSq;
+                *outPoint = candidate;
+                found = true;
+            }
+        };
+
+        for (const Dot& dot : dots) consider(dot.position);
+
+        const Level& level = LevelManager::CurrentLevel();
+        for (const Wall& wall : level.walls) {
+            consider(wall.start);
+            consider(wall.end);
+        }
+
+        return found;
+    }
+
+    void TryManualCornerClick(const Vector2& point) {
+        Vector2 corner{};
+        if (!FindExistingCorner(point, &corner)) {
+            return; // not a click on a real dot/wall endpoint — ignore
+        }
+
+        for (const Vector2& existing : manualSectorDots)
+            if (SamePoint(existing, corner)) return; // already picked
+
+        manualSectorDots.push_back(corner);
+    }
+
+    void TrySectorChainClick(const Vector2& point) {
+        if (manualSectorMode) {
+            TryManualCornerClick(point);
+            return;
+        }
+
+        if (sectorBeingCreated.empty()) {
+            // Snapshot the Editor menu's current sector params now, so
+            // fiddling with them mid-chain can't retroactively change the
+            // sector that's about to be created.
+            pendingSectorParams = PendingSectorParams{
+                wallTextureIndex,
+                ceilTextureIndex,
+                floorTextureIndex,
+                floorHeight,
+                ceilHeight,
+                lightValue,
+                wallColor,
+                ceilColor,
+                floorColor
+            };
+
+            sectorBeingCreated.push_back(point);
+            return;
+        }
+
+        if (sectorBeingCreated.size() >= 3 && SamePoint(point, sectorBeingCreated.front())) {
+            FinishSectorSelection();
+            return;
+        }
+
+        AddSectorSelectionPoint(point);
+    }
+
+    void ClearManualSectorSelection() {
+        manualSectorDots.clear();
+    }
+
+    // Sector only — deliberately never touches level.walls or
+    // FindWallForEdge/AssignWallSectorSide/CreateSectorWithWalls.
+    void CreateManualSector() {
+        if (manualSectorDots.size() < 3) return;
+
+        std::string rejectReason;
+        if (!ValidateSectorChain(manualSectorDots, &rejectReason)) {
+            SDL_Log("Manual sector cancelled: %s", rejectReason.c_str());
+            manualSectorDots.clear();
+            return;
+        }
+
+        Level& level = LevelManager::CurrentLevel();
+        const ID newSectorID = level.nextSectorID; // AddSector() will assign exactly this
+
+        Sector newSector{};
+        newSector.vertices  = manualSectorDots;
+        newSector.triangles = Geometry::Triangulate(newSector.vertices);
+
+        newSector.floorHeight         = floorHeight;
+        newSector.ceilingHeight       = ceilHeight;
+        newSector.floorColor          = floorColor;
+        newSector.ceilingColor        = ceilColor;
+        newSector.floorTextureIndex   = floorTextureIndex;
+        newSector.ceilingTextureIndex = ceilTextureIndex;
+        newSector.lightValue          = lightValue;
+
+        Editor::AddSector(newSector);
+
+        SDL_Log("Manual sector created with %d vertices", static_cast<int>(manualSectorDots.size()));
+
+        manualSectorDots.clear();
+
+        selectedSectorID = newSectorID;
+        editingSector    = true;
     }
 
     void AddDot(const Vector2& position) {
@@ -662,6 +753,59 @@ namespace MapEditorInternal {
             if (touched && wall.frontSector == INVALID_ID && wall.backSector == INVALID_ID) {
                 level.walls.erase(level.walls.begin() + i);
             }
+        }
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
+    }
+
+    // Entity Mode — left click selects/positions only, never opens the inspector.
+    void HandleEntityModeLeftClick(const Vector2& point) {
+        Entity* entity = EntityAt(point);
+        if (entity == nullptr) return;
+        selectedEntity = *entity; // editingEntity intentionally left untouched
+    }
+
+    // Entity Mode — right click selects AND opens the inspector.
+    void HandleEntityModeRightClick(const Vector2& point) {
+        Entity* entity = EntityAt(point);
+        if (entity == nullptr) return;
+        selectedEntity = *entity;
+        editingEntity  = true;
+    }
+
+    // Sector Mode — right click selects a sector and opens its inspector.
+    void HandleSectorModeRightClick(const Vector2& point) {
+        Level& level = LevelManager::CurrentLevel();
+        const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
+        if (index < 0) return;
+        selectedSectorID = level.sectors[index].id;
+        editingSector    = true;
+    }
+
+    // Dot Mode — right click on a wall selects it and opens the wall inspector.
+    void HandleDotModeRightClick(const Vector2& point) {
+        Level& level = LevelManager::CurrentLevel();
+        const int wallIndex = GetWallAtPoint(point);
+        if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) return;
+        selectedWallID = level.walls[wallIndex].id;
+        editingWall    = true;
+    }
+
+    // Mirrors DeleteSector's ID-safe pattern — needed by the reinstated wall inspector's delete button.
+    void DeleteWall(const ID wallID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const auto it = level.wallIDToIndex.find(wallID);
+        if (it == level.wallIDToIndex.end()) return;
+
+        const int index = it->second;
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) return;
+
+        level.walls.erase(level.walls.begin() + index);
+
+        if (selectedWallID == wallID) {
+            selectedWallID = INVALID_ID;
+            editingWall    = false;
         }
 
         MapQueries::RebuildSectorRuntimeLinks(level);

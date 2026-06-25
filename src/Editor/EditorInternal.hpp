@@ -146,6 +146,7 @@ namespace MapEditorInternal {
     extern bool manualSectorMode;
     extern std::vector<Vector2> manualSectorDots;
 
+    // Dot Mode — Wall inspector (right-click select)
     extern bool editingWall;
     extern ID selectedWallID;
 
@@ -155,8 +156,7 @@ namespace MapEditorInternal {
     [[nodiscard]] bool HasLineBetween(const Vector2& a, const Vector2& b);
 
     // Automatically strips a trailing duplicate-of-front vertex if one is
-    // ever present (defensive; the new chain flow never adds one - see
-    // NOTES.md). Used by the preview renderer.
+    // ever present (defensive; the new chain flow never adds one). Used by the preview renderer.
     std::vector<Vector2> GetSectorVerticesWithoutClosingDuplicate();
     bool IsSectorClosed(const std::vector<Vector2>& vertices);
     void AddSectorSelectionPoint(const Vector2& point);
@@ -205,14 +205,21 @@ namespace MapEditorInternal {
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b);
     int GetWallAtPoint(const Vector2& worldPoint);
 
-    // Dot lifecycle (feature #6/#10/#11).
+    // Dot lifecycle.
     void AddDot(const Vector2& position);
     void RemoveDot(ID dotID);
 
-    // Sector deletion with full ID-safety cleanup (feature #11).
+    // Sector deletion with full ID-safety cleanup.
     void DeleteSector(ID sectorID);
 
-    // Texture preview / Texture View Mode access point (feature #8/#9).
+    void DeleteWall(ID wallID);
+
+    void HandleEntityModeLeftClick(const Vector2& point);
+    void HandleEntityModeRightClick(const Vector2& point);
+    void HandleSectorModeRightClick(const Vector2& point);
+    void HandleDotModeRightClick(const Vector2& point);
+
+    // Texture preview / Texture View Mode access point.
     // Returns nullptr safely if the index is invalid or unavailable - never
     // crashes on a missing texture. See NOTES.md for the one assumption this
     // makes about EditorTextureCache's interface.
@@ -222,4 +229,7 @@ namespace MapEditorInternal {
     bool ProcessPendingLevelLoad();
 
     void UpdateLevels();
+
+    void ClearManualSectorSelection();
+    void CreateManualSector();
 }

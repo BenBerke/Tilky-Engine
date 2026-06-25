@@ -123,7 +123,7 @@ namespace MapEditorInternal {
                 cameraPos.y += mouseDelta.y / editorZoom;
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
-                // Feature #4/#5: Wall Mode is gone. Sector Mode now owns wall
+                // Feature: Wall Mode is gone. Sector Mode now owns wall
                 // creation entirely via the chain workflow below.
                 if (currentMode == MODE_SECTOR) {
                     const Vector2 snapped = ResolveSnapPoint(mouseWorld);
@@ -155,14 +155,29 @@ namespace MapEditorInternal {
                         if (t != nullptr) t->SetPosition({mouseWorld.x, mouseWorld.y, 0.0f});
                     }
 
-                    editingEntity = true;
-
+                    // Left click only selects/places/moves — it must never
+                    // open the inspector (feature: Entity Mode click behavior).
+                    // editingEntity is intentionally NOT set here.
                 }
             }
 
-            // Feature #5: right click cancels/stops sector chain creation.
+            //right click cancels/stops sector chain creation.
             if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
                 CancelSectorChain();
+            }
+
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+                if (currentMode == MODE_ENTITY) {
+                    HandleEntityModeRightClick(mouseWorld);
+                }
+                else if (currentMode == MODE_SECTOR && sectorBeingCreated.empty() && !manualSectorMode) {
+                    // Only select/inspect when there's no chain in progress —
+                    // the line above already uses right click to cancel a chain.
+                    HandleSectorModeRightClick(mouseWorld);
+                }
+                else if (currentMode == MODE_DOT) {
+                    HandleDotModeRightClick(mouseWorld);
+                }
             }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {

@@ -25,7 +25,12 @@ namespace MapEditorInternal {
 
         const int halfThickness = static_cast<int>(thickness * 0.5f);
 
+        // walls should the be the opposite of the theme
+        if (currentTheme == THEME_DARK)
         SDL_SetRenderDrawColor(renderer, 205, 205, 205, 255);
+        else if (currentTheme == THEME_LIGHT)
+            SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
+
         for (int i = -halfThickness; i <= halfThickness; ++i) {
             const float offsetX = normalX * static_cast<float>(i);
             const float offsetY = normalY * static_cast<float>(i);
@@ -276,7 +281,10 @@ namespace MapEditorInternal {
     // Renamed from DrawCorners (feature #6): dots replace the old grid-only
     // "placedCorners" concept and are now ID-stable, off-grid-capable points.
     void DrawDots() {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        if (currentTheme == THEME_DARK)
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        else if (currentTheme == THEME_LIGHT)
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
         for (const Dot& dot : dots) {
             const Vector2 screenPos = WorldToScreen(dot.position, cameraPos);
@@ -372,7 +380,10 @@ namespace MapEditorInternal {
     void DrawGridDots() {
         constexpr float dotSize = 3.0f;
 
-        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+        if (currentTheme == THEME_DARK)
+            SDL_SetRenderDrawColor(renderer, 225, 225, 225, 255);
+        else if (currentTheme == THEME_LIGHT)
+            SDL_SetRenderDrawColor(renderer, 25, 25, 25, 255);
 
         const float activeGridSize = GetActiveGridSize();
 

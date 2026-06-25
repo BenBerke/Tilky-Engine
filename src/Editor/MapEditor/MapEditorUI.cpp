@@ -906,13 +906,21 @@ namespace {
 
             PushDangerStyle();
 
-            if (FullWidthButton(Get("editor.shutdown").c_str())) {
-                shutdownConfirmOpen = true;
-            }
+            if (FullWidthButton(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
+
 
             PopDangerStyle();
 
             HoverTooltip("Exit the editor. Unsaved changes will be lost.");
+
+            ImGui::Spacing();
+
+            //todo make an editor settings menu
+            bool lightModeActive = (currentTheme == THEME_LIGHT);
+            if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
+                currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
+                ApplyEditorTheme(currentTheme);
+            }
         }
 
         ImGui::End();
@@ -991,27 +999,19 @@ namespace {
         ImGui::Begin("##ProjectSettingsButtonOverlay", nullptr, overlayFlags);
 
         const bool wasOpen = projectSettingsOpen;
+        if (wasOpen) PushAccentStyle();
 
-        if (wasOpen) {
-            PushAccentStyle();
-        }
-
-        if (ImGui::Button(
-            wasOpen ? "[ Project Settings ]" : Get("editor.project_settings").c_str(),
+        if (ImGui::Button(wasOpen ?
+            "[ Project Settings ]" : Get("editor.project_settings").c_str(),
             ImVec2(180.0f, 0.0f)
-        )) {
-            projectSettingsOpen = !projectSettingsOpen;
-        }
+        )) projectSettingsOpen = !projectSettingsOpen;
 
-        if (wasOpen) {
-            PopAccentStyle();
-        }
+
+        if (wasOpen) PopAccentStyle();
 
         ImGui::End();
 
-        if (projectSettingsOpen) {
-            DrawProjectSettingsWindow();
-        }
+        if (projectSettingsOpen) DrawProjectSettingsWindow();
     }
 
     // =========================================================================
@@ -1292,6 +1292,24 @@ namespace {
         }
     }
 
+    void DrawSelectedWallInspector(Level& level) {
+        if (!editingWall || currentMode != MODE_DOT) return;
+
+        const auto it = level.wallIDToIndex.find(selectedWallID);
+        if (it == level.wallIDToIndex.end()) {
+            selectedWallID = INVALID_ID;
+            editingWall    = false;
+            return;
+        }
+
+        Wall& wall = level.walls[it->second];
+
+        if (ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE)) {
+            DeleteWall(selectedWallID);
+            hasUnsavedChanges = true;
+        }
+    }
+
     void DrawSelectedEntityInspector(Level& level) {
         if (!editingEntity || currentMode != MODE_ENTITY) return;
 
@@ -1331,10 +1349,10 @@ namespace {
         }
     }
 
-    // Wall Mode is gone (feature #4).
     void DrawSelectionInspectors(Level& level) {
         DrawSelectedSectorInspector(level);
         DrawSelectedEntityInspector(level);
+        DrawSelectedWallInspector(level);
     }
 
 } // anonymous namespace
@@ -1350,8 +1368,10 @@ namespace MapEditorInternal {
         const Mode previousMode = currentMode;
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
 
-        // Centralized so the Q hotkey and the UI button both clean up the chain.
-        if (previousMode == MODE_SECTOR) CancelSectorChain();
+        if (previousMode == MODE_SECTOR) {
+            CancelSectorChain();
+            ClearManualSectorSelection();
+        }
     }
 
     // Feature #2: polished light theme (unchanged colour values from the
@@ -1471,11 +1491,6 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        bool lightModeActive = (currentTheme == THEME_LIGHT);
-        if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
-            currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
-            ApplyEditorTheme(currentTheme);
-        }
         HoverTooltip("Toggle dark / light theme.");
 
         ImGui::SameLine(0.0f, 16.0f);
@@ -1487,6 +1502,41 @@ namespace MapEditorInternal {
         // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {
             ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (ImGui::Checkbox("Manual Mode", &manualSectorMode)) {
+                if (manualSectorMode) CancelSectorChain();
+                else                  ClearManualSectorSelection();
+            }
+            HoverTooltip("Pick existing dot/wall corners by hand instead of clicking out a new chain.");
+
+            if (manualSectorMode) {
+                const int picked = static_cast<int>(manualSectorDots.size());
+                ImGui::SameLine(0.0f, 16.0f);
+                ImGui::TextDisabled("%d corner%s selected", picked, picked == 1 ? "" : "s");
+
+                ImGui::Spacing();
+
+                if (picked >= 3) {
+                    PushSuccessStyle();
+                    if (FullWidthButton("Create Sector")) CreateManualSector();
+                    PopSuccessStyle();
+                    HoverTooltip("Create a sector from the selected corners. No new walls are created. (Enter)");
+                }
+
+                if (FullWidthButton("Clear Selected Dots")) ClearManualSectorSelection();
+
+                if (!ImGui::GetIO().WantTextInput) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
+                        CreateManualSector();
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                        ClearManualSectorSelection();
+                }
+
+                ImGui::Spacing();
+            }
+
             ImGui::Separator();
             ImGui::Spacing();
             SectionHeader("New Sector Properties");
