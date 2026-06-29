@@ -42,7 +42,7 @@ ID Level::CreateEntity(Entity& copy) {
     entity.name = copy.name + "Copy";
 
     if (copy.HasComponent<ComponentTransform>()) {
-        ComponentTransform* t  = entity.AddComponent<ComponentTransform>();
+        auto* t  = entity.AddComponent<ComponentTransform>();
         const ComponentTransform* ct = copy.GetComponent<ComponentTransform>();
 
         t->position       = ct->position;
@@ -54,7 +54,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentSprite>()) {
-        ComponentSprite* s  = entity.AddComponent<ComponentSprite>();
+        auto* s  = entity.AddComponent<ComponentSprite>();
         const ComponentSprite* cs = copy.GetComponent<ComponentSprite>();
 
         s->textureIndices = cs->textureIndices;
@@ -62,7 +62,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentDecal>()) {
-        ComponentDecal* d  = entity.AddComponent<ComponentDecal>();
+        auto* d  = entity.AddComponent<ComponentDecal>();
         const ComponentDecal* cd = copy.GetComponent<ComponentDecal>();
 
         d->wallIndex        = cd->wallIndex;
@@ -75,7 +75,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentAudioSource>()) {
-        ComponentAudioSource* a  = entity.AddComponent<ComponentAudioSource>();
+        auto* a  = entity.AddComponent<ComponentAudioSource>();
         const ComponentAudioSource* ca = copy.GetComponent<ComponentAudioSource>();
 
         a->name              = ca->name;
@@ -93,7 +93,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentScript>()) {
-        ComponentScript* s  = entity.AddComponent<ComponentScript>();
+        auto* s  = entity.AddComponent<ComponentScript>();
         const ComponentScript* cs = copy.GetComponent<ComponentScript>();
 
         s->fileName = cs->fileName;
@@ -101,7 +101,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentPlayerController>()) {
-        ComponentPlayerController* p  = entity.AddComponent<ComponentPlayerController>();
+        auto* p  = entity.AddComponent<ComponentPlayerController>();
         const ComponentPlayerController* cp = copy.GetComponent<ComponentPlayerController>();
 
         p->isActive      = cp->isActive;
@@ -117,7 +117,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentCamera>()) {
-        ComponentCamera* c  = entity.AddComponent<ComponentCamera>();
+        auto* c  = entity.AddComponent<ComponentCamera>();
         const ComponentCamera* cc = copy.GetComponent<ComponentCamera>();
 
         c->isActive    = cc->isActive;
@@ -131,7 +131,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentCollider>()) {
-        ComponentCollider* c  = entity.AddComponent<ComponentCollider>();
+        auto* c  = entity.AddComponent<ComponentCollider>();
         const ComponentCollider* cc = copy.GetComponent<ComponentCollider>();
 
         c->type      = cc->type;
@@ -142,7 +142,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentRigidbody>()) {
-        ComponentRigidbody* r  = entity.AddComponent<ComponentRigidbody>();
+        auto* r  = entity.AddComponent<ComponentRigidbody>();
         const ComponentRigidbody* cr = copy.GetComponent<ComponentRigidbody>();
 
         r->isStatic     = cr->isStatic;
@@ -154,7 +154,7 @@ ID Level::CreateEntity(Entity& copy) {
 
     // UI Components
     if (copy.HasComponent<ComponentUITransform>()) {
-        ComponentUITransform* t  = entity.AddComponent<ComponentUITransform>();
+        auto* t  = entity.AddComponent<ComponentUITransform>();
         const ComponentUITransform* ct = copy.GetComponent<ComponentUITransform>();
 
         t->anchorMin        = ct->anchorMin;
@@ -167,14 +167,14 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     if (copy.HasComponent<ComponentUISprite>()) {
-        ComponentUISprite* s  = entity.AddComponent<ComponentUISprite>();
+        auto* s  = entity.AddComponent<ComponentUISprite>();
         const ComponentUISprite* cs = copy.GetComponent<ComponentUISprite>();
 
         s->textureIndex = cs->textureIndex;
     }
 
     if (copy.HasComponent<ComponentUIText>()) {
-        ComponentUIText* t  = entity.AddComponent<ComponentUIText>();
+        auto* t  = entity.AddComponent<ComponentUIText>();
         const ComponentUIText* ct = copy.GetComponent<ComponentUIText>();
 
         t->text = ct->text;

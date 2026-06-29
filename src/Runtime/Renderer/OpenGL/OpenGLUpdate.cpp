@@ -15,7 +15,7 @@
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
 
-void OpenGL::Update(const bool renderDebug) {
+void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     using namespace OpenGLRendererInternal;
 
     Level& level = LevelManager::CurrentLevel();
@@ -31,7 +31,8 @@ void OpenGL::Update(const bool renderDebug) {
             spdlog::error("OpenGL::Update failed: editor camera was not created");
             return;
         }
-    } else {
+    }
+    else {
         camera = LevelSystem::GetActiveCamera(level);
 
         if (camera == nullptr) [[unlikely]] {
@@ -57,9 +58,8 @@ void OpenGL::Update(const bool renderDebug) {
 
     glViewport(0, 0, screenWidth, screenHeight);
 
-    if (screenHeight > 0) [[likely]] {
-        camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
-    }
+    if (screenHeight > 0) [[likely]]
+    camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
     ComponentTransform renderCameraTransform = *cameraTransform;
 
@@ -210,6 +210,7 @@ void OpenGL::Update(const bool renderDebug) {
         }
     }
 
+    if (!renderUI) return;
 
     {
         ZoneScopedN("Rendering UI Sprites");

@@ -225,8 +225,6 @@ namespace Editor {
             UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
             DrawUIEditorUI();
-            DrawEntities_UI();
-            DrawUIImages();
         }
 
         ImGui::Render();

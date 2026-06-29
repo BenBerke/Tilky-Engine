@@ -192,8 +192,7 @@ namespace MapEditorInternal {
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
     void DrawEditorUI();
 
-    void DrawUIImages();
-    void DrawEntities_UI();
+    void UIEditorDraw();
     void DrawUIEditorUI();
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 

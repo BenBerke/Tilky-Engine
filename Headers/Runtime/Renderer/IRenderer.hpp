@@ -15,7 +15,7 @@ public:
     virtual void Shutdown() = 0;
 
     virtual void BeginFrame() = 0;
-    virtual void Update(const bool renderDebug) = 0;
+    virtual void Update(bool renderDebug, bool renderUI) = 0;
     virtual void EndFrame() = 0;
 
     virtual void BeginImGuiFrame() const = 0;

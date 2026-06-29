@@ -129,7 +129,7 @@ public:
     void Shutdown() override;
 
     void BeginFrame() override;
-    void Update(const bool renderDebug) override;
+    void Update(bool renderDebug, bool renderUI) override;
     void EndFrame() override;
 
     void OnResize(int width, int height) override;
