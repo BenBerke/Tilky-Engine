@@ -221,13 +221,12 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             continue;
         }
 
-        const std::string path =
-            ProjectManager::GetTexturesPath().string() + "/" + texture.fileName + ".png";
+        const std::filesystem::path path =ProjectManager::GetTexturesPath() / texture.fileName;
 
-        SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+        SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 
         if (loadedSurface == nullptr) {
-            spdlog::error("IMG_Load failed for {}: {}", path, SDL_GetError());
+            spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
             continue;
         }
 
@@ -239,7 +238,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         SDL_DestroySurface(loadedSurface);
 
         if (surface == nullptr) {
-            spdlog::error("SDL_ConvertSurface failed for {}: {}", path, SDL_GetError());
+            spdlog::error("SDL_ConvertSurface failed for {}: {}", path.string(), SDL_GetError());
             continue;
         }
 
@@ -288,10 +287,10 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         constexpr float halfTexel = .5f;
 
-        const float uMin = static_cast<float>(cursorX + halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float vMin = static_cast<float>(cursorY + halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float uMax = static_cast<float>(cursorX + textureWidth - halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float vMax = static_cast<float>(cursorY + textureHeight - halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float uMin = (cursorX + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMin = (cursorY + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float uMax = (cursorX + textureWidth - halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMax = (cursorY + textureHeight - halfTexel) / static_cast<float>(ATLAS_SIZE);
 
         textureRegions[i] = {
             {uMin, vMin, uMax, vMax},

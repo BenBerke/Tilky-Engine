@@ -7,16 +7,14 @@
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
-#include "Headers/Objects/Loadables.hpp"
 
 int OpenGL::CreateTexture(const std::string& fileName) {
-    const std::string path =
-        ProjectManager::GetTexturesPath().string() + "/" + fileName + ".png";
+    const std::filesystem::path path =ProjectManager::GetTexturesPath() / fileName;
 
-    SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+    SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 
     if (loadedSurface == nullptr) {
-        spdlog::error("IMG_Load failed for {}: {}", path, SDL_GetError());
+        spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
         return -1;
     }
 
@@ -28,7 +26,7 @@ int OpenGL::CreateTexture(const std::string& fileName) {
     SDL_DestroySurface(loadedSurface);
 
     if (convertedSurface == nullptr) {
-        spdlog::error("SDL_ConvertSurface failed for {}: {}", path, SDL_GetError());
+        spdlog::error("SDL_ConvertSurface failed for {}: {}", path.string(), SDL_GetError());
         return -1;
     }
 
@@ -39,7 +37,7 @@ int OpenGL::CreateTexture(const std::string& fileName) {
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
-        GL_RGBA,
+        GL_RGBA8,
         convertedSurface->w,
         convertedSurface->h,
         0,
@@ -76,10 +74,7 @@ void OpenGL::RefreshTexturesFromLevel() {
         return;
     }
 
-    spdlog::info(
-        "Built texture atlas with {} texture region(s)",
-        textureRegions.size()
-    );
+    spdlog::info("Built texture atlas with {} texture region(s)",textureRegions.size());
 }
 
 const OpenGL::GPUTexture& OpenGL::GetTexture(const int index) const {
