@@ -1,14 +1,27 @@
 #include "Headers/Editor/EditorTextureCache.hpp"
 
 #include <SDL3_image/SDL_image.h>
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <spdlog/spdlog.h>
+#include <vector>
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 namespace {
     std::vector<SDL_Texture*> textures;
+
+    bool IsSupportedTextureExtension(std::string extension) {
+        std::ranges::transform(extension, extension.begin(), [](const unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+
+        return extension == ".png" ||
+               extension == ".jpg" ||
+               extension == ".jpeg";
+    }
 }
 
 namespace EditorTextureCache {
@@ -30,24 +43,16 @@ namespace EditorTextureCache {
         }
 
         for (const auto& entry : std::filesystem::directory_iterator(texturesPath)) {
-            if (!entry.is_regular_file()) {
+            if (!entry.is_regular_file())
                 continue;
-            }
 
             const std::filesystem::path& path = entry.path();
 
-            std::string extension = path.extension().string();
-
-            std::ranges::transform(extension, extension.begin(), [](const unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
-
-            if (extension != ".png") {
+            if (!IsSupportedTextureExtension(path.extension().string()))
                 continue;
-            }
 
             Texture texture;
-            texture.fileName = path.stem().string(); // "Brick.png" -> "Brick"
+            texture.fileName = path.filename().string();
 
             level.textures.push_back(texture);
         }
@@ -70,18 +75,12 @@ namespace EditorTextureCache {
         for (int i = 0; i < static_cast<int>(level.textures.size()); ++i) {
             const Texture& texture = level.textures[i];
 
-            if (texture.fileName.empty()) {
+            if (texture.fileName.empty())
                 continue;
-            }
 
-            std::filesystem::path path = texturesPath / texture.fileName;
+            const std::filesystem::path path = texturesPath / texture.fileName;
 
-            if (!path.has_extension()) {
-                path += ".png";
-            }
-
-            SDL_Texture* sdlTexture =
-                IMG_LoadTexture(renderer, path.string().c_str());
+            SDL_Texture* sdlTexture = IMG_LoadTexture(renderer, path.string().c_str());
 
             if (sdlTexture == nullptr) {
                 spdlog::error(

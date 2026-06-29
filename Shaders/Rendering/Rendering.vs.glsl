@@ -6,6 +6,10 @@
 #define RENDER_DECAL 3
 #define RENDER_COLLIDER 4
 
+#define SIDECOUNT_SINGLE 0
+#define SIDECOUNT_45 1
+#define SIDECOUNT_90 2
+
 #define COLLIDER_BOX_VERTEX_COUNT 24
 #define COLLIDER_SPHERE_SEGMENTS 24
 #define COLLIDER_SPHERE_VERTEX_COUNT (COLLIDER_SPHERE_SEGMENTS * 6)
@@ -21,7 +25,15 @@ struct Decal {
 struct Sprite {
     vec4 positionSize;
     vec4 color;
+
+    ivec4 textureIndices0; // N, NE, E, SE
+    ivec4 textureIndices1; // S, SW, W, NW
+
     vec4 data;
+// data.x = sprite width
+// data.y = sideCount
+// data.z = forward.x
+// data.w = forward.y
 };
 
 struct Wall {
@@ -47,9 +59,9 @@ struct Sector {
     vec4 textureData;
 };
 
-struct Collider{
-    vec4 positionType; // World x, y, z; type. 0 = sphere, 1 = AABB
-    vec4 scale; // if sphere, x = radius. if box use vec3 is x y z
+struct Collider {
+    vec4 positionType;
+    vec4 scale;
 };
 
 layout(std430, binding = 0) readonly buffer WallBuffer {
@@ -80,6 +92,7 @@ layout(std430, binding = 6) readonly buffer ColliderBuffer {
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform int renderMode;
+uniform vec3 uCameraWorldPos;
 
 out vec2 vWallUV;
 out vec2 vFlatUV;
@@ -90,22 +103,98 @@ flat out vec4 vColor;
 
 out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
+
 out vec2 vDecalUV;
 
-
-//todo makes this a world/per-wall setting
 const float tileSize = 32.0;
-
-uniform vec3 uCameraWorldPos;
-
 const float PI = 3.14159265359;
 
 vec3 ToRenderWorld(vec3 entityWorld) {
     return vec3(
-    entityWorld.x, // world X
-    entityWorld.z, // vertical height
-    entityWorld.y  // horizontal depth
+    entityWorld.x,
+    entityWorld.z,
+    entityWorld.y
     );
+}
+
+vec2 SafeNormalize2(vec2 value, vec2 fallback) {
+    float lenSq = dot(value, value);
+
+    if (lenSq < 0.000001) {
+        return fallback;
+    }
+
+    return value * inversesqrt(lenSq);
+}
+
+float SignedAngle(vec2 from, vec2 to) {
+    float crossValue = from.x * to.y - from.y * to.x;
+    float dotValue = dot(from, to);
+
+    return atan(crossValue, dotValue);
+}
+
+float NormalizeAnglePositive(float angle) {
+    angle = mod(angle, PI * 2.0);
+
+    if (angle < 0.0) {
+        angle += PI * 2.0;
+    }
+
+    return angle;
+}
+
+int GetSpriteTextureIndex(Sprite sprite, int slot) {
+    if (slot < 4) {
+        return sprite.textureIndices0[slot];
+    }
+
+    return sprite.textureIndices1[slot - 4];
+}
+
+int Pick8WaySpriteSlot(vec2 spriteForward, vec2 toCamera) {
+    float angle = SignedAngle(spriteForward, toCamera);
+    angle = NormalizeAnglePositive(angle);
+
+    return int(floor((angle + PI / 8.0) / (PI / 4.0))) % 8;
+}
+
+int Pick4WaySpriteSlot(vec2 spriteForward, vec2 toCamera) {
+    float angle = SignedAngle(spriteForward, toCamera);
+    angle = NormalizeAnglePositive(angle);
+
+    int quadrant = int(floor((angle + PI / 4.0) / (PI / 2.0))) % 4;
+
+    if (quadrant == 0) return 0; // N
+    if (quadrant == 1) return 2; // E
+    if (quadrant == 2) return 4; // S
+
+    return 6; // W
+}
+
+int SelectSpriteTextureIndex(Sprite sprite, vec3 spriteWorldPos) {
+    int sideCount = int(sprite.data.y);
+
+    if (sideCount == SIDECOUNT_SINGLE) {
+        return sprite.textureIndices0.x;
+    }
+
+    vec2 spriteForward = SafeNormalize2(sprite.data.zw, vec2(1.0, 0.0));
+    vec2 toCamera = SafeNormalize2(
+    uCameraWorldPos.xz - spriteWorldPos.xz,
+    spriteForward
+    );
+
+    int slot = 0;
+
+    if (sideCount == SIDECOUNT_90) {
+        slot = Pick4WaySpriteSlot(spriteForward, toCamera);
+    }
+    else if (sideCount == SIDECOUNT_45) {
+        slot = Pick8WaySpriteSlot(spriteForward, toCamera);
+    }
+
+    return GetSpriteTextureIndex(sprite, slot);
 }
 
 vec3 GetBoxCorner(vec3 center, vec3 halfSize, int index) {
@@ -257,18 +346,13 @@ void renderDecal() {
 void renderSprite() {
     Sprite sprite = sprites[gl_InstanceID];
 
-    // positionSize.xyz is now the real 3D world position:
-    // x = world x
-    // y = vertical height
-    // z = world z
     vec3 spriteWorldPos = sprite.positionSize.xyz;
 
     float spriteHeight = sprite.positionSize.w;
-
     float spriteWidth = sprite.data.x;
-    int textureIndex = int(sprite.data.y);
-
     float halfWidth = spriteWidth * 0.5;
+
+    int textureIndex = SelectSpriteTextureIndex(sprite, spriteWorldPos);
 
     float side;
     float heightT;
@@ -341,8 +425,6 @@ void renderFlat() {
 
     float storeyHeight = sector.heights.y - sector.heights.x;
 
-    // point.xy = map position
-    // point.z = height
     point.z = sector.heights.x + storeyHeight * float(boundaryIndex);
 
     if (boundaryIndex == 0) {
@@ -352,8 +434,10 @@ void renderFlat() {
         vColor = sector.ceilingColor / 255.0;
     }
 
-    vFlatTextureIndex = boundaryIndex == 0 ? int(sector.textureData.x)   // floorTextureIndex
-    : int(sector.textureData.y);  // ceilingTextureIndex
+    vFlatTextureIndex = boundaryIndex == 0
+    ? int(sector.textureData.x)
+    : int(sector.textureData.y);
+
     vTextureIndex = -1;
 
     vFlatUV = point.xy / tileSize;
@@ -392,8 +476,6 @@ void renderWall() {
 
     float rightU = wallLength / tileSize;
 
-    // Positive offset moves the sampled texture.
-    // Flip the sign if it moves visually opposite to what you want.
     vec2 uvOffset = wall.textureOffset_padding.xy / tileSize;
 
     vec3 bottomLeft = vec3(wallStart2D.x, bottomHeight, wallStart2D.y);
@@ -437,11 +519,22 @@ void renderWall() {
 }
 
 void main() {
-    if (renderMode == RENDER_FLAT) renderFlat();
-    else if (renderMode == RENDER_WALL) renderWall();
-    else if (renderMode == RENDER_SPRITE) renderSprite();
-    else if (renderMode == RENDER_DECAL) renderDecal();
-    else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
-    else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
-
+    if (renderMode == RENDER_FLAT) {
+        renderFlat();
+    }
+    else if (renderMode == RENDER_WALL) {
+        renderWall();
+    }
+    else if (renderMode == RENDER_SPRITE) {
+        renderSprite();
+    }
+    else if (renderMode == RENDER_DECAL) {
+        renderDecal();
+    }
+    else if (renderMode == RENDER_COLLIDER) {
+        RenderColliderVertex();
+    }
+    else {
+        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+    }
 }

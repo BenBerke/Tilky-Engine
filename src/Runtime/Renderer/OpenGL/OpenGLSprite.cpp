@@ -17,7 +17,10 @@ void OpenGL::BuildGpuSprites() {
 
         if (level.decals.Has(spriteComponent.ownerID)) continue;
 
-        if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] continue;
+        if (transform->sectorIndex < 0 ||
+            transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] {
+            continue;
+        }
 
         GpuSprite gpuSprite;
 
@@ -30,27 +33,32 @@ void OpenGL::BuildGpuSprites() {
 
         const Sector& sector = level.sectors[transform->sectorIndex];
 
-        //todo add texture coloring
         gpuSprite.color = {
-            255.0f - (255.0f - sector.lightValue),
-            255.0f - (255.0f - sector.lightValue),
-            255.0f - (255.0f - sector.lightValue),
-            255.0
+            sector.lightValue,
+            sector.lightValue,
+            sector.lightValue,
+            255.0f
         };
 
-        //todo add rotational sprite
-        // gpuSprite.data = {
-        //     transform->scale.x,
-        //     static_cast<float>(spriteComponent.textureIndex),
-        //     0.0f,
-        //     0.0f
-        // };
+        gpuSprite.textureIndices0 = {
+            spriteComponent.textureIndices[0], // N
+            spriteComponent.textureIndices[1], // NE
+            spriteComponent.textureIndices[2], // E
+            spriteComponent.textureIndices[3]  // SE
+        };
+
+        gpuSprite.textureIndices1 = {
+            spriteComponent.textureIndices[4], // S
+            spriteComponent.textureIndices[5], // SW
+            spriteComponent.textureIndices[6], // W
+            spriteComponent.textureIndices[7]  // NW
+        };
 
         gpuSprite.data = {
             transform->scale.x,
-            static_cast<float>(0),
-            0.0f,
-            0.0f
+            static_cast<float>(spriteComponent.sideCount),
+            transform->forward.x,
+            transform->forward.y
         };
 
         gpuSprites.push_back(gpuSprite);

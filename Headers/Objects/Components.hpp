@@ -240,7 +240,7 @@ struct ComponentTransform {
 
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
-    float GetSectorFloorHeight(const std::vector<Sector>& sectors) const;
+    [[nodiscard]] float GetSectorFloorHeight(const std::vector<Sector>& sectors) const;
     bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
 };
 
@@ -249,11 +249,15 @@ enum SideCount {
     SIDECOUNT_45,
     SIDECOUNT_90
 };
-// Stores things related to the entity's visuals
+
 struct ComponentSprite {
     ID ownerID = -1;
 
-    std::array<int, 8> textureIndices;
+    std::array<int, 8> textureIndices = {
+        -1, -1, -1, -1,
+        -1, -1, -1, -1
+    };
+
     SideCount sideCount = SIDECOUNT_SINGLE;
 };
 

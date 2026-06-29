@@ -602,9 +602,7 @@ namespace {
 
         if (componentsJson.contains("sprites")) {
             for (const json& spriteJson : componentsJson["sprites"]) {
-                const ID ownerID =spriteJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
+                const ID ownerID = spriteJson.at("ownerID").get<ID>();
 
                 Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
@@ -612,17 +610,16 @@ namespace {
                 ComponentSprite& c = level.sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_SPRITE);
 
-                c.textureIndices.fill(-1);
+                const json& textureIndicesJson = spriteJson.at("textureIndices");
 
-                if (spriteJson.contains("textureIndices") && spriteJson["textureIndices"].is_array()) {
+                for (size_t i = 0; i < c.textureIndices.size(); i++)
+                    c.textureIndices[i] = textureIndicesJson.at(i).get<int>();
 
-                    const json& textureIndicesJson = spriteJson["textureIndices"];
+                const int sideCountValue = spriteJson.at("sideCount").get<int>();
 
-                    for (size_t i = 0; i < c.textureIndices.size() && i < textureIndicesJson.size(); i++)
-                        c.textureIndices[i] = textureIndicesJson[i].get<int>();
-                }
+                if (sideCountValue < SIDECOUNT_SINGLE || sideCountValue > SIDECOUNT_90) continue;
 
-                c.sideCount = spriteJson.value("sideCount", SIDECOUNT_SINGLE);
+                c.sideCount = static_cast<SideCount>(sideCountValue);
             }
         }
 
@@ -984,7 +981,8 @@ namespace {
         for (const ComponentSprite& c : level.sprites.components) {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"textureIndices", c.textureIndices}
+                {"textureIndices", c.textureIndices},
+                {"sideCount", static_cast<int>(c.sideCount)}
             });
         }
 

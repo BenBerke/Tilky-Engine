@@ -59,10 +59,25 @@ namespace OpenGLRendererInternal {
         Vector4 textureOffset_padding;
     };
 
+    struct alignas(16) IntVector4 {
+        int x = -1;
+        int y = -1;
+        int z = -1;
+        int w = -1;
+    };
+
     struct GpuSprite {
         Vector4 positionSize;
         Vector4 color;
+
+        IntVector4 textureIndices0; // N, NE, E, SE
+        IntVector4 textureIndices1; // S, SW, W, NW
+
         Vector4 data;
+        // data.x = sprite width / scale.x
+        // data.y = sideCount
+        // data.z = facingYaw
+        // data.w = unused
     };
 
     struct GpuDecal {
