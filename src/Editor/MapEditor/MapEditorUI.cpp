@@ -426,38 +426,6 @@ namespace {
     }
 
     // =========================================================================
-    //  Texture thumbnail row
-    // =========================================================================
-
-    void DrawTextureThumbnailRow(const Level &level, const int textureIndex) {
-        constexpr float thumb = 32.0f;
-
-        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
-            ImGui::Dummy(ImVec2(thumb, thumb));
-            ImGui::SameLine();
-            ImGui::TextDisabled(Get("editor.none").c_str());
-            return;
-        }
-
-        SDL_Texture *texture = GetEditorTexture(textureIndex);
-
-        if (texture) {
-            ImGui::Image(reinterpret_cast<ImTextureID>(texture), ImVec2(thumb, thumb));
-        } else {
-            const ImVec2 cursor = ImGui::GetCursorScreenPos();
-            ImGui::Dummy(ImVec2(thumb, thumb));
-
-            ImDrawList *dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilled(cursor, ImVec2(cursor.x + thumb, cursor.y + thumb), IM_COL32(90, 90, 90, 255));
-            dl->AddRect(cursor, ImVec2(cursor.x + thumb, cursor.y + thumb), IM_COL32(150, 150, 150, 255));
-        }
-
-        ImGui::SameLine(0.0f, 8.0f);
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (thumb - ImGui::GetTextLineHeight()) * 0.5f);
-        ImGui::Text("[%d]  %s", textureIndex, level.textures[textureIndex].fileName.c_str());
-    }
-
-    // =========================================================================
     //  Asset panels
     // =========================================================================
 
@@ -1427,6 +1395,107 @@ namespace {
 namespace MapEditorInternal {
     using namespace Localisation;
 
+    SDL_Texture* GetEditorTexture(const int textureIndex) {
+        if (textureIndex < 0) {
+            return nullptr;
+        }
+
+        return EditorTextureCache::Get(textureIndex);
+    }
+
+    void DrawTextureThumbnailBox(const Level& level, const int textureIndex, const float size) {
+        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
+            const ImVec2 cursor = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(size, size));
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(
+                cursor,
+                ImVec2(cursor.x + size, cursor.y + size),
+                IM_COL32(35, 35, 40, 255)
+            );
+            dl->AddRect(
+                cursor,
+                ImVec2(cursor.x + size, cursor.y + size),
+                IM_COL32(80, 80, 90, 255)
+            );
+
+            const char* text = "-1";
+            const ImVec2 textSize = ImGui::CalcTextSize(text);
+            dl->AddText(
+                ImVec2(
+                    cursor.x + (size - textSize.x) * 0.5f,
+                    cursor.y + (size - textSize.y) * 0.5f
+                ),
+                IM_COL32(130, 130, 140, 255),
+                text
+            );
+
+            return;
+        }
+
+        SDL_Texture* texture = GetEditorTexture(textureIndex);
+
+        if (texture != nullptr) {
+            ImGui::Image(
+                reinterpret_cast<ImTextureID>(texture),
+                ImVec2(size, size)
+            );
+            return;
+        }
+
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(size, size));
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(
+            cursor,
+            ImVec2(cursor.x + size, cursor.y + size),
+            IM_COL32(90, 90, 90, 255)
+        );
+        dl->AddRect(
+            cursor,
+            ImVec2(cursor.x + size, cursor.y + size),
+            IM_COL32(150, 150, 150, 255)
+        );
+
+        char indexText[16];
+        snprintf(indexText, sizeof(indexText), "%d", textureIndex);
+
+        const ImVec2 textSize = ImGui::CalcTextSize(indexText);
+        dl->AddText(
+            ImVec2(
+                cursor.x + (size - textSize.x) * 0.5f,
+                cursor.y + (size - textSize.y) * 0.5f
+            ),
+            IM_COL32(220, 220, 220, 255),
+            indexText
+        );
+    }
+
+    void DrawTextureThumbnailRow(const Level& level, const int textureIndex) {
+        constexpr float thumb = 32.0f;
+
+        DrawTextureThumbnailBox(level, textureIndex, thumb);
+
+        ImGui::SameLine(0.0f, 8.0f);
+        ImGui::SetCursorPosY(
+            ImGui::GetCursorPosY() +
+            (thumb - ImGui::GetTextLineHeight()) * 0.5f
+        );
+
+        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
+            ImGui::TextDisabled(Get("editor.none").c_str());
+            return;
+        }
+
+        ImGui::Text(
+            "[%d]  %s",
+            textureIndex,
+            level.textures[textureIndex].fileName.c_str()
+        );
+    }
+
     void ChangeMode() {
         const Mode previousMode = currentMode;
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
@@ -1437,8 +1506,6 @@ namespace MapEditorInternal {
         }
     }
 
-    // Feature #2: polished light theme (unchanged colour values from the
-    // "pretty" reference).
     void ApplyEditorTheme(const EditorTheme theme) {
         if (theme == THEME_DARK) {
             ImGui::StyleColorsDark();

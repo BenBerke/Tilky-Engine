@@ -67,9 +67,6 @@ namespace MapEditorInternal {
         SDL_RenderGeometry(renderer, nullptr, vertices, 3, nullptr, 0);
     }
 
-    // Feature #9: textured variant used by Texture View Mode. UVs are a
-    // simple fixed-scale planar projection of world position - good enough
-    // for an editor preview without needing per-sector UV authoring.
     void DrawFilledTriangleTextured(const Triangle& triangle, SDL_Texture* texture, const SDL_FColor tint) {
         if (texture == nullptr) {
             return;
@@ -96,24 +93,6 @@ namespace MapEditorInternal {
         vertices[2].tex_coord = {triangle.c.x * uvScale, triangle.c.y * uvScale};
 
         SDL_RenderGeometry(renderer, texture, vertices, 3, nullptr, 0);
-    }
-
-    // Feature #8/#9: single chokepoint for "give me the SDL_Texture* for
-    // this level-local texture index, or nullptr if unavailable". Never
-    // crashes on -1/out-of-range/missing textures.
-    //
-    // ASSUMPTION (flagged in NOTES.md): EditorTextureCache exposes an
-    // accessor returning the already-loaded SDL_Texture* for an index -
-    // EditorTextureCache::Load(renderer, level) is already called in
-    // Editor::Start(), so the cache almost certainly owns live SDL_Texture*
-    // handles already; this just assumes the accessor's name. If the real
-    // one differs, this is the only function that needs to change.
-    SDL_Texture* GetEditorTexture(const int textureIndex) {
-        if (textureIndex < 0) {
-            return nullptr;
-        }
-
-        return EditorTextureCache::Get(textureIndex);
     }
 
     void DrawSnapIndicator() {
@@ -357,13 +336,16 @@ namespace MapEditorInternal {
             const ComponentSprite* sprite = level.sprites.Get(entity.id);
             SDL_Texture* spriteTexture = nullptr;
 
-            if (textureViewMode && sprite != nullptr && sprite->textureIndex != -1) {
-                spriteTexture = GetEditorTexture(sprite->textureIndex);
-            }
+            //todo add rotation sprute
+            // if (textureViewMode && sprite != nullptr && sprite->textureIndex != -1) {
+            //     spriteTexture = GetEditorTexture(sprite->textureIndex);
+            // }
 
-            if (spriteTexture != nullptr) {
-                SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
-            }
+            if (textureViewMode && sprite != nullptr) {
+                    spriteTexture = GetEditorTexture(0);
+                }
+
+            if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {
                 if (sprite != nullptr) SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
                 else if (level.decals.Get(entity.id) != nullptr) SDL_SetRenderDrawColor(renderer, 255, 120, 120, 255);

@@ -113,7 +113,7 @@ namespace RuntimeSession {
             }
 
             AudioSystem::Start(level);
-            
+
             LevelSystem::Start(level);
 
             AudioSystem::ApplyListenerSettings(level);

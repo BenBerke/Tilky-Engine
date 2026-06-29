@@ -244,11 +244,17 @@ struct ComponentTransform {
     bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
 };
 
+enum SideCount {
+    SIDECOUNT_SINGLE,
+    SIDECOUNT_45,
+    SIDECOUNT_90
+};
 // Stores things related to the entity's visuals
 struct ComponentSprite {
     ID ownerID = -1;
 
-    int textureIndex;
+    std::array<int, 8> textureIndices;
+    SideCount sideCount = SIDECOUNT_SINGLE;
 };
 
 // MUST have a sprite component to work properly

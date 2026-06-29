@@ -224,6 +224,8 @@ namespace MapEditorInternal {
     // crashes on a missing texture. See NOTES.md for the one assumption this
     // makes about EditorTextureCache's interface.
     SDL_Texture* GetEditorTexture(int textureIndex);
+    void DrawTextureThumbnailBox(const Level& level, int textureIndex, float size);
+    void DrawTextureThumbnailRow(const Level& level, int textureIndex);
 
     void QueueLevelLoad(const std::string& levelName);
     bool ProcessPendingLevelLoad();

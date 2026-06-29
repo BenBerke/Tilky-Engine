@@ -602,22 +602,27 @@ namespace {
 
         if (componentsJson.contains("sprites")) {
             for (const json& spriteJson : componentsJson["sprites"]) {
-                const ID ownerID =
-                    spriteJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID =spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentSprite& c = level.sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_SPRITE);
 
-                c.textureIndex = spriteJson.value("textureIndex", -1);
+                c.textureIndices.fill(-1);
+
+                if (spriteJson.contains("textureIndices") && spriteJson["textureIndices"].is_array()) {
+
+                    const json& textureIndicesJson = spriteJson["textureIndices"];
+
+                    for (size_t i = 0; i < c.textureIndices.size() && i < textureIndicesJson.size(); i++)
+                        c.textureIndices[i] = textureIndicesJson[i].get<int>();
+                }
+
+                c.sideCount = spriteJson.value("sideCount", SIDECOUNT_SINGLE);
             }
         }
 
@@ -979,7 +984,7 @@ namespace {
         for (const ComponentSprite& c : level.sprites.components) {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"textureIndex", c.textureIndex}
+                {"textureIndices", c.textureIndices}
             });
         }
 

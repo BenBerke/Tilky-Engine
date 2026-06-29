@@ -38,9 +38,17 @@ void OpenGL::BuildGpuSprites() {
             255.0
         };
 
+        //todo add rotational sprite
+        // gpuSprite.data = {
+        //     transform->scale.x,
+        //     static_cast<float>(spriteComponent.textureIndex),
+        //     0.0f,
+        //     0.0f
+        // };
+
         gpuSprite.data = {
             transform->scale.x,
-            static_cast<float>(spriteComponent.textureIndex),
+            static_cast<float>(0),
             0.0f,
             0.0f
         };

@@ -15,9 +15,6 @@ option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 # ============================================================
 # Tracy default
-# Debug: ON
-# RelWithDebInfo: ON, useful for profiling optimized builds
-# Release / MinSizeRel: forced OFF
 # ============================================================
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" TILKY_BUILD_TYPE_UPPER)
@@ -36,10 +33,6 @@ message(STATUS "TILKY_ENABLE_TRACY = ${TILKY_ENABLE_TRACY}")
 
 # ============================================================
 # Unity / Jumbo build
-# Speeds up full rebuilds by compiling batches of .cpp files together.
-# Keep OFF by default because unity builds can expose hidden ODR/name clashes.
-# Enable with:
-#   cmake -S . -B build -DTILKY_ENABLE_UNITY_BUILD=ON
 # ============================================================
 
 option(TILKY_ENABLE_UNITY_BUILD "Enable CMake unity/jumbo builds for Tilky project targets" OFF)
@@ -60,6 +53,10 @@ function(tilky_configure_unity_build target_name)
             UNITY_BUILD_UNIQUE_ID TILKY_UNITY_BUILD_ID
     )
 endfunction()
+
+# ============================================================
+# Packages
+# ============================================================
 
 find_package(OpenGL REQUIRED)
 find_package(OpenAL REQUIRED)
@@ -90,10 +87,9 @@ target_link_libraries(glad PUBLIC
 
 # ============================================================
 # Dear ImGui
-# External UI library. Do not put this directly into executables.
 # ============================================================
 
-if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
     add_library(imgui STATIC
             External/imgui/imgui.cpp
             External/imgui/imgui_draw.cpp
@@ -166,7 +162,6 @@ endif()
 
 # ============================================================
 # Shared project system
-# Used by launcher, editor, runtime, standalone, and exporter.
 # ============================================================
 
 add_library(Tilky_Project STATIC
@@ -193,7 +188,6 @@ tilky_configure_unity_build(Tilky_Project)
 
 # ============================================================
 # Shared localisation system
-# Used by launcher, editor, runtime, standalone, and exporter.
 # ============================================================
 
 add_library(Tilky_Local STATIC
@@ -220,8 +214,6 @@ tilky_configure_unity_build(Tilky_Local)
 
 # ============================================================
 # Runtime source list
-# This is the editor-free engine/runtime part.
-# Standalone.exe links this target, so do NOT put src/Editor/* here.
 # ============================================================
 
 set(TILKY_RUNTIME_SOURCES
@@ -235,8 +227,9 @@ set(TILKY_RUNTIME_SOURCES
         src/Objects/Level.cpp
 
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
+        src/Runtime/Gameplay/GameFunctions.cpp
+
         src/Runtime/RuntimeSession.cpp
-        src/Runtime/Scripting/ScriptSystem.cpp
         src/Runtime/LevelSystem.cpp
 
         src/Runtime/Sound/SoundManager.cpp
@@ -254,8 +247,20 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLSector.cpp
         src/Runtime/Renderer/OpenGL/OpenGLBackground.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
         src/Runtime/Renderer/Vulkan/VulkanRenderer.cpp
+
+        src/Runtime/PhysicsSystem.cpp
+
+        src/Runtime/Scripting/ScriptSystem.cpp
+        src/Runtime/Scripting/VectorBindings.cpp
+        src/Runtime/Scripting/ComponentBindings.cpp
+        src/Runtime/Scripting/EntityBindings.cpp
+        src/Runtime/Scripting/InputBindings.cpp
+        src/Runtime/Scripting/MathBindings.cpp
+        src/Runtime/Scripting/EditorFunctionBindings.cpp
+        src/Runtime/Scripting/GameBindings.cpp
 
         src/Math/Geometry/Geometry.cpp
 
@@ -273,47 +278,36 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Wall.hpp
         Headers/Objects/Loadables.hpp
         Headers/Objects/Wrappers.hpp
+
         Headers/Map/LevelManager.hpp
         Headers/Map/LevelSerialization.hpp
         Headers/Map/MapQueries.hpp
-        Headers/Map/LevelManager.hpp
+
         Headers/Math/Geometry/Geometry.hpp
         Headers/Math/Vector/Vector2Math.hpp
         Headers/Math/Vector/Vector3Math.hpp
+
         Headers/Runtime/Sound/SoundManager.hpp
         Headers/Runtime/Sound/AudioSystem.hpp
         Headers/Runtime/RuntimeSession.hpp
-        Headers/Runtime/Scripting/ScriptSystem.hpp
         Headers/Runtime/LevelSystem.hpp
+        Headers/Runtime/Scripting/ScriptSystem.hpp
         Headers/Runtime/Gameplay/CameraSystem.hpp
+        Headers/Runtime/Gameplay/GameFunctions.hpp
+
         Headers/Runtime/Renderer/IRenderer.hpp
         Headers/Runtime/Renderer/RendererBackend.hpp
         Headers/Runtime/Renderer/RendererFactory.hpp
         Headers/Runtime/Renderer/RendererMath.hpp
         Headers/Runtime/Renderer/OpenGL/OpenGL.hpp
         Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
+
+        Headers/Runtime/PhysicsSystem.hpp
         Headers/UISystem.hpp
-        src/Runtime/Gameplay/GameFunctions.cpp
-        src/Editor/ImGuiDrawFunctions.cpp
-        src/Runtime/RuntimeEditor/EditorFunctions.cpp
-        Headers/Runtime/RuntimeEditor/EditorFunctions.hpp
-        src/Runtime/RuntimeEditor/RuntimeEditor.cpp
-        Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
-        src/Runtime/PhysicsSystem.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
-        src/Runtime/Scripting/VectorBindings.cpp
-        src/Runtime/Scripting/ComponentBindings.cpp
-        src/Runtime/Scripting/EntityBindings.cpp
-        src/Runtime/Scripting/InputBindings.cpp
-        src/Runtime/Scripting/MathBindings.cpp
-        src/Runtime/Scripting/EditorFunctionBindings.cpp
-        src/Runtime/Scripting/GameBindings.cpp
 )
 
 # ============================================================
 # Editor source list
-# Editor-only files live here.
-# Standalone.exe must never link this target.
 # ============================================================
 
 set(TILKY_EDITOR_SOURCES
@@ -322,25 +316,43 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/MapEditor/MapEditorUI.cpp
         src/Editor/MapEditor/MapEditorInput.cpp
 
+        src/Editor/ImGuiDrawFunctions.cpp
+
         src/Editor/Editor.cpp
         src/Editor/EditorState.cpp
         src/Editor/EditorTextureCache.cpp
+        src/Editor/EditorSaveLoad.cpp
+
+        src/Runtime/RuntimeEditor/EditorFunctions.cpp
+        src/Runtime/RuntimeEditor/RuntimeEditor.cpp
 
         src/Editor/UIEditor/UIEditorUI.cpp
         src/Editor/UIEditor/UIEditorInput.cpp
         src/Editor/UIEditor/UiEditorDraw.cpp
 
         Headers/Editor/EditorTextureCache.hpp
+        Headers/Editor/ImGuiDrawFunctions.hpp
+
+        Headers/Runtime/RuntimeEditor/EditorFunctions.hpp
+        Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
+
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Objects/RayHit.hpp
-        Headers/Editor/ImGuiDrawFunctions.hpp
-        src/Editor/EditorSaveLoad.cpp
         Headers/Map/LevelSerialization.hpp
         Headers/Runtime/PhysicsSystem.hpp
         Headers/Math/Constants.hpp
         Headers/Math/SIMD/SSECompat.hpp
         Headers/Objects/ComponentRegistry.hpp
         Headers/Objects/ScriptPublicType.hpp
+)
+
+# ============================================================
+# Combined engine source list
+# ============================================================
+
+set(TILKY_ENGINE_SOURCES
+        ${TILKY_RUNTIME_SOURCES}
+        ${TILKY_EDITOR_SOURCES}
 )
 
 # ============================================================
@@ -370,51 +382,10 @@ set(TILKY_ENGINE_PCH_HEADERS
 )
 
 # ============================================================
-# Runtime core library
-# This is the clean runtime target used by Standalone.exe and exporter.
+# Heavy sol2 binding files
 # ============================================================
 
-add_library(Tilky_RuntimeCore STATIC
-        ${TILKY_RUNTIME_SOURCES}
-)
-
-set_target_properties(Tilky_RuntimeCore PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-target_precompile_headers(Tilky_RuntimeCore PRIVATE
-        ${TILKY_ENGINE_PCH_HEADERS}
-)
-
-target_include_directories(Tilky_RuntimeCore PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${LUA_INCLUDE_DIR}
-)
-
-target_link_libraries(Tilky_RuntimeCore PUBLIC
-        SDL3::SDL3
-        SDL3::Headers
-        spdlog::spdlog
-        OpenAL::OpenAL
-        $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
-        SDL3_ttf::SDL3_ttf
-        Freetype::Freetype
-        glad
-        imgui
-        Tilky_Project
-        Tilky_Local
-        nlohmann_json::nlohmann_json
-        sol2::sol2
-        ${LUA_LIBRARIES}
-)
-
-target_compile_options(Tilky_RuntimeCore PRIVATE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
-)
-
 if(MINGW)
-    target_compile_options(Tilky_RuntimeCore PRIVATE
-            $<$<COMPILE_LANGUAGE:CXX>:-Wa,-mbig-obj>
-    )
-
     set_source_files_properties(
             src/Runtime/Scripting/VectorBindings.cpp
             src/Runtime/Scripting/ComponentBindings.cpp
@@ -427,78 +398,8 @@ if(MINGW)
     )
 endif()
 
-if (TILKY_USE_IMGUI)
-    target_compile_definitions(Tilky_RuntimeCore PUBLIC TILKY_USE_IMGUI=1)
-else()
-    target_compile_definitions(Tilky_RuntimeCore PUBLIC TILKY_USE_IMGUI=0)
-endif()
-
-# Keep Tracy headers visible so #include <tracy/Tracy.hpp> still works.
-# Without TRACY_ENABLE, Tracy macros become no-op.
-if(EXISTS "${TRACY_DIR}/public/tracy/Tracy.hpp")
-    target_include_directories(Tilky_RuntimeCore PUBLIC "${TRACY_DIR}/public")
-endif()
-
-if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
-    target_link_libraries(Tilky_RuntimeCore PUBLIC TracyClient)
-    target_compile_definitions(Tilky_RuntimeCore PUBLIC TRACY_ENABLE)
-endif()
-
-tilky_configure_unity_build(Tilky_RuntimeCore)
-
-# ============================================================
-# Editor core library
-# Editor-only code. Links against runtime because editor manipulates levels,
-# renderers, entities, assets, etc.
-# ============================================================
-
-add_library(Tilky_EditorCore STATIC
-        ${TILKY_EDITOR_SOURCES}
-)
-
-set_target_properties(Tilky_EditorCore PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-target_precompile_headers(Tilky_EditorCore PRIVATE
-        ${TILKY_ENGINE_PCH_HEADERS}
-)
-
-target_include_directories(Tilky_EditorCore PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        src/Editor
-        src/Editor/MapEditor
-        src/Editor/UIEditor
-        ${LUA_INCLUDE_DIR}
-)
-
-target_link_libraries(Tilky_EditorCore PUBLIC
-        Tilky_RuntimeCore
-        imgui
-)
-
-target_compile_definitions(Tilky_EditorCore PUBLIC
-        TILKY_EDITOR=1
-        TILKY_STANDALONE=0
-)
-
-tilky_configure_unity_build(Tilky_EditorCore)
-
-# ============================================================
-# Engine core compatibility target
-# Editor builds link this. It combines runtime + editor.
-# Standalone builds should link Tilky_RuntimeCore directly.
-# ============================================================
-
-add_library(Tilky_EngineCore INTERFACE)
-
-target_link_libraries(Tilky_EngineCore INTERFACE
-        Tilky_RuntimeCore
-        Tilky_EditorCore
-)
-
 # ============================================================
 # Launcher source list
-# Only launcher-specific files go here.
-# No engine renderer/editor files.
 # ============================================================
 
 set(TILKY_LAUNCHER_SOURCES
@@ -508,7 +409,6 @@ set(TILKY_LAUNCHER_SOURCES
 
 # ============================================================
 # Launcher core library
-# This compiles only launcher files.
 # ============================================================
 
 add_library(Tilky_LauncherCore STATIC
@@ -570,8 +470,81 @@ if(WIN32)
 endif()
 
 # ============================================================
+# Shared engine executable configuration
+# ============================================================
+
+function(configure_tilky_engine_executable target_name)
+    set_target_properties(${target_name} PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+
+    target_precompile_headers(${target_name} PRIVATE
+            ${TILKY_ENGINE_PCH_HEADERS}
+    )
+
+    target_include_directories(${target_name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            src/Editor
+            src/Editor/MapEditor
+            src/Editor/UIEditor
+            ${LUA_INCLUDE_DIR}
+    )
+
+    target_link_libraries(${target_name} PRIVATE
+            SDL3::SDL3
+            SDL3::Headers
+            spdlog::spdlog
+            OpenAL::OpenAL
+            $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
+            SDL3_ttf::SDL3_ttf
+            Freetype::Freetype
+            glad
+            imgui
+            Tilky_Project
+            Tilky_Local
+            nlohmann_json::nlohmann_json
+            sol2::sol2
+            ${LUA_LIBRARIES}
+    )
+
+    target_compile_options(${target_name} PRIVATE
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
+    )
+
+    if(MINGW)
+        target_compile_options(${target_name} PRIVATE
+                $<$<COMPILE_LANGUAGE:CXX>:-Wa,-mbig-obj>
+        )
+    endif()
+
+    if(TILKY_USE_IMGUI)
+        target_compile_definitions(${target_name} PRIVATE TILKY_USE_IMGUI=1)
+    else()
+        target_compile_definitions(${target_name} PRIVATE TILKY_USE_IMGUI=0)
+    endif()
+
+    if(EXISTS "${TRACY_DIR}/public/tracy/Tracy.hpp")
+        target_include_directories(${target_name} PRIVATE "${TRACY_DIR}/public")
+    endif()
+
+    if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
+        target_link_libraries(${target_name} PRIVATE TracyClient)
+        target_compile_definitions(${target_name} PRIVATE TRACY_ENABLE)
+    endif()
+
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+        find_path(SSE2NEON_INCLUDE_DIR
+                NAMES sse2neon.h
+                PATH_SUFFIXES sse2neon
+                REQUIRED
+        )
+
+        target_include_directories(${target_name} PRIVATE ${SSE2NEON_INCLUDE_DIR})
+    endif()
+
+    tilky_configure_unity_build(${target_name})
+endfunction()
+
+# ============================================================
 # Runnable 1: Tilky_Launcher
-# ONLY launcher executable.
 # ============================================================
 
 add_executable(Tilky_Launcher
@@ -587,33 +560,15 @@ set_target_properties(Tilky_Launcher PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 # ============================================================
 # Runnable 2: Tilky_Engine
-# Editor executable. Links runtime + editor through Tilky_EngineCore.
 # ============================================================
 
 add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
+        ${TILKY_ENGINE_SOURCES}
         ${TILKY_ICON_OBJECTS}
 )
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-    find_path(SSE2NEON_INCLUDE_DIR
-            NAMES sse2neon.h
-            PATH_SUFFIXES sse2neon
-            REQUIRED
-    )
-
-    target_include_directories(TilkyEngine PRIVATE ${SSE2NEON_INCLUDE_DIR})
-endif()
-
-set_target_properties(Tilky_Engine PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-target_link_libraries(Tilky_Engine PRIVATE
-        Tilky_EngineCore
-)
-
-target_compile_options(Tilky_Engine PRIVATE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
-)
+configure_tilky_engine_executable(Tilky_Engine)
 
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
@@ -622,17 +577,12 @@ target_compile_definitions(Tilky_Engine PRIVATE
 
 # ============================================================
 # Runnable 3: Standalone
-# Tilky_Standalone target outputs Standalone.exe. Links runtime only, no editor sources.
-# Create src/Standalone/StandaloneMain.cpp if it does not exist yet.
 # ============================================================
 
 add_executable(Tilky_Standalone
         src/Standalone/StandaloneMain.cpp
+        ${TILKY_ENGINE_SOURCES}
         ${TILKY_ICON_OBJECTS}
-)
-
-target_compile_options(Tilky_Standalone PRIVATE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
 )
 
 set_target_properties(Tilky_Standalone PROPERTIES
@@ -640,62 +590,40 @@ set_target_properties(Tilky_Standalone PROPERTIES
         OUTPUT_NAME "Standalone"
 )
 
-target_link_libraries(Tilky_Standalone PRIVATE
-        Tilky_RuntimeCore
-)
+configure_tilky_engine_executable(Tilky_Standalone)
 
 target_compile_definitions(Tilky_Standalone PRIVATE
-        TILKY_EDITOR=0
+        TILKY_EDITOR=1
         TILKY_STANDALONE=1
 )
 
 # ============================================================
 # Runnable 4: Tilky_Exporter
-# C++ exporter, if src/Exporter/ExporterMain.cpp exists.
-# If you use the Rust exporter instead, this C++ target can be removed later.
 # ============================================================
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/Exporter/ExporterMain.cpp")
     add_executable(Tilky_Exporter
             src/Exporter/ExporterMain.cpp
+            ${TILKY_ENGINE_SOURCES}
             ${TILKY_ICON_OBJECTS}
     )
 
-    set_target_properties(Tilky_Exporter PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-    target_link_libraries(Tilky_Exporter PRIVATE
-            Tilky_RuntimeCore
-    )
+    configure_tilky_engine_executable(Tilky_Exporter)
 
     target_compile_definitions(Tilky_Exporter PRIVATE
             TILKY_EXPORTER=1
-            TILKY_EDITOR=0
+            TILKY_EDITOR=1
             TILKY_STANDALONE=0
     )
 endif()
 
 # ============================================================
 # Runnable 5: Tilky_All
-# Convenience target that builds launcher, editor, standalone, and exporter.
+# Build group only. Not an executable.
 # ============================================================
 
-add_executable(Tilky_All
-        src/Launcher/LauncherMain.cpp
-        ${TILKY_ICON_OBJECTS}
-)
-
-target_link_libraries(Tilky_All PRIVATE
-        Tilky_LauncherCore
-        Tilky_EngineCore
-)
-
-target_compile_options(Tilky_All PRIVATE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
-)
-
-set_target_properties(Tilky_All PROPERTIES CXX_SCAN_FOR_MODULES OFF)
-
-add_dependencies(Tilky_All
+add_custom_target(Tilky_All
+        DEPENDS
         Tilky_Launcher
         Tilky_Engine
         Tilky_Standalone
@@ -707,9 +635,6 @@ endif()
 
 # ============================================================
 # Runtime assets
-# Copy folders needed by the .exe into the build output folder.
-# For a final exported game, the Rust exporter will copy only the folders
-# needed by the standalone player.
 # ============================================================
 
 set(TILKY_RUNTIME_ASSET_DIRS
@@ -738,7 +663,6 @@ endfunction()
 copy_runtime_assets(Tilky_Launcher)
 copy_runtime_assets(Tilky_Engine)
 copy_runtime_assets(Tilky_Standalone)
-copy_runtime_assets(Tilky_All)
 
 if(TARGET Tilky_Exporter)
     copy_runtime_assets(Tilky_Exporter)
@@ -746,7 +670,6 @@ endif()
 
 # ============================================================
 # Runtime DLLs
-# Copy SDL/vcpkg DLLs beside the .exe on Windows.
 # ============================================================
 
 function(copy_runtime_dlls target_name)
@@ -763,8 +686,6 @@ endfunction()
 
 # ============================================================
 # MinGW runtime DLLs
-# Copy the exact C++ runtime DLLs used by the current compiler.
-# This avoids loading the wrong libstdc++-6.dll from PATH.
 # ============================================================
 
 if(WIN32 AND MINGW)
@@ -792,7 +713,6 @@ if(WIN32 AND MINGW)
     copy_mingw_runtime_dlls(Tilky_Launcher)
     copy_mingw_runtime_dlls(Tilky_Engine)
     copy_mingw_runtime_dlls(Tilky_Standalone)
-    copy_mingw_runtime_dlls(Tilky_All)
 
     if(TARGET Tilky_Exporter)
         copy_mingw_runtime_dlls(Tilky_Exporter)
@@ -812,14 +732,12 @@ function(make_gui_in_release target_name)
 endfunction()
 
 make_gui_in_release(Tilky_Launcher)
-#make_gui_in_release(Tilky_Engine)
+# make_gui_in_release(Tilky_Engine)
 make_gui_in_release(Tilky_Standalone)
-#make_gui_in_release(Tilky_All)
 
 copy_runtime_dlls(Tilky_Launcher)
 copy_runtime_dlls(Tilky_Engine)
 copy_runtime_dlls(Tilky_Standalone)
-copy_runtime_dlls(Tilky_All)
 
 if(TARGET Tilky_Exporter)
     copy_runtime_dlls(Tilky_Exporter)
@@ -827,8 +745,6 @@ endif()
 
 # ============================================================
 # Rust exporter tool
-# Builds Tools/TilkyExporter with Cargo and copies it beside
-# the editor executable.
 # ============================================================
 
 find_program(CARGO_EXECUTABLE cargo REQUIRED)

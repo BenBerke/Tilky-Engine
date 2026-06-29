@@ -20,7 +20,10 @@ void OpenGL::BuildGpuDecals() {
 
         ComponentSprite* sprite = level.sprites.Get(decalComponent.ownerID);
 
-        const int textureIndex = sprite != nullptr ? sprite->textureIndex : -1;
+        //todo add rotational sprite
+        //const int textureIndex = sprite != nullptr ? sprite->textureIndex : -1;
+
+        const int textureIndex = sprite != nullptr ? 0 : -1;
 
         if (decalComponent.wallIndex < 0 ||decalComponent.wallIndex >= static_cast<int>(level.walls.size()))
             continue;

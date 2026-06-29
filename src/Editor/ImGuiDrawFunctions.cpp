@@ -25,6 +25,7 @@
 #include <string>
 #include <algorithm>
 
+#include "EditorInternal.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -227,7 +228,6 @@ namespace {
     }
 
 } // anonymous namespace
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ImGuiDrawFunctions implementation
@@ -635,19 +635,232 @@ namespace ImGuiDrawFunctions {
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
+
+            const Level& level = LevelManager::CurrentLevel();
+
             if (c) {
+                constexpr float BOX_SIZE = 64.0f;
+                constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
+
+                auto DrawTextureBox = [&](const int textureIndex, const float size) {
+                    if (textureIndex >= 0 &&
+                        textureIndex < static_cast<int>(level.textures.size())) {
+                        SDL_Texture *texture = MapEditorInternal::GetEditorTexture(textureIndex);
+
+                        if (texture != nullptr) {
+                            ImGui::Image(texture,ImVec2(size, size));
+                            return;
+                        }
+                    }
+
+                    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+                    ImGui::Dummy(ImVec2(size, size));
+
+                    ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+                    drawList->AddRectFilled(
+                        cursor,
+                        ImVec2(cursor.x + size, cursor.y + size),
+                        IM_COL32(35, 35, 40, 255)
+                    );
+
+                    drawList->AddRect(
+                        cursor,
+                        ImVec2(cursor.x + size, cursor.y + size),
+                        IM_COL32(90, 90, 100, 255)
+                    );
+
+                    char text[16];
+
+                    if (textureIndex < 0) {
+                        snprintf(text, sizeof(text), "-1");
+                    } else {
+                        snprintf(text, sizeof(text), "%d", textureIndex);
+                    }
+
+                    const ImVec2 textSize = ImGui::CalcTextSize(text);
+
+                    drawList->AddText(
+                        ImVec2(
+                            cursor.x + (size - textSize.x) * 0.5f,
+                            cursor.y + (size - textSize.y) * 0.5f
+                        ),
+                        IM_COL32(160, 160, 170, 255),
+                        text
+                    );
+                };
+
+                auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
+                    ImGui::PushID(slotIndex);
+
+                    int &textureIndex = c->textureIndices[slotIndex];
+
+                    DrawTextureBox(textureIndex, BOX_SIZE);
+
+                    const ImVec2 labelSize = ImGui::CalcTextSize(label);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (BOX_SIZE - labelSize.x) * 0.5f);
+                    ImGui::TextDisabled("%s", label);
+
+                    ImGui::SetNextItemWidth(BOX_SIZE + 10.0f);
+
+                    if (draggable) ImGui::DragInt("##texture_index", &textureIndex, 1.0f);
+                    else ImGui::InputInt("##texture_index", &textureIndex, 1, 0);
+
+                    if (textureIndex < -1) textureIndex = -1;
+
+                    ImGui::PopID();
+                };
+
+                auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
+
                 BeginSection("Rendering");
-                FieldWidth(120.0f);
-                InputOrDrag(Get("component.sprite.texture_index").c_str(), &c->textureIndex, draggable);
-                Tooltip("Index into the sprite/texture atlas.");
+                FieldWidth(160.0f);
+
+                int directionMode = 0;
+
+                if (c->sideCount == SIDECOUNT_SINGLE) directionMode = 0;
+                else if (c->sideCount == SIDECOUNT_90) directionMode = 1;
+                else if (c->sideCount == SIDECOUNT_45) directionMode = 2;
+                else {
+                    c->sideCount = SIDECOUNT_SINGLE;
+                    directionMode = 0;
+                }
+
+                const std::string singleText = Get("component.sprite.directions.single");
+                const std::string sided90Text = Get("component.sprite.directions.90");
+                const std::string sided45Text = Get("component.sprite.directions.45");
+
+                const char *directionModes[] = {
+                    singleText.c_str(),
+                    sided90Text.c_str(),
+                    sided45Text.c_str()
+                };
+
+                ImGui::Text("%s", Get("component.sprite.directional").c_str());
+                ImGui::SameLine();
+
+                ImGui::SetNextItemWidth(160.0f);
+
+                if (ImGui::Combo("##sprite_direction_mode", &directionMode, directionModes, 3)) {
+                    if (directionMode == 0) c->sideCount = SIDECOUNT_SINGLE;
+                    else if (directionMode == 1) c->sideCount = SIDECOUNT_90;
+                    else if (directionMode == 2) c->sideCount = SIDECOUNT_45;
+                }
+
+                ImGui::Spacing();
+
+                if (ImGui::SmallButton("Clear All")) {
+                    c->textureIndices.fill(-1);
+                }
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                constexpr float CELL_PADDING = 8.0f;
+                constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
+
+                if (c->sideCount == SIDECOUNT_SINGLE) {
+                    ImGui::PushID("sprite_single");
+                    DrawSpriteSlot(0, "Default");
+                    ImGui::PopID();
+                } else if (c->sideCount == SIDECOUNT_90) {
+                    ImGui::PushID("sprite_90");
+
+                    if (ImGui::BeginTable(
+                        "##sprite_90_table",
+                        3,
+                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+                    )) {
+                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(0, "N");
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(6, "W");
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(2, "E");
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(4, "S");
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+
+                        ImGui::EndTable();
+                    }
+
+                    ImGui::PopID();
+                } else if (c->sideCount == SIDECOUNT_45) {
+                    ImGui::PushID("sprite_45");
+
+                    if (ImGui::BeginTable(
+                        "##sprite_45_table",
+                        3,
+                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+                    )) {
+                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(7, "NW");
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(0, "N");
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(1, "NE");
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(6, "W");
+                        ImGui::TableNextColumn();
+                        DrawEmptySlot();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(2, "E");
+
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(5, "SW");
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(4, "S");
+                        ImGui::TableNextColumn();
+                        DrawSpriteSlot(3, "SE");
+
+                        ImGui::EndTable();
+                    }
+
+                    ImGui::PopID();
+                }
+
                 EndSection();
 
-                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
                 if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentSprite>();
                     CloseEditor();
                 }
-            } else { ImGui::TextDisabled("Sprite component missing"); }
+            } else {
+                ImGui::TextDisabled("Sprite component missing");
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -658,10 +871,10 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Placement");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.decal.attached_wall").c_str(),    &c->wallIndex,        draggable);
-                InputOrDrag(Get("component.decal.wall_offset").c_str(),       &c->horizontalPos,    draggable);
-                InputOrDrag(Get("component.decal.wall_normal_offset").c_str(),&c->wallNormalOffset, draggable);
-                InputOrDrag("Wall T",    &c->wallT,      draggable);
+                InputOrDrag(Get("component.decal.attached_wall").c_str(), &c->wallIndex, draggable);
+                InputOrDrag(Get("component.decal.wall_offset").c_str(), &c->horizontalPos, draggable);
+                InputOrDrag(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset, draggable);
+                InputOrDrag("Wall T", &c->wallT, draggable);
                 Tooltip("Normalised position along the wall (0–1).");
                 EndSection();
 

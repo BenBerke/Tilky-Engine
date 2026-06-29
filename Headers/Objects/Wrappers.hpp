@@ -284,6 +284,17 @@ struct ScriptSprite {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
 
+    static constexpr int TEXTURE_SLOT_COUNT = 8;
+
+    static constexpr int SLOT_N  = 0;
+    static constexpr int SLOT_NE = 1;
+    static constexpr int SLOT_E  = 2;
+    static constexpr int SLOT_SE = 3;
+    static constexpr int SLOT_S  = 4;
+    static constexpr int SLOT_SW = 5;
+    static constexpr int SLOT_W  = 6;
+    static constexpr int SLOT_NW = 7;
+
     [[nodiscard]] ComponentSprite* GetComponent() const {
         if (level == nullptr) return nullptr;
         return level->sprites.Get(ownerID);
@@ -293,17 +304,75 @@ struct ScriptSprite {
         return GetComponent() != nullptr;
     }
 
-    [[nodiscard]] int GetTextureIndex() const {
-        const ComponentSprite* sprite = GetComponent();
-        if (sprite == nullptr) return -1;
-        return sprite->textureIndex;
+    [[nodiscard]] static bool IsValidSlot(const int slot) {
+        return slot >= 0 && slot < TEXTURE_SLOT_COUNT;
     }
 
-    void SetTextureIndex(const int index) const {
+    [[nodiscard]] static bool IsValidSideCount(const int sideCount) {
+        return sideCount == SIDECOUNT_SINGLE ||
+               sideCount == SIDECOUNT_90 ||
+               sideCount == SIDECOUNT_45;
+    }
+
+    [[nodiscard]] int GetTextureIndex(const int slot) const {
+        const ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return -1;
+        if (!IsValidSlot(slot)) return -1;
+
+        return sprite->textureIndices[slot];
+    }
+
+    void SetTextureIndex(const int slot, const int index) const {
         ComponentSprite* sprite = GetComponent();
         if (sprite == nullptr) return;
-        sprite->textureIndex = index;
+        if (!IsValidSlot(slot)) return;
+
+        sprite->textureIndices[slot] = index;
     }
+
+    [[nodiscard]] int GetSideCount() const {
+        const ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return SIDECOUNT_SINGLE;
+
+        return sprite->sideCount;
+    }
+
+    void SetSideCount(const int sideCount) const {
+        ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        if (!IsValidSideCount(sideCount)) return;
+
+        sprite->sideCount = static_cast<SideCount>(sideCount);
+    }
+
+    void ClearTextureIndex(const int slot) const {
+        SetTextureIndex(slot, -1);
+    }
+
+    void ClearAllTextureIndices() const {
+        ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+
+        sprite->textureIndices.fill(-1);
+    }
+
+    [[nodiscard]] int GetNorthTextureIndex() const {return GetTextureIndex(SLOT_N);}
+    [[nodiscard]] int GetNorthEastTextureIndex() const {return GetTextureIndex(SLOT_NE);}
+    [[nodiscard]] int GetEastTextureIndex() const {return GetTextureIndex(SLOT_E);}
+    [[nodiscard]] int GetSouthEastTextureIndex() const {return GetTextureIndex(SLOT_SE);}
+    [[nodiscard]] int GetSouthTextureIndex() const {return GetTextureIndex(SLOT_S);}
+    [[nodiscard]] int GetSouthWestTextureIndex() const {return GetTextureIndex(SLOT_SW);}
+    [[nodiscard]] int GetWestTextureIndex() const {return GetTextureIndex(SLOT_W);}
+    [[nodiscard]] int GetNorthWestTextureIndex() const {return GetTextureIndex(SLOT_NW);}
+
+    void SetNorthTextureIndex(const int index) const {SetTextureIndex(SLOT_N, index);}
+    void SetNorthEastTextureIndex(const int index) const {SetTextureIndex(SLOT_NE, index);}
+    void SetEastTextureIndex(const int index) const {SetTextureIndex(SLOT_E, index);}
+    void SetSouthEastTextureIndex(const int index) const { SetTextureIndex(SLOT_SE, index);}
+    void SetSouthTextureIndex(const int index) const { SetTextureIndex(SLOT_S, index);}
+    void SetSouthWestTextureIndex(const int index) const { SetTextureIndex(SLOT_SW, index);}
+    void SetWestTextureIndex(const int index) const {SetTextureIndex(SLOT_W, index);}
+    void SetNorthWestTextureIndex(const int index) const {SetTextureIndex(SLOT_NW, index);}
 };
 
 // ---------------------------------------------------------

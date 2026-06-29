@@ -57,7 +57,8 @@ ID Level::CreateEntity(Entity& copy) {
         ComponentSprite* s  = entity.AddComponent<ComponentSprite>();
         const ComponentSprite* cs = copy.GetComponent<ComponentSprite>();
 
-        s->textureIndex = cs->textureIndex;
+        s->textureIndices = cs->textureIndices;
+        s->sideCount = cs->sideCount;
     }
 
     if (copy.HasComponent<ComponentDecal>()) {

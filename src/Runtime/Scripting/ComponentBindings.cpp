@@ -352,14 +352,62 @@ void ScriptSystem::RegisterComponentBindings(sol::state& lua) {
             "addPosition", &ScriptTransform::AddPosition
         );
 
-        lua.new_usertype<ScriptSprite>(
-            "Sprite",
+    lua.new_usertype<ScriptSprite>(
+        "Sprite",
 
-            "textureIndex", sol::property(
-                &ScriptSprite::GetTextureIndex,
-                &ScriptSprite::SetTextureIndex
-            )
-        );
+        "isValid", sol::property(&ScriptSprite::IsValid),
+
+        "sideCount", sol::property(
+            &ScriptSprite::GetSideCount,
+            &ScriptSprite::SetSideCount
+        ),
+
+        "getTextureIndex", &ScriptSprite::GetTextureIndex,
+        "setTextureIndex", &ScriptSprite::SetTextureIndex,
+
+        "clearTextureIndex", &ScriptSprite::ClearTextureIndex,
+        "clearAllTextureIndices", &ScriptSprite::ClearAllTextureIndices,
+
+        "northTextureIndex", sol::property(
+            &ScriptSprite::GetNorthTextureIndex,
+            &ScriptSprite::SetNorthTextureIndex
+        ),
+
+        "northEastTextureIndex", sol::property(
+            &ScriptSprite::GetNorthEastTextureIndex,
+            &ScriptSprite::SetNorthEastTextureIndex
+        ),
+
+        "eastTextureIndex", sol::property(
+            &ScriptSprite::GetEastTextureIndex,
+            &ScriptSprite::SetEastTextureIndex
+        ),
+
+        "southEastTextureIndex", sol::property(
+            &ScriptSprite::GetSouthEastTextureIndex,
+            &ScriptSprite::SetSouthEastTextureIndex
+        ),
+
+        "southTextureIndex", sol::property(
+            &ScriptSprite::GetSouthTextureIndex,
+            &ScriptSprite::SetSouthTextureIndex
+        ),
+
+        "southWestTextureIndex", sol::property(
+            &ScriptSprite::GetSouthWestTextureIndex,
+            &ScriptSprite::SetSouthWestTextureIndex
+        ),
+
+        "westTextureIndex", sol::property(
+            &ScriptSprite::GetWestTextureIndex,
+            &ScriptSprite::SetWestTextureIndex
+        ),
+
+        "northWestTextureIndex", sol::property(
+            &ScriptSprite::GetNorthWestTextureIndex,
+            &ScriptSprite::SetNorthWestTextureIndex
+        )
+    );
 
         lua.new_usertype<ScriptDecal>(
             "Decal",
