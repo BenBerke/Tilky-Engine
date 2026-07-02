@@ -150,7 +150,6 @@ namespace LevelSystem {
 
         } else spdlog::error("Level::Start skipped player controller: entity {} has no transform",activeController->ownerID);
 
-
         ScriptSystem::Start(level);
 
         // Future level start systems will run here.
@@ -202,8 +201,6 @@ namespace LevelSystem {
         {
             //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
             ZoneScopedN("Physics");
-
-            //todo make this a world setting
             constexpr int COLLISION_ITERATIONS = 1;
             const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
 
@@ -229,6 +226,7 @@ namespace LevelSystem {
                 }
                 PhysicsSystem::Run(level);
             }
+
         } // Zone Physics
 
         {
@@ -236,10 +234,10 @@ namespace LevelSystem {
             for (ComponentTransform &transform: level.transforms.components) {
                 Entity *owner = level.GetEntity(transform.ownerID);
 
-                // if (!owner) [[unlikely]] {
-                //     spdlog::error("Transform owner {} does not exist", transform.ownerID);
-                //     continue;
-                // }
+                if (!owner) [[unlikely]] {
+                    spdlog::error("Transform owner {} does not exist", transform.ownerID);
+                    continue;
+                }
 
                 if (level.rigidbodies.Get(transform.ownerID) == nullptr || !transform.isDirty) continue;
                 transform.UpdateObjectSectorAndFloor(level.sectors);

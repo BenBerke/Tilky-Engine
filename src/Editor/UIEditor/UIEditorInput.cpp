@@ -8,19 +8,6 @@
 
 #include <cmath>
 
-namespace {
-
-enum class DragMode {
-    None,
-    Move
-};
-
-DragMode dragMode = DragMode::None;
-Vector2 dragStartMouse {};
-Vector2 dragStartPos {};
-
-} // namespace
-
 namespace MapEditorInternal {
 
 void HandleUIEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
