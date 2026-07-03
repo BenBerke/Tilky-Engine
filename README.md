@@ -9,6 +9,24 @@ Inspired by classic 90s engines like *Doom* and *Build Engine*, Tilky Engine use
 
 The project provides a full end-to-end toolchain: a project launcher, visual level editor, OpenGL runtime, Lua scripting, OpenAL audio, localization tooling, profiling, and standalone export support.
 
+## 🕹️ Editor & Engine Workflow
+This 80-second walkthrough demonstrates the UI layout, texture and sector workflows, asset pipelines, and real-time editor-to-runtime testing.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=_2Y0dR1GkY8">
+    <img src="https://img.youtube.com/vi/_2Y0dR1GkY8/maxresdefault.jpg" alt="Editor Workflow" width="700">
+  </a>
+</p>
+
+## 🔬 Systems Optimization & Performance Showcase
+This demonstration showcases the physics and collision stress tests, proving sub-linear time complexity under heavy load.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=cR_EaVp9ymU">
+    <img src="https://img.youtube.com/vi/cR_EaVp9ymU/maxresdefault.jpg" alt="Collision System Performance" width="700">
+  </a>
+</p>
+
 <p align="center">
   <img src="https://github.com/user-attachments/assets/76ba6573-6561-4394-96f5-809ba7211b12" width="48%" alt="Editor Screenshot 1" />
   <img src="https://github.com/user-attachments/assets/552930c9-3a2f-4785-8e4d-3f1520b710de" width="48%" alt="Editor Screenshot 2" />
