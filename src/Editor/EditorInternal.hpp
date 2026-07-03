@@ -22,10 +22,6 @@ namespace MapEditorInternal {
 
     constexpr float ENTITY_SIZE = 32.0f;
 
-    // NOTE: MODE_WALL has been removed (feature #4). Walls are still real
-    // internal geometry (Wall struct / level.walls are untouched) but the
-    // user no longer enters a dedicated mode to draw them by hand - Sector
-    // Mode creates/reuses walls automatically as part of the chain workflow.
     enum Mode {
         MODE_DOT,
         MODE_SECTOR,
@@ -53,18 +49,16 @@ namespace MapEditorInternal {
         THEME_LIGHT
     };
 
-    // A Dot (feature #6/#7/#10) is a free-floating, off-grid-capable editor
+    // A Dot is a free-floating, off-grid-capable editor
     // reference point with a stable ID. It is editor-session data (kept in
-    // MapEditorInternal, NOT in Level/LevelSerialization - see NOTES.md for
-    // why) used as a visual aid and as a snap target for sector chains.
+    // MapEditorInternal, NOT in Level/LevelSerialization used as a visual aid and as a snap target for sector chains.
     struct Dot {
         ID id = INVALID_ID;
         Vector2 position{};
     };
 
     // Snapshot of the sector-creation parameters from the Editor menu, taken
-    // the instant a chain starts (feature #5: "use the values currently
-    // picked in the Editor menu before the chain started").
+    // the instant a chain starts
     struct PendingSectorParams {
         int wallTextureIndex = -1;
         int ceilTextureIndex = -1;
@@ -91,18 +85,17 @@ namespace MapEditorInternal {
 
     extern Vector2 cameraPos;
 
-    // Dots (feature #6/#7/#10). Replaces the old grid-only `placedCorners`.
     extern std::vector<Dot> dots;
     extern ID nextDotID;
     extern std::unordered_map<ID, int> dotIDToIndex;
     extern ID selectedDotID;
 
-    // Sector creation chain (feature #5).
+    // Sector creation chain
     extern std::vector<Vector2> sectorBeingCreated;
     extern PendingSectorParams pendingSectorParams;
 
     extern bool editingSector;
-    extern ID selectedSectorID; // stable ID, NOT a vector index (feature #11)
+    extern ID selectedSectorID; // stable ID, NOT a vector index
 
     extern bool editingComponent;
     extern bool editingEntity;
@@ -114,8 +107,8 @@ namespace MapEditorInternal {
     extern Mode currentMode;
     extern State currentState;
 
-    extern EditorTheme currentTheme;  // feature #2
-    extern bool textureViewMode;      // feature #9
+    extern EditorTheme currentTheme;
+    extern bool textureViewMode;
 
     extern bool playerPlaced;
 
@@ -161,7 +154,7 @@ namespace MapEditorInternal {
     bool IsSectorClosed(const std::vector<Vector2>& vertices);
     void AddSectorSelectionPoint(const Vector2& point);
 
-    // Sector chain workflow (feature #5).
+    // Sector chain workflow
     void TrySectorChainClick(const Vector2& resolvedPoint);
     void FinishSectorSelection();
     void CancelSectorChain();
@@ -170,7 +163,7 @@ namespace MapEditorInternal {
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos);
     Vector2 SnapToGrid(const Vector2& worldPos);
 
-    // Snapping (feature #7): nearest of {dots, wall starts, wall ends} within
+    // Snapping nearest of {dots, wall starts, wall ends} within
     // radius, else grid snap.
     Vector2 ResolveSnapPoint(const Vector2& mouseWorld);
 
@@ -184,7 +177,7 @@ namespace MapEditorInternal {
     void DrawSectorPreview();
     void DrawSnapIndicator();
     void DrawExistingSectors();
-    void DrawDots(); // renamed from DrawCorners (feature #6)
+    void DrawDots();
     void DrawWalls();
     void DrawEntities();
     void DrawGridDots();
@@ -197,7 +190,7 @@ namespace MapEditorInternal {
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
     void ChangeMode();
-    void ApplyEditorTheme(EditorTheme theme); // feature #2
+    void ApplyEditorTheme(EditorTheme theme);
 
     bool Save(const std::string& saveTo);
 
@@ -220,8 +213,7 @@ namespace MapEditorInternal {
 
     // Texture preview / Texture View Mode access point.
     // Returns nullptr safely if the index is invalid or unavailable - never
-    // crashes on a missing texture. See NOTES.md for the one assumption this
-    // makes about EditorTextureCache's interface.
+    // crashes on a missing texture.
     SDL_Texture* GetEditorTexture(int textureIndex);
     void DrawTextureThumbnailBox(const Level& level, int textureIndex, float size);
     void DrawTextureThumbnailRow(const Level& level, int textureIndex);

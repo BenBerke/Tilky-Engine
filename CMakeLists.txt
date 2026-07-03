@@ -14,7 +14,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 # ============================================================
-# Tracy default
+# Build type / Tracy default
 # ============================================================
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" TILKY_BUILD_TYPE_UPPER)
@@ -32,14 +32,29 @@ endif()
 message(STATUS "TILKY_ENABLE_TRACY = ${TILKY_ENABLE_TRACY}")
 
 # ============================================================
-# Unity / Jumbo build
+# Optimizations
 # ============================================================
 
+option(TILKY_ENABLE_LTO "Enable link-time optimization in optimized builds" ON)
 option(TILKY_ENABLE_UNITY_BUILD "Enable CMake unity/jumbo builds for Tilky project targets" OFF)
 
 set(TILKY_UNITY_BUILD_BATCH_SIZE "8" CACHE STRING
         "Maximum number of source files per generated unity translation unit"
 )
+
+include(CheckIPOSupported)
+
+if(TILKY_ENABLE_LTO)
+    check_ipo_supported(RESULT TILKY_IPO_SUPPORTED OUTPUT TILKY_IPO_ERROR)
+
+    if(TILKY_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    else()
+        message(WARNING "IPO/LTO not supported: ${TILKY_IPO_ERROR}")
+    endif()
+endif()
 
 function(tilky_configure_unity_build target_name)
     if(NOT TARGET ${target_name})
@@ -347,7 +362,7 @@ set(TILKY_EDITOR_SOURCES
 )
 
 # ============================================================
-# Combined engine source list
+# Combined editor + runtime engine source list
 # ============================================================
 
 set(TILKY_ENGINE_SOURCES
@@ -507,6 +522,25 @@ function(configure_tilky_engine_executable target_name)
 
     target_compile_options(${target_name} PRIVATE
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
+
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Debug>>:-Og;-g3>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3;-ffunction-sections;-fdata-sections>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:RelWithDebInfo>>:-O2;-g;-ffunction-sections;-fdata-sections>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:MinSizeRel>>:-Os;-ffunction-sections;-fdata-sections>
+
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/O2;/Gy>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:RelWithDebInfo>>:/O2;/Zi;/Gy>
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:MinSizeRel>>:/O1;/Gy>
+    )
+
+    target_link_options(${target_name} PRIVATE
+            $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-Wl,--gc-sections>
+            $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:RelWithDebInfo>>:-Wl,--gc-sections>
+            $<$<AND:$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:MinSizeRel>>:-Wl,--gc-sections>
+
+            $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:/OPT:REF;/OPT:ICF>
+            $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:RelWithDebInfo>>:/OPT:REF;/OPT:ICF>
+            $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:MinSizeRel>>:/OPT:REF;/OPT:ICF>
     )
 
     if(MINGW)
@@ -560,6 +594,7 @@ set_target_properties(Tilky_Launcher PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 # ============================================================
 # Runnable 2: Tilky_Engine
+# Editor + runtime in one executable.
 # ============================================================
 
 add_executable(Tilky_Engine
@@ -577,6 +612,7 @@ target_compile_definitions(Tilky_Engine PRIVATE
 
 # ============================================================
 # Runnable 3: Standalone
+# KEEP THIS. Uses StandaloneMain.cpp.
 # ============================================================
 
 add_executable(Tilky_Standalone
@@ -732,7 +768,7 @@ function(make_gui_in_release target_name)
 endfunction()
 
 make_gui_in_release(Tilky_Launcher)
-# make_gui_in_release(Tilky_Engine)
+# keep Tilky_Engine console visible unless you deliberately want GUI-only editor
 make_gui_in_release(Tilky_Standalone)
 
 copy_runtime_dlls(Tilky_Launcher)

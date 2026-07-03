@@ -224,7 +224,9 @@ namespace Editor {
             Level& level = LevelManager::CurrentLevel();
             UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
+            HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
             DrawUIEditorUI();
+            UIEditorDraw();
         }
 
         ImGui::Render();

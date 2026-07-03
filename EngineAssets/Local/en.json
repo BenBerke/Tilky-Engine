@@ -305,5 +305,6 @@
   "editor.notification.export_failed_check_logs": "Export failed. Check logs.",
   "editor.notification.export_failed_fork_error": "Export failed: fork error.",
   "editor.notification.export_failed_wait_error": "Export failed: wait error.",
-  "editor.notification.export_failed_abnormal_exit": "Export failed: abnormal exit."
+  "editor.notification.export_failed_abnormal_exit": "Export failed: abnormal exit.",
+  "editor.ui.title": "UI Editor"
 }
