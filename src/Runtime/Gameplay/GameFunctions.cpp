@@ -99,8 +99,8 @@ namespace {
 namespace GameFunctions {
     std::optional<RayHit> Raycast(
         Level &level,
-        const Vector3 pos,
-        const Vector3 dir,
+        const Vector3 &pos,
+        const Vector3 &dir,
         const float length,
         const ID ignoredEntity,
         const bool requireCollider

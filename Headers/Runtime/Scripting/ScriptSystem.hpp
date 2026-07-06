@@ -25,6 +25,8 @@ namespace ScriptSystem {
     void RegisterMathBindings(sol::state& lua);
     void RegisterEditorFunctionBindings(sol::state& lua);
     void RegisterGameBindings(sol::state& lua);
+    void RegisterWallBindings(sol::state& lua);
+    void RegisterSectorBindings(sol::state& lua);
 
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
     bool ReconcileScriptPublicValues(ComponentScript& script);

@@ -18,6 +18,7 @@
 #include <cmath>
 #include <numbers>
 
+
 namespace {
     ComponentCamera* camera = nullptr;
     ComponentTransform* transform = nullptr;

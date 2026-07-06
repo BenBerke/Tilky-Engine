@@ -609,6 +609,8 @@ namespace {
         ScriptSystem::RegisterEntityBindings(lua);
         ScriptSystem::RegisterInputBindings(lua);
         ScriptSystem::RegisterEditorFunctionBindings(lua);
+        ScriptSystem::RegisterWallBindings(lua);
+        ScriptSystem::RegisterSectorBindings(lua);
 
         RegisterGameTimeBindings(lua);
         RegisterScriptComponentRefBindings(lua);

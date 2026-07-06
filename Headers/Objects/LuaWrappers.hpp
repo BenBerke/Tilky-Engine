@@ -5,11 +5,12 @@
 #ifndef TILKY_ENGINE_WRAPPERS_HPP
 #define TILKY_ENGINE_WRAPPERS_HPP
 
+#include <sol/error.hpp>
+
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
-
 
 // ---------------------------------------------------------
 // Audio Source
@@ -1216,6 +1217,352 @@ struct ScriptEntity {
 
     [[nodiscard]] ScriptUIText GetUIText() const {
         return {level, ownerID};
+    }
+};
+
+// ---------------------------------------------------------
+// Wall
+// ---------------------------------------------------------
+struct ScriptWall {
+    Level* level = nullptr;
+    ID wallID = INVALID_ID;
+
+    [[nodiscard]] Wall* GetWall() const {
+        if (level == nullptr || wallID == INVALID_ID) return nullptr;
+
+        const auto it = level->wallIDToIndex.find(wallID);
+        if (it == level->wallIDToIndex.end()) return nullptr;
+
+        const size_t index = static_cast<size_t>(it->second);
+        if (index >= level->walls.size()) return nullptr;
+
+        return &level->walls[index];
+    }
+
+    [[nodiscard]] ID GetID() const {
+        return wallID;
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetWall() != nullptr;
+    }
+
+    [[nodiscard]] Vector2 GetStart() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->start;
+    }
+
+    [[nodiscard]] Vector2 GetEnd() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->end;
+    }
+
+    [[nodiscard]] Vector4 GetColor() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->color;
+    }
+
+    void SetColor(const Vector4& value) const {
+        Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+
+        wall->color = value;
+
+        // Mark renderer wall data dirty here if needed.
+    }
+
+    [[nodiscard]] Vector2 GetTextureOffset() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->textureOffset;
+    }
+
+    void SetTextureOffset(const Vector2& value) const {
+        Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+
+        wall->textureOffset = value;
+
+        // Mark renderer wall data dirty here if needed.
+    }
+
+    [[nodiscard]] int GetTextureIndex() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->textureIndex;
+    }
+
+    void SetTextureIndex(const int value) const {
+        Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+
+        wall->textureIndex = value;
+    }
+
+    [[nodiscard]] ID GetFrontSector() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->frontSector;
+    }
+
+    [[nodiscard]] ID GetBackSector() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->backSector;
+    }
+
+    [[nodiscard]] Vector2 GetDir() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->dir;
+    }
+
+    [[nodiscard]] Vector2 GetNormal() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->normal;
+    }
+
+    [[nodiscard]] float GetLength() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return wall->length;
+    }
+};
+
+// ---------------------------------------------------------
+// Sector
+// ---------------------------------------------------------
+
+struct ScriptSector {
+    Level* level = nullptr;
+    ID sectorID = INVALID_ID;
+
+    [[nodiscard]] Sector* GetSector() const {
+        if (level == nullptr || sectorID == INVALID_ID) return nullptr;
+
+        const auto it = level->sectorIDToIndex.find(sectorID);
+        if (it == level->sectorIDToIndex.end()) return nullptr;
+
+        const size_t index = static_cast<size_t>(it->second);
+        if (index >= level->sectors.size()) return nullptr;
+
+        return &level->sectors[index];
+    }
+
+    [[nodiscard]] ID GetID() const {
+        return sectorID;
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetSector() != nullptr;
+    }
+
+    [[nodiscard]] float GetFloorHeight() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->floorHeight;
+    }
+
+    void SetFloorHeight(const float value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->floorHeight = value;
+    }
+
+    [[nodiscard]] float GetCeilingHeight() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->ceilingHeight;
+    }
+
+    void SetCeilingHeight(const float value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->ceilingHeight = value;
+    }
+
+    [[nodiscard]] Vector3 GetFloorColor() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->floorColor;
+    }
+
+    void SetFloorColor(const Vector3& value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->floorColor = value;
+
+        // Mark sector GPU data dirty here if needed.
+    }
+
+    [[nodiscard]] Vector3 GetCeilingColor() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->ceilingColor;
+    }
+
+    void SetCeilingColor(const Vector3& value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->ceilingColor = value;
+
+        // Mark sector GPU data dirty here if needed.
+    }
+
+    [[nodiscard]] int GetFloorTextureIndex() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->floorTextureIndex;
+    }
+
+    void SetFloorTextureIndex(const int value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->floorTextureIndex = value;
+
+        // Mark sector GPU data dirty here if needed.
+    }
+
+    [[nodiscard]] int GetCeilingTextureIndex() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->ceilingTextureIndex;
+    }
+
+    void SetCeilingTextureIndex(const int value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->ceilingTextureIndex = value;
+
+        // Mark sector GPU data dirty here if needed.
+    }
+
+    [[nodiscard]] float GetLightValue() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->lightValue;
+    }
+
+    void SetLightValue(const float value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        sector->lightValue = value;
+
+        // Mark sector GPU data dirty here if needed.
+    }
+
+    [[nodiscard]] int GetVertexCount() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return static_cast<int>(sector->vertices.size());
+    }
+
+    [[nodiscard]] Vector2 GetVertex(const int luaIndex) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const int index = luaIndex - 1; // Lua-style 1-based indexing
+
+        if (index < 0 || index >= static_cast<int>(sector->vertices.size())) {
+            throw sol::error("Sector vertex index out of range");
+        }
+
+        return sector->vertices[index];
+    }
+
+    [[nodiscard]] int GetWallCount() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return static_cast<int>(sector->walls.size());
+    }
+
+    [[nodiscard]] ScriptWall GetWall(const int luaIndex) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const int index = luaIndex - 1; // Lua-style 1-based indexing
+
+        if (index < 0 || index >= static_cast<int>(sector->walls.size())) {
+            throw sol::error("Sector wall index out of range");
+        }
+
+        const Wall* wall = sector->walls[index];
+
+        if (wall == nullptr) {
+            return {
+                .level = level,
+                .wallID = INVALID_ID
+            };
+        }
+
+        return {
+            .level = level,
+            .wallID = wall->id
+        };
+    }
+
+    [[nodiscard]] int GetEntityCount() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return static_cast<int>(sector->entitiesInside.size());
+    }
+
+    [[nodiscard]] ScriptEntity GetEntity(const int luaIndex) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const int index = luaIndex - 1; // Lua-style 1-based indexing
+
+        if (index < 0 || index >= static_cast<int>(sector->entitiesInside.size())) {
+            throw sol::error("Sector entity index out of range");
+        }
+
+        return {
+            .level = level,
+            .ownerID = sector->entitiesInside[index]
+        };
+    }
+
+    [[nodiscard]] int GetNeighborCount() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return static_cast<int>(sector->neighbors.size());
+    }
+
+    [[nodiscard]] ScriptSector GetNeighbor(const int luaIndex) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const int index = luaIndex - 1; // Lua-style 1-based indexing
+
+        if (index < 0 || index >= static_cast<int>(sector->neighbors.size())) {
+            throw sol::error("Sector neighbor index out of range");
+        }
+
+        const Sector* neighbor = sector->neighbors[index];
+
+        if (neighbor == nullptr) {
+            return {
+                .level = level,
+                .sectorID = INVALID_ID
+            };
+        }
+
+        return {
+            .level = level,
+            .sectorID = neighbor->id
+        };
     }
 };
 

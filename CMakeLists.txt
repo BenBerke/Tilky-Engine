@@ -268,14 +268,14 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/PhysicsSystem.cpp
 
-        src/Runtime/Scripting/ScriptSystem.cpp
-        src/Runtime/Scripting/VectorBindings.cpp
-        src/Runtime/Scripting/ComponentBindings.cpp
-        src/Runtime/Scripting/EntityBindings.cpp
-        src/Runtime/Scripting/InputBindings.cpp
-        src/Runtime/Scripting/MathBindings.cpp
-        src/Runtime/Scripting/EditorFunctionBindings.cpp
-        src/Runtime/Scripting/GameBindings.cpp
+        src/Runtime/Scripting/Lua/ScriptSystem.cpp
+        src/Runtime/Scripting/Lua/VectorBindings.cpp
+        src/Runtime/Scripting/Lua/ComponentBindings.cpp
+        src/Runtime/Scripting/Lua/EntityBindings.cpp
+        src/Runtime/Scripting/Lua/InputBindings.cpp
+        src/Runtime/Scripting/Lua/MathBindings.cpp
+        src/Runtime/Scripting/Lua/EditorFunctionBindings.cpp
+        src/Runtime/Scripting/Lua/GameBindings.cpp
 
         src/Math/Geometry/Geometry.cpp
 
@@ -292,7 +292,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Sector.hpp
         Headers/Objects/Wall.hpp
         Headers/Objects/Loadables.hpp
-        Headers/Objects/Wrappers.hpp
+        Headers/Objects/LuaWrappers.hpp
 
         Headers/Map/LevelManager.hpp
         Headers/Map/LevelSerialization.hpp
@@ -402,11 +402,11 @@ set(TILKY_ENGINE_PCH_HEADERS
 
 if(MINGW)
     set_source_files_properties(
-            src/Runtime/Scripting/VectorBindings.cpp
-            src/Runtime/Scripting/ComponentBindings.cpp
-            src/Runtime/Scripting/EntityBindings.cpp
-            src/Runtime/Scripting/InputBindings.cpp
-            src/Runtime/Scripting/MathBindings.cpp
+            src/Runtime/Scripting/Lua/VectorBindings.cpp
+            src/Runtime/Scripting/Lua/ComponentBindings.cpp
+            src/Runtime/Scripting/Lua/EntityBindings.cpp
+            src/Runtime/Scripting/Lua/InputBindings.cpp
+            src/Runtime/Scripting/Lua/MathBindings.cpp
 
             PROPERTIES
             COMPILE_OPTIONS "-g0;-Wa,-mbig-obj"
@@ -601,6 +601,8 @@ add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
         ${TILKY_ENGINE_SOURCES}
         ${TILKY_ICON_OBJECTS}
+        src/Runtime/Scripting/Lua/WallBindings.cpp
+        src/Runtime/Scripting/Lua/SectorBindings.cpp
 )
 
 configure_tilky_engine_executable(Tilky_Engine)
