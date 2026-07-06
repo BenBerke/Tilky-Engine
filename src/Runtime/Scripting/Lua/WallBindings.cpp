@@ -6,7 +6,7 @@
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "sol/sol.hpp"
 
-void ScriptSystem::RegisterWallBindings(sol::state &lua) {
+void ScriptSystem::RegisterWallBindings(sol::state& lua) {
     lua.new_usertype<ScriptWall>(
     "WallRef",
 

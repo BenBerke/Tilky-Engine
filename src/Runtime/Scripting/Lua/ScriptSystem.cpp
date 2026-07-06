@@ -23,7 +23,7 @@
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Project/ProjectManager.hpp"
-#include "Headers/Objects/Wrappers.hpp"
+#include "Headers/Objects/LuaWrappers.hpp"
 
 namespace {
     namespace fs = std::filesystem;

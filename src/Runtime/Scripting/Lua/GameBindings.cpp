@@ -2,20 +2,20 @@
 // Created by berke on 6/22/2026.
 //
 
-#include <Headers/Objects/LuaWrappers.hpp>
-#include <Headers/Runtime/Gameplay/GameFunctions.hpp>
+#include "Headers/Objects/LuaWrappers.hpp"
+#include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include <sol/state.hpp>
 
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/Scripting/ScriptSystem.hpp"
 
-static const char* RayHitTypeToString(const RayHitType type) {
+static const char *RayHitTypeToString(const RayHitType type) {
     switch (type) {
-        case RayHitType::Entity:        return "Entity";
-        case RayHitType::Wall:          return "Wall";
-        case RayHitType::SectorFloor:   return "SectorFloor";
+        case RayHitType::Entity: return "Entity";
+        case RayHitType::Wall: return "Wall";
+        case RayHitType::SectorFloor: return "SectorFloor";
         case RayHitType::SectorCeiling: return "SectorCeiling";
-        default:                        return "None";
+        default: return "None";
     }
 }
 

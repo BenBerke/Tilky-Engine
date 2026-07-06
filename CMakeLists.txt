@@ -250,6 +250,9 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
 
+        src/Runtime/Scripting/Lua/WallBindings.cpp
+        src/Runtime/Scripting/Lua/SectorBindings.cpp
+
         src/Runtime/Renderer/RendererMath.cpp
         src/Runtime/Renderer/RendererFactory.cpp
         src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
@@ -601,8 +604,6 @@ add_executable(Tilky_Engine
         src/EngineApp/EngineMain.cpp
         ${TILKY_ENGINE_SOURCES}
         ${TILKY_ICON_OBJECTS}
-        src/Runtime/Scripting/Lua/WallBindings.cpp
-        src/Runtime/Scripting/Lua/SectorBindings.cpp
 )
 
 configure_tilky_engine_executable(Tilky_Engine)

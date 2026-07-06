@@ -6,17 +6,7 @@
 
 #include <sol/sol.hpp>
 
-#include "Headers/Objects/Wrappers.hpp"
-
-//
-// Created by berke on 6/20/2026.
-//
-
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
-
-#include <sol/sol.hpp>
-
-#include "Headers/Objects/Wrappers.hpp"
+#include "Headers/Objects/LuaWrappers.hpp"
 
 void ScriptSystem::RegisterEntityBindings(sol::state& lua) {
     lua.new_usertype<ScriptEntity>(

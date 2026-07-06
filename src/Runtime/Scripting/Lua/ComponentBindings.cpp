@@ -5,7 +5,7 @@
 #include "Headers/Runtime/Scripting/ScriptSystem.hpp"
 #include "sol/sol.hpp"
 
-#include "Headers/Objects/Wrappers.hpp"
+#include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/Components.hpp"
 
 void ScriptSystem::RegisterComponentBindings(sol::state& lua) {
