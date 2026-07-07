@@ -3,10 +3,10 @@
 //
 
 #include <Headers/Objects/LuaWrappers.hpp>
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
-void ScriptSystem::RegisterSectorBindings(sol::state &lua) {
+void LuaScriptSystem::RegisterSectorBindings(sol::state &lua) {
     lua.new_usertype<ScriptSector>(
     "SectorRef",
 

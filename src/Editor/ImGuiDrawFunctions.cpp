@@ -24,6 +24,7 @@
 #include <array>
 #include <string>
 #include <algorithm>
+#include <Headers/Runtime/LevelSystem.hpp>
 
 #include "EditorInternal.hpp"
 #include "Headers/Engine/Local/Local.hpp"
@@ -32,7 +33,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Engine/InputManager.hpp"
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Internal helpers (anonymous namespace)
@@ -947,66 +948,104 @@ namespace ImGuiDrawFunctions {
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SCRIPT) {
             auto *c = entity.GetComponent<ComponentScript>();
+
             if (c) {
                 BeginSection("Script File");
+
                 FieldWidth(200.0f);
                 ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
                 Tooltip("Lua script name (without extension) in the scripts folder.");
+
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                     c->fileName = fs::path(c->fileName).stem().string();
-                    ScriptSystem::ReconcileScriptPublicValues(*c);
+                    LevelSystem::ReconcileScriptPublicValues(*c);
                 }
+
                 ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
+
                 ImGui::SameLine();
-                if (ImGui::SmallButton("Refresh Fields"))
-                    ScriptSystem::ReconcileScriptPublicValues(*c);
+
+                if (ImGui::SmallButton("Refresh Fields")) {
+                    LevelSystem::ReconcileScriptPublicValues(*c);
+                }
+
                 EndSection();
 
                 const std::vector<ScriptPublicField> *fields =
-                        ScriptSystem::GetPublicFieldsForScript(c->fileName);
+                        LevelSystem::GetPublicFieldsForScript(c->fileName);
 
                 if (fields == nullptr) {
-                    if (!c->fileName.empty())
+                    if (!c->fileName.empty()) {
                         ImGui::TextDisabled("Script not found or has no public fields.");
+                    }
                 } else {
                     BeginSection("Public Variables");
-                    for (const ScriptPublicField &field : *fields) {
+
+                    for (const ScriptPublicField &field: *fields) {
                         auto valueIt = c->publicValues.find(field.name);
+
                         if (valueIt == c->publicValues.end()) {
                             c->publicValues[field.name] = field.defaultValue;
                             valueIt = c->publicValues.find(field.name);
                         }
+
                         DrawScriptValueEditor(field, valueIt->second);
                     }
+
                     EndSection();
 
                     BeginSection("Orphaned Variables");
+
                     bool hasOrphans = false;
+
                     for (auto valueIt = c->publicValues.begin(); valueIt != c->publicValues.end();) {
                         const std::string &valueName = valueIt->first;
+
                         const bool existsInSchema = std::ranges::any_of(
                             *fields,
-                            [&valueName](const ScriptPublicField &f){ return f.name == valueName; });
-                        if (existsInSchema) { ++valueIt; continue; }
-                        hasOrphans = true;
-                        SmallMetaText("%s", valueName.c_str());
-                        ImGui::SameLine();
-                        const std::string delLabel = "Remove##orphan_" + valueName;
-                        if (ImGui::SmallButton(delLabel.c_str()))
-                            valueIt = c->publicValues.erase(valueIt);
-                        else
+                            [&valueName](const ScriptPublicField &field) {
+                                return field.name == valueName;
+                            }
+                        );
+
+                        if (existsInSchema) {
                             ++valueIt;
+                            continue;
+                        }
+
+                        hasOrphans = true;
+
+                        SmallMetaText("%s", valueName.c_str());
+
+                        ImGui::SameLine();
+
+                        const std::string delLabel = "Remove##orphan_" + valueName;
+
+                        if (ImGui::SmallButton(delLabel.c_str())) {
+                            valueIt = c->publicValues.erase(valueIt);
+                        } else {
+                            ++valueIt;
+                        }
                     }
-                    if (!hasOrphans) ImGui::TextDisabled("None");
+
+                    if (!hasOrphans) {
+                        ImGui::TextDisabled("None");
+                    }
+
                     EndSection();
                 }
 
-                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
                 if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentScript>();
                     CloseEditor();
                 }
-            } else { ImGui::TextDisabled("Script component missing"); }
+            } else {
+                ImGui::TextDisabled("Script component missing");
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════

@@ -11,9 +11,8 @@
 
 #include <tracy/Tracy.hpp>
 
-#include "../../Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
-#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
@@ -82,9 +81,61 @@ namespace {
     }
 
     ComponentPlayerController *activeController;
+
+    //todo Add C#
+    LuaScriptSystem luaScriptingSystem;
+    bool luaScriptingInitialized = false;
+
+    bool EnsureScriptingInitialized() {
+        if (luaScriptingInitialized) return true;
+
+
+        if (!luaScriptingSystem.Initialize()) {
+            spdlog::critical("Failed to initialize script system");
+            return false;
+        }
+
+        luaScriptingInitialized = true;
+        return true;
+    }
+
 }
 
 namespace LevelSystem {
+    void RefreshScriptAssets(Level& level) {
+        if (!EnsureScriptingInitialized()) return;
+
+        luaScriptingSystem.RefreshScriptAssets(level);
+    }
+
+    bool EnsureScriptingInitialized() {
+        if (luaScriptingInitialized) return true;
+
+        if (!luaScriptingSystem.Initialize()) {
+            spdlog::critical("Failed to initialize script system");
+            return false;
+        }
+
+        luaScriptingInitialized = true;
+        return true;
+    }
+
+    const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName) {
+        if (!EnsureScriptingInitialized()) {
+            return nullptr;
+        }
+
+        return luaScriptingSystem.GetPublicFieldsForScript(fileName);
+    }
+
+    bool ReconcileScriptPublicValues(ComponentScript& script) {
+        if (!EnsureScriptingInitialized()) {
+            return false;
+        }
+
+        return luaScriptingSystem.ReconcileScriptPublicValues(script);
+    }
+
     ComponentCamera *GetActiveCamera(Level &level) {
         for (ComponentCamera &camera: level.cameras.components)
             if (camera.isActive) return &camera;
@@ -94,10 +145,7 @@ namespace LevelSystem {
     }
 
     void Start(Level &level) {
-        if (!ScriptSystem::Initialize()) {
-            spdlog::critical("Failed to initialize script system");
-            return;
-        }
+        if (!EnsureScriptingInitialized()) return;
 
         SoundManager::SetListenerGain(level.listenerSettings.masterGain);
         SoundManager::SetListenerDopplerFactor(level.listenerSettings.dopplerFactor);
@@ -150,7 +198,7 @@ namespace LevelSystem {
 
         } else spdlog::error("Level::Start skipped player controller: entity {} has no transform",activeController->ownerID);
 
-        ScriptSystem::Start(level);
+        luaScriptingSystem.Start(level);
 
         // Future level start systems will run here.
     }
@@ -162,7 +210,7 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Scripts");
-            ScriptSystem::Update(level);
+            luaScriptingSystem.Update(level);
         }
 
         if (activeController != nullptr && activeController->isActive) {
@@ -248,6 +296,7 @@ namespace LevelSystem {
     }
 
     void Shutdown(Level &level) {
-        ScriptSystem::Shutdown();
+        luaScriptingSystem.Shutdown();
+        luaScriptingInitialized = false;
     }
 }

@@ -12,6 +12,7 @@
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 
 namespace fs = std::filesystem;
 
@@ -190,8 +191,7 @@ namespace Editor {
         currentMap = cleanName;
 
         // Dots are editor-session data scoped to whatever level is on
-        // screen (see NOTES.md from the revamp) - they don't carry over to
-        // a different level file, so they get cleared rather than rebuilt.
+        // screen = they don't carry over to a different level file, so they get cleared rather than rebuilt.
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
@@ -214,10 +214,10 @@ namespace Editor {
             LevelManager::currentLevelIndex =
                 static_cast<int>(LevelManager::loadedLevels.size()) - 1;
         }
-        else {
-            LevelManager::loadedLevels[LevelManager::currentLevelIndex] =
-                std::move(loadedLevel);
-        }
+        else LevelManager::loadedLevels[LevelManager::currentLevelIndex] = std::move(loadedLevel);
+
+        //todo check if works in actual game
+        LevelSystem::RefreshScriptAssets(LevelManager::CurrentLevel());
 
         EditorTextureCache::RefreshLevelTexturesFromFolder();
         RefreshLevelSoundsFromFolder();

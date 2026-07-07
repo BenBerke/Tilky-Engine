@@ -2,10 +2,14 @@
 // Created by berke on 5/15/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
+#include "Headers/Engine/GameTime.hpp"
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
@@ -20,10 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include "Headers/Engine/GameTime.hpp"
-#include "Headers/Project/ProjectManager.hpp"
-#include "Headers/Objects/LuaWrappers.hpp"
 
 namespace {
     namespace fs = std::filesystem;
@@ -602,185 +602,185 @@ namespace {
         );
     }
 
-    void RegisterBindings() {
-        ScriptSystem::RegisterMathBindings(lua);
-        ScriptSystem::RegisterVectorBindings(lua);
-        ScriptSystem::RegisterComponentBindings(lua);
-        ScriptSystem::RegisterEntityBindings(lua);
-        ScriptSystem::RegisterInputBindings(lua);
-        ScriptSystem::RegisterEditorFunctionBindings(lua);
-        ScriptSystem::RegisterWallBindings(lua);
-        ScriptSystem::RegisterSectorBindings(lua);
+    void RegisterBindings(LuaScriptSystem& scriptSystem) {
+        scriptSystem.RegisterMathBindings(lua);
+        scriptSystem.RegisterVectorBindings(lua);
+        scriptSystem.RegisterComponentBindings(lua);
+        scriptSystem.RegisterEntityBindings(lua);
+        scriptSystem.RegisterInputBindings(lua);
+        scriptSystem.RegisterEditorFunctionBindings(lua);
+        scriptSystem.RegisterGameBindings(lua);
+        scriptSystem.RegisterWallBindings(lua);
+        scriptSystem.RegisterSectorBindings(lua);
 
         RegisterGameTimeBindings(lua);
         RegisterScriptComponentRefBindings(lua);
     }
 }
 
-namespace ScriptSystem {
-    bool Initialize() {
-        try {
-            lua.open_libraries(
-                sol::lib::base,
-                sol::lib::math,
-                sol::lib::table,
-                sol::lib::string
-            );
+bool LuaScriptSystem::Initialize() {
+    try {
+        lua.open_libraries(
+            sol::lib::base,
+            sol::lib::math,
+            sol::lib::table,
+            sol::lib::string
+        );
 
-            RegisterBindings();
+        RegisterBindings(*this);
 
-            lua["Scripts"] = lua.create_table();
-
-            spdlog::info("Lua scripting initialized");
-            return true;
-        } catch (std::exception& e) {
-            spdlog::critical(
-                "Failed to initialize Lua scripting {}",
-                e.what()
-            );
-
-            return false;
-        }
-    }
-
-    void Start(Level& level) {
-        scriptInstances.clear();
-        scriptInstancesByOwner.clear();
-
-        // Shared table for cross-script utilities/state.
         lua["Scripts"] = lua.create_table();
 
-        for (ComponentScript& script : level.scripts.components) {
-            const std::string cleanFileName = CleanScriptFileName(script.fileName);
-
-            if (cleanFileName.empty()) {
-                spdlog::warn(
-                    "Skipping script component with empty file name on entity {}",
-                    script.ownerID
-                );
-
-                continue;
-            }
-
-            const fs::path path = GetScriptPathFromFileName(cleanFileName);
-
-            if (!fs::exists(path)) {
-                spdlog::error(
-                    "Lua script does not exist: {}",
-                    path.string()
-                );
-
-                continue;
-            }
-
-            ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
-
-            ReconcilePublicValues(script, asset);
-
-            ScriptInstance instance;
-
-            if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance)) {
-                continue;
-            }
-
-            const std::size_t instanceIndex = scriptInstances.size();
-
-            scriptInstances.push_back(std::move(instance));
-            scriptInstancesByOwner[script.ownerID].push_back(instanceIndex);
-        }
-
-        for (ScriptInstance& instance : scriptInstances) {
-            ComponentScript* script = level.scripts.Get(instance.ownerID);
-
-            if (script == nullptr || !script->enabled) {
-                continue;
-            }
-
-            CallStart(instance);
-        }
+        spdlog::info("Lua scripting initialized");
+        return true;
     }
+    catch (const std::exception &e) {
+        spdlog::critical(
+            "Failed to initialize Lua scripting {}",
+            e.what()
+        );
 
-    void Update(Level& level) {
-        for (ScriptInstance& instance : scriptInstances) {
-            ComponentScript* script = level.scripts.Get(instance.ownerID);
-
-            if (script == nullptr || !script->enabled) {
-                continue;
-            }
-
-            if (!instance.started) {
-                CallStart(instance);
-            }
-
-            if (!instance.updateFunction.valid()) {
-                continue;
-            }
-
-            const sol::protected_function_result result = instance.updateFunction();
-
-            if (!result.valid()) {
-                const sol::error error = result;
-
-                spdlog::error(
-                    "Lua Update error in '{}': {}",
-                    instance.scriptFile,
-                    error.what()
-                );
-            }
-        }
+        return false;
     }
+}
 
-    void Shutdown() {
-        scriptInstances.clear();
-        scriptInstancesByOwner.clear();
-        scriptAssets.clear();
+void LuaScriptSystem::Start(Level& level) {
+    scriptInstances.clear();
+    scriptInstancesByOwner.clear();
 
-        lua = sol::state {};
+    // Shared table for cross-script utilities/state.
+    lua["Scripts"] = lua.create_table();
 
-        spdlog::info("Lua scripting shutdown");
-    }
-
-    const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName) {
-        const std::string cleanFileName = CleanScriptFileName(fileName);
-
-        if (cleanFileName.empty()) {
-            return nullptr;
-        }
-
-        const fs::path path = GetScriptPathFromFileName(cleanFileName);
-
-        if (!fs::exists(path)) {
-            return nullptr;
-        }
-
-        ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
-        return &asset.publicFields;
-    }
-
-    bool ReconcileScriptPublicValues(ComponentScript& script) {
+    for (ComponentScript& script : level.scripts.components) {
         const std::string cleanFileName = CleanScriptFileName(script.fileName);
 
         if (cleanFileName.empty()) {
-            return false;
+            spdlog::warn(
+                "Skipping script component with empty file name on entity {}",
+                script.ownerID
+            );
+
+            continue;
         }
 
         const fs::path path = GetScriptPathFromFileName(cleanFileName);
 
         if (!fs::exists(path)) {
-            return false;
+            spdlog::error(
+                "Lua script does not exist: {}",
+                path.string()
+            );
+
+            continue;
         }
 
         ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
+
         ReconcilePublicValues(script, asset);
 
-        return true;
+        ScriptInstance instance;
+
+        if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance)) {
+            continue;
+        }
+
+        const std::size_t instanceIndex = scriptInstances.size();
+
+        scriptInstances.push_back(std::move(instance));
+        scriptInstancesByOwner[script.ownerID].push_back(instanceIndex);
     }
 
-    void RefreshScriptAssets(Level& level) {
-        scriptAssets.clear();
+    for (ScriptInstance& instance : scriptInstances) {
+        ComponentScript* script = level.scripts.Get(instance.ownerID);
 
-        for (ComponentScript& script : level.scripts.components) {
-            ReconcileScriptPublicValues(script);
+        if (script == nullptr || !script->enabled) {
+            continue;
         }
+
+        CallStart(instance);
+    }
+}
+
+void LuaScriptSystem::Update(Level& level) {
+    for (ScriptInstance& instance : scriptInstances) {
+        ComponentScript* script = level.scripts.Get(instance.ownerID);
+
+        if (script == nullptr || !script->enabled) {
+            continue;
+        }
+
+        if (!instance.started) {
+            CallStart(instance);
+        }
+
+        if (!instance.updateFunction.valid()) {
+            continue;
+        }
+
+        const sol::protected_function_result result = instance.updateFunction();
+
+        if (!result.valid()) {
+            const sol::error error = result;
+
+            spdlog::error(
+                "Lua Update error in '{}': {}",
+                instance.scriptFile,
+                error.what()
+            );
+        }
+    }
+}
+
+void LuaScriptSystem::Shutdown() {
+    scriptInstances.clear();
+    scriptInstancesByOwner.clear();
+    scriptAssets.clear();
+
+    lua = sol::state {};
+
+    spdlog::info("Lua scripting shutdown");
+}
+
+const std::vector<ScriptPublicField>* LuaScriptSystem::GetPublicFieldsForScript(const std::string& fileName) {
+    const std::string cleanFileName = CleanScriptFileName(fileName);
+
+    if (cleanFileName.empty()) {
+        return nullptr;
+    }
+
+    const fs::path path = GetScriptPathFromFileName(cleanFileName);
+
+    if (!fs::exists(path)) {
+        return nullptr;
+    }
+
+    ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
+    return &asset.publicFields;
+}
+
+bool LuaScriptSystem::ReconcileScriptPublicValues(ComponentScript& script) {
+    const std::string cleanFileName = CleanScriptFileName(script.fileName);
+
+    if (cleanFileName.empty()) {
+        return false;
+    }
+
+    const fs::path path = GetScriptPathFromFileName(cleanFileName);
+
+    if (!fs::exists(path)) {
+        return false;
+    }
+
+    ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
+    ReconcilePublicValues(script, asset);
+
+    return true;
+}
+
+void LuaScriptSystem::RefreshScriptAssets(Level& level) {
+    scriptAssets.clear();
+
+    for (ComponentScript& script : level.scripts.components) {
+        ReconcileScriptPublicValues(script);
     }
 }

@@ -15,7 +15,7 @@
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -695,21 +695,18 @@ namespace {
             for (const json& scriptJson : componentsJson["scripts"]) {
                 const ID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
 
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentScript& c = level.scripts.Add(ownerID);
                 entity->componentsMask.set(CMP_SCRIPT);
 
                 const std::string loadedName = scriptJson.value("fileName", std::string{});
 
+                c.ownerID = ownerID;
                 c.enabled = scriptJson.value("enabled", true);
                 c.fileName = fs::path(loadedName).stem().string();
                 c.schemaHash = scriptJson.value("schemaHash", static_cast<std::uint64_t>(0));
@@ -718,10 +715,6 @@ namespace {
                     c.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
                 else c.publicValues.clear();
 
-
-                // This fills missing variables from the Lua schema and fixes wrong types.
-                // It does not delete orphaned old values.
-                ScriptSystem::ReconcileScriptPublicValues(c);
             }
         }
 

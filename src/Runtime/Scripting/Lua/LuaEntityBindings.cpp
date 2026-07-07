@@ -2,13 +2,13 @@
 // Created by berke on 6/20/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 #include <sol/sol.hpp>
 
 #include "Headers/Objects/LuaWrappers.hpp"
 
-void ScriptSystem::RegisterEntityBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
     lua.new_usertype<ScriptEntity>(
         "Entity",
 

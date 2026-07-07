@@ -2,7 +2,7 @@
 // Created by berke on 6/22/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
@@ -31,7 +31,7 @@ namespace {
    }
 }
 
-void ScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
     sol::table debug;
 
     if (lua["Debug"].valid()) debug = lua["Debug"];

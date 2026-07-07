@@ -2,13 +2,13 @@
 // Created by berke on 6/20/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/Components.hpp"
 
-void ScriptSystem::RegisterComponentBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
     lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX);
 
         lua.new_usertype<ScriptAudioSource>(

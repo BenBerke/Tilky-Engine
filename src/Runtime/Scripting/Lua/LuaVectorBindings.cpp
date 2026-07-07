@@ -2,10 +2,10 @@
 // Created by berke on 6/20/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
-void ScriptSystem::RegisterVectorBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterVectorBindings(sol::state& lua) {
     lua.new_usertype<Vector2>(
         "Vector2",
         sol::call_constructor,

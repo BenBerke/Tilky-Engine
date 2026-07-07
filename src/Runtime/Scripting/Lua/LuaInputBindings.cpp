@@ -3,7 +3,7 @@
 //
 
 #include "Headers/Engine/InputManager.hpp"
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
 namespace {
@@ -75,7 +75,7 @@ namespace {
 }
 
 
-void ScriptSystem::RegisterInputBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterInputBindings(sol::state& lua) {
     sol::table inputManager = lua.create_table();
 
     inputManager.set_function("GetKeyDown", [](const std::string& key) -> bool {

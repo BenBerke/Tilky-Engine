@@ -7,7 +7,7 @@
 #include <sol/state.hpp>
 
 #include "Headers/Editor/Editor.hpp"
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 static const char *RayHitTypeToString(const RayHitType type) {
     switch (type) {
@@ -19,7 +19,7 @@ static const char *RayHitTypeToString(const RayHitType type) {
     }
 }
 
-void ScriptSystem::RegisterGameBindings(sol::state &lua) {
+void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     sol::table game;
 
     if (lua["Game"].valid()) game = lua["Game"];

@@ -180,9 +180,7 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitA.has_value()) {
-                    submitWallHit(wall, *hitA);
-                }
+                if (hitA.has_value()) submitWallHit(wall, *hitA);
 
                 const std::optional<float> hitB = RayTriangleIntersection(
                     pos,
@@ -327,8 +325,7 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (floorHit.has_value())
-                    submitSectorHit(sector, RayHitType::SectorFloor, *floorHit);
+                if (floorHit.has_value()) submitSectorHit(sector, RayHitType::SectorFloor, *floorHit);
 
                 const Vector3 ceilingA = { triangle.a.x, triangle.a.y, sector.ceilingHeight };
                 const Vector3 ceilingB = { triangle.b.x, triangle.b.y, sector.ceilingHeight };
@@ -343,8 +340,7 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (ceilingHit.has_value())
-                    submitSectorHit(sector, RayHitType::SectorCeiling, *ceilingHit);
+                if (ceilingHit.has_value()) submitSectorHit(sector, RayHitType::SectorCeiling, *ceilingHit);
             }
         }
 

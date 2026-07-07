@@ -250,8 +250,8 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
 
-        src/Runtime/Scripting/Lua/WallBindings.cpp
-        src/Runtime/Scripting/Lua/SectorBindings.cpp
+        src/Runtime/Scripting/Lua/LuaWallBindings.cpp
+        src/Runtime/Scripting/Lua/LuaSectorBindings.cpp
 
         src/Runtime/Renderer/RendererMath.cpp
         src/Runtime/Renderer/RendererFactory.cpp
@@ -271,14 +271,14 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/PhysicsSystem.cpp
 
-        src/Runtime/Scripting/Lua/ScriptSystem.cpp
-        src/Runtime/Scripting/Lua/VectorBindings.cpp
-        src/Runtime/Scripting/Lua/ComponentBindings.cpp
-        src/Runtime/Scripting/Lua/EntityBindings.cpp
-        src/Runtime/Scripting/Lua/InputBindings.cpp
-        src/Runtime/Scripting/Lua/MathBindings.cpp
-        src/Runtime/Scripting/Lua/EditorFunctionBindings.cpp
-        src/Runtime/Scripting/Lua/GameBindings.cpp
+        src/Runtime/Scripting/Lua/LuaSystem.cpp
+        src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
+        src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
+        src/Runtime/Scripting/Lua/LuaEntityBindings.cpp
+        src/Runtime/Scripting/Lua/LuaInputBindings.cpp
+        src/Runtime/Scripting/Lua/LuaMathBindings.cpp
+        src/Runtime/Scripting/Lua/LuaEditorFunctionBindings.cpp
+        src/Runtime/Scripting/Lua/LuaGameBindings.cpp
 
         src/Math/Geometry/Geometry.cpp
 
@@ -309,7 +309,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Sound/AudioSystem.hpp
         Headers/Runtime/RuntimeSession.hpp
         Headers/Runtime/LevelSystem.hpp
-        Headers/Runtime/Scripting/ScriptSystem.hpp
+        Headers/Runtime/Scripting/Lua/LuaScripting.hpp
         Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Gameplay/GameFunctions.hpp
 
@@ -405,11 +405,11 @@ set(TILKY_ENGINE_PCH_HEADERS
 
 if(MINGW)
     set_source_files_properties(
-            src/Runtime/Scripting/Lua/VectorBindings.cpp
-            src/Runtime/Scripting/Lua/ComponentBindings.cpp
-            src/Runtime/Scripting/Lua/EntityBindings.cpp
-            src/Runtime/Scripting/Lua/InputBindings.cpp
-            src/Runtime/Scripting/Lua/MathBindings.cpp
+            src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
+            src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
+            src/Runtime/Scripting/Lua/LuaEntityBindings.cpp
+            src/Runtime/Scripting/Lua/LuaInputBindings.cpp
+            src/Runtime/Scripting/Lua/LuaMathBindings.cpp
 
             PROPERTIES
             COMPILE_OPTIONS "-g0;-Wa,-mbig-obj"
@@ -423,6 +423,7 @@ endif()
 set(TILKY_LAUNCHER_SOURCES
         src/Launcher/LauncherApp.cpp
         Headers/Launcher/LauncherApp.hpp
+        Headers/Runtime/Scripting/IScripting.hpp
 )
 
 # ============================================================

@@ -12,7 +12,12 @@ namespace LevelSystem {
     void Update(Level& level);
     void Shutdown(Level& level);
 
+    void RefreshScriptAssets(Level& level);
     ComponentCamera* GetActiveCamera(Level& level);
+
+    const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
+    bool ReconcileScriptPublicValues(ComponentScript& script);
+    void RefreshScriptAssets(Level& level);
 }
 
 #endif //TILKY_ENGINE_LEVELUPDATE_H

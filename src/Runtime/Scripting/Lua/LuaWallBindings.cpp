@@ -2,11 +2,11 @@
 // Created by berke on 7/6/2026.
 //
 
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "sol/sol.hpp"
 
-void ScriptSystem::RegisterWallBindings(sol::state& lua) {
+void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
     lua.new_usertype<ScriptWall>(
     "WallRef",
 

@@ -2,7 +2,7 @@
 // Created by berke on 6/20/2026.
 //
 #include "Headers/Engine/GameTime.hpp"
-#include "Headers/Runtime/Scripting/ScriptSystem.hpp"
+#include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
 namespace {
@@ -25,7 +25,7 @@ namespace {
     }
 }
 
-void ScriptSystem::RegisterMathBindings(sol::state &lua) {
+void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     sol::table math;
 
     if (lua["Tmath"].valid()) math = lua["Tmath"];
