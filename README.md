@@ -44,7 +44,6 @@ This architecture enables:
 
 * **Sector-Based Worlds:** Maps are built from walls, sectors, floors, ceilings, and entities.
 * **True 3D Perspective:** Walls, floors, decals, billboards, and sprites are rendered in a 3D scene.
-* **Dynamic Sector Heights:** Sectors can have independent floor and ceiling altitudes.
 * **Classic Aesthetic:** Designed for retro 3D games, sprite-heavy worlds, and Doom-like level layouts.
 * **Modern Pipeline:** Uses OpenGL shaders and SSBO-backed geometry data for efficient rendering.
 
@@ -73,13 +72,13 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 | **Audio**                    | OpenAL                                |
 | **Scripting**                | Lua, sol2                             |
 | **Profiling**                | Tracy                                 |
-| **Data**                     | nlohmann/json                         |
+| **Data**                     | nlohmann/bson                         |
 | **Logging**                  | spdlog                                |
 | **Assets**                   | SDL3_image, SDL3_ttf, FreeType        |
 | **Build System**             | CMake                                 |
 | **Helper Tools & Exporting** | Rust                                  |
 | **Math**                     | Custom Headers (with SIMD Intrinsics) |
-| **Physics & Collisions**	    | Custom, Lightweight, SIMD-Accelerated |
+| **Physics & Collisions**	   | Custom, Lightweight, SIMD-Accelerated |
 
 ---
 
@@ -134,7 +133,8 @@ cmake --build . --config Release
 | Key        | Action                   |
 | :--------- | :----------------------- |
 | `Q`        | Cycle Modes              |
-| `LMB`      | Place / Select / Edit    |
+| `LMB`      | Place / Move New Objects |
+| `RMB`      | Edit Objects             |
 | `MMB`      | Pan Editor Camera        |
 | `Scroll`   | Zoom In / Out            |
 | `Ctrl + Z` | Undo Action              |
@@ -152,16 +152,23 @@ cmake --build . --config Release
 * [x] **Tracy Profiler Instrumentation:** Integrated deep source-level profiling across rendering, physics, collision, and scripting systems.
 
 ## 🔨 Future Milestones
-* [ ] **Binary Asset Virtualization & Encoding:** Develop an offline asset packer to compress and serialize maps, textures, and audio files into a unified binary format for commercial exports.
-* [ ] **Steam P2P Multiplayer Networking:** Integrate Steam NetworkingSockets to handle low-latency peer-to-peer session connection, matchmaking, and sector state replication.
-* [ ] **Vulkan Rendering Hardware Layer:** Architect a modern Vulkan backend rendering path parallel to the existing OpenGL pipeline, introducing explicit command buffers and manual frame synchronization.
-* [ ] **Offline BSP Compiler & Map Processor:** Build a dedicated command-line utility to parse raw sector geometry, execute recursive hyper-plane splitting, and output highly optimized Binary Space Partitioning (BSP) trees for zero-overdraw rendering pipelines.
-* [ ] **Deferred Rendering Pipeline (G-Buffer):** Re-architect the core fragment shading pass to separate geometry from lighting using Framebuffer Objects (FBOs) to output Albedo, Normals, and Screen-Space Depth channels for high-density dynamic light rendering.
-* [ ] **UX/Editor Overhaul:** Redesign the Dear ImGui workspace layout to support docking, multi-view
-* [ ] **Offline BSP Compiler & Map Processor:** Build a dedicated tool to parse raw sector geometry, execute recursive hyper-plane splitting, and output optimized BSP trees for zero-overdraw rendering pipelines.
-* [ ] **Multiplayer Support:** Implement a easy-to-use but highly customizable networking support
-* [ ] **Steamworks Core API Integration:** Integrate native Steam API bindings to support achievements, cloud saves, and native overlay hooks for the commercial retail build.
----
+
+### 🎨 Rendering Pipeline
+* [ ] **Deferred Rendering Pipeline (G-Buffer):** Transition the core shading pass to a deferred architecture using Framebuffer Objects (FBOs). This will separate geometry from lighting, outputting Albedo, Normals, and Screen-Space Depth channels to support high-density dynamic light rendering.
+* [ ] **Vulkan Rendering Hardware Layer:** Implement a modern Vulkan abstraction layer alongside the existing pipeline to improve hardware efficiency and cross-platform performance.
+
+### ⚙️ Tooling & Asset Management
+* [ ] **Offline BSP Compiler & Map Processor:** Build a dedicated command-line utility to parse raw sector geometry, execute recursive hyper-plane splitting, and output optimized Binary Space Partitioning (BSP) trees for zero-overdraw rendering.
+* [ ] **Binary Asset Packer & Encoder:** Develop an offline utility to compress and serialize maps, textures, and audio files into a unified, lightweight binary format optimized for production exports.
+
+### 🌐 Networking & Multiplayer
+* [ ] **Modular Networking Architecture:** Implement a highly customizable, low-latency networking framework designed to scale from local to online play.
+* [ ] **LAN Multiplayer Support:** Enable local network discovery, matchmaking, and direct IP connection handling.
+* [ ] **Steam P2P Integration:** Implement Steam's peer-to-peer networking infrastructure to allow seamless player-to-player connectivity without relying on dedicated servers.
+
+### 🛠️ Editor & Platform Integration
+* [ ] **UX / Editor Overhaul:** Redesign the Dear ImGui workspace layout to support docking, multi-view viewports, and an improved asset-browsing workflow.
+* [ ] **Steamworks Core API Integration:** Add native Steam API bindings to support player achievements, cloud saves, and standard overlay hooks for commercial builds.
 
 ## 🤝 Contributing & Credits
 
