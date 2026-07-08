@@ -705,17 +705,12 @@ void LuaScriptSystem::Update(Level& level) {
     for (ScriptInstance& instance : scriptInstances) {
         ComponentScript* script = level.scripts.Get(instance.ownerID);
 
-        if (script == nullptr || !script->enabled) {
-            continue;
-        }
+        if (script == nullptr || !script->enabled) continue;
 
-        if (!instance.started) {
-            CallStart(instance);
-        }
+        if (!instance.started) CallStart(instance);
 
-        if (!instance.updateFunction.valid()) {
-            continue;
-        }
+        if (!instance.updateFunction.valid()) continue;
+
 
         const sol::protected_function_result result = instance.updateFunction();
 
