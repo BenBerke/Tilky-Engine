@@ -10,6 +10,9 @@
 #define SIDECOUNT_45 1
 #define SIDECOUNT_90 2
 
+#define DECAL_WALL 0
+#define DECAL_FLOOR 1
+
 #define COLLIDER_BOX_VERTEX_COUNT 24
 #define COLLIDER_SPHERE_SEGMENTS 24
 #define COLLIDER_SPHERE_VERTEX_COUNT (COLLIDER_SPHERE_SEGMENTS * 6)
@@ -294,40 +297,126 @@ vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
 void renderDecal() {
     Decal decal = decals[gl_InstanceID];
 
-    vec2 decalStart2D = decal.startEnd.xy;
-    vec2 decalEnd2D = decal.startEnd.zw;
-
-    float bottomHeight = decal.heights.x;
-    float topHeight = decal.heights.y;
-
     int textureIndex = int(decal.data.x);
+    int decalType = int(decal.data.y);
 
-    vec3 bottomLeft = vec3(decalStart2D.x, bottomHeight, decalStart2D.y);
-    vec3 topLeft = vec3(decalStart2D.x, topHeight, decalStart2D.y);
-    vec3 bottomRight = vec3(decalEnd2D.x, bottomHeight, decalEnd2D.y);
-    vec3 topRight = vec3(decalEnd2D.x, topHeight, decalEnd2D.y);
+    vec3 worldPos;
+    vec2 uv;
 
-    vec3 positions[6] = vec3[6](
-    bottomLeft,
-    topLeft,
-    bottomRight,
+    if (decalType == DECAL_FLOOR) {
+        vec2 decalMin = decal.startEnd.xy;
+        vec2 decalMax = decal.startEnd.zw;
 
-    bottomRight,
-    topLeft,
-    topRight
-    );
+        float floorHeight = decal.heights.x;
 
-    vec2 uvs[6] = vec2[6](
-    vec2(0.0, 1.0),
-    vec2(0.0, 0.0),
-    vec2(1.0, 1.0),
+        vec3 minMin = vec3(
+        decalMin.x,
+        floorHeight,
+        decalMin.y
+        );
 
-    vec2(1.0, 1.0),
-    vec2(0.0, 0.0),
-    vec2(1.0, 0.0)
-    );
+        vec3 minMax = vec3(
+        decalMin.x,
+        floorHeight,
+        decalMax.y
+        );
 
-    vec3 worldPos = positions[gl_VertexID];
+        vec3 maxMin = vec3(
+        decalMax.x,
+        floorHeight,
+        decalMin.y
+        );
+
+        vec3 maxMax = vec3(
+        decalMax.x,
+        floorHeight,
+        decalMax.y
+        );
+
+        /*
+         * Counter-clockwise when viewed from above.
+         * This makes the decal face upward when face culling is enabled.
+         */
+        vec3 positions[6] = vec3[6](
+        minMin,
+        minMax,
+        maxMin,
+
+        maxMin,
+        minMax,
+        maxMax
+        );
+
+        vec2 uvs[6] = vec2[6](
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+
+        vec2(1.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 0.0)
+        );
+
+        worldPos = positions[gl_VertexID];
+        uv = uvs[gl_VertexID];
+    }
+    else {
+        /*
+         * Existing wall decal behaviour.
+         */
+        vec2 decalStart2D = decal.startEnd.xy;
+        vec2 decalEnd2D = decal.startEnd.zw;
+
+        float bottomHeight = decal.heights.x;
+        float topHeight = decal.heights.y;
+
+        vec3 bottomLeft = vec3(
+        decalStart2D.x,
+        bottomHeight,
+        decalStart2D.y
+        );
+
+        vec3 topLeft = vec3(
+        decalStart2D.x,
+        topHeight,
+        decalStart2D.y
+        );
+
+        vec3 bottomRight = vec3(
+        decalEnd2D.x,
+        bottomHeight,
+        decalEnd2D.y
+        );
+
+        vec3 topRight = vec3(
+        decalEnd2D.x,
+        topHeight,
+        decalEnd2D.y
+        );
+
+        vec3 positions[6] = vec3[6](
+        bottomLeft,
+        topLeft,
+        bottomRight,
+
+        bottomRight,
+        topLeft,
+        topRight
+        );
+
+        vec2 uvs[6] = vec2[6](
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+
+        vec2(1.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 0.0)
+        );
+
+        worldPos = positions[gl_VertexID];
+        uv = uvs[gl_VertexID];
+    }
 
     vWallUV = vec2(0.0);
     vFlatUV = vec2(0.0);
@@ -337,10 +426,13 @@ void renderDecal() {
     vFlatTextureIndex = -1;
     vSpriteTextureIndex = -1;
 
-    vDecalUV = uvs[gl_VertexID];
+    vDecalUV = uv;
     vColor = decal.color / 255.0;
 
-    gl_Position = uProjection * uView * vec4(worldPos, 1.0);
+    gl_Position =
+    uProjection *
+    uView *
+    vec4(worldPos, 1.0);
 }
 
 void renderSprite() {
