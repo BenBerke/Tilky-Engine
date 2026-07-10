@@ -628,19 +628,16 @@ namespace {
                 const ID ownerID =
                     decalJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentDecal& c = level.decals.Add(ownerID);
                 entity->componentsMask.set(CMP_DECAL);
 
                 c.wallIndex = decalJson.value("wallIndex", -1);
+                c.type = decalJson.value("type", WALL);
                 c.verticalPos = decalJson.value("verticalPos", 0.0f);
                 c.horizontalPos = decalJson.value("horizontalPos", -1.0f);
                 c.wallNormalOffset = decalJson.value("wallNormalOffset", 0.0f);
@@ -983,6 +980,7 @@ namespace {
             componentsJson["decals"].push_back({
                 {"ownerID", c.ownerID},
                 {"wallIndex", c.wallIndex},
+                {"type", c.type},
                 {"verticalPos", c.verticalPos},
                 {"horizontalPos", c.horizontalPos},
                 {"wallNormalOffset", c.wallNormalOffset},

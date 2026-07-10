@@ -205,11 +205,6 @@ namespace GameFunctions {
             const ComponentTransform *transform = level.transforms.Get(entity.id);
             if (transform == nullptr) [[unlikely]] continue;
 
-            float sectorFloorHeight = 0.0f;
-
-            if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size()))
-                sectorFloorHeight = level.sectors[transform->sectorIndex].floorHeight;
-
             // If requireCollider is false, raycast every entity as an AABB.
             // transform->scale is Vector2:
             // scale.x = width along world X

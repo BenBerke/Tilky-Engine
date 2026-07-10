@@ -20,19 +20,15 @@ namespace MapEditorInternal {
             InputManager::GetKeyDown(SDL_SCANCODE_KP_PLUS) || InputManager::GetMouseWheelScrollUp()) {
             editorZoom *= 1.15f;
             zoomChanged = true;
-            }
+        }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_MINUS) ||
             InputManager::GetKeyDown(SDL_SCANCODE_KP_MINUS) || InputManager::GetMouseWheelScrollDown()) {
             editorZoom /= 1.15f;
             zoomChanged = true;
-            }
+        }
 
-        editorZoom = std::clamp(
-            editorZoom,
-            MIN_EDITOR_ZOOM,
-            MAX_EDITOR_ZOOM
-        );
+        editorZoom = std::clamp(editorZoom, MIN_EDITOR_ZOOM, MAX_EDITOR_ZOOM);
 
         if (zoomChanged) {
             const Vector2 mouseWorldAfterZoom = ScreenToWorld(mouseScreen, cameraPos);
@@ -43,7 +39,7 @@ namespace MapEditorInternal {
     }
 
     namespace {
-        // Feature #11: defensively drops any selection that no longer
+        //  defensively drops any selection that no longer
         // resolves through its ID map (e.g. a sector deleted from outside
         // the normal DeleteSector() path, or any other desync).
         void ValidateSelections(Level& level) {
@@ -59,7 +55,7 @@ namespace MapEditorInternal {
             }
         }
 
-        // Feature #10: "pressing F focuses/moves the editor camera to the
+        // "pressing F focuses/moves the editor camera to the
         // selected item if the current editor camera system supports that".
         // cameraPos is a plain mutable world-space position with no smooth
         // follow/animation system in this codebase, so "supports that" means
@@ -92,18 +88,15 @@ namespace MapEditorInternal {
             if (currentMode == MODE_DOT && selectedDotID != INVALID_ID) {
                 const auto it = dotIDToIndex.find(selectedDotID);
 
-                if (it != dotIDToIndex.end()) {
-                    cameraPos = dots[it->second].position;
-                }
+                if (it != dotIDToIndex.end()) cameraPos = dots[it->second].position;
+
 
                 return;
             }
 
-            if (currentMode == MODE_ENTITY && editingEntity) {
-                if (const ComponentTransform* transform = level.transforms.Get(selectedEntity.id)) {
+            if (currentMode == MODE_ENTITY && editingEntity)
+                if (const ComponentTransform* transform = level.transforms.Get(selectedEntity.id))
                     cameraPos = {transform->position.x, transform->position.y};
-                }
-            }
         }
     }
 
@@ -146,7 +139,8 @@ namespace MapEditorInternal {
                     if (en != nullptr) {
                         selectedEntity = *en;
                         holdingEntity = true;
-                    } else {
+                    }
+                    else {
                         static constexpr bool isUIEntity = false;
                         const ID id = level.CreateEntity(isUIEntity);
                         selectedEntity = *level.GetEntity(id);
@@ -162,48 +156,35 @@ namespace MapEditorInternal {
             }
 
             //right click cancels/stops sector chain creation.
-            if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                CancelSectorChain();
-            }
+            if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) CancelSectorChain();
 
             if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                if (currentMode == MODE_ENTITY) {
+                if (currentMode == MODE_ENTITY)
                     HandleEntityModeRightClick(mouseWorld);
-                }
-                else if (currentMode == MODE_SECTOR && sectorBeingCreated.empty() && !manualSectorMode) {
+                else if (currentMode == MODE_SECTOR && sectorBeingCreated.empty() && !manualSectorMode)
                     // Only select/inspect when there's no chain in progress —
                     // the line above already uses right click to cancel a chain.
                     HandleSectorModeRightClick(mouseWorld);
-                }
-                else if (currentMode == MODE_DOT) {
-                    HandleDotModeRightClick(mouseWorld);
-                }
+
+                else if (currentMode == MODE_DOT) HandleDotModeRightClick(mouseWorld);
+
             }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
-                if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]] {
+                if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]]
                     t->SetPosition({mouseWorld.x, mouseWorld.y, t->position.z});
-                }
                 else [[unlikely]] spdlog::error("Entity does not have transform component");
             }
 
-            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
-                holdingEntity = false;
-            }
+            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) holdingEntity = false;
+
 
             UpdateEditorZoom();
         }
 
         if (!keyboardBlockedByImgui) {
-            // Feature #5: Escape cancels/stops sector chain creation.
-            if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
-                CancelSectorChain();
-            }
-
-            // Feature #10: F focuses the camera on the current selection.
-            if (InputManager::GetKeyDown(SDL_SCANCODE_F)) {
-                FocusCameraOnSelection();
-            }
+            if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelSectorChain();
+            if (InputManager::GetKeyDown(SDL_SCANCODE_F)) FocusCameraOnSelection();
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
@@ -245,8 +226,7 @@ namespace MapEditorInternal {
             }
         }
 
-        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]] {
+        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]]
             if (hasEntityInClipboard) level.CreateEntity(entityInClipboard);
-        }
     }
 }

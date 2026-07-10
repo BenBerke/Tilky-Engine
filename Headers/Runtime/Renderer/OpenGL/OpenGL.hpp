@@ -85,6 +85,10 @@ namespace OpenGLRendererInternal {
         Vector4 color;
         Vector4 heights;
         Vector4 data;
+        //data.x = textureIndex
+        //data.y = type
+        //data.z = 0
+        //data.w = 0
     };
 
     struct GpuSector {

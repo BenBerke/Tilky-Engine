@@ -262,10 +262,15 @@ struct ComponentSprite {
 };
 
 // MUST have a sprite component to work properly
+enum DecalType {
+    WALL = 0,
+    FLOOR = 1
+};
 struct ComponentDecal {
     ID ownerID = -1;
 
     int wallIndex = -1;
+    DecalType type = WALL;
 
     float verticalPos = 0; // Vertical Position
     float horizontalPos = -1.0f; // Horizontal position

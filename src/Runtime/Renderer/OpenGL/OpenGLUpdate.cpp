@@ -120,7 +120,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     }
 
     {
-        ZoneScopedN("Build GPU Sectors");
+        ZoneScopedN("Upload GPU Sectors");
         BuildGpuSectors();
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);

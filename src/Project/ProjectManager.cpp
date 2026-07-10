@@ -269,9 +269,7 @@ namespace ProjectManager {
 
         json projectData;
 
-        try {
-            file >> projectData;
-        }
+        try { file >> projectData; }
         catch (const std::exception& e) {
             spdlog::error("Failed to parse project file '{}': {}", tilkyEnginePath.string(), e.what());
             return false;
@@ -306,10 +304,12 @@ namespace ProjectManager {
 
         if (!fs::exists(currentSoundsPath)) {
             spdlog::critical("Project is missing Sounds folder: {}", currentSoundsPath.string());
+            return false;
         }
 
         if (!fs::exists(currentScriptsPath)) {
             spdlog::critical("Project is missing Scripts folder: {}", currentScriptsPath.string());
+            return false;
         }
 
         projectLoaded = true;
@@ -321,37 +321,21 @@ namespace ProjectManager {
         return true;
     }
 
-    bool HasProject() {
-        return projectLoaded;
-    }
+    bool HasProject() {return projectLoaded;}
 
-    fs::path GetProjectFiles() {
-        return currentProjectFile;
-    }
+    fs::path GetProjectFiles() {return currentProjectFile;}
 
-    fs::path GetProjectFolder() {
-        return currentProjectFolder;
-    }
+    fs::path GetProjectFolder() {return currentProjectFolder;}
 
-    fs::path GetAssetsPath() {
-        return currentAssetsPath;
-    }
+    fs::path GetAssetsPath() {return currentAssetsPath;}
 
-    fs::path GetTexturesPath() {
-        return currentTexturesPath;
+    fs::path GetTexturesPath() {return currentTexturesPath;
     }
+    fs::path GetLevelsPath() {return currentLevelsPath;}
 
-    fs::path GetLevelsPath() {
-        return currentLevelsPath;
-    }
+    fs::path GetSoundsPath() {return currentSoundsPath;}
 
-    fs::path GetSoundsPath() {
-        return currentSoundsPath;
-    }
-
-    fs::path GetScriptsPath() {
-        return currentScriptsPath;
-    }
+    fs::path GetScriptsPath() {return currentScriptsPath;}
 
     fs::path GetContentRootPath() {
 #ifdef TILKY_CONTENT_ROOT
@@ -363,11 +347,9 @@ namespace ProjectManager {
     }
 
     fs::path FindAssetPath(const fs::path& relativePath) {
-        const fs::path sourcePath =
-            GetContentRootPath() / relativePath;
+        const fs::path sourcePath = GetContentRootPath() / relativePath;
 
-        const fs::path packagedPath =
-            GetEngineBasePath() / relativePath;
+        const fs::path packagedPath = GetEngineBasePath() / relativePath;
 
 #ifndef NDEBUG
         if (fs::exists(sourcePath)) {
@@ -418,22 +400,14 @@ namespace ProjectManager {
     fs::path GetDefaultExportFolder() {
         std::string projectName = GetProjectName();
 
-        if (projectName.empty()) {
-            projectName = GetProjectFolder().filename().string();
-        }
+        if (projectName.empty()) { projectName = GetProjectFolder().filename().string(); }
 
-        if (projectName.empty()) {
-            projectName = "Untitled";
-        }
+        if (projectName.empty()) {projectName = "Untitled";}
 
-        return GetEngineFolder()
-            / "Exports"
-            / projectName;
+        return GetEngineFolder() / "Exports" / projectName;
     }
 
-    fs::path GetLauncherVariables() {
-        return GetEngineFolder() / "Launcher.tilky";
-    }
+    fs::path GetLauncherVariables() { return GetEngineFolder() / "Launcher.tilky";}
 
     std::string GetCurrentLanguageInLauncher() {
         const fs::path configPath = GetLauncherVariables();
@@ -466,7 +440,5 @@ namespace ProjectManager {
         }
     }
 
-    std::string GetProjectName() {
-        return currentProjectName;
-    }
+    std::string GetProjectName() { return currentProjectName;}
 }

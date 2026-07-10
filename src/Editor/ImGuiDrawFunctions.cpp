@@ -870,7 +870,25 @@ namespace ImGuiDrawFunctions {
         else if (state.selectedComponent == CMP_DECAL) {
             auto *c = entity.GetComponent<ComponentDecal>();
             if (c) {
+                BeginSection("Type");
+
+                const std::array typeLabels = {
+                    Get("component.decal.type.wall"),
+                    Get("component.decal.type.floor")
+                };
+                const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
+                static int selectedTypeIndex = 0;
+
+                FieldWidth(140.0f);
+                ImGui::Combo(Get("component.decal.type").c_str(),
+                             &selectedTypeIndex, items, IM_ARRAYSIZE(items));
+
+                c->type = static_cast<DecalType>(selectedTypeIndex);
+
+                EndSection();
+
                 BeginSection("Placement");
+
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.decal.attached_wall").c_str(), &c->wallIndex, draggable);
                 InputOrDrag(Get("component.decal.wall_offset").c_str(), &c->horizontalPos, draggable);
@@ -1158,7 +1176,8 @@ namespace ImGuiDrawFunctions {
                     FieldWidth(120.0f);
                     InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
                     Tooltip("Sphere radius.");
-                } else {
+                }
+                else {
                     ImGui::TextDisabled("X                Y               Z");
                     FieldWidth(220.0f);
                     InputOrDrag3("##collider_scale", &c->scale.x, draggable);
