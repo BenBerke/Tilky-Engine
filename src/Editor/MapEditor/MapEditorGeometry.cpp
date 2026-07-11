@@ -896,13 +896,13 @@ namespace Editor {
     // NOT create/reuse walls or assign front/back sectors, so it is no
     // longer used by the Sector Mode chain workflow (see
     // MapEditorInternal::FinishSectorSelection / CreateSectorWithWalls in
-    // this file instead, which does the full job described in feature #5).
+    // this file instead
     void CreateSector(
      const std::vector<Vector2>& vertices,
      const float ceilHeight,
      const float floorHeight,
-     const Vector3 ceilColor,
-     const Vector3 floorColor,
+     const Vector3& ceilColor,
+     const Vector3& floorColor,
      const int ceilTextureIndex,
      const int floorTextureIndex
  ) {

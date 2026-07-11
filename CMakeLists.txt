@@ -48,10 +48,9 @@ if(TILKY_ENABLE_LTO)
     check_ipo_supported(RESULT TILKY_IPO_SUPPORTED OUTPUT TILKY_IPO_ERROR)
 
     if(TILKY_IPO_SUPPORTED)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+        set(TILKY_IPO_ENABLED ON)
     else()
+        set(TILKY_IPO_ENABLED OFF)
         message(WARNING "IPO/LTO not supported: ${TILKY_IPO_ERROR}")
     endif()
 endif()
@@ -412,7 +411,7 @@ if(MINGW)
             src/Runtime/Scripting/Lua/LuaMathBindings.cpp
 
             PROPERTIES
-            COMPILE_OPTIONS "-g0;-Wa,-mbig-obj"
+            COMPILE_OPTIONS "-g0;-Wa,-mbig-obj;-fno-lto"
     )
 endif()
 
@@ -495,6 +494,14 @@ endif()
 function(configure_tilky_engine_executable target_name)
     set_target_properties(${target_name} PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
+    if(TILKY_ENABLE_LTO AND TILKY_IPO_ENABLED)
+        set_target_properties(${target_name} PROPERTIES
+                INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
+                INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL ON
+                INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON
+        )
+    endif()
+
     target_precompile_headers(${target_name} PRIVATE
             ${TILKY_ENGINE_PCH_HEADERS}
     )
@@ -546,12 +553,6 @@ function(configure_tilky_engine_executable target_name)
             $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:RelWithDebInfo>>:/OPT:REF;/OPT:ICF>
             $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:MinSizeRel>>:/OPT:REF;/OPT:ICF>
     )
-
-    if(MINGW)
-        target_compile_options(${target_name} PRIVATE
-                $<$<COMPILE_LANGUAGE:CXX>:-Wa,-mbig-obj>
-        )
-    endif()
 
     if(TILKY_USE_IMGUI)
         target_compile_definitions(${target_name} PRIVATE TILKY_USE_IMGUI=1)

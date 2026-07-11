@@ -40,7 +40,7 @@ namespace Editor {
         float ceilHeight,
         float floorHeight,
         Vector3 ceilColor,
-        Vector3 floorColor,
+        const Vector3 &floorColor,
         int ceilTextureIndex,
         int floorTextureIndex
     );

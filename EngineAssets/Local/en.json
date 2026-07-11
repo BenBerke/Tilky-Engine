@@ -134,7 +134,7 @@
   "component.decal.abs_height": "Absolute Height",
   "component.decal.type": "Type",
   "component.decal.type.wall": "Wall",
-  "component.decak.type.floor": "Floor",
+  "component.decal.type.floor": "Floor",
   "component.audio_source.pitch": "Pitch",
   "component.audio_source.gain": "Gain",
   "component.audio_source.looping": "Looping",
