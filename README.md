@@ -176,6 +176,9 @@ Contributions are welcome. Bug reports, feature requests, documentation improvem
 
 **Author:** Berke Memioğlu
 
+### Assets
+* **Çağla Çıralı** — Logo 
+ 
 ### Translations
 
 * **Ilya Brezhnev** — Russian & Kazakh
