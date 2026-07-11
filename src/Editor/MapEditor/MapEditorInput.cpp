@@ -203,10 +203,10 @@ namespace MapEditorInternal {
                     }
                     break;
                 case ACTION_CREATE_WALL:
-                    if (!level.walls.empty()) level.walls.pop_back();
+                    if (!level.walls.empty()) DeleteWall(level.walls.back().id);
                     break;
                 case ACTION_CREATE_SECTOR:
-                    if (!level.sectors.empty()) level.sectors.pop_back();
+                    if (!level.sectors.empty()) DeleteSector(level.sectors.back().id);
                     break;
                 case ACTION_CREATE_OBJECT:
                     if (!level.entities.empty()) {

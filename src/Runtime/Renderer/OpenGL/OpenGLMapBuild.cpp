@@ -16,16 +16,6 @@ namespace {
 
     constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
-    bool IsValidSectorIndex(const Level& level, const int index) {
-        return index >= 0 && index < static_cast<int>(level.sectors.size());
-    }
-
-    bool IsPortalWall(const Level& level, const Wall& wall) {
-        return IsValidSectorIndex(level, wall.frontSector) &&
-               IsValidSectorIndex(level, wall.backSector) &&
-               wall.frontSector != wall.backSector;
-    }
-
     void PushGpuWallPiece(
         std::vector<GpuWall>& gpuWalls,
         Wall& wall,
@@ -162,15 +152,15 @@ void OpenGL::BuildGpuWallsFromMap() {
         wall.quads3D = {};
         wall.quad3DCount = 0;
 
-        if (IsPortalWall(level, wall)) {
-            const Sector& front = level.sectors[wall.frontSector];
-            const Sector& back = level.sectors[wall.backSector];
+        const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
+        const Sector* backSector  = MapQueries::GetSectorByID(level, wall.backSector);
 
-            const float frontFloor = front.floorHeight;
-            const float backFloor = back.floorHeight;
+        if (frontSector != nullptr && backSector != nullptr && frontSector != backSector) {
+            const float frontFloor = frontSector->floorHeight;
+            const float backFloor = backSector->floorHeight;
 
-            const float frontCeiling = front.ceilingHeight;
-            const float backCeiling = back.ceilingHeight;
+            const float frontCeiling = frontSector->ceilingHeight;
+            const float backCeiling = backSector->ceilingHeight;
 
             const float lowFloor = std::min(frontFloor, backFloor);
             const float highFloor = std::max(frontFloor, backFloor);
@@ -203,12 +193,9 @@ void OpenGL::BuildGpuWallsFromMap() {
             continue;
         }
 
-        int sectorIndex = -1;
+        const Sector* sector = frontSector != nullptr ? frontSector : backSector;
 
-        if (IsValidSectorIndex(level, wall.frontSector)) sectorIndex = wall.frontSector;
-        else if (IsValidSectorIndex(level, wall.backSector)) sectorIndex = wall.backSector;
-
-        if (sectorIndex == -1) {
+        if (sector == nullptr) {
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
@@ -222,15 +209,13 @@ void OpenGL::BuildGpuWallsFromMap() {
             continue;
         }
 
-        const Sector& sector = level.sectors[sectorIndex];
-
         PushGpuWallPiece(
             gpuWalls,
             wall,
-            sector.floorHeight,
-            sector.ceilingHeight,
+            sector->floorHeight,
+            sector->ceilingHeight,
             wall.color,
-            sector.ceilingHeight,
+            sector->ceilingHeight,
             -1.0f
         );
     }
@@ -253,10 +238,7 @@ void OpenGL::UploadGpuWallsFromMap() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
 }
 
-void OpenGL::BuildVisibleFlatTriangles(
-    const Vector2 &playerPos,
-    const float playerAngle
-) {
+void OpenGL::BuildVisibleFlatTriangles(const Vector2 &playerPos, const float playerAngle) {
     visibleFlatTriangles.clear();
 
     for (const GpuFlatTriangle &triangle: flatTriangles) {

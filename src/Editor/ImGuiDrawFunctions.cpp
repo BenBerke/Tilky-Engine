@@ -320,7 +320,7 @@ namespace ImGuiDrawFunctions {
         // ── Meta ─────────────────────────────────────────────────────────────
         if (sectorId >= 0) {
             ImGui::Spacing();
-            SmallMetaText("ID: %d   internal id: %d", sectorId, sector.id);
+            SmallMetaText("ID: %d", sector.id);
         }
 
         // ── Actions ──────────────────────────────────────────────────────────

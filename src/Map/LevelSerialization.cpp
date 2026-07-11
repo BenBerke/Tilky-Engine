@@ -358,6 +358,7 @@ namespace {
         }
     }
 
+
     void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
@@ -366,6 +367,7 @@ namespace {
         }
 
         ID highestWallID = 0;
+        std::unordered_set<ID> seenWallIDs;
 
         for (int i = 0; i < static_cast<int>(levelData["walls"].size()); ++i) {
             const json &wallJson = levelData["walls"][i];
@@ -406,6 +408,24 @@ namespace {
                 wall.id = static_cast<ID>(i);
             }
 
+            // Guard against a duplicate id. A mixed-format save - some entries with
+            // an explicit "id", some without (partial save, manual edit, objects
+            // copy-pasted in from another level file) - can make the index-based
+            // fallback above collide with a legitimately saved id. If that happens
+            // silently, RebuildWallIDLookup()'s map can only ever resolve ONE of the
+            // two walls sharing that id; the other stays in level.walls but becomes
+            // invisible to GetWallByID/DeleteWall. Surface it and reassign instead
+            // of colliding quietly.
+            if (seenWallIDs.contains(wall.id)) {
+                const ID reassigned = highestWallID + 1;
+                spdlog::warn(
+                    "LoadWalls: duplicate wall id {} at array index {} - reassigning to {}",
+                    wall.id, i, reassigned
+                );
+                wall.id = reassigned;
+            }
+
+            seenWallIDs.insert(wall.id);
             highestWallID = std::max(highestWallID, wall.id);
 
             level.walls.push_back(wall);
@@ -436,6 +456,7 @@ namespace {
         if (!levelData.contains("sectors")) return;
 
         ID highestSectorID = 0;
+        std::unordered_set<ID> seenSectorIDs;
 
         for (int i = 0; i < static_cast<int>(levelData["sectors"].size()); ++i) {
             const json &sectorJson = levelData["sectors"][i];
@@ -453,6 +474,17 @@ namespace {
                 sector.id = static_cast<ID>(i);
             }
 
+            // Same guard as LoadWalls() above - see the comment there.
+            if (seenSectorIDs.contains(sector.id)) {
+                const ID reassigned = highestSectorID + 1;
+                spdlog::warn(
+                    "LoadSectors: duplicate sector id {} at array index {} - reassigning to {}",
+                    sector.id, i, reassigned
+                );
+                sector.id = reassigned;
+            }
+
+            seenSectorIDs.insert(sector.id);
             highestSectorID = std::max(highestSectorID, sector.id);
 
             for (const json &cornerJson: sectorJson["corners"]) {
@@ -509,13 +541,13 @@ namespace {
         level.nextSectorID = std::max(level.nextSectorID, highestSectorID + 1);
     }
 
-    void SaveSectors(json& levelData, const Level& level) {
+    void SaveSectors(json &levelData, const Level &level) {
         levelData["sectors"] = json::array();
 
-        for (const Sector& sector : level.sectors) {
+        for (const Sector &sector: level.sectors) {
             json cornerArray = json::array();
 
-            for (const Vector2& point : sector.vertices) {
+            for (const Vector2 &point: sector.vertices) {
                 cornerArray.push_back({
                     {"x", point.x},
                     {"y", point.y}
@@ -527,24 +559,28 @@ namespace {
                 {"corners", cornerArray},
                 {"ceilingHeight", sector.ceilingHeight},
                 {"floorHeight", sector.floorHeight},
-                {"ceilingColor", {
-                    sector.ceilingColor.x,
-                    sector.ceilingColor.y,
-                    sector.ceilingColor.z
-                }},
-                {"floorColor", {
-                    sector.floorColor.x,
-                    sector.floorColor.y,
-                    sector.floorColor.z
-                }},
+                {
+                    "ceilingColor", {
+                        sector.ceilingColor.x,
+                        sector.ceilingColor.y,
+                        sector.ceilingColor.z
+                    }
+                },
+                {
+                    "floorColor", {
+                        sector.floorColor.x,
+                        sector.floorColor.y,
+                        sector.floorColor.z
+                    }
+                },
                 {"floorTextureIndex", sector.floorTextureIndex},
                 {"ceilingTextureIndex", sector.ceilingTextureIndex},
-                    {"lightValue", sector.lightValue},
+                {"lightValue", sector.lightValue},
             });
         }
     }
 
-    void LoadComponents(const json& levelData, Level& level) {
+    void LoadComponents(const json &levelData, Level &level) {
         level.transforms.Clear();
         level.sprites.Clear();
         level.decals.Clear();
@@ -561,23 +597,23 @@ namespace {
 
         if (!levelData.contains("components")) return;
 
-        const json& componentsJson = levelData["components"];
+        const json &componentsJson = levelData["components"];
 
         if (componentsJson.contains("transforms")) {
-            for (const json& transformJson : componentsJson["transforms"]) {
+            for (const json &transformJson: componentsJson["transforms"]) {
                 const ID ownerID =
-                    transformJson.value("ownerID", INVALID_ENTITY_ID);
+                        transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentTransform& c = level.transforms.Add(ownerID);
+                ComponentTransform &c = level.transforms.Add(ownerID);
                 entity->componentsMask.set(CMP_TRANSFORM);
 
                 if (transformJson.contains("position")) {
@@ -601,16 +637,16 @@ namespace {
         }
 
         if (componentsJson.contains("sprites")) {
-            for (const json& spriteJson : componentsJson["sprites"]) {
+            for (const json &spriteJson: componentsJson["sprites"]) {
                 const ID ownerID = spriteJson.at("ownerID").get<ID>();
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentSprite& c = level.sprites.Add(ownerID);
+                ComponentSprite &c = level.sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_SPRITE);
 
-                const json& textureIndicesJson = spriteJson.at("textureIndices");
+                const json &textureIndicesJson = spriteJson.at("textureIndices");
 
                 for (size_t i = 0; i < c.textureIndices.size(); i++)
                     c.textureIndices[i] = textureIndicesJson.at(i).get<int>();
@@ -624,16 +660,16 @@ namespace {
         }
 
         if (componentsJson.contains("decals")) {
-            for (const json& decalJson : componentsJson["decals"]) {
+            for (const json &decalJson: componentsJson["decals"]) {
                 const ID ownerID =
-                    decalJson.value("ownerID", INVALID_ENTITY_ID);
+                        decalJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentDecal& c = level.decals.Add(ownerID);
+                ComponentDecal &c = level.decals.Add(ownerID);
                 entity->componentsMask.set(CMP_DECAL);
 
                 c.wallIndex = decalJson.value("wallIndex", -1);
@@ -648,20 +684,20 @@ namespace {
         }
 
         if (componentsJson.contains("audioSources")) {
-            for (const json& audioSourceJson : componentsJson["audioSources"]) {
+            for (const json &audioSourceJson: componentsJson["audioSources"]) {
                 const ID ownerID =
-                    audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
+                        audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentAudioSource& c = level.audioSources.Add(ownerID);
+                ComponentAudioSource &c = level.audioSources.Add(ownerID);
                 entity->componentsMask.set(CMP_AUDIO_SOURCE);
 
                 c.soundIndex = audioSourceJson.value("soundIndex", -1);
@@ -671,34 +707,34 @@ namespace {
                 c.playOnStart = audioSourceJson.value("playOnStart", true);
 
                 c.referenceDistance =
-                    audioSourceJson.value("referenceDistance", 1.0f);
+                        audioSourceJson.value("referenceDistance", 1.0f);
                 c.maxDistance =
-                    audioSourceJson.value("maxDistance", 10000.0f);
+                        audioSourceJson.value("maxDistance", 10000.0f);
                 c.rollOffFactor =
-                    audioSourceJson.value("rollOffFactor", 1.0f);
+                        audioSourceJson.value("rollOffFactor", 1.0f);
 
                 c.innerConeAngle =
-                    audioSourceJson.value("innerConeAngle", 360.0f);
+                        audioSourceJson.value("innerConeAngle", 360.0f);
                 c.outerConeAngle =
-                    audioSourceJson.value("outerConeAngle", 360.0f);
+                        audioSourceJson.value("outerConeAngle", 360.0f);
                 c.outerGain =
-                    audioSourceJson.value("outerGain", 0.0f);
+                        audioSourceJson.value("outerGain", 0.0f);
 
                 c.name = "entity_" + std::to_string(ownerID) + "_audio";
             }
         }
 
         if (componentsJson.contains("scripts")) {
-            for (const json& scriptJson : componentsJson["scripts"]) {
+            for (const json &scriptJson: componentsJson["scripts"]) {
                 const ID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
 
                 if (entity == nullptr) continue;
 
-                ComponentScript& c = level.scripts.Add(ownerID);
+                ComponentScript &c = level.scripts.Add(ownerID);
                 entity->componentsMask.set(CMP_SCRIPT);
 
                 const std::string loadedName = scriptJson.value("fileName", std::string{});
@@ -711,21 +747,20 @@ namespace {
                 if (scriptJson.contains("publicValues"))
                     c.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
                 else c.publicValues.clear();
-
             }
         }
 
         if (componentsJson.contains("uiTransforms")) {
-            for (const json& transformJson : componentsJson["uiTransforms"]) {
+            for (const json &transformJson: componentsJson["uiTransforms"]) {
                 const ID ownerID =
-                    transformJson.value("ownerID", INVALID_ENTITY_ID);
+                        transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentUITransform& c = level.ui_transforms.Add(ownerID);
+                ComponentUITransform &c = level.ui_transforms.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_TRANSFORM);
 
                 if (transformJson.contains("anchorMin")) {
@@ -768,20 +803,20 @@ namespace {
         }
 
         if (componentsJson.contains("uiSprites")) {
-            for (const json& spriteJson : componentsJson["uiSprites"]) {
+            for (const json &spriteJson: componentsJson["uiSprites"]) {
                 const ID ownerID =
-                    spriteJson.value("ownerID", INVALID_ENTITY_ID);
+                        spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentUISprite& c = level.ui_sprites.Add(ownerID);
+                ComponentUISprite &c = level.ui_sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_SPRITE);
 
                 c.textureIndex = spriteJson.value("textureIndex", -1);
@@ -789,20 +824,20 @@ namespace {
         }
 
         if (componentsJson.contains("uiTexts")) {
-            for (const json& textJson : componentsJson["uiTexts"]) {
+            for (const json &textJson: componentsJson["uiTexts"]) {
                 const ID ownerID =
-                    textJson.value("ownerID", INVALID_ENTITY_ID);
+                        textJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentUIText& c = level.ui_texts.Add(ownerID);
+                ComponentUIText &c = level.ui_texts.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_TEXT);
 
                 c.text = textJson.value("text", "");
@@ -810,21 +845,21 @@ namespace {
         }
 
         if (componentsJson.contains("playerControllers")) {
-            for (const json& controllerJson : componentsJson["playerControllers"]) {
+            for (const json &controllerJson: componentsJson["playerControllers"]) {
                 const ID ownerID =
-                    controllerJson.value("ownerID", INVALID_ENTITY_ID);
+                        controllerJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentPlayerController& c =
-                    level.playerControllers.Add(ownerID);
+                ComponentPlayerController &c =
+                        level.playerControllers.Add(ownerID);
 
                 entity->componentsMask.set(CMP_PLAYER_CONTROLLER);
 
@@ -850,16 +885,16 @@ namespace {
         }
 
         if (componentsJson.contains("cameras")) {
-            for (const json& cameraJson : componentsJson["cameras"]) {
+            for (const json &cameraJson: componentsJson["cameras"]) {
                 const ID ownerID =
-                    cameraJson.value("ownerID", INVALID_ENTITY_ID);
+                        cameraJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentCamera& c = level.cameras.Add(ownerID);
+                ComponentCamera &c = level.cameras.Add(ownerID);
                 entity->componentsMask.set(CMP_CAMERA);
 
                 c.isActive = cameraJson.value("isActive", true);
@@ -884,23 +919,23 @@ namespace {
 
                 c.fov = cameraJson.value("fov", 90.0f);
                 c.aspectRatio =
-                    cameraJson.value("aspectRatio", 1680.0f / 960.0f);
+                        cameraJson.value("aspectRatio", 1680.0f / 960.0f);
                 c.nearPlane = cameraJson.value("nearPlane", 0.1f);
                 c.farPlane = cameraJson.value("farPlane", 10000.0f);
             }
         }
 
         if (componentsJson.contains("colliders")) {
-            for (const json& colliderJson : componentsJson["colliders"]) {
+            for (const json &colliderJson: componentsJson["colliders"]) {
                 const ID ownerID =
-                    colliderJson.value("ownerID", INVALID_ENTITY_ID);
+                        colliderJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentCollider& c = level.colliders.Add(ownerID);
+                ComponentCollider &c = level.colliders.Add(ownerID);
                 entity->componentsMask.set(CMP_COLLIDER);
 
                 c.isActive = colliderJson.value("isActive", true);
@@ -919,20 +954,20 @@ namespace {
         }
 
         if (componentsJson.contains("rigidbodies")) {
-            for (const json& rigidBodyJson : componentsJson["rigidbodies"]) {
+            for (const json &rigidBodyJson: componentsJson["rigidbodies"]) {
                 const ID ownerID =
-                    rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
+                        rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) {
                     continue;
                 }
 
-                Entity* entity = level.GetEntity(ownerID);
+                Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) {
                     continue;
                 }
 
-                ComponentRigidbody& c = level.rigidbodies.Add(ownerID);
+                ComponentRigidbody &c = level.rigidbodies.Add(ownerID);
                 entity->componentsMask.set(CMP_RIGIDBODY);
 
                 c.isStatic = rigidBodyJson.value("isStatic", true);
@@ -943,7 +978,7 @@ namespace {
         }
     }
 
-    void SaveComponents(json& levelData, const Level& level) {
+    void SaveComponents(json &levelData, const Level &level) {
         json componentsJson;
 
         componentsJson["transforms"] = json::array();
@@ -959,7 +994,7 @@ namespace {
         componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
 
-        for (const ComponentTransform& c : level.transforms.components) {
+        for (const ComponentTransform &c: level.transforms.components) {
             componentsJson["transforms"].push_back({
                 {"ownerID", c.ownerID},
                 {"position", {c.position.x, c.position.y, c.position.z}},
@@ -968,7 +1003,7 @@ namespace {
             });
         }
 
-        for (const ComponentSprite& c : level.sprites.components) {
+        for (const ComponentSprite &c: level.sprites.components) {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
                 {"textureIndices", c.textureIndices},
@@ -976,7 +1011,7 @@ namespace {
             });
         }
 
-        for (const ComponentDecal& c : level.decals.components) {
+        for (const ComponentDecal &c: level.decals.components) {
             componentsJson["decals"].push_back({
                 {"ownerID", c.ownerID},
                 {"wallIndex", c.wallIndex},
@@ -990,7 +1025,7 @@ namespace {
             });
         }
 
-        for (const ComponentAudioSource& c : level.audioSources.components) {
+        for (const ComponentAudioSource &c: level.audioSources.components) {
             componentsJson["audioSources"].push_back({
                 {"ownerID", c.ownerID},
                 {"soundIndex", c.soundIndex},
@@ -1007,7 +1042,7 @@ namespace {
             });
         }
 
-        for (const ComponentScript& c : level.scripts.components) {
+        for (const ComponentScript &c: level.scripts.components) {
             componentsJson["scripts"].push_back({
                 {"ownerID", c.ownerID},
                 {"fileName", fs::path(c.fileName).stem().string()},
@@ -1017,7 +1052,7 @@ namespace {
             });
         }
 
-        for (const ComponentUITransform& c : level.ui_transforms.components) {
+        for (const ComponentUITransform &c: level.ui_transforms.components) {
             componentsJson["uiTransforms"].push_back({
                 {"ownerID", c.ownerID},
                 {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
@@ -1029,21 +1064,21 @@ namespace {
             });
         }
 
-        for (const ComponentUISprite& c : level.ui_sprites.components) {
+        for (const ComponentUISprite &c: level.ui_sprites.components) {
             componentsJson["uiSprites"].push_back({
                 {"ownerID", c.ownerID},
                 {"textureIndex", c.textureIndex}
             });
         }
 
-        for (const ComponentUIText& c : level.ui_texts.components) {
+        for (const ComponentUIText &c: level.ui_texts.components) {
             componentsJson["uiTexts"].push_back({
                 {"ownerID", c.ownerID},
                 {"text", c.text}
             });
         }
 
-        for (const ComponentPlayerController& c : level.playerControllers.components) {
+        for (const ComponentPlayerController &c: level.playerControllers.components) {
             componentsJson["playerControllers"].push_back({
                 {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
@@ -1060,7 +1095,7 @@ namespace {
             });
         }
 
-        for (const ComponentCamera& c : level.cameras.components) {
+        for (const ComponentCamera &c: level.cameras.components) {
             componentsJson["cameras"].push_back({
                 {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
@@ -1075,7 +1110,7 @@ namespace {
             });
         }
 
-        for (const ComponentCollider& c : level.colliders.components) {
+        for (const ComponentCollider &c: level.colliders.components) {
             componentsJson["colliders"].push_back({
                 {"ownerID", c.ownerID},
                 {"isActive", c.isActive},
@@ -1086,7 +1121,7 @@ namespace {
             });
         }
 
-        for (const ComponentRigidbody& c : level.rigidbodies.components) {
+        for (const ComponentRigidbody &c: level.rigidbodies.components) {
             componentsJson["rigidbodies"].push_back({
                 {"ownerID", c.ownerID},
                 {"isStatic", c.isStatic},

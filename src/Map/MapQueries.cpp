@@ -14,15 +14,13 @@ namespace MapQueries {
     {
         // Fast path: still in the same sector (overwhelmingly common)
         if (hintSector >= 0 && hintSector < static_cast<int>(sectors.size())) {
-            if (Geometry::IsPointInPolygon(sectors[hintSector].vertices, position))
-                return hintSector;
+            if (Geometry::IsPointInPolygon(sectors[hintSector].vertices, position)) return hintSector;
 
             // Check neighbours before doing a full scan
             for (const Sector* nb : sectors[hintSector].neighbors) {
                 if (nb == nullptr) continue;
                 const int ni = static_cast<int>(nb - sectors.data());
-                if (Geometry::IsPointInPolygon(sectors[ni].vertices, position))
-                    return ni;
+                if (Geometry::IsPointInPolygon(sectors[ni].vertices, position)) return ni;
             }
         }
 
@@ -43,9 +41,7 @@ namespace MapQueries {
     }
 
     void AssignWallsToSectors(Level& level) {
-        for (Sector& sector : level.sectors) {
-            sector.walls.clear();
-        }
+        for (Sector& sector : level.sectors) sector.walls.clear();
 
         RebuildSectorIDLookup(level);
 
@@ -60,41 +56,35 @@ namespace MapQueries {
     }
 
     void AssignNeighborsToSectors(Level& level) {
-        for (Sector& sector : level.sectors) {
-            sector.neighbors.clear();
-        }
+        for (Sector& sector : level.sectors) sector.neighbors.clear();
 
         RebuildSectorIDLookup(level);
 
         for (Sector& sector : level.sectors) {
             for (Wall* wall : sector.walls) {
-                if (wall == nullptr) {
-                    continue;
-                }
+                if (wall == nullptr) continue;
 
-                ID neighborSectorID = -1;
+                ID neighborSectorID = INVALID_ID;
 
-                if (wall->frontSector == sector.id) {
-                    neighborSectorID = wall->backSector;
-                } else if (wall->backSector == sector.id) {
-                    neighborSectorID = wall->frontSector;
-                } else {
-                    continue;
-                }
+                if (wall->frontSector == sector.id) neighborSectorID = wall->backSector;
+                else if (wall->backSector == sector.id) neighborSectorID = wall->frontSector;
+                else continue;
 
-                if (neighborSectorID < 0 || neighborSectorID == sector.id) {
-                    continue;
-                }
+
+                // ID is unsigned (uint32_t), so "neighborSectorID < 0" could never be
+                // true - a boundary wall (no sector on the other side) was only ever
+                // being filtered out downstream, by GetSectorByID() returning nullptr
+                // for INVALID_ID. Comparing against the sentinel directly makes the
+                // intent explicit instead of relying on that as the sole backstop.
+                if (neighborSectorID == INVALID_ID || neighborSectorID == sector.id) continue;
+
 
                 Sector* neighbor = GetSectorByID(level, neighborSectorID);
 
-                if (neighbor == nullptr) {
-                    continue;
-                }
+                if (neighbor == nullptr) continue;
 
-                if (std::ranges::find(sector.neighbors, neighbor) == sector.neighbors.end()) {
+                if (std::ranges::find(sector.neighbors, neighbor) == sector.neighbors.end())
                     sector.neighbors.push_back(neighbor);
-                }
             }
         }
     }
@@ -102,17 +92,15 @@ namespace MapQueries {
     void RebuildSectorIDLookup(Level &level) {
         level.sectorIDToIndex.clear();
 
-        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) {
+        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i)
             level.sectorIDToIndex[level.sectors[i].id] = i;
-        }
     }
 
     void RebuildWallIDLookup(Level &level) {
         level.wallIDToIndex.clear();
 
-        for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
+        for (int i = 0; i < static_cast<int>(level.walls.size()); ++i)
             level.wallIDToIndex[level.walls[i].id] = i;
-        }
     }
 
     void RebuildLevelLookups(Level &level) {
@@ -123,15 +111,11 @@ namespace MapQueries {
     Sector* GetSectorByID(Level &level, const ID sectorID) {
         const auto it = level.sectorIDToIndex.find(sectorID);
 
-        if (it == level.sectorIDToIndex.end()) {
-            return nullptr;
-        }
+        if (it == level.sectorIDToIndex.end()) return nullptr;
 
         const int index = it->second;
 
-        if (index < 0 || index >= static_cast<int>(level.sectors.size())) {
-            return nullptr;
-        }
+        if (index < 0 || index >= static_cast<int>(level.sectors.size())) return nullptr;
 
         return &level.sectors[index];
     }
@@ -139,15 +123,11 @@ namespace MapQueries {
     const Sector* GetSectorByID(const Level &level, const ID sectorID) {
         const auto it = level.sectorIDToIndex.find(sectorID);
 
-        if (it == level.sectorIDToIndex.end()) {
-            return nullptr;
-        }
+        if (it == level.sectorIDToIndex.end()) return nullptr;
 
         const int index = it->second;
 
-        if (index < 0 || index >= static_cast<int>(level.sectors.size())) {
-            return nullptr;
-        }
+        if (index < 0 || index >= static_cast<int>(level.sectors.size())) return nullptr;
 
         return &level.sectors[index];
     }
@@ -155,15 +135,11 @@ namespace MapQueries {
     Wall* GetWallByID(Level &level, const ID wallID) {
         const auto it = level.wallIDToIndex.find(wallID);
 
-        if (it == level.wallIDToIndex.end()) {
-            return nullptr;
-        }
+        if (it == level.wallIDToIndex.end()) return nullptr;
 
         const int index = it->second;
 
-        if (index < 0 || index >= static_cast<int>(level.walls.size())) {
-            return nullptr;
-        }
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) return nullptr;
 
         return &level.walls[index];
     }
@@ -171,15 +147,11 @@ namespace MapQueries {
     const Wall* GetWallByID(const Level &level, const ID wallID) {
         const auto it = level.wallIDToIndex.find(wallID);
 
-        if (it == level.wallIDToIndex.end()) {
-            return nullptr;
-        }
+        if (it == level.wallIDToIndex.end()) return nullptr;
 
         const int index = it->second;
 
-        if (index < 0 || index >= static_cast<int>(level.walls.size())) {
-            return nullptr;
-        }
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) return nullptr;
 
         return &level.walls[index];
     }

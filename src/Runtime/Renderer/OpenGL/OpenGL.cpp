@@ -10,12 +10,7 @@ void OpenGL::BeginFrame() {
 
     glDisable(GL_CULL_FACE);
 
-    glClearColor(
-        1.0f,
-        1.0f,
-        1.0f,
-        1.0f
-    );
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
     glClearDepth(0.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -31,17 +26,10 @@ void OpenGL::EndFrame() {
 }
 
 void OpenGL::OnResize(const int width, const int height) {
-    if (width <= 0 || height <= 0) {
-        return;
-    }
+    if (width <= 0 || height <= 0) return;
 
     screenWidth = width;
     screenHeight = height;
 
-    glViewport(
-        0,
-        0,
-        screenWidth,
-        screenHeight
-    );
+    glViewport(0, 0, screenWidth, screenHeight);
 }

@@ -51,8 +51,8 @@ struct Wall {
         const Vector2& start,
         const Vector2& end,
         const Vector4  color,
-        const int fs           = -1,
-        const int bs           = -1,
+        const ID  fs           = INVALID_ID,
+        const ID  bs           = INVALID_ID,
         const int textureIndex = -1,
         const int floor        = 0
     )
