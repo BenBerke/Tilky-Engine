@@ -1296,7 +1296,7 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Focus helper (unchanged)
+    //  Focus helper
     // ─────────────────────────────────────────────────────────────────────────
     void SetImGuiFocus(const bool focus) {
         ImGuiIO &io = ImGui::GetIO();
