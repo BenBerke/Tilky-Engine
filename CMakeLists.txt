@@ -474,17 +474,30 @@ if(WIN32)
     set(TILKY_ICON_PATH_RC "${TILKY_ICON_PATH}")
     string(REPLACE "\\" "/" TILKY_ICON_PATH_RC "${TILKY_ICON_PATH_RC}")
 
+    set(TILKY_GENERATED_ICON_RC
+            "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
+    )
+
     configure_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/resources/TilkyIcon.rc.in"
-            "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
+            "${TILKY_GENERATED_ICON_RC}"
             @ONLY
     )
 
-    add_library(Tilky_Icon OBJECT
-            "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
+    # Recompile the resource whenever Fox.ico changes.
+    set_source_files_properties(
+            "${TILKY_GENERATED_ICON_RC}"
+            PROPERTIES
+            OBJECT_DEPENDS "${TILKY_ICON_PATH}"
     )
 
-    set(TILKY_ICON_OBJECTS $<TARGET_OBJECTS:Tilky_Icon>)
+    add_library(Tilky_Icon OBJECT
+            "${TILKY_GENERATED_ICON_RC}"
+    )
+
+    set(TILKY_ICON_OBJECTS
+            $<TARGET_OBJECTS:Tilky_Icon>
+    )
 endif()
 
 # ============================================================
@@ -686,27 +699,32 @@ set(TILKY_RUNTIME_ASSET_DIRS
         Textures
 )
 
-function(copy_runtime_assets target_name)
-    foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}")
-            add_custom_command(TARGET ${target_name} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}"
-                    "$<TARGET_FILE_DIR:${target_name}>/${asset_dir}"
-                    COMMENT "Copying ${asset_dir} to $<TARGET_FILE_DIR:${target_name}>"
-            )
-        else()
-            message(STATUS "Skipping missing runtime asset folder: ${asset_dir}")
-        endif()
-    endforeach()
-endfunction()
+set(TILKY_RUNTIME_ASSET_COPY_COMMANDS "")
 
-copy_runtime_assets(Tilky_Launcher)
-copy_runtime_assets(Tilky_Engine)
-copy_runtime_assets(Tilky_Standalone)
+foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}")
+        list(APPEND TILKY_RUNTIME_ASSET_COPY_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}"
+                "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${asset_dir}"
+        )
+    else()
+        message(STATUS "Skipping missing runtime asset folder: ${asset_dir}")
+    endif()
+endforeach()
+
+add_custom_target(Tilky_RuntimeAssets
+        ${TILKY_RUNTIME_ASSET_COPY_COMMANDS}
+        COMMENT "Updating Tilky runtime assets"
+        VERBATIM
+)
+
+add_dependencies(Tilky_Launcher Tilky_RuntimeAssets)
+add_dependencies(Tilky_Engine Tilky_RuntimeAssets)
+add_dependencies(Tilky_Standalone Tilky_RuntimeAssets)
 
 if(TARGET Tilky_Exporter)
-    copy_runtime_assets(Tilky_Exporter)
+    add_dependencies(Tilky_Exporter Tilky_RuntimeAssets)
 endif()
 
 # ============================================================

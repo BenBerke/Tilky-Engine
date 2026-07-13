@@ -123,7 +123,6 @@ int main() {
 
     while (!LauncherApp::QuitRequested()) LauncherApp::Update();
 
-
     spdlog::info("Quitting the launcher app. Starting the renderer");
 
     const fs::path projectToOpen = LauncherApp::GetPendingProjectToOpen();

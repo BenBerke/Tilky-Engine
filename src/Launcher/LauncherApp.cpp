@@ -38,7 +38,7 @@ namespace {
 
     int windowWidth = 1080, windowHeight = 960;
 
-     constexpr int DEFAULT_LAUNCHER_WIDTH  = 1080;
+    constexpr int DEFAULT_LAUNCHER_WIDTH  = 1080;
     constexpr int DEFAULT_LAUNCHER_HEIGHT = 960;
 
     constexpr int MIN_LAUNCHER_WIDTH  = 640;
@@ -296,9 +296,7 @@ namespace LauncherApp {
         // Background/logo texture
         const fs::path logoPath = basePath / "LauncherAssets" / "LogoWithWhiteText.png";
 
-        if (!fs::exists(logoPath)) {
-            spdlog::error("Background logo does not exists at: {}", logoPath.string());
-        }
+        if (!fs::exists(logoPath)) spdlog::error("Background logo does not exists at: {}", logoPath.string());
         else {
             logo = IMG_LoadTexture(renderer, logoPath.string().c_str());
 
