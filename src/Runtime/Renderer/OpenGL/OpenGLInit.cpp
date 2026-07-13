@@ -274,15 +274,9 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             const unsigned char* srcRow =
                 static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
 
-            unsigned char* dstRow =
-                atlasPixels.data() +
-                ((cursorY + row) * ATLAS_SIZE + cursorX) * 4;
+            unsigned char* dstRow = atlasPixels.data() +((cursorY + row) * ATLAS_SIZE + cursorX) * 4;
 
-            std::memcpy(
-                dstRow,
-                srcRow,
-                textureWidth * 4
-            );
+            std::memcpy(dstRow, srcRow,textureWidth * 4);
         }
 
         constexpr float halfTexel = .5f;
