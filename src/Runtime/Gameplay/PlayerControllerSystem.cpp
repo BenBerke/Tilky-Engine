@@ -80,20 +80,14 @@ namespace PlayerControllerSystem {
         std::abs(playerTransform.position.z - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
         rigidbody.velocity.z <= 0.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) {
-            jumpPressedTimeStamp = GameTime::time;
-        }
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::time;
 
         // GameTime::time is seconds. controller.jumpBufferMs is milliseconds.
-        const double jumpBufferSeconds =
-                static_cast<double>(controller.jumpBufferMs) / 1000.0;
+        const double jumpBufferSeconds = static_cast<double>(controller.jumpBufferMs) / 1000.0;
 
-        const double jumpBufferAge =
-                GameTime::time - jumpPressedTimeStamp;
+        const double jumpBufferAge = GameTime::time - jumpPressedTimeStamp;
 
-        const bool hasBufferedJump =
-                jumpBufferAge >= 0.0 &&
-                jumpBufferAge <= jumpBufferSeconds;
+        const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
 
         if (hasBufferedJump && grounded) {
             rigidbody.velocity.z = controller.jumpPower;
@@ -118,8 +112,22 @@ namespace PlayerControllerSystem {
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
-        camera.pitch = std::clamp(camera.pitch, -89.0f, 89.0f);
+        camera.pitch = std::clamp(
+            camera.pitch,
+            controller.minPitch,
+            controller.maxPitch
+        );
+
         camera.yaw = std::fmod(camera.yaw, 360.0f);
+
+        if (camera.yaw < 0.0f) camera.yaw += 360.0f;
+
+
+        camera.yaw = std::clamp(
+            camera.yaw,
+            controller.minYaw,
+            controller.maxYaw
+        );
 
         const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
 

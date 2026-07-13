@@ -1097,9 +1097,23 @@ namespace ImGuiDrawFunctions {
                 FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
                                    &c->sensitivityX, 0.001f, 2.0f);
-                FieldWidth(-1.0f);
+                //FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
                                    &c->sensitivityY, 0.001f, 2.0f);
+                //FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.max_pitch").c_str(),
+                                   &c->maxPitch, 0.0f, 360.0f);
+                //FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.min_pitch").c_str(),
+                                   &c->minPitch, 0.0f, 360.0f);
+                //FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.max_yaw").c_str(),
+                                   &c->maxYaw, 0.0f, 360.0f);
+                //FieldWidth(-1.0f);
+                ImGui::SliderFloat(Get("component.player_controller.min_yaw").c_str(),
+                                   &c->minYaw, 0.0f, 360.0f);
+                if (c->minYaw < .0f) c->minYaw = 0.0f;
+
                 EndSection();
 
                 BeginSection("State");

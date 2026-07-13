@@ -130,6 +130,10 @@ struct ComponentPlayerController {
     float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;
 
+    //todo Max-Min pitch is acting weirdly
+    float minPitch = -89.0f, maxPitch = 89.0f;
+    float minYaw =  .0f, maxYaw = 360.0f;
+
     bool noClip = false;
 
     // Read only, do not change

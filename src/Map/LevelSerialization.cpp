@@ -333,14 +333,11 @@ namespace {
                 sound.fileName = soundJson.value("fileName", "");
             }
             else if (soundJson.is_string()) {
-                sound.fileName = fs::path(
-                    soundJson.get<std::string>()
+                sound.fileName = fs::path(soundJson.get<std::string>()
                 ).stem().string();
             }
 
-            if (!sound.fileName.empty()) {
-                level.sounds.push_back(sound);
-            }
+            if (!sound.fileName.empty()) level.sounds.push_back(sound);
         }
     }
 
@@ -404,9 +401,7 @@ namespace {
 
             wall.id = LoadIDField(wallJson, "id", static_cast<ID>(i));
 
-            if (wall.id == INVALID_ID) {
-                wall.id = static_cast<ID>(i);
-            }
+            if (wall.id == INVALID_ID) wall.id = static_cast<ID>(i);
 
             // Guard against a duplicate id. A mixed-format save - some entries with
             // an explicit "id", some without (partial save, manual edit, objects
@@ -464,15 +459,9 @@ namespace {
             Sector sector;
             std::vector<Vector2> corners;
 
-            sector.id = LoadIDField(
-                sectorJson,
-                "id",
-                static_cast<ID>(i)
-            );
+            sector.id = LoadIDField(sectorJson, "id", static_cast<ID>(i));
 
-            if (sector.id == INVALID_ID) {
-                sector.id = static_cast<ID>(i);
-            }
+            if (sector.id == INVALID_ID) sector.id = static_cast<ID>(i);
 
             // Same guard as LoadWalls() above - see the comment there.
             if (seenSectorIDs.contains(sector.id)) {
@@ -601,17 +590,12 @@ namespace {
 
         if (componentsJson.contains("transforms")) {
             for (const json &transformJson: componentsJson["transforms"]) {
-                const ID ownerID =
-                        transformJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentTransform &c = level.transforms.Add(ownerID);
                 entity->componentsMask.set(CMP_TRANSFORM);
@@ -661,8 +645,7 @@ namespace {
 
         if (componentsJson.contains("decals")) {
             for (const json &decalJson: componentsJson["decals"]) {
-                const ID ownerID =
-                        decalJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = decalJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
@@ -685,17 +668,12 @@ namespace {
 
         if (componentsJson.contains("audioSources")) {
             for (const json &audioSourceJson: componentsJson["audioSources"]) {
-                const ID ownerID =
-                        audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentAudioSource &c = level.audioSources.Add(ownerID);
                 entity->componentsMask.set(CMP_AUDIO_SOURCE);
@@ -706,19 +684,13 @@ namespace {
                 c.looping = audioSourceJson.value("looping", false);
                 c.playOnStart = audioSourceJson.value("playOnStart", true);
 
-                c.referenceDistance =
-                        audioSourceJson.value("referenceDistance", 1.0f);
-                c.maxDistance =
-                        audioSourceJson.value("maxDistance", 10000.0f);
-                c.rollOffFactor =
-                        audioSourceJson.value("rollOffFactor", 1.0f);
+                c.referenceDistance = audioSourceJson.value("referenceDistance", 1.0f);
+                c.maxDistance = audioSourceJson.value("maxDistance", 10000.0f);
+                c.rollOffFactor = audioSourceJson.value("rollOffFactor", 1.0f);
 
-                c.innerConeAngle =
-                        audioSourceJson.value("innerConeAngle", 360.0f);
-                c.outerConeAngle =
-                        audioSourceJson.value("outerConeAngle", 360.0f);
-                c.outerGain =
-                        audioSourceJson.value("outerGain", 0.0f);
+                c.innerConeAngle = audioSourceJson.value("innerConeAngle", 360.0f);
+                c.outerConeAngle = audioSourceJson.value("outerConeAngle", 360.0f);
+                c.outerGain = audioSourceJson.value("outerGain", 0.0f);
 
                 c.name = "entity_" + std::to_string(ownerID) + "_audio";
             }
@@ -752,8 +724,7 @@ namespace {
 
         if (componentsJson.contains("uiTransforms")) {
             for (const json &transformJson: componentsJson["uiTransforms"]) {
-                const ID ownerID =
-                        transformJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
@@ -804,17 +775,12 @@ namespace {
 
         if (componentsJson.contains("uiSprites")) {
             for (const json &spriteJson: componentsJson["uiSprites"]) {
-                const ID ownerID =
-                        spriteJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = spriteJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentUISprite &c = level.ui_sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_SPRITE);
@@ -825,17 +791,12 @@ namespace {
 
         if (componentsJson.contains("uiTexts")) {
             for (const json &textJson: componentsJson["uiTexts"]) {
-                const ID ownerID =
-                        textJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = textJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentUIText &c = level.ui_texts.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_TEXT);
@@ -846,20 +807,14 @@ namespace {
 
         if (componentsJson.contains("playerControllers")) {
             for (const json &controllerJson: componentsJson["playerControllers"]) {
-                const ID ownerID =
-                        controllerJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = controllerJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
-                ComponentPlayerController &c =
-                        level.playerControllers.Add(ownerID);
+                ComponentPlayerController &c = level.playerControllers.Add(ownerID);
 
                 entity->componentsMask.set(CMP_PLAYER_CONTROLLER);
 
@@ -871,6 +826,10 @@ namespace {
                 c.friction = controllerJson.value("friction", 0.8f);
                 c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
                 c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
+                c.maxPitch = controllerJson.value("maxPitch", 89.0f);
+                c.minPitch = controllerJson.value("minPitch", -89.0f);
+                c.maxYaw = controllerJson.value("maxYaw", 360.0f);
+                c.minYaw = controllerJson.value("minYaw", .0f);
                 c.noClip = controllerJson.value("noClip", false);
                 c.jumpBufferMs = controllerJson.value("jumpBufferMs", 100.0f);
 
@@ -1090,6 +1049,10 @@ namespace {
                 {"friction", c.friction},
                 {"sensitivityX", c.sensitivityX},
                 {"sensitivityY", c.sensitivityY},
+                {"minPitch", c.minPitch},
+                {"maxPitch", c.maxPitch},
+                {"minYaw", c.minYaw},
+                {"maxYaw", c.maxYaw},
                 {"noClip", c.noClip},
                 {"jumpBufferMs", c.jumpBufferMs}
             });
