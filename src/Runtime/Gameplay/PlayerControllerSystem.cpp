@@ -13,7 +13,7 @@
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
 namespace {
-    Vector3 GetCameraPosition(
+    const Vector3 GetCameraPosition(
         const ComponentPlayerController& controller,
         const ComponentTransform& playerTransform
     ) {

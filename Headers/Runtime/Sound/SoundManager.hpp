@@ -8,7 +8,7 @@
 #include <string>
 
 #include <AL/al.h>
-#include <AL/alc.h>
+
 
 #include "Headers/Math/Vector/Vector3.hpp"
 
@@ -57,10 +57,10 @@ namespace SoundManager {
     void SetListenerGain(float gain);
 
     // Sets the 3D position of the listener in the world.
-    void SetListenerPosition(Vector3 pos);
+    void SetListenerPosition(const Vector3& pos);
 
     // Sets the listener velocity. Used by OpenAL for Doppler shift.
-    void SetListenerVelocity(Vector3 velocity);
+    void SetListenerVelocity(const Vector3 &velocity);
 
     // Sets the listener orientation using the camera/player forward direction.
     void SetListenerOrientation(const Vector3& forward);
