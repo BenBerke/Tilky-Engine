@@ -168,7 +168,10 @@ cmake --build . --config Release
 
 ### 🛠️ Editor & Platform Integration
 * [ ] **UX / Editor Overhaul:** Redesign the Dear ImGui workspace layout to support docking, multi-view viewports, and an improved asset-browsing workflow.
-* [ ] **Steamworks Core API Integration:** Add native Steam API bindings to support player achievements, cloud saves, and standard overlay hooks for commercial builds.
+
+### 🚀 Production & Distribution Deployment
+* [ ] **Steamworks Core API Integration:** Native C++ Steam SDK bindings for achievements, cloud saves, and overlay hooks.
+* [ ] **Steam Workshop Content Pipeline:** Allowing users to package and distribute custom maps and Lua script packs directly via Steam.
 
 ## 🤝 Contributing & Credits
 
