@@ -126,6 +126,8 @@ static void EditorUpdate() {
     Editor::Update();
 }
 
+#include <SDL3/SDL_main.h>
+
 int main(int argc, char** argv) {
     InitEngineLogger();
 

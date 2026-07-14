@@ -41,7 +41,9 @@ bool WriteLauncherVariablesJson(const json &launcherVariablesData) {
     return true;
 }
 
-int main() {
+#include <SDL3/SDL_main.h>
+
+int main(int argc, char* argv[]) {
     const fs::path projectsPath = ProjectManager::GetDefaultProjectsFolder();
 
     fs::path logPath = projectsPath.parent_path() / "Logs" / "launcher_log.txt";
