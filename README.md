@@ -57,15 +57,15 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 * **ECS:** A data-oriented entity component system using entity IDs and type-specific component arrays.
 * **Lua Scripting:** Attach Lua scripts to entities for custom gameplay behavior.
 * **Audio System:** Positional 3D audio powered by OpenAL.
-* **Standalone Exporting:** Rust-based exporter for packaging projects into standalone builds.
-* **Localization Tooling:** Rust-based translator tool that generates the required JSON files automatically.
+* **Standalone Exporting:** C++ exporter for packaging projects into standalone builds.
+* **Localization Tooling:** C++ translator tool that generates the required JSON files automatically.
 * **Performance Profiling:** Tracy integration for frame, rendering, physics, collision, and script profiling.
 
 ## 🛠 Tech Stack
 
 | Category                     | Library                               |
 |:-----------------------------|:--------------------------------------|
-| **Language**                 | C++20, Rust                           |
+| **Language**                 | C++20                                 |
 | **Graphics**                 | OpenGL, GLSL, GLAD                    |
 | **Framework**                | SDL3                                  |
 | **UI**                       | Dear ImGui                            |
@@ -76,7 +76,7 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 | **Logging**                  | spdlog                                |
 | **Assets**                   | SDL3_image, SDL3_ttf, FreeType        |
 | **Build System**             | CMake                                 |
-| **Helper Tools & Exporting** | Rust                                  |
+| **Helper Tools & Exporting** | C++                                   |
 | **Math**                     | Custom Headers (with SIMD Intrinsics) |
 | **Physics & Collisions**	   | Custom, Lightweight, SIMD-Accelerated |
 
@@ -89,7 +89,7 @@ Tilky Engine is built as a complete editor/runtime workflow rather than just a r
 * A **C++20** compatible compiler.
 * **CMake**.
 * **vcpkg** for dependency management.
-* **Rust/Cargo** for helper tools and exporting.
+
 * External libraries cloned into `External/`: `glad`, `imgui`, `tracy`.
 
 ### Building
@@ -148,7 +148,7 @@ cmake --build . --config Release
 * [x] **Lua Scripting Integration:** Embedded custom gameplay scripting runtime via Lua for decoupled game logic.
 * [x] **Visual UI Editor:** Designed in-engine canvas tools for real-time creation and editing of HUDs, menus, and text elements.
 * [x] **Standalone Export Execution:** Implemented a pipeline to package game assets and runtime binaries into optimized, standalone distribution builds.
-* [x] **Rust Localization Toolchain:** Developed an external Rust-based pipeline for compiling translator-friendly JSON localization assets.
+* [x] **Localization Toolchain:** Developed an external C++ pipeline for compiling translator-friendly JSON localization assets.
 * [x] **Tracy Profiler Instrumentation:** Integrated deep source-level profiling across rendering, physics, collision, and scripting systems.
 
 ## 🔨 Future Milestones
@@ -168,7 +168,10 @@ cmake --build . --config Release
 
 ### 🛠️ Editor & Platform Integration
 * [ ] **UX / Editor Overhaul:** Redesign the Dear ImGui workspace layout to support docking, multi-view viewports, and an improved asset-browsing workflow.
-* [ ] **Steamworks Core API Integration:** Add native Steam API bindings to support player achievements, cloud saves, and standard overlay hooks for commercial builds.
+
+### 🚀 Production & Distribution Deployment
+* [ ] **Steamworks Core API Integration:** Native C++ Steam SDK bindings for achievements, cloud saves, and overlay hooks.
+* [ ] **Steam Workshop Content Pipeline:** Allowing users to package and distribute custom maps and Lua script packs directly via Steam.
 
 ## 🤝 Contributing & Credits
 

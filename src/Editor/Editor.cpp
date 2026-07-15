@@ -186,7 +186,7 @@ namespace Editor {
                     continue;
                 }
 
-                const Vector2 toObject = (Vector2){transform->position.x, transform->position.y} - wall.start;
+                const Vector2 toObject = Vector2{transform->position.x, transform->position.y} - wall.start;
 
                 float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
 

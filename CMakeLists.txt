@@ -11,6 +11,11 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+# Prevent Windows.h min/max macros from colliding with std::min / std::max
+if(WIN32)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
 option(TILKY_USE_IMGUI "Enable Dear ImGui editor UI" ON)
 
 # ============================================================
@@ -73,7 +78,7 @@ endfunction()
 # ============================================================
 
 find_package(OpenGL REQUIRED)
-find_package(OpenAL REQUIRED)
+find_package(OpenAL CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3 Headers)
 find_package(SDL3_image REQUIRED CONFIG)
@@ -803,53 +808,48 @@ if(TARGET Tilky_Exporter)
 endif()
 
 # ============================================================
-# Rust exporter tool
+# C++ Tool: TilkyExporter
 # ============================================================
 
-find_program(CARGO_EXECUTABLE cargo REQUIRED)
-
-set(TILKY_RUST_EXPORTER_PACKAGE tilky_exporter)
-
-set(TILKY_CARGO_TARGET_DIR
-        "${CMAKE_BINARY_DIR}/cargo-target"
+add_executable(Tilky_ToolExporter
+        Tools/TilkyExporter/TilkyExporter.cpp
 )
 
-set(TILKY_RUST_PROFILE "debug")
-set(TILKY_RUST_PROFILE_ARG "")
-
-if(TILKY_BUILD_TYPE_UPPER STREQUAL "RELEASE"
-        OR TILKY_BUILD_TYPE_UPPER STREQUAL "MINSIZEREL"
-        OR TILKY_BUILD_TYPE_UPPER STREQUAL "RELWITHDEBINFO")
-    set(TILKY_RUST_PROFILE "release")
-    set(TILKY_RUST_PROFILE_ARG "--release")
-endif()
-
-if(WIN32)
-    set(TILKY_RUST_EXPORTER_EXE
-            "${TILKY_CARGO_TARGET_DIR}/${TILKY_RUST_PROFILE}/tilky_exporter.exe"
-    )
-else()
-    set(TILKY_RUST_EXPORTER_EXE
-            "${TILKY_CARGO_TARGET_DIR}/${TILKY_RUST_PROFILE}/tilky_exporter"
-    )
-endif()
-
-add_custom_target(Tilky_RustExporter
-        COMMAND ${CMAKE_COMMAND} -E env
-        "CARGO_TARGET_DIR=${TILKY_CARGO_TARGET_DIR}"
-        ${CARGO_EXECUTABLE} build ${TILKY_RUST_PROFILE_ARG} -p ${TILKY_RUST_EXPORTER_PACKAGE}
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        BYPRODUCTS "${TILKY_RUST_EXPORTER_EXE}"
-        COMMENT "Building Rust Tilky exporter"
-        VERBATIM
+set_target_properties(Tilky_ToolExporter PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+        OUTPUT_NAME "tilky_exporter"
 )
 
-add_custom_command(TARGET Tilky_RustExporter POST_BUILD
+# Copy beside Tilky_Engine.exe after build
+add_custom_command(TARGET Tilky_ToolExporter POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${TILKY_RUST_EXPORTER_EXE}"
-        "$<TARGET_FILE_DIR:Tilky_Engine>/tilky_exporter.exe"
-        COMMENT "Copying tilky_exporter.exe beside Tilky_Engine.exe"
+        $<TARGET_FILE:Tilky_ToolExporter>
+        "$<TARGET_FILE_DIR:Tilky_Engine>/tilky_exporter${CMAKE_EXECUTABLE_SUFFIX}"
+        COMMENT "Copying tilky_exporter beside Tilky_Engine"
 )
 
-add_dependencies(Tilky_Engine Tilky_RustExporter)
-add_dependencies(Tilky_All Tilky_RustExporter)
+add_dependencies(Tilky_Engine Tilky_ToolExporter)
+add_dependencies(Tilky_All Tilky_ToolExporter)
+
+# ============================================================
+# C++ Tool: TilkyLocalise
+# ============================================================
+
+add_executable(Tilky_ToolLocalise
+        Tools/TilkyLocalise/TilkyLocalise.cpp
+)
+
+set_target_properties(Tilky_ToolLocalise PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+        OUTPUT_NAME "tilky_localise"
+)
+
+target_link_libraries(Tilky_ToolLocalise PRIVATE
+        nlohmann_json::nlohmann_json
+)
+
+add_dependencies(Tilky_All Tilky_ToolLocalise)

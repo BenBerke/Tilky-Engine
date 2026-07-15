@@ -13,7 +13,9 @@
 
 namespace fs = std::filesystem;
 
-int main() {
+#include <SDL3/SDL_main.h>
+
+int main(int argc, char* argv[]) {
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
     if (!fs::exists(projectFile)) {
