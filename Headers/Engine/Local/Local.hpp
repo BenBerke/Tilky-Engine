@@ -13,7 +13,7 @@ namespace Localisation {
     // ie. for English. the languageCode should be en
     bool LoadLanguage(const std::string& languageCode);
 
-    // Get the repsective translation in the last loaded language
+    // Get the respective translation in the last loaded language
     const std::string& Get(const std::string& key);
 
     // Returns the last loaded languageCode

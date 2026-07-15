@@ -5,6 +5,8 @@
 #ifndef TILKY_ENGINE_RUNTIMESESSION_H
 #define TILKY_ENGINE_RUNTIMESESSION_H
 
+/// Responsible for anything that requires rendering the map
+
 namespace RuntimeSession {
     enum RuntimeType {
         STANDALONE,

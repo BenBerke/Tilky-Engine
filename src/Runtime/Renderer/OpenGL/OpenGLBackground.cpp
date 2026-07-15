@@ -22,11 +22,7 @@ void OpenGL::DrawBackground(const float playerAngle) const {
 
     glBindVertexArray(VAO);
 
-    glDrawArrays(
-        GL_TRIANGLES,
-        0,
-        3
-    );
+    glDrawArrays(GL_TRIANGLES, 0, 3);
 
     glBindVertexArray(0);
 

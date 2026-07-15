@@ -132,7 +132,7 @@ namespace RuntimeSession {
         ZoneScoped;
 
         GameTime::Update();
-        timer = GameTime::time;
+        timer = GameTime::timeInSeconds;
 
         Level& level = LevelManager::CurrentLevel();
 

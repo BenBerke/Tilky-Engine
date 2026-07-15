@@ -68,13 +68,9 @@ namespace LevelManager {
         std::vector<fs::path> levelFiles;
 
         for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
-            if (!entry.is_regular_file()) {
-                continue;
-            }
+            if (!entry.is_regular_file()) continue;
 
-            if (entry.path().extension() == ".bson") {
-                levelFiles.push_back(entry.path());
-            }
+            if (entry.path().extension() == ".bson") levelFiles.push_back(entry.path());
         }
 
         if (levelFiles.empty()) {
@@ -90,18 +86,14 @@ namespace LevelManager {
     }
 
     void TriangulateCurrentLevelSectors() {
-        if (!HasCurrentLevel()) {
-            return;
-        }
+        if (!HasCurrentLevel()) return;
 
         Level& level = CurrentLevel();
 
         for (Sector& sector : level.sectors) {
             sector.triangles.clear();
 
-            if (sector.vertices.size() < 3) {
-                continue;
-            }
+            if (sector.vertices.size() < 3) continue;
 
             sector.triangles = Geometry::Triangulate(sector.vertices);
         }

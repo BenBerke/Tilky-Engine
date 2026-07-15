@@ -313,5 +313,19 @@
   "editor.notification.export_failed_fork_error": "Export failed: fork error.",
   "editor.notification.export_failed_wait_error": "Export failed: wait error.",
   "editor.notification.export_failed_abnormal_exit": "Export failed: abnormal exit.",
-  "editor.ui.title": "UI Editor"
+  "editor.ui.title": "UI Editor",
+  "settings.rendering.texture_preset": "Texture Filtering Preset",
+  "settings.rendering.tooltip.texture_preset": "Controls how textures are filtered when viewed nearby and at a distance.",
+  "settings.rendering.texture_preset.pixel_art_shimmery": "Pixel Art - Sharp",
+  "settings.rendering.tooltip.texture_preset.pixel_art_shimmery": "Uses nearest-neighbor filtering without mipmaps. Produces very sharp pixels but may shimmer or create moire patterns at a distance.",
+  "settings.rendering.texture_preset.pixel_art_less_moire": "Pixel Art - Reduced Moire",
+  "settings.rendering.tooltip.texture_preset.pixel_art_less_moire": "Uses nearest-neighbor filtering with nearest mipmaps. Keeps pixels sharp while reducing distant shimmering and moire patterns.",
+  "settings.rendering.texture_preset.pixel_art_smooth_distance": "Pixel Art - Smooth Distance",
+  "settings.rendering.tooltip.texture_preset.pixel_art_smooth_distance": "Uses sharp nearest-neighbor filtering nearby with smooth transitions between mipmap levels at a distance.",
+  "settings.rendering.texture_preset.realistic_normal": "Realistic",
+  "settings.rendering.tooltip.texture_preset.realistic_normal": "Uses linear filtering and smooth mipmaps. Suitable for realistic, high-resolution textures.",
+  "settings.rendering.texture_preset.retro": "PS1-Style Retro",
+  "settings.rendering.tooltip.texture_preset.retro": "Uses sharp nearest-neighbor filtering nearby with smoother mipmap transitions at a distance for a crunchy retro appearance.",
+  "settings.rendering.texture_preset.low_res": "Low-Resolution Soft",
+  "settings.rendering.tooltip.texture_preset.low_res": "Uses linear filtering and smooth mipmaps to create a soft, blurry low-resolution appearance similar to some Nintendo 64-era games."
 }

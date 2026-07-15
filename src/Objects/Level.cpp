@@ -36,6 +36,9 @@ ID Level::CreateEntity(const bool uiEntity) {
     return newId;
 }
 
+// Create entity through copy-paste
+// Whenever a component is added or changed, this has to be updated too
+// It would be good if we switch to C++26 and have reflections
 ID Level::CreateEntity(Entity& copy) {
     Entity entity;
     entity.id = nextEntityID++;

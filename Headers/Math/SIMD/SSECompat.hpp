@@ -5,7 +5,7 @@
 #ifndef TILKY_ENGINE_SSECOMPAT_HPP
 #define TILKY_ENGINE_SSECOMPAT_HPP
 
-/// Work around for the IDE mistakenly reporting _mm_shuffle as a bug
+/// Include this header instead of sse2neon.h or immintrin.h individually
 
 #include <xmmintrin.h>
 #include <emmintrin.h>

@@ -7,7 +7,7 @@
 
 namespace GameTime {
     extern float deltaTime;
-    extern double time; // Seconds passed since game start
+    extern double timeInSeconds; // Seconds passed since game start
     extern double frame; // Frames passed since game start
     extern float smoothedFPS;
 

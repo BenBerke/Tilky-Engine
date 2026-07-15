@@ -12,10 +12,12 @@
 #include <string>
 #include <unordered_map>
 
+/// This script is responsible for drawing the UI objects onto the screen.
+/// It should not change any values. Only read and draw
 
 namespace MapEditorInternal {
     void UIEditorDraw() {
-
+        //todo UI editor
     }
 
 } // namespace MapEditorInternal

@@ -8,9 +8,7 @@
 #include "Headers/Objects/Level.hpp"
 
 namespace MapQueries {
-    int FindSectorContainingPoint(const std::vector<Sector> &sectors,
-                                  const Vector2 position,
-                                  const int hintSector)
+    int FindSectorContainingPoint(const std::vector<Sector> &sectors, const Vector2 position, const int hintSector)
     {
         // Fast path: still in the same sector (overwhelmingly common)
         if (hintSector >= 0 && hintSector < static_cast<int>(sectors.size())) {
@@ -77,7 +75,6 @@ namespace MapQueries {
                 // for INVALID_ID. Comparing against the sentinel directly makes the
                 // intent explicit instead of relying on that as the sole backstop.
                 if (neighborSectorID == INVALID_ID || neighborSectorID == sector.id) continue;
-
 
                 Sector* neighbor = GetSectorByID(level, neighborSectorID);
 

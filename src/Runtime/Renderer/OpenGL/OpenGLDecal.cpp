@@ -34,40 +34,23 @@ void OpenGL::BuildGpuDecals() {
         if (decalComponent.type == FLOOR) {
             const int sectorIndex = transform->sectorIndex;
 
-            if (
-                sectorIndex < 0 ||
-                sectorIndex >= static_cast<int>(level.sectors.size())
-            ) {
-                continue;
-            }
+            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
 
             const Sector& sector = level.sectors[sectorIndex];
 
-            const float halfWidth =
-                std::abs(transform->scale.x) * 0.5f;
+            const float halfWidth = std::abs(transform->scale.x) * 0.5f;
 
-            const float halfDepth =
-                std::abs(transform->scale.y) * 0.5f;
+            const float halfDepth =std::abs(transform->scale.y) * 0.5f;
 
-            if (
-                halfWidth <= MIN_DECAL_SIZE ||
-                halfDepth <= MIN_DECAL_SIZE
-            ) {
-                continue;
-            }
+            if (halfWidth <= MIN_DECAL_SIZE || halfDepth <= MIN_DECAL_SIZE) continue;
+
 
             float decalHeight;
 
-            if (decalComponent.absHeight) {
-                decalHeight =
-                    decalComponent.baseHeight +
-                    decalComponent.verticalPos;
-            }
-            else {
-                decalHeight =
-                    sector.floorHeight +
-                    decalComponent.verticalPos;
-            }
+            if (decalComponent.absHeight)
+                decalHeight = decalComponent.baseHeight + decalComponent.verticalPos;
+            else decalHeight = sector.floorHeight + decalComponent.verticalPos;
+
 
             // Prevent the decal from occupying exactly the same depth
             // as the sector floor.
@@ -119,17 +102,11 @@ void OpenGL::BuildGpuDecals() {
 
         /*
          * Wall decal
-         *
-         * Existing behaviour remains unchanged.
          */
         if (decalComponent.type != WALL) continue;
 
-        if (
-            decalComponent.wallIndex < 0 ||
-            decalComponent.wallIndex >= static_cast<int>(level.walls.size())
-        ) {
+        if (decalComponent.wallIndex < 0 || decalComponent.wallIndex >= static_cast<int>(level.walls.size()))
             continue;
-        }
 
         const Wall& wall = level.walls[decalComponent.wallIndex];
 
@@ -153,12 +130,7 @@ void OpenGL::BuildGpuDecals() {
                 transform->position.y - wall.start.y
             };
 
-            float t =
-                (
-                    toObject.x * wallVector.x +
-                    toObject.y * wallVector.y
-                ) /
-                (wallLength * wallLength);
+            float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / (wallLength * wallLength);
 
             t = std::clamp(t, 0.0f, 1.0f);
 
@@ -186,8 +158,7 @@ void OpenGL::BuildGpuDecals() {
                 wallNormal.y * decalComponent.wallNormalOffset
         };
 
-        const float halfWidth =
-            std::abs(transform->scale.x) * 0.5f;
+        const float halfWidth = std::abs(transform->scale.x) * 0.5f;
 
         const Vector2 decalStart = {
             decalCentre.x - wallDir.x * halfWidth,
@@ -201,44 +172,23 @@ void OpenGL::BuildGpuDecals() {
 
         int sectorIndex = transform->sectorIndex;
 
-        if (
-            sectorIndex < 0 ||
-            sectorIndex >= static_cast<int>(level.sectors.size())
-        ) {
+        if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) {
             sectorIndex = wall.frontSector;
 
-            if (
-                sectorIndex < 0 ||
-                sectorIndex >= static_cast<int>(level.sectors.size())
-            ) {
+            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size()))
                 sectorIndex = wall.backSector;
-            }
         }
 
-        if (
-            sectorIndex < 0 ||
-            sectorIndex >= static_cast<int>(level.sectors.size())
-        ) {
-            continue;
-        }
+        if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
 
         const Sector& sector = level.sectors[sectorIndex];
 
         float decalBottom;
 
-        if (decalComponent.absHeight) {
-            decalBottom =
-                decalComponent.baseHeight +
-                decalComponent.verticalPos;
-        }
-        else {
-            decalBottom =
-                sector.floorHeight +
-                decalComponent.verticalPos;
-        }
+        if (decalComponent.absHeight) decalBottom = decalComponent.baseHeight + decalComponent.verticalPos;
+        else decalBottom = sector.floorHeight + decalComponent.verticalPos;
 
-        const float decalTop =
-            decalBottom + std::abs(transform->scale.z);
+        const float decalTop =decalBottom + std::abs(transform->scale.z);
 
         GpuDecal gpuDecal;
 

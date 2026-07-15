@@ -12,6 +12,9 @@
 #include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
+/// This is a built in script for handling player movement
+/// Anything in this script can technically be achieved through a user-made Lua script
+
 namespace {
     const Vector3 GetCameraPosition(
         const ComponentPlayerController& controller,
@@ -80,12 +83,12 @@ namespace PlayerControllerSystem {
         std::abs(playerTransform.position.z - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
         rigidbody.velocity.z <= 0.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::time;
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::timeInSeconds;
 
         // GameTime::time is seconds. controller.jumpBufferMs is milliseconds.
         const double jumpBufferSeconds = static_cast<double>(controller.jumpBufferMs) / 1000.0;
 
-        const double jumpBufferAge = GameTime::time - jumpPressedTimeStamp;
+        const double jumpBufferAge = GameTime::timeInSeconds - jumpPressedTimeStamp;
 
         const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
 
@@ -153,7 +156,7 @@ namespace PlayerControllerSystem {
             rigidbody.velocity.y = 0.0f;
         }
 
-        (void)sectors;
+        (void)sectors; // Prevents annoying warnings
 
         UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }

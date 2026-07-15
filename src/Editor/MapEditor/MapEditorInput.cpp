@@ -116,15 +116,11 @@ namespace MapEditorInternal {
                 cameraPos.y += mouseDelta.y / editorZoom;
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
-                // Feature: Wall Mode is gone. Sector Mode now owns wall
-                // creation entirely via the chain workflow below.
                 if (currentMode == MODE_SECTOR) {
                     const Vector2 snapped = ResolveSnapPoint(mouseWorld);
                     TrySectorChainClick(snapped);
                 }
                 else if (currentMode == MODE_DOT) {
-                    // Feature #6: dots place at the exact mouse position by
-                    // default; holding Shift snaps the placement to grid.
                     const bool snapToGridHeld =
                         InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
                         InputManager::GetKey(SDL_SCANCODE_RSHIFT);
@@ -178,7 +174,6 @@ namespace MapEditorInternal {
 
             if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) holdingEntity = false;
 
-
             UpdateEditorZoom();
         }
 
@@ -197,10 +192,8 @@ namespace MapEditorInternal {
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
             switch (actions.back()) {
-                case ACTION_CREATE_CORNER:
-                    if (!dots.empty()) {
-                        RemoveDot(dots.back().id);
-                    }
+                case ACTION_CREATE_DOT:
+                    if (!dots.empty()) RemoveDot(dots.back().id);
                     break;
                 case ACTION_CREATE_WALL:
                     if (!level.walls.empty()) DeleteWall(level.walls.back().id);

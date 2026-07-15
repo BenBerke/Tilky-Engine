@@ -115,7 +115,7 @@ namespace MapEditorInternal {
         SDL_RenderRect(renderer, &ring);
     }
 
-    // Feature #5: draws already-placed chain edges, a rubber-band preview
+    // Draws already-placed chain edges, a rubber-band preview
     // edge to the resolved snap point, a translucent fill once there are
     // enough points, and the snap indicator itself.
     void DrawSectorPreview() {
@@ -217,7 +217,7 @@ namespace MapEditorInternal {
                     ? hoveredSectorColor
                     : normalSectorColor;
 
-            // Feature #9: Texture View Mode. Falls back safely to the normal
+            //  Texture View Mode. Falls back safely to the normal
             // editor color/white-box fill whenever the floor texture is -1
             // or unavailable, so a missing texture can never break the view.
             SDL_Texture* floorTexture = nullptr;
@@ -238,7 +238,7 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-        // Feature #10/#11: outline whichever sector is currently selected
+        // Outline whichever sector is currently selected
         // (e.g. via the Hierarchy panel), independent of mouse hover.
         if (selectedSectorID != INVALID_ID) {
             const Sector* selected = MapQueries::GetSectorByID(level, selectedSectorID);
@@ -257,7 +257,6 @@ namespace MapEditorInternal {
         }
     }
 
-    // Renamed from DrawCorners (feature #6): dots replace the old grid-only
     // "placedCorners" concept and are now ID-stable, off-grid-capable points.
     void DrawDots() {
         if (currentTheme == THEME_DARK)
@@ -330,20 +329,13 @@ namespace MapEditorInternal {
                 screenEntitySize
             };
 
-            // Feature #9: Texture View Mode for entities with a sprite.
+            // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the
             // sprite has no texture assigned or the texture isn't available.
             const ComponentSprite* sprite = level.sprites.Get(entity.id);
             SDL_Texture* spriteTexture = nullptr;
 
-            //todo add rotation sprute
-            // if (textureViewMode && sprite != nullptr && sprite->textureIndex != -1) {
-            //     spriteTexture = GetEditorTexture(sprite->textureIndex);
-            // }
-
-            if (textureViewMode && sprite != nullptr) {
-                    spriteTexture = GetEditorTexture(0);
-                }
+            if (textureViewMode && sprite != nullptr) spriteTexture = GetEditorTexture(0);
 
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {

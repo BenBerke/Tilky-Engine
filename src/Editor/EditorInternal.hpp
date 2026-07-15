@@ -33,7 +33,7 @@ namespace MapEditorInternal {
     enum Action {
         ACTION_CREATE_SECTOR,
         ACTION_CREATE_WALL,
-        ACTION_CREATE_CORNER, // historical name - now fires for Dot placement/undo.
+        ACTION_CREATE_DOT,
         ACTION_CREATE_OBJECT,
     };
 

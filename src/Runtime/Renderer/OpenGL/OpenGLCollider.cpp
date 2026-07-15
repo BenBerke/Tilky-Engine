@@ -5,6 +5,8 @@
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
+/// Collider debug view
+
 void OpenGL::BuildGpuColliders() {
     const Level& level = LevelManager::CurrentLevel();
 

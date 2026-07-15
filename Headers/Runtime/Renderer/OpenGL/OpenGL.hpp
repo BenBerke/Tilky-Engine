@@ -36,6 +36,8 @@ namespace OpenGLRendererInternal {
 
     inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
 
+
+    // Glyph Characters
     struct Character {
         unsigned int textureID = 0;
         Vector2 Size;
@@ -43,6 +45,7 @@ namespace OpenGLRendererInternal {
         unsigned int Advance = 0;
     };
 
+    // Structs that will be pushed to the GPU
     struct GpuFlatTriangle {
         Vector4 a;
         Vector4 b;
@@ -136,6 +139,7 @@ public:
     void Update(bool renderDebug, bool renderUI) override;
     void EndFrame() override;
 
+    // On resize Window
     void OnResize(int width, int height) override;
 
     int CreateTexture(const std::string& fileName) override;
@@ -151,6 +155,7 @@ public:
         Vector3 color
     );
 
+    // Calls the RenderText function with the default text rendering shader
     void RenderTextRaw(
         const std::string &text,
         Vector2 position,
@@ -259,7 +264,6 @@ private:
     bool InitText();
 
     void BuildGpuSectors();
-
     void BuildGpuSprites();
     void BuildGpuDecals();
     void BuildGpuColliders();

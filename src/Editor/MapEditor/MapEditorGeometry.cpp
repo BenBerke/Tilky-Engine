@@ -1,7 +1,7 @@
 #include "../EditorInternal.hpp"
 
 #include "Headers/Math/Geometry/Geometry.hpp"
-#include "Headers/Math/Vector/Vector2Math.hpp"
+#include "Headers/Math/Vector/Vector2Math.hpp" // This includes "SSECompat.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
 #include <algorithm>
@@ -40,6 +40,8 @@ namespace MapEditorInternal {
     }
 
     bool AABBCollisionWithEntity(const ComponentUITransform& transform, const Vector2& mousePosition) {
+        // These functions automatically get converted to their respective platform
+        // versions through the "SSECompat.hpp" header
         const __m128 pos = transform.resolvedPosition.reg;
         const __m128 size = transform.resolvedSize.reg;
         const __m128 mouse = mousePosition.reg;
@@ -114,11 +116,6 @@ namespace MapEditorInternal {
         return result;
     }
 
-    // NOTE: kept from the original implementation. The new chain-creation
-    // flow (FinishSectorSelection below) no longer calls this - it validates
-    // the polygon itself and creates/reuses walls on the fly instead of
-    // requiring every edge to already exist as a wall beforehand. Left intact
-    // in case it's still useful elsewhere.
     bool IsSectorClosed(const std::vector<Vector2>& vertices) {
         if (vertices.size() < 3) return false;
 
@@ -684,7 +681,7 @@ namespace MapEditorInternal {
         dots.push_back(dot);
         dotIDToIndex[dot.id] = static_cast<int>(dots.size()) - 1;
 
-        actions.push_back(ACTION_CREATE_CORNER);
+        actions.push_back(ACTION_CREATE_DOT);
     }
 
     void RemoveDot(const ID dotID) {

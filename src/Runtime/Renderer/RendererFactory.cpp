@@ -19,7 +19,9 @@ std::unique_ptr<IRenderer> RendererFactory::CreateRenderer(RendererBackend backe
             return nullptr;
 
         case RendererBackend::AUTO:
-            return nullptr;
+            // Default to OpenGL since its more likely to be supported
+            // Maybe add SDL_Gpu?
+            return std::make_unique<OpenGL>();
     }
 
     return nullptr;

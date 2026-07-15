@@ -37,6 +37,7 @@ namespace Geometry {
                    cp3 >= -Constants::Epsilon;
         }
 
+        // Related to non-convex sector triangulation
         bool IsEar(
             const std::vector<Vector2>& vertices,
             const int prev,
@@ -52,7 +53,6 @@ namespace Geometry {
             for (int i = 0; i < static_cast<int>(vertices.size()); ++i) {
                 if (i == prev || i == curr || i == next) continue;
                 if (IsInsideTriangle(a, b, c, vertices[i])) return false;
-
             }
 
             return true;

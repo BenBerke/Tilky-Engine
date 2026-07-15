@@ -15,33 +15,19 @@
 
 namespace PlayerControllerSystem {
     inline Vector2 GetPlanarPosition(const ComponentTransform& transform) {
-        return {
-            transform.position.x,
-            transform.position.z
-        };
+        return { transform.position.x, transform.position.z};
     }
 
-    inline void SetPlanarPosition(
-        ComponentTransform& transform,
-        const Vector2& planarPosition
-    ) {
+    inline void SetPlanarPosition(ComponentTransform& transform, const Vector2& planarPosition) {
         transform.position.x = planarPosition.x;
         transform.position.z = planarPosition.y;
     }
 
-    inline Vector2 GetPlanarVelocity(
-        const ComponentPlayerController& controller
-    ) {
-        return {
-            controller.velocity.x,
-            controller.velocity.z
-        };
+    inline Vector2 GetPlanarVelocity(const ComponentPlayerController& controller) {
+        return {controller.velocity.x,controller.velocity.z};
     }
 
-    inline void SetPlanarVelocity(
-        ComponentPlayerController& controller,
-        const Vector2& planarVelocity
-    ) {
+    inline void SetPlanarVelocity(ComponentPlayerController& controller, const Vector2& planarVelocity) {
         controller.velocity.x = planarVelocity.x;
         controller.velocity.y = 0.0f;
         controller.velocity.z = planarVelocity.y;

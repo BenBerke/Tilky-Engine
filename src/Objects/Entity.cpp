@@ -26,6 +26,8 @@ template<typename T>
 T* Entity::GetComponent() {
     Level& level = LevelManager::CurrentLevel();
 
+    // Save time not having to write a long chain of constexpr if statements
+    // See Headers/Objects/ComponentRegistry.hpp
 #define ENTITY_GET_COMPONENT_CASE(Type, Bit, Storage, LabelKey) \
     if constexpr (std::is_same_v<T, Type>) { \
         if (!HasComponentBit(componentsMask, Bit)) return nullptr; \
@@ -106,6 +108,8 @@ bool Entity::HasComponent() {
 }
 
 void Entity::Start() {
+    // A place holder. Probably should remain empty
+    // Might be useful for those who want to create their own fork of the engine
 }
 
 void Entity::Update() {

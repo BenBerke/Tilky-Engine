@@ -5,6 +5,7 @@
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 
+/// This script is responsible for drawing the ImGUI of the UI Editor
 namespace {
     void Spacing(const int count = 1) {
         for (int i = 0; i < count; ++i) {

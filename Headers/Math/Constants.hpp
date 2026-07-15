@@ -7,7 +7,7 @@
 
 namespace Constants {
     // --- Numerical Safeties ---
-    constexpr float Epsilon      = 1e-6f;        // Your original value (great for general float comparisons)
+    constexpr float Epsilon      = 1e-6f;
     constexpr float LargeEpsilon = 1e-3f;        // Useful for coarse physics/collision clipping checks
 
     // --- Pi and Angles ---
@@ -21,7 +21,7 @@ namespace Constants {
     constexpr float RadToDeg     = 180.0f / Pi;    // Multiply by this to get Degrees
 
     // --- Common Algebraic Fractions ---
-    constexpr float InvPi        = 0.31830988618f; // 1.0 / Pi (Extremely common in PBR shading)
+    constexpr float InvPi        = 0.31830988618f; // 1.0 / Pi
     constexpr float Sqrt2        = 1.41421356237f; // Diagonal of a 1x1 square
     constexpr float Sqrt3        = 1.73205080757f; // Diagonal of a 1x1x1 cube
     constexpr float InvSqrt2     = 0.70710678118f; // Useful for normalizing 45-degree 2D vectors

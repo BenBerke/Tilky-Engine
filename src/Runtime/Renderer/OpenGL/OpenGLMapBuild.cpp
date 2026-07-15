@@ -109,9 +109,7 @@ namespace {
             }
         }
 
-        if (output.size() < 3) {
-            return;
-        }
+        if (output.size() < 3) return;
 
         if (output.size() == 3) {
             visibleFlatTriangles.push_back({

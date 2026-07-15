@@ -6,6 +6,7 @@
 #define RENDER_DECAL 3
 #define RENDER_COLLIDER 4
 
+// Collision Sphere debug view stuff
 #define SIDECOUNT_SINGLE 0
 #define SIDECOUNT_45 1
 #define SIDECOUNT_90 2

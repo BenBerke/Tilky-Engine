@@ -30,8 +30,6 @@ namespace Editor {
     bool LoadLevel(const std::string& levelName);
     void RefreshLevelSoundsFromFolder();
 
-    bool ExportProjectAsGame(const std::filesystem::path& exportFolder);
-
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);
 

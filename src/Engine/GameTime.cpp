@@ -7,7 +7,7 @@
 
 namespace GameTime {
     float deltaTime = 0.0f;
-    double time = 0.0f;
+    double timeInSeconds = 0.0f;
     float smoothedFPS = 0.0f;
     double frame = 0.0f;
 
@@ -19,7 +19,7 @@ namespace GameTime {
         last = now;
 
         deltaTime = static_cast<float>(static_cast<double>(diff) / static_cast<double>(SDL_GetPerformanceFrequency()));
-        time += deltaTime;
+        timeInSeconds += deltaTime;
 
         float instantFPS = deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f;
         smoothedFPS = smoothedFPS * 0.9f + instantFPS * 0.1f;

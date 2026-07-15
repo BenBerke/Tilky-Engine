@@ -49,9 +49,7 @@ vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
     vec2 regionMax = region.uvRect.zw;
     vec2 regionSize = regionMax - regionMin;
 
-    vec2 localUV = repeatUV
-    ? fract(uv)
-    : clamp(uv, vec2(0.0), vec2(1.0));
+    vec2 localUV = repeatUV ? fract(uv) : clamp(uv, vec2(0.0), vec2(1.0));
 
     vec2 atlasUV = regionMin + localUV * regionSize;
 

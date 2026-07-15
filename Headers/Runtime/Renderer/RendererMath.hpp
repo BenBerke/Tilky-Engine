@@ -9,27 +9,13 @@ namespace RendererMath {
 
     float DegToRad(float degrees);
 
-    Vector2 RotatePoint(
-        const Vector2& point,
-        float angleRad
-    );
+    Vector2 RotatePoint(const Vector2& point, float angleRad);
 
-    Vector2 WorldToDebugNdc(
-        const Vector2& worldPoint,
-        const Vector2& playerPos
-    );
+    Vector2 WorldToDebugNdc(const Vector2& worldPoint, const Vector2& playerPos);
 
-    float GetViewDepth(
-        const Vector4& point,
-        const Vector2& playerPos,
-        float playerAngle
-    );
+    float GetViewDepth(const Vector4& point, const Vector2& playerPos, float playerAngle);
 
-    Vector4 LerpVector4(
-        const Vector4& a,
-        const Vector4& b,
-        float t
-    );
+    Vector4 LerpVector4(const Vector4& a, const Vector4& b, float t);
 }
 
 #endif

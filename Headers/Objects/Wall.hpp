@@ -22,17 +22,22 @@ struct Wall {
     Vector4 color;
     Vector2 textureOffset;
 
+    // Stable ID of the sector that is to the front or to the left of the Wall in top down view
+    // Should be -1 if there is no sector
     ID frontSector  = INVALID_ID;
+
+    // Stable ID of the sector that is to the back or to the right of the Wall in top down view
+    // Should be -1 if there is no sector
     ID backSector   = INVALID_ID;
     int textureIndex = INVALID_ID;
 
     // Read only — do not change
     Vector2 dir, normal, vector;
-    float   lengthSq;
-    float   length;
+    float lengthSq; // lengthSquared
+    float length;
 
-    std::array<std::array<Vector3, 4>, 2> quads3D     = {};
-    int                                   quad3DCount  = 0;
+    std::array<std::array<Vector3, 4>, 2> quads3D = {};
+    int quad3DCount = 0;
 
     // Per-quad 3D AABBs for physics early-out.
     // Filled by RebuildQuadAabbs() whenever quads3D is written.
@@ -54,7 +59,7 @@ struct Wall {
         const ID  fs           = INVALID_ID,
         const ID  bs           = INVALID_ID,
         const int textureIndex = -1,
-        const int floor        = 0
+        const int floor        = 0 // Currently unused
     )
     : start(start),
       end(end),

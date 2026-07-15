@@ -24,7 +24,7 @@ namespace MapQueries {
     void RebuildSectorRuntimeLinks(Level& level);
 
     inline std::array<Vector3, 4> CalculateWallQuad3D(const Wall &wall, const float bottomHeight,const float topHeight) {
-        return std::array<Vector3, 4>{
+        return std::array {
             Vector3{wall.start.x, wall.start.y, bottomHeight},
             Vector3{wall.end.x, wall.end.y, bottomHeight},
             Vector3{wall.end.x, wall.end.y, topHeight},

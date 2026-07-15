@@ -7,6 +7,9 @@
 
 #include "Headers/Objects/Level.hpp"
 
+/// This only runs during Play or Standalone. Does not run during Realtime Editor
+/// Responsible for updating physics, scripts, audio etc.
+
 namespace LevelSystem {
     void Start(Level& level);
     void Update(Level& level);

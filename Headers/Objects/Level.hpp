@@ -27,6 +27,19 @@ struct WorldSettings {
     float gravity;
 };
 
+// See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp
+enum RendererTextureSettings {
+    PIXEL_ART_SHIMMERY,
+    PIXEL_ART_LESS_MOIRE,
+    PIXEL_ART_SMOOTH_DISTANCE,
+    REALISTIC_NORMAL,
+    RETRO,
+    LOW_RES
+};
+struct RendererSettings {
+    RendererTextureSettings textureSetting = PIXEL_ART_SHIMMERY;
+};
+
 struct Level {
     LevelID id = 0;
     std::string name;
@@ -38,6 +51,7 @@ struct Level {
     std::vector<Wall> walls;
     std::vector<Sector> sectors;
 
+    // These are needed so that walls/sectors dont get their IDs mixed up from deletion
     std::unordered_map<ID, int> sectorIDToIndex;
     std::unordered_map<ID, int> wallIDToIndex;
 
@@ -49,6 +63,7 @@ struct Level {
 
     ListenerSettings listenerSettings;
     WorldSettings worldSettings;
+    RendererSettings rendererSettings;
 
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;

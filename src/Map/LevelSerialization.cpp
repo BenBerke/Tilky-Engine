@@ -182,7 +182,7 @@ namespace {
             levelData["levelVars"].value("backgroundTextureIndex", -1);
     }
 
-    void SaveExtraData(json& levelData, const LevelSerialization::LevelExtraData* extraData) {
+    void SaveExtraData(json &levelData, const LevelSerialization::LevelExtraData *extraData) {
         if (extraData == nullptr) {
             return;
         }
@@ -198,41 +198,47 @@ namespace {
             return;
         }
 
-    const json& levelStatsJson = levelData["levelStats"];
+        const json &levelStatsJson = levelData["levelStats"];
 
-    if (levelStatsJson.contains("listenerSettings") &&
-        levelStatsJson["listenerSettings"].is_object()) {
-        const json &listenerJson = levelStatsJson["listenerSettings"];
-        ListenerSettings &listenerSettings = level.listenerSettings;
+        if (levelStatsJson.contains("listenerSettings") && levelStatsJson["listenerSettings"].is_object()) {
+            const json &listenerJson = levelStatsJson["listenerSettings"];
+            ListenerSettings &listenerSettings = level.listenerSettings;
 
-        listenerSettings.masterGain = listenerJson.value("masterGain", 1.0f);
-        listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
-        listenerSettings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
+            listenerSettings.masterGain = listenerJson.value("masterGain", 1.0f);
+            listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
+            listenerSettings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
 
-        const int distanceModel = listenerJson.value(
-            "distanceModel",
-            static_cast<int>(AL_INVERSE_DISTANCE_CLAMPED)
-        );
+            const int distanceModel = listenerJson.value(
+                "distanceModel",
+                static_cast<int>(AL_INVERSE_DISTANCE_CLAMPED)
+            );
 
-        listenerSettings.distanceModel = ValidateDistanceModel(distanceModel);
+            listenerSettings.distanceModel = ValidateDistanceModel(distanceModel);
 
-        listenerSettings.masterGain = std::max(0.0f, listenerSettings.masterGain);
-        listenerSettings.dopplerFactor = std::max(0.0f, listenerSettings.dopplerFactor);
-        listenerSettings.speedOfSound = std::max(1.0f, listenerSettings.speedOfSound);
-    }
+            listenerSettings.masterGain = std::max(0.0f, listenerSettings.masterGain);
+            listenerSettings.dopplerFactor = std::max(0.0f, listenerSettings.dopplerFactor);
+            listenerSettings.speedOfSound = std::max(1.0f, listenerSettings.speedOfSound);
+        }
 
-        if (levelStatsJson.contains("worldSettings") &&
-            levelStatsJson["worldSettings"].is_object()) {
+        if (levelStatsJson.contains("worldSettings") && levelStatsJson["worldSettings"].is_object()) {
             const json &worldSettingsJson = levelStatsJson["worldSettings"];
             WorldSettings &worldSettings = level.worldSettings;
 
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+        }
+
+        if (levelStatsJson.contains("rendererSettings") && levelStatsJson["rendererSettings"].is_object()) {
+            const json &rendererSettingsJson = levelStatsJson["rendererSettings"];
+            RendererSettings &rendererSettings = level.rendererSettings;
+
+            rendererSettings.textureSetting = rendererSettingsJson.value("textureSetting", PIXEL_ART_SHIMMERY);
         }
     }
 
     void SaveLevelStats(json &levelData, const Level &level) {
         const ListenerSettings &listenerSettings = level.listenerSettings;
         const WorldSettings &worldSettings = level.worldSettings;
+        const RendererSettings &rendererSettings = level.rendererSettings;
 
         levelData["levelStats"] = {
             {
@@ -246,6 +252,11 @@ namespace {
             {
                 "worldSettings", {
                     {"gravity", worldSettings.gravity}
+                }
+            },
+            {
+                "rendererSettings", {
+                    {"textureSetting", rendererSettings.textureSetting}
                 }
             }
         };
