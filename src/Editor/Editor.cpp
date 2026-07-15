@@ -212,9 +212,7 @@ namespace Editor {
             DrawWalls();
             DrawEntities();
 
-            if (currentMode == MODE_SECTOR) {
-                DrawSectorPreview();
-            }
+            if (currentMode == MODE_SECTOR) DrawSectorPreview();
 
             DrawEditorUI();
         }
