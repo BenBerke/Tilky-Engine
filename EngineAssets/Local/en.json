@@ -327,5 +327,9 @@
   "settings.rendering.texture_preset.retro": "PS1-Style Retro",
   "settings.rendering.tooltip.texture_preset.retro": "Uses sharp nearest-neighbor filtering nearby with smoother mipmap transitions at a distance for a crunchy retro appearance.",
   "settings.rendering.texture_preset.low_res": "Low-Resolution Soft",
-  "settings.rendering.tooltip.texture_preset.low_res": "Uses linear filtering and smooth mipmaps to create a soft, blurry low-resolution appearance similar to some Nintendo 64-era games."
+  "settings.rendering.tooltip.texture_preset.low_res": "Uses linear filtering and smooth mipmaps to create a soft, blurry low-resolution appearance similar to some Nintendo 64-era games.",
+  "editor.asset_browser": "Asset Browser",
+  "editor.asset_browser.refresh": "Refresh",
+  "editor.tooltip.asset_browser_refresh": "Re-scan the current folder for new or removed files.",
+  "editor.asset_browser.notification.selected": "Selected asset: %s"
 }

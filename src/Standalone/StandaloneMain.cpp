@@ -35,22 +35,17 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!RuntimeSession::Start(ProjectManager::GetProjectName(), RuntimeSession::STANDALONE)) {
+    if (!RuntimeSession::Start(ProjectManager::GetProjectName())) {
         std::cerr << "Failed to start standalone runtime session.\n";
         return 1;
     }
 
-    bool quit = false;
-
-    while (!quit) {
+    while (!InputManager::QuitRequested()) {
         InputManager::BeginFrame();
-
-        RuntimeSession::Update(RuntimeSession::STANDALONE);
-
-        if (InputManager::QuitRequested()) quit = true; // When the X button is clicked on the window for the respective OS
+        RuntimeSession::Update();
     }
 
-    RuntimeSession::Shutdown(RuntimeSession::STANDALONE);
+    RuntimeSession::Shutdown();
 
     return 0;
 }

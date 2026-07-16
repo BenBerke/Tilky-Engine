@@ -5,7 +5,9 @@
 #ifndef TILKY_ENGINE_RUNTIMESESSION_H
 #define TILKY_ENGINE_RUNTIMESESSION_H
 
-/// Responsible for anything that requires rendering the map
+#include <string>
+
+/// Responsible for anything that requires rendering the map.
 
 namespace RuntimeSession {
     enum RuntimeType {
@@ -14,9 +16,17 @@ namespace RuntimeSession {
         PLAY
     };
 
-    bool Start(const std::string &windowName, RuntimeType runtimeType);
-    void Update(RuntimeType runtimeType);
-    void Shutdown(RuntimeType runtimeType);
+#ifdef TILKY_STANDALONE
+    bool Start(const std::string& windowName);
+#else
+    bool Start(
+        const std::string& windowName,
+        RuntimeType runtimeType
+    );
+#endif
+
+    void Update();
+    void Shutdown();
 }
 
-#endif //TILKY_ENGINE_RUNTIMESESSION_H
+#endif // TILKY_ENGINE_RUNTIMESESSION_H

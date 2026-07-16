@@ -344,6 +344,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/EditorState.cpp
         src/Editor/EditorTextureCache.cpp
         src/Editor/EditorSaveLoad.cpp
+        src/Editor/AssetBrowser.cpp
 
         src/Runtime/RuntimeEditor/EditorFunctions.cpp
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
@@ -352,6 +353,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/UIEditor/UIEditorInput.cpp
         src/Editor/UIEditor/UiEditorDraw.cpp
 
+        Headers/Editor/AssetBrowser.hpp
         Headers/Editor/EditorTextureCache.hpp
         Headers/Editor/ImGuiDrawFunctions.hpp
 
@@ -481,6 +483,7 @@ if(WIN32)
 
     set(TILKY_GENERATED_ICON_RC
             "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
+            Headers/Editor/AssetBrowser.hpp
     )
 
     configure_file(
@@ -630,7 +633,6 @@ configure_tilky_engine_executable(Tilky_Engine)
 
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
-        TILKY_STANDALONE=0
 )
 
 # ============================================================
@@ -652,7 +654,6 @@ set_target_properties(Tilky_Standalone PROPERTIES
 configure_tilky_engine_executable(Tilky_Standalone)
 
 target_compile_definitions(Tilky_Standalone PRIVATE
-        TILKY_EDITOR=1
         TILKY_STANDALONE=1
 )
 
@@ -672,7 +673,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/Exporter/ExporterMain.cpp")
     target_compile_definitions(Tilky_Exporter PRIVATE
             TILKY_EXPORTER=1
             TILKY_EDITOR=1
-            TILKY_STANDALONE=0
     )
 endif()
 
