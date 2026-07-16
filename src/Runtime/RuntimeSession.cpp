@@ -65,11 +65,7 @@ namespace {
         renderer->SetUseEditorCamera(useEditorCamera);
 
         if (!renderer->Initialize(windowName)) {
-            spdlog::critical(
-                "Failed to initialize {} renderer: {}",
-                renderer->GetName(),
-                SDL_GetError()
-            );
+            spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
 
             renderer.reset();
             return false;
@@ -149,7 +145,9 @@ namespace {
             renderer->BeginFrame();
 
             // TODO: Add a proper debug-view setting.
-            renderer->Update(false, true);
+            constexpr bool RENDER_DEBUG = false;
+            constexpr bool RENDER_UI = true;
+            renderer->Update(RENDER_DEBUG, RENDER_UI);
 
             renderer->BeginImGuiFrame();
             renderer->EndImGuiFrame();
@@ -272,7 +270,9 @@ namespace {
             renderer->BeginFrame();
 
             // TODO: Add a proper debug-view setting.
-            renderer->Update(false, false);
+            constexpr bool RENDER_DEBUG = false;
+            constexpr bool RENDER_UI = false;
+            renderer->Update(RENDER_DEBUG, RENDER_UI);
 
             renderer->BeginImGuiFrame();
 
@@ -307,7 +307,9 @@ namespace {
             renderer->BeginFrame();
 
             // TODO: Add a proper debug-view setting.
-            renderer->Update(false, true);
+            constexpr bool RENDER_DEBUG = false;
+            constexpr bool RENDER_UI = true;
+            renderer->Update(RENDER_DEBUG, RENDER_UI);
 
             renderer->BeginImGuiFrame();
             renderer->EndImGuiFrame();
@@ -381,11 +383,7 @@ namespace RuntimeSession {
                 return StartPlay(level, windowName);
 
             case STANDALONE:
-                spdlog::critical(
-                    "STANDALONE cannot be selected at runtime. "
-                    "Build the Tilky_Standalone target instead."
-                );
-
+                spdlog::critical("STANDALONE cannot be selected at runtime. Build the Tilky_Standalone target instead.");
                 return false;
         }
 
@@ -428,9 +426,7 @@ namespace RuntimeSession {
 #else
         switch (activeRuntimeType) {
             case EDITOR: ShutdownEditor(level); break;
-
             case PLAY: ShutdownPlay(level); break;
-
             case STANDALONE: spdlog::critical("Invalid runtime type in Tilky_Engine");break;
         }
 #endif

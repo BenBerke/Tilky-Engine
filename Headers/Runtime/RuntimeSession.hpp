@@ -19,10 +19,7 @@ namespace RuntimeSession {
 #ifdef TILKY_STANDALONE
     bool Start(const std::string& windowName);
 #else
-    bool Start(
-        const std::string& windowName,
-        RuntimeType runtimeType
-    );
+    bool Start(const std::string& windowName, RuntimeType runtimeType);
 #endif
 
     void Update();

@@ -30,7 +30,7 @@ enum ComponentType {
 
     CMP_NORMAL_COUNT,
 
-    CMP_UI_TRANSFORM, // Transform must always be the first UI component otherwise UIEditorDrawUI breaks
+    CMP_UI_TRANSFORM, // Transform must always be the first UI component otherwise UIEditorDrawUI breaks (legacy comment)
     CMP_UI_SPRITE,
     CMP_UI_TEXT,
 

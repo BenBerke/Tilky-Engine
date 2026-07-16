@@ -114,8 +114,7 @@ void Run(Level& level) {
 
     ColliderStorage& col = level.colliders;
 
-    // Reuse these per sphere — declared outside the loop to avoid repeated allocation.
-    std::vector<ID>          allEntities;
+    std::vector<ID>  allEntities;
     std::vector<const Wall*> allWalls;
     allEntities.reserve(64);
     allWalls.reserve(64);

@@ -7,6 +7,7 @@
 
 #pragma once
 
+// Struct name / enum name / name of the vector in Level.hpp / translation json
 #define TILKY_NORMAL_COMPONENTS(X) \
 X(ComponentTransform,        CMP_TRANSFORM,         transforms,         "component.transform") \
 X(ComponentSprite,           CMP_SPRITE,            sprites,            "component.sprite") \

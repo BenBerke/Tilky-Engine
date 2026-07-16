@@ -75,10 +75,7 @@ namespace {
             return true;
         }
         catch (const spdlog::spdlog_ex& exception) {
-            SDL_Log(
-                "Failed to initialize engine logger: %s",
-                exception.what()
-            );
+            SDL_Log("Failed to initialize engine logger: %s", exception.what());
 
             return false;
         }
@@ -110,11 +107,8 @@ namespace {
                     RuntimeSession::EDITOR
                 );
 
-                if (started) {
-                    spdlog::info(
-                        "Starting the runtime editor loop"
-                    );
-                }
+                if (started) spdlog::info("Starting the runtime editor loop");
+
                 break;
         }
 
@@ -129,21 +123,13 @@ namespace {
         return true;
     }
 
-    void StopCurrentMode(
-        const bool prepareEditorLevelForRuntime
-    ) {
-        if (!modeActive) {
-            return;
-        }
+    void StopCurrentMode(const bool prepareEditorLevelForRuntime) {
+        if (!modeActive) return;
 
         switch (currentMode) {
             case EngineMode::EDITOR:
                 Editor::Destroy();
-
-                if (prepareEditorLevelForRuntime) {
-                    Editor::LoadLevel(Editor::currentMap);
-                }
-
+                if (prepareEditorLevelForRuntime) Editor::LoadLevel(Editor::currentMap);
                 break;
 
             case EngineMode::PLAY:
@@ -156,48 +142,29 @@ namespace {
     }
 
     bool SwitchMode(const EngineMode newMode) {
-        if (modeActive && currentMode == newMode) {
-            return true;
-        }
+        if (modeActive && currentMode == newMode) return true;
 
-        const bool prepareEditorLevelForRuntime =
-            currentMode == EngineMode::EDITOR &&
-            newMode != EngineMode::EDITOR;
+        const bool prepareEditorLevelForRuntime = currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR;
 
         StopCurrentMode(prepareEditorLevelForRuntime);
 
-        if (StartMode(newMode)) {
-            return true;
-        }
+        if (StartMode(newMode)) return true;
 
-        if (newMode == EngineMode::EDITOR) {
-            return false;
-        }
+        if (newMode == EngineMode::EDITOR) return false;
 
-        spdlog::error(
-            "Failed to start requested mode. "
-            "Returning to the main editor."
-        );
+        spdlog::error("Failed to start requested mode. Returning to the main editor.");
 
         return StartMode(EngineMode::EDITOR);
     }
 
-    bool FindProjectArgument(
-        const int argc,
-        char** argv,
-        fs::path& projectFile
-    ) {
+    bool FindProjectArgument(const int argc, char** argv, fs::path& projectFile) {
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
 
-            if (argument != "--project") {
-                continue;
-            }
+            if (argument != "--project") continue;
 
             if (index + 1 >= argc) {
-                spdlog::critical(
-                    "--project requires a project file path"
-                );
+                spdlog::critical("--project requires a project file path");
 
                 return false;
             }
@@ -206,40 +173,26 @@ namespace {
             return true;
         }
 
-        spdlog::critical(
-            "No project provided. Use --project <path>"
-        );
+        spdlog::critical("No project provided. Use --project <path>");
 
         return false;
     }
 
     bool LoadProject(const fs::path& projectFile) {
         if (!ProjectManager::LoadProjectMetaData(projectFile)) {
-            spdlog::critical(
-                "Failed to load project metadata from {}",
-                projectFile.string()
-            );
+            spdlog::critical("Failed to load project metadata from {}",projectFile.string());
 
             return false;
         }
 
-        const std::string languageCode =
-            ProjectManager::GetCurrentLanguageInLauncher();
+        const std::string languageCode = ProjectManager::GetCurrentLanguageInLauncher();
 
-        if (Localisation::LoadLanguage(languageCode)) {
-            return true;
-        }
+        if (Localisation::LoadLanguage(languageCode)) return true;
 
-        spdlog::error(
-            "Failed to load localisation '{}'. "
-            "Falling back to English.",
-            languageCode
-        );
+        spdlog::error("Failed to load localisation '{}'. Falling back to English.",languageCode);
 
         if (!Localisation::LoadLanguage("en")) {
-            spdlog::critical(
-                "Failed to load English localisation"
-            );
+            spdlog::critical("Failed to load fallback English localisation");
 
             return false;
         }
@@ -257,13 +210,9 @@ namespace {
         }
 
         if (Editor::SwitchToRuntimeEditorRequested()) {
-            spdlog::info(
-                "Runtime editor requested"
-            );
+            spdlog::info("Runtime editor requested");
 
-            return SwitchMode(
-                EngineMode::RUNTIME_EDITOR
-            );
+            return SwitchMode(EngineMode::RUNTIME_EDITOR);
         }
 
         if (Editor::QuitRequested()) {
@@ -281,21 +230,16 @@ namespace {
     bool UpdateRuntimeMode() {
         RuntimeSession::Update();
 
-        if (!InputManager::QuitRequested()) {
-            return true;
-        }
+        if (!InputManager::QuitRequested()) return true;
 
         return SwitchMode(EngineMode::EDITOR);
     }
 
     bool UpdateCurrentMode() {
         switch (currentMode) {
-            case EngineMode::EDITOR:
-                return UpdateEditorMode();
-
+            case EngineMode::EDITOR:return UpdateEditorMode();
             case EngineMode::PLAY:
-            case EngineMode::RUNTIME_EDITOR:
-                return UpdateRuntimeMode();
+            case EngineMode::RUNTIME_EDITOR:return UpdateRuntimeMode();
         }
 
         spdlog::critical("Unknown engine mode");
@@ -306,37 +250,22 @@ namespace {
 #include <SDL3/SDL_main.h>
 
 int main(const int argc, char** argv) {
-    if (!InitEngineLogger()) {
-        return 1;
-    }
+    if (!InitEngineLogger()) return 1;
 
     spdlog::info("Engine started");
 
     fs::path projectFile;
 
-    if (!FindProjectArgument(
-            argc,
-            argv,
-            projectFile
-        )) {
-        return 1;
-    }
-
-    if (!LoadProject(projectFile)) {
-        return 1;
-    }
-
-    if (!StartMode(EngineMode::EDITOR)) {
-        return 1;
-    }
+    if (!FindProjectArgument(argc, argv, projectFile)) return 1;
+    if (!LoadProject(projectFile)) return 1;
+    if (!StartMode(EngineMode::EDITOR)) return 1;
 
     while (modeActive) {
         InputManager::BeginFrame();
 
-        if (!UpdateCurrentMode()) {
-            break;
-        }
+        if (!UpdateCurrentMode()) break;
     }
+
 
     // Covers unexpected exits where a mode is still running.
     StopCurrentMode(false);

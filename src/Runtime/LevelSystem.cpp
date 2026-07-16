@@ -121,17 +121,13 @@ namespace LevelSystem {
     }
 
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName) {
-        if (!EnsureScriptingInitialized()) {
-            return nullptr;
-        }
+        if (!EnsureScriptingInitialized()) return nullptr;
 
         return luaScriptingSystem.GetPublicFieldsForScript(fileName);
     }
 
     bool ReconcileScriptPublicValues(ComponentScript& script) {
-        if (!EnsureScriptingInitialized()) {
-            return false;
-        }
+        if (!EnsureScriptingInitialized()) return false;
 
         return luaScriptingSystem.ReconcileScriptPublicValues(script);
     }

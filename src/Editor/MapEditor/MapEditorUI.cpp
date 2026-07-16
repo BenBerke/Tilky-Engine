@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <optional>
@@ -17,6 +16,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/Local/Local.hpp"
@@ -294,8 +294,10 @@ namespace {
 
     std::optional<std::string> pendingLevelToLoad;
 
+    // Feature #1: Project Settings overlay
     bool projectSettingsOpen = false;
 
+    // Feature #3: Create Level modal gate
     bool createLevelModalRequested = false;
 
     // Confirmation guards
@@ -308,6 +310,12 @@ namespace {
 
     // Unsaved-changes flag — set on any edit, cleared on Save / new level
     bool hasUnsavedChanges = false;
+
+    // Project asset file explorer — locked to the project's Assets folder.
+    // Lazily rooted on first draw (see DrawAssetBrowserPanel), since that's
+    // the first point a project is guaranteed to be loaded.
+    AssetBrowser assetBrowser;
+    bool assetBrowserInitialized = false;
 
     // =========================================================================
     //  Utility
@@ -496,7 +504,6 @@ namespace {
     void DrawWorldSettings() {
         Level &level = LevelManager::CurrentLevel();
         ListenerSettings &settings = level.listenerSettings;
-        RendererSettings &rendererSettings = level.rendererSettings;
 
         ImGui::Begin(Get("editor.world_settings").c_str());
 
@@ -519,7 +526,7 @@ namespace {
             Get("settings.audio.doppler_factor").c_str(),
             &settings.dopplerFactor, 0.01f, 0.0f, 10.0f, "%.2f"
         )) {
-            // SoundManager::SetListenerDopplerFactor(settings.dopplerFactor); // Why is this here?
+            // SoundManager::SetListenerDopplerFactor(settings.dopplerFactor);
         }
         HoverTooltip(Get("settings.audio.tooltip.doppler_factor").c_str());
 
@@ -616,109 +623,6 @@ namespace {
 
         // Thumbnail of the current background texture
         DrawTextureThumbnailRow(LevelManager::CurrentLevel(), Editor::backgroundTextureIndex);
-
-        ImGui::Separator();
-
-        // ---- Rendering ----------------------------------------------------
-        SectionHeader(Get("settings.rendering.title").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::InputInt(
-            Get("editor.background_texture").c_str(),
-            &Editor::backgroundTextureIndex
-        );
-        HoverTooltip(
-            Get("settings.rendering.tooltip.background_texture").c_str()
-        );
-
-        ImGui::Spacing();
-
-        DrawTextureThumbnailRow(
-            LevelManager::CurrentLevel(),
-            Editor::backgroundTextureIndex
-        );
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        {
-            struct TexturePresetOption {
-                RendererTextureSettings value;
-                std::string label;
-                std::string tooltip;
-            };
-
-            const std::array<TexturePresetOption, 6> options = {
-                {
-                    {
-                        PIXEL_ART_SHIMMERY,
-                        Get("settings.rendering.texture_preset.pixel_art_shimmery"),
-                        Get("settings.rendering.tooltip.texture_preset.pixel_art_shimmery")
-                    },
-                    {
-                        PIXEL_ART_LESS_MOIRE,
-                        Get("settings.rendering.texture_preset.pixel_art_less_moire"),
-                        Get("settings.rendering.tooltip.texture_preset.pixel_art_less_moire")
-                    },
-                    {
-                        PIXEL_ART_SMOOTH_DISTANCE,
-                        Get("settings.rendering.texture_preset.pixel_art_smooth_distance"),
-                        Get("settings.rendering.tooltip.texture_preset.pixel_art_smooth_distance")
-                    },
-                    {
-                        REALISTIC_NORMAL,
-                        Get("settings.rendering.texture_preset.realistic_normal"),
-                        Get("settings.rendering.tooltip.texture_preset.realistic_normal")
-                    },
-                    {
-                        RETRO,
-                        Get("settings.rendering.texture_preset.retro"),
-                        Get("settings.rendering.tooltip.texture_preset.retro")
-                    },
-                    {
-                        LOW_RES,
-                        Get("settings.rendering.texture_preset.low_res"),
-                        Get("settings.rendering.tooltip.texture_preset.low_res")
-                    }
-                }
-            };
-
-            const TexturePresetOption *currentOption = &options[0];
-
-            for (const TexturePresetOption &option: options) {
-                if (option.value == rendererSettings.textureSetting) {
-                    currentOption = &option;
-                    break;
-                }
-            }
-
-            const std::string comboLabel =
-                    Get("settings.rendering.texture_preset");
-
-            if (ImGui::BeginCombo(comboLabel.c_str(), currentOption->label.c_str())) {
-                for (const TexturePresetOption &option: options) {
-                    const bool isSelected = rendererSettings.textureSetting == option.value;
-
-                    if (ImGui::Selectable(option.label.c_str(), isSelected))
-                        rendererSettings.textureSetting = option.value;
-
-                    HoverTooltip(option.tooltip.c_str());
-
-                    if (isSelected) ImGui::SetItemDefaultFocus();
-                }
-
-                ImGui::EndCombo();
-            }
-
-            HoverTooltip(Get("settings.rendering.tooltip.texture_preset").c_str());
-
-            ImGui::Spacing();
-
-            // Always show a brief explanation of the active preset.
-            ImGui::TextWrapped("%s", currentOption->tooltip.c_str());
-        }
 
         ImGui::End();
     }
@@ -887,7 +791,7 @@ namespace {
     }
 
     // =========================================================================
-    //  Project Settings window
+    //  Project Settings window (Feature #1)
     // =========================================================================
 
     void DrawProjectSettingsWindow() {
@@ -976,6 +880,7 @@ namespace {
 
             if (FullWidthButton(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
 
+
             PopDangerStyle();
 
             HoverTooltip(Get("editor.tooltip.shutdown").c_str());
@@ -1029,8 +934,9 @@ namespace {
 
             ImGui::SameLine();
 
-            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(80.0f, 0.0f)))
+            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(80.0f, 0.0f))) {
                 ImGui::CloseCurrentPopup();
+            }
 
             ImGui::EndPopup();
         }
@@ -1083,7 +989,7 @@ namespace {
     }
 
     // =========================================================================
-    //  Hierarchy panel - search, type-coloured icons, counts,
+    //  Hierarchy panel (Feature #10) — search, type-coloured icons, counts,
     //  deferred deletion, copy-ID context menu
     // =========================================================================
 
@@ -1485,6 +1391,52 @@ namespace {
         DrawSelectedSectorInspector(level);
         DrawSelectedEntityInspector(level);
         DrawSelectedWallInspector(level);
+    }
+
+    // =========================================================================
+    //  Asset Browser panel — project asset file explorer, locked to the
+    //  project's Assets folder. See AssetBrowser.{hpp,cpp} for the scanning /
+    //  drawing implementation; this just hosts it in its own dockable window.
+    // =========================================================================
+
+    void DrawAssetBrowserPanel() {
+        // First-frame init: the project is guaranteed to be loaded by the
+        // time DrawEditorUI() runs, so this is the safe place to root the
+        // browser rather than wiring it through Editor::Start().
+        if (!assetBrowserInitialized) {
+            assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
+            assetBrowserInitialized = true;
+        }
+
+        ImGui::Begin(Get("editor.asset_browser").c_str());
+
+        if (ImGui::Button(Get("editor.asset_browser.refresh").c_str())) {
+            assetBrowser.Refresh();
+        }
+        HoverTooltip(Get("editor.tooltip.asset_browser_refresh").c_str());
+
+        ImGui::Spacing();
+
+        assetBrowser.Draw(renderer);
+
+        // Hook point: other editor controls (e.g. the wall/ceil/floor
+        // texture-index fields) can later call
+        // assetBrowser.ConsumePendingConfirmedSelection(...) themselves,
+        // or accept AssetBrowser::PNG_DRAG_DROP_PAYLOAD_TYPE via
+        // ImGui::AcceptDragDropPayload. For now a confirmed pick just
+        // surfaces as a toast.
+        std::filesystem::path confirmedPath;
+        if (assetBrowser.ConsumePendingConfirmedSelection(confirmedPath)) {
+            char buf[192];
+            std::snprintf(
+                buf, sizeof(buf),
+                Get("editor.asset_browser.notification.selected").c_str(),
+                confirmedPath.filename().string().c_str()
+            );
+            ShowNotification(buf);
+        }
+
+        ImGui::End();
     }
 } // anonymous namespace
 
@@ -1933,6 +1885,7 @@ namespace MapEditorInternal {
         DrawWorldSettings();
         DrawHierarchyPanel(level);
         DrawProjectSettingsButton();
+        DrawAssetBrowserPanel();
 
         // ---- Toast notification -------------------------------------------
         DrawNotification(dt);
