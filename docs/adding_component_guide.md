@@ -76,7 +76,15 @@ Use the wrappers for existing components as references.
 
 ---
 
-## 5. `src/Editor/ImGuiDrawFunctions.cpp`
+## 5. `src/Runtime/Scripting/LuaComponentBindings.cpp`
+1. Add a new lua.user_type for the component
+2. Existing code should provide enough context to add a new component
+
+## 6. `src/Runtime/Scripting/LuaEntityBindings.cpp`
+1. Add a new property for the component
+2. Existing code should provide enough context to add a new component
+
+## 7. `src/Editor/ImGuiDrawFunctions.cpp`
 
 1. Open `DrawComponentEditor()`.
 
@@ -92,7 +100,7 @@ Use the wrappers for existing components as references.
 
 ---
 
-## 6. `src/Objects/Level.cpp`
+## 8. `src/Objects/Level.cpp`
 
 ### `ID Level::CreateEntity(Entity& copy)`
 
@@ -108,7 +116,7 @@ Add the appropriate removal call alongside the existing component-removal logic.
 
 ---
 
-## 7. `src/Map/LevelSerilezation.cpp`
+## 9. `src/Map/LevelSerilezation.cpp`
 
 ### `LoadComponents()`
 
