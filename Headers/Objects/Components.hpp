@@ -16,7 +16,6 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
-
 enum ComponentType {
     CMP_TRANSFORM,
     CMP_SPRITE,
@@ -222,12 +221,6 @@ struct Sector;
 struct ComponentTransform {
     ID ownerID = -1;
     /*
-     * Engine coordinate convention:
-     *
-     * position.x = world X
-     * position.y = world Z / horizontal depth
-     * position.z = absolute world height
-     *
      * relativeHeight = height relative to the current sector floor
      *
      * Transform origin is the object's feet
@@ -236,7 +229,6 @@ struct ComponentTransform {
     float relativeHeight = .0f;
     Vector2 forward = {1.0f, .0f};
 
-    // Scale convention same as position. x, y = World x, z; z = World y. This does not affect Sprites but only Colliders
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 
     int sectorIndex = -1;

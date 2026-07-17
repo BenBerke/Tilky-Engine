@@ -25,21 +25,6 @@ namespace {
 
         return LevelManager::CurrentLevel();
     }
-
-    // REMOVED: RebuildPlacedCornersFromWalls(const Level&) used to live here.
-    // It rebuilt the old flat `placedCorners` list (no IDs) from wall
-    // start/end points after loading a level, so Wall Mode had visible
-    // corners to click on.
-    //
-    // Wall Mode is gone, and the editor revamp's snapping
-    // (MapEditorInternal::ResolveSnapPoint in MapEditorGeometry.cpp) already
-    // reads wall start/end points straight from level.walls every time it
-    // resolves a snap point - it doesn't need a precomputed mirror of them.
-    // Dots (MapEditorInternal::dots) are a separate, deliberately
-    // user-placed set of points; auto-populating one Dot per wall endpoint
-    // on every level load would just clutter the Hierarchy panel for no
-    // benefit, so this helper (and its call in LoadLevel below) was removed
-    // rather than ported to the Dot system.
 }
 
 namespace MapEditorInternal {
@@ -56,13 +41,8 @@ namespace MapEditorInternal {
             }
 
             for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
-                if (!entry.is_regular_file()) {
-                    continue;
-                }
-
-                if (entry.path().extension() != ".bson") {
-                    continue;
-                }
+                if (!entry.is_regular_file()) continue;
+                if (entry.path().extension() != ".bson") continue;
 
                 Editor::maps.push_back(entry.path().stem().string());
             }
@@ -93,12 +73,7 @@ namespace MapEditorInternal {
         const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
         std::string errorMessage;
 
-        if (!LevelSerialization::SaveLevelToFile(
-                path,
-                level,
-                &extraData,
-                &errorMessage
-            )) {
+        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
             spdlog::critical("{}", errorMessage);
             return false;
         }
@@ -122,12 +97,7 @@ namespace Editor {
         LevelSerialization::LevelExtraData extraData;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(
-                path,
-                loadedLevel,
-                &extraData,
-                &errorMessage
-            )) {
+        if (!LevelSerialization::LoadLevelFromFile(path, loadedLevel, &extraData, &errorMessage)) {
             spdlog::critical("{}", errorMessage);
             return false;
         }

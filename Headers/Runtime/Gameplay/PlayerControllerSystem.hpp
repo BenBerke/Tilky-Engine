@@ -8,14 +8,13 @@
 #include <vector>
 
 #include "../../Objects/Components.hpp"
-#include "../../Objects/Wall.hpp"
 #include "../../Objects/Sector.hpp"
 
 #include "Headers/Math/Vector/Vector2.hpp"
 
 namespace PlayerControllerSystem {
     inline Vector2 GetPlanarPosition(const ComponentTransform& transform) {
-        return { transform.position.x, transform.position.z};
+        return {transform.position.x,transform.position.z};
     }
 
     inline void SetPlanarPosition(ComponentTransform& transform, const Vector2& planarPosition) {
@@ -23,14 +22,13 @@ namespace PlayerControllerSystem {
         transform.position.z = planarPosition.y;
     }
 
-    inline Vector2 GetPlanarVelocity(const ComponentPlayerController& controller) {
-        return {controller.velocity.x,controller.velocity.z};
+    inline Vector2 GetPlanarVelocity(const ComponentRigidbody& rigidbody) {
+        return {rigidbody.velocity.x,rigidbody.velocity.z};
     }
 
-    inline void SetPlanarVelocity(ComponentPlayerController& controller, const Vector2& planarVelocity) {
-        controller.velocity.x = planarVelocity.x;
-        controller.velocity.y = 0.0f;
-        controller.velocity.z = planarVelocity.y;
+    inline void SetPlanarVelocity(ComponentRigidbody& rigidbody, const Vector2& planarVelocity) {
+        rigidbody.velocity.x = planarVelocity.x;
+        rigidbody.velocity.z = planarVelocity.y;
     }
 
     void Start(

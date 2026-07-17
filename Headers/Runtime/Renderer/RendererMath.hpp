@@ -7,8 +7,6 @@
 namespace RendererMath {
     inline constexpr float DEBUG_MAP_SCALE = 200.0f;
 
-    float DegToRad(float degrees);
-
     Vector2 RotatePoint(const Vector2& point, float angleRad);
 
     Vector2 WorldToDebugNdc(const Vector2& worldPoint, const Vector2& playerPos);

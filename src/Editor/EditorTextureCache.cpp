@@ -24,9 +24,7 @@ namespace {
             return static_cast<char>(std::tolower(c));
         });
 
-        return extension == ".png" ||
-               extension == ".jpg" ||
-               extension == ".jpeg";
+        return extension == ".png" || extension == ".jpg" || extension == ".jpeg";
     }
 
     std::string NormalizeFileName(std::string fileName) {
@@ -37,21 +35,16 @@ namespace {
         return fileName;
     }
 
-    bool LoadTextureIndexManifest(
-        const std::filesystem::path& manifestPath,
-        std::vector<std::string>& indexedFileNames
-    ) {
+    bool LoadTextureIndexManifest(const std::filesystem::path& manifestPath, std::vector<std::string>& indexedFileNames) {
         std::ifstream file(manifestPath);
 
-        if (!file.is_open())
-            return false;
+        if (!file.is_open()) return false;
 
         std::string line;
 
         while (std::getline(file, line)) {
             // Remove the carriage return produced by Windows line endings.
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
+            if (!line.empty() && line.back() == '\r') line.pop_back();
 
             indexedFileNames.push_back(line);
         }
@@ -59,33 +52,22 @@ namespace {
         return true;
     }
 
-    bool SaveTextureIndexManifest(
-        const std::filesystem::path& manifestPath,
-        const std::vector<std::string>& indexedFileNames
-    ) {
-        const std::filesystem::path temporaryPath =
-            manifestPath.string() + ".tmp";
+    bool SaveTextureIndexManifest(const std::filesystem::path& manifestPath, const std::vector<std::string>& indexedFileNames) {
+        const std::filesystem::path temporaryPath = manifestPath.string() + ".tmp";
 
         {
             std::ofstream file(temporaryPath, std::ios::trunc);
 
             if (!file.is_open()) {
-                spdlog::error(
-                    "Failed to create texture index manifest: {}",
-                    temporaryPath.string()
-                );
+                spdlog::error( "Failed to create texture index manifest: {}",temporaryPath.string());
 
                 return false;
             }
 
-            for (const std::string& fileName : indexedFileNames)
-                file << fileName << '\n';
+            for (const std::string& fileName : indexedFileNames) file << fileName << '\n';
 
             if (!file.good()) {
-                spdlog::error(
-                    "Failed while writing texture index manifest: {}",
-                    temporaryPath.string()
-                );
+                spdlog::error("Failed while writing texture index manifest: {}", temporaryPath.string());
 
                 return false;
             }
@@ -103,11 +85,7 @@ namespace {
         std::filesystem::remove(temporaryPath);
 
         if (error) {
-            spdlog::error(
-                "Failed to save texture index manifest {}: {}",
-                manifestPath.string(),
-                error.message()
-            );
+            spdlog::error("Failed to save texture index manifest {}: {}", manifestPath.string(), error.message());
 
             return false;
         }
@@ -120,25 +98,18 @@ namespace EditorTextureCache {
     void RefreshLevelTexturesFromFolder() {
         Level& level = LevelManager::CurrentLevel();
 
-        const std::filesystem::path texturesPath =
-            ProjectManager::GetTexturesPath();
+        const std::filesystem::path texturesPath = ProjectManager::GetTexturesPath();
 
         if (!std::filesystem::exists(texturesPath)) {
             std::filesystem::create_directories(texturesPath);
 
-            spdlog::warn(
-                "Created missing Textures folder: {}",
-                texturesPath.string()
-            );
+            spdlog::warn("Created missing Textures folder: {}", texturesPath.string());
 
             return;
         }
 
         if (!std::filesystem::is_directory(texturesPath)) {
-            spdlog::error(
-                "Textures path is not a directory: {}",
-                texturesPath.string()
-            );
+            spdlog::error("Textures path is not a directory: {}", texturesPath.string());
 
             return;
         }

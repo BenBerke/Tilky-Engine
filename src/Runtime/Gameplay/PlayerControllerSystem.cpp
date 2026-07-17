@@ -16,14 +16,11 @@
 /// Anything in this script can technically be achieved through a user-made Lua script
 
 namespace {
-    const Vector3 GetCameraPosition(
-        const ComponentPlayerController& controller,
-        const ComponentTransform& playerTransform
-    ) {
+    const Vector3 GetCameraPosition(const ComponentPlayerController& controller, const ComponentTransform& playerTransform) {
         return {
             playerTransform.position.x,
-            playerTransform.position.y,
-            playerTransform.position.z + controller.eyeHeight
+            playerTransform.position.y + controller.eyeHeight,
+            playerTransform.position.z
         };
     }
 
@@ -37,9 +34,7 @@ namespace {
         SoundManager::SetListenerOrientation(camera.forward);
         SoundManager::SetListenerVelocity(rigidbody.velocity);
     }
-}
 
-namespace {
     double jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 }
 
@@ -64,13 +59,6 @@ namespace PlayerControllerSystem {
         ComponentCollider *sphereCollider,
         const std::vector<Sector> &sectors
     ) {
-        // Use x/y for map lookup.
-        // In your engine:
-        // x = world X
-        // y = world Z / planar depth
-        // z = height
-
-
         Vector2 input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
@@ -80,8 +68,8 @@ namespace PlayerControllerSystem {
 
         const bool grounded =
         playerTransform.sectorIndex != -1 &&
-        std::abs(playerTransform.position.z - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
-        rigidbody.velocity.z <= 0.0f;
+        std::abs(playerTransform.position.y - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
+        rigidbody.velocity.y <= 0.0f;
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::timeInSeconds;
 
@@ -93,18 +81,15 @@ namespace PlayerControllerSystem {
         const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
 
         if (hasBufferedJump && grounded) {
-            rigidbody.velocity.z = controller.jumpPower;
+            rigidbody.velocity.y = controller.jumpPower;
             jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
         }
 
         // Optional cleanup: expire old buffered input.
-        if (jumpBufferAge > jumpBufferSeconds) {
-            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
-        }
+        if (jumpBufferAge > jumpBufferSeconds) jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 
         controller.currentSpeed =
-                InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
-                InputManager::GetKey(SDL_SCANCODE_W)
+                InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)
                     ? controller.runningSpeed
                     : controller.speed;
 
@@ -115,22 +100,13 @@ namespace PlayerControllerSystem {
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
-        camera.pitch = std::clamp(
-            camera.pitch,
-            controller.minPitch,
-            controller.maxPitch
-        );
+        camera.pitch = std::clamp(camera.pitch, controller.minPitch, controller.maxPitch);
 
         camera.yaw = std::fmod(camera.yaw, 360.0f);
 
         if (camera.yaw < 0.0f) camera.yaw += 360.0f;
 
-
-        camera.yaw = std::clamp(
-            camera.yaw,
-            controller.minYaw,
-            controller.maxYaw
-        );
+        camera.yaw = std::clamp(camera.yaw, controller.minYaw, controller.maxYaw);
 
         const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
@@ -141,19 +117,16 @@ namespace PlayerControllerSystem {
         const Vector2 right = {yawCos, -yawSin};
 
         if (input.x != 0.0f || input.y != 0.0f) {
-            const Vector2 moveDirection =
-                    Vector2Math::Normalized(
-                        right * input.x + forward * input.y
-                    );
+            const Vector2 moveDirection = Vector2Math::Normalized(right * input.x + forward * input.y);
 
-            const Vector2 desiredVelocity =
-                    moveDirection * controller.currentSpeed;
+            const Vector2 desiredVelocity = moveDirection * controller.currentSpeed;
 
             rigidbody.velocity.x = desiredVelocity.x;
-            rigidbody.velocity.y = desiredVelocity.y;
-        } else {
+            rigidbody.velocity.z = desiredVelocity.y;
+        }
+        else {
             rigidbody.velocity.x = 0.0f;
-            rigidbody.velocity.y = 0.0f;
+            rigidbody.velocity.z = 0.0f;
         }
 
         (void)sectors; // Prevents annoying warnings

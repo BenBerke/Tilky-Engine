@@ -36,9 +36,7 @@ public:
     void SetUseEditorCamera(const bool enabled) {
         useEditorCamera = enabled;
 
-        if (useEditorCamera) {
-            CreateEditorCamera();
-        }
+        if (useEditorCamera) CreateEditorCamera();
     }
 
     [[nodiscard]] bool IsUsingEditorCamera() const {
@@ -64,9 +62,7 @@ protected:
     inline static ComponentTransform* editorCameraTransform = nullptr;
 
     static void CreateEditorCamera() {
-        if (editorCamera != nullptr && editorCameraTransform != nullptr) {
-            return;
-        }
+        if (editorCamera != nullptr && editorCameraTransform != nullptr) return;
 
         DestroyEditorCamera();
 

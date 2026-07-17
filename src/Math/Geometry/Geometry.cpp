@@ -22,28 +22,16 @@ namespace Geometry {
             return area * 0.5f;
         }
 
-        bool IsInsideTriangle(
-            const Vector2 a,
-            const Vector2 b,
-            const Vector2 c,
-            const Vector2 p
-        ) {
+        bool IsInsideTriangle(const Vector2 a, const Vector2 b, const Vector2 c, const Vector2 p) {
             const float cp1 = CrossAtPoint(a, b, p);
             const float cp2 = CrossAtPoint(b, c, p);
             const float cp3 = CrossAtPoint(c, a, p);
 
-            return cp1 >= -Constants::Epsilon &&
-                   cp2 >= -Constants::Epsilon &&
-                   cp3 >= -Constants::Epsilon;
+            return cp1 >= -Constants::Epsilon && cp2 >= -Constants::Epsilon && cp3 >= -Constants::Epsilon;
         }
 
         // Related to non-convex sector triangulation
-        bool IsEar(
-            const std::vector<Vector2>& vertices,
-            const int prev,
-            const int curr,
-            const int next
-        ) {
+        bool IsEar(const std::vector<Vector2>& vertices, const int prev, const int curr, const int next) {
             const Vector2 a = vertices[prev];
             const Vector2 b = vertices[curr];
             const Vector2 c = vertices[next];

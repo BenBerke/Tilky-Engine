@@ -98,12 +98,12 @@ namespace {
 
 namespace GameFunctions {
     std::optional<RayHit> Raycast(
-        Level& level,
-        Vector3 pos,
-        const Vector3& dir,
-        float length,
-        ID ignoredEntity,
-        bool requireCollider
+        Level &level,
+        const Vector3 pos,
+        const Vector3 &dir,
+        const float length,
+        const ID ignoredEntity,
+        const bool requireCollider
     ) {
         if (dir.IsZero()) return std::nullopt;
 
@@ -144,7 +144,11 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
-        auto submitSectorHit = [&](Sector &sector, const RayHitType type, const float distance) {
+        auto submitSectorHit = [&](
+            Sector &sector,
+            const RayHitType type,
+            const float distance
+        ) {
             if (distance >= closestDistance) return;
 
             closestDistance = distance;
@@ -160,12 +164,15 @@ namespace GameFunctions {
             rayHit = hit;
         };
 
-
-        //todo binary space partioning for visible wall check
-        for (Wall& wall: level.walls) {
+        // TODO: Use spatial partitioning instead of checking every wall.
+        for (Wall &wall: level.walls) {
             for (int j = 0; j < wall.quad3DCount; ++j) {
                 const auto &quad = wall.quads3D[j];
 
+                // wall.quads3D must now use:
+                // x = world X
+                // y = world Y / vertical
+                // z = world Z / depth
                 const Vector3 &bottomStart = quad[0];
                 const Vector3 &bottomEnd = quad[1];
                 const Vector3 &topEnd = quad[2];
@@ -180,7 +187,9 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitA.has_value()) submitWallHit(wall, *hitA);
+                if (hitA.has_value()) {
+                    submitWallHit(wall, *hitA);
+                }
 
                 const std::optional<float> hitB = RayTriangleIntersection(
                     pos,
@@ -191,43 +200,44 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitB.has_value()) submitWallHit(wall, *hitB);
+                if (hitB.has_value()) {
+                    submitWallHit(wall, *hitB);
+                }
             }
         }
 
-        // Entity positions use:
+        // Entity coordinate convention:
         // position.x = world X
-        // position.y = world Z / horizontal depth
-        // position.z = world Y
-        for (Entity& entity: level.entities) {
+        // position.y = world Y / vertical
+        // position.z = world Z / depth
+        //
+        // position.y represents the entity's bottom/feet height.
+        for (Entity &entity: level.entities) {
             if (entity.id == ignoredEntity) continue;
 
             const ComponentTransform *transform = level.transforms.Get(entity.id);
             if (transform == nullptr) [[unlikely]] continue;
 
-            // If requireCollider is false, raycast every entity as an AABB.
-            // transform->scale is Vector2:
+            // Raycast entities using their transform bounds when a collider
+            // is not required.
+            //
+            // Transform scale convention:
             // scale.x = width along world X
-            // scale.y = depth along world Z AND height upward
+            // scale.y = height along world Y
+            // scale.z = depth along world Z
             if (!requireCollider) {
-                const Vector3 boxSize = {
-                    transform->scale.x,
-                    transform->scale.y,
-                    transform->scale.y
-                };
-
-                const Vector3 halfSize = boxSize * 0.5f;
+                const Vector3 halfSize = transform->scale * 0.5f;
 
                 const Vector3 boxMin = {
                     transform->position.x - halfSize.x,
-                    transform->position.y - halfSize.y,
-                    transform->position.z
+                    transform->position.y,
+                    transform->position.z - halfSize.z
                 };
 
                 const Vector3 boxMax = {
                     transform->position.x + halfSize.x,
-                    transform->position.y + halfSize.y,
-                    transform->position.z + boxSize.z
+                    transform->position.y + transform->scale.y,
+                    transform->position.z + halfSize.z
                 };
 
                 const std::optional<float> hitDistance = RayAABBIntersection(
@@ -238,13 +248,13 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value())
+                if (hitDistance.has_value()) {
                     submitEntityHit(entity, *hitDistance);
+                }
 
                 continue;
             }
 
-            // Normal collider-required behavior.
             const ComponentCollider *collider = level.colliders.Get(entity.id);
 
             if (collider == nullptr) continue;
@@ -253,12 +263,12 @@ namespace GameFunctions {
             if (collider->type == COLLIDERTYPE_SPHERE) {
                 const float radius = transform->scale.x;
 
-                // transform->position.z is treated as the entity bottom/feet height,
-                // so the sphere center is radius units above that.
+                // position.y is the bottom of the sphere, so its center is
+                // one radius above the entity's position.
                 const Vector3 center = {
                     transform->position.x,
-                    transform->position.y,
-                    transform->position.z + radius
+                    transform->position.y + radius,
+                    transform->position.z
                 };
 
                 const std::optional<float> hitDistance = RaySphereIntersection(
@@ -269,28 +279,22 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value())
+                if (hitDistance.has_value()) {
                     submitEntityHit(entity, *hitDistance);
-            }
-            else if (collider->type == COLLIDERTYPE_BOX) {
-                // Box collider convention:
-                // collider->scale.x = width along world X
-                // collider->scale.y = depth along world Z
-                // collider->scale.z = height upward
-                //
-                // transform->position.z is the bottom of the entity relative to the floor.
+                }
+            } else if (collider->type == COLLIDERTYPE_BOX) {
                 const Vector3 halfSize = collider->scale * 0.5f;
 
                 const Vector3 boxMin = {
                     transform->position.x - halfSize.x,
-                    transform->position.y - halfSize.y,
-                    transform->position.z
+                    transform->position.y,
+                    transform->position.z - halfSize.z
                 };
 
                 const Vector3 boxMax = {
                     transform->position.x + halfSize.x,
-                    transform->position.y + halfSize.y,
-                    transform->position.z + collider->scale.z
+                    transform->position.y + collider->scale.y,
+                    transform->position.z + halfSize.z
                 };
 
                 const std::optional<float> hitDistance = RayAABBIntersection(
@@ -301,15 +305,36 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+                if (hitDistance.has_value()) {
+                    submitEntityHit(entity, *hitDistance);
+                }
             }
         }
 
-        for (Sector& sector : level.sectors) {
-            for (const Triangle& triangle : sector.triangles) {
-                const Vector3 floorA = { triangle.a.x, triangle.a.y, sector.floorHeight };
-                const Vector3 floorB = { triangle.b.x, triangle.b.y, sector.floorHeight };
-                const Vector3 floorC = { triangle.c.x, triangle.c.y, sector.floorHeight };
+        // Sector triangle coordinates are stored in the horizontal XZ plane:
+        // triangle point x = world X
+        // triangle point y = world Z
+        //
+        // floorHeight and ceilingHeight are world Y values.
+        for (Sector &sector: level.sectors) {
+            for (const Triangle &triangle: sector.triangles) {
+                const Vector3 floorA = {
+                    triangle.a.x,
+                    sector.floorHeight,
+                    triangle.a.y
+                };
+
+                const Vector3 floorB = {
+                    triangle.b.x,
+                    sector.floorHeight,
+                    triangle.b.y
+                };
+
+                const Vector3 floorC = {
+                    triangle.c.x,
+                    sector.floorHeight,
+                    triangle.c.y
+                };
 
                 const std::optional<float> floorHit = RayTriangleIntersection(
                     pos,
@@ -320,11 +345,31 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (floorHit.has_value()) submitSectorHit(sector, RayHitType::SectorFloor, *floorHit);
+                if (floorHit.has_value()) {
+                    submitSectorHit(
+                        sector,
+                        RayHitType::SectorFloor,
+                        *floorHit
+                    );
+                }
 
-                const Vector3 ceilingA = { triangle.a.x, triangle.a.y, sector.ceilingHeight };
-                const Vector3 ceilingB = { triangle.b.x, triangle.b.y, sector.ceilingHeight };
-                const Vector3 ceilingC = { triangle.c.x, triangle.c.y, sector.ceilingHeight };
+                const Vector3 ceilingA = {
+                    triangle.a.x,
+                    sector.ceilingHeight,
+                    triangle.a.y
+                };
+
+                const Vector3 ceilingB = {
+                    triangle.b.x,
+                    sector.ceilingHeight,
+                    triangle.b.y
+                };
+
+                const Vector3 ceilingC = {
+                    triangle.c.x,
+                    sector.ceilingHeight,
+                    triangle.c.y
+                };
 
                 const std::optional<float> ceilingHit = RayTriangleIntersection(
                     pos,
@@ -335,7 +380,13 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (ceilingHit.has_value()) submitSectorHit(sector, RayHitType::SectorCeiling, *ceilingHit);
+                if (ceilingHit.has_value()) {
+                    submitSectorHit(
+                        sector,
+                        RayHitType::SectorCeiling,
+                        *ceilingHit
+                    );
+                }
             }
         }
 

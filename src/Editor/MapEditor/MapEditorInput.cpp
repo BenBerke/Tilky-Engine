@@ -142,11 +142,11 @@ namespace MapEditorInternal {
                         selectedEntity = *level.GetEntity(id);
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
-                        if (t != nullptr) t->SetPosition({mouseWorld.x, mouseWorld.y, 0.0f});
+                        if (t != nullptr) t->SetPosition({mouseWorld.x, 0.0f, mouseWorld.y});
                     }
 
                     // Left click only selects/places/moves — it must never
-                    // open the inspector (feature: Entity Mode click behavior).
+                    // open the inspector
                     // editingEntity is intentionally NOT set here.
                 }
             }
@@ -168,7 +168,7 @@ namespace MapEditorInternal {
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
                 if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]]
-                    t->SetPosition({mouseWorld.x, mouseWorld.y, t->position.z});
+                    t->SetPosition({mouseWorld.x, t->position.y, mouseWorld.y});
                 else [[unlikely]] spdlog::error("Entity does not have transform component");
             }
 

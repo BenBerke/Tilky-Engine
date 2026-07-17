@@ -36,11 +36,11 @@ namespace AudioSystem {
              const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
 
              if (transform != nullptr)
-                 SoundManager::SetSourcePosition(audio.name, {transform->position.x, 0.0f, transform->position.y});
+                 SoundManager::SetSourcePosition(audio.name, {transform->position.x, transform->position.y, transform->position.z});
 
-             if (audio.playOnStart && audio.soundIndex >= 0) {
+
+             if (audio.playOnStart && audio.soundIndex >= 0)
                  SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundIndex);
-             }
          }
 
         spdlog::info("Audio system started");
@@ -56,17 +56,15 @@ namespace AudioSystem {
 
             ComponentTransform* transform = level.transforms.Get(audio.ownerID);
 
-            if (transform != nullptr) {
-                SoundManager::SetSourcePosition(audio.name, {transform->position.x, 0.0f, transform->position.y});
-            }
+            if (transform != nullptr)
+                SoundManager::SetSourcePosition(audio.name, {transform->position.x, transform->position.y, transform->position.z});
 
             SoundManager::SetSourcePitch(audio.name, audio.pitch);
             SoundManager::SetSourceGain(audio.name, audio.gain);
             SoundManager::SetSourceLooping(audio.name, audio.looping);
 
-            if (audio.looping && audio.soundIndex >= 0) {
+            if (audio.looping && audio.soundIndex >= 0)
                 SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundIndex);
-            }
         }
     }
 

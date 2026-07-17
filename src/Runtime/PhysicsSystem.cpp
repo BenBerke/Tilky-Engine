@@ -44,7 +44,7 @@ static inline __m128 dot3_ss(const __m128 a, const __m128 b) {
 // Dot product of 2 lanes (x·y), result in lane 0.
 static inline __m128 dot2_ss(const __m128 a, const __m128 b) {
     const __m128 mul   = _mm_mul_ps(a, b);
-    const __m128 shuf1 = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(1,1,1,1));
+    const __m128 shuf1 = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(2,2,2,2));
     return _mm_add_ss(mul, shuf1);
 }
 
@@ -156,10 +156,12 @@ void Run(Level& level) {
             }
         }
 
+        const float selfRadius = std::max(0.0f, selfCollider.scale.x);
+
         Vector3 selfPos = {
             selfTransform->position.x,
-            selfTransform->position.y,
-            selfTransform->position.z + (selfTransform->scale.z * 0.5f)
+            selfTransform->position.y + selfRadius,
+            selfTransform->position.z
         };
 
         // ── Sphere vs Sphere ──────────────────────────────────────────────
@@ -170,34 +172,33 @@ void Run(Level& level) {
                 if (otherID == selfCollider.ownerID) continue;
 
                 ComponentCollider* otherCollider = level.colliders.Get(otherID);
-                if (otherCollider == nullptr
-                    || !otherCollider->isActive
-                    || otherCollider->isTrigger) continue;
+                if (otherCollider == nullptr || !otherCollider->isActive || otherCollider->isTrigger) continue;
                 if (otherCollider->type != COLLIDERTYPE_SPHERE) continue;
 
                 ComponentTransform* otherTransform = level.transforms.Get(otherID);
                 if (otherTransform == nullptr) [[unlikely]] continue;
 
-                const ComponentRigidbody* otherRb      = level.rigidbodies.Get(otherID);
-                const bool                otherIsStatic = (otherRb == nullptr || otherRb->isStatic);
+                const ComponentRigidbody *otherRb = level.rigidbodies.Get(otherID);
+                const bool otherIsStatic = (otherRb == nullptr || otherRb->isStatic);
 
                 // Skip one half of each dynamic pair to avoid resolving it twice.
                 // processedOtherIDs is not needed — this guard is sufficient.
                 if (!otherIsStatic && selfCollider.ownerID > otherID) continue;
 
-                const float selfRadius  = std::max(0.0f, selfCollider.scale.x);
                 const float otherRadius = std::max(0.0f, otherCollider->scale.x);
                 const float radiusSum   = selfRadius + otherRadius;
 
                 Vector3 otherPos = {
                     otherTransform->position.x,
-                    otherTransform->position.y,
-                    otherTransform->position.z + (otherTransform->scale.z * 0.5f)
+                    otherTransform->position.y + otherRadius,
+                    otherTransform->position.z
                 };
 
-                const __m128 deltaPos   = _mm_sub_ps(selfPos.reg, otherPos.reg);
+                const __m128 xzMask = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
+
+                const __m128 deltaPos = _mm_and_ps(_mm_sub_ps(selfPos.reg, otherPos.reg), xzMask);
                 const __m128 distSqrReg = dot3_ss(deltaPos, deltaPos);
-                const float  distSqr    = _mm_cvtss_f32(distSqrReg);
+                const float distSqr = _mm_cvtss_f32(distSqrReg);
 
                 if (distSqr >= radiusSum * radiusSum) continue;
 
@@ -228,8 +229,8 @@ void Run(Level& level) {
 
                 selfPos = {
                     selfTransform->position.x,
-                    selfTransform->position.y,
-                    selfTransform->position.z + (selfTransform->scale.z * 0.5f)
+                    selfTransform->position.y + selfRadius,
+                    selfTransform->position.z
                 };
             }
         }
@@ -238,18 +239,12 @@ void Run(Level& level) {
         {
             ZoneScopedN("Wall narrowphase");
 
-            const float radius = selfCollider.scale.x;
-
             for (const Wall* wall : allWalls) {
                 if (wall == nullptr) continue;
 
-                // wall->normal is a unit XY vector computed at construction time.
-                // Wall normals are always horizontal (Z = 0), so the old Z-check
-                // (abs(quadNormalZ) > 0.75) can never fire and is removed entirely.
-                // We reuse the 2D normal as a 3D fallback with Z = 0.
-                const __m128 quadNormalReg = _mm_set_ps(0.0f, 0.0f,
-                                                         wall->normal.y,
-                                                         wall->normal.x);
+                // wall->normal is a unit X/Z vector stored as Vector2 {x, z}.
+                // Convert it to a 3D horizontal normal with Y = 0.
+                const __m128 quadNormalReg = _mm_set_ps(0.0f, wall->normal.y, 0.0f,wall->normal.x);
 
                 for (int i = 0; i < wall->quad3DCount; ++i) {
                     ZoneScopedN("Quad test");
@@ -257,18 +252,19 @@ void Run(Level& level) {
 
                     // ── AABB early-out (3D, expanded by radius) ───────────
                     // Requires quadAabbMin/quadAabbMax on Wall — see Wall.hpp patch below.
-                    if (selfPos.x < wall->quadAabbMin[i].x - radius ||
-                        selfPos.x > wall->quadAabbMax[i].x + radius) continue;
-                    if (selfPos.y < wall->quadAabbMin[i].y - radius ||
-                        selfPos.y > wall->quadAabbMax[i].y + radius) continue;
-                    if (selfPos.z < wall->quadAabbMin[i].z - radius ||
-                        selfPos.z > wall->quadAabbMax[i].z + radius) continue;
+                    if (selfPos.x < wall->quadAabbMin[i].x - selfRadius ||
+                        selfPos.x > wall->quadAabbMax[i].x + selfRadius) continue;
+                    if (selfPos.y < wall->quadAabbMin[i].y - selfRadius ||
+                        selfPos.y > wall->quadAabbMax[i].y + selfRadius) continue;
+                    if (selfPos.z < wall->quadAabbMin[i].z - selfRadius ||
+                        selfPos.z > wall->quadAabbMax[i].z + selfRadius) continue;
 
                     // ── Plane-distance early-out ──────────────────────────
-                    // Wall normal is horizontal so dot is purely XY.
-                    const float planeDist = (selfPos.x - quad[0].x) * wall->normal.x
-                                          + (selfPos.y - quad[0].y) * wall->normal.y;
-                    if (std::abs(planeDist) > radius) continue;
+                    // Wall normal is horizontal so dot is purely XZ.
+                    const float planeDist = (selfPos.x - quad[0].x) * wall->normal.x +
+                        (selfPos.z - quad[0].z) * wall->normal.y;
+
+                    if (std::abs(planeDist) > selfRadius) continue;
 
                     // ── Closest-point test ────────────────────────────────
                     {
@@ -277,59 +273,53 @@ void Run(Level& level) {
                         const Vector3 closestT1 = ClosestPointOnTriangle(selfPos, quad[0], quad[1], quad[2]);
                         const Vector3 closestT2 = ClosestPointOnTriangle(selfPos, quad[0], quad[2], quad[3]);
 
-                        const __m128 diff1   = _mm_sub_ps(selfPos.reg, closestT1.reg);
-                        const __m128 diff2   = _mm_sub_ps(selfPos.reg, closestT2.reg);
-                        const float  distSq1 = _mm_cvtss_f32(dot3_ss(diff1, diff1));
-                        const float  distSq2 = _mm_cvtss_f32(dot3_ss(diff2, diff2));
+                        const __m128 diff1 = _mm_sub_ps(selfPos.reg, closestT1.reg);
+                        const __m128 diff2 = _mm_sub_ps(selfPos.reg, closestT2.reg);
+                        const float distSq1 = _mm_cvtss_f32(dot3_ss(diff1, diff1));
+                        const float distSq2 = _mm_cvtss_f32(dot3_ss(diff2, diff2));
 
                         const bool   use1      = distSq1 < distSq2;
                         const float  minDistSq = use1 ? distSq1 : distSq2;
                         const __m128 bestDiff  = use1 ? diff1 : diff2;
 
-                        if (minDistSq > radius * radius) continue;
+                        if (minDistSq > selfRadius * selfRadius) continue;
                         if (selfRb->isStatic) break;
 
-                        const __m128 minDistSqReg    = _mm_set_ss(minDistSq);
-                        const __m128 invDistanceReg  = rsqrt_nr_ss(minDistSqReg);
-                        const float  distance        = minDistSq * _mm_cvtss_f32(invDistanceReg);
-                        const float  penetrationDepth = radius - distance;
+                        const __m128 minDistSqReg = _mm_set_ss(minDistSq);
+                        const __m128 invDistanceReg = rsqrt_nr_ss(minDistSqReg);
+                        const float distance = minDistSq * _mm_cvtss_f32(invDistanceReg);
+                        const float penetrationDepth = selfRadius - distance;
 
-                        const __m128 xyMask = _mm_castsi128_ps(_mm_setr_epi32(-1, -1, 0, 0));
-                        const __m128 invD   = TILKY_MM_SHUFFLE_PS(invDistanceReg, invDistanceReg,
-                                                                   _MM_SHUFFLE(0,0,0,0));
-                        const __m128 calculatedNormal   = _mm_and_ps(_mm_mul_ps(bestDiff, invD), xyMask);
-                        const __m128 fallbackNormal     = _mm_and_ps(quadNormalReg, xyMask);
-                        const __m128 isSafe2            = _mm_cmpgt_ss(_mm_set_ss(distance),
-                                                                        _mm_set_ss(0.0001f));
-                        const __m128 isSafe2Broad       = TILKY_MM_SHUFFLE_PS(isSafe2, isSafe2,
-                                                                               _MM_SHUFFLE(0,0,0,0));
-                        const __m128 collisionNormalReg = blend_ps(fallbackNormal,
-                                                                    calculatedNormal,
-                                                                    isSafe2Broad);
+                        const __m128 xzMask = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
+                        const __m128 invD = TILKY_MM_SHUFFLE_PS(invDistanceReg, invDistanceReg, _MM_SHUFFLE(0,0,0,0));
+                        const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(bestDiff, invD), xzMask);
+                        const __m128 fallbackNormal = _mm_and_ps(quadNormalReg, xzMask);
+                        const __m128 isSafe2 = _mm_cmpgt_ss(_mm_set_ss(distance), _mm_set_ss(0.0001f));
+                        const __m128 isSafe2Broad = TILKY_MM_SHUFFLE_PS(isSafe2, isSafe2, _MM_SHUFFLE(0,0,0,0));
+                        const __m128 collisionNormalReg = blend_ps(fallbackNormal, calculatedNormal, isSafe2Broad);
 
-                        const __m128 horizLenSqReg  = dot2_ss(collisionNormalReg, collisionNormalReg);
-                        const float  horizontalLenSq = _mm_cvtss_f32(horizLenSqReg);
+                        const __m128 horizLenSqReg = dot2_ss(collisionNormalReg, collisionNormalReg);
+                        const float horizontalLenSq = _mm_cvtss_f32(horizLenSqReg);
                         if (horizontalLenSq <= 0.000001f) continue;
 
                         __m128 invHorizLen = rsqrt_nr_ss(horizLenSqReg);
-                        invHorizLen = TILKY_MM_SHUFFLE_PS(invHorizLen, invHorizLen,
-                                                          _MM_SHUFFLE(0,0,0,0));
+                        invHorizLen = TILKY_MM_SHUFFLE_PS(invHorizLen, invHorizLen, _MM_SHUFFLE(0,0,0,0));
                         const __m128 normCollNormal = _mm_mul_ps(collisionNormalReg, invHorizLen);
 
                         selfTransform->AddPosition(Vector3(normCollNormal) * penetrationDepth);
 
-                        const auto  normal   = Vector3(normCollNormal);
+                        const auto normal = Vector3(normCollNormal);
                         const float intoWall = selfRb->velocity.x * normal.x
-                                             + selfRb->velocity.y * normal.y;
+                                               + selfRb->velocity.z * normal.z;
                         if (intoWall < 0.0f) {
                             selfRb->velocity.x -= normal.x * intoWall;
-                            selfRb->velocity.y -= normal.y * intoWall;
+                            selfRb->velocity.z -= normal.z * intoWall;
                         }
 
                         selfPos = {
                             selfTransform->position.x,
-                            selfTransform->position.y,
-                            selfTransform->position.z + selfTransform->scale.z * 0.5f
+                            selfTransform->position.y + selfRadius,
+                            selfTransform->position.z
                         };
                     }
                 }
@@ -340,31 +330,28 @@ void Run(Level& level) {
         {
             ZoneScopedN("Sector Clamp");
 
-            const Vector2 feetPoint2D = {
-                selfTransform->position.x,
-                selfTransform->position.y
-            };
+            const Vector2 feetPoint2D = { selfTransform->position.x, selfTransform->position.z};
 
             if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint2D)) continue;
 
             const float floorWorld   = sector.floorHeight;
             const float ceilingWorld = sector.ceilingHeight;
-            const float feetWorld    = selfTransform->position.z;
+            const float feetWorld    = selfTransform->position.y;
 
             if (feetWorld < floorWorld) {
-                selfTransform->AddPosition({ 0.0f, 0.0f, floorWorld - feetWorld });
-                if (selfRb->velocity.z < 0.0f) selfRb->velocity.z = 0.0f;
+                selfTransform->AddPosition({ 0.0f, floorWorld - feetWorld, 0.0f });
+                if (selfRb->velocity.y < 0.0f) selfRb->velocity.y = 0.0f;
             }
 
-            const float correctedFeetWorld = selfTransform->position.z;
-            const float correctedHeadWorld = correctedFeetWorld + selfTransform->scale.z;
+            const float correctedFeetWorld = selfTransform->position.y;
+            const float correctedHeadWorld = correctedFeetWorld + selfTransform->scale.y;
 
             if (correctedHeadWorld > ceilingWorld) {
-                selfTransform->AddPosition({ 0.0f, 0.0f, ceilingWorld - correctedHeadWorld });
-                if (selfRb->velocity.z > 0.0f) selfRb->velocity.z = 0.0f;
+                selfTransform->AddPosition({ 0.0f, ceilingWorld - correctedHeadWorld, 0.0f });
+                if (selfRb->velocity.y > 0.0f) selfRb->velocity.y = 0.0f;
             }
 
-            selfTransform->relativeHeight = selfTransform->position.z - floorWorld;
+            selfTransform->relativeHeight = selfTransform->position.y - floorWorld;
         }
     }
 

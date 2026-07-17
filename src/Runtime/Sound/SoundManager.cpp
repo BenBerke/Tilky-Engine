@@ -108,22 +108,13 @@ namespace {
 
         std::error_code copyError;
 
-        fs::copy_file(
-            temporaryPath,
-            manifestPath,
-            fs::copy_options::overwrite_existing,
-            copyError
-        );
+        fs::copy_file(temporaryPath, manifestPath, fs::copy_options::overwrite_existing, copyError);
 
         std::error_code removeError;
         fs::remove(temporaryPath, removeError);
 
         if (copyError) {
-            spdlog::error(
-             "Failed to save sound index manifest {}: {}",
-                manifestPath.string(),
-                copyError.message()
-            );
+            spdlog::error("Failed to save sound index manifest {}: {}", manifestPath.string(), copyError.message());
 
             return false;
         }
@@ -166,8 +157,7 @@ namespace {
          */
         std::vector<std::string> indexedFileNames;
 
-        const bool manifestLoaded =
-            LoadSoundIndexManifest(manifestPath, indexedFileNames);
+        const bool manifestLoaded = LoadSoundIndexManifest(manifestPath, indexedFileNames);
 
         bool manifestChanged = !manifestLoaded;
 
@@ -232,8 +222,7 @@ namespace {
         for (std::size_t i = 0; i < indexedFileNames.size(); ++i) {
             if (indexedFileNames[i].empty()) continue;
 
-            const std::string normalizedName =
-                NormalizeSoundFileName(indexedFileNames[i]);
+            const std::string normalizedName = NormalizeSoundFileName(indexedFileNames[i]);
 
             const auto [iteratorResult, inserted] =
                 existingIndices.try_emplace(normalizedName, i);
@@ -270,11 +259,7 @@ namespace {
 
             manifestChanged = true;
 
-            spdlog::info(
-                "Assigned permanent sound index {} to '{}'",
-                newIndex,
-                fileName
-            );
+            spdlog::info("Assigned permanent sound index {} to '{}'", newIndex, fileName);
         }
 
         level.sounds.clear();
@@ -307,8 +292,7 @@ namespace {
          * unnecessary writes in exported builds.
          */
         if (manifestChanged) {
-            if (!SaveSoundIndexManifest(manifestPath, indexedFileNames))
-                return false;
+            if (!SaveSoundIndexManifest(manifestPath, indexedFileNames)) return false;
         }
 
         spdlog::info(
@@ -336,18 +320,12 @@ namespace SoundManager {
 
     static ALenum GetOpenALFormat(const SDL_AudioSpec& spec) {
         if (spec.channels == 1) {
-            if (spec.format == SDL_AUDIO_U8)
-                return AL_FORMAT_MONO8;
-
-            if (spec.format == SDL_AUDIO_S16LE)
-                return AL_FORMAT_MONO16;
+            if (spec.format == SDL_AUDIO_U8) return AL_FORMAT_MONO8;
+            if (spec.format == SDL_AUDIO_S16LE) return AL_FORMAT_MONO16;
         }
         else if (spec.channels == 2) {
-            if (spec.format == SDL_AUDIO_U8)
-                return AL_FORMAT_STEREO8;
-
-            if (spec.format == SDL_AUDIO_S16LE)
-                return AL_FORMAT_STEREO16;
+            if (spec.format == SDL_AUDIO_U8) return AL_FORMAT_STEREO8;
+            if (spec.format == SDL_AUDIO_S16LE) return AL_FORMAT_STEREO16;
         }
 
         return 0;
@@ -385,13 +363,7 @@ namespace SoundManager {
             return false;
         }
 
-        alBufferData(
-            buffer,
-            format,
-            wavData,
-            static_cast<ALsizei>(wavLength),
-            wavSpec.freq
-        );
+        alBufferData(buffer, format, wavData, static_cast<ALsizei>(wavLength), wavSpec.freq);
 
         SDL_free(wavData);
 
@@ -473,7 +445,6 @@ namespace SoundManager {
 
         if (!RefreshLevelSoundsFromFolder()) spdlog::error("Failed to refresh permanent sound indices");
 
-
         const fs::path soundsPath = ProjectManager::GetSoundsPath();
 
         const Level& level = LevelManager::CurrentLevel();
@@ -490,17 +461,12 @@ namespace SoundManager {
             fs::path soundPath = soundsPath / sound.fileName;
 
             // Retained for old level data created before the manifest.
-            if (!soundPath.has_extension())
-                soundPath += ".wav";
+            if (!soundPath.has_extension()) soundPath += ".wav";
 
             ALuint buffer = 0;
 
             if (!LoadWAVToOpenALBuffer(soundPath.string().c_str(), buffer)) {
-                spdlog::error(
-                    "Failed to load sound index {} from {}",
-                    i,
-                    soundPath.string()
-                );
+                spdlog::error( "Failed to load sound index {} from {}", i, soundPath.string());
 
                 continue;
             }
@@ -620,13 +586,11 @@ namespace SoundManager {
 
         if (sourceIterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         if (soundIndex < 0 || soundIndex >= static_cast<int>(buffers.size())) {
             spdlog::error("Invalid sound index {}. Sound buffer count: {}", soundIndex, buffers.size());
-
             return;
         }
 
@@ -634,7 +598,6 @@ namespace SoundManager {
 
         if (buffer == 0) {
             spdlog::error("Sound index {} has no valid OpenAL buffer", soundIndex);
-
             return;
         }
 
@@ -645,24 +608,20 @@ namespace SoundManager {
         alSourcePlay(source);
 
         CheckALErrors("Failed to play sound on source");
-
         spdlog::info("Played sound index {} on source '{}'", soundIndex, sourceName);
     }
 
     // region Setters
 
     void SetSourcePitch(const std::string& sourceName,const float pitch) {
-        const auto iterator =
-            sources.find(sourceName);
+        const auto iterator = sources.find(sourceName);
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_PITCH, pitch);
-
         CheckALErrors("Failed to set source pitch");
     }
 
@@ -671,12 +630,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second,AL_GAIN, gain);
-
         CheckALErrors("Failed to set source gain");
     }
 
@@ -685,12 +642,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSource3f(iterator->second, AL_POSITION, pos.x, pos.y, pos.z);
-
         CheckALErrors("Failed to set source position");
     }
 
@@ -699,12 +654,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcei(iterator->second, AL_LOOPING, looping ? AL_TRUE : AL_FALSE);
-
         CheckALErrors("Failed to set source looping");
     }
 
@@ -713,12 +666,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_REFERENCE_DISTANCE, distance);
-
         CheckALErrors("Failed to set AL_REFERENCE_DISTANCE");
     }
 
@@ -727,12 +678,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_MAX_DISTANCE, maxDistance);
-
         CheckALErrors("Failed to set AL_MAX_DISTANCE");
     }
 
@@ -741,12 +690,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_ROLLOFF_FACTOR, rollOffFactor);
-
         CheckALErrors("Failed to set AL_ROLLOFF_FACTOR");
     }
 
@@ -755,12 +702,10 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_CONE_INNER_ANGLE, innerConeAngle);
-
         CheckALErrors("Failed to set AL_CONE_INNER_ANGLE");
     }
 
@@ -769,44 +714,32 @@ namespace SoundManager {
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_CONE_OUTER_ANGLE, outerConeAngle);
-
         CheckALErrors("Failed to set AL_CONE_OUTER_ANGLE");
     }
 
     void SetSourceOuterGain(const std::string& sourceName, const float outerGain) {
-        const auto iterator =
-            sources.find(sourceName);
+        const auto iterator = sources.find(sourceName);
 
         if (iterator == sources.end()) {
             spdlog::error("Source not found: '{}'", sourceName);
-
             return;
         }
 
         alSourcef(iterator->second, AL_CONE_OUTER_GAIN, outerGain);
-
         CheckALErrors("Failed to set AL_CONE_OUTER_GAIN");
     }
 
     void SetListenerPosition(const Vector3& pos) {
         alListener3f(AL_POSITION, pos.x, pos.y, pos.z);
-
         CheckALErrors("Failed to set listener position");
     }
 
     void SetListenerVelocity(const Vector3 &velocity) {
-        alListener3f(
-            AL_VELOCITY,
-            velocity.x,
-            velocity.y,
-            velocity.z
-        );
-
+        alListener3f(AL_VELOCITY, velocity.x, velocity.y, velocity.z);
         CheckALErrors("Failed to set listener velocity");
     }
 
@@ -828,25 +761,21 @@ namespace SoundManager {
 
     void SetListenerGain(const float gain) {
         alListenerf(AL_GAIN, gain);
-
         CheckALErrors("Failed to set listener gain");
     }
 
     void SetListenerDistanceModel(const ALenum model) {
         alDistanceModel(model);
-
         CheckALErrors("Failed to set distance model");
     }
 
     void SetListenerDopplerFactor(const float factor) {
         alDopplerFactor(factor);
-
         CheckALErrors("Failed to set Doppler factor");
     }
 
     void SetListenerSpeedOfSound(const float speed) {
         alSpeedOfSound(speed);
-
         CheckALErrors("Failed to set speed of sound");
     }
 

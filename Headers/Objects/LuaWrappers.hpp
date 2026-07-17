@@ -1337,7 +1337,7 @@ struct ScriptWall {
 // Sector
 // ---------------------------------------------------------
 
-struct ScriptSector {
+struct ScriptSector  {
     Level* level = nullptr;
     ID sectorID = INVALID_ID;
 

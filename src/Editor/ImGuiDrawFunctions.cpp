@@ -528,7 +528,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::EndCombo();
             }
 
-            ImGui::SameLine();
+           // ImGui::SameLine();
             if (ImGui::Button(Get("common.add").c_str())) {
                 AddEditorComponentByType(entity, state.componentToAdd);
                 state.addingComponent = false;
@@ -608,7 +608,7 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponent<ComponentTransform>();
             if (c) {
                 BeginSection("Position");
-                ImGui::TextDisabled("X                Y               Z(height)");
+                ImGui::TextDisabled("X                Y               Z");
                 FieldWidth(220.0f);
                 InputOrDrag3("##pos", &c->position.x, draggable);
                 ResetFloat3Button("rst_pos", &c->position.x);

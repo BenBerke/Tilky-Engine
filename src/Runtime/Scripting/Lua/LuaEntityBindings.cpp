@@ -26,9 +26,8 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasTransform()) {
-                    return sol::nil;
-                }
+                if (!entity.HasTransform()) return sol::nil;
+
 
                 return sol::make_object(luaState, entity.GetTransform());
             }
@@ -42,9 +41,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasSprite()) {
-                    return sol::nil;
-                }
+                if (!entity.HasSprite()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetSprite());
             }
@@ -58,9 +55,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasDecal()) {
-                    return sol::nil;
-                }
+                if (!entity.HasDecal()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetDecal());
             }
@@ -74,9 +69,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasAudioSource()) {
-                    return sol::nil;
-                }
+                if (!entity.HasAudioSource()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetAudioSource());
             }
@@ -90,9 +83,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasScript()) {
-                    return sol::nil;
-                }
+                if (!entity.HasScript()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetScript());
             }
@@ -117,9 +108,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasPlayerController()) {
-                    return sol::nil;
-                }
+                if (!entity.HasPlayerController()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetPlayerController());
             }
@@ -133,9 +122,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasCamera()) {
-                    return sol::nil;
-                }
+                if (!entity.HasCamera()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetCamera());
             }
@@ -149,9 +136,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasCollider()) {
-                    return sol::nil;
-                }
+                if (!entity.HasCollider()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetCollider());
             }
@@ -165,9 +150,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasRigidbody()) {
-                    return sol::nil;
-                }
+                if (!entity.HasRigidbody()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetRigidbody());
             }
@@ -181,9 +164,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasUITransform()) {
-                    return sol::nil;
-                }
+                if (!entity.HasUITransform()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetUITransform());
             }
@@ -197,9 +178,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasUISprite()) {
-                    return sol::nil;
-                }
+                if (!entity.HasUISprite()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetUISprite());
             }
@@ -213,9 +192,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
                 const sol::state_view luaState(state);
 
-                if (!entity.HasUIText()) {
-                    return sol::nil;
-                }
+                if (!entity.HasUIText()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetUIText());
             }

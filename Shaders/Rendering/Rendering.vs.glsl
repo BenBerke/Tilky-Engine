@@ -274,8 +274,6 @@ void RenderColliderVertex() {
     ? GetSphereVertex(collider, localVertex)
     : GetBoxVertex(collider, localVertex);
 
-    worldPosition = ToRenderWorld(worldPosition);
-
     vColor = isSphere
     ? vec4(0.2, 0.8, 1.0, 1.0)
     : vec4(1.0, 0.8, 0.2, 1.0);

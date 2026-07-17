@@ -27,19 +27,17 @@ float ComponentTransform::GetSectorFloorHeight(const std::vector<Sector>& sector
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors) {
     if (this->ownerID == INVALID_ID || sectors.empty()) {
         sectorIndex = -1;
-        relativeHeight = position.z;
+        relativeHeight = position.y;
         return false;
     }
 
     const int oldSector = sectorIndex;
 
-    const bool oldSectorValid =
-        oldSector >= 0 &&
-        oldSector < static_cast<int>(sectors.size());
+    const bool oldSectorValid = oldSector >= 0 && oldSector < static_cast<int>(sectors.size());
 
     const int newSector = MapQueries::FindSectorContainingPoint(
         sectors,
-        { position.x, position.y }
+        { position.x, position.z }
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {
@@ -47,7 +45,7 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
             std::erase(sectors[oldSector].entitiesInside, this->ownerID);
 
         sectorIndex = -1;
-        relativeHeight = position.z;
+        relativeHeight = position.y;
         return false;
     }
 
@@ -61,9 +59,9 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
         sector.entitiesInside.push_back(this->ownerID);
 
-    // position.z is absolute world height.
+    // position.y is absolute world height.
     // relativeHeight is height above the sector floor.
-    relativeHeight = position.z - sector.floorHeight;
+    relativeHeight = position.y - sector.floorHeight;
 
     return true;
 }
@@ -99,13 +97,13 @@ void ComponentRigidbody::ApplyFriction(const float _friction, const float dt) {
         else if (v < 0.0f) v = std::min(0.0f, v + _f * dt);
     };
     applyAxis(this->velocity.x);
-    applyAxis(this->velocity.y);
+    applyAxis(this->velocity.z);
 }
 
 
 void ComponentRigidbody::ApplyGravity(const float gravity, const float dt) {
     if (isStatic) return;
-    velocity.z -= gravity * gravityScale * dt;
+    velocity.y -= gravity * gravityScale * dt;
 }
 void ComponentRigidbody::ApplyAirResistance(float _airResistance, const float dt) {
     //todo implement

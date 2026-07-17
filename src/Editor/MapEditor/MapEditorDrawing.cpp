@@ -35,13 +35,7 @@ namespace MapEditorInternal {
             const float offsetX = normalX * static_cast<float>(i);
             const float offsetY = normalY * static_cast<float>(i);
 
-            SDL_RenderLine(
-                renderer,
-                start.x + offsetX,
-                start.y + offsetY,
-                end.x + offsetX,
-                end.y + offsetY
-            );
+            SDL_RenderLine(renderer, start.x + offsetX, start.y + offsetY, end.x + offsetX, end.y + offsetY);
         }
     }
 
@@ -68,9 +62,8 @@ namespace MapEditorInternal {
     }
 
     void DrawFilledTriangleTextured(const Triangle& triangle, SDL_Texture* texture, const SDL_FColor tint) {
-        if (texture == nullptr) {
-            return;
-        }
+        if (texture == nullptr) return;
+
 
         constexpr float uvScale = 1.0f / 64.0f;
 
@@ -318,7 +311,7 @@ namespace MapEditorInternal {
 
             if (transform == nullptr) continue;
 
-            const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.y}, cameraPos);
+            const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
 
             const float screenEntitySize = entitySize * editorZoom;
 

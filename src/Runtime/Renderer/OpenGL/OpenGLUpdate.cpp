@@ -59,7 +59,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     glViewport(0, 0, screenWidth, screenHeight);
 
     if (screenHeight > 0) [[likely]]
-    camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
+        camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
     ComponentTransform renderCameraTransform = *cameraTransform;
 
@@ -68,7 +68,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             if (!controller.isActive) continue;
 
             if (controller.ownerID == camera->ownerID) {
-                renderCameraTransform.position.z = cameraTransform->position.z + controller.eyeHeight;
+                renderCameraTransform.position.y =
+                    cameraTransform->position.y + controller.eyeHeight;
                 break;
             }
         }
@@ -102,21 +103,12 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
-        glUniform1i(
-            glGetUniformLocation(projectionShader->ID, "uAtlas"),
-            0
-        );
+        glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 
-        glUniform1i(
-            glGetUniformLocation(projectionShader->ID, "uTextureCount"),
-            static_cast<int>(textureRegions.size())
-        );
+        glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"),
+            static_cast<int>(textureRegions.size()));
 
-        glBindBufferBase(
-            GL_SHADER_STORAGE_BUFFER,
-            5,
-            textureRegionSSBO
-        );
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
     }
 
     {
@@ -159,8 +151,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glUniform3f(
             glGetUniformLocation(projectionShader->ID, "uCameraWorldPos"),
             renderCameraTransform.position.x,
-            renderCameraTransform.position.z, // Intentionally swapped
-            renderCameraTransform.position.y
+            renderCameraTransform.position.y,
+            renderCameraTransform.position.z
         );
 
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
@@ -201,11 +193,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
                 glUniform1i(renderModeUniform, RENDER_COLLIDER);
 
-                glDrawArrays(
-                    GL_LINES,
-                    0,
-                    colliderCount * COLLIDER_VERTICES_PER_COLLIDER
-                );
+                glDrawArrays(GL_LINES, 0, colliderCount * COLLIDER_VERTICES_PER_COLLIDER);
             }
         }
     }

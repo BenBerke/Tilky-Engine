@@ -39,9 +39,8 @@ namespace MapEditorInternal {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
     }
 
+    // Doing this in SIMD is probably overkill but whatever
     bool AABBCollisionWithEntity(const ComponentUITransform& transform, const Vector2& mousePosition) {
-        // These functions automatically get converted to their respective platform
-        // versions through the "SSECompat.hpp" header
         const __m128 pos = transform.resolvedPosition.reg;
         const __m128 size = transform.resolvedSize.reg;
         const __m128 mouse = mousePosition.reg;
@@ -49,16 +48,20 @@ namespace MapEditorInternal {
         const __m128 bottomRight = _mm_add_ps(pos, size);
 
         const __m128 gte = _mm_cmpge_ps(mouse, pos);
-
         const __m128 lte = _mm_cmple_ps(mouse, bottomRight);
 
         const __m128 result = _mm_and_ps(gte, lte);
 
         return (_mm_movemask_ps(result) & 3) == 3;
     }
+
     bool AABBCollisionWithEntity(const ComponentTransform& transform, const Vector2& mousePosition) {
-        const __m128 entityPos = transform.position.reg;
-        const __m128 entityScale = transform.scale.reg;
+        const Vector2 planarPosition = {transform.position.x,transform.position.z};
+
+        const Vector2 planarScale = {transform.scale.x, transform.scale.z};
+
+        const __m128 entityPos = planarPosition.reg;
+        const __m128 entityScale = planarScale.reg;
         const __m128 mousePos = mousePosition.reg;
 
         const __m128 halfOnes = _mm_set1_ps(0.5f);
@@ -86,7 +89,7 @@ namespace MapEditorInternal {
             const ComponentTransform* transform = level.transforms.Get(entity.id);
             const ComponentUITransform* uiTransform = level.ui_transforms.Get(entity.id);
 
-            if (transform != nullptr ) {
+            if (transform != nullptr) {
                 if (AABBCollisionWithEntity(*transform, mouseClick)) return &entity;
             }
             else if (uiTransform != nullptr) if (AABBCollisionWithEntity(*uiTransform, mouseClick)) return &entity;
@@ -206,9 +209,7 @@ namespace MapEditorInternal {
             consider(wall.end);
         }
 
-        if (!found) {
-            return SnapToGrid(mouseWorld);
-        }
+        if (!found) return SnapToGrid(mouseWorld);
 
         return best;
     }
