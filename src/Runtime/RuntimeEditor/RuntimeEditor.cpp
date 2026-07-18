@@ -28,83 +28,41 @@ namespace {
     constexpr float FAST_MOVE_SPEED = 175.0f;
     constexpr float RAY_LENGTH = 10000.0f;
 
-    Vector3 GetFreecamForward() {
-        const float yawRadians =
-                camera->yaw * std::numbers::pi_v<float> / 180.0f;
-
-        const float pitchRadians =
-                camera->pitch * std::numbers::pi_v<float> / 180.0f;
-
+    Vector3 GetCameraForward(const ComponentCamera& camera) {
+        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float pitchRadians = camera.pitch * std::numbers::pi_v<float> / 180.0f;
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
-
         const float pitchSin = std::sin(pitchRadians);
         const float pitchCos = std::cos(pitchRadians);
 
-        return Vector3Math::Normalized({
-            yawSin * pitchCos,
-            yawCos * pitchCos,
-            pitchSin
-        });
+        return Vector3Math::Normalized({yawSin * pitchCos, pitchSin, yawCos * pitchCos});
     }
 
+    Vector3 GetCameraLeft(const ComponentCamera& camera) {
+        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        return Vector3Math::Normalized({std::cos(yawRadians), 0.0f, -std::sin(yawRadians)});
+    }
 
-    Vector3 GetMouseRayDirection(
-        const ComponentCamera &camera,
-        const Vector2 mousePosition,
-        const Vector2 viewportSize
-    ) {
-        if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) {
-            return GetFreecamForward();
-        }
+    Vector3 GetMouseRayDirection(const ComponentCamera& camera, const Vector2 mousePosition, const Vector2 viewportSize) {
+        if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) return camera.forward;
 
-        // Mouse position -> Normalized Device Coordinates
-        // SDL mouse Y is top-to-bottom, so Y must be flipped.
         const float ndcX = (2.0f * mousePosition.x / viewportSize.x) - 1.0f;
         const float ndcY = 1.0f - (2.0f * mousePosition.y / viewportSize.y);
 
-        const float yawRadians =
-                camera.yaw * std::numbers::pi_v<float> / 180.0f;
-
-        const float pitchRadians =
-                camera.pitch * std::numbers::pi_v<float> / 180.0f;
-
-        const float yawSin = std::sin(yawRadians);
-        const float yawCos = std::cos(yawRadians);
-
-        const float pitchSin = std::sin(pitchRadians);
-        const float pitchCos = std::cos(pitchRadians);
-
-        const Vector3 forward = Vector3Math::Normalized({
-            yawSin * pitchCos,
-            yawCos * pitchCos,
-            pitchSin
-        });
-
-        const Vector3 right = Vector3Math::Normalized({
-            yawCos,
-            -yawSin,
-            0.0f
-        });
-
-        const Vector3 up = Vector3Math::Normalized(
-            Vector3Math::Cross(right, forward)
-        );
-
+        const Vector3 forward = Vector3Math::Normalized(camera.forward);
+        const Vector3 left = GetCameraLeft(camera);
+        const Vector3 up = Vector3Math::Normalized(Vector3Math::Cross(forward, left));
         const float aspect = viewportSize.x / viewportSize.y;
-
-        const float fovRadians =
-                camera.fov * std::numbers::pi_v<float> / 180.0f;
-
+        const float fovRadians = camera.fov * std::numbers::pi_v<float> / 180.0f;
         const float tanHalfFov = std::tan(fovRadians * 0.5f);
 
         return Vector3Math::Normalized(
             forward +
-            right * (-ndcX * tanHalfFov * aspect) +
+            left * (-ndcX * tanHalfFov * aspect) +
             up * (ndcY * tanHalfFov)
         );
     }
-
 
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
 
@@ -126,11 +84,7 @@ namespace {
     }
 
     Entity* FindEntityById(Level& level, const ID entityId) {
-        for (Entity& entity : level.entities) {
-            if (entity.id == entityId) {
-                return &entity;
-            }
-        }
+        for (Entity& entity : level.entities) if (entity.id == entityId) return &entity;
 
         return nullptr;
     }
@@ -138,11 +92,7 @@ namespace {
     int FindWallIndex(const Level& level, const Wall* wallToFind) {
         if (wallToFind == nullptr) return -1;
 
-        for (int i = 0; i < static_cast<int>(level.walls.size()); i++) {
-            if (&level.walls[i] == wallToFind) {
-                return i;
-            }
-        }
+        for (int i = 0; i < static_cast<int>(level.walls.size()); i++) if (&level.walls[i] == wallToFind) return i;
 
         return -1;
     }
@@ -150,8 +100,7 @@ namespace {
     int FindSectorIndex(Level& level, const Sector* sector) {
         if (sector == nullptr) return -1;
 
-        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i)
-            if (&level.sectors[i] == sector) return i;
+        for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) if (&level.sectors[i] == sector) return i;
 
         return -1;
     }
@@ -177,11 +126,7 @@ namespace RuntimeEditorUi {
             }
 
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawEntityEditor(
-                    *entityToEdit,
-                    entityInspectorState,
-                    &editingEntity, DRAGGABLE
-                );
+                ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
 
             if (deleteRequested) {
                 const ID idToDelete = entityToEdit->id;
@@ -219,11 +164,7 @@ namespace RuntimeEditorUi {
             Wall& wall = level.walls[selectedWall];
 
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(
-                    wall,
-                    &editingWall,
-                    selectedWall, DRAGGABLE
-                );
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, selectedWall, DRAGGABLE);
 
             if (deleteRequested) {
                 level.walls.erase(level.walls.begin() + selectedWall);
@@ -284,6 +225,8 @@ namespace RuntimeEditor {
             return;
         }
 
+        camera->forward = GetCameraForward(*camera);
+
         spdlog::info("Runtime editor is using renderer editor-only camera");
     }
 
@@ -306,65 +249,42 @@ namespace RuntimeEditor {
         if (relativeMouseMod && !mouseBlockedByImGui) {
             camera->yaw -= InputManager::GetMouseDelta().x * MOUSE_SENSITIVITY;
             camera->pitch -= InputManager::GetMouseDelta().y * MOUSE_SENSITIVITY;
-
-            camera->pitch = std::clamp(camera->pitch, -89.0f, 89.0f);
-            camera->yaw = std::fmod(camera->yaw, 360.0f);
         }
 
-        const float yawRadians = camera->yaw * std::numbers::pi_v<float> / 180.0f;
+        camera->pitch = std::clamp(camera->pitch, -89.0f, 89.0f);
+        camera->yaw = std::fmod(camera->yaw, 360.0f);
+        if (camera->yaw < 0.0f) camera->yaw += 360.0f;
 
-        const float yawSin = std::sin(yawRadians);
-        const float yawCos = std::cos(yawRadians);
-
-        const Vector2 forward = { yawSin, yawCos };
-        const Vector2 right = { yawCos, -yawSin };
+        // Runtime editor cameras are not updated by the normal gameplay
+        // CameraSystem, so keep the renderer-facing direction synchronized.
+        camera->forward = GetCameraForward(*camera);
 
         //region movement
 
-        Vector3 movement = { 0.0f, 0.0f, 0.0f };
-
-        if (InputManager::GetKey(SDL_SCANCODE_W)) {
-            movement.x += forward.x;
-            movement.y += forward.y;
-        }
-
-        if (InputManager::GetKey(SDL_SCANCODE_S)) {
-            movement.x -= forward.x;
-            movement.y -= forward.y;
-        }
-
-        if (InputManager::GetKey(SDL_SCANCODE_A)) {
-            movement.x += right.x;
-            movement.y += right.y;
-        }
-
-        if (InputManager::GetKey(SDL_SCANCODE_D)) {
-            movement.x -= right.x;
-            movement.y -= right.y;
-        }
+        Vector3 movement = {0.0f, 0.0f, 0.0f};
 
         if (!keyboardBlockedByImGui) {
-            if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.z += 1.0f;
-            if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.z -= 1.0f;
+            const Vector3 forward = camera->forward;
+            const Vector3 left = GetCameraLeft(*camera);
+
+            if (InputManager::GetKey(SDL_SCANCODE_W)) movement = movement + forward;
+            if (InputManager::GetKey(SDL_SCANCODE_S)) movement = movement - forward;
+            if (InputManager::GetKey(SDL_SCANCODE_A)) movement = movement + left;
+            if (InputManager::GetKey(SDL_SCANCODE_D)) movement = movement - left;
+            if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.y += 1.0f;
+            if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.y -= 1.0f;
+
+            const float movementLengthSq =
+                movement.x * movement.x +
+                movement.y * movement.y +
+                movement.z * movement.z;
+
+            if (movementLengthSq > 0.0f) {
+                movement = movement * (1.0f / std::sqrt(movementLengthSq));
+                const float speed = InputManager::GetKey(SDL_SCANCODE_LSHIFT) ? FAST_MOVE_SPEED : MOVE_SPEED;
+                transform->AddPosition(movement * speed * GameTime::deltaTime);
+            }
         }
-
-        const float length = std::sqrt(
-            movement.x * movement.x +
-            movement.y * movement.y +
-            movement.z * movement.z
-        );
-
-        if (length > 0.0f) {
-            movement.x /= length;
-            movement.y /= length;
-            movement.z /= length;
-        }
-
-        const float speed = InputManager::GetKey(SDL_SCANCODE_LSHIFT)
-            ? FAST_MOVE_SPEED
-            : MOVE_SPEED;
-
-        transform->AddPosition(movement * speed * GameTime::deltaTime);
 
         //endregion
 

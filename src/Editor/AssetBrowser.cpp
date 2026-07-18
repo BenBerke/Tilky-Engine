@@ -22,8 +22,13 @@ namespace {
         return text;
     }
 
-    constexpr std::array<std::string_view, 1> ACCEPTED_EXTENSIONS = {
-        ".png"
+    constexpr std::array<std::string_view, 6> ACCEPTED_EXTENSIONS = {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bson",
+        ".wav",
+        ".lua"
     };
 
     bool HasAcceptedExtension(const fs::path& path) {
