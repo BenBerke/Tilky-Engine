@@ -6,6 +6,7 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 #include <nlohmann/json.hpp>
 
@@ -167,28 +168,20 @@ namespace {
     }
 
     void LoadExtraData(const json& levelData, LevelSerialization::LevelExtraData* outExtraData) {
-        if (outExtraData == nullptr) {
-            return;
-        }
+        if (outExtraData == nullptr) return;
 
         *outExtraData = LevelSerialization::LevelExtraData{};
 
-        if (!levelData.contains("levelVars") ||
-            !levelData["levelVars"].is_object()) {
-            return;
-        }
+        if (!levelData.contains("levelVars") || !levelData["levelVars"].is_object()) return;
 
-        outExtraData->backgroundTextureIndex =
-            levelData["levelVars"].value("backgroundTextureIndex", -1);
+        outExtraData->backgroundTextureFileName = levelData["levelVars"].value("backgroundTextureFileName", std::string());
     }
 
     void SaveExtraData(json &levelData, const LevelSerialization::LevelExtraData *extraData) {
-        if (extraData == nullptr) {
-            return;
-        }
+        if (extraData == nullptr) return;
 
         levelData["levelVars"] = {
-            {"backgroundTextureIndex", extraData->backgroundTextureIndex}
+            {"backgroundTextureFileName", extraData->backgroundTextureFileName}
         };
     }
 
@@ -356,23 +349,16 @@ namespace {
         levelData["sounds"] = json::array();
 
         for (const Sound& sound : level.sounds) {
-            if (sound.fileName.empty()) {
-                continue;
-            }
+            if (sound.fileName.empty()) continue;
 
-            levelData["sounds"].push_back({
-                {"fileName", sound.fileName}
-            });
+            levelData["sounds"].push_back({{"fileName", sound.fileName}});
         }
     }
-
 
     void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
-        if (!levelData.contains("walls")) {
-            return;
-        }
+        if (!levelData.contains("walls")) return;
 
         ID highestWallID = 0;
         std::unordered_set<ID> seenWallIDs;
@@ -380,24 +366,29 @@ namespace {
         for (int i = 0; i < static_cast<int>(levelData["walls"].size()); ++i) {
             const json &wallJson = levelData["walls"][i];
 
-            Vector2 start = {
-                wallJson["start"][0].get<float>(),
-                wallJson["start"][1].get<float>()
+            const Vector2 start = {
+                wallJson.at("start").at(0).get<float>(),
+                wallJson.at("start").at(1).get<float>()
             };
 
-            Vector2 end = {
-                wallJson["end"][0].get<float>(),
-                wallJson["end"][1].get<float>()
+            const Vector2 end = {
+                wallJson.at("end").at(0).get<float>(),
+                wallJson.at("end").at(1).get<float>()
             };
 
-            Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
+            Vector4 color = {
+                255.0f,
+                255.0f,
+                255.0f,
+                255.0f
+            };
 
             if (wallJson.contains("color")) {
                 color = {
-                    wallJson["color"][0].get<float>(),
-                    wallJson["color"][1].get<float>(),
-                    wallJson["color"][2].get<float>(),
-                    wallJson["color"][3].get<float>()
+                    wallJson.at("color").at(0).get<float>(),
+                    wallJson.at("color").at(1).get<float>(),
+                    wallJson.at("color").at(2).get<float>(),
+                    wallJson.at("color").at(3).get<float>()
                 };
             }
 
@@ -407,51 +398,78 @@ namespace {
                 color,
                 LoadIDField(wallJson, "frontSector", INVALID_ID),
                 LoadIDField(wallJson, "backSector", INVALID_ID),
-                wallJson.value("textureIndex", -1)
+                wallJson.value("textureFileName", std::string{})
             );
 
-            wall.id = LoadIDField(wallJson, "id", static_cast<ID>(i));
+            if (wallJson.contains("textureOffset")) {
+                wall.textureOffset = {
+                    wallJson.at("textureOffset").at(0).get<float>(),
+                    wallJson.at("textureOffset").at(1).get<float>()
+                };
+            }
+            else wall.textureOffset = {0.0f, 0.0f};
+
+
+            wall.id = LoadIDField(
+                wallJson,
+                "id",
+                static_cast<ID>(i)
+            );
 
             if (wall.id == INVALID_ID) wall.id = static_cast<ID>(i);
 
-            // Guard against a duplicate id. A mixed-format save - some entries with
-            // an explicit "id", some without (partial save, manual edit, objects
-            // copy-pasted in from another level file) - can make the index-based
-            // fallback above collide with a legitimately saved id. If that happens
-            // silently, RebuildWallIDLookup()'s map can only ever resolve ONE of the
-            // two walls sharing that id; the other stays in level.walls but becomes
-            // invisible to GetWallByID/DeleteWall. Surface it and reassign instead
-            // of colliding quietly.
             if (seenWallIDs.contains(wall.id)) {
                 const ID reassigned = highestWallID + 1;
+
                 spdlog::warn(
                     "LoadWalls: duplicate wall id {} at array index {} - reassigning to {}",
-                    wall.id, i, reassigned
+                    wall.id,
+                    i,
+                    reassigned
                 );
+
                 wall.id = reassigned;
             }
 
             seenWallIDs.insert(wall.id);
             highestWallID = std::max(highestWallID, wall.id);
 
-            level.walls.push_back(wall);
+            level.walls.push_back(std::move(wall));
         }
 
-        level.nextWallID = std::max(level.nextWallID, highestWallID + 1);
+        level.nextWallID = std::max(
+            level.nextWallID,
+            highestWallID + 1
+        );
     }
 
-    void SaveWalls(json &levelData, const Level &level) {
+    void SaveWalls(json& levelData, const Level& level) {
         levelData["walls"] = json::array();
 
-        for (const Wall &wall: level.walls) {
+        for (const Wall& wall : level.walls) {
             levelData["walls"].push_back({
                 {"id", wall.id},
-                {"start", {wall.start.x, wall.start.y}},
-                {"end", {wall.end.x, wall.end.y}},
-                {"color", {wall.color.x, wall.color.y, wall.color.z, wall.color.w}},
-                {"textureIndex", wall.textureIndex},
+                {"start", {
+                    wall.start.x,
+                    wall.start.y
+                }},
+                {"end", {
+                    wall.end.x,
+                    wall.end.y
+                }},
+                {"color", {
+                    wall.color.x,
+                    wall.color.y,
+                    wall.color.z,
+                    wall.color.w
+                }},
+                {"textureFileName", wall.textureFileName},
+                {"textureOffset", {
+                    wall.textureOffset.x,
+                    wall.textureOffset.y
+                }},
                 {"frontSector", wall.frontSector},
-                {"backSector", wall.backSector},
+                {"backSector", wall.backSector}
             });
         }
     }
@@ -474,80 +492,96 @@ namespace {
 
             if (sector.id == INVALID_ID) sector.id = static_cast<ID>(i);
 
-            // Same guard as LoadWalls() above - see the comment there.
             if (seenSectorIDs.contains(sector.id)) {
                 const ID reassigned = highestSectorID + 1;
+
                 spdlog::warn(
                     "LoadSectors: duplicate sector id {} at array index {} - reassigning to {}",
-                    sector.id, i, reassigned
-                );
+                    sector.id, i, reassigned);
+
                 sector.id = reassigned;
             }
 
             seenSectorIDs.insert(sector.id);
             highestSectorID = std::max(highestSectorID, sector.id);
 
-            for (const json &cornerJson: sectorJson["corners"]) {
+            for (const json &cornerJson: sectorJson.at("corners")) {
                 corners.emplace_back(
-                    cornerJson["x"].get<float>(),
-                    cornerJson["y"].get<float>()
+                    cornerJson.at("x").get<float>(),
+                    cornerJson.at("y").get<float>()
                 );
             }
 
-            sector.vertices = corners;
+            sector.vertices = std::move(corners);
             sector.triangles = Geometry::Triangulate(sector.vertices);
 
             sector.ceilingHeight = sectorJson.value("ceilingHeight", 40.0f);
+
             sector.floorHeight = sectorJson.value("floorHeight", 0.0f);
 
-            sector.ceilingColor = {255.0f, 255.0f, 255.0f};
-            sector.floorColor = {255.0f, 255.0f, 255.0f};
+            sector.ceilingColor = {
+                255.0f,
+                255.0f,
+                255.0f
+            };
 
-            sector.lightValue = sectorJson.value("lightValue", 255.0f);
+            sector.floorColor = {
+                255.0f,
+                255.0f,
+                255.0f
+            };
 
             if (sectorJson.contains("ceilingColor")) {
+                const json &colorJson = sectorJson.at("ceilingColor");
+
                 sector.ceilingColor = {
-                    sectorJson["ceilingColor"][0].get<float>(),
-                    sectorJson["ceilingColor"][1].get<float>(),
-                    sectorJson["ceilingColor"][2].get<float>()
+                    colorJson.at(0).get<float>(),
+                    colorJson.at(1).get<float>(),
+                    colorJson.at(2).get<float>()
                 };
             }
 
             if (sectorJson.contains("floorColor")) {
+                const json &colorJson = sectorJson.at("floorColor");
+
                 sector.floorColor = {
-                    sectorJson["floorColor"][0].get<float>(),
-                    sectorJson["floorColor"][1].get<float>(),
-                    sectorJson["floorColor"][2].get<float>()
+                    colorJson.at(0).get<float>(),
+                    colorJson.at(1).get<float>(),
+                    colorJson.at(2).get<float>()
                 };
             }
 
-            sector.floorTextureIndex = sectorJson.value("floorTextureIndex", -1);
+            sector.floorTexture = sectorJson.value(
+                "floorTexture",
+                std::string{}
+            );
 
-            // New format.
-            sector.ceilingTextureIndex = sectorJson.value("ceilingTextureIndex", -1);
+            sector.ceilingTexture = sectorJson.value(
+                "ceilingTexture",
+                std::string{}
+            );
 
-            // Backward compatibility for old saves that used ceilingTextureIndices.
-            if (sector.ceilingTextureIndex == -1 && sectorJson.contains("ceilingTextureIndices")) {
-                const json &oldCeilingTextureArray = sectorJson["ceilingTextureIndices"];
+            sector.lightValue = sectorJson.value(
+                "lightValue",
+                255.0f
+            );
 
-                if (!oldCeilingTextureArray.empty()) {
-                    sector.ceilingTextureIndex = oldCeilingTextureArray[0].get<int>();
-                }
-            }
-
-            level.sectors.push_back(sector);
+            level.sectors.push_back(std::move(sector));
         }
 
-        level.nextSectorID = std::max(level.nextSectorID, highestSectorID + 1);
+        level.nextSectorID = std::max(
+            level.nextSectorID,
+            highestSectorID + 1
+        );
     }
 
-    void SaveSectors(json &levelData, const Level &level) {
+    void SaveSectors(json& levelData, const Level& level) {
         levelData["sectors"] = json::array();
 
-        for (const Sector &sector: level.sectors) {
+        for (const Sector& sector : level.sectors) {
             json cornerArray = json::array();
 
-            for (const Vector2 &point: sector.vertices) {
+            for (const Vector2& point : sector.vertices) {
                 cornerArray.push_back({
                     {"x", point.x},
                     {"y", point.y}
@@ -556,26 +590,28 @@ namespace {
 
             levelData["sectors"].push_back({
                 {"id", sector.id},
-                {"corners", cornerArray},
+                {"corners", std::move(cornerArray)},
                 {"ceilingHeight", sector.ceilingHeight},
                 {"floorHeight", sector.floorHeight},
                 {
-                    "ceilingColor", {
+                    "ceilingColor",
+                    {
                         sector.ceilingColor.x,
                         sector.ceilingColor.y,
                         sector.ceilingColor.z
                     }
                 },
                 {
-                    "floorColor", {
+                    "floorColor",
+                    {
                         sector.floorColor.x,
                         sector.floorColor.y,
                         sector.floorColor.z
                     }
                 },
-                {"floorTextureIndex", sector.floorTextureIndex},
-                {"ceilingTextureIndex", sector.ceilingTextureIndex},
-                {"lightValue", sector.lightValue},
+                {"floorTexture", sector.floorTexture},
+                {"ceilingTexture", sector.ceilingTexture},
+                {"lightValue", sector.lightValue}
             });
         }
     }
@@ -632,25 +668,26 @@ namespace {
         }
 
         if (componentsJson.contains("sprites")) {
-            for (const json &spriteJson: componentsJson["sprites"]) {
+            for (const json& spriteJson : componentsJson["sprites"]) {
                 const ID ownerID = spriteJson.at("ownerID").get<ID>();
 
-                Entity *entity = level.GetEntity(ownerID);
+                Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentSprite &c = level.sprites.Add(ownerID);
-                entity->componentsMask.set(CMP_SPRITE);
-
-                const json &textureIndicesJson = spriteJson.at("textureIndices");
-
-                for (size_t i = 0; i < c.textureIndices.size(); i++)
-                    c.textureIndices[i] = textureIndicesJson.at(i).get<int>();
+                const auto textureFileNames =
+                    spriteJson.at("textureFileNames").get<std::array<std::string, 8>>();
 
                 const int sideCountValue = spriteJson.at("sideCount").get<int>();
 
-                if (sideCountValue < SIDECOUNT_SINGLE || sideCountValue > SIDECOUNT_90) continue;
+                if (sideCountValue != SIDECOUNT_SINGLE && sideCountValue != SIDECOUNT_90 &&
+                    sideCountValue != SIDECOUNT_45) continue;
 
+                ComponentSprite& c = level.sprites.Add(ownerID);
+
+                c.textureFileNames = textureFileNames;
                 c.sideCount = static_cast<SideCount>(sideCountValue);
+
+                entity->componentsMask.set(CMP_SPRITE);
             }
         }
 
@@ -678,32 +715,33 @@ namespace {
         }
 
         if (componentsJson.contains("audioSources")) {
-            for (const json &audioSourceJson: componentsJson["audioSources"]) {
+            for (const json& audioSourceJson : componentsJson["audioSources"]) {
                 const ID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity *entity = level.GetEntity(ownerID);
+                Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentAudioSource &c = level.audioSources.Add(ownerID);
-                entity->componentsMask.set(CMP_AUDIO_SOURCE);
+                ComponentAudioSource& c = level.audioSources.Add(ownerID);
 
-                c.soundIndex = audioSourceJson.value("soundIndex", -1);
+                c.name = "entity_" + std::to_string(ownerID) + "_audio";
+                c.soundFileName = audioSourceJson.value("soundFileName", std::string{});
+
                 c.pitch = audioSourceJson.value("pitch", 1.0f);
                 c.gain = audioSourceJson.value("gain", 1.0f);
                 c.looping = audioSourceJson.value("looping", false);
-                c.playOnStart = audioSourceJson.value("playOnStart", true);
+                c.playOnStart = audioSourceJson.value("playOnStart", false);
 
-                c.referenceDistance = audioSourceJson.value("referenceDistance", 1.0f);
-                c.maxDistance = audioSourceJson.value("maxDistance", 10000.0f);
-                c.rollOffFactor = audioSourceJson.value("rollOffFactor", 1.0f);
+                c.referenceDistance = audioSourceJson.value("referenceDistance",1.0f);
 
-                c.innerConeAngle = audioSourceJson.value("innerConeAngle", 360.0f);
-                c.outerConeAngle = audioSourceJson.value("outerConeAngle", 360.0f);
+                c.maxDistance = audioSourceJson.value("maxDistance",10000.0f);
+                c.rollOffFactor = audioSourceJson.value("rollOffFactor",1.0f);
+                c.innerConeAngle = audioSourceJson.value("innerConeAngle",360.0f);
+                c.outerConeAngle = audioSourceJson.value("outerConeAngle",360.0f);
                 c.outerGain = audioSourceJson.value("outerGain", 0.0f);
 
-                c.name = "entity_" + std::to_string(ownerID) + "_audio";
+                entity->componentsMask.set(CMP_AUDIO_SOURCE);
             }
         }
 
@@ -973,10 +1011,10 @@ namespace {
             });
         }
 
-        for (const ComponentSprite &c: level.sprites.components) {
+        for (const ComponentSprite& c : level.sprites.components) {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"textureIndices", c.textureIndices},
+                {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)}
             });
         }
@@ -995,10 +1033,10 @@ namespace {
             });
         }
 
-        for (const ComponentAudioSource &c: level.audioSources.components) {
+        for (const ComponentAudioSource& c : level.audioSources.components) {
             componentsJson["audioSources"].push_back({
                 {"ownerID", c.ownerID},
-                {"soundIndex", c.soundIndex},
+                {"soundFileName", c.soundFileName},
                 {"pitch", c.pitch},
                 {"gain", c.gain},
                 {"looping", c.looping},
@@ -1158,7 +1196,7 @@ namespace LevelSerialization {
         try {
             levelData = json::from_bson(bsonData);
         }
-        catch (const std::exception& e) {
+        catch (const json::exception& e) {
             SetError(
                 errorMessage,
                 "Failed to parse BSON level file " + levelFile.string() +
@@ -1193,7 +1231,7 @@ namespace LevelSerialization {
             );
             return false;
         }
-        catch (const std::exception& e) {
+        catch (const json::exception& e) {
             SetError(
                 errorMessage,
                 "Unexpected error while loading level " +
@@ -1235,7 +1273,7 @@ namespace LevelSerialization {
         try {
             fs::create_directories(levelFile.parent_path());
         }
-        catch (const std::exception& e) {
+        catch (const json::exception& e) {
             SetError(
                 errorMessage,
                 "Failed to create level folder " +

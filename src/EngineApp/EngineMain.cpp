@@ -266,7 +266,6 @@ int main(const int argc, char** argv) {
         if (!UpdateCurrentMode()) break;
     }
 
-
     // Covers unexpected exits where a mode is still running.
     StopCurrentMode(false);
 

@@ -29,7 +29,7 @@ struct Wall {
     // Stable ID of the sector that is to the back or to the right of the Wall in top down view
     // Should be -1 if there is no sector
     ID backSector   = INVALID_ID;
-    int textureIndex = INVALID_ID;
+    std::string textureFileName;
 
     // Read only — do not change
     Vector2 dir, normal, vector;
@@ -53,32 +53,32 @@ struct Wall {
     // quad[3] = topStart
 
     Wall(
-        const Vector2& start,
-        const Vector2& end,
-        const Vector4  color,
-        const ID  fs           = INVALID_ID,
-        const ID  bs           = INVALID_ID,
-        const int textureIndex = -1,
-        const int floor        = 0 // Currently unused
+    const Vector2& start,
+    const Vector2& end,
+    const Vector4 color,
+    const ID fs = INVALID_ID,
+    const ID bs = INVALID_ID,
+    std::string textureFileName = {},
+    const int floor = 0 // Currently unused
     )
     : start(start),
       end(end),
       color(color),
       frontSector(fs),
       backSector(bs),
-      textureIndex(textureIndex)
+      textureFileName(std::move(textureFileName))
     {
-        vector   = end - start;
+        vector = end - start;
         lengthSq = Vector2Math::Dot(vector, vector);
-        length   = std::sqrt(lengthSq);
+        length = std::sqrt(lengthSq);
 
         if (length > 0.00001f) {
-            dir    = vector / length;
-            normal = { -dir.y, dir.x };
+            dir = vector / length;
+            normal = {-dir.y, dir.x};
         }
         else {
-            dir    = { 0.0f, 0.0f };
-            normal = { 0.0f, 0.0f };
+            dir = {0.0f, 0.0f};
+            normal = {0.0f, 0.0f};
         }
     }
 

@@ -22,6 +22,7 @@ struct ScriptAudioSource {
 
     [[nodiscard]] ComponentAudioSource* GetComponent() const {
         if (level == nullptr) return nullptr;
+
         return level->audioSources.Get(ownerID);
     }
 
@@ -32,24 +33,32 @@ struct ScriptAudioSource {
     [[nodiscard]] std::string GetName() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return {};
+
         return audio->name;
     }
 
-    [[nodiscard]] int GetSoundIndex() const {
+    [[nodiscard]] std::string GetSoundFileName() const {
         const ComponentAudioSource* audio = GetComponent();
-        if (audio == nullptr) return -1;
-        return audio->soundIndex;
+        if (audio == nullptr) return {};
+
+        return audio->soundFileName;
     }
 
-    void SetSoundIndex(const int index) const {
+    void SetSoundFileName(const std::string& fileName) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
-        audio->soundIndex = index;
+
+        audio->soundFileName = fileName;
+    }
+
+    void ClearSoundFileName() const {
+        SetSoundFileName("");
     }
 
     [[nodiscard]] float GetPitch() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 1.0f;
+
         return audio->pitch;
     }
 
@@ -64,6 +73,7 @@ struct ScriptAudioSource {
     [[nodiscard]] float GetGain() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 1.0f;
+
         return audio->gain;
     }
 
@@ -78,6 +88,7 @@ struct ScriptAudioSource {
     [[nodiscard]] bool GetLooping() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return false;
+
         return audio->looping;
     }
 
@@ -92,96 +103,112 @@ struct ScriptAudioSource {
     [[nodiscard]] bool GetPlayOnStart() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return false;
+
         return audio->playOnStart;
     }
 
     void SetPlayOnStart(const bool playOnStart) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->playOnStart = playOnStart;
     }
 
     [[nodiscard]] float GetReferenceDistance() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 1.0f;
+
         return audio->referenceDistance;
     }
 
     void SetReferenceDistance(const float distance) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->referenceDistance = distance;
     }
 
     [[nodiscard]] float GetMaxDistance() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 10000.0f;
+
         return audio->maxDistance;
     }
 
     void SetMaxDistance(const float distance) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->maxDistance = distance;
     }
 
     [[nodiscard]] float GetRollOffFactor() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 1.0f;
+
         return audio->rollOffFactor;
     }
 
     void SetRollOffFactor(const float factor) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->rollOffFactor = factor;
     }
 
     [[nodiscard]] float GetInnerConeAngle() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 360.0f;
+
         return audio->innerConeAngle;
     }
 
     void SetInnerConeAngle(const float angle) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->innerConeAngle = angle;
     }
 
     [[nodiscard]] float GetOuterConeAngle() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 360.0f;
+
         return audio->outerConeAngle;
     }
 
     void SetOuterConeAngle(const float angle) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->outerConeAngle = angle;
     }
 
     [[nodiscard]] float GetOuterGain() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return 0.0f;
+
         return audio->outerGain;
     }
 
     void SetOuterGain(const float gain) const {
         ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->outerGain = gain;
     }
 
     void PlaySound() const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->PlaySound();
     }
 
     void SetSourcePosition(const Vector3& position) const {
         const ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
+
         audio->SetSourcePosition(position);
     }
 };
@@ -298,6 +325,7 @@ struct ScriptSprite {
 
     [[nodiscard]] ComponentSprite* GetComponent() const {
         if (level == nullptr) return nullptr;
+
         return level->sprites.Get(ownerID);
     }
 
@@ -315,65 +343,119 @@ struct ScriptSprite {
                sideCount == SIDECOUNT_45;
     }
 
-    [[nodiscard]] int GetTextureIndex(const int slot) const {
+    [[nodiscard]] std::string GetTextureFileName(const int slot) const {
         const ComponentSprite* sprite = GetComponent();
-        if (sprite == nullptr) return -1;
-        if (!IsValidSlot(slot)) return -1;
 
-        return sprite->textureIndices[slot];
+        if (sprite == nullptr) return {};
+        if (!IsValidSlot(slot)) return {};
+
+        return sprite->textureFileNames[slot];
     }
 
-    void SetTextureIndex(const int slot, const int index) const {
+    void SetTextureFileName(
+        const int slot,
+        const std::string& fileName
+    ) const {
         ComponentSprite* sprite = GetComponent();
+
         if (sprite == nullptr) return;
         if (!IsValidSlot(slot)) return;
 
-        sprite->textureIndices[slot] = index;
+        sprite->textureFileNames[slot] = fileName;
     }
 
     [[nodiscard]] int GetSideCount() const {
         const ComponentSprite* sprite = GetComponent();
+
         if (sprite == nullptr) return SIDECOUNT_SINGLE;
 
-        return sprite->sideCount;
+        return static_cast<int>(sprite->sideCount);
     }
 
     void SetSideCount(const int sideCount) const {
         ComponentSprite* sprite = GetComponent();
+
         if (sprite == nullptr) return;
         if (!IsValidSideCount(sideCount)) return;
 
         sprite->sideCount = static_cast<SideCount>(sideCount);
     }
 
-    void ClearTextureIndex(const int slot) const {
-        SetTextureIndex(slot, -1);
+    void ClearTextureFileName(const int slot) const {
+        SetTextureFileName(slot, "");
     }
 
-    void ClearAllTextureIndices() const {
+    void ClearAllTextureFileNames() const {
         ComponentSprite* sprite = GetComponent();
+
         if (sprite == nullptr) return;
 
-        sprite->textureIndices.fill(-1);
+        sprite->textureFileNames.fill("");
     }
 
-    [[nodiscard]] int GetNorthTextureIndex() const {return GetTextureIndex(SLOT_N);}
-    [[nodiscard]] int GetNorthEastTextureIndex() const {return GetTextureIndex(SLOT_NE);}
-    [[nodiscard]] int GetEastTextureIndex() const {return GetTextureIndex(SLOT_E);}
-    [[nodiscard]] int GetSouthEastTextureIndex() const {return GetTextureIndex(SLOT_SE);}
-    [[nodiscard]] int GetSouthTextureIndex() const {return GetTextureIndex(SLOT_S);}
-    [[nodiscard]] int GetSouthWestTextureIndex() const {return GetTextureIndex(SLOT_SW);}
-    [[nodiscard]] int GetWestTextureIndex() const {return GetTextureIndex(SLOT_W);}
-    [[nodiscard]] int GetNorthWestTextureIndex() const {return GetTextureIndex(SLOT_NW);}
+    [[nodiscard]] std::string GetNorthTextureFileName() const {
+        return GetTextureFileName(SLOT_N);
+    }
 
-    void SetNorthTextureIndex(const int index) const {SetTextureIndex(SLOT_N, index);}
-    void SetNorthEastTextureIndex(const int index) const {SetTextureIndex(SLOT_NE, index);}
-    void SetEastTextureIndex(const int index) const {SetTextureIndex(SLOT_E, index);}
-    void SetSouthEastTextureIndex(const int index) const { SetTextureIndex(SLOT_SE, index);}
-    void SetSouthTextureIndex(const int index) const { SetTextureIndex(SLOT_S, index);}
-    void SetSouthWestTextureIndex(const int index) const { SetTextureIndex(SLOT_SW, index);}
-    void SetWestTextureIndex(const int index) const {SetTextureIndex(SLOT_W, index);}
-    void SetNorthWestTextureIndex(const int index) const {SetTextureIndex(SLOT_NW, index);}
+    [[nodiscard]] std::string GetNorthEastTextureFileName() const {
+        return GetTextureFileName(SLOT_NE);
+    }
+
+    [[nodiscard]] std::string GetEastTextureFileName() const {
+        return GetTextureFileName(SLOT_E);
+    }
+
+    [[nodiscard]] std::string GetSouthEastTextureFileName() const {
+        return GetTextureFileName(SLOT_SE);
+    }
+
+    [[nodiscard]] std::string GetSouthTextureFileName() const {
+        return GetTextureFileName(SLOT_S);
+    }
+
+    [[nodiscard]] std::string GetSouthWestTextureFileName() const {
+        return GetTextureFileName(SLOT_SW);
+    }
+
+    [[nodiscard]] std::string GetWestTextureFileName() const {
+        return GetTextureFileName(SLOT_W);
+    }
+
+    [[nodiscard]] std::string GetNorthWestTextureFileName() const {
+        return GetTextureFileName(SLOT_NW);
+    }
+
+    void SetNorthTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_N, fileName);
+    }
+
+    void SetNorthEastTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_NE, fileName);
+    }
+
+    void SetEastTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_E, fileName);
+    }
+
+    void SetSouthEastTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_SE, fileName);
+    }
+
+    void SetSouthTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_S, fileName);
+    }
+
+    void SetSouthWestTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_SW, fileName);
+    }
+
+    void SetWestTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_W, fileName);
+    }
+
+    void SetNorthWestTextureFileName(const std::string& fileName) const {
+        SetTextureFileName(SLOT_NW, fileName);
+    }
 };
 
 // ---------------------------------------------------------
@@ -1289,17 +1371,24 @@ struct ScriptWall {
         // Mark renderer wall data dirty here if needed.
     }
 
-    [[nodiscard]] int GetTextureIndex() const {
+    [[nodiscard]] std::string GetTextureFileName() const {
         const Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid WallRef");
-        return wall->textureIndex;
+
+        return wall->textureFileName;
     }
 
-    void SetTextureIndex(const int value) const {
+    void SetTextureFileName(const std::string& value) const {
         Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid WallRef");
 
-        wall->textureIndex = value;
+        wall->textureFileName = value;
+
+        // Mark renderer wall data dirty here if wall GPU data is cached.
+    }
+
+    void ClearTextureFileName() const {
+        SetTextureFileName("");
     }
 
     [[nodiscard]] ID GetFrontSector() const {
@@ -1417,34 +1506,44 @@ struct ScriptSector  {
         // Mark sector GPU data dirty here if needed.
     }
 
-    [[nodiscard]] int GetFloorTextureIndex() const {
+    [[nodiscard]] std::string GetFloorTexture() const {
         const Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");
-        return sector->floorTextureIndex;
+
+        return sector->floorTexture;
     }
 
-    void SetFloorTextureIndex(const int value) const {
+    void SetFloorTexture(const std::string& value) const {
         Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");
 
-        sector->floorTextureIndex = value;
+        sector->floorTexture = value;
 
         // Mark sector GPU data dirty here if needed.
     }
 
-    [[nodiscard]] int GetCeilingTextureIndex() const {
-        const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
-        return sector->ceilingTextureIndex;
+    void ClearFloorTexture() const {
+        SetFloorTexture("");
     }
 
-    void SetCeilingTextureIndex(const int value) const {
+    [[nodiscard]] std::string GetCeilingTexture() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        return sector->ceilingTexture;
+    }
+
+    void SetCeilingTexture(const std::string& value) const {
         Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");
 
-        sector->ceilingTextureIndex = value;
+        sector->ceilingTexture = value;
 
         // Mark sector GPU data dirty here if needed.
+    }
+
+    void ClearCeilingTexture() const {
+        SetCeilingTexture("");
     }
 
     [[nodiscard]] float GetLightValue() const {

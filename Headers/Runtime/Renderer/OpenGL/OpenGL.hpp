@@ -251,8 +251,10 @@ private:
     GLuint textureRegionSSBO = 0;
 
     std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
-
     int backgroundTextureIndex = -1;
+    std::unordered_map<std::string, int> textureRegionIndexByName;
+    std::unordered_map<std::string, int> textureIndexByName;
+    std::string backgroundTextureFileName;
 
     bool InitializeOpenGL();
     bool InitializeFont();
@@ -274,7 +276,9 @@ private:
     void BuildVisibleFlatTriangles(const Vector2& playerPos, float playerAngle);
     void BuildFlatTrianglesFromSectors();
 
-    void DrawBackground(float playerAngle) const;
+    void DrawBackground(float playerAngle);
+    int GetOrCreateTextureIndex(const std::string& fileName);
+    int GetTextureRegionIndex(const std::string& fileName) const;
 
     void RefreshTexturesFromLevel();
     [[nodiscard]] const GPUTexture& GetTexture(int index) const;

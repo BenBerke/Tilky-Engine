@@ -67,7 +67,8 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 }
 
 void ComponentAudioSource::PlaySound() const {
-    SoundManager::PlaySoundOnSource(this->name, this->soundIndex);
+    if (soundFileName.empty()) return;
+    SoundManager::PlaySoundOnSource(name, soundFileName);
 }
 
 void ComponentAudioSource::SetSourcePitch(const float _pitch) const {

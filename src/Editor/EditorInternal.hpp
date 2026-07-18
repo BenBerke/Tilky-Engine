@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Headers/Editor/Editor.hpp"
+#include "../../Headers/Editor/AssetBrowser.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -33,7 +34,7 @@ namespace MapEditorInternal {
     enum Action {
         ACTION_CREATE_SECTOR,
         ACTION_CREATE_WALL,
-        ACTION_CREATE_DOT,
+        ACTION_CREATE_CORNER, // historical name - now fires for Dot placement/undo.
         ACTION_CREATE_OBJECT,
     };
 
@@ -60,9 +61,9 @@ namespace MapEditorInternal {
     // Snapshot of the sector-creation parameters from the Editor menu, taken
     // the instant a chain starts
     struct PendingSectorParams {
-        int wallTextureIndex = -1;
-        int ceilTextureIndex = -1;
-        int floorTextureIndex = -1;
+        std::string wallTexture;
+        std::string ceilTexture;
+        std::string floorTexture;
 
         float floorHeight = 0.0f;
         float ceilHeight = 0.0f;
@@ -123,9 +124,9 @@ namespace MapEditorInternal {
     extern Entity entityInClipboard;
 
     //-- Sector to be created variables
-    extern int wallTextureIndex;
-    extern int ceilTextureIndex;
-    extern int floorTextureIndex;
+    extern std::string wallTexture;
+    extern std::string ceilTexture;
+    extern std::string floorTexture;
 
     extern float floorHeight;
     extern float ceilHeight;
@@ -142,6 +143,13 @@ namespace MapEditorInternal {
     // Dot Mode — Wall inspector (right-click select)
     extern bool editingWall;
     extern ID selectedWallID;
+
+    // Shared Asset Browser instance, rooted at the project's Assets folder.
+    // Defined in MapEditorUI.cpp so both it and ImGuiDrawFunctions.cpp (via
+    // this header) can reach the one shared browser and its pending
+    // double-click-to-assign selection.
+    extern AssetBrowser assetBrowser;
+    extern bool assetBrowserInitialized;
 
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
@@ -211,12 +219,35 @@ namespace MapEditorInternal {
     void HandleSectorModeRightClick(const Vector2& point);
     void HandleDotModeRightClick(const Vector2& point);
 
-    // Texture preview / Texture View Mode access point.
-    // Returns nullptr safely if the index is invalid or unavailable - never
+    // Texture preview / Texture View Mode access point. Textures are
+    // identified by name (relative to the Textures folder), not by index.
+    // Returns nullptr safely if the file is missing or unavailable - never
     // crashes on a missing texture.
-    SDL_Texture* GetEditorTexture(int textureIndex);
-    void DrawTextureThumbnailBox(const Level& level, int textureIndex, float size);
-    void DrawTextureThumbnailRow(const Level& level, int textureIndex);
+    SDL_Texture* GetEditorTexture(const std::string& textureFileName);
+    void DrawTextureThumbnailBox(const std::string& textureFileName, float size);
+    void DrawTextureThumbnailRow(const std::string& textureFileName);
+
+    // Drag-and-drop / click-to-assign field for referencing a project
+    // asset (texture, sound, or script) by name. Draws `label`, the
+    // current value (or a placeholder), and a Clear button; for Texture
+    // fields with previewSize > 0, also draws an inline thumbnail.
+    // Accepts a drop from the Asset Browser, or a click here right after
+    // double-clicking a matching asset there. Returns true the frame
+    // `value` changes.
+    bool DrawAssetField(const char* label, std::string& value, AssetKind kind, float previewSize = 0.0f);
+
+    // Call this from your SDL event loop whenever you receive
+    // SDL_EVENT_DROP_FILE while the Map Editor window is active, e.g.:
+    //
+    //   case SDL_EVENT_DROP_FILE:
+    //       MapEditorInternal::HandleAssetBrowserFileDrop(
+    //           event.drop.windowID, event.drop.x, event.drop.y, event.drop.data);
+    //       break;
+    //
+    // Safe to call unconditionally - it no-ops if the drop didn't land on
+    // the Asset Browser panel, or if the Map Editor window isn't the one
+    // the drop occurred over.
+    void HandleAssetBrowserFileDrop(SDL_WindowID windowID, float x, float y, const char* filePath);
 
     void QueueLevelLoad(const std::string& levelName);
     bool ProcessPendingLevelLoad();

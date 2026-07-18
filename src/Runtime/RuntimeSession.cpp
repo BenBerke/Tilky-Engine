@@ -120,7 +120,7 @@ namespace {
 #ifdef TILKY_STANDALONE
 
     bool StartStandalone(Level& level, const std::string& windowName) {
-        MapQueries::RebuildSectorRuntimeLinks(level);
+     //   LevelManager::PrepareLevel(level); ?????
 
         if (!StartRenderer(windowName, false)) return false;
 

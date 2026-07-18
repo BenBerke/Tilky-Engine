@@ -1,7 +1,14 @@
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
-void OpenGL::DrawBackground(const float playerAngle) const {
-    if (!backgroundShader || backgroundTextureIndex < 0 || backgroundTextureIndex >= GetTextureCount()) return;
+// No longer `const`: resolving backgroundTextureFileName can lazily load
+// a texture on first use (see GetOrCreateTextureIndex), mirroring the
+// editor-side EditorTextureCache. OpenGL.hpp's declaration needs the same
+// `const` dropped - see the accompanying notes.
+void OpenGL::DrawBackground(const float playerAngle) {
+    if (!backgroundShader || backgroundTextureFileName.empty()) return;
+
+    const int textureIndex = GetOrCreateTextureIndex(backgroundTextureFileName);
+    if (textureIndex < 0 || textureIndex >= GetTextureCount()) return;
 
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
@@ -17,7 +24,7 @@ void OpenGL::DrawBackground(const float playerAngle) const {
 
     glBindTexture(
         GL_TEXTURE_2D,
-        GetTexture(backgroundTextureIndex).id
+        GetTexture(textureIndex).id
     );
 
     glBindVertexArray(VAO);

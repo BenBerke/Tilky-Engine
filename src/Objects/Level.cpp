@@ -60,7 +60,7 @@ ID Level::CreateEntity(Entity& copy) {
         auto* s  = entity.AddComponent<ComponentSprite>();
         const ComponentSprite* cs = copy.GetComponent<ComponentSprite>();
 
-        s->textureIndices = cs->textureIndices;
+        s->textureFileNames = cs->textureFileNames;
         s->sideCount = cs->sideCount;
     }
 
@@ -82,7 +82,7 @@ ID Level::CreateEntity(Entity& copy) {
         const ComponentAudioSource* ca = copy.GetComponent<ComponentAudioSource>();
 
         a->name              = ca->name;
-        a->soundIndex        = ca->soundIndex;
+        a->soundFileName     = ca->soundFileName;
         a->pitch             = ca->pitch;
         a->gain              = ca->gain;
         a->looping           = ca->looping;

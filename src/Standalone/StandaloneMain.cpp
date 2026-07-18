@@ -19,9 +19,7 @@ int main(int argc, char* argv[]) {
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
     if (!fs::exists(projectFile)) {
-        std::cerr << "Missing project.tilky beside executable:\n"
-                  << projectFile.string()
-                  << "\n";
+        std::cerr << "Missing project.tilky beside executable:\n" << projectFile.string() << "\n";
         return 1;
     }
 

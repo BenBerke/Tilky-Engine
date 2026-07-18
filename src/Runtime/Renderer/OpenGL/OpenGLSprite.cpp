@@ -40,18 +40,22 @@ void OpenGL::BuildGpuSprites() {
             255.0f
         };
 
+        // spriteComponent.textureFileNames[i] are filenames now, not
+        // indices - sprites share the wall/sector/decal texture atlas, so
+        // each slot resolves the same way (see GetTextureRegionIndex,
+        // added alongside the atlas builder - not part of this file).
         gpuSprite.textureIndices0 = {
-            spriteComponent.textureIndices[0], // N
-            spriteComponent.textureIndices[1], // NE
-            spriteComponent.textureIndices[2], // E
-            spriteComponent.textureIndices[3]  // SE
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[0])), // N
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[1])), // NE
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[2])), // E
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[3]))  // SE
         };
 
         gpuSprite.textureIndices1 = {
-            spriteComponent.textureIndices[4], // S
-            spriteComponent.textureIndices[5], // SW
-            spriteComponent.textureIndices[6], // W
-            spriteComponent.textureIndices[7]  // NW
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[4])), // S
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[5])), // SW
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[6])), // W
+            (GetTextureRegionIndex(spriteComponent.textureFileNames[7]))  // NW
         };
 
         gpuSprite.data = {

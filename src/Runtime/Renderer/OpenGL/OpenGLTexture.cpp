@@ -4,6 +4,7 @@
 #include <SDL3/SDL_surface.h>
 #include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
+#include <unordered_map>
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -68,6 +69,32 @@ int OpenGL::CreateTexture(const std::string& fileName) {
     return static_cast<int>(textures.size()) - 1;
 }
 
+// Lazy, filename-keyed resolution on top of the plain textures[] list
+// above (NOT the atlas - see GetTextureRegionIndex for that). Used by
+// anything that binds a single standalone GL texture directly, such as
+// the background. Loads and caches on first request; returns -1 (never
+// crashes) if the file is missing or fails to decode - a failed load is
+// cached too, so a broken reference isn't retried every frame.
+//
+// Requires a new `std::unordered_map<std::string, int> textureIndexByName;`
+// member and a matching declaration in OpenGL.hpp (not included in this
+// pass - see the accompanying notes).
+int OpenGL::GetOrCreateTextureIndex(const std::string& fileName) {
+    if (fileName.empty()) {
+        return -1;
+    }
+
+    const auto found = textureIndexByName.find(fileName);
+    if (found != textureIndexByName.end()) {
+        return found->second;
+    }
+
+    const int index = CreateTexture(fileName);
+    textureIndexByName.emplace(fileName, index); // cache -1 too, on failure
+
+    return index;
+}
+
 void OpenGL::RefreshTexturesFromLevel() {
     if (!BuildTextureAtlasFromLevel()) {
         spdlog::error("Failed to build texture atlas from level");
@@ -104,6 +131,7 @@ void OpenGL::DestroyAllTextures() {
     }
 
     textures.clear();
+    textureIndexByName.clear();
 
     if (atlasTexture != 0) {
         glDeleteTextures(1, &atlasTexture);

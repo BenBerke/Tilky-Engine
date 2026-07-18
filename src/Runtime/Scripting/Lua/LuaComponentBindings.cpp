@@ -11,71 +11,81 @@
 void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
     lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX);
 
-        lua.new_usertype<ScriptAudioSource>(
-            "AudioSource",
+    lua.new_usertype<ScriptAudioSource>(
+        "AudioSource",
 
-            "isValid", sol::property(&ScriptAudioSource::IsValid),
+        "isValid", sol::property(
+            &ScriptAudioSource::IsValid
+        ),
 
-            "name", sol::property(&ScriptAudioSource::GetName),
+        "name", sol::property(
+            &ScriptAudioSource::GetName
+        ),
 
-            "soundIndex", sol::property(
-                &ScriptAudioSource::GetSoundIndex,
-                &ScriptAudioSource::SetSoundIndex
-            ),
+        "soundFileName", sol::property(
+            &ScriptAudioSource::GetSoundFileName,
+            &ScriptAudioSource::SetSoundFileName
+        ),
 
-            "pitch", sol::property(
-                &ScriptAudioSource::GetPitch,
-                &ScriptAudioSource::SetPitch
-            ),
+        "clearSoundFileName",
+        &ScriptAudioSource::ClearSoundFileName,
 
-            "gain", sol::property(
-                &ScriptAudioSource::GetGain,
-                &ScriptAudioSource::SetGain
-            ),
+        "pitch", sol::property(
+            &ScriptAudioSource::GetPitch,
+            &ScriptAudioSource::SetPitch
+        ),
 
-            "looping", sol::property(
-                &ScriptAudioSource::GetLooping,
-                &ScriptAudioSource::SetLooping
-            ),
+        "gain", sol::property(
+            &ScriptAudioSource::GetGain,
+            &ScriptAudioSource::SetGain
+        ),
 
-            "playOnStart", sol::property(
-                &ScriptAudioSource::GetPlayOnStart,
-                &ScriptAudioSource::SetPlayOnStart
-            ),
+        "looping", sol::property(
+            &ScriptAudioSource::GetLooping,
+            &ScriptAudioSource::SetLooping
+        ),
 
-            "referenceDistance", sol::property(
-                &ScriptAudioSource::GetReferenceDistance,
-                &ScriptAudioSource::SetReferenceDistance
-            ),
+        "playOnStart", sol::property(
+            &ScriptAudioSource::GetPlayOnStart,
+            &ScriptAudioSource::SetPlayOnStart
+        ),
 
-            "maxDistance", sol::property(
-                &ScriptAudioSource::GetMaxDistance,
-                &ScriptAudioSource::SetMaxDistance
-            ),
+        "referenceDistance", sol::property(
+            &ScriptAudioSource::GetReferenceDistance,
+            &ScriptAudioSource::SetReferenceDistance
+        ),
 
-            "rollOffFactor", sol::property(
-                &ScriptAudioSource::GetRollOffFactor,
-                &ScriptAudioSource::SetRollOffFactor
-            ),
+        "maxDistance", sol::property(
+            &ScriptAudioSource::GetMaxDistance,
+            &ScriptAudioSource::SetMaxDistance
+        ),
 
-            "innerConeAngle", sol::property(
-                &ScriptAudioSource::GetInnerConeAngle,
-                &ScriptAudioSource::SetInnerConeAngle
-            ),
+        "rollOffFactor", sol::property(
+            &ScriptAudioSource::GetRollOffFactor,
+            &ScriptAudioSource::SetRollOffFactor
+        ),
 
-            "outerConeAngle", sol::property(
-                &ScriptAudioSource::GetOuterConeAngle,
-                &ScriptAudioSource::SetOuterConeAngle
-            ),
+        "innerConeAngle", sol::property(
+            &ScriptAudioSource::GetInnerConeAngle,
+            &ScriptAudioSource::SetInnerConeAngle
+        ),
 
-            "outerGain", sol::property(
-                &ScriptAudioSource::GetOuterGain,
-                &ScriptAudioSource::SetOuterGain
-            ),
+        "outerConeAngle", sol::property(
+            &ScriptAudioSource::GetOuterConeAngle,
+            &ScriptAudioSource::SetOuterConeAngle
+        ),
 
-            "play", &ScriptAudioSource::PlaySound,
-            "setSourcePosition", &ScriptAudioSource::SetSourcePosition
-        );
+        "outerGain", sol::property(
+            &ScriptAudioSource::GetOuterGain,
+            &ScriptAudioSource::SetOuterGain
+        ),
+
+        "play",
+        &ScriptAudioSource::PlaySound,
+
+        "setSourcePosition",
+        &ScriptAudioSource::SetSourcePosition
+    );
 
         lua.new_usertype<ScriptRigidbody>(
             "Rigidbody",
@@ -350,7 +360,7 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             ),
 
             "addPosition", &ScriptTransform::AddPosition
-        );
+    );
 
     lua.new_usertype<ScriptSprite>(
         "Sprite",
@@ -362,50 +372,56 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptSprite::SetSideCount
         ),
 
-        "getTextureIndex", &ScriptSprite::GetTextureIndex,
-        "setTextureIndex", &ScriptSprite::SetTextureIndex,
+        "getTextureFileName",
+        &ScriptSprite::GetTextureFileName,
 
-        "clearTextureIndex", &ScriptSprite::ClearTextureIndex,
-        "clearAllTextureIndices", &ScriptSprite::ClearAllTextureIndices,
+        "setTextureFileName",
+        &ScriptSprite::SetTextureFileName,
 
-        "northTextureIndex", sol::property(
-            &ScriptSprite::GetNorthTextureIndex,
-            &ScriptSprite::SetNorthTextureIndex
+        "clearTextureFileName",
+        &ScriptSprite::ClearTextureFileName,
+
+        "clearAllTextureFileNames",
+        &ScriptSprite::ClearAllTextureFileNames,
+
+        "northTextureFileName", sol::property(
+            &ScriptSprite::GetNorthTextureFileName,
+            &ScriptSprite::SetNorthTextureFileName
         ),
 
-        "northEastTextureIndex", sol::property(
-            &ScriptSprite::GetNorthEastTextureIndex,
-            &ScriptSprite::SetNorthEastTextureIndex
+        "northEastTextureFileName", sol::property(
+            &ScriptSprite::GetNorthEastTextureFileName,
+            &ScriptSprite::SetNorthEastTextureFileName
         ),
 
-        "eastTextureIndex", sol::property(
-            &ScriptSprite::GetEastTextureIndex,
-            &ScriptSprite::SetEastTextureIndex
+        "eastTextureFileName", sol::property(
+            &ScriptSprite::GetEastTextureFileName,
+            &ScriptSprite::SetEastTextureFileName
         ),
 
-        "southEastTextureIndex", sol::property(
-            &ScriptSprite::GetSouthEastTextureIndex,
-            &ScriptSprite::SetSouthEastTextureIndex
+        "southEastTextureFileName", sol::property(
+            &ScriptSprite::GetSouthEastTextureFileName,
+            &ScriptSprite::SetSouthEastTextureFileName
         ),
 
-        "southTextureIndex", sol::property(
-            &ScriptSprite::GetSouthTextureIndex,
-            &ScriptSprite::SetSouthTextureIndex
+        "southTextureFileName", sol::property(
+            &ScriptSprite::GetSouthTextureFileName,
+            &ScriptSprite::SetSouthTextureFileName
         ),
 
-        "southWestTextureIndex", sol::property(
-            &ScriptSprite::GetSouthWestTextureIndex,
-            &ScriptSprite::SetSouthWestTextureIndex
+        "southWestTextureFileName", sol::property(
+            &ScriptSprite::GetSouthWestTextureFileName,
+            &ScriptSprite::SetSouthWestTextureFileName
         ),
 
-        "westTextureIndex", sol::property(
-            &ScriptSprite::GetWestTextureIndex,
-            &ScriptSprite::SetWestTextureIndex
+        "westTextureFileName", sol::property(
+            &ScriptSprite::GetWestTextureFileName,
+            &ScriptSprite::SetWestTextureFileName
         ),
 
-        "northWestTextureIndex", sol::property(
-            &ScriptSprite::GetNorthWestTextureIndex,
-            &ScriptSprite::SetNorthWestTextureIndex
+        "northWestTextureFileName", sol::property(
+            &ScriptSprite::GetNorthWestTextureFileName,
+            &ScriptSprite::SetNorthWestTextureFileName
         )
     );
 

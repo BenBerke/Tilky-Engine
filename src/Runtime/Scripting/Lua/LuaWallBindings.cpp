@@ -8,34 +8,60 @@
 
 void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
     lua.new_usertype<ScriptWall>(
-    "WallRef",
+        "WallRef",
 
-    "id", sol::readonly_property(&ScriptWall::GetID),
-    "isValid", sol::readonly_property(&ScriptWall::IsValid),
+        "id", sol::readonly_property(
+            &ScriptWall::GetID
+        ),
 
-    "start", sol::readonly_property(&ScriptWall::GetStart),
-    "end", sol::readonly_property(&ScriptWall::GetEnd),
+        "isValid", sol::readonly_property(
+            &ScriptWall::IsValid
+        ),
 
-    "frontSector", sol::readonly_property(&ScriptWall::GetFrontSector),
-    "backSector", sol::readonly_property(&ScriptWall::GetBackSector),
+        "start", sol::readonly_property(
+            &ScriptWall::GetStart
+        ),
 
-    "dir", sol::readonly_property(&ScriptWall::GetDir),
-    "normal", sol::readonly_property(&ScriptWall::GetNormal),
-    "length", sol::readonly_property(&ScriptWall::GetLength),
+        "end", sol::readonly_property(
+            &ScriptWall::GetEnd
+        ),
 
-    "color", sol::property(
-        &ScriptWall::GetColor,
-        &ScriptWall::SetColor
-    ),
+        "frontSector", sol::readonly_property(
+            &ScriptWall::GetFrontSector
+        ),
 
-    "textureOffset", sol::property(
-        &ScriptWall::GetTextureOffset,
-        &ScriptWall::SetTextureOffset
-    ),
+        "backSector", sol::readonly_property(
+            &ScriptWall::GetBackSector
+        ),
 
-    "textureIndex", sol::property(
-        &ScriptWall::GetTextureIndex,
-        &ScriptWall::SetTextureIndex
-    )
-);
+        "dir", sol::readonly_property(
+            &ScriptWall::GetDir
+        ),
+
+        "normal", sol::readonly_property(
+            &ScriptWall::GetNormal
+        ),
+
+        "length", sol::readonly_property(
+            &ScriptWall::GetLength
+        ),
+
+        "color", sol::property(
+            &ScriptWall::GetColor,
+            &ScriptWall::SetColor
+        ),
+
+        "textureOffset", sol::property(
+            &ScriptWall::GetTextureOffset,
+            &ScriptWall::SetTextureOffset
+        ),
+
+        "textureFileName", sol::property(
+            &ScriptWall::GetTextureFileName,
+            &ScriptWall::SetTextureFileName
+        ),
+
+        "clearTextureFileName",
+        &ScriptWall::ClearTextureFileName
+    );
 }

@@ -234,53 +234,6 @@ static bool RunExporter() {
 }
 
 // =============================================================================
-//  Editor::RefreshLevelSoundsFromFolder — unchanged
-// =============================================================================
-
-namespace Editor {
-    void RefreshLevelSoundsFromFolder() {
-        Level &level = LevelManager::CurrentLevel();
-        level.sounds.clear();
-
-        const std::filesystem::path soundsPath = ProjectManager::GetSoundsPath();
-
-        if (!std::filesystem::exists(soundsPath)) {
-            std::filesystem::create_directories(soundsPath);
-            spdlog::warn("Created missing Sounds folder: {}", soundsPath.string());
-            return;
-        }
-
-        if (!std::filesystem::is_directory(soundsPath)) {
-            spdlog::error("Sounds path is not a directory: {}", soundsPath.string());
-            return;
-        }
-
-        for (const auto &entry: std::filesystem::directory_iterator(soundsPath)) {
-            if (!entry.is_regular_file()) continue;
-
-            const std::filesystem::path path = entry.path();
-            std::string ext = path.extension().string();
-
-            std::ranges::transform(ext, ext.begin(), [](const unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
-
-            if (ext != ".wav") continue;
-
-            Sound sound;
-            sound.fileName = path.stem().string();
-            level.sounds.push_back(sound);
-        }
-
-        std::ranges::sort(level.sounds, [](const Sound &a, const Sound &b) {
-            return a.fileName < b.fileName;
-        });
-
-        spdlog::info("Refreshed {} level sound(s)", level.sounds.size());
-    }
-}
-
-// =============================================================================
 //  Anonymous namespace — all private UI state and drawing
 // =============================================================================
 
@@ -311,11 +264,10 @@ namespace {
     // Unsaved-changes flag — set on any edit, cleared on Save / new level
     bool hasUnsavedChanges = false;
 
-    // Project asset file explorer — locked to the project's Assets folder.
-    // Lazily rooted on first draw (see DrawAssetBrowserPanel), since that's
-    // the first point a project is guaranteed to be loaded.
-    AssetBrowser assetBrowser;
-    bool assetBrowserInitialized = false;
+    // Note: the shared AssetBrowser instance now lives in the real
+    // MapEditorInternal namespace further down this file (next to
+    // GetEditorTexture/DrawAssetField), not here, so ImGuiDrawFunctions.cpp
+    // can reach it too via the extern declaration in EditorInternal.hpp.
 
     // =========================================================================
     //  Utility
@@ -364,10 +316,6 @@ namespace {
         actions.clear();
 
         Editor::currentMap = levelName;
-
-        // Re-scan the shared asset folders (mirrors what Editor::Start() does).
-        EditorTextureCache::RefreshLevelTexturesFromFolder();
-        Editor::RefreshLevelSoundsFromFolder();
 
         MapQueries::RebuildSectorRuntimeLinks(level);
 
@@ -429,72 +377,6 @@ namespace {
         );
 
         ImGui::End();
-    }
-
-    // =========================================================================
-    //  Asset panels
-    // =========================================================================
-
-    void DrawTextureCategory() {
-        const Level &level = LevelManager::CurrentLevel();
-
-        if (ImGui::Button(Get("editor.refresh_textures").c_str())) {
-            EditorTextureCache::RefreshLevelTexturesFromFolder();
-            ShowNotification(Get("editor.textures_refreshed").c_str());
-        }
-
-        HoverTooltip(Get("editor.tooltip.texture_category").c_str());
-
-        ImGui::Spacing();
-
-        if (level.textures.empty()) {
-            ImGui::TextDisabled("%s", Get("editor.no_textures_found").c_str());
-            return;
-        }
-
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 6.0f));
-
-        for (int i = 0; i < static_cast<int>(level.textures.size()); i++) {
-            ImGui::PushID(i);
-            DrawTextureThumbnailRow(level, i);
-            ImGui::PopID();
-        }
-
-        ImGui::PopStyleVar();
-    }
-
-    void DrawSoundCategory() {
-        const Level &level = LevelManager::CurrentLevel();
-
-        if (ImGui::Button(Get("editor.refresh_sounds").c_str())) {
-            Editor::RefreshLevelSoundsFromFolder();
-            ShowNotification(Get("editor.sounds_refreshed").c_str());
-        }
-        HoverTooltip(Get("editor.tooltip.sound_category").c_str());
-
-        ImGui::Spacing();
-
-        if (level.sounds.empty()) {
-            ImGui::TextDisabled("%s", Get("editor.no_sounds_found").c_str());
-            return;
-        }
-
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 5.0f));
-
-        for (int i = 0; i < static_cast<int>(level.sounds.size()); i++) {
-            ImGui::PushID(i);
-
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.90f, 0.55f, 1.00f));
-            ImGui::TextUnformatted("*");
-            ImGui::PopStyleColor();
-
-            ImGui::SameLine(0.0f, 6.0f);
-            ImGui::Text("[%d]  %s", i, level.sounds[i].fileName.c_str());
-
-            ImGui::PopID();
-        }
-
-        ImGui::PopStyleVar();
     }
 
     // =========================================================================
@@ -616,13 +498,8 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
-        ImGui::InputInt(Get("editor.background_texture").c_str(), &Editor::backgroundTextureIndex);
+        DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture, 32.0f);
         HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
-
-        ImGui::Spacing();
-
-        // Thumbnail of the current background texture
-        DrawTextureThumbnailRow(LevelManager::CurrentLevel(), Editor::backgroundTextureIndex);
 
         ImGui::End();
     }
@@ -1415,26 +1292,12 @@ namespace {
         }
         HoverTooltip(Get("editor.tooltip.asset_browser_refresh").c_str());
 
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", Get("editor.asset_browser.hint").c_str());
+
         ImGui::Spacing();
 
         assetBrowser.Draw(renderer);
-
-        // Hook point: other editor controls (e.g. the wall/ceil/floor
-        // texture-index fields) can later call
-        // assetBrowser.ConsumePendingConfirmedSelection(...) themselves,
-        // or accept AssetBrowser::PNG_DRAG_DROP_PAYLOAD_TYPE via
-        // ImGui::AcceptDragDropPayload. For now a confirmed pick just
-        // surfaces as a toast.
-        std::filesystem::path confirmedPath;
-        if (assetBrowser.ConsumePendingConfirmedSelection(confirmedPath)) {
-            char buf[192];
-            std::snprintf(
-                buf, sizeof(buf),
-                Get("editor.asset_browser.notification.selected").c_str(),
-                confirmedPath.filename().string().c_str()
-            );
-            ShowNotification(buf);
-        }
 
         ImGui::End();
     }
@@ -1447,46 +1310,22 @@ namespace {
 namespace MapEditorInternal {
     using namespace Localisation;
 
-    SDL_Texture* GetEditorTexture(const int textureIndex) {
-        if (textureIndex < 0) {
+    // Shared Asset Browser instance - defined here (not in the anonymous
+    // namespace above) so ImGuiDrawFunctions.cpp can reach it too, via the
+    // extern declaration in EditorInternal.hpp.
+    AssetBrowser assetBrowser;
+    bool assetBrowserInitialized = false;
+
+    SDL_Texture* GetEditorTexture(const std::string& textureFileName) {
+        if (textureFileName.empty()) {
             return nullptr;
         }
 
-        return EditorTextureCache::Get(textureIndex);
+        return EditorTextureCache::Get(renderer, textureFileName);
     }
 
-    void DrawTextureThumbnailBox(const Level& level, const int textureIndex, const float size) {
-        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
-            const ImVec2 cursor = ImGui::GetCursorScreenPos();
-            ImGui::Dummy(ImVec2(size, size));
-
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilled(
-                cursor,
-                ImVec2(cursor.x + size, cursor.y + size),
-                IM_COL32(35, 35, 40, 255)
-            );
-            dl->AddRect(
-                cursor,
-                ImVec2(cursor.x + size, cursor.y + size),
-                IM_COL32(80, 80, 90, 255)
-            );
-
-            const char* text = "-1";
-            const ImVec2 textSize = ImGui::CalcTextSize(text);
-            dl->AddText(
-                ImVec2(
-                    cursor.x + (size - textSize.x) * 0.5f,
-                    cursor.y + (size - textSize.y) * 0.5f
-                ),
-                IM_COL32(130, 130, 140, 255),
-                text
-            );
-
-            return;
-        }
-
-        SDL_Texture* texture = GetEditorTexture(textureIndex);
+    void DrawTextureThumbnailBox(const std::string& textureFileName, const float size) {
+        SDL_Texture* texture = GetEditorTexture(textureFileName);
 
         if (texture != nullptr) {
             ImGui::Image(
@@ -1511,24 +1350,22 @@ namespace MapEditorInternal {
             IM_COL32(150, 150, 150, 255)
         );
 
-        char indexText[16];
-        snprintf(indexText, sizeof(indexText), "%d", textureIndex);
-
-        const ImVec2 textSize = ImGui::CalcTextSize(indexText);
+        const char* text = textureFileName.empty() ? "-" : "?";
+        const ImVec2 textSize = ImGui::CalcTextSize(text);
         dl->AddText(
             ImVec2(
                 cursor.x + (size - textSize.x) * 0.5f,
                 cursor.y + (size - textSize.y) * 0.5f
             ),
             IM_COL32(220, 220, 220, 255),
-            indexText
+            text
         );
     }
 
-    void DrawTextureThumbnailRow(const Level& level, const int textureIndex) {
+    void DrawTextureThumbnailRow(const std::string& textureFileName) {
         constexpr float thumb = 32.0f;
 
-        DrawTextureThumbnailBox(level, textureIndex, thumb);
+        DrawTextureThumbnailBox(textureFileName, thumb);
 
         ImGui::SameLine(0.0f, 8.0f);
         ImGui::SetCursorPosY(
@@ -1536,16 +1373,111 @@ namespace MapEditorInternal {
             (thumb - ImGui::GetTextLineHeight()) * 0.5f
         );
 
-        if (textureIndex < 0 || textureIndex >= static_cast<int>(level.textures.size())) {
-            ImGui::TextDisabled(Get("editor.none").c_str());
+        if (textureFileName.empty()) {
+            ImGui::TextDisabled("%s", Get("editor.none").c_str());
             return;
         }
 
-        ImGui::Text(
-            "[%d]  %s",
-            textureIndex,
-            level.textures[textureIndex].fileName.c_str()
-        );
+        ImGui::TextUnformatted(textureFileName.c_str());
+    }
+
+    // Attaches a drag-drop target AND a click-to-assign consumer (for the
+    // Asset Browser's double-click-then-click workflow) to the item drawn
+    // IMMEDIATELY before this call. Returns true if `value` was assigned.
+    static bool AcceptAssetDropOrClick(std::string& value, const AssetKind kind) {
+        bool changed = false;
+
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(kind))) {
+                const std::string droppedAbsolutePath(static_cast<const char*>(payload->Data));
+                value = AssetBrowser::ToAssetReference(droppedAbsolutePath, kind);
+                changed = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+            std::filesystem::path confirmedPath;
+            if (assetBrowser.ConsumePendingConfirmedSelection(kind, confirmedPath)) {
+                value = AssetBrowser::ToAssetReference(confirmedPath, kind);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    bool DrawAssetField(const char* label, std::string& value, const AssetKind kind, const float previewSize) {
+        bool changed = false;
+
+        ImGui::PushID(label);
+        ImGui::BeginGroup();
+
+        if (previewSize > 0.0f && kind == AssetKind::Texture) {
+            SDL_Texture* preview = value.empty() ? nullptr : GetEditorTexture(value);
+            const ImVec2 cursor = ImGui::GetCursorScreenPos();
+
+            if (preview != nullptr) {
+                ImGui::Image(reinterpret_cast<ImTextureID>(preview), ImVec2(previewSize, previewSize));
+            } else {
+                ImGui::Dummy(ImVec2(previewSize, previewSize));
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                dl->AddRectFilled(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(35, 35, 40, 255));
+                dl->AddRect(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(90, 90, 100, 255));
+            }
+
+            changed |= AcceptAssetDropOrClick(value, kind);
+            HoverTooltip(Get("editor.asset_field.tooltip").c_str());
+
+            if (label != nullptr && label[0] != '\0') {
+                const ImVec2 labelSize = ImGui::CalcTextSize(label);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (previewSize - labelSize.x) * 0.5f));
+                ImGui::TextDisabled("%s", label);
+            }
+
+            if (!value.empty() && ImGui::SmallButton(Get("editor.asset_field.clear").c_str())) {
+                value.clear();
+                changed = true;
+            }
+        } else {
+            if (label != nullptr && label[0] != '\0') {
+                ImGui::TextUnformatted(label);
+                ImGui::SameLine();
+            }
+
+            char buf[160];
+            snprintf(buf, sizeof(buf), "%s", value.empty() ? "(none)" : value.c_str());
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::InputText("##value", buf, sizeof(buf), ImGuiInputTextFlags_ReadOnly);
+
+            changed |= AcceptAssetDropOrClick(value, kind);
+            HoverTooltip(Get("editor.asset_field.tooltip").c_str());
+
+            if (!value.empty()) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton(Get("editor.asset_field.clear").c_str())) {
+                    value.clear();
+                    changed = true;
+                }
+            }
+        }
+
+        ImGui::EndGroup();
+        ImGui::PopID();
+
+        return changed;
+    }
+
+    void HandleAssetBrowserFileDrop(const SDL_WindowID windowID, const float x, const float y, const char* filePath) {
+        if (filePath == nullptr || window == nullptr) return;
+        if (windowID != SDL_GetWindowID(window)) return;
+        if (!assetBrowser.IsScreenPointInside(x, y)) return;
+
+        const std::filesystem::path source(filePath);
+
+        if (assetBrowser.ImportExternalFile(source)) {
+            ShowNotification((Get("editor.asset_browser.notification.imported") + source.filename().string()).c_str());
+        }
     }
 
     void ChangeMode() {
@@ -1730,21 +1662,11 @@ namespace MapEditorInternal {
             ImGui::Separator();
             ImGui::Spacing();
 
-            // Texture indices with inline thumbnail previews
-            ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt((Get("editor.new_sector.wall_texture") + "##WallTex").c_str(), &wallTextureIndex)) hasUnsavedChanges = true;
-            ImGui::SameLine(0.0f, 8.0f);
-            DrawTextureThumbnailRow(level, wallTextureIndex);
-
-            ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt((Get("editor.new_sector.ceil_texture") + "##CeilTex").c_str(), &ceilTextureIndex)) hasUnsavedChanges = true;
-            ImGui::SameLine(0.0f, 8.0f);
-            DrawTextureThumbnailRow(level, ceilTextureIndex);
-
-            ImGui::SetNextItemWidth(90.0f);
-            if (ImGui::InputInt((Get("editor.new_sector.floor_texture") + "##FloorTex").c_str(), &floorTextureIndex)) hasUnsavedChanges = true;
-            ImGui::SameLine(0.0f, 8.0f);
-            DrawTextureThumbnailRow(level, floorTextureIndex);
+            // Drag a texture from the Asset Browser onto each field below,
+            // or double-click one there and then click a field, to assign it.
+            if (DrawAssetField(Get("editor.new_sector.wall_texture").c_str(), wallTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
+            if (DrawAssetField(Get("editor.new_sector.ceil_texture").c_str(), ceilTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
+            if (DrawAssetField(Get("editor.new_sector.floor_texture").c_str(), floorTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -1773,9 +1695,9 @@ namespace MapEditorInternal {
             // Without this, pendingSectorParams stays at its default-constructed
             // (zeroed) value from CreateNewLevel()/ProcessPendingLevelLoad(),
             // which yields ceilingHeight <= floorHeight on every new sector.
-            pendingSectorParams.wallTextureIndex = wallTextureIndex;
-            pendingSectorParams.ceilTextureIndex = ceilTextureIndex;
-            pendingSectorParams.floorTextureIndex = floorTextureIndex;
+            pendingSectorParams.wallTexture = wallTexture;
+            pendingSectorParams.ceilTexture = ceilTexture;
+            pendingSectorParams.floorTexture = floorTexture;
             pendingSectorParams.floorHeight = floorHeight;
             pendingSectorParams.ceilHeight = ceilHeight;
             pendingSectorParams.lightValue = lightValue;
@@ -1789,22 +1711,6 @@ namespace MapEditorInternal {
         ImGui::Spacing();
         DrawSelectionInspectors(level);
         ImGui::Spacing();
-
-        // ---- Assets (collapsible) -----------------------------------------
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        if (ImGui::CollapsingHeader(Get("editor.sounds").c_str())) {
-            ImGui::Spacing();
-            DrawSoundCategory();
-            ImGui::Spacing();
-        }
-
-        if (ImGui::CollapsingHeader(Get("editor.textures").c_str())) {
-            ImGui::Spacing();
-            DrawTextureCategory();
-            ImGui::Spacing();
-        }
 
         // ---- Floor selector -----------------------------------------------
         ImGui::Separator();

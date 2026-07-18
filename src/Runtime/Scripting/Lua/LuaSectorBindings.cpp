@@ -6,56 +6,78 @@
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
-void LuaScriptSystem::RegisterSectorBindings(sol::state &lua) {
+void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
     lua.new_usertype<ScriptSector>(
-    "SectorRef",
+        "SectorRef",
 
-    "id", sol::readonly_property(&ScriptSector::GetID),
-    "isValid", sol::readonly_property(&ScriptSector::IsValid),
+        "id", sol::readonly_property(
+            &ScriptSector::GetID
+        ),
 
-    "floorHeight", sol::property(
-        &ScriptSector::GetFloorHeight,
-        &ScriptSector::SetFloorHeight
-    ),
+        "isValid", sol::readonly_property(
+            &ScriptSector::IsValid
+        ),
 
-    "ceilingHeight", sol::property(
-        &ScriptSector::GetCeilingHeight,
-        &ScriptSector::SetCeilingHeight
-    ),
+        "floorHeight", sol::property(
+            &ScriptSector::GetFloorHeight,
+            &ScriptSector::SetFloorHeight
+        ),
 
-    "floorColor", sol::property(
-        &ScriptSector::GetFloorColor,
-        &ScriptSector::SetFloorColor
-    ),
+        "ceilingHeight", sol::property(
+            &ScriptSector::GetCeilingHeight,
+            &ScriptSector::SetCeilingHeight
+        ),
 
-    "ceilingColor", sol::property(
-        &ScriptSector::GetCeilingColor,
-        &ScriptSector::SetCeilingColor
-    ),
+        "floorColor", sol::property(
+            &ScriptSector::GetFloorColor,
+            &ScriptSector::SetFloorColor
+        ),
 
-    "floorTextureIndex", sol::property(
-        &ScriptSector::GetFloorTextureIndex,
-        &ScriptSector::SetFloorTextureIndex
-    ),
+        "ceilingColor", sol::property(
+            &ScriptSector::GetCeilingColor,
+            &ScriptSector::SetCeilingColor
+        ),
 
-    "ceilingTextureIndex", sol::property(
-        &ScriptSector::GetCeilingTextureIndex,
-        &ScriptSector::SetCeilingTextureIndex
-    ),
+        "floorTexture", sol::property(
+            &ScriptSector::GetFloorTexture,
+            &ScriptSector::SetFloorTexture
+        ),
 
-    "lightValue", sol::property(
-        &ScriptSector::GetLightValue,
-        &ScriptSector::SetLightValue
-    ),
+        "ceilingTexture", sol::property(
+            &ScriptSector::GetCeilingTexture,
+            &ScriptSector::SetCeilingTexture
+        ),
 
-    "vertexCount", sol::readonly_property(&ScriptSector::GetVertexCount),
-    "wallCount", sol::readonly_property(&ScriptSector::GetWallCount),
-    "entityCount", sol::readonly_property(&ScriptSector::GetEntityCount),
-    "neighborCount", sol::readonly_property(&ScriptSector::GetNeighborCount),
+        "clearFloorTexture",
+        &ScriptSector::ClearFloorTexture,
 
-    "GetVertex", &ScriptSector::GetVertex,
-    "GetWall", &ScriptSector::GetWall,
-    "GetEntity", &ScriptSector::GetEntity,
-    "GetNeighbor", &ScriptSector::GetNeighbor
-);
+        "clearCeilingTexture",
+        &ScriptSector::ClearCeilingTexture,
+
+        "lightValue", sol::property(
+            &ScriptSector::GetLightValue,
+            &ScriptSector::SetLightValue
+        ),
+
+        "vertexCount", sol::readonly_property(
+            &ScriptSector::GetVertexCount
+        ),
+
+        "wallCount", sol::readonly_property(
+            &ScriptSector::GetWallCount
+        ),
+
+        "entityCount", sol::readonly_property(
+            &ScriptSector::GetEntityCount
+        ),
+
+        "neighborCount", sol::readonly_property(
+            &ScriptSector::GetNeighborCount
+        ),
+
+        "GetVertex", &ScriptSector::GetVertex,
+        "GetWall", &ScriptSector::GetWall,
+        "GetEntity", &ScriptSector::GetEntity,
+        "GetNeighbor", &ScriptSector::GetNeighbor
+    );
 }

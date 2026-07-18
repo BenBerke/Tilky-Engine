@@ -26,8 +26,8 @@ struct Sector {
     Vector3 ceilingColor = {255.0f, 255.0f, 255.0f};
     Vector3 floorColor = {255.0f, 255.0f, 255.0f};
 
-    int ceilingTextureIndex = -1;
-    int floorTextureIndex = -1;
+    std::string floorTexture;
+    std::string ceilingTexture;
 
     float lightValue = 255.0f; // Does not affect walls
 

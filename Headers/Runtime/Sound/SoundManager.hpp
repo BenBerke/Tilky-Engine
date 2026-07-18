@@ -21,8 +21,8 @@ namespace SoundManager {
     bool CreateSource(const std::string& name);
     void DestroySource(const std::string& sourceName);
 
-    void PlaySoundOnSource(const std::string& sourceName, int soundIndex);
-    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, int soundIndex);
+    void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName);
+    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const std::string& soundFileName);
 
     // The multiplier for the frequency. 1.0 is normal. 2.0 is an octave higher and double speed.
     void SetSourcePitch(const std::string& sourceName, float pitch);

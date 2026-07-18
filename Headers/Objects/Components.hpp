@@ -186,7 +186,7 @@ struct ComponentAudioSource {
     ID ownerID = static_cast<ID>(-1);
 
     std::string name; // OpenAL source name, e.g. "entity_4_audio"
-    int soundIndex = -1;
+    std::string soundFileName;
 
     float pitch = 1.0f;
     float gain = 1.0f;
@@ -249,10 +249,7 @@ enum SideCount {
 struct ComponentSprite {
     ID ownerID = -1;
 
-    std::array<int, 8> textureIndices = {
-        -1, -1, -1, -1,
-        -1, -1, -1, -1
-    };
+    std::array<std::string,8> textureFileNames;
 
     SideCount sideCount = SIDECOUNT_SINGLE;
 };

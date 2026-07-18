@@ -417,8 +417,8 @@ namespace MapEditorInternal {
             newSector.floorColor = params.floorColor;
             newSector.ceilingColor = params.ceilColor;
 
-            newSector.floorTextureIndex = params.floorTextureIndex;
-            newSector.ceilingTextureIndex = params.ceilTextureIndex;
+            newSector.floorTexture = params.floorTexture;
+            newSector.ceilingTexture = params.ceilTexture;
 
             newSector.lightValue = params.lightValue;
 
@@ -441,7 +441,7 @@ namespace MapEditorInternal {
                         {255.0f, 255.0f, 255.0f, 255.0f},
                         INVALID_ID,
                         INVALID_ID,
-                        params.wallTextureIndex,
+                        params.wallTexture,
                         currentFloor
                     );
 
@@ -493,7 +493,7 @@ namespace MapEditorInternal {
             //
             //             spdlog::warn(
             //                 "  sector wall ptr id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-            //                 w->id, w->frontSector, w->backSector, w->textureIndex,
+            //                 w->id, w->frontSector, w->backSector, w->textureFileName,
             //                 w->quad3DCount, w->start.x, w->start.y, w->end.x, w->end.y
             //             );
             //         }
@@ -502,7 +502,7 @@ namespace MapEditorInternal {
             //     for (const Wall& w : level.walls) {
             //         spdlog::warn(
             //             "LEVEL WALL: id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-            //             w.id, w.frontSector, w.backSector, w.textureIndex,
+            //             w.id, w.frontSector, w.backSector, w.textureFileName,
             //             w.quad3DCount, w.start.x, w.start.y, w.end.x, w.end.y
             //         );
             //     }
@@ -610,9 +610,9 @@ namespace MapEditorInternal {
             // fiddling with them mid-chain can't retroactively change the
             // sector that's about to be created.
             pendingSectorParams = PendingSectorParams{
-                wallTextureIndex,
-                ceilTextureIndex,
-                floorTextureIndex,
+                wallTexture,
+                ceilTexture,
+                floorTexture,
                 floorHeight,
                 ceilHeight,
                 lightValue,
@@ -660,8 +660,8 @@ namespace MapEditorInternal {
         newSector.ceilingHeight       = ceilHeight;
         newSector.floorColor          = floorColor;
         newSector.ceilingColor        = ceilColor;
-        newSector.floorTextureIndex   = floorTextureIndex;
-        newSector.ceilingTextureIndex = ceilTextureIndex;
+        newSector.floorTexture        = floorTexture;
+        newSector.ceilingTexture      = ceilTexture;
         newSector.lightValue          = lightValue;
 
         Editor::AddSector(newSector);
@@ -682,7 +682,7 @@ namespace MapEditorInternal {
         dots.push_back(dot);
         dotIDToIndex[dot.id] = static_cast<int>(dots.size()) - 1;
 
-        actions.push_back(ACTION_CREATE_DOT);
+        actions.push_back(ACTION_CREATE_CORNER);
     }
 
     void RemoveDot(const ID dotID) {
@@ -895,14 +895,19 @@ namespace Editor {
     // longer used by the Sector Mode chain workflow (see
     // MapEditorInternal::FinishSectorSelection / CreateSectorWithWalls in
     // this file instead
+    //
+    // Parameters changed from int texture indices to filenames along with
+    // Sector::floorTexture/ceilingTexture - an index can't be translated
+    // into a filename after the fact, so this had to follow suit rather
+    // than stay silently broken.
     void CreateSector(
      const std::vector<Vector2>& vertices,
      const float ceilHeight,
      const float floorHeight,
      const Vector3& ceilColor,
      const Vector3& floorColor,
-     const int ceilTextureIndex,
-     const int floorTextureIndex
+     const std::string& ceilTexture,
+     const std::string& floorTexture
  ) {
         Sector newSector{};
 
@@ -915,8 +920,8 @@ namespace Editor {
         newSector.ceilingColor = ceilColor;
         newSector.floorColor = floorColor;
 
-        newSector.ceilingTextureIndex = ceilTextureIndex;
-        newSector.floorTextureIndex = floorTextureIndex;
+        newSector.ceilingTexture = ceilTexture;
+        newSector.floorTexture = floorTexture;
 
         AddSector(newSector);
     }

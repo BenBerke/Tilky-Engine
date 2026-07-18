@@ -192,7 +192,7 @@ namespace MapEditorInternal {
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
             switch (actions.back()) {
-                case ACTION_CREATE_DOT:
+                case ACTION_CREATE_CORNER:
                     if (!dots.empty()) RemoveDot(dots.back().id);
                     break;
                 case ACTION_CREATE_WALL:

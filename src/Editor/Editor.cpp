@@ -122,9 +122,9 @@ namespace Editor {
             LevelManager::currentLevelIndex = 0;
         }
 
-        EditorTextureCache::RefreshLevelTexturesFromFolder();
-        RefreshLevelSoundsFromFolder();
-        EditorTextureCache::Load(renderer, LevelManager::CurrentLevel());
+        // Textures are no longer bulk-indexed or preloaded up front - each
+        // texture reference (a filename) is loaded lazily by
+        // EditorTextureCache::Get() the first time something asks for it.
     }
 
     void Update() {
@@ -186,7 +186,7 @@ namespace Editor {
                     continue;
                 }
 
-                const Vector2 toObject = Vector2{transform->position.x, transform->position.y} - wall.start;
+                const Vector2 toObject = (Vector2){transform->position.x, transform->position.y} - wall.start;
 
                 float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
 
@@ -212,7 +212,9 @@ namespace Editor {
             DrawWalls();
             DrawEntities();
 
-            if (currentMode == MODE_SECTOR) DrawSectorPreview();
+            if (currentMode == MODE_SECTOR) {
+                DrawSectorPreview();
+            }
 
             DrawEditorUI();
         }
@@ -264,6 +266,10 @@ namespace Editor {
         }
 
         TTF_Quit();
+
+        // Must run before the renderer is destroyed below - these textures
+        // were created against it.
+        EditorTextureCache::Destroy();
 
         if (renderer) {
             SDL_DestroyRenderer(renderer);

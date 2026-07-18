@@ -5,7 +5,7 @@ namespace Editor {
     std::string currentMap;
 
     Vector3 playerStartPos = {0.0f, 0.0f, 0.0f};
-    int backgroundTextureIndex = -1;
+    std::string backgroundTextureFileName = "";
 }
 
 namespace MapEditorInternal {
@@ -62,9 +62,9 @@ namespace MapEditorInternal {
     Entity entityInClipboard;
 
     //-- Sector to be created variables
-    int wallTextureIndex = 1;
-    int ceilTextureIndex = 1;
-    int floorTextureIndex = 1;
+    std::string wallTexture;
+    std::string ceilTexture;
+    std::string floorTexture;
 
     float floorHeight = .0f;
     float ceilHeight = 40.0f;
@@ -81,5 +81,4 @@ namespace MapEditorInternal {
     // Dot Mode — Wall inspector (right-click select)
     bool editingWall = false;
     ID selectedWallID = INVALID_ID;
-
 }

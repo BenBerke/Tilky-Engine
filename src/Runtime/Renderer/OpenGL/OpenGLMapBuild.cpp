@@ -23,14 +23,15 @@ namespace {
         const float topHeight,
         const Vector4& color,
         const float textureAnchorHeight,
-        const float textureDirection
+        const float textureDirection,
+        const float textureRegionIndex
     ) {
         if (!MapQueries::PushWallQuad3D(wall, bottomHeight, topHeight,MIN_WALL_HEIGHT)) return;
 
         GpuWall gpuWall;
 
         gpuWall.data = {
-            static_cast<float>(wall.textureIndex),
+            textureRegionIndex,
             0.0f,
             textureAnchorHeight,
             textureDirection
@@ -150,6 +151,12 @@ void OpenGL::BuildGpuWallsFromMap() {
         wall.quads3D = {};
         wall.quad3DCount = 0;
 
+        // wall.textureFileName is a filename now, not an index - resolve
+        // it once per wall to its slot in the texture atlas. Needs
+        // GetTextureRegionIndex() added alongside the atlas builder - see
+        // the accompanying notes.
+        const float textureRegionIndex = static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
+
         const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
         const Sector* backSector  = MapQueries::GetSectorByID(level, wall.backSector);
 
@@ -174,7 +181,8 @@ void OpenGL::BuildGpuWallsFromMap() {
                 highFloor,
                 wall.color,
                 highFloor,
-                -1.0f
+                -1.0f,
+                textureRegionIndex
             );
 
             // Upper solid portal piece: ceiling height difference.
@@ -185,7 +193,8 @@ void OpenGL::BuildGpuWallsFromMap() {
                 highCeiling,
                 wall.color,
                 lowCeiling,
-                1.0f
+                1.0f,
+                textureRegionIndex
             );
 
             continue;
@@ -201,7 +210,8 @@ void OpenGL::BuildGpuWallsFromMap() {
                 32.0f,
                 wall.color,
                 32.0f,
-                -1.0f
+                -1.0f,
+                textureRegionIndex
             );
 
             continue;
@@ -214,7 +224,8 @@ void OpenGL::BuildGpuWallsFromMap() {
             sector->ceilingHeight,
             wall.color,
             sector->ceilingHeight,
-            -1.0f
+            -1.0f,
+            textureRegionIndex
         );
     }
 
@@ -275,6 +286,11 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
     ) {
         const Sector& sector = level.sectors[sectorIndex];
 
+        // sector.floorTexture / sector.ceilingTexture are filenames now,
+        // not indices - resolve once per sector, not per triangle.
+        const float floorTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.floorTexture));
+        const float ceilingTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.ceilingTexture));
+
         for (const Triangle& triangle : sector.triangles) {
             // Floor triangle.
             {
@@ -312,7 +328,7 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
                 flatTriangle.data = {
                     static_cast<float>(sectorIndex),
                     0.0f, // boundary index: floor
-                    static_cast<float>(sector.floorTextureIndex),
+                    floorTextureRegionIndex,
                     0.0f
                 };
 
@@ -354,7 +370,7 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
                 flatTriangle.data = {
                     static_cast<float>(sectorIndex),
                     1.0f, // boundary index: ceiling
-                    static_cast<float>(sector.ceilingTextureIndex),
+                    ceilingTextureRegionIndex,
                     0.0f
                 };
 

@@ -7,7 +7,6 @@
 
 #include <spdlog/spdlog.h>
 
-#include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -55,9 +54,6 @@ namespace MapEditorInternal {
     bool Save(const std::string& saveTo) {
         Level& level = GetOrCreateCurrentLevel();
 
-        EditorTextureCache::RefreshLevelTexturesFromFolder();
-        Editor::RefreshLevelSoundsFromFolder();
-
         const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
 
         if (cleanName.empty()) {
@@ -68,7 +64,7 @@ namespace MapEditorInternal {
         level.name = cleanName;
 
         LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureIndex = Editor::backgroundTextureIndex;
+        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
 
         const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
         std::string errorMessage;
@@ -102,7 +98,7 @@ namespace Editor {
             return false;
         }
 
-        backgroundTextureIndex = extraData.backgroundTextureIndex;
+        backgroundTextureFileName = extraData.backgroundTextureFileName;
         currentMap = cleanName;
 
         // Dots are editor-session data scoped to whatever level is on
@@ -133,9 +129,6 @@ namespace Editor {
 
         //todo check if works in actual game
         LevelSystem::RefreshScriptAssets(LevelManager::CurrentLevel());
-
-        EditorTextureCache::RefreshLevelTexturesFromFolder();
-        RefreshLevelSoundsFromFolder();
 
         spdlog::info("Level loaded successfully {}", path.string());
 

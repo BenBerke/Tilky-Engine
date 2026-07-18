@@ -27,6 +27,7 @@
 #include <Headers/Runtime/LevelSystem.hpp>
 
 #include "EditorInternal.hpp"
+#include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -285,13 +286,11 @@ namespace ImGuiDrawFunctions {
         // ── Textures ─────────────────────────────────────────────────────────
         BeginSection("Textures");
 
-        FieldWidth(120.0f);
-        ImGui::InputInt(Get("sector.floor_texture").c_str(),   &sector.floorTextureIndex,   1);
-        Tooltip("Index into the texture atlas for the floor.");
+        MapEditorInternal::DrawAssetField(Get("sector.floor_texture").c_str(), sector.floorTexture, AssetKind::Texture, 48.0f);
+        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
 
-        FieldWidth(120.0f);
-        ImGui::InputInt(Get("sector.ceil_texture").c_str(),    &sector.ceilingTextureIndex, 1);
-        Tooltip("Index into the texture atlas for the ceiling.");
+        MapEditorInternal::DrawAssetField(Get("sector.ceil_texture").c_str(), sector.ceilingTexture, AssetKind::Texture, 48.0f);
+        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
 
         EndSection();
 
@@ -385,9 +384,8 @@ namespace ImGuiDrawFunctions {
         // ── Appearance ───────────────────────────────────────────────────────
         BeginSection("Appearance");
 
-        FieldWidth(120.0f);
-        ImGui::InputInt(Get("wall.texture_index").c_str(), &wall.textureIndex, 1);
-        Tooltip("Texture atlas index applied to this wall face.");
+        MapEditorInternal::DrawAssetField(Get("wall.texture_index").c_str(), wall.textureFileName, AssetKind::Texture, 48.0f);
+        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
 
         FieldWidth(220.0f);
         InputOrDrag4(Get("wall.color").c_str(), &wall.color.x, draggable);
@@ -528,7 +526,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::EndCombo();
             }
 
-           // ImGui::SameLine();
+            //  ImGui::SameLine();
             if (ImGui::Button(Get("common.add").c_str())) {
                 AddEditorComponentByType(entity, state.componentToAdd);
                 state.addingComponent = false;
@@ -608,7 +606,7 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponent<ComponentTransform>();
             if (c) {
                 BeginSection("Position");
-                ImGui::TextDisabled("X                Y               Z");
+                ImGui::TextDisabled("X                Y               Z(height)");
                 FieldWidth(220.0f);
                 InputOrDrag3("##pos", &c->position.x, draggable);
                 ResetFloat3Button("rst_pos", &c->position.x);
@@ -637,78 +635,13 @@ namespace ImGuiDrawFunctions {
         else if (state.selectedComponent == CMP_SPRITE) {
             auto *c = entity.GetComponent<ComponentSprite>();
 
-            const Level& level = LevelManager::CurrentLevel();
-
             if (c) {
                 constexpr float BOX_SIZE = 64.0f;
                 constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
 
-                auto DrawTextureBox = [&](const int textureIndex, const float size) {
-                    if (textureIndex >= 0 &&
-                        textureIndex < static_cast<int>(level.textures.size())) {
-                        SDL_Texture *texture = MapEditorInternal::GetEditorTexture(textureIndex);
-
-                        if (texture != nullptr) {
-                            ImGui::Image(texture,ImVec2(size, size));
-                            return;
-                        }
-                    }
-
-                    const ImVec2 cursor = ImGui::GetCursorScreenPos();
-                    ImGui::Dummy(ImVec2(size, size));
-
-                    ImDrawList *drawList = ImGui::GetWindowDrawList();
-
-                    drawList->AddRectFilled(
-                        cursor,
-                        ImVec2(cursor.x + size, cursor.y + size),
-                        IM_COL32(35, 35, 40, 255)
-                    );
-
-                    drawList->AddRect(
-                        cursor,
-                        ImVec2(cursor.x + size, cursor.y + size),
-                        IM_COL32(90, 90, 100, 255)
-                    );
-
-                    char text[16];
-
-                    if (textureIndex < 0) {
-                        snprintf(text, sizeof(text), "-1");
-                    } else {
-                        snprintf(text, sizeof(text), "%d", textureIndex);
-                    }
-
-                    const ImVec2 textSize = ImGui::CalcTextSize(text);
-
-                    drawList->AddText(
-                        ImVec2(
-                            cursor.x + (size - textSize.x) * 0.5f,
-                            cursor.y + (size - textSize.y) * 0.5f
-                        ),
-                        IM_COL32(160, 160, 170, 255),
-                        text
-                    );
-                };
-
                 auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
                     ImGui::PushID(slotIndex);
-
-                    int &textureIndex = c->textureIndices[slotIndex];
-
-                    DrawTextureBox(textureIndex, BOX_SIZE);
-
-                    const ImVec2 labelSize = ImGui::CalcTextSize(label);
-                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (BOX_SIZE - labelSize.x) * 0.5f);
-                    ImGui::TextDisabled("%s", label);
-
-                    ImGui::SetNextItemWidth(BOX_SIZE + 10.0f);
-
-                    if (draggable) ImGui::DragInt("##texture_index", &textureIndex, 1.0f);
-                    else ImGui::InputInt("##texture_index", &textureIndex, 1, 0);
-
-                    if (textureIndex < -1) textureIndex = -1;
-
+                    MapEditorInternal::DrawAssetField(label, c->textureFileNames[slotIndex], AssetKind::Texture, BOX_SIZE);
                     ImGui::PopID();
                 };
 
@@ -751,7 +684,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::Spacing();
 
                 if (ImGui::SmallButton("Clear All")) {
-                    c->textureIndices.fill(-1);
+                    for (std::string& name : c->textureFileNames) name.clear();
                 }
 
                 ImGui::Spacing();
@@ -920,8 +853,8 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponent<ComponentAudioSource>();
             if (c) {
                 BeginSection("Sound");
-                FieldWidth(120.0f);
-                InputOrDrag("Sound Index", &c->soundIndex, draggable);
+                MapEditorInternal::DrawAssetField("Sound", c->soundFileName, AssetKind::Sound);
+                Tooltip("Drag a .wav from the Asset Browser, or double-click one there and click here.");
                 FieldWidth(120.0f);
                 InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable, 0.01f);
                 FieldWidth(120.0f);
@@ -970,14 +903,10 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Script File");
 
-                FieldWidth(200.0f);
-                ImGui::InputText(Get("component.script.file_name").c_str(), &c->fileName);
-                Tooltip("Lua script name (without extension) in the scripts folder.");
-
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                    c->fileName = fs::path(c->fileName).stem().string();
+                if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), c->fileName, AssetKind::Script)) {
                     LevelSystem::ReconcileScriptPublicValues(*c);
                 }
+                Tooltip("Drag a .lua file from the Asset Browser, or double-click one there and click here.");
 
                 ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
 

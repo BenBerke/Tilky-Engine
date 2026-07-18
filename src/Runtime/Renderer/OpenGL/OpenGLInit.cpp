@@ -9,6 +9,11 @@
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
+#include "Headers/Objects/Wall.hpp"
+#include "Headers/Objects/Sector.hpp"
+#include "Headers/Objects/Components.hpp"
+
+#include <set>
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -16,6 +21,44 @@
 #include "Headers/Map/LevelManager.hpp"
 
 namespace fs = std::filesystem;
+
+namespace {
+    // Textures are referenced by filename now (Wall::textureFileName,
+    // Sector::floorTexture/ceilingTexture, ComponentSprite::textureFileNames)
+    // rather than by a permanent index into the removed Level::textures
+    // list. Collect every DISTINCT filename actually in use so each one
+    // gets packed into the atlas exactly once. std::set gives a stable,
+    // deterministic (alphabetical) pack order for free.
+    std::vector<std::string> CollectReferencedTextureFileNames(const Level& level) {
+        std::set<std::string> uniqueNames;
+
+        for (const Wall& wall : level.walls) {
+            if (!wall.textureFileName.empty()) {
+                uniqueNames.insert(wall.textureFileName);
+            }
+        }
+
+        for (const Sector& sector : level.sectors) {
+            if (!sector.floorTexture.empty()) {
+                uniqueNames.insert(sector.floorTexture);
+            }
+
+            if (!sector.ceilingTexture.empty()) {
+                uniqueNames.insert(sector.ceilingTexture);
+            }
+        }
+
+        for (const ComponentSprite& sprite : level.sprites.components) {
+            for (const std::string& fileName : sprite.textureFileNames) {
+                if (!fileName.empty()) {
+                    uniqueNames.insert(fileName);
+                }
+            }
+        }
+
+        return std::vector<std::string>(uniqueNames.begin(), uniqueNames.end());
+    }
+}
 
 bool OpenGL::InitializeOpenGL() {
     using namespace OpenGLRendererInternal;
@@ -183,9 +226,12 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     const Level& level = LevelManager::CurrentLevel();
 
+    const std::vector<std::string> referencedFileNames = CollectReferencedTextureFileNames(level);
+
     std::vector<LoadedTextureSurface> loadedSurfaces;
     textureRegions.clear();
-    textureRegions.resize(level.textures.size());
+    textureRegions.resize(referencedFileNames.size());
+    textureRegionIndexByName.clear();
 
     int cursorX = ATLAS_PADDING;
     int cursorY = ATLAS_PADDING;
@@ -207,19 +253,10 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         std::memcpy(dst, src, 4);
     };
 
-    for (int i = 0; i < static_cast<int>(level.textures.size()); ++i) {
-        const Texture& texture = level.textures[i];
+    for (int i = 0; i < static_cast<int>(referencedFileNames.size()); ++i) {
+        const std::string& fileName = referencedFileNames[i];
 
-        if (texture.fileName.empty()) {
-            textureRegions[i] = {
-                {0.0f, 0.0f, 0.0f, 0.0f},
-                {0.0f, 0.0f, 0.0f, 0.0f}
-            };
-
-            continue;
-        }
-
-        const std::filesystem::path path =ProjectManager::GetTexturesPath() / texture.fileName;
+        const std::filesystem::path path = ProjectManager::GetTexturesPath() / fileName;
 
         SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 
@@ -247,7 +284,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             textureHeight + ATLAS_PADDING * 2 > ATLAS_SIZE) {
             spdlog::error(
                 "Texture '{}' is too large for atlas: {}x{}",
-                texture.fileName,
+                fileName,
                 textureWidth,
                 textureHeight
             );
@@ -263,7 +300,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         }
 
         if (cursorY + textureHeight + ATLAS_PADDING > ATLAS_SIZE) {
-            spdlog::error("Texture atlas is full. Could not add '{}'", texture.fileName);
+            spdlog::error("Texture atlas is full. Could not add '{}'", fileName);
             SDL_DestroySurface(surface);
             continue;
         }
@@ -289,6 +326,12 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             {1.0f, 0.0f, 0.0f, 0.0f}
         };
 
+        // Only recorded once packing has actually succeeded, so a texture
+        // that failed to load/pack correctly resolves through
+        // GetTextureRegionIndex() to -1 ("no texture") instead of pointing
+        // at an unused, zero-initialized region slot.
+        textureRegionIndexByName[fileName] = i;
+
         for (int pad = 1; pad <= ATLAS_PADDING; ++pad) {
             // Left and right padding
             for (int y = 0; y < textureHeight; ++y) {
@@ -313,7 +356,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         spdlog::info(
             "Packed texture '{}' at atlas position {}, {} size {}x{}",
-            texture.fileName,
+            fileName,
             cursorX,
             cursorY,
             textureWidth,
@@ -395,6 +438,30 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     spdlog::info("Created texture atlas with {} texture region(s)", textureRegions.size());
 
     return true;
+}
+
+// Resolves a texture filename to its slot in the atlas built above.
+// Returns -1 (the same "no texture" sentinel used throughout the wall/
+// sector/sprite/decal GPU builders) if the name is empty, was never
+// referenced by the level, or failed to pack. Safe to call every frame -
+// it's a plain hash lookup, no loading happens here.
+//
+// NOTE: if a temporary stub of this function (always returning -1) was
+// added elsewhere (e.g. OpenGLTexture.cpp) to get a linkable build, delete
+// it now - this definition replaces it, and having both will fail to link
+// with a duplicate symbol error.
+int OpenGL::GetTextureRegionIndex(const std::string& fileName) const {
+    if (fileName.empty()) {
+        return -1;
+    }
+
+    const auto found = textureRegionIndexByName.find(fileName);
+
+    if (found == textureRegionIndexByName.end()) {
+        return -1;
+    }
+
+    return found->second;
 }
 
 bool OpenGL::InitProjection() {
@@ -578,10 +645,7 @@ bool OpenGL::InitText() {
         &projection.m[0][0]
     );
 
-    glUniform1i(
-        glGetUniformLocation(textShader->ID, "text"),
-        0
-    );
+    glUniform1i(glGetUniformLocation(textShader->ID, "text"),0);
 
     if (!InitializeFont()) {
         spdlog::critical("Failed to initialize renderer font system");

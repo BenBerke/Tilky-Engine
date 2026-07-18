@@ -2,6 +2,11 @@
 #include "Headers/Map/LevelManager.hpp"
 
 void OpenGL::BuildGpuSectors() {
+    // sector.floorTexture / sector.ceilingTexture are now filenames, not
+    // indices - GetTextureRegionIndex() resolves a filename to its slot in
+    // the texture atlas. That resolver needs to be added alongside the
+    // atlas builder (BuildTextureAtlasFromLevel) - see the accompanying
+    // notes, since that file wasn't part of this pass.
     const Level& level = LevelManager::CurrentLevel();
 
     gpuSectors.clear();
@@ -32,8 +37,8 @@ void OpenGL::BuildGpuSectors() {
         };
 
         gpuSector.textureData = {
-            static_cast<float>(sector.floorTextureIndex),
-            static_cast<float>(sector.ceilingTextureIndex),
+            static_cast<float>(GetTextureRegionIndex(sector.floorTexture)),
+            static_cast<float>(GetTextureRegionIndex(sector.ceilingTexture)),
             0.0f,
             0.0f
         };

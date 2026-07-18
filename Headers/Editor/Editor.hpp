@@ -14,7 +14,7 @@ using ID = uint32_t;
 
 namespace Editor {
     extern Vector3 playerStartPos;
-    extern int backgroundTextureIndex;
+    extern std::string backgroundTextureFileName;
 
     extern std::vector<std::string> maps;
     extern std::string currentMap;

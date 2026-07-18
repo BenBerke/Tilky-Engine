@@ -33,12 +33,7 @@ namespace LevelManager {
         Level loadedLevel;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(
-                levelFile,
-                loadedLevel,
-                nullptr,
-                &errorMessage
-            )) {
+        if (!LevelSerialization::LoadLevelFromFile(levelFile, loadedLevel, nullptr, &errorMessage)) {
             std::cerr << errorMessage << "\n";
             return false;
         }

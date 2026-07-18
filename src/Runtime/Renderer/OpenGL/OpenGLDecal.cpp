@@ -22,8 +22,8 @@ void OpenGL::BuildGpuDecals() {
         if (transform == nullptr) continue;
 
         ComponentSprite* sprite = level.sprites.Get(decalComponent.ownerID);
-
-        const int textureIndex = sprite != nullptr ? sprite->textureIndices[0] : -1;
+        
+        const int textureIndex = sprite != nullptr ? GetTextureRegionIndex(sprite->textureFileNames[0]) : -1;
 
         /*
          * Floor decal

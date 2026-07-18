@@ -8,7 +8,7 @@
 
 namespace LevelSerialization {
     struct LevelExtraData {
-        int backgroundTextureIndex = -1;
+        std::string backgroundTextureFileName;
     };
 
     std::string CleanLevelName(const std::string& levelName);

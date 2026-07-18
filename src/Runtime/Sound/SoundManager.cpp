@@ -26,12 +26,10 @@
 namespace fs = std::filesystem;
 
 namespace {
-    constexpr const char* SOUND_INDEX_MANIFEST = ".tilky_sound_indices";
-
     ALCdevice* device = nullptr;
     ALCcontext* context = nullptr;
 
-    std::vector<ALuint> buffers;
+    std::unordered_map<std::string, ALuint> buffers;
     std::unordered_map<std::string, ALuint> sources;
 
     bool IsSupportedSoundExtension(std::string extension) {
@@ -46,262 +44,9 @@ namespace {
         return extension == ".wav";
     }
 
-    std::string NormalizeSoundFileName(std::string fileName) {
-        fs::path path(fileName);
-
-        // Existing level data may store "sound" instead of "sound.wav".
-        if (!path.has_extension())
-            path += ".wav";
-
-        std::string normalizedName = path.filename().string();
-
-        std::ranges::transform(
-            normalizedName,
-            normalizedName.begin(),
-            [](const unsigned char character) {
-                return static_cast<char>(std::tolower(character));
-            }
-        );
-
-        return normalizedName;
-    }
-
-    bool LoadSoundIndexManifest(const fs::path& manifestPath, std::vector<std::string>& indexedFileNames) {
-        std::ifstream file(manifestPath);
-
-        if (!file.is_open())
-            return false;
-
-        std::string line;
-
-        while (std::getline(file, line)) {
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-
-            indexedFileNames.push_back(line);
-        }
-
-        return true;
-    }
-
-    bool SaveSoundIndexManifest(const fs::path& manifestPath, const std::vector<std::string>& indexedFileNames) {
-        fs::path temporaryPath = manifestPath;
-        temporaryPath += ".tmp";
-
-        {
-            std::ofstream file(temporaryPath, std::ios::trunc);
-
-            if (!file.is_open()) {
-                spdlog::error( "Failed to create sound index manifest: {}", temporaryPath.string());
-
-                return false;
-            }
-
-            for (const std::string& fileName : indexedFileNames) file << fileName << '\n';
-
-            if (!file.good()) {
-                spdlog::error("Failed while writing sound index manifest: {}", temporaryPath.string());
-
-                return false;
-            }
-        }
-
-        std::error_code copyError;
-
-        fs::copy_file(temporaryPath, manifestPath, fs::copy_options::overwrite_existing, copyError);
-
-        std::error_code removeError;
-        fs::remove(temporaryPath, removeError);
-
-        if (copyError) {
-            spdlog::error("Failed to save sound index manifest {}: {}", manifestPath.string(), copyError.message());
-
-            return false;
-        }
-
-        return true;
-    }
-
-    bool RefreshLevelSoundsFromFolder() {
-        Level& level = LevelManager::CurrentLevel();
-
-        const fs::path soundsPath = ProjectManager::GetSoundsPath();
-
-        if (!fs::exists(soundsPath)) {
-            std::error_code createError;
-            fs::create_directories(soundsPath, createError);
-
-            if (createError) {
-                spdlog::error("Failed to create Sounds folder {}: {}", soundsPath.string(), createError.message());
-
-                return false;
-            }
-
-            spdlog::warn("Created missing Sounds folder: {}", soundsPath.string());
-        }
-
-        if (!fs::is_directory(soundsPath)) {
-            spdlog::error("Sounds path is not a directory: {}", soundsPath.string());
-
-            return false;
-        }
-
-        const fs::path manifestPath = soundsPath / SOUND_INDEX_MANIFEST;
-
-        /*
-         * Each element represents one permanent sound index.
-         *
-         * Filenames remain in the manifest when their files are deleted.
-         * The corresponding level.sounds entry becomes empty, but the index
-         * remains reserved.
-         */
-        std::vector<std::string> indexedFileNames;
-
-        const bool manifestLoaded = LoadSoundIndexManifest(manifestPath, indexedFileNames);
-
-        bool manifestChanged = !manifestLoaded;
-
-        if (!manifestLoaded) {
-            /*
-             * Preserve the current level ordering when creating the manifest
-             * for the first time.
-             */
-            indexedFileNames.reserve(level.sounds.size());
-
-            for (const Sound& sound : level.sounds) indexedFileNames.push_back(sound.fileName);
-        }
-
-        std::vector<std::string> folderFileNames;
-        std::unordered_map<std::string, std::string> folderFilesByName;
-
-        std::error_code iteratorError;
-
-        for (fs::directory_iterator iterator(soundsPath, iteratorError);
-            !iteratorError && iterator != fs::directory_iterator();
-            iterator.increment(iteratorError))
-            {
-            const fs::directory_entry& entry = *iterator;
-
-            if (!entry.is_regular_file())
-                continue;
-
-            const fs::path& path = entry.path();
-
-            if (!IsSupportedSoundExtension(path.extension().string()))
-                continue;
-
-            const std::string fileName = path.filename().string();
-            const std::string normalizedName = NormalizeSoundFileName(fileName);
-
-            const auto [iteratorResult, inserted] =
-                folderFilesByName.try_emplace(normalizedName, fileName);
-
-            if (!inserted) {
-                spdlog::warn("Ignoring duplicate sound filename: {}", fileName);
-
-                continue;
-            }
-
-            folderFileNames.push_back(fileName);
-        }
-
-        if (iteratorError) {
-            spdlog::error("Failed while scanning Sounds folder {}: {}", soundsPath.string(), iteratorError.message());
-
-            return false;
-        }
-
-        /*
-         * Sorting only controls the order in which entirely new sounds are
-         * appended. Existing sounds are never reordered.
-         */
-        std::ranges::sort(folderFileNames);
-
-        std::unordered_map<std::string, std::size_t> existingIndices;
-
-        for (std::size_t i = 0; i < indexedFileNames.size(); ++i) {
-            if (indexedFileNames[i].empty()) continue;
-
-            const std::string normalizedName = NormalizeSoundFileName(indexedFileNames[i]);
-
-            const auto [iteratorResult, inserted] =
-                existingIndices.try_emplace(normalizedName, i);
-
-            if (!inserted)
-                spdlog::warn("Sound index manifest contains duplicate entry '{}'", indexedFileNames[i]);
-        }
-
-        for (const std::string& fileName : folderFileNames) {
-            const std::string normalizedName = NormalizeSoundFileName(fileName);
-
-            const auto existingIndex = existingIndices.find(normalizedName);
-
-            if (existingIndex != existingIndices.end()) {
-                const std::size_t index = existingIndex->second;
-
-                /*
-                 * This also converts old extensionless entries such as
-                 * "explosion" into the actual filename "explosion.wav"
-                 * without changing their index.
-                 */
-                if (indexedFileNames[index] != fileName) {
-                    indexedFileNames[index] = fileName;
-                    manifestChanged = true;
-                }
-
-                continue;
-            }
-
-            const std::size_t newIndex = indexedFileNames.size();
-
-            indexedFileNames.push_back(fileName);
-            existingIndices.emplace(normalizedName, newIndex);
-
-            manifestChanged = true;
-
-            spdlog::info("Assigned permanent sound index {} to '{}'", newIndex, fileName);
-        }
-
-        level.sounds.clear();
-        level.sounds.resize(indexedFileNames.size());
-
-        int availableSoundCount = 0;
-
-        for (std::size_t i = 0; i < indexedFileNames.size(); ++i) {
-            if (indexedFileNames[i].empty()) continue;
-
-            const std::string normalizedName = NormalizeSoundFileName(indexedFileNames[i]);
-
-            const auto currentFile = folderFilesByName.find(normalizedName);
-
-            if (currentFile == folderFilesByName.end()) {
-                /*
-                 * The sound was deleted. Keep this level.sounds slot empty,
-                 * but retain its filename in the manifest so restoring the
-                 * same file restores the same index.
-                 */
-                continue;
-            }
-
-            level.sounds[i].fileName = currentFile->second;
-            ++availableSoundCount;
-        }
-
-        /*
-         * Do not rewrite the manifest on every startup. This also avoids
-         * unnecessary writes in exported builds.
-         */
-        if (manifestChanged) {
-            if (!SaveSoundIndexManifest(manifestPath, indexedFileNames)) return false;
-        }
-
-        spdlog::info(
-            "Refreshed {} available sound(s) across {} permanent index slot(s)",
-            availableSoundCount,
-            level.sounds.size()
-        );
-
-        return true;
+    std::string NormalizeSoundFileName(const std::string& fileName) {
+        if (fileName.empty()) return {};
+        return fs::path(fileName).lexically_normal().generic_string();
     }
 }
 
@@ -421,67 +166,80 @@ namespace SoundManager {
         return state == AL_PLAYING;
     }
 
-    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const int soundIndex) {
+    void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const std::string& soundFileName) {
         if (IsSourcePlaying(sourceName)) return;
-
-        PlaySoundOnSource(sourceName, soundIndex);
+        PlaySoundOnSource(sourceName, soundFileName);
     }
 
     void GenerateSounds() {
-        // Stop all sources before deleting buffers that may be attached to them.
-        for (const ALuint source : sources | std::views::values) {
+        for (const ALuint source: sources | std::views::values) {
             alSourceStop(source);
             alSourcei(source, AL_BUFFER, 0);
         }
 
-        for (ALuint& buffer : buffers) {
-            if (buffer == 0) continue;
-
-            alDeleteBuffers(1, &buffer);
-            buffer = 0;
+        for (auto &[fileName, buffer]: buffers) {
+            if (buffer != 0) alDeleteBuffers(1, &buffer);
         }
 
         buffers.clear();
 
-        if (!RefreshLevelSoundsFromFolder()) spdlog::error("Failed to refresh permanent sound indices");
-
         const fs::path soundsPath = ProjectManager::GetSoundsPath();
 
-        const Level& level = LevelManager::CurrentLevel();
+        if (!fs::exists(soundsPath)) {
+            std::error_code error;
+            fs::create_directories(soundsPath, error);
 
-        buffers.resize(level.sounds.size(), 0);
+            if (error) {
+                spdlog::error("Failed to create Sounds folder {}: {}", soundsPath.string(), error.message());
+                return;
+            }
+        }
 
-        for (int i = 0; i < static_cast<int>(level.sounds.size()); ++i) {
-            const Sound& sound = level.sounds[i];
+        if (!fs::is_directory(soundsPath)) {
+            spdlog::error("Sounds path is not a directory: {}", soundsPath.string());
+            return;
+        }
 
-            // Empty entries are permanently reserved deleted sound slots.
-            if (sound.fileName.empty())
-                continue;
+        std::error_code iteratorError;
 
-            fs::path soundPath = soundsPath / sound.fileName;
+        for (fs::recursive_directory_iterator iterator(soundsPath, iteratorError);
+             !iteratorError && iterator != fs::recursive_directory_iterator(); iterator.increment(iteratorError)) {
+            const fs::directory_entry &entry = *iterator;
 
-            // Retained for old level data created before the manifest.
-            if (!soundPath.has_extension()) soundPath += ".wav";
+            if (!entry.is_regular_file()) continue;
+            if (!IsSupportedSoundExtension(entry.path().extension().string())) continue;
 
-            ALuint buffer = 0;
+            std::error_code relativeError;
+            const fs::path relativePath = fs::relative(entry.path(), soundsPath, relativeError);
 
-            if (!LoadWAVToOpenALBuffer(soundPath.string().c_str(), buffer)) {
-                spdlog::error( "Failed to load sound index {} from {}", i, soundPath.string());
-
+            if (relativeError) {
+                spdlog::error("Failed to create relative sound path for {}: {}", entry.path().string(),
+                              relativeError.message());
                 continue;
             }
 
-            buffers[i] = buffer;
+            const std::string fileName = NormalizeSoundFileName(relativePath.generic_string());
 
-            spdlog::info(
-                "Loaded sound index {} '{}' from {}",
-                i,
-                sound.fileName,
-                soundPath.string()
-            );
+            if (buffers.contains(fileName)) {
+                spdlog::warn("Ignoring duplicate sound filename '{}'", fileName);
+                continue;
+            }
+
+            ALuint buffer = 0;
+
+            if (!LoadWAVToOpenALBuffer(entry.path().string().c_str(), buffer)) {
+                spdlog::error("Failed to load sound '{}'", fileName);
+                continue;
+            }
+
+            buffers.emplace(fileName, buffer);
+            spdlog::info("Loaded sound '{}'", fileName);
         }
 
-        spdlog::info("Generated {} permanent sound buffer slot(s)", buffers.size());
+        if (iteratorError) spdlog::error("Failed while scanning Sounds folder {}: {}", soundsPath.string(),
+                                         iteratorError.message());
+
+        spdlog::info("Generated {} sound buffer(s)", buffers.size());
     }
 
     bool InitializeOpenAL() {
@@ -556,12 +314,13 @@ namespace SoundManager {
 
         sources.clear();
 
-        for (ALuint& buffer : buffers) {
+        for (auto& [fileName, buffer] : buffers) {
             if (buffer == 0) continue;
-
             alDeleteBuffers(1, &buffer);
             buffer = 0;
         }
+
+        buffers.clear();
 
         buffers.clear();
 
@@ -579,9 +338,7 @@ namespace SoundManager {
         spdlog::info("OpenAL destroyed");
     }
 
-    void PlaySoundOnSource(const std::string& sourceName,const int soundIndex) {
-        spdlog::info("Playing sound index {}", soundIndex);
-
+    void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName) {
         const auto sourceIterator = sources.find(sourceName);
 
         if (sourceIterator == sources.end()) {
@@ -589,15 +346,18 @@ namespace SoundManager {
             return;
         }
 
-        if (soundIndex < 0 || soundIndex >= static_cast<int>(buffers.size())) {
-            spdlog::error("Invalid sound index {}. Sound buffer count: {}", soundIndex, buffers.size());
+        const std::string normalizedFileName = NormalizeSoundFileName(soundFileName);
+        const auto bufferIterator = buffers.find(normalizedFileName);
+
+        if (bufferIterator == buffers.end()) {
+            spdlog::error("Sound not found: '{}'", soundFileName);
             return;
         }
 
-        const ALuint buffer = buffers[soundIndex];
+        const ALuint buffer = bufferIterator->second;
 
         if (buffer == 0) {
-            spdlog::error("Sound index {} has no valid OpenAL buffer", soundIndex);
+            spdlog::error("Sound '{}' has no valid OpenAL buffer", soundFileName);
             return;
         }
 
@@ -608,9 +368,8 @@ namespace SoundManager {
         alSourcePlay(source);
 
         CheckALErrors("Failed to play sound on source");
-        spdlog::info("Played sound index {} on source '{}'", soundIndex, sourceName);
+        spdlog::info("Played sound '{}' on source '{}'", soundFileName, sourceName);
     }
-
     // region Setters
 
     void SetSourcePitch(const std::string& sourceName,const float pitch) {

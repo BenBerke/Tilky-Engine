@@ -165,7 +165,8 @@ namespace LevelSystem {
         }
 
         // for (Entity &entity: level.entities) {
-        //     entity.Start(); // Currently does nothing
+        //     entity.Start(); // Currently does nothing, probably should do nothing
+        //     let's leave it here in case we need it later
         // }
 
         for (ComponentTransform &transform: level.transforms.components)

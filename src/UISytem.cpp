@@ -5,11 +5,7 @@
 #include "Headers/UISystem.hpp"
 
 namespace UISystem {
-    void UpdateTransform(
-    ComponentUITransform& transform,
-    const float screenWidth,
-    const float screenHeight
-) {
+    void UpdateTransform(ComponentUITransform& transform, const float screenWidth, const float screenHeight) {
         const Vector2 anchorMinPx = {
             screenWidth * transform.anchorMin.x,
             screenHeight * transform.anchorMin.y
@@ -51,13 +47,8 @@ namespace UISystem {
         transform.resolvedSize = finalSize;
     }
 
-    void UpdateAllTransforms(
-        Level& level,
-        const float screenWidth,
-        const float screenHeight
-    ) {
-        for (ComponentUITransform& transform : level.ui_transforms.components) {
+    void UpdateAllTransforms(Level& level, const float screenWidth, const float screenHeight) {
+        for (ComponentUITransform& transform : level.ui_transforms.components)
             UpdateTransform(transform, screenWidth, screenHeight);
-        }
     }
 }

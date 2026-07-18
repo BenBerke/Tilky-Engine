@@ -16,32 +16,34 @@ namespace {
 
 namespace AudioSystem {
     void Start(Level& level) {
-         for (ComponentAudioSource& audio : level.audioSources.components) {
-             if (audio.ownerID == static_cast<ID>(-1)) {
-                 spdlog::error("Audio source has no valid owner");
-                 continue;
-             }
+        for (ComponentAudioSource& audio : level.audioSources.components) {
+            if (audio.ownerID == static_cast<ID>(-1)) {
+                spdlog::error("Audio source has no valid owner");
+                continue;
+            }
 
-             audio.name = MakeAudioSourceName(audio.ownerID);
+            audio.name = MakeAudioSourceName(audio.ownerID);
 
-             if (!SoundManager::CreateSource(audio.name)) {
-                 spdlog::error("Failed to create audio source: {}", audio.name);
-                 continue;
-             }
+            if (!SoundManager::CreateSource(audio.name)) {
+                spdlog::error("Failed to create audio source: {}", audio.name);
+                continue;
+            }
 
-             SoundManager::SetSourcePitch(audio.name, audio.pitch);
-             SoundManager::SetSourceGain(audio.name, audio.gain);
-             SoundManager::SetSourceLooping(audio.name, audio.looping);;
+            SoundManager::SetSourcePitch(audio.name, audio.pitch);
+            SoundManager::SetSourceGain(audio.name, audio.gain);
+            SoundManager::SetSourceLooping(audio.name, audio.looping);
+            SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
+            SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
+            SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
+            SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
+            SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
+            SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
 
-             const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
+            const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
 
-             if (transform != nullptr)
-                 SoundManager::SetSourcePosition(audio.name, {transform->position.x, transform->position.y, transform->position.z});
-
-
-             if (audio.playOnStart && audio.soundIndex >= 0)
-                 SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundIndex);
-         }
+            if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
+            if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
+        }
 
         spdlog::info("Audio system started");
     }
@@ -52,19 +54,24 @@ namespace AudioSystem {
                 spdlog::error("Audio source has no valid owner");
                 continue;
             }
+
             if (audio.name.empty()) audio.name = MakeAudioSourceName(audio.ownerID);
 
             ComponentTransform* transform = level.transforms.Get(audio.ownerID);
 
-            if (transform != nullptr)
-                SoundManager::SetSourcePosition(audio.name, {transform->position.x, transform->position.y, transform->position.z});
+            if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
 
             SoundManager::SetSourcePitch(audio.name, audio.pitch);
             SoundManager::SetSourceGain(audio.name, audio.gain);
             SoundManager::SetSourceLooping(audio.name, audio.looping);
+            SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
+            SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
+            SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
+            SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
+            SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
+            SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
 
-            if (audio.looping && audio.soundIndex >= 0)
-                SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundIndex);
+            if (audio.looping && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
         }
     }
 

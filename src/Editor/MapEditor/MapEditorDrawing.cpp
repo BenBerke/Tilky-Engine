@@ -215,17 +215,12 @@ namespace MapEditorInternal {
             // or unavailable, so a missing texture can never break the view.
             SDL_Texture* floorTexture = nullptr;
 
-            if (textureViewMode && sector.floorTextureIndex != -1) {
-                floorTexture = GetEditorTexture(sector.floorTextureIndex);
-            }
+            if (textureViewMode && !sector.floorTexture.empty()) floorTexture = GetEditorTexture(sector.floorTexture);
 
             for (const Triangle& triangle : sector.triangles) {
-                if (floorTexture != nullptr) {
+                if (floorTexture != nullptr)
                     DrawFilledTriangleTextured(triangle, floorTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                }
-                else {
-                    DrawFilledTriangle(triangle, sectorColor);
-                }
+                else DrawFilledTriangle(triangle, sectorColor);
             }
         }
 

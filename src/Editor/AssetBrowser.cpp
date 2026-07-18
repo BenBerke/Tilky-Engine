@@ -1,18 +1,16 @@
-//
-// Created by berke on 7/15/2026.
-//
 #include "Headers/Editor/AssetBrowser.hpp"
 
 #include <algorithm>
 #include <cctype>
 
 #include "imgui.h"
-#include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
 
 #include "Headers/Editor/EditorTextureCache.hpp"
-#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+
+#include <array>
+#include <string_view>
 
 namespace fs = std::filesystem;
 
@@ -24,13 +22,49 @@ namespace {
         return text;
     }
 
-    bool HasPngExtension(const fs::path& path) {
-        return LowerCopy(path.extension().string()) == ".png";
+    constexpr std::array<std::string_view, 1> ACCEPTED_EXTENSIONS = {
+        ".png"
+    };
+
+    bool HasAcceptedExtension(const fs::path& path) {
+        const std::string extension = LowerCopy(path.extension().string());
+        return std::ranges::find(ACCEPTED_EXTENSIONS, extension) != ACCEPTED_EXTENSIONS.end();
+    }
+
+    bool IsHidden(const fs::path& path) {
+        const std::string name = path.filename().string();
+        return !name.empty() && name.front() == '.';
+    }
+
+    AssetKind DetermineAssetKind(const fs::path& absolutePath) {
+        const std::string ext = LowerCopy(absolutePath.extension().string());
+
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") return AssetKind::Texture;
+        if (ext == ".wav") return AssetKind::Sound;
+        if (ext == ".lua") return AssetKind::Script;
+
+        return AssetKind::Other;
+    }
+
+    const char* KindTag(const AssetKind kind) {
+        switch (kind) {
+            case AssetKind::Texture: return "img";
+            case AssetKind::Sound:   return "wav";
+            case AssetKind::Script:  return "lua";
+            default:                 return "file";
+        }
+    }
+
+    ImU32 TileTint(const AssetKind kind) {
+        switch (kind) {
+            case AssetKind::Sound:  return IM_COL32(45, 70, 90, 255);
+            case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
+            default:                return IM_COL32(60, 60, 65, 255);
+        }
     }
 
     // Shrinks `text` (plus an ellipsis) until it fits inside `maxWidth`.
-    // Relies on the currently bound ImGui font, so only call this while
-    // drawing.
+    // Relies on the currently bound ImGui font, so only call while drawing.
     std::string TruncateToWidth(const std::string& text, const float maxWidth) {
         if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth)
             return text;
@@ -46,18 +80,55 @@ namespace {
 
         return truncated.empty() ? std::string(ellipsis) : truncated + ellipsis;
     }
-}
 
-AssetBrowser::~AssetBrowser() {
-    ReleaseOwnedThumbnails();
-}
+    // Relative-path helper shared by ToAssetReference: relative to `base`
+    // if the file is actually inside it, else just the bare filename as a
+    // safe fallback (never an absolute path leaking into level data).
+    fs::path RelativeOrFallback(const fs::path& absolutePath, const fs::path& base) {
+        std::error_code ec;
+        const fs::path canonicalBase = fs::weakly_canonical(base, ec);
+        if (ec) return absolutePath.filename();
 
-void AssetBrowser::ReleaseOwnedThumbnails() {
-    for (auto& [path, texture] : ownedThumbnails) {
-        if (texture != nullptr)
-            SDL_DestroyTexture(texture);
+        const fs::path canonicalPath = fs::weakly_canonical(absolutePath, ec);
+        if (ec) return absolutePath.filename();
+
+        const fs::path rel = canonicalPath.lexically_relative(canonicalBase);
+        if (rel.empty() || *rel.begin() == "..")
+            return absolutePath.filename();
+
+        return rel;
     }
-    ownedThumbnails.clear();
+}
+
+const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
+    switch (kind) {
+        case AssetKind::Texture: return "TILKY_ASSET_TEXTURE";
+        case AssetKind::Sound:   return "TILKY_ASSET_SOUND";
+        case AssetKind::Script:  return "TILKY_ASSET_SCRIPT";
+        default:                 return "TILKY_ASSET_OTHER";
+    }
+}
+
+std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolutePath, const AssetKind kind) {
+    switch (kind) {
+        case AssetKind::Texture:
+            return RelativeOrFallback(absolutePath, ProjectManager::GetTexturesPath()).generic_string();
+
+        case AssetKind::Sound: {
+            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetSoundsPath());
+            rel.replace_extension();
+            return rel.generic_string();
+        }
+
+        case AssetKind::Script: {
+            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetScriptsPath());
+            rel.replace_extension();
+            return rel.generic_string();
+        }
+
+        default:
+            return absolutePath.filename().string();
+    }
 }
 
 void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
@@ -70,17 +141,29 @@ void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
         }
     }
 
+    // Make sure the standard subfolders are visible immediately, even on
+    // a brand-new project.
+    for (const fs::path &standardFolder:
+        {  ProjectManager::GetTexturesPath(),
+            ProjectManager::GetSoundsPath(),
+            ProjectManager::GetScriptsPath()
+         })
+    {
+        std::error_code ec;
+        if (!fs::exists(standardFolder, ec))
+            fs::create_directories(standardFolder, ec);
+    }
+
     rootDirectory = root;
     currentDirectory = root;
     selectedFile.clear();
-    pendingConfirmedSelection.reset();
+    pendingConfirmedPath.reset();
     searchBuffer[0] = '\0';
 
     ScanCurrentDirectory();
 }
 
 void AssetBrowser::Refresh() {
-    ReleaseOwnedThumbnails();
     ScanCurrentDirectory();
 }
 
@@ -113,41 +196,9 @@ void AssetBrowser::NavigateTo(const std::filesystem::path& absoluteDirectory) {
 }
 
 void AssetBrowser::NavigateToParent() {
-    if (currentDirectory == rootDirectory)
-        return; // never step above the allowed root
+    if (currentDirectory == rootDirectory) return; // never step above the allowed root
 
     NavigateTo(currentDirectory.parent_path());
-}
-
-int AssetBrowser::TryFindEngineTextureIndex(const std::filesystem::path& absolutePath) const {
-    // The engine only assigns permanent texture indices to files living
-    // directly inside the project's flat Textures folder - see
-    // EditorTextureCache::RefreshLevelTexturesFromFolder, which is
-    // intentionally non-recursive. Anywhere else in the asset tree, the
-    // browser has to load its own preview copy instead.
-    std::error_code ec;
-
-    const fs::path texturesPath = fs::weakly_canonical(ProjectManager::GetTexturesPath(), ec);
-    if (ec) return -1;
-
-    const fs::path parent = fs::weakly_canonical(absolutePath.parent_path(), ec);
-    if (ec) return -1;
-
-    if (LowerCopy(parent.string()) != LowerCopy(texturesPath.string()))
-        return -1;
-
-    const Level& level = LevelManager::CurrentLevel();
-    const std::string wantedName = LowerCopy(absolutePath.filename().string());
-
-    for (int i = 0; i < static_cast<int>(level.textures.size()); ++i) {
-        if (level.textures[i].fileName.empty())
-            continue;
-
-        if (LowerCopy(level.textures[i].fileName) == wantedName)
-            return i;
-    }
-
-    return -1;
 }
 
 void AssetBrowser::ScanCurrentDirectory() {
@@ -168,6 +219,9 @@ void AssetBrowser::ScanCurrentDirectory() {
             try {
                 const fs::path absolutePath = dirEntry.path();
 
+                if (IsHidden(absolutePath))
+                    continue;
+
                 if (dirEntry.is_directory()) {
                     AssetBrowserEntry entry;
                     entry.absolutePath = absolutePath;
@@ -178,15 +232,14 @@ void AssetBrowser::ScanCurrentDirectory() {
                     continue;
                 }
 
-                if (!dirEntry.is_regular_file() || !HasPngExtension(absolutePath))
-                    continue;
+                if (!dirEntry.is_regular_file() || !HasAcceptedExtension(absolutePath)) continue;
 
                 AssetBrowserEntry entry;
                 entry.absolutePath = absolutePath;
                 entry.relativePath = absolutePath.lexically_relative(rootDirectory);
                 entry.displayName = absolutePath.filename().string();
                 entry.isDirectory = false;
-                entry.engineTextureIndex = TryFindEngineTextureIndex(absolutePath);
+                entry.kind = DetermineAssetKind(absolutePath);
 
                 files.push_back(std::move(entry));
             } catch (const fs::filesystem_error& e) {
@@ -213,35 +266,41 @@ void AssetBrowser::ScanCurrentDirectory() {
     entries.insert(entries.end(), std::make_move_iterator(files.begin()), std::make_move_iterator(files.end()));
 }
 
-SDL_Texture* AssetBrowser::ResolveThumbnail(const AssetBrowserEntry& entry, SDL_Renderer* renderer) {
-    if (entry.isDirectory)
-        return nullptr;
+bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolutePath) {
+    if (currentDirectory.empty())
+        return false;
 
-    if (entry.engineTextureIndex >= 0) {
-        // Reuse the texture the engine already has loaded - never load a
-        // second copy of the same file.
-        return EditorTextureCache::Get(entry.engineTextureIndex);
+    std::error_code existsEc;
+    if (!fs::exists(sourceAbsolutePath, existsEc) || existsEc) {
+        spdlog::warn("Asset browser: dropped file no longer exists: {}", sourceAbsolutePath.string());
+        return false;
     }
 
-    const std::string key = entry.absolutePath.string();
+    fs::path destination = currentDirectory / sourceAbsolutePath.filename();
 
-    const auto found = ownedThumbnails.find(key);
-    if (found != ownedThumbnails.end())
-        return found->second; // may legitimately be nullptr from a prior failed load
+    const std::string stem = sourceAbsolutePath.stem().string();
+    const std::string ext = sourceAbsolutePath.extension().string();
 
-    if (renderer == nullptr)
-        return nullptr;
-
-    SDL_Texture* texture = IMG_LoadTexture(renderer, key.c_str());
-
-    if (texture == nullptr) {
-        spdlog::warn("Asset browser: failed to load thumbnail for {}: {}", key, SDL_GetError());
+    for (int suffix = 2; fs::exists(destination); ++suffix) {
+        destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
     }
 
-    // Cache the result either way (including nullptr) so a broken image
-    // doesn't get retried on every single frame.
-    ownedThumbnails.emplace(key, texture);
-    return texture;
+    try {
+        fs::copy_file(sourceAbsolutePath, destination, fs::copy_options::none);
+    } catch (const fs::filesystem_error& e) {
+        spdlog::error("Asset browser: failed to import {}: {}", sourceAbsolutePath.string(), e.what());
+        return false;
+    }
+
+    spdlog::info("Asset browser: imported {} -> {}", sourceAbsolutePath.string(), destination.string());
+    selectedFile = destination;
+    Refresh();
+    return true;
+}
+
+bool AssetBrowser::IsScreenPointInside(const float screenX, const float screenY) const {
+    return screenX >= lastWindowScreenMinX && screenX <= lastWindowScreenMaxX &&
+           screenY >= lastWindowScreenMinY && screenY <= lastWindowScreenMaxY;
 }
 
 void AssetBrowser::DrawBreadcrumbs() {
@@ -334,7 +393,7 @@ void AssetBrowser::DrawFolderTile(const AssetBrowserEntry& entry, const float ti
     ImGui::EndGroup();
 }
 
-void AssetBrowser::DrawPngTile(const AssetBrowserEntry& entry, const float tileSize, SDL_Renderer* renderer) {
+void AssetBrowser::DrawFileTile(const AssetBrowserEntry& entry, const float tileSize, SDL_Renderer* renderer) {
     const bool isSelected = (!selectedFile.empty() && selectedFile == entry.absolutePath);
     const float labelHeight = ImGui::GetTextLineHeight() + 6.0f;
 
@@ -343,7 +402,7 @@ void AssetBrowser::DrawPngTile(const AssetBrowserEntry& entry, const float tileS
     const ImVec2 topLeft = ImGui::GetCursorScreenPos();
 
     const bool clicked = ImGui::Selectable(
-        "##PngTile",
+        "##FileTile",
         isSelected,
         ImGuiSelectableFlags_AllowDoubleClick,
         ImVec2(tileSize, tileSize + labelHeight)
@@ -351,43 +410,51 @@ void AssetBrowser::DrawPngTile(const AssetBrowserEntry& entry, const float tileS
 
     if (clicked) {
         selectedFile = entry.absolutePath;
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-            pendingConfirmedSelection = entry.absolutePath;
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            pendingConfirmedPath = entry.absolutePath;
+            pendingConfirmedKind = entry.kind;
+        }
     }
 
-    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-        const std::string payloadPath = entry.absolutePath.string();
-        ImGui::SetDragDropPayload(
-            PNG_DRAG_DROP_PAYLOAD_TYPE,
-            payloadPath.c_str(),
-            payloadPath.size() + 1
-        );
-        ImGui::TextUnformatted(entry.displayName.c_str());
-        ImGui::EndDragDropSource();
+    // Only recognised kinds are draggable onto a field - "Other" files are
+    // still visible (for transparency) but aren't wired to anything.
+    if (entry.kind != AssetKind::Other) {
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            const std::string payloadPath = entry.absolutePath.string();
+            ImGui::SetDragDropPayload(
+                DragDropPayloadTypeFor(entry.kind),
+                payloadPath.c_str(),
+                payloadPath.size() + 1
+            );
+            ImGui::TextUnformatted(entry.displayName.c_str());
+            ImGui::EndDragDropSource();
+        }
     }
 
-    SDL_Texture* texture = ResolveThumbnail(entry, renderer);
+    SDL_Texture* texture = (entry.kind == AssetKind::Texture)
+        ? EditorTextureCache::Get(renderer, ToAssetReference(entry.absolutePath, AssetKind::Texture))
+        : nullptr;
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const ImVec2 imageMax = ImVec2(topLeft.x + tileSize, topLeft.y + tileSize);
+    const ImVec2 boxMax = ImVec2(topLeft.x + tileSize, topLeft.y + tileSize);
 
-    if (texture != nullptr) {
-        drawList->AddImage(reinterpret_cast<ImTextureID>(texture), topLeft, imageMax);
-    } else {
-        drawList->AddRectFilled(topLeft, imageMax, IM_COL32(60, 45, 45, 255), 4.0f);
-        drawList->AddRect(topLeft, imageMax, IM_COL32(150, 90, 90, 255), 4.0f);
+    if (texture != nullptr)
+        drawList->AddImage(reinterpret_cast<ImTextureID>(texture), topLeft, boxMax);
+    else {
+        drawList->AddRectFilled(topLeft, boxMax, TileTint(entry.kind), 4.0f);
+        drawList->AddRect(topLeft, boxMax, IM_COL32(150, 150, 150, 255), 4.0f);
 
-        constexpr const char* placeholder = "?";
-        const ImVec2 placeholderSize = ImGui::CalcTextSize(placeholder);
+        const char* tag = KindTag(entry.kind);
+        const ImVec2 tagSize = ImGui::CalcTextSize(tag);
         drawList->AddText(
-            ImVec2(topLeft.x + (tileSize - placeholderSize.x) * 0.5f, topLeft.y + (tileSize - placeholderSize.y) * 0.5f),
-            IM_COL32(220, 170, 170, 255),
-            placeholder
+            ImVec2(topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f),
+            IM_COL32(220, 220, 220, 255),
+            tag
         );
     }
 
     if (isSelected)
-        drawList->AddRect(topLeft, imageMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
+        drawList->AddRect(topLeft, boxMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
 
     const std::string name = TruncateToWidth(entry.displayName, tileSize);
     const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
@@ -433,10 +500,8 @@ void AssetBrowser::DrawEntries(SDL_Renderer* renderer) {
 
         ImGui::PushID(entry.absolutePath.string().c_str());
 
-        if (entry.isDirectory)
-            DrawFolderTile(entry, tileSize);
-        else
-            DrawPngTile(entry, tileSize, renderer);
+        if (entry.isDirectory) DrawFolderTile(entry, tileSize);
+        else DrawFileTile(entry, tileSize, renderer);
 
         ImGui::PopID();
 
@@ -446,13 +511,18 @@ void AssetBrowser::DrawEntries(SDL_Renderer* renderer) {
         isFirstInRow = (nextTileRight > rightEdge);
     }
 
-    if (!anyVisible)
-        ImGui::TextDisabled("%s", "No items match your search.");
+    if (!anyVisible) ImGui::TextDisabled("%s", "No items match your search.");
 }
 
 void AssetBrowser::Draw(SDL_Renderer* renderer) {
-    if (rootDirectory.empty())
-        return; // SetRootDirectory() hasn't been called yet
+    if (rootDirectory.empty()) return; // SetRootDirectory() hasn't been called yet
+
+    const ImVec2 windowPos = ImGui::GetWindowPos();
+    const ImVec2 windowSize = ImGui::GetWindowSize();
+    lastWindowScreenMinX = windowPos.x;
+    lastWindowScreenMinY = windowPos.y;
+    lastWindowScreenMaxX = windowPos.x + windowSize.x;
+    lastWindowScreenMaxY = windowPos.y + windowSize.y;
 
     DrawBreadcrumbs();
     ImGui::Spacing();
@@ -472,11 +542,14 @@ const std::filesystem::path& AssetBrowser::GetSelectedFile() const {
     return selectedFile;
 }
 
-bool AssetBrowser::ConsumePendingConfirmedSelection(std::filesystem::path& outAbsolutePath) {
-    if (!pendingConfirmedSelection.has_value())
+bool AssetBrowser::ConsumePendingConfirmedSelection(const AssetKind expectedKind, std::filesystem::path& outAbsolutePath) {
+    if (!pendingConfirmedPath.has_value())
         return false;
 
-    outAbsolutePath = *pendingConfirmedSelection;
-    pendingConfirmedSelection.reset();
+    if (pendingConfirmedKind != expectedKind)
+        return false; // wrong kind - leave it queued for a matching field
+
+    outAbsolutePath = *pendingConfirmedPath;
+    pendingConfirmedPath.reset();
     return true;
 }
