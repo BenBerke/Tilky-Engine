@@ -24,7 +24,7 @@ struct ListenerSettings {
 };
 
 struct WorldSettings {
-    float gravity;
+    float gravity = 9.8f;
 };
 
 // See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp

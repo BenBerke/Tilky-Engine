@@ -13,8 +13,8 @@ class IRenderer;
 
 namespace EditorFunctions {
     void Print(const std::string& text);
-    void Print(const std::string& text, Vector3 color);
-    void Print(const std::string& text, Vector3 color, float lifeTime);
+    void Print(const std::string& text, const Vector3 &color);
+    void Print(const std::string& text, const Vector3 &color, float lifeTime);
 
     // Updates timers only. Can be called once per frame.
     void UpdateConsole(float deltaTime);

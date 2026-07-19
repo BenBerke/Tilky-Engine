@@ -250,14 +250,8 @@ void OpenGL::UploadGpuWallsFromMap() {
 void OpenGL::BuildVisibleFlatTriangles(const Vector2 &playerPos, const float playerAngle) {
     visibleFlatTriangles.clear();
 
-    for (const GpuFlatTriangle &triangle: flatTriangles) {
-        ClipFlatTriangleAgainstNearPlane(
-            visibleFlatTriangles,
-            triangle,
-            playerPos,
-            playerAngle
-        );
-    }
+    for (const GpuFlatTriangle &triangle: flatTriangles)
+        ClipFlatTriangleAgainstNearPlane(visibleFlatTriangles, triangle, playerPos, playerAngle);
 
     flatTriangleCount = static_cast<GLsizei>(visibleFlatTriangles.size());
 
@@ -279,15 +273,9 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
     flatTriangles.clear();
     visibleFlatTriangles.clear();
 
-    for (
-        int sectorIndex = 0;
-        sectorIndex < static_cast<int>(level.sectors.size());
-        ++sectorIndex
-    ) {
+    for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
         const Sector& sector = level.sectors[sectorIndex];
 
-        // sector.floorTexture / sector.ceilingTexture are filenames now,
-        // not indices - resolve once per sector, not per triangle.
         const float floorTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.floorTexture));
         const float ceilingTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.ceilingTexture));
 
@@ -392,11 +380,7 @@ bool OpenGL::CreateMap() {
     BuildFlatTrianglesFromSectors();
     BuildGpuWallsFromMap();
 
-    spdlog::info(
-        "Built OpenGL map GPU data. Walls: {}, flat triangles: {}",
-        gpuWalls.size(),
-        flatTriangles.size()
-    );
+    spdlog::info("Built OpenGL map GPU data. Walls: {}, flat triangles: {}", gpuWalls.size(), flatTriangles.size());
 
     glGenBuffers(1, &wallSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, wallSSBO);
@@ -442,39 +426,24 @@ bool OpenGL::CreateMap() {
 
     projectionShader->use();
 
-    renderModeUniform = glGetUniformLocation(
-        projectionShader->ID,
-        "renderMode"
-    );
+    renderModeUniform = glGetUniformLocation(projectionShader->ID, "renderMode");
 
     if (renderModeUniform == -1) {
-        spdlog::critical(
-            "Failed to get projection shader uniform location: renderMode"
-        );
+        spdlog::critical("Failed to get projection shader uniform location: renderMode");
         return false;
     }
 
-    viewUniform = glGetUniformLocation(
-        projectionShader->ID,
-        "uView"
-    );
+    viewUniform = glGetUniformLocation(projectionShader->ID, "uView");
 
     if (viewUniform == -1) {
-        spdlog::critical(
-            "Failed to get projection shader uniform location: uView"
-        );
+        spdlog::critical("Failed to get projection shader uniform location: uView");
         return false;
     }
 
-    projectionUniform = glGetUniformLocation(
-        projectionShader->ID,
-        "uProjection"
-    );
+    projectionUniform = glGetUniformLocation(projectionShader->ID, "uProjection");
 
     if (projectionUniform == -1) {
-        spdlog::critical(
-            "Failed to get projection shader uniform location: uProjection"
-        );
+        spdlog::critical("Failed to get projection shader uniform location: uProjection");
         return false;
     }
 

@@ -35,15 +35,11 @@ namespace {
         return std::clamp(value, 0.0f, 1.0f);
     }
 
-    Vector3 ApplyFade(const Vector3 color, const float alpha) {
-        return {
-            color.x * alpha,
-            color.y * alpha,
-            color.z * alpha
-        };
+    Vector3 ApplyFade(const Vector3 &color, const float alpha) {
+        return {color.x * alpha, color.y * alpha, color.z * alpha};
     }
 
-    void PushLine(const std::string& text, const Vector3 color, const float lifeTime) {
+    void PushLine(const std::string& text, const Vector3 &color, const float lifeTime) {
         std::scoped_lock lock(linesMutex);
 
         ConsoleLine line;
@@ -54,9 +50,7 @@ namespace {
 
         lines.push_back(line);
 
-        while (static_cast<int>(lines.size()) > MAX_LINE_COUNT) {
-            lines.pop_front();
-        }
+        while (static_cast<int>(lines.size()) > MAX_LINE_COUNT) lines.pop_front();
     }
 }
 
@@ -65,24 +59,20 @@ namespace EditorFunctions {
         PushLine(text, DEFAULT_COLOR, DEFAULT_LINE_LIFE_TIME);
     }
 
-    void Print(const std::string& text, const Vector3 color) {
+    void Print(const std::string& text, const Vector3 &color) {
         PushLine(text, color, DEFAULT_LINE_LIFE_TIME);
     }
 
-    void Print(const std::string& text, const Vector3 color, const float lifeTime) {
+    void Print(const std::string& text, const Vector3 &color, const float lifeTime) {
         PushLine(text, color, lifeTime);
     }
 
     void UpdateConsole(const float deltaTime) {
         std::scoped_lock lock(linesMutex);
 
-        for (ConsoleLine& line : lines) {
-            line.timeLeft -= deltaTime;
-        }
+        for (ConsoleLine& line : lines) line.timeLeft -= deltaTime;
 
-        std::erase_if(lines, [](const ConsoleLine& line) {
-            return line.timeLeft <= 0.0f;
-        });
+        std::erase_if(lines, [](const ConsoleLine& line) { return line.timeLeft <= 0.0f;});
     }
 
     void RenderConsole(IRenderer* renderer) {
@@ -95,9 +85,7 @@ namespace EditorFunctions {
         for (const ConsoleLine& line : lines) {
             float alpha = 1.0f;
 
-            if (line.timeLeft < FADE_OUT_TIME) {
-                alpha = Clamp01(line.timeLeft / FADE_OUT_TIME);
-            }
+            if (line.timeLeft < FADE_OUT_TIME) alpha = Clamp01(line.timeLeft / FADE_OUT_TIME);
 
             renderer->RenderTextRaw(
                 line.text,

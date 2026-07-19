@@ -75,19 +75,11 @@ int OpenGL::CreateTexture(const std::string& fileName) {
 // the background. Loads and caches on first request; returns -1 (never
 // crashes) if the file is missing or fails to decode - a failed load is
 // cached too, so a broken reference isn't retried every frame.
-//
-// Requires a new `std::unordered_map<std::string, int> textureIndexByName;`
-// member and a matching declaration in OpenGL.hpp (not included in this
-// pass - see the accompanying notes).
 int OpenGL::GetOrCreateTextureIndex(const std::string& fileName) {
-    if (fileName.empty()) {
-        return -1;
-    }
+    if (fileName.empty()) return -1;
 
     const auto found = textureIndexByName.find(fileName);
-    if (found != textureIndexByName.end()) {
-        return found->second;
-    }
+    if (found != textureIndexByName.end()) return found->second;
 
     const int index = CreateTexture(fileName);
     textureIndexByName.emplace(fileName, index); // cache -1 too, on failure

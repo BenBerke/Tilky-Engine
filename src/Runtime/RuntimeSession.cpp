@@ -270,7 +270,7 @@ namespace {
             renderer->BeginFrame();
 
             // TODO: Add a proper debug-view setting.
-            constexpr bool RENDER_DEBUG = false;
+            constexpr bool RENDER_DEBUG = true;
             constexpr bool RENDER_UI = false;
             renderer->Update(RENDER_DEBUG, RENDER_UI);
 
@@ -328,7 +328,7 @@ namespace {
         UpdateFpsCounter();
     }
 
-    void ShutdownEditor(Level& level) {
+    void ShutdownEditor(const Level& level) {
         RuntimeEditor::Shutdown(level);
     }
 

@@ -14,10 +14,14 @@
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 
+#include "../../Editor/EditorInternal.hpp"
+#include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Editor/AssetBrowser.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <imgui.h>
 #include <numbers>
-
 
 namespace {
     ComponentCamera* camera = nullptr;
@@ -181,10 +185,7 @@ namespace RuntimeEditorUi {
         }
 
         if (editingSector) {
-            if (
-                selectedSector < 0 ||
-                selectedSector >= static_cast<int>(level.sectors.size())
-            ) {
+            if (selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) {
                 editingSector = false;
                 selectedSector = -1;
                 selectedSectorSurface = RayHitType::None;
@@ -206,6 +207,33 @@ namespace RuntimeEditorUi {
                 }
             }
         }
+
+        if (!MapEditorInternal::assetBrowserInitialized) {
+             MapEditorInternal::assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
+              MapEditorInternal::assetBrowserInitialized = true;
+        }
+
+        ImGui::Begin("Asset Browser##RuntimeEditor");
+
+        if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
+
+        ImGui::Spacing();
+
+         MapEditorInternal::assetBrowser.Draw(nullptr);
+
+        ImGui::End();
+
+        // Crosshair
+        // const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        // const ImVec2 center = viewport->GetCenter();
+        //
+        // constexpr float size = 6.0f;
+        //
+        // ImGui::GetForegroundDrawList()->AddRectFilled(
+        //     {center.x - size * 0.5f, center.y - size * 0.5f},
+        //     {center.x + size * 0.5f, center.y + size * 0.5f},
+        //     IM_COL32(255, 255, 255, 255)
+        // );
     }
 }
 
@@ -288,31 +316,31 @@ namespace RuntimeEditor {
 
         //endregion
 
+        const Vector3 rayOrigin = transform->position;
+
+        const Vector2 mousePosition = InputManager::GetMousePosition();
+
+        const Vector2 viewportSize = {
+            static_cast<float>(screenWidth),
+            static_cast<float>(screenHeight)
+        };
+
+        const Vector3 rayDirection = GetMouseRayDirection(
+            *camera,
+            mousePosition,
+            viewportSize
+        );
+
+        const std::optional<RayHit> hit = GameFunctions::Raycast(
+            level,
+            rayOrigin,
+            rayDirection,
+            RAY_LENGTH,
+            camera->ownerID,
+            false
+        );
+
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
-            const Vector3 rayOrigin = transform->position;
-
-            const Vector2 mousePosition = InputManager::GetMousePosition();
-
-            const Vector2 viewportSize = {
-                static_cast<float>(screenWidth),
-                static_cast<float>(screenHeight)
-            };
-
-            const Vector3 rayDirection = GetMouseRayDirection(
-                *camera,
-                mousePosition,
-                viewportSize
-            );
-
-            const std::optional<RayHit> hit = GameFunctions::Raycast(
-                level,
-                rayOrigin,
-                rayDirection,
-                RAY_LENGTH,
-                camera->ownerID,
-                false
-            );
-
             if (!hit.has_value()) {
                 spdlog::info("Runtime editor ray missed");
                 return;
@@ -337,9 +365,7 @@ namespace RuntimeEditor {
 
                     spdlog::info("Selected entity {}", hitEntityId);
 
-                    if (!selectedEntityId.has_value() || *selectedEntityId != hitEntityId) {
-                        ResetEntityInspectorState();
-                    }
+                    if (!selectedEntityId.has_value() || *selectedEntityId != hitEntityId) ResetEntityInspectorState();
 
                     editingEntity = true;
                     selectedEntityId = hitEntityId;
@@ -426,6 +452,29 @@ namespace RuntimeEditor {
                 default:
                     spdlog::warn("Runtime editor ray hit had invalid hit type");
                     break;
+            }
+        }
+
+        const float wheel = InputManager::GetMouseWheelScroll();
+
+        if (wheel != 0.0f && !mouseBlockedByImGui && hit.has_value() && hit->sector != nullptr) {
+            constexpr float HEIGHT_STEP = 1.0f;
+            constexpr float MIN_SECTOR_CLEARANCE = 1.0f;
+
+            Sector& sector = *hit->sector;
+            const float heightDelta = wheel * HEIGHT_STEP;
+
+            if (hit->type == RayHitType::SectorCeiling) {
+                sector.ceilingHeight = std::max(
+                    sector.floorHeight + MIN_SECTOR_CLEARANCE,
+                    sector.ceilingHeight + heightDelta
+                );
+            }
+            else if (hit->type == RayHitType::SectorFloor) {
+                sector.floorHeight = std::min(
+                    sector.ceilingHeight - MIN_SECTOR_CLEARANCE,
+                    sector.floorHeight + heightDelta
+                );
             }
         }
 

@@ -59,6 +59,10 @@ namespace OpenGLRendererInternal {
         Vector4 color;
         Vector4 heights;
         Vector4 data;
+        //data.x = texture region/index;
+        //data.y = unused;
+        //data.z = texture anchor height;
+        //data.w = texture direction;
         Vector4 textureOffset_padding;
     };
 

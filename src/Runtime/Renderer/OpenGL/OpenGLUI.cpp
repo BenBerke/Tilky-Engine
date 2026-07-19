@@ -21,23 +21,15 @@ void OpenGL::DrawUIRectangle(
 
     uiShader->use();
 
-    glUniform2f(
-        glGetUniformLocation(uiShader->ID, "uScreenSize"),
+    glUniform2f(glGetUniformLocation(
+        uiShader->ID, "uScreenSize"),
         static_cast<float>(screenWidth),
         static_cast<float>(screenHeight)
     );
 
-    glUniform2f(
-        glGetUniformLocation(uiShader->ID, "uPosition"),
-        position.x,
-        position.y
-    );
+    glUniform2f(glGetUniformLocation(uiShader->ID, "uPosition"), position.x, position.y);
 
-    glUniform2f(
-        glGetUniformLocation(uiShader->ID, "uSize"),
-        size.x,
-        size.y
-    );
+    glUniform2f(glGetUniformLocation(uiShader->ID, "uSize"), size.x, size.y);
 
     glUniform4f(
         glGetUniformLocation(uiShader->ID, "uColor"),
@@ -55,45 +47,24 @@ void OpenGL::DrawUIRectangle(
 
     const bool useTexture = textureIndex >= 0 && textureIndex < static_cast<int>(textureRegions.size());
 
-    glUniform1i(
-        glGetUniformLocation(uiShader->ID, "uUseTexture"),
-        useTexture ? 1 : 0
-    );
+    glUniform1i(glGetUniformLocation(uiShader->ID, "uUseTexture"), useTexture ? 1 : 0);
 
     if (useTexture) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
-        glUniform1i(
-            glGetUniformLocation(uiShader->ID, "uAtlas"),
-            0
-        );
+        glUniform1i(glGetUniformLocation(uiShader->ID, "uAtlas"),0);
 
-        glUniform1i(
-            glGetUniformLocation(uiShader->ID, "uTextureIndex"),
-            textureIndex
-        );
+        glUniform1i( glGetUniformLocation(uiShader->ID, "uTextureIndex"), textureIndex);
 
-        glUniform1i(
-            glGetUniformLocation(uiShader->ID, "uTextureCount"),
-            static_cast<int>(textureRegions.size())
-        );
+        glUniform1i(glGetUniformLocation(uiShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
 
-        glBindBufferBase(
-            GL_SHADER_STORAGE_BUFFER,
-            5,
-            textureRegionSSBO
-        );
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
     }
 
     glBindVertexArray(uiVAO);
 
-    glDrawElements(
-        GL_TRIANGLES,
-        6,
-        GL_UNSIGNED_INT,
-        nullptr
-    );
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
 
     glBindVertexArray(0);
 
