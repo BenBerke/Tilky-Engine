@@ -6,7 +6,6 @@
 #include "imgui.h"
 #include <spdlog/spdlog.h>
 
-#include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 #include <array>
@@ -398,14 +397,17 @@ void AssetBrowser::DrawFolderTile(const AssetBrowserEntry& entry, const float ti
     ImGui::EndGroup();
 }
 
-void AssetBrowser::DrawFileTile(const AssetBrowserEntry& entry, const float tileSize, SDL_Renderer* renderer) {
-    const bool isSelected = (!selectedFile.empty() && selectedFile == entry.absolutePath);
+void AssetBrowser::DrawFileTile(
+    const AssetBrowserEntry& entry,
+    const float tileSize,
+    const ThumbnailProvider& thumbnailProvider
+) {
+    const bool isSelected = !selectedFile.empty() && selectedFile == entry.absolutePath;
     const float labelHeight = ImGui::GetTextLineHeight() + 6.0f;
 
     ImGui::BeginGroup();
 
     const ImVec2 topLeft = ImGui::GetCursorScreenPos();
-
     const bool clicked = ImGui::Selectable(
         "##FileTile",
         isSelected,
@@ -415,56 +417,61 @@ void AssetBrowser::DrawFileTile(const AssetBrowserEntry& entry, const float tile
 
     if (clicked) {
         selectedFile = entry.absolutePath;
+
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
             pendingConfirmedPath = entry.absolutePath;
             pendingConfirmedKind = entry.kind;
         }
     }
 
-    // Only recognised kinds are draggable onto a field - "Other" files are
-    // still visible (for transparency) but aren't wired to anything.
-    if (entry.kind != AssetKind::Other) {
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            const std::string payloadPath = entry.absolutePath.string();
-            ImGui::SetDragDropPayload(
-                DragDropPayloadTypeFor(entry.kind),
-                payloadPath.c_str(),
-                payloadPath.size() + 1
-            );
-            ImGui::TextUnformatted(entry.displayName.c_str());
-            ImGui::EndDragDropSource();
-        }
+    if (entry.kind != AssetKind::Other && ImGui::BeginDragDropSource()) {
+        const std::string payloadPath = entry.absolutePath.string();
+
+        ImGui::SetDragDropPayload(
+            DragDropPayloadTypeFor(entry.kind),
+            payloadPath.c_str(),
+            payloadPath.size() + 1
+        );
+
+        ImGui::TextUnformatted(entry.displayName.c_str());
+        ImGui::EndDragDropSource();
     }
 
-    SDL_Texture* texture = (entry.kind == AssetKind::Texture)
-        ? EditorTextureCache::Get(renderer, ToAssetReference(entry.absolutePath, AssetKind::Texture))
-        : nullptr;
+    ImTextureID texture{};
+
+    if (entry.kind == AssetKind::Texture && thumbnailProvider) {
+        texture = thumbnailProvider(ToAssetReference(entry.absolutePath, AssetKind::Texture));
+    }
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const ImVec2 boxMax = ImVec2(topLeft.x + tileSize, topLeft.y + tileSize);
+    const ImVec2 boxMax = {topLeft.x + tileSize, topLeft.y + tileSize};
 
-    if (texture != nullptr)
-        drawList->AddImage(reinterpret_cast<ImTextureID>(texture), topLeft, boxMax);
+    if (texture != ImTextureID{}) {
+        drawList->AddImage(texture, topLeft, boxMax);
+    }
     else {
         drawList->AddRectFilled(topLeft, boxMax, TileTint(entry.kind), 4.0f);
         drawList->AddRect(topLeft, boxMax, IM_COL32(150, 150, 150, 255), 4.0f);
 
         const char* tag = KindTag(entry.kind);
         const ImVec2 tagSize = ImGui::CalcTextSize(tag);
+
         drawList->AddText(
-            ImVec2(topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f),
+            {topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f},
             IM_COL32(220, 220, 220, 255),
             tag
         );
     }
 
-    if (isSelected)
+    if (isSelected) {
         drawList->AddRect(topLeft, boxMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
+    }
 
     const std::string name = TruncateToWidth(entry.displayName, tileSize);
     const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
+
     drawList->AddText(
-        ImVec2(topLeft.x + (tileSize - nameSize.x) * 0.5f, topLeft.y + tileSize + 4.0f),
+        {topLeft.x + (tileSize - nameSize.x) * 0.5f, topLeft.y + tileSize + 4.0f},
         IM_COL32(220, 220, 220, 255),
         name.c_str()
     );
@@ -472,7 +479,7 @@ void AssetBrowser::DrawFileTile(const AssetBrowserEntry& entry, const float tile
     ImGui::EndGroup();
 }
 
-void AssetBrowser::DrawEntries(SDL_Renderer* renderer) {
+void AssetBrowser::DrawEntries(const ThumbnailProvider& thumbnailProvider) {
     if (scanFailed) {
         ImGui::TextDisabled("%s", "This asset folder could not be read.");
         return;
@@ -506,7 +513,7 @@ void AssetBrowser::DrawEntries(SDL_Renderer* renderer) {
         ImGui::PushID(entry.absolutePath.string().c_str());
 
         if (entry.isDirectory) DrawFolderTile(entry, tileSize);
-        else DrawFileTile(entry, tileSize, renderer);
+        else DrawFileTile(entry, tileSize, thumbnailProvider);
 
         ImGui::PopID();
 
@@ -519,7 +526,7 @@ void AssetBrowser::DrawEntries(SDL_Renderer* renderer) {
     if (!anyVisible) ImGui::TextDisabled("%s", "No items match your search.");
 }
 
-void AssetBrowser::Draw(SDL_Renderer* renderer) {
+void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
     if (rootDirectory.empty()) return; // SetRootDirectory() hasn't been called yet
 
     const ImVec2 windowPos = ImGui::GetWindowPos();
@@ -536,7 +543,7 @@ void AssetBrowser::Draw(SDL_Renderer* renderer) {
     ImGui::Separator();
     ImGui::Spacing();
 
-    DrawEntries(renderer);
+    DrawEntries(thumbnailProvider);
 }
 
 bool AssetBrowser::HasSelection() const {

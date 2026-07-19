@@ -1,6 +1,7 @@
 #ifndef TILKY_ENGINE_IRENDERER_HPP
 #define TILKY_ENGINE_IRENDERER_HPP
 
+#include <imgui.h>
 #include <string>
 
 #include <SDL3/SDL.h>
@@ -51,6 +52,10 @@ public:
     [[nodiscard]] ComponentTransform* GetEditorCameraTransform() {
         CreateEditorCamera();
         return editorCameraTransform;
+    }
+
+    [[nodiscard]] virtual ImTextureID GetImGuiTextureID(const std::string& fileName) {
+        return static_cast<ImTextureID>(0);
     }
 
 protected:

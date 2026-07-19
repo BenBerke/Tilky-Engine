@@ -137,3 +137,11 @@ void OpenGL::DestroyAllTextures() {
 
     textureRegions.clear();
 }
+
+ImTextureID OpenGL::GetImGuiTextureID(const std::string& fileName) {
+    const int textureIndex = CreateTexture(fileName);
+
+    if (textureIndex < 0 || textureIndex >= GetTextureCount()) return ImTextureID{};
+
+    return static_cast<ImTextureID>(GetTexture(textureIndex).id);
+}

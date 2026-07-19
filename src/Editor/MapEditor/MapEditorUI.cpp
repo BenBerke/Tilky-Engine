@@ -1297,7 +1297,9 @@ namespace {
 
         ImGui::Spacing();
 
-        assetBrowser.Draw(renderer);
+        assetBrowser.Draw([](const std::string &fileName) -> ImTextureID {
+            return reinterpret_cast<ImTextureID>(EditorTextureCache::Get(renderer, fileName));
+        });
 
         ImGui::End();
     }

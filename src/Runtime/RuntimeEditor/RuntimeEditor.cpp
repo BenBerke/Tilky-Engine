@@ -24,6 +24,7 @@
 #include <numbers>
 
 namespace {
+    IRenderer* runtimeRenderer = nullptr;
     ComponentCamera* camera = nullptr;
     ComponentTransform* transform = nullptr;
 
@@ -219,11 +220,14 @@ namespace RuntimeEditorUi {
 
         ImGui::Spacing();
 
-         MapEditorInternal::assetBrowser.Draw(nullptr);
+        MapEditorInternal::assetBrowser.Draw([](const std::string& fileName) {
+            if (runtimeRenderer == nullptr) return ImTextureID{};
+            return runtimeRenderer->GetImGuiTextureID(fileName);
+        });
 
         ImGui::End();
 
-        // Crosshair
+        // Crosshair, useless because mouse position is used for selection
         // const ImGuiViewport* viewport = ImGui::GetMainViewport();
         // const ImVec2 center = viewport->GetCenter();
         //
@@ -242,6 +246,8 @@ namespace RuntimeEditor {
         (void)level;
 
         spdlog::info("Runtime editor started");
+
+        runtimeRenderer = &renderer;
 
         renderer.SetUseEditorCamera(true);
 
@@ -488,6 +494,7 @@ namespace RuntimeEditor {
     void Shutdown(const Level& level) {
         (void)level;
 
+        runtimeRenderer = nullptr;
         camera = nullptr;
         transform = nullptr;
 

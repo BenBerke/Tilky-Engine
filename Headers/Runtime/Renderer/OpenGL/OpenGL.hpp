@@ -188,6 +188,8 @@ public:
     void BeginImGuiFrame() const override;
     void EndImGuiFrame() const override;
 
+    [[nodiscard]] ImTextureID GetImGuiTextureID(const std::string& fileName) override;
+
 private:
     using Character = OpenGLRendererInternal::Character;
     using GpuFlatTriangle = OpenGLRendererInternal::GpuFlatTriangle;

@@ -1,11 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <imgui.h>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <SDL3/SDL_render.h>
 
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
 // which drag-and-drop payload type it uses.
@@ -48,6 +47,8 @@ struct AssetBrowserEntry {
 // name, resolved on demand.
 class AssetBrowser {
 public:
+    using ThumbnailProvider = std::function<ImTextureID(const std::string&)>;
+
     AssetBrowser() = default;
     ~AssetBrowser() = default;
 
@@ -66,7 +67,7 @@ public:
     // this between the host window's ImGui::Begin()/End().
     // `renderer` is only used to lazily load texture thumbnails via
     // EditorTextureCache.
-    void Draw(SDL_Renderer* renderer);
+    void Draw(const ThumbnailProvider& thumbnailProvider);
 
     [[nodiscard]] bool HasSelection() const;
     [[nodiscard]] const std::filesystem::path& GetSelectedFile() const;
@@ -110,9 +111,9 @@ private:
 
     void DrawBreadcrumbs();
     void DrawSearchBar();
-    void DrawEntries(SDL_Renderer* renderer);
+    void DrawEntries(const ThumbnailProvider& thumbnailProvider);
+    void DrawFileTile(const AssetBrowserEntry& entry, float tileSize, const ThumbnailProvider& thumbnailProvider);
     void DrawFolderTile(const AssetBrowserEntry& entry, float tileSize);
-    void DrawFileTile(const AssetBrowserEntry& entry, float tileSize, SDL_Renderer* renderer);
 
     std::filesystem::path rootDirectory;
     std::filesystem::path currentDirectory;
