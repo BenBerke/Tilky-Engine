@@ -3,6 +3,9 @@
 #include "../../Headers/Editor/Editor.hpp"
 #include "../../Headers/Editor/AssetBrowser.hpp"
 
+#include "Headers/Objects/Wall.hpp"
+#include "Headers/Objects/Sector.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -36,6 +39,7 @@ namespace MapEditorInternal {
         ACTION_CREATE_WALL,
         ACTION_CREATE_CORNER, // historical name - now fires for Dot placement/undo.
         ACTION_CREATE_OBJECT,
+        ACTION_APPLY_GEOMETRY, // one MapEditorInternal::ApplyDrawnGeometry call, however many walls/sectors it touched internally.
     };
 
     enum State {
@@ -74,8 +78,36 @@ namespace MapEditorInternal {
         Vector3 floorColor{};
     };
 
+    // Whole-operation undo snapshot for ApplyDrawnGeometry - it can create
+    // and split many walls and sectors in one call, so a single
+    // ACTION_APPLY_GEOMETRY entry carries exactly one of these rather than
+    // pushing a separate undo action per internal wall split. Captured
+    // before the call is attempted; only kept (pushed onto
+    // geometrySnapshots) if the call actually succeeds.
+    struct GeometrySnapshot {
+        std::vector<Wall> walls;
+        std::vector<Sector> sectors;
+        ID nextWallID = 0;
+        ID nextSectorID = 0;
+
+        ID selectedSectorID = INVALID_ID;
+        ID selectedWallID = INVALID_ID;
+        ID selectedDotID = INVALID_ID;
+        bool editingSector = false;
+        bool editingWall = false;
+    };
+
     // Internal variables do not touch
     extern std::vector<Action> actions;
+
+    // Undo stack for ACTION_APPLY_GEOMETRY entries - kept parallel to
+    // `actions` (one entry per ACTION_APPLY_GEOMETRY present in it), not
+    // indexed by position within it.
+    extern std::vector<GeometrySnapshot> geometrySnapshots;
+
+    // Set by ApplyDrawnGeometry whenever it rejects an edit (cleared on
+    // success); MapEditorUI.cpp surfaces it as a toast once per rejection.
+    extern std::string lastGeometryError;
 
     extern SDL_Window* window;
     extern SDL_Renderer* renderer;
@@ -166,6 +198,21 @@ namespace MapEditorInternal {
     void TrySectorChainClick(const Vector2& resolvedPoint);
     void FinishSectorSelection();
     void CancelSectorChain();
+
+    // Inserts `drawnPoints` into the current level's wall graph and
+    // rebuilds every sector touched by the edit (see MapTopology.hpp for
+    // the underlying, editor-independent algorithm). `drawnPoints` is an
+    // open polyline - repeat the first point at the end to close a loop
+    // back on itself. Returns false and leaves the level untouched if
+    // the edit is rejected (see lastGeometryError for why); on success,
+    // pushes one ACTION_APPLY_GEOMETRY undo entry and selects one of the
+    // resulting sectors.
+    bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params);
+
+    // Restores level walls/sectors/ID counters and the affected
+    // selection from a GeometrySnapshot, then rebuilds runtime links.
+    // Used only by the ACTION_APPLY_GEOMETRY case of the undo handler.
+    void RestoreGeometrySnapshot(const GeometrySnapshot& snapshot);
 
     Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos);
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos);

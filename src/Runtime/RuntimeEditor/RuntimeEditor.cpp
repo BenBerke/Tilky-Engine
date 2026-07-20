@@ -214,18 +214,20 @@ namespace RuntimeEditorUi {
               MapEditorInternal::assetBrowserInitialized = true;
         }
 
-        ImGui::Begin("Asset Browser##RuntimeEditor");
+        if (editingEntity || editingSector || editingWall) {
+            ImGui::Begin("Asset Browser##RuntimeEditor");
 
-        if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
+            if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
 
-        ImGui::Spacing();
+            ImGui::Spacing();
 
-        MapEditorInternal::assetBrowser.Draw([](const std::string& fileName) {
-            if (runtimeRenderer == nullptr) return ImTextureID{};
-            return runtimeRenderer->GetImGuiTextureID(fileName);
-        });
+            MapEditorInternal::assetBrowser.Draw([](const std::string& fileName) {
+                if (runtimeRenderer == nullptr) return ImTextureID{};
+                return runtimeRenderer->GetImGuiTextureID(fileName);
+            });
 
-        ImGui::End();
+            ImGui::End();
+        }
 
         // Crosshair, useless because mouse position is used for selection
         // const ImGuiViewport* viewport = ImGui::GetMainViewport();

@@ -207,6 +207,17 @@ namespace MapEditorInternal {
                         level.DestroyEntity(entity.id);
                     }
                     break;
+                case ACTION_APPLY_GEOMETRY:
+                    // One ApplyDrawnGeometry call can create/split many
+                    // walls and sectors at once, so undo restores the
+                    // whole-operation snapshot rather than guessing at
+                    // "the last wall" / "the last sector" the way the
+                    // simpler action kinds above do.
+                    if (!geometrySnapshots.empty()) {
+                        RestoreGeometrySnapshot(geometrySnapshots.back());
+                        geometrySnapshots.pop_back();
+                    }
+                    break;
                 default: break;
             }
             actions.pop_back();

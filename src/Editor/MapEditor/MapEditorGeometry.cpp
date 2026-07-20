@@ -12,6 +12,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Map/MapTopology.hpp"
 #include "Headers/Objects/Entity.hpp"
 
 // This is an internal file for functions related to mathematical calculations about the map,
@@ -175,9 +176,13 @@ namespace MapEditorInternal {
         };
     }
 
-    // Feature #7: snap priority is {dots, wall starts, wall ends} (nearest
-    // within radius wins), falling back to grid snapping when nothing is
-    // close enough. Does NOT snap to arbitrary points along a wall segment.
+    // Snap priority is {dots, wall starts, wall ends} (nearest within
+    // radius wins); if nothing there is close enough, falls back to the
+    // closest point along any wall's *interior* within radius; only
+    // falls back to grid snapping if nothing at all is close by.
+    // Snapping onto a wall's interior is what lets a drawn chain start
+    // or end mid-wall - committing the chain is what actually splits the
+    // wall there (see ApplyDrawnGeometry / MapTopology::ApplyDrawnGeometry).
     Vector2 ResolveSnapPoint(const Vector2& mouseWorld) {
         constexpr float snapRadiusPixels = 12.0f;
         const float safeZoom = std::max(editorZoom, 0.0001f);
@@ -209,9 +214,12 @@ namespace MapEditorInternal {
             consider(wall.end);
         }
 
-        if (!found) return SnapToGrid(mouseWorld);
+        if (found) return best;
 
-        return best;
+        Vector2 onWall{};
+        if (MapTopology::ClosestPointOnAnyWall(level.walls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
+
+        return SnapToGrid(mouseWorld);
     }
 
     bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
@@ -240,278 +248,30 @@ namespace MapEditorInternal {
     }
 
     namespace {
-        bool SegmentsProperlyIntersect(const Vector2& a1, const Vector2& a2, const Vector2& b1, const Vector2& b2) {
-            const auto cross = [](const Vector2& o, const Vector2& p, const Vector2& q) -> float {
-                return (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
-            };
+        // True if `point` (already resolved/snapped) coincides with an
+        // existing Dot, an existing wall's endpoint, or an existing
+        // wall's interior - i.e. it's geometry that was already part of
+        // the level before this click, as opposed to a fresh point in
+        // open space. Endpoint/dot matching is exact equality
+        // deliberately: `point` only ever reaches here by way of
+        // ResolveSnapPoint, which snaps to the exact stored coordinate of
+        // whatever it matched, so comparing against that same stored
+        // value is safe - this isn't the "two independently computed
+        // floats" case map topology has to guard against.
+        bool IsPointOnExistingGeometry(const Vector2& point) {
+            for (const Dot& dot : dots) {
+                if (SamePoint(dot.position, point)) return true;
+            }
 
-            const float d1 = cross(b1, b2, a1);
-            const float d2 = cross(b1, b2, a2);
-            const float d3 = cross(a1, a2, b1);
-            const float d4 = cross(a1, a2, b2);
+            const Level& level = LevelManager::CurrentLevel();
 
-            const bool straddlesB = (d1 > 0.0f && d2 < 0.0f) || (d1 < 0.0f && d2 > 0.0f);
-            const bool straddlesA = (d3 > 0.0f && d4 < 0.0f) || (d3 < 0.0f && d4 > 0.0f);
-
-            return straddlesB && straddlesA;
-        }
-
-        // Edges that share a vertex by construction (adjacent edges of the
-        // polygon) are deliberately skipped - we only care about *improper*
-        // crossings between non-adjacent edges.
-        bool IsChainSelfIntersecting(const std::vector<Vector2>& vertices) {
-            const int n = static_cast<int>(vertices.size());
-
-            for (int i = 0; i < n; ++i) {
-                const Vector2& a1 = vertices[i];
-                const Vector2& a2 = vertices[(i + 1) % n];
-
-                for (int j = i + 1; j < n; ++j) {
-                    if (j == i) continue;
-                    if (j == (i + 1) % n) continue;
-                    if ((j + 1) % n == i) continue;
-
-                    const Vector2& b1 = vertices[j];
-                    const Vector2& b2 = vertices[(j + 1) % n];
-
-                    if (SegmentsProperlyIntersect(a1, a2, b1, b2)) {
-                        return true;
-                    }
-                }
+            for (const Wall& wall : level.walls) {
+                if (SamePoint(wall.start, point) || SamePoint(wall.end, point)) return true;
+                if (MapTopology::PointOnSegmentInterior(point, wall.start, wall.end)) return true;
             }
 
             return false;
         }
-
-        // Feature #5 "Validation before sector creation".
-        bool ValidateSectorChain(const std::vector<Vector2>& vertices, std::string* outReason) {
-            if (vertices.size() < 3) {
-                if (outReason != nullptr) *outReason = "fewer than 3 points";
-                return false;
-            }
-
-            const int n = static_cast<int>(vertices.size());
-
-            for (int i = 0; i < n; ++i) {
-                for (int j = i + 1; j < n; ++j) {
-                    if (SamePoint(vertices[i], vertices[j])) {
-                        if (outReason != nullptr) *outReason = "duplicate vertex";
-                        return false;
-                    }
-                }
-            }
-
-            for (int i = 0; i < n; ++i) {
-                const Vector2& a = vertices[i];
-                const Vector2& b = vertices[(i + 1) % n];
-
-                const Vector2 edge = b - a;
-
-                if (Vector2Math::Dot(edge, edge) <= 0.0001f) {
-                    if (outReason != nullptr) *outReason = "zero-length edge";
-                    return false;
-                }
-            }
-
-            if (Geometry::PolygonAreaAbs(vertices) <= 0.0001f) {
-                if (outReason != nullptr) *outReason = "zero-area polygon";
-                return false;
-            }
-
-            if (IsChainSelfIntersecting(vertices)) {
-                if (outReason != nullptr) *outReason = "self-intersecting polygon";
-                return false;
-            }
-
-            return true;
-        }
-
-        // Picks a point guaranteed to be inside the polygon by using the
-        // centroid of one of its own triangles (valid for any simple polygon
-        // triangulation, including concave ones - unlike a naive vertex
-        // average, which can land outside for concave shapes).
-        Vector2 ComputePolygonInteriorPoint(const std::vector<Vector2>& vertices, const std::vector<Triangle>& triangles) {
-            if (!triangles.empty()) {
-                const Triangle& t = triangles.front();
-                return {
-                    (t.a.x + t.b.x + t.c.x) / 3.0f,
-                    (t.a.y + t.b.y + t.c.y) / 3.0f
-                };
-            }
-
-            Vector2 sum{0.0f, 0.0f};
-
-            for (const Vector2& v : vertices) {
-                sum.x += v.x;
-                sum.y += v.y;
-            }
-
-            const float n = std::max(1.0f, static_cast<float>(vertices.size()));
-            return {sum.x / n, sum.y / n};
-        }
-
-        // Feature #5 "Sector creation": reuse an existing wall if its
-        // start/end match the edge in either direction, else nullptr.
-        Wall* FindWallForEdge(Level& level, const Vector2& a, const Vector2& b) {
-            for (Wall& wall : level.walls) {
-                const bool sameDirection = SamePoint(wall.start, a) && SamePoint(wall.end, b);
-                const bool oppositeDirection = SamePoint(wall.start, b) && SamePoint(wall.end, a);
-
-                if (sameDirection || oppositeDirection) {
-                    return &wall;
-                }
-            }
-
-            return nullptr;
-        }
-
-        // Feature #5 "Wall front/back assignment". Never silently overwrites
-        // an already-occupied frontSector/backSector with a *different*
-        // sector - it logs and bails instead.
-        void AssignWallSectorSide(Wall& wall, const ID sectorID, const Vector2&) {
-            if (sectorID == INVALID_ID) {
-                return;
-            }
-
-            // Already attached.
-            if (wall.frontSector == sectorID || wall.backSector == sectorID) {
-                return;
-            }
-
-            // For a newly created wall, always make the creating sector the front side.
-            // This avoids winding-dependent bugs where every new wall gets only backSector set.
-            if (wall.frontSector == INVALID_ID) {
-                wall.frontSector = sectorID;
-                return;
-            }
-
-            // Shared wall: attach the new sector to the other side.
-            if (wall.backSector == INVALID_ID) {
-                wall.backSector = sectorID;
-                return;
-            }
-
-            spdlog::warn(
-                "Wall {} already has two sectors: front={}, back={}; cannot attach sector {}",
-                wall.id,
-                wall.frontSector,
-                wall.backSector,
-                sectorID
-            );
-        }
-
-        // Builds the sector itself plus every edge wall (creating new ones
-        // or reusing shared ones), assigns stable IDs, assigns front/back
-        // sides, and rebuilds the sector/wall ID maps exactly once at the end.
-        ID CreateSectorWithWalls(const std::vector<Vector2>& vertices, const PendingSectorParams& params) {
-            Level& level = LevelManager::CurrentLevel();
-
-            Sector newSector{};
-            newSector.id = level.nextSectorID++;
-            newSector.vertices = vertices;
-            newSector.triangles = Geometry::Triangulate(vertices);
-
-            newSector.floorHeight = params.floorHeight;
-            newSector.ceilingHeight = params.ceilHeight;
-
-            newSector.floorColor = params.floorColor;
-            newSector.ceilingColor = params.ceilColor;
-
-            newSector.floorTexture = params.floorTexture;
-            newSector.ceilingTexture = params.ceilTexture;
-
-            newSector.lightValue = params.lightValue;
-
-            level.sectors.push_back(newSector);
-
-            const Vector2 interiorPoint = ComputePolygonInteriorPoint(vertices, newSector.triangles);
-
-            const int n = static_cast<int>(vertices.size());
-
-            for (int i = 0; i < n; ++i) {
-                const Vector2& edgeStart = vertices[i];
-                const Vector2& edgeEnd = vertices[(i + 1) % n];
-
-                Wall* wall = FindWallForEdge(level, edgeStart, edgeEnd);
-
-                if (wall == nullptr) {
-                    Wall newWall(
-                        edgeStart,
-                        edgeEnd,
-                        {255.0f, 255.0f, 255.0f, 255.0f},
-                        INVALID_ID,
-                        INVALID_ID,
-                        params.wallTexture,
-                        currentFloor
-                    );
-
-                    newWall.id = level.nextWallID++;
-
-                    level.walls.push_back(newWall);
-                    wall = &level.walls.back();
-                }
-
-                AssignWallSectorSide(*wall, newSector.id, interiorPoint);
-            }
-
-            MapQueries::RebuildSectorRuntimeLinks(level);
-
-            // ---- TEMPORARY DIAGNOSTIC — remove once root cause is found ----
-            // {
-            //     const auto sectorIt = level.sectorIDToIndex.find(newSector.id);
-            //     const int newSectorIndex =
-            //         sectorIt != level.sectorIDToIndex.end() ? sectorIt->second : -1;
-            //
-            //     spdlog::warn(
-            //         "CREATE SECTOR DIAG: id={} index={} floor={} ceil={} vertices={} triangles={} sectorCount={} wallCount={}",
-            //         newSector.id,
-            //         newSectorIndex,
-            //         newSector.floorHeight,
-            //         newSector.ceilingHeight,
-            //         newSector.vertices.size(),
-            //         newSector.triangles.size(),
-            //         level.sectors.size(),
-            //         level.walls.size()
-            //     );
-            //
-            //     if (newSectorIndex >= 0 && newSectorIndex < static_cast<int>(level.sectors.size())) {
-            //         const Sector& createdSector = level.sectors[newSectorIndex];
-            //
-            //         spdlog::warn(
-            //             "CREATED SECTOR AFTER REBUILD: id={} floor={} ceil={} walls={}",
-            //             createdSector.id,
-            //             createdSector.floorHeight,
-            //             createdSector.ceilingHeight,
-            //             createdSector.walls.size()
-            //         );
-            //
-            //         for (const Wall* w : createdSector.walls) {
-            //             if (w == nullptr) {
-            //                 spdlog::warn("  sector wall ptr=null");
-            //                 continue;
-            //             }
-            //
-            //             spdlog::warn(
-            //                 "  sector wall ptr id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-            //                 w->id, w->frontSector, w->backSector, w->textureFileName,
-            //                 w->quad3DCount, w->start.x, w->start.y, w->end.x, w->end.y
-            //             );
-            //         }
-            //     }
-            //
-            //     for (const Wall& w : level.walls) {
-            //         spdlog::warn(
-            //             "LEVEL WALL: id={} front={} back={} tex={} quadCount={} start=({}, {}) end=({}, {})",
-            //             w.id, w.frontSector, w.backSector, w.textureFileName,
-            //             w.quad3DCount, w.start.x, w.start.y, w.end.x, w.end.y
-            //         );
-            //     }
-            // }
-            // ---- END TEMPORARY DIAGNOSTIC ----
-
-            return newSector.id;
-        }
-
 
         void RebuildDotIDLookup() {
             dotIDToIndex.clear();
@@ -528,32 +288,23 @@ namespace MapEditorInternal {
         sectorBeingCreated.clear();
     }
 
+    // Closes the in-progress chain back onto its own starting point and
+    // commits it. A closed, non-self-intersecting chain of >= 3 points
+    // always bounds at least itself, so unlike TrySectorChainClick's
+    // other commit path there's no need to check whether it would
+    // enclose anything first.
     void FinishSectorSelection() {
         if (sectorBeingCreated.size() < 3) {
-            if (!sectorBeingCreated.empty()) {
-                SDL_Log("Sector cancelled: fewer than 3 points");
-            }
-
             sectorBeingCreated.clear();
             return;
         }
 
-        std::string rejectReason;
+        std::vector<Vector2> closedChain = sectorBeingCreated;
+        closedChain.push_back(sectorBeingCreated.front());
 
-        if (!ValidateSectorChain(sectorBeingCreated, &rejectReason)) {
-            SDL_Log("Sector cancelled: %s", rejectReason.c_str());
-            sectorBeingCreated.clear();
-            return;
-        }
-
-        const ID newSectorID = CreateSectorWithWalls(sectorBeingCreated, pendingSectorParams);
-
-        SDL_Log("Sector created with %d vertices", static_cast<int>(sectorBeingCreated.size()));
+        ApplyDrawnGeometry(closedChain, pendingSectorParams);
 
         sectorBeingCreated.clear();
-
-        selectedSectorID = newSectorID;
-        editingSector = true;
     }
 
     // Manual Mode: only accept a click that lands on a real existing
@@ -625,9 +376,25 @@ namespace MapEditorInternal {
             return;
         }
 
+        // Closing back on the chain's own start always commits.
         if (sectorBeingCreated.size() >= 3 && SamePoint(point, sectorBeingCreated.front())) {
             FinishSectorSelection();
             return;
+        }
+
+        // Landing on existing geometry only commits if the chain would
+        // actually enclose something new yet; otherwise it's just a
+        // pass-through point (e.g. touching one existing corner on the
+        // way to somewhere else), so keep building the chain.
+        if (IsPointOnExistingGeometry(point)) {
+            std::vector<Vector2> tentative = sectorBeingCreated;
+            tentative.push_back(point);
+
+            if (MapTopology::WouldEncloseNewFace(LevelManager::CurrentLevel(), tentative)) {
+                ApplyDrawnGeometry(tentative, pendingSectorParams);
+                sectorBeingCreated.clear();
+                return;
+            }
         }
 
         AddSectorSelectionPoint(point);
@@ -637,41 +404,111 @@ namespace MapEditorInternal {
         manualSectorDots.clear();
     }
 
-    // Sector only — deliberately never touches level.walls or
-    // FindWallForEdge/AssignWallSectorSide/CreateSectorWithWalls.
+    // Manual mode only restricts *which points* are pickable (existing
+    // corners, via FindExistingCorner) - sector creation itself now goes
+    // through the exact same topology system as the freehand chain, so
+    // a manual sector gets real bordering walls (reusing whichever of
+    // them already exist) instead of floor/ceiling geometry with nothing
+    // around it.
     void CreateManualSector() {
-        if (manualSectorDots.size() < 3) return;
-
-        std::string rejectReason;
-        if (!ValidateSectorChain(manualSectorDots, &rejectReason)) {
-            SDL_Log("Manual sector cancelled: %s", rejectReason.c_str());
+        if (manualSectorDots.size() < 3) {
             manualSectorDots.clear();
             return;
         }
 
-        Level& level = LevelManager::CurrentLevel();
-        const ID newSectorID = level.nextSectorID; // AddSector() will assign exactly this
+        std::vector<Vector2> closedChain = manualSectorDots;
+        closedChain.push_back(manualSectorDots.front());
 
-        Sector newSector{};
-        newSector.vertices  = manualSectorDots;
-        newSector.triangles = Geometry::Triangulate(newSector.vertices);
+        const PendingSectorParams params{
+            wallTexture,
+            ceilTexture,
+            floorTexture,
+            floorHeight,
+            ceilHeight,
+            lightValue,
+            wallColor,
+            ceilColor,
+            floorColor
+        };
 
-        newSector.floorHeight         = floorHeight;
-        newSector.ceilingHeight       = ceilHeight;
-        newSector.floorColor          = floorColor;
-        newSector.ceilingColor        = ceilColor;
-        newSector.floorTexture        = floorTexture;
-        newSector.ceilingTexture      = ceilTexture;
-        newSector.lightValue          = lightValue;
-
-        Editor::AddSector(newSector);
-
-        SDL_Log("Manual sector created with %d vertices", static_cast<int>(manualSectorDots.size()));
+        ApplyDrawnGeometry(closedChain, params);
 
         manualSectorDots.clear();
+    }
 
-        selectedSectorID = newSectorID;
-        editingSector    = true;
+    namespace {
+        GeometrySnapshot CaptureGeometrySnapshot(const Level& level) {
+            GeometrySnapshot snapshot;
+            snapshot.walls = level.walls;
+            snapshot.sectors = level.sectors;
+            snapshot.nextWallID = level.nextWallID;
+            snapshot.nextSectorID = level.nextSectorID;
+            snapshot.selectedSectorID = selectedSectorID;
+            snapshot.selectedWallID = selectedWallID;
+            snapshot.selectedDotID = selectedDotID;
+            snapshot.editingSector = editingSector;
+            snapshot.editingWall = editingWall;
+            return snapshot;
+        }
+    }
+
+    bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const MapTopology::NewSectorParams topologyParams{
+            params.wallTexture,
+            params.ceilTexture,
+            params.floorTexture,
+            params.floorHeight,
+            params.ceilHeight,
+            params.lightValue,
+            params.wallColor,
+            params.ceilColor,
+            params.floorColor
+        };
+
+        // Taken unconditionally, before we know whether the edit will be
+        // accepted - cheap to discard if MapTopology::ApplyDrawnGeometry
+        // rejects it (which leaves `level` itself completely untouched).
+        GeometrySnapshot snapshot = CaptureGeometrySnapshot(level);
+
+        const MapTopology::ApplyResult applyResult =
+            MapTopology::ApplyDrawnGeometry(level, drawnPoints, topologyParams);
+
+        if (!applyResult.success) {
+            spdlog::warn("Sector geometry rejected: {}", applyResult.message);
+            lastGeometryError = applyResult.message;
+            return false;
+        }
+
+        geometrySnapshots.push_back(std::move(snapshot));
+        actions.push_back(ACTION_APPLY_GEOMETRY);
+
+        if (!applyResult.affectedSectorIDs.empty()) {
+            selectedSectorID = applyResult.affectedSectorIDs.front();
+            editingSector = true;
+        }
+
+        lastGeometryError.clear();
+
+        return true;
+    }
+
+    void RestoreGeometrySnapshot(const GeometrySnapshot& snapshot) {
+        Level& level = LevelManager::CurrentLevel();
+
+        level.walls = snapshot.walls;
+        level.sectors = snapshot.sectors;
+        level.nextWallID = snapshot.nextWallID;
+        level.nextSectorID = snapshot.nextSectorID;
+
+        selectedSectorID = snapshot.selectedSectorID;
+        selectedWallID = snapshot.selectedWallID;
+        selectedDotID = snapshot.selectedDotID;
+        editingSector = snapshot.editingSector;
+        editingWall = snapshot.editingWall;
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
     void AddDot(const Vector2& position) {
@@ -890,11 +727,11 @@ namespace Editor {
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
-    // NOTE: kept from before the revamp for backward compatibility. It does
-    // NOT create/reuse walls or assign front/back sectors, so it is no
-    // longer used by the Sector Mode chain workflow (see
-    // MapEditorInternal::FinishSectorSelection / CreateSectorWithWalls in
-    // this file instead
+    // NOTE: kept from before the revamp for backward compatibility, in
+    // case something outside this file still calls it. It does NOT
+    // create/reuse walls or assign front/back sectors - the Sector Mode
+    // chain workflow uses MapEditorInternal::ApplyDrawnGeometry instead
+    // (see MapTopology.hpp/.cpp), which does both.
     //
     // Parameters changed from int texture indices to filenames along with
     // Sector::floorTexture/ceilingTexture - an index can't be translated

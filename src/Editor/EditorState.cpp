@@ -50,6 +50,8 @@ namespace MapEditorInternal {
     bool playerPlaced = false;
 
     std::vector<Action> actions;
+    std::vector<GeometrySnapshot> geometrySnapshots;
+    std::string lastGeometryError;
 
     int currentFloor;
 

@@ -68,6 +68,16 @@ struct Wall {
       backSector(bs),
       textureFileName(std::move(textureFileName))
     {
+        RefreshDerived();
+    }
+
+    // Recomputes dir/normal/vector/lengthSq/length from the current
+    // start/end. The constructor calls this itself; call it again after
+    // directly mutating start or end (e.g. MapTopology splitting a wall
+    // during a topology rebuild) so those fields don't go stale - this
+    // is the only place that math lives, so it can't drift between the
+    // two call sites.
+    void RefreshDerived() {
         vector = end - start;
         lengthSq = Vector2Math::Dot(vector, vector);
         length = std::sqrt(lengthSq);

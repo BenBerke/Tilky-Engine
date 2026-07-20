@@ -346,6 +346,9 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/EditorSaveLoad.cpp
         src/Editor/AssetBrowser.cpp
 
+        src/Map/MapTopology.cpp
+        Headers/Map/MapTopology.hpp
+
         src/Runtime/RuntimeEditor/EditorFunctions.cpp
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
 
@@ -484,6 +487,7 @@ if(WIN32)
     set(TILKY_GENERATED_ICON_RC
             "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
             Headers/Editor/AssetBrowser.hpp
+            Headers/Map/MapTopology.hpp
     )
 
     configure_file(
@@ -637,7 +641,6 @@ target_compile_definitions(Tilky_Engine PRIVATE
 
 # ============================================================
 # Runnable 3: Standalone
-# KEEP THIS. Uses StandaloneMain.cpp.
 # ============================================================
 
 add_executable(Tilky_Standalone
@@ -796,7 +799,7 @@ function(make_gui_in_release target_name)
 endfunction()
 
 make_gui_in_release(Tilky_Launcher)
-# keep Tilky_Engine console visible unless you deliberately want GUI-only editor
+# keep Tilky_Engine console visible
 make_gui_in_release(Tilky_Standalone)
 
 copy_runtime_dlls(Tilky_Launcher)

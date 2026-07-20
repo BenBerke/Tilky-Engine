@@ -1297,8 +1297,9 @@ namespace {
 
         ImGui::Spacing();
 
-        assetBrowser.Draw([](const std::string &fileName) -> ImTextureID {
-            return reinterpret_cast<ImTextureID>(EditorTextureCache::Get(renderer, fileName));
+        assetBrowser.Draw([](const std::string& textureFileName) -> ImTextureID {
+            SDL_Texture* texture = GetEditorTexture(textureFileName);
+            return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
         });
 
         ImGui::End();
@@ -1793,7 +1794,15 @@ namespace MapEditorInternal {
         DrawWorldSettings();
         DrawHierarchyPanel(level);
         DrawProjectSettingsButton();
+
+        //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         DrawAssetBrowserPanel();
+
+        // ---- Sector-geometry rejection toast --------------------------------
+        if (!lastGeometryError.empty()) {
+            ShowNotification(lastGeometryError.c_str(), true);
+            lastGeometryError.clear();
+        }
 
         // ---- Toast notification -------------------------------------------
         DrawNotification(dt);
