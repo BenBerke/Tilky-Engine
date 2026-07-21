@@ -8,8 +8,8 @@
 #include "Vector3.hpp"
 #include "../SIMD/SSECompat.hpp"
 
+#ifndef NOSIMD
 namespace Vector3Math {
-
     // Helper: horizontal dot product of 3D vectors (x*x + y*y + z*z).
     // Assumes the w lane is 0 or irrelevant — only x, y, z are summed.
     inline float Dot3(const __m128 a, const __m128 b) {
@@ -80,5 +80,58 @@ namespace Vector3Math {
         return _mm_cvtss_f32(distReg);
     }
 }
+#else
+namespace Vector3Math {
+    inline float Dot(const Vector3& a, const Vector3& b) {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    inline Vector3 Cross(const Vector3& a, const Vector3& b) {
+        return {
+            a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x
+        };
+    }
+
+    inline float LengthSquared(const Vector3& v) {
+        return v.x * v.x + v.y * v.y + v.z * v.z;
+    }
+
+    inline float Length(const Vector3& v) {
+        return std::sqrt(LengthSquared(v));
+    }
+
+    inline Vector3 Normalized(const Vector3& v) {
+        const float lenSq = LengthSquared(v);
+
+        if (lenSq == 0.0f) return Vector3{};
+
+        const float invLen = 1.0f / std::sqrt(lenSq);
+
+        return {
+            v.x * invLen,
+            v.y * invLen,
+            v.z * invLen
+        };
+    }
+
+    inline void Normalize(Vector3& v) {
+        v = Normalized(v);
+    }
+
+    inline float DistanceSquared(const Vector3& a, const Vector3& b) {
+        const float dx = a.x - b.x;
+        const float dy = a.y - b.y;
+        const float dz = a.z - b.z;
+
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    inline float Distance(const Vector3& a, const Vector3& b) {
+        return std::sqrt(DistanceSquared(a, b));
+    }
+}
+#endif
 
 #endif //TILKY_ENGINE_VECTOR3MATH_HPP

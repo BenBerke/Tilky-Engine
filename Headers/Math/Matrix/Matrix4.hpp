@@ -3,12 +3,12 @@
 #include <cmath>
 #include <initializer_list>
 #include <optional>
-#include <immintrin.h>
 
-#include "../Vector/Vector3Math.hpp"
+#include "../Vector/Vector3Math.hpp" // Includes SSECompat.hpp
 
 #include "../Constants.hpp"
 
+#ifndef NOSIMD
 struct alignas(16) Matrix4 {
     union {
         float m[4][4];          // Array access for standard lookups
@@ -244,3 +244,265 @@ struct alignas(16) Matrix4 {
         return result;
     }
 };
+#else
+struct alignas(16) Matrix4 {
+    union {
+        float m[4][4];
+        float data[16];
+    };
+
+    Matrix4() : data{} {}
+
+    Matrix4(const std::initializer_list<std::initializer_list<float>> initialRows) : data{} {
+        int rowIndex = 0;
+
+        for (const auto& row : initialRows) {
+            if (rowIndex >= 4) break;
+
+            int columnIndex = 0;
+            for (const float value : row) {
+                if (columnIndex >= 4) break;
+                m[rowIndex][columnIndex++] = value;
+            }
+
+            ++rowIndex;
+        }
+    }
+
+    void SetValue(const int row, const int col, const float value) {
+        m[row][col] = value;
+    }
+
+    static Matrix4 Identity() {
+        return {
+            {1.0f, 0.0f, 0.0f, 0.0f},
+            {0.0f, 1.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f, 0.0f},
+            {0.0f, 0.0f, 0.0f, 1.0f}
+        };
+    }
+
+    Matrix4 operator+(const Matrix4& other) const {
+        Matrix4 result;
+
+        for (int i = 0; i < 16; ++i)
+            result.data[i] = data[i] + other.data[i];
+
+        return result;
+    }
+
+    Matrix4 operator-(const Matrix4& other) const {
+        Matrix4 result;
+
+        for (int i = 0; i < 16; ++i)
+            result.data[i] = data[i] - other.data[i];
+
+        return result;
+    }
+
+    Matrix4& operator+=(const Matrix4& other) {
+        for (int i = 0; i < 16; ++i)
+            data[i] += other.data[i];
+
+        return *this;
+    }
+
+    Matrix4& operator-=(const Matrix4& other) {
+        for (int i = 0; i < 16; ++i)
+            data[i] -= other.data[i];
+
+        return *this;
+    }
+
+    Matrix4 operator*(const Matrix4& other) const {
+        Matrix4 result;
+
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                result.m[row][col] =
+                    m[row][0] * other.m[0][col] +
+                    m[row][1] * other.m[1][col] +
+                    m[row][2] * other.m[2][col] +
+                    m[row][3] * other.m[3][col];
+            }
+        }
+
+        return result;
+    }
+
+    Matrix4& operator*=(const Matrix4& other) {
+        *this = *this * other;
+        return *this;
+    }
+
+    [[nodiscard]] const float* Data() const {
+        return data;
+    }
+
+    float* Data() {
+        return data;
+    }
+
+    static Matrix4 Orthographic(
+        const float left,
+        const float right,
+        const float bottom,
+        const float top,
+        const float nearPlane,
+        const float farPlane
+    ) {
+        Matrix4 result = Identity();
+
+        result.m[0][0] = 2.0f / (right - left);
+        result.m[1][1] = 2.0f / (top - bottom);
+        result.m[2][2] = -2.0f / (farPlane - nearPlane);
+
+        result.m[0][3] = -(right + left) / (right - left);
+        result.m[1][3] = -(top + bottom) / (top - bottom);
+        result.m[2][3] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+
+        return result;
+    }
+
+    static Matrix4 Perspective(
+        const float fovDegrees,
+        const float aspect,
+        const float nearPlane,
+        const float farPlane
+    ) {
+        Matrix4 result;
+
+        const float fovRadians = fovDegrees * Constants::DegToRad;
+        const float f = 1.0f / std::tan(fovRadians * 0.5f);
+
+        result.m[0][0] = f / aspect;
+        result.m[1][1] = f;
+        result.m[2][2] = (farPlane + nearPlane) / (nearPlane - farPlane);
+        result.m[2][3] = (2.0f * farPlane * nearPlane) / (nearPlane - farPlane);
+        result.m[3][2] = -1.0f;
+
+        return result;
+    }
+
+    static Matrix4 PerspectiveReverseZ(
+        const float fovDegrees,
+        const float aspect,
+        const float nearPlane
+    ) {
+        Matrix4 result;
+
+        const float fovRadians = fovDegrees * Constants::DegToRad;
+        const float f = 1.0f / std::tan(fovRadians * 0.5f);
+
+        result.m[0][0] = f / aspect;
+        result.m[1][1] = f;
+        result.m[2][3] = nearPlane;
+        result.m[3][2] = -1.0f;
+
+        return result;
+    }
+
+    static Matrix4 PerspectiveReverseZ(
+        const float fovDegrees,
+        const float aspect,
+        const float nearPlane,
+        const float farPlane
+    ) {
+        Matrix4 result;
+
+        const float fovRadians = fovDegrees * Constants::DegToRad;
+        const float f = 1.0f / std::tan(fovRadians * 0.5f);
+
+        result.m[0][0] = f / aspect;
+        result.m[1][1] = f;
+        result.m[2][2] = nearPlane / (farPlane - nearPlane);
+        result.m[2][3] = (farPlane * nearPlane) / (farPlane - nearPlane);
+        result.m[3][2] = -1.0f;
+
+        return result;
+    }
+
+    static Matrix4 LookAt(
+        const Vector3& eye,
+        const Vector3& target,
+        const Vector3& up
+    ) {
+        const Vector3 forward = Vector3Math::Normalized(target - eye);
+        const Vector3 right = Vector3Math::Normalized(
+            Vector3Math::Cross(forward, up)
+        );
+        const Vector3 cameraUp = Vector3Math::Cross(right, forward);
+
+        Matrix4 result = Identity();
+
+        result.m[0][0] = right.x;
+        result.m[0][1] = right.y;
+        result.m[0][2] = right.z;
+        result.m[0][3] = -Vector3Math::Dot(right, eye);
+
+        result.m[1][0] = cameraUp.x;
+        result.m[1][1] = cameraUp.y;
+        result.m[1][2] = cameraUp.z;
+        result.m[1][3] = -Vector3Math::Dot(cameraUp, eye);
+
+        result.m[2][0] = -forward.x;
+        result.m[2][1] = -forward.y;
+        result.m[2][2] = -forward.z;
+        result.m[2][3] = Vector3Math::Dot(forward, eye);
+
+        return result;
+    }
+
+    static std::optional<Matrix4> Invert(const Matrix4& mat) {
+        float augmented[4][8]{};
+
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                augmented[row][col] = mat.m[row][col];
+                augmented[row][col + 4] = row == col ? 1.0f : 0.0f;
+            }
+        }
+
+        for (int pivot = 0; pivot < 4; ++pivot) {
+            int pivotRow = pivot;
+
+            for (int row = pivot + 1; row < 4; ++row) {
+                if (std::abs(augmented[row][pivot]) >
+                    std::abs(augmented[pivotRow][pivot])) {
+                    pivotRow = row;
+                }
+            }
+
+            if (std::abs(augmented[pivotRow][pivot]) < Constants::Epsilon)
+                return std::nullopt;
+
+            if (pivotRow != pivot) {
+                for (int col = 0; col < 8; ++col)
+                    std::swap(augmented[pivot][col], augmented[pivotRow][col]);
+            }
+
+            const float pivotValue = augmented[pivot][pivot];
+
+            for (int col = 0; col < 8; ++col)
+                augmented[pivot][col] /= pivotValue;
+
+            for (int row = 0; row < 4; ++row) {
+                if (row == pivot) continue;
+
+                const float factor = augmented[row][pivot];
+
+                for (int col = 0; col < 8; ++col)
+                    augmented[row][col] -= factor * augmented[pivot][col];
+            }
+        }
+
+        Matrix4 result;
+
+        for (int row = 0; row < 4; ++row)
+            for (int col = 0; col < 4; ++col)
+                result.m[row][col] = augmented[row][col + 4];
+
+        return result;
+    }
+};
+#endif

@@ -7,6 +7,7 @@
 
 #include "Vector2.hpp"
 
+#ifndef NOSIMD
 namespace Vector2Math {
     // Helper: horizontal dot product of 2D vector (x*x + y*y style)
     // Multiplies a * b elementwise, then sums x and y lanes into scalar.
@@ -68,5 +69,47 @@ namespace Vector2Math {
         return _mm_cvtss_f32(distReg);
     }
 }
+#else
+namespace Vector2Math {
+    inline float Dot(const Vector2& a, const Vector2& b) {
+        return a.x * b.x + a.y * b.y;
+    }
+
+    inline float LengthSquared(const Vector2& v) {
+        return v.x * v.x + v.y * v.y;
+    }
+
+    inline float Length(const Vector2& v) {
+        return std::sqrt(LengthSquared(v));
+    }
+
+    inline Vector2 Normalized(const Vector2& v) {
+        const float lenSq = LengthSquared(v);
+
+        if (lenSq == 0.0f) return Vector2();
+
+        const float invLen = 1.0f / std::sqrt(lenSq);
+        return {v.x * invLen, v.y * invLen};
+    }
+
+    inline void Normalize(Vector2& v) {
+        v = Normalized(v);
+    }
+
+    inline float Cross(const Vector2& a, const Vector2& b) {
+        return a.x * b.y - a.y * b.x;
+    }
+
+    inline float DistanceSquared(const Vector2& a, const Vector2& b) {
+        const float dx = a.x - b.x;
+        const float dy = a.y - b.y;
+        return dx * dx + dy * dy;
+    }
+
+    inline float Distance(const Vector2& a, const Vector2& b) {
+        return std::sqrt(DistanceSquared(a, b));
+    }
+}
+#endif
 
 #endif //TILKY_ENGINE_VECTOR2MATH_HPP

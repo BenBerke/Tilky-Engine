@@ -7,6 +7,7 @@
 #include "../SIMD/SSECompat.hpp"
 #include "../Constants.hpp"
 
+#ifndef NOSIMD
 struct alignas(16) Vector4 {
     union {
         __m128 reg;
@@ -42,9 +43,15 @@ struct alignas(16) Vector4 {
     Vector4 operator/(const float value) const { return {_mm_div_ps(reg, _mm_set1_ps(value))}; }
     Vector4 operator-() const { return {_mm_xor_ps(reg, _mm_set1_ps(-0.0f))}; }
 
-    // --- Assignment Operators ---
+    // --- Assignment Operators (Vector4 overloads) ---
     Vector4& operator+=(const Vector4& other) { this->reg = _mm_add_ps(this->reg, other.reg); return *this; }
     Vector4& operator-=(const Vector4& other) { this->reg = _mm_sub_ps(this->reg, other.reg); return *this; }
+    Vector4& operator*=(const Vector4& other) { this->reg = _mm_mul_ps(this->reg, other.reg); return *this; }
+    Vector4& operator/=(const Vector4& other) { this->reg = _mm_div_ps(this->reg, other.reg); return *this; }
+
+    // --- Assignment Operators (float overloads) ---
+    Vector4& operator+=(const float value) { this->reg = _mm_add_ps(this->reg, _mm_set1_ps(value)); return *this; }
+    Vector4& operator-=(const float value) { this->reg = _mm_sub_ps(this->reg, _mm_set1_ps(value)); return *this; }
     Vector4& operator*=(const float value) { this->reg = _mm_mul_ps(this->reg, _mm_set1_ps(value)); return *this; }
     Vector4& operator/=(const float value) { this->reg = _mm_div_ps(this->reg, _mm_set1_ps(value)); return *this; }
 
@@ -70,5 +77,55 @@ struct alignas(16) Vector4 {
         return (mask & 0b1111) == 0b1111;
     }
 };
+#else
+
+struct Vector4 {
+    float x, y, z, w;
+
+    // --- Constructors ---
+    Vector4(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f, const float w = 0.0f)
+        : x(x), y(y), z(z), w(w) {}
+
+    Vector4& NormalizeColors() {
+        x /= 255.0f; y /= 255.0f; z /= 255.0f;
+        return *this;
+    }
+
+    // --- Basic Arithmetic Operators ---
+    Vector4 operator+(const Vector4& other) const { return (Vector4){x + other.x, y + other.y, z + other.z, w + other.w}; }
+    Vector4 operator-(const Vector4& other) const { return (Vector4){x - other.x, y - other.y, z - other.z, w - other.w}; }
+    Vector4 operator*(const Vector4& other) const { return (Vector4){x * other.x, y * other.y, z * other.z, w * other.w}; }
+    Vector4 operator/(const Vector4& other) const { return (Vector4){x / other.x, y / other.y, z / other.z, w / other.w}; }
+
+    Vector4 operator*(const float value) const { return (Vector4){x * value, y * value, z * value, w * value}; }
+    Vector4 operator/(const float value) const { return (Vector4){x / value, y / value, z / value, w / value}; }
+    Vector4 operator-() const { return (Vector4){-x, -y, -z, -w}; }
+
+    // --- Assignment Operators (Vector4 overloads) ---
+    Vector4& operator+=(const Vector4& other) { x += other.x; y += other.y; z += other.z; w += other.w; return *this; }
+    Vector4& operator-=(const Vector4& other) { x -= other.x; y -= other.y; z -= other.z; w -= other.w; return *this; }
+    Vector4& operator*=(const Vector4& other) { x *= other.x; y *= other.y; z *= other.z; w *= other.w; return *this; }
+    Vector4& operator/=(const Vector4& other) { x /= other.x; y /= other.y; z /= other.z; w /= other.w; return *this; }
+
+    // --- Assignment Operators (float overloads) ---
+    Vector4& operator+=(const float value) { x += value; y += value; z += value; w += value; return *this; }
+    Vector4& operator-=(const float value) { x -= value; y -= value; z -= value; w -= value; return *this; }
+    Vector4& operator*=(const float value) { x *= value; y *= value; z *= value; w *= value; return *this; }
+    Vector4& operator/=(const float value) { x /= value; y /= value; z /= value; w /= value; return *this; }
+
+    // --- Comparison Operators ---
+    bool operator==(const Vector4& other) const {
+        return x == other.x && y == other.y && z == other.z && w == other.w;
+    }
+
+    bool operator!=(const Vector4& other) const { return !(*this == other); }
+
+    // --- Utility Functions ---
+    bool IsZero() const {
+        return x < Constants::Epsilon && y < Constants::Epsilon && z < Constants::Epsilon && w < Constants::Epsilon;
+    }
+};
+
+#endif
 
 #endif //TILKY_ENGINE_VECTOR4_H

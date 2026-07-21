@@ -1,9 +1,9 @@
 #pragma once
 
-
 #include "../SIMD/SSECompat.hpp"
 #include "../Constants.hpp"
 
+#ifndef NOSIMD
 struct alignas(16) Vector3 {
     union {
         __m128 reg;
@@ -20,10 +20,10 @@ struct alignas(16) Vector3 {
 
     // --- Basic Arithmetic Operators ---
     Vector3 operator+(const Vector3& other) const {
-        return {_mm_add_ps(reg, other.reg)};;
+        return {_mm_add_ps(reg, other.reg)};
     }
     Vector3 operator-(const Vector3& other) const {
-        return {_mm_sub_ps(reg, other.reg)};;
+        return {_mm_sub_ps(reg, other.reg)};
     }
 
     Vector3 operator-() const {
@@ -112,3 +112,84 @@ struct alignas(16) Vector3 {
         return (mask & 0b0111) == 0b0111;
     }
 };
+#else
+
+struct Vector3 {
+    float x, y, z;
+
+    Vector3(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f) : x(x), y(y), z(z) {}
+
+    Vector3 operator=(const Vector3& other) {
+        x = other.x;
+        y = other.y;
+        z = other.z;
+        return *this;
+    }
+
+    // --- Basic Arithmetic Operators ---
+    Vector3 operator+(const Vector3& other) const {
+        return (Vector3){x + other.x, y + other.y, z + other.z};
+    }
+    Vector3 operator-(const Vector3& other) const {
+        return (Vector3){x - other.x, y - other.y, z - other.z};
+    }
+
+    Vector3 operator-() const {
+        return (Vector3){-x, -y, -z};
+    }
+
+    Vector3& operator+=(const Vector3& other) {
+        x += other.x;
+        y += other.y;
+        z += other.z;
+        return *this;
+    }
+    Vector3& operator-=(const Vector3& other) {
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
+        return *this;
+    }
+    Vector3& operator*=(const Vector3& other) {
+        x *= other.x;
+        y *= other.y;
+        z *= other.z;
+        return *this;
+    }
+    Vector3& operator/=(const Vector3& other) {
+        x /= other.x;
+        y /= other.y;
+        z /= other.z;
+        return *this;
+    }
+
+    // --- Scalar Operators ---
+    Vector3 operator+(const float value) const {
+        return (Vector3){x + value, y + value, z + value};
+    }
+
+    Vector3 operator-(const float value) const {
+        return (Vector3){x - value, y - value, z - value};
+    }
+
+    Vector3 operator*(const float value) const {
+        return (Vector3){x * value, y * value, z * value};
+    }
+
+    Vector3 operator/(const float value) const {
+        return (Vector3){x / value, y / value, z / value};
+    }
+
+    // --- Comparison Operators ---
+    bool operator==(const Vector3& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+    bool operator!=(const Vector3& other) const { return !(*this == other); }
+
+    // --- Utility Functions ---
+    bool IsZero() const {
+        return x < Constants::Epsilon && y < Constants::Epsilon && z < Constants::Epsilon;
+    }
+};
+
+#endif

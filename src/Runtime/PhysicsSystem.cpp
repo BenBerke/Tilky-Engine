@@ -186,7 +186,7 @@ void Run(Level& level) {
                 if (!otherIsStatic && selfCollider.ownerID > otherID) continue;
 
                 const float otherRadius = std::max(0.0f, otherCollider->scale.x);
-                const float radiusSum   = selfRadius + otherRadius;
+                const float radiusSum = selfRadius + otherRadius;
 
                 Vector3 otherPos = {
                     otherTransform->position.x,
@@ -205,19 +205,19 @@ void Run(Level& level) {
                 const __m128 safeDistSqr = _mm_max_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
                 __m128 invDistReg = rsqrt_nr_ss(safeDistSqr);
                 invDistReg = TILKY_MM_SHUFFLE_PS(invDistReg, invDistReg, _MM_SHUFFLE(0,0,0,0));
-                const float distance    = distSqr * _mm_cvtss_f32(invDistReg);
+                const float distance = distSqr * _mm_cvtss_f32(invDistReg);
                 const float penetration = radiusSum - distance;
                 if (penetration <= Constants::Epsilon) continue;
 
                 const __m128 calculatedDir = _mm_mul_ps(deltaPos, invDistReg);
-                const __m128 fallbackDir   = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
-                const __m128 isSafe        = _mm_cmpgt_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
-                const __m128 isSafeBroad   = TILKY_MM_SHUFFLE_PS(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
-                const __m128 pushDirReg    = blend_ps(fallbackDir, calculatedDir, isSafeBroad);
+                const __m128 fallbackDir = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
+                const __m128 isSafe = _mm_cmpgt_ss(distSqrReg, _mm_set_ss(Constants::Epsilon));
+                const __m128 isSafeBroad = TILKY_MM_SHUFFLE_PS(isSafe, isSafe, _MM_SHUFFLE(0,0,0,0));
+                const __m128 pushDirReg = blend_ps(fallbackDir, calculatedDir, isSafeBroad);
 
-                constexpr float PENETRATION_SLOP     = 0.001f;
-                const float     correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
-                const __m128    corrPenReg           = _mm_set1_ps(correctedPenetration);
+                constexpr float PENETRATION_SLOP = 0.001f;
+                const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
+                const __m128 corrPenReg = _mm_set1_ps(correctedPenetration);
 
                 const float selfPush = otherIsStatic ? 1.0f : 0.5f;
                 selfTransform->AddPosition(Vector3(

@@ -3,6 +3,7 @@
 #include "../SIMD/SSECompat.hpp"
 #include "../Constants.hpp"
 
+#ifndef NOSIMD
 struct alignas(16) Vector2 {
     union {
         __m128 reg;
@@ -69,3 +70,60 @@ struct alignas(16) Vector2 {
         return (mask & 0b0011) == 0b0011;
     }
 };
+#else
+struct Vector2 {
+    float x, y;
+
+     // --- Constructors ---
+    Vector2(const float x = 0.0f, const float y = 0.0f) : x(x), y(y) {}
+
+    // --- Basic Arithmetic Operators ---
+    Vector2 operator+(const Vector2 &other) const { return (Vector2){x + other.x, y + other.y}; }
+    Vector2 operator-(const Vector2 &other) const { return (Vector2){x - other.x, y - other.y}; }
+    Vector2 operator*(const Vector2 &other) const { return (Vector2){x * other.x, y * other.y}; }
+    Vector2 operator/(const Vector2 &other) const { return (Vector2){x / other.x, y / other.y}; }
+
+    Vector2 operator*(const float value) const { return Vector2{x * value, y * value}; }
+    Vector2 operator/(const float value) const { return Vector2{x / value, y / value}; }
+
+    Vector2 operator-() const { return Vector2{-x, -y}; }
+
+    // --- Assignment Operators ---
+    Vector2& operator+=(const Vector2& other) {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+
+    Vector2& operator-=(const Vector2& other) {
+        x -= other.x;
+        y -= other.y;
+        return *this;
+    }
+
+    Vector2& operator*=(const float value) {
+        x *= value;
+        y *= value;
+        return *this;
+    }
+
+    Vector2& operator/=(const float value) {
+        x /= value;
+        y /= value;
+        return *this;
+    }
+
+    // --- Comparison Operators ---
+    bool operator==(const Vector2& other) const {
+       return x == other.x && y == other.y;
+    }
+
+    bool operator!=(const Vector2& other) const {return !(*this == other);}
+
+    // --- Utility Functions ---
+    bool IsZero() const {
+        return x < Constants::Epsilon && y < Constants::Epsilon;
+    }
+};
+
+#endif
