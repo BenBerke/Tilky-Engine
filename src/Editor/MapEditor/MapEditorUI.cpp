@@ -850,13 +850,11 @@ namespace {
         const bool wasOpen = projectSettingsOpen;
         if (wasOpen) PushAccentStyle();
 
-        const std::string buttonLabel = wasOpen
-                                        ? Get("editor.project_settings_active")
-                                        : Get("editor.project_settings");
+        const std::string buttonLabel = wasOpen ?
+        Get("editor.project_settings_active")
+        : Get("editor.project_settings");
 
-        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f)))
-            projectSettingsOpen = !projectSettingsOpen;
-
+        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) projectSettingsOpen = !projectSettingsOpen;
 
         if (wasOpen) PopAccentStyle();
 
@@ -1442,7 +1440,8 @@ namespace MapEditorInternal {
                 value.clear();
                 changed = true;
             }
-        } else {
+        }
+        else {
             if (label != nullptr && label[0] != '\0') {
                 ImGui::TextUnformatted(label);
                 ImGui::SameLine();
@@ -1478,9 +1477,8 @@ namespace MapEditorInternal {
 
         const std::filesystem::path source(filePath);
 
-        if (assetBrowser.ImportExternalFile(source)) {
+        if (assetBrowser.ImportExternalFile(source))
             ShowNotification((Get("editor.asset_browser.notification.imported") + source.filename().string()).c_str());
-        }
     }
 
     void ChangeMode() {

@@ -145,14 +145,13 @@ void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
         }
     }
 
-    // Make sure the standard subfolders are visible immediately, even on
-    // a brand-new project.
+    // Make sure the standard subfolders are visible immediately, even on a brand-new project.
     for (const fs::path &standardFolder:
-        {  ProjectManager::GetTexturesPath(),
-            ProjectManager::GetSoundsPath(),
-            ProjectManager::GetScriptsPath()
-         })
-    {
+         {
+             ProjectManager::GetTexturesPath(),
+             ProjectManager::GetSoundsPath(),
+             ProjectManager::GetScriptsPath()
+         }) {
         std::error_code ec;
         if (!fs::exists(standardFolder, ec))
             fs::create_directories(standardFolder, ec);
@@ -188,11 +187,8 @@ bool AssetBrowser::IsPathWithinRoot(const std::filesystem::path& absolutePath) c
 }
 
 void AssetBrowser::NavigateTo(const std::filesystem::path& absoluteDirectory) {
-    if (!IsPathWithinRoot(absoluteDirectory))
-        return;
-
-    if (!fs::exists(absoluteDirectory) || !fs::is_directory(absoluteDirectory))
-        return;
+    if (!IsPathWithinRoot(absoluteDirectory)) return;
+    if (!fs::exists(absoluteDirectory) || !fs::is_directory(absoluteDirectory)) return;
 
     currentDirectory = absoluteDirectory;
     searchBuffer[0] = '\0';
@@ -223,8 +219,7 @@ void AssetBrowser::ScanCurrentDirectory() {
             try {
                 const fs::path absolutePath = dirEntry.path();
 
-                if (IsHidden(absolutePath))
-                    continue;
+                if (IsHidden(absolutePath)) continue;
 
                 if (dirEntry.is_directory()) {
                     AssetBrowserEntry entry;
@@ -285,9 +280,8 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
     const std::string stem = sourceAbsolutePath.stem().string();
     const std::string ext = sourceAbsolutePath.extension().string();
 
-    for (int suffix = 2; fs::exists(destination); ++suffix) {
+    for (int suffix = 2; fs::exists(destination); ++suffix)
         destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
-    }
 
     try {
         fs::copy_file(sourceAbsolutePath, destination, fs::copy_options::none);

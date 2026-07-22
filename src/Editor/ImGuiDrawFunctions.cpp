@@ -268,16 +268,16 @@ namespace ImGuiDrawFunctions {
 
         FieldWidth(160.0f);
         InputOrDrag(Get("sector.ceil_height").c_str(), &sector.ceilingHeight, draggable);
-        Tooltip("Height of the ceiling plane in world units.");
+        Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
 
         FieldWidth(160.0f);
         InputOrDrag(Get("sector.floor_height").c_str(), &sector.floorHeight, draggable);
-        Tooltip("Height of the floor plane in world units.");
+        Tooltip(Get("editor.tooltip.sector.floor_height").c_str());
 
         // Validation warning
-        if (sector.ceilingHeight <= sector.floorHeight) {
+        if (sector.ceilingHeight < sector.floorHeight) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
-            ImGui::TextWrapped("Warning: ceiling height <= floor height.");
+            ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_heights").c_str());
             ImGui::PopStyleColor();
         }
 
@@ -286,11 +286,13 @@ namespace ImGuiDrawFunctions {
         // ── Textures ─────────────────────────────────────────────────────────
         BeginSection("Textures");
 
-        MapEditorInternal::DrawAssetField(Get("sector.floor_texture").c_str(), sector.floorTexture, AssetKind::Texture, 48.0f);
-        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
+        MapEditorInternal::DrawAssetField(Get("sector.floor_texture").c_str(), sector.floorTexture, AssetKind::Texture,
+                                          48.0f);
+        Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
 
-        MapEditorInternal::DrawAssetField(Get("sector.ceil_texture").c_str(), sector.ceilingTexture, AssetKind::Texture, 48.0f);
-        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
+        MapEditorInternal::DrawAssetField(Get("sector.ceil_texture").c_str(), sector.ceilingTexture, AssetKind::Texture,
+                                          48.0f);
+        Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
 
         EndSection();
 
@@ -298,11 +300,11 @@ namespace ImGuiDrawFunctions {
         BeginSection("Colors");
 
         FieldWidth(220.0f);
-        InputOrDrag3(Get("sector.ceil_color").c_str(),  &sector.ceilingColor.x, draggable);
+        InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
         ResetFloat3Button("reset_ceil_color", &sector.ceilingColor.x);
 
         FieldWidth(220.0f);
-        InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x,   draggable);
+        InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
         ResetFloat3Button("reset_floor_color", &sector.floorColor.x);
 
         EndSection();
@@ -312,7 +314,7 @@ namespace ImGuiDrawFunctions {
 
         FieldWidth(160.0f);
         InputOrDrag(Get("sector.light_value").c_str(), &sector.lightValue, draggable);
-        Tooltip("Ambient light multiplier for this sector.");
+        Tooltip(Get("editor.tooltip.sector.light_value").c_str());
 
         EndSection();
 
@@ -331,7 +333,7 @@ namespace ImGuiDrawFunctions {
             deleteRequested = true;
             if (open) *open = false;
         }
-        Tooltip("Permanently remove this sector from the map.");
+        Tooltip(Get("editor.tooltip.sector.delete").c_str());
 
         ImGui::SameLine();
 
@@ -341,7 +343,6 @@ namespace ImGuiDrawFunctions {
         ImGui::End();
         return deleteRequested;
     }
-
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
@@ -366,30 +367,39 @@ namespace ImGuiDrawFunctions {
 
         FieldWidth(100.0f);
         wallSectorChanged |= InputID(Get("wall.front_sector").c_str(), wall.frontSector);
-        Tooltip("Sector on the front (visible) side of this wall.");
+        Tooltip(Get("editor.tooltip.wall.front_sector").c_str());
 
         FieldWidth(100.0f);
         wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
-        Tooltip("Sector on the back side – INVALID_ID for solid walls.");
+        Tooltip(Get("editor.tooltip.wall.back_sector").c_str());
 
         if (wallSectorChanged)
             MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
 
         SmallMetaText("Front: %s   Back: %s",
-            wall.frontSector == INVALID_ID ? "none" : std::to_string(static_cast<int>(wall.frontSector)).c_str(),
-            wall.backSector  == INVALID_ID ? "none" : std::to_string(static_cast<int>(wall.backSector)).c_str());
+                      wall.frontSector == INVALID_ID
+                          ? "none"
+                          : std::to_string(static_cast<int>(wall.frontSector)).c_str(),
+                      wall.backSector == INVALID_ID
+                          ? "none"
+                          : std::to_string(static_cast<int>(wall.backSector)).c_str());
 
         EndSection();
 
         // ── Appearance ───────────────────────────────────────────────────────
         BeginSection("Appearance");
 
-        MapEditorInternal::DrawAssetField(Get("wall.texture_index").c_str(), wall.textureFileName, AssetKind::Texture, 48.0f);
-        Tooltip("Drag a texture from the Asset Browser, or double-click one there and click here.");
+        MapEditorInternal::DrawAssetField(
+            Get("wall.texture_index").c_str(),
+            wall.textureFileName,
+            AssetKind::Texture,
+            48.0f
+        );
+        Tooltip(Get("editor.tooltip.wall.texture").c_str());
 
         FieldWidth(220.0f);
         InputOrDrag4(Get("wall.color").c_str(), &wall.color.x, draggable);
-        Tooltip("RGBA tint multiplied over the wall texture.");
+        Tooltip(Get("editor.tooltip.wall.color").c_str());
 
         EndSection();
 
@@ -398,7 +408,7 @@ namespace ImGuiDrawFunctions {
 
         FieldWidth(200.0f);
         InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
-        Tooltip("UV offset for scrolling or aligning the wall texture.");
+        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
 
         EndSection();
 
@@ -417,9 +427,10 @@ namespace ImGuiDrawFunctions {
             deleteRequested = true;
             if (open) *open = false;
         }
-        Tooltip("Remove this wall from the map.");
+        Tooltip(Get("editor.tooltip.wall.delete").c_str());
 
         ImGui::SameLine();
+
         if (ImGui::Button(Get("common.close").c_str()))
             if (open) *open = false;
 
@@ -553,7 +564,7 @@ namespace ImGuiDrawFunctions {
             state.selectedComponent    = -1;
             if (open) *open = false;
         }
-        Tooltip("Delete this entity from the level.");
+        Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
 
         ImGui::SameLine();
         if (ImGui::Button(Get("common.close").c_str())) {
@@ -578,16 +589,18 @@ namespace ImGuiDrawFunctions {
             return;
         }
 
-        const std::string componentName  = GetComponentDisplayName(state.selectedComponent);
-        const std::string windowTitle    = componentName + "##component_editor";
+        const std::string componentName = GetComponentDisplayName(state.selectedComponent);
+        const std::string windowTitle = componentName + "##component_editor";
 
-        bool fallbackOpen  = true;
-        bool *windowOpen   = open ? open : &fallbackOpen;
+        bool fallbackOpen = true;
+        bool *windowOpen = open ? open : &fallbackOpen;
 
         ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin(windowTitle.c_str(), windowOpen, kInspectorFlags)) {
             ImGui::End();
-            if (!*windowOpen) { state.editingComponent = false; state.selectedComponent = -1; }
+            if (!*windowOpen) {
+                state.editingComponent = false;
+                state.selectedComponent = -1; }
             return;
         }
 
@@ -739,7 +752,8 @@ namespace ImGuiDrawFunctions {
                     }
 
                     ImGui::PopID();
-                } else if (c->sideCount == SIDECOUNT_45) {
+                }
+                else if (c->sideCount == SIDECOUNT_45) {
                     ImGui::PushID("sprite_45");
 
                     if (ImGui::BeginTable(
@@ -792,9 +806,8 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentSprite>();
                     CloseEditor();
                 }
-            } else {
-                ImGui::TextDisabled("Sprite component missing");
             }
+            else ImGui::TextDisabled("Sprite component missing");
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -827,7 +840,7 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.decal.wall_offset").c_str(), &c->horizontalPos, draggable);
                 InputOrDrag(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset, draggable);
                 InputOrDrag("Wall T", &c->wallT, draggable);
-                Tooltip("Normalised position along the wall (0–1).");
+                Tooltip(Get("editor.tooltip.component.decal.wall_t").c_str());
                 EndSection();
 
                 BeginSection("Vertical");
@@ -835,7 +848,7 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.decal.z_offset").c_str(), &c->verticalPos, draggable);
                 InputOrDrag("Base Height",                             &c->baseHeight,  draggable);
                 ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &c->absHeight);
-                Tooltip("When enabled, verticalPos is an absolute world height instead of a relative offset.");
+                Tooltip(Get("editor.tooltip.component.decal.abs_height").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -854,7 +867,7 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Sound");
                 MapEditorInternal::DrawAssetField("Sound", c->soundFileName, AssetKind::Sound);
-                Tooltip("Drag a .wav from the Asset Browser, or double-click one there and click here.");
+                Tooltip(Get("editor.tooltip.component.audio_source.sound").c_str());
                 FieldWidth(120.0f);
                 InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable, 0.01f);
                 FieldWidth(120.0f);
@@ -866,22 +879,22 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Attenuation");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.ref_distance").c_str(), &c->referenceDistance, draggable, 0.1f);
-                Tooltip("Distance at which volume is at full gain.");
+                Tooltip(Get("editor.tooltip.component.audio_source.ref_distance").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.max_distance").c_str(), &c->maxDistance,       draggable, 1.0f);
-                Tooltip("Beyond this distance sound is inaudible.");
+                Tooltip(Get("editor.tooltip.component.audio_source.max_distance").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.rolloff").c_str(),       &c->rollOffFactor,     draggable, 0.01f);
-                Tooltip("How quickly the volume drops with distance.");
+                Tooltip(Get("editor.tooltip.component.audio_source.rolloff").c_str());
                 EndSection();
 
                 BeginSection("Cone");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.inner_angle").c_str(), &c->innerConeAngle, draggable, 1.0f);
-                Tooltip("Full-gain cone angle in degrees.");
+                Tooltip(Get("editor.tooltip.component.audio_source.inner_angle").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.outer_angle").c_str(), &c->outerConeAngle, draggable, 1.0f);
-                Tooltip("Beyond this angle, outerGain applies.");
+                Tooltip(Get("editor.tooltip.component.audio_source.outer_angle").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.audio_source.outer_gain").c_str(),  &c->outerGain,      draggable, 0.01f);
                 EndSection();
@@ -906,7 +919,7 @@ namespace ImGuiDrawFunctions {
                 if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), c->fileName, AssetKind::Script)) {
                     LevelSystem::ReconcileScriptPublicValues(*c);
                 }
-                Tooltip("Drag a .lua file from the Asset Browser, or double-click one there and click here.");
+                Tooltip(Get("editor.tooltip.component.script.file").c_str());
 
                 ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
 
@@ -1008,7 +1021,7 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
                 FieldWidth(-1.0f); // full width slider
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
-                Tooltip("Surface friction (0 = ice, 1 = full stop on release).");
+                Tooltip(Get("editor.tooltip.component.player_controller.friction").c_str());
                 EndSection();
 
                 BeginSection("Jumping");
@@ -1016,13 +1029,13 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.player_controller.jump_power").c_str(),      &c->jumpPower,     draggable);
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(),  &c->jumpBufferMs,  draggable);
-                Tooltip("Milliseconds before landing where a jump input is buffered.");
+                Tooltip(Get("editor.tooltip.component.player_controller.jump_buffer").c_str());
                 EndSection();
 
                 BeginSection("Camera");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
-                Tooltip("Vertical offset from entity origin to the camera eye.");
+                Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
                 FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
                                    &c->sensitivityX, 0.001f, 2.0f);
@@ -1047,9 +1060,9 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection("State");
                 ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
-                Tooltip("When enabled, the player ignores collision and flies freely.");
+                Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
                 ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive);
-                Tooltip("Whether this player controller is currently receiving input.");
+                Tooltip(Get("editor.tooltip.component.player_controller.is_active").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -1069,7 +1082,7 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Projection");
                 FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
-                Tooltip("Vertical field of view in degrees.");
+                Tooltip(Get("editor.tooltip.component.camera.fov").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio, draggable);
                 EndSection();
@@ -1077,15 +1090,15 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Clipping Planes");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.camera.near_plane").c_str(), &c->nearPlane, draggable);
-                Tooltip("Closest distance rendered. Keep > 0.");
+                Tooltip(Get("editor.tooltip.component.camera.near_plane").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.camera.far_plane").c_str(),  &c->farPlane,  draggable);
-                Tooltip("Furthest distance rendered.");
+                Tooltip(Get("editor.tooltip.component.camera.far_plane").c_str());
                 EndSection();
 
                 BeginSection("State");
                 ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);
-                Tooltip("Whether this camera is currently rendering.");
+                Tooltip(Get("editor.tooltip.component.camera.is_active").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -1118,7 +1131,7 @@ namespace ImGuiDrawFunctions {
                 if (selectedColliderIndex == 0) {
                     FieldWidth(120.0f);
                     InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
-                    Tooltip("Sphere radius.");
+                    Tooltip(Get("editor.tooltip.component.collider.sphere_radius").c_str());
                 }
                 else {
                     ImGui::TextDisabled("X                Y               Z");
@@ -1131,9 +1144,9 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Behaviour");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
-                Tooltip("Max height the collider can step up without being blocked.");
+                Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
                 ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
-                Tooltip("Triggers detect overlap but do not physically block movement.");
+                Tooltip(Get("editor.tooltip.component.collider.is_trigger").c_str());
                 ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
                 EndSection();
 
@@ -1142,7 +1155,7 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentCollider>();
                     CloseEditor();
                 }
-            } else { ImGui::TextDisabled("Collider component missing"); }
+            } else ImGui::TextDisabled("Collider component missing");
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1154,14 +1167,14 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Physics");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.rigidbody.mass").c_str(),          &c->mass,         draggable);
-                Tooltip("Mass in arbitrary units. Must be > 0 for dynamic bodies.");
+                Tooltip(Get("editor.tooltip.component.rigidbody.mass").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.rigidbody.gravityScale").c_str(),  &c->gravityScale, draggable);
-                Tooltip("Gravity multiplier (0 = floats, negative = repelled upward).");
+                Tooltip(Get("editor.tooltip.component.rigidbody.gravity_scale").c_str());
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.rigidbody.friction").c_str(),      &c->friction,     draggable);
                 ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
-                Tooltip("Static bodies are unmovable by physics but still collide.");
+                Tooltip(Get("editor.tooltip.component.rigidbody.is_static").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -1215,11 +1228,21 @@ namespace ImGuiDrawFunctions {
             ImGuiWindowFlags_NoFocusOnAppearing;
 
         if (ImGui::Begin("##RuntimeHUD", nullptr, hudFlags)) {
-            ImGui::TextDisabled("WASD");      ImGui::SameLine(60); ImGui::TextUnformatted("Move");
-            ImGui::TextDisabled("Space");     ImGui::SameLine(60); ImGui::TextUnformatted("Jump");
-            ImGui::TextDisabled("CTRL");      ImGui::SameLine(60); ImGui::TextUnformatted("Crouch / Down");
-            ImGui::TextDisabled("RMB");       ImGui::SameLine(60); ImGui::TextUnformatted("Pick wall / entity");
-            ImGui::TextDisabled("ESC");       ImGui::SameLine(60); ImGui::TextUnformatted("Release mouse / close");
+            ImGui::TextDisabled("WASD");
+            ImGui::SameLine(60);
+            ImGui::TextUnformatted("Move");
+            ImGui::TextDisabled("Space");
+            ImGui::SameLine(60);
+            ImGui::TextUnformatted("Up");
+            ImGui::TextDisabled("CTRL");
+            ImGui::SameLine(60);
+            ImGui::TextUnformatted("Down");
+            ImGui::TextDisabled("RMB");
+            ImGui::SameLine(60);
+            ImGui::TextUnformatted("Pick wall / entity / sector");
+            ImGui::TextDisabled("ESC");
+            ImGui::SameLine(60);
+            ImGui::TextUnformatted("Close");
         }
         ImGui::End();
     }
