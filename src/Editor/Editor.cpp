@@ -17,6 +17,11 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 
+namespace MapEditorInternal {
+    int screenWidth = 1080;
+    int screenHeight = 960;
+}
+
 namespace Editor {
     std::vector<Level> levels;
     ID currentLevels = 0;
@@ -49,11 +54,19 @@ namespace Editor {
             return;
         }
 
+        //const SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
+        //const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(displayID);
+        // if (!mode) spdlog::error("Failed to get desktop display mode", SDL_GetError());
+        // else {
+        //     screenWidth = mode->w;
+        //     screenHeight = mode->h;
+        // }
+
         if (SDL_CreateWindowAndRenderer(
                 Localisation::Get("screen.title.level_editor").c_str(),
                 screenWidth,
                 screenHeight,
-                SDL_WINDOW_RESIZABLE,
+                SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED,
                 &window,
                 &renderer
             ) == false) {

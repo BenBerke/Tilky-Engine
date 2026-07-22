@@ -15,9 +15,10 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 namespace MapEditorInternal {
+    constexpr int FONT_SIZE = 24;
+
     extern int screenWidth;
     extern int screenHeight;
-    constexpr int FONT_SIZE = 24;
 
     extern float editorZoom;
     extern float GRID_SIZE;
