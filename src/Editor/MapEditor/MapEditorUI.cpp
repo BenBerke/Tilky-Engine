@@ -1624,43 +1624,47 @@ namespace MapEditorInternal {
             ImGui::Separator();
             ImGui::Spacing();
 
-            if (ImGui::Checkbox(Get("editor.manual_sector.mode").c_str(), &manualSectorMode)) {
-                if (manualSectorMode) CancelSectorChain();
-                else ClearManualSectorSelection();
-            }
-            HoverTooltip(Get("editor.manual_sector.tooltip.mode").c_str());
+            //region manual sector mode (unused)
+            // if (ImGui::Checkbox(Get("editor.manual_sector.mode").c_str(), &manualSectorMode)) {
+            //     if (manualSectorMode) CancelSectorChain();
+            //     else ClearManualSectorSelection();
+            // }
+            // HoverTooltip(Get("editor.manual_sector.tooltip.mode").c_str());
+            //
+            // if (manualSectorMode) {
+            //     const int picked = static_cast<int>(manualSectorDots.size());
+            //     ImGui::SameLine(0.0f, 16.0f);
+            //     const std::string pickedText = (picked == 1)
+            //                                    ? Get("editor.manual_sector.corner_selected")
+            //                                    : Get("editor.manual_sector.corners_selected");
+            //     ImGui::TextDisabled(pickedText.c_str(), picked);
+            //
+            //     ImGui::Spacing();
+            //
+            //     if (picked >= 3) {
+            //         PushSuccessStyle();
+            //         if (FullWidthButton(Get("editor.create_sector").c_str())) CreateManualSector();
+            //         PopSuccessStyle();
+            //         HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
+            //     }
+            //
+            //     if (FullWidthButton(Get("editor.manual_sector.clear_selected_dots").c_str())) ClearManualSectorSelection();
+            //
+            //     if (!ImGui::GetIO().WantTextInput) {
+            //         if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
+            //             CreateManualSector();
+            //         if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            //             ClearManualSectorSelection();
+            //     }
+            //
+            //     ImGui::Spacing();
+            // }
 
-            if (manualSectorMode) {
-                const int picked = static_cast<int>(manualSectorDots.size());
-                ImGui::SameLine(0.0f, 16.0f);
-                const std::string pickedText = (picked == 1)
-                                               ? Get("editor.manual_sector.corner_selected")
-                                               : Get("editor.manual_sector.corners_selected");
-                ImGui::TextDisabled(pickedText.c_str(), picked);
+            // ImGui::Separator();
+            // ImGui::Spacing();
 
-                ImGui::Spacing();
+            //endregion
 
-                if (picked >= 3) {
-                    PushSuccessStyle();
-                    if (FullWidthButton(Get("editor.create_sector").c_str())) CreateManualSector();
-                    PopSuccessStyle();
-                    HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
-                }
-
-                if (FullWidthButton(Get("editor.manual_sector.clear_selected_dots").c_str())) ClearManualSectorSelection();
-
-                if (!ImGui::GetIO().WantTextInput) {
-                    if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
-                        CreateManualSector();
-                    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-                        ClearManualSectorSelection();
-                }
-
-                ImGui::Spacing();
-            }
-
-            ImGui::Separator();
-            ImGui::Spacing();
             SectionHeader(Get("editor.new_sector_properties").c_str());
             ImGui::Separator();
             ImGui::Spacing();
@@ -1675,7 +1679,7 @@ namespace MapEditorInternal {
             ImGui::Separator();
             ImGui::Spacing();
 
-            const float iw = 110.0f;
+            constexpr float iw = 110.0f;
             ImGui::SetNextItemWidth(iw);
             if (ImGui::InputFloat((Get("sector.floor_height") + "##NewSectorFloorHeight").c_str(), &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
             HoverTooltip(Get("editor.tooltip.floor_height").c_str());

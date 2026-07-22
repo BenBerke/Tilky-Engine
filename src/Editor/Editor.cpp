@@ -98,18 +98,10 @@ namespace Editor {
         ImGuiIO &io = ImGui::GetIO();
 
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-        //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-
-        io.Fonts->AddFontFromFileTTF(
-            fontPath.string().c_str(),
-            18.0f
-        );
-
-        // Feature #2: theme is now switchable at runtime; this just applies
-        // whichever theme is currently selected (defaults to dark, matching
-        // the previous hardcoded behavior).
+        io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(),18.0f);
         ApplyEditorTheme(currentTheme);
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
@@ -121,10 +113,6 @@ namespace Editor {
             LevelManager::loadedLevels.emplace_back();
             LevelManager::currentLevelIndex = 0;
         }
-
-        // Textures are no longer bulk-indexed or preloaded up front - each
-        // texture reference (a filename) is loaded lazily by
-        // EditorTextureCache::Get() the first time something asks for it.
     }
 
     void Update() {

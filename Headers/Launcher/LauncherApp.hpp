@@ -1,20 +1,21 @@
 //
 // Created by berke on 5/4/2026.
 //
+#pragma once
 
-#ifndef TILKY_ENGINE_LAUNCHERAPP_HPP
-#define TILKY_ENGINE_LAUNCHERAPP_HPP
 #include <filesystem>
-#include <string>
+#include <nlohmann/json.hpp>
+
+namespace fs = std::filesystem;
 
 namespace LauncherApp {
-    void Start(const std::string& langCode);
-    void Update();
-    void Destroy();
+    void Start(nlohmann::json& launcherVariables);
 
-    std::filesystem::path GetPendingProjectToOpen();
+    void Update();
 
     bool QuitRequested();
-}
 
-#endif //TILKY_ENGINE_LAUNCHERAPP_HPP
+    fs::path GetPendingProjectToOpen();
+
+    void Destroy();
+}
