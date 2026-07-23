@@ -482,89 +482,183 @@ namespace {
         ID highestSectorID = 0;
         std::unordered_set<ID> seenSectorIDs;
 
-        for (int i = 0; i < static_cast<int>(levelData["sectors"].size()); ++i) {
-            const json &sectorJson = levelData["sectors"][i];
+        const auto loadColor = [](const json &surfaceJson) -> Vector3 {
+            if (!surfaceJson.contains("color")) {
+                return {255.0f, 255.0f, 255.0f};
+            }
+
+            const json &colorJson = surfaceJson.at("color");
+
+            if (!colorJson.is_array() || colorJson.size() < 3) {
+                return {255.0f, 255.0f, 255.0f};
+            }
+
+            return {
+                colorJson[0].get<float>(),
+                colorJson[1].get<float>(),
+                colorJson[2].get<float>()
+            };
+        };
+
+        const auto loadSurface = [&](const json &surfaceJson) -> SectorSurface {
+            SectorSurface surface;
+
+            surface.height = surfaceJson.value("height", 0.0f);
+            surface.color = loadColor(surfaceJson);
+            surface.texture = surfaceJson.value("texture", std::string{});
+
+            return surface;
+        };
+
+        const json &sectorArray = levelData.at("sectors");
+
+        for (int sectorIndex = 0;
+             sectorIndex < static_cast<int>(sectorArray.size());
+             ++sectorIndex) {
+            const json &sectorJson = sectorArray[sectorIndex];
 
             Sector sector;
-            std::vector<Vector2> corners;
 
-            sector.id = LoadIDField(sectorJson, "id", static_cast<ID>(i));
+            // Critical: Sector has a default floor. Serialized floors must
+            // replace it rather than being appended after it.
+            sector.floors.clear();
 
-            if (sector.id == INVALID_ID) sector.id = static_cast<ID>(i);
+            sector.id = LoadIDField(
+                sectorJson,
+                "id",
+                static_cast<ID>(sectorIndex)
+            );
+
+            if (sector.id == INVALID_ID) {
+                sector.id = static_cast<ID>(sectorIndex);
+            }
 
             if (seenSectorIDs.contains(sector.id)) {
-                const ID reassigned = highestSectorID + 1;
+                const ID reassignedID = highestSectorID + 1;
 
                 spdlog::warn(
                     "LoadSectors: duplicate sector id {} at array index {} - reassigning to {}",
-                    sector.id, i, reassigned);
+                    sector.id,
+                    sectorIndex,
+                    reassignedID
+                );
 
-                sector.id = reassigned;
+                sector.id = reassignedID;
             }
 
             seenSectorIDs.insert(sector.id);
             highestSectorID = std::max(highestSectorID, sector.id);
 
-            for (const json &cornerJson: sectorJson.at("corners")) {
-                corners.emplace_back(
-                    cornerJson.at("x").get<float>(),
-                    cornerJson.at("y").get<float>()
-                );
+            if (sectorJson.contains("corners")) {
+                const json &cornerArray = sectorJson.at("corners");
+                sector.vertices.reserve(cornerArray.size());
+
+                for (const json &cornerJson: cornerArray) {
+                    sector.vertices.emplace_back(
+                        cornerJson.at("x").get<float>(),
+                        cornerJson.at("y").get<float>()
+                    );
+                }
             }
 
-            sector.vertices = std::move(corners);
             sector.triangles = Geometry::Triangulate(sector.vertices);
 
-            sector.ceilingHeight = sectorJson.value("ceilingHeight", 40.0f);
+            if (sectorJson.contains("floors") &&
+                sectorJson.at("floors").is_array()) {
+                const json &floorArray = sectorJson.at("floors");
+                sector.floors.reserve(floorArray.size());
 
-            sector.floorHeight = sectorJson.value("floorHeight", 0.0f);
+                for (int floorIndex = 0;
+                     floorIndex < static_cast<int>(floorArray.size());
+                     ++floorIndex) {
+                    const json &floorJson = floorArray[floorIndex];
 
-            sector.ceilingColor = {
-                255.0f,
-                255.0f,
-                255.0f
-            };
+                    if (!floorJson.contains("floor") ||
+                        !floorJson.contains("ceiling")) {
+                        spdlog::warn(
+                            "LoadSectors: sector {} floor {} is missing floor or ceiling data",
+                            sector.id,
+                            floorIndex
+                        );
 
-            sector.floorColor = {
-                255.0f,
-                255.0f,
-                255.0f
-            };
+                        continue;
+                    }
 
-            if (sectorJson.contains("ceilingColor")) {
-                const json &colorJson = sectorJson.at("ceilingColor");
+                    SectorFloor sectorFloor;
 
-                sector.ceilingColor = {
-                    colorJson.at(0).get<float>(),
-                    colorJson.at(1).get<float>(),
-                    colorJson.at(2).get<float>()
-                };
+                    sectorFloor.floor =
+                            loadSurface(floorJson.at("floor"));
+
+                    sectorFloor.ceiling =
+                            loadSurface(floorJson.at("ceiling"));
+
+                    if (sectorFloor.floor.height >=
+                        sectorFloor.ceiling.height) {
+                        spdlog::warn(
+                            "LoadSectors: sector {} floor {} has invalid heights [{}, {}] - skipping",
+                            sector.id,
+                            floorIndex,
+                            sectorFloor.floor.height,
+                            sectorFloor.ceiling.height
+                        );
+
+                        continue;
+                    }
+
+                    sector.floors.push_back(std::move(sectorFloor));
+                }
             }
 
-            if (sectorJson.contains("floorColor")) {
-                const json &colorJson = sectorJson.at("floorColor");
+            std::ranges::sort(
+                sector.floors,
+                {},
+                [](const SectorFloor &floor) {
+                    return floor.floor.height;
+                }
+            );
 
-                sector.floorColor = {
-                    colorJson.at(0).get<float>(),
-                    colorJson.at(1).get<float>(),
-                    colorJson.at(2).get<float>()
-                };
+            for (int floorIndex = 1;
+                 floorIndex < static_cast<int>(sector.floors.size());
+                 ++floorIndex) {
+                const SectorFloor &previous =
+                        sector.floors[floorIndex - 1];
+
+                const SectorFloor &current =
+                        sector.floors[floorIndex];
+
+                if (previous.ceiling.height >
+                    current.floor.height) {
+                    spdlog::warn(
+                        "LoadSectors: sector {} floors {} and {} overlap",
+                        sector.id,
+                        floorIndex - 1,
+                        floorIndex
+                    );
+                }
             }
 
-            sector.floorTexture = sectorJson.value(
-                "floorTexture",
-                std::string{}
-            );
+            if (sector.floors.empty()) {
+                spdlog::warn(
+                    "LoadSectors: sector {} has no valid floors - inserting one default floor",
+                    sector.id
+                );
 
-            sector.ceilingTexture = sectorJson.value(
-                "ceilingTexture",
-                std::string{}
-            );
+                sector.floors.push_back({
+                    {
+                        0.0f,
+                        {255.0f, 255.0f, 255.0f},
+                        {}
+                    },
+                    {
+                        40.0f,
+                        {255.0f, 255.0f, 255.0f},
+                        {}
+                    }
+                });
+            }
 
-            sector.lightValue = sectorJson.value(
-                "lightValue",
-                255.0f
-            );
+            sector.lightValue =
+                    sectorJson.value("lightValue", 255.0f);
 
             level.sectors.push_back(std::move(sector));
         }
@@ -575,45 +669,63 @@ namespace {
         );
     }
 
-    void SaveSectors(json& levelData, const Level& level) {
-        levelData["sectors"] = json::array();
+    void SaveSectors(json &levelData, const Level &level) {
+        json sectorArray = json::array();
 
-        for (const Sector& sector : level.sectors) {
+        for (const Sector &sector: level.sectors) {
             json cornerArray = json::array();
 
-            for (const Vector2& point : sector.vertices) {
+            for (const Vector2 &point: sector.vertices) {
                 cornerArray.push_back({
                     {"x", point.x},
                     {"y", point.y}
                 });
             }
 
-            levelData["sectors"].push_back({
+            json floorArray = json::array();
+
+            for (const SectorFloor &sectorFloor: sector.floors) {
+                json floorSurface = {
+                    {"height", sectorFloor.floor.height},
+                    {
+                        "color",
+                        {
+                            sectorFloor.floor.color.x,
+                            sectorFloor.floor.color.y,
+                            sectorFloor.floor.color.z
+                        }
+                    },
+                    {"texture", sectorFloor.floor.texture}
+                };
+
+                json ceilingSurface = {
+                    {"height", sectorFloor.ceiling.height},
+                    {
+                        "color",
+                        {
+                            sectorFloor.ceiling.color.x,
+                            sectorFloor.ceiling.color.y,
+                            sectorFloor.ceiling.color.z
+                        }
+                    },
+                    {"texture", sectorFloor.ceiling.texture}
+                };
+
+                floorArray.push_back({
+                    {"floor", std::move(floorSurface)},
+                    {"ceiling", std::move(ceilingSurface)}
+                });
+            }
+
+            sectorArray.push_back({
                 {"id", sector.id},
                 {"corners", std::move(cornerArray)},
-                {"ceilingHeight", sector.ceilingHeight},
-                {"floorHeight", sector.floorHeight},
-                {
-                    "ceilingColor",
-                    {
-                        sector.ceilingColor.x,
-                        sector.ceilingColor.y,
-                        sector.ceilingColor.z
-                    }
-                },
-                {
-                    "floorColor",
-                    {
-                        sector.floorColor.x,
-                        sector.floorColor.y,
-                        sector.floorColor.z
-                    }
-                },
-                {"floorTexture", sector.floorTexture},
-                {"ceilingTexture", sector.ceilingTexture},
+                {"floors", std::move(floorArray)},
                 {"lightValue", sector.lightValue}
             });
         }
+
+        levelData["sectors"] = std::move(sectorArray);
     }
 
     void LoadComponents(const json &levelData, Level &level) {

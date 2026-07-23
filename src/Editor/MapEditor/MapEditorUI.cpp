@@ -1622,93 +1622,141 @@ namespace MapEditorInternal {
             ImGui::Separator();
             ImGui::Spacing();
 
-            //region manual sector mode (unused)
-            // if (ImGui::Checkbox(Get("editor.manual_sector.mode").c_str(), &manualSectorMode)) {
-            //     if (manualSectorMode) CancelSectorChain();
-            //     else ClearManualSectorSelection();
-            // }
-            // HoverTooltip(Get("editor.manual_sector.tooltip.mode").c_str());
-            //
-            // if (manualSectorMode) {
-            //     const int picked = static_cast<int>(manualSectorDots.size());
-            //     ImGui::SameLine(0.0f, 16.0f);
-            //     const std::string pickedText = (picked == 1)
-            //                                    ? Get("editor.manual_sector.corner_selected")
-            //                                    : Get("editor.manual_sector.corners_selected");
-            //     ImGui::TextDisabled(pickedText.c_str(), picked);
-            //
-            //     ImGui::Spacing();
-            //
-            //     if (picked >= 3) {
-            //         PushSuccessStyle();
-            //         if (FullWidthButton(Get("editor.create_sector").c_str())) CreateManualSector();
-            //         PopSuccessStyle();
-            //         HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
-            //     }
-            //
-            //     if (FullWidthButton(Get("editor.manual_sector.clear_selected_dots").c_str())) ClearManualSectorSelection();
-            //
-            //     if (!ImGui::GetIO().WantTextInput) {
-            //         if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
-            //             CreateManualSector();
-            //         if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-            //             ClearManualSectorSelection();
-            //     }
-            //
-            //     ImGui::Spacing();
-            // }
-
-            // ImGui::Separator();
-            // ImGui::Spacing();
-
-            //endregion
-
             SectionHeader(Get("editor.new_sector_properties").c_str());
             ImGui::Separator();
             ImGui::Spacing();
 
-            // Drag a texture from the Asset Browser onto each field below,
-            // or double-click one there and then click a field, to assign it.
-            if (DrawAssetField(Get("editor.new_sector.wall_texture").c_str(), wallTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
-            if (DrawAssetField(Get("editor.new_sector.ceil_texture").c_str(), ceilTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
-            if (DrawAssetField(Get("editor.new_sector.floor_texture").c_str(), floorTexture, AssetKind::Texture, 32.0f)) hasUnsavedChanges = true;
+            if (DrawAssetField(
+                Get("editor.new_sector.wall_texture").c_str(),
+                wallTexture,
+                AssetKind::Texture,
+                32.0f
+            ))
+                hasUnsavedChanges = true;
+
+
+            if (DrawAssetField(
+                Get("editor.new_sector.ceil_texture").c_str(),
+                ceilTexture,
+                AssetKind::Texture,
+                32.0f
+            ))
+                hasUnsavedChanges = true;
+
+            if (DrawAssetField(
+                Get("editor.new_sector.floor_texture").c_str(),
+                floorTexture,
+                AssetKind::Texture,
+                32.0f
+            ))
+                hasUnsavedChanges = true;
+
 
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
-            constexpr float iw = 110.0f;
-            ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat((Get("sector.floor_height") + "##NewSectorFloorHeight").c_str(), &floorHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            constexpr float INPUT_WIDTH = 110.0f;
+            constexpr float MIN_ROOM_HEIGHT = 0.01f;
+
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+
+            if (ImGui::InputFloat(
+                (Get("sector.floor_height") + "##NewSectorFloorHeight").c_str(),
+                &floorHeight,
+                1.0f,
+                10.0f,
+                "%.2f"
+            ))
+                hasUnsavedChanges = true;
+
+
             HoverTooltip(Get("editor.tooltip.floor_height").c_str());
 
-            ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat((Get("sector.ceil_height") + "##NewSectorCeilHeight").c_str(), &ceilHeight, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+
+            if (ImGui::InputFloat(
+                (Get("sector.ceil_height") + "##NewSectorCeilHeight").c_str(),
+                &ceilHeight,
+                1.0f,
+                10.0f,
+                "%.2f"
+            )) {
+                hasUnsavedChanges = true;
+            }
+
             HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
 
-            ImGui::SetNextItemWidth(iw);
-            if (ImGui::InputFloat((Get("sector.light_value") + "##NewSectorLight").c_str(), &lightValue, 1.0f, 10.0f, "%.2f")) hasUnsavedChanges = true;
+            if (ceilHeight <= floorHeight) {
+                ImGui::PushStyleColor(
+                    ImGuiCol_Text,
+                    ImVec4(1.0f, 0.6f, 0.1f, 1.0f)
+                );
+
+                ImGui::TextWrapped(
+                    Get("editor.tooltip.sector.invalid_floor_heights").c_str()
+                );
+
+                ImGui::PopStyleColor();
+            }
+
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+
+            if (ImGui::InputFloat(
+                (Get("sector.light_value") + "##NewSectorLight").c_str(),
+                &lightValue,
+                1.0f,
+                10.0f,
+                "%.2f"
+            ))
+                hasUnsavedChanges = true;
+
+
             HoverTooltip(Get("editor.tooltip.light_value").c_str());
 
             ImGui::Spacing();
-            ImGui::ColorEdit3((Get("wall.color") + "##NewSectorWallColor").c_str(), &wallColor.x);
-            ImGui::ColorEdit3((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(), &ceilColor.x);
-            ImGui::ColorEdit3((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColor.x);
+
+            if (ImGui::ColorEdit3(
+                (Get("wall.color") + "##NewSectorWallColor").c_str(),
+                &wallColor.x
+            ))
+                hasUnsavedChanges = true;
+
+
+            if (ImGui::ColorEdit3(
+                (Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(),
+                &ceilColor.x
+            ))
+                hasUnsavedChanges = true;
+
+
+            if (ImGui::ColorEdit3(
+                (Get("sector.floor_color") + "##NewSectorFloorColor").c_str(),
+                &floorColor.x
+            ))
+                hasUnsavedChanges = true;
+
             ImGui::Spacing();
 
-            // FIX: keep pendingSectorParams in sync with the visible fields.
-            // Without this, pendingSectorParams stays at its default-constructed
-            // (zeroed) value from CreateNewLevel()/ProcessPendingLevelLoad(),
-            // which yields ceilingHeight <= floorHeight on every new sector.
             pendingSectorParams.wallTexture = wallTexture;
-            pendingSectorParams.ceilTexture = ceilTexture;
-            pendingSectorParams.floorTexture = floorTexture;
-            pendingSectorParams.floorHeight = floorHeight;
-            pendingSectorParams.ceilHeight = ceilHeight;
             pendingSectorParams.lightValue = lightValue;
             pendingSectorParams.wallColor = wallColor;
-            pendingSectorParams.ceilColor = ceilColor;
-            pendingSectorParams.floorColor = floorColor;
+
+            if (pendingSectorParams.floors.empty()) pendingSectorParams.floors.resize(1);
+            else if (pendingSectorParams.floors.size() > 1) pendingSectorParams.floors.resize(1);
+
+
+            SectorFloor &initialFloor = pendingSectorParams.floors.front();
+
+            initialFloor.floor.height = floorHeight;
+            initialFloor.floor.color = floorColor;
+            initialFloor.floor.texture = floorTexture;
+
+            initialFloor.ceiling.height =
+                    std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
+
+            initialFloor.ceiling.color = ceilColor;
+            initialFloor.ceiling.texture = ceilTexture;
         }
 
         // ---- Inspector ----------------------------------------------------
