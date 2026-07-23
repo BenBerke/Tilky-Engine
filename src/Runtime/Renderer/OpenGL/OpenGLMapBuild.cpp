@@ -16,23 +16,131 @@ namespace {
 
     constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
-    void PushGpuWallPiece(
-        std::vector<GpuWall>& gpuWalls,
-        Wall& wall,
-        const float bottomHeight,
-        const float topHeight,
-        const Vector4& color,
-        const float textureAnchorHeight,
-        const float textureDirection,
-        const float textureRegionIndex
+        enum class WallSpanSide {
+        Front,
+        Back
+    };
+
+    struct WallSpan {
+        float bottom;
+        float top;
+        WallSpanSide side;
+    };
+
+    bool IsSectorOpenAtHeight(const Sector &sector, const float height) {
+        for (const SectorFloor &floor: sector.floors) {
+            if (height > floor.floor.height + MIN_WALL_HEIGHT &&
+                height < floor.ceiling.height - MIN_WALL_HEIGHT) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void AddSectorHeights(const Sector &sector, std::vector<float> &heights) {
+        for (const SectorFloor &floor: sector.floors) {
+            heights.push_back(floor.floor.height);
+            heights.push_back(floor.ceiling.height);
+        }
+    }
+
+    void SortAndRemoveDuplicateHeights(std::vector<float> &heights) {
+        std::ranges::sort(heights);
+
+        heights.erase(
+            std::unique(
+                heights.begin(),
+                heights.end(),
+                [](const float a, const float b) {
+                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
+                }
+            ),
+            heights.end()
+        );
+    }
+
+    void PushOrMergeWallSpan(
+        std::vector<WallSpan> &spans,
+        const float bottom,
+        const float top,
+        const WallSpanSide side
     ) {
-        if (!MapQueries::PushWallQuad3D(wall, bottomHeight, topHeight,MIN_WALL_HEIGHT)) return;
+        if (top - bottom <= MIN_WALL_HEIGHT) return;
+
+        if (!spans.empty()) {
+            WallSpan &previous = spans.back();
+
+            if (previous.side == side &&
+                std::abs(previous.top - bottom) <= MIN_WALL_HEIGHT) {
+                previous.top = top;
+                return;
+            }
+        }
+
+        spans.push_back({bottom, top, side});
+    }
+
+    std::vector<WallSpan> BuildWallSpans(
+        const Sector *frontSector,
+        const Sector *backSector
+    ) {
+        std::vector<float> heights;
+
+        if (frontSector != nullptr) AddSectorHeights(*frontSector, heights);
+        if (backSector != nullptr) AddSectorHeights(*backSector, heights);
+
+        SortAndRemoveDuplicateHeights(heights);
+
+        std::vector<WallSpan> spans;
+
+        for (size_t i = 0; i + 1 < heights.size(); ++i) {
+            const float bottom = heights[i];
+            const float top = heights[i + 1];
+
+            if (top - bottom <= MIN_WALL_HEIGHT) continue;
+
+            const float sampleHeight = (bottom + top) * 0.5f;
+
+            const bool frontOpen =
+                    frontSector != nullptr &&
+                    IsSectorOpenAtHeight(*frontSector, sampleHeight);
+
+            const bool backOpen =
+                    backSector != nullptr &&
+                    IsSectorOpenAtHeight(*backSector, sampleHeight);
+
+            if (frontOpen == backOpen) continue;
+
+            PushOrMergeWallSpan(
+                spans,
+                bottom,
+                top,
+                frontOpen ? WallSpanSide::Front : WallSpanSide::Back
+            );
+        }
+
+        return spans;
+    }
+
+    void PushGpuWallPiece(
+    std::vector<GpuWall>& gpuWalls,
+    const Wall& wall,
+    const float bottomHeight,
+    const float topHeight,
+    const Vector4& color,
+    const float textureAnchorHeight,
+    const float textureDirection,
+    const float textureRegionIndex,
+    const WallSpanSide side
+) {
+        if (topHeight - bottomHeight <= MIN_WALL_HEIGHT) return;
 
         GpuWall gpuWall;
 
         gpuWall.data = {
             textureRegionIndex,
-            0.0f,
+            side == WallSpanSide::Front ? 0.0f : 1.0f,
             textureAnchorHeight,
             textureDirection
         };
@@ -64,9 +172,9 @@ namespace {
     }
 
     void ClipFlatTriangleAgainstNearPlane(
-        std::vector<GpuFlatTriangle>& visibleFlatTriangles,
-        const GpuFlatTriangle& triangle,
-        const Vector2& playerPos,
+        std::vector<GpuFlatTriangle> &visibleFlatTriangles,
+        const GpuFlatTriangle &triangle,
+        const Vector2 &playerPos,
         const float playerAngle
     ) {
         using namespace OpenGLRendererInternal;
@@ -84,26 +192,24 @@ namespace {
             const Vector4 next = input[(i + 1) % input.size()];
 
             const float currentDepth =
-                RendererMath::GetViewDepth(current, playerPos, playerAngle);
+                    RendererMath::GetViewDepth(current, playerPos, playerAngle);
 
             const float nextDepth =
-                RendererMath::GetViewDepth(next, playerPos, playerAngle);
+                    RendererMath::GetViewDepth(next, playerPos, playerAngle);
 
             const bool currentInside = currentDepth >= FLAT_NEAR_PLANE;
             const bool nextInside = nextDepth >= FLAT_NEAR_PLANE;
 
             if (currentInside && nextInside) {
                 output.push_back(next);
-            }
-            else if (currentInside && !nextInside) {
+            } else if (currentInside && !nextInside) {
                 const float t =
-                    (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
 
                 output.push_back(RendererMath::LerpVector4(current, next, t));
-            }
-            else if (!currentInside && nextInside) {
+            } else if (!currentInside && nextInside) {
                 const float t =
-                    (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
+                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
 
                 output.push_back(RendererMath::LerpVector4(current, next, t));
                 output.push_back(next);
@@ -120,8 +226,7 @@ namespace {
                 triangle.color,
                 triangle.data
             });
-        }
-        else if (output.size() == 4) {
+        } else if (output.size() == 4) {
             visibleFlatTriangles.push_back({
                 output[0],
                 output[1],
@@ -147,62 +252,22 @@ void OpenGL::BuildGpuWallsFromMap() {
 
     gpuWalls.clear();
 
-    for (Wall& wall : level.walls) {
-        wall.quads3D = {};
-        wall.quad3DCount = 0;
+    for (const Wall& wall : level.walls) {
+        const float textureRegionIndex =
+            static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
 
-        // wall.textureFileName is a filename now, not an index - resolve
-        // it once per wall to its slot in the texture atlas. Needs
-        // GetTextureRegionIndex() added alongside the atlas builder - see
-        // the accompanying notes.
-        const float textureRegionIndex = static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
+        const Sector* frontSector =
+            MapQueries::GetSectorByID(level, wall.frontSector);
 
-        const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
-        const Sector* backSector  = MapQueries::GetSectorByID(level, wall.backSector);
+        const Sector* backSector =
+            MapQueries::GetSectorByID(level, wall.backSector);
 
-        if (frontSector != nullptr && backSector != nullptr && frontSector != backSector) {
-            const float frontFloor = frontSector->floorHeight;
-            const float backFloor = backSector->floorHeight;
+        if (frontSector == backSector) backSector = nullptr;
 
-            const float frontCeiling = frontSector->ceilingHeight;
-            const float backCeiling = backSector->ceilingHeight;
+        const std::vector<WallSpan> spans =
+            BuildWallSpans(frontSector, backSector);
 
-            const float lowFloor = std::min(frontFloor, backFloor);
-            const float highFloor = std::max(frontFloor, backFloor);
-
-            const float lowCeiling = std::min(frontCeiling, backCeiling);
-            const float highCeiling = std::max(frontCeiling, backCeiling);
-
-            // Lower solid portal piece: floor height difference.
-            PushGpuWallPiece(
-                gpuWalls,
-                wall,
-                lowFloor,
-                highFloor,
-                wall.color,
-                highFloor,
-                -1.0f,
-                textureRegionIndex
-            );
-
-            // Upper solid portal piece: ceiling height difference.
-            PushGpuWallPiece(
-                gpuWalls,
-                wall,
-                lowCeiling,
-                highCeiling,
-                wall.color,
-                lowCeiling,
-                1.0f,
-                textureRegionIndex
-            );
-
-            continue;
-        }
-
-        const Sector* sector = frontSector != nullptr ? frontSector : backSector;
-
-        if (sector == nullptr) {
+        if (spans.empty() && frontSector == nullptr && backSector == nullptr) {
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
@@ -211,22 +276,28 @@ void OpenGL::BuildGpuWallsFromMap() {
                 wall.color,
                 32.0f,
                 -1.0f,
-                textureRegionIndex
+                textureRegionIndex,
+                WallSpanSide::Front
             );
 
             continue;
         }
 
-        PushGpuWallPiece(
-            gpuWalls,
-            wall,
-            sector->floorHeight,
-            sector->ceilingHeight,
-            wall.color,
-            sector->ceilingHeight,
-            -1.0f,
-            textureRegionIndex
-        );
+        for (const WallSpan& span : spans) {
+            const bool frontSide = span.side == WallSpanSide::Front;
+
+            PushGpuWallPiece(
+                gpuWalls,
+                wall,
+                span.bottom,
+                span.top,
+                wall.color,
+                frontSide ? span.top : span.bottom,
+                frontSide ? -1.0f : 1.0f,
+                textureRegionIndex,
+                span.side
+            );
+        }
     }
 
     gpuWallCount = static_cast<GLsizei>(gpuWalls.size());
@@ -276,93 +347,45 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
     for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
         const Sector& sector = level.sectors[sectorIndex];
 
-        const float floorTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.floorTexture));
-        const float ceilingTextureRegionIndex = static_cast<float>(GetTextureRegionIndex(sector.ceilingTexture));
+        for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+            for (const Triangle& triangle : sector.triangles) {
+                {
+                    GpuFlatTriangle flatTriangle;
 
-        for (const Triangle& triangle : sector.triangles) {
-            // Floor triangle.
-            {
-                GpuFlatTriangle flatTriangle;
+                    flatTriangle.a = {triangle.a.x, triangle.a.y, 0.0f, 0.0f};
+                    flatTriangle.b = {triangle.c.x, triangle.c.y, 0.0f, 0.0f};
+                    flatTriangle.c = {triangle.b.x, triangle.b.y, 0.0f, 0.0f};
 
-                flatTriangle.a = {
-                    triangle.a.x,
-                    triangle.a.y,
-                    0.0f,
-                    0.0f
-                };
+                    flatTriangle.color = {255.0f, 255.0f, 255.0f, 255.0f};
 
-                // Reversed winding for floor.
-                flatTriangle.b = {
-                    triangle.c.x,
-                    triangle.c.y,
-                    0.0f,
-                    0.0f
-                };
+                    flatTriangle.data = {
+                        static_cast<float>(sectorIndex),
+                        static_cast<float>(floorIndex),
+                        0.0f, // floor surface
+                        0.0f
+                    };
 
-                flatTriangle.c = {
-                    triangle.b.x,
-                    triangle.b.y,
-                    0.0f,
-                    0.0f
-                };
+                    flatTriangles.push_back(flatTriangle);
+                }
 
-                flatTriangle.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
+                {
+                    GpuFlatTriangle flatTriangle;
 
-                flatTriangle.data = {
-                    static_cast<float>(sectorIndex),
-                    0.0f, // boundary index: floor
-                    floorTextureRegionIndex,
-                    0.0f
-                };
+                    flatTriangle.a = {triangle.a.x, triangle.a.y, 0.0f, 0.0f};
+                    flatTriangle.b = {triangle.b.x, triangle.b.y, 0.0f, 0.0f};
+                    flatTriangle.c = {triangle.c.x, triangle.c.y, 0.0f, 0.0f};
 
-                flatTriangles.push_back(flatTriangle);
-            }
+                    flatTriangle.color = {255.0f, 255.0f, 255.0f, 255.0f};
 
-            // Ceiling triangle.
-            {
-                GpuFlatTriangle flatTriangle;
+                    flatTriangle.data = {
+                        static_cast<float>(sectorIndex),
+                        static_cast<float>(floorIndex),
+                        1.0f, // ceiling surface
+                        0.0f
+                    };
 
-                flatTriangle.a = {
-                    triangle.a.x,
-                    triangle.a.y,
-                    0.0f,
-                    0.0f
-                };
-
-                flatTriangle.b = {
-                    triangle.b.x,
-                    triangle.b.y,
-                    0.0f,
-                    0.0f
-                };
-
-                flatTriangle.c = {
-                    triangle.c.x,
-                    triangle.c.y,
-                    0.0f,
-                    0.0f
-                };
-
-                flatTriangle.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
-
-                flatTriangle.data = {
-                    static_cast<float>(sectorIndex),
-                    1.0f, // boundary index: ceiling
-                    ceilingTextureRegionIndex,
-                    0.0f
-                };
-
-                flatTriangles.push_back(flatTriangle);
+                    flatTriangles.push_back(flatTriangle);
+                }
             }
         }
     }
@@ -414,10 +437,17 @@ bool OpenGL::CreateMap() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, decalSSBO);
 
+    // Sector
     glGenBuffers(1, &sectorSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, sectorSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
+
+    // Sector floor
+    glGenBuffers(1, &sectorFloorSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, sectorFloorSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, sectorFloorSSBO);
 
     glGenBuffers(1, &colliderSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, colliderSSBO);

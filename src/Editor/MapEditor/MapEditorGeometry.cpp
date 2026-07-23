@@ -280,6 +280,20 @@ namespace MapEditorInternal {
                 dotIDToIndex[dots[i].id] = i;
             }
         }
+
+        PendingSectorParams BuildPendingSectorParams() {
+            PendingSectorParams params;
+            params.wallTexture = wallTexture;
+            params.floors = {
+                {
+                    {floorHeight, floorColor, floorTexture},
+                    {ceilHeight, ceilColor, ceilTexture}
+                }
+            };
+            params.lightValue = lightValue;
+            params.wallColor = wallColor;
+            return params;
+        }
     }
 
 
@@ -360,17 +374,7 @@ namespace MapEditorInternal {
             // Snapshot the Editor menu's current sector params now, so
             // fiddling with them mid-chain can't retroactively change the
             // sector that's about to be created.
-            pendingSectorParams = PendingSectorParams{
-                wallTexture,
-                ceilTexture,
-                floorTexture,
-                floorHeight,
-                ceilHeight,
-                lightValue,
-                wallColor,
-                ceilColor,
-                floorColor
-            };
+            pendingSectorParams = BuildPendingSectorParams();
 
             sectorBeingCreated.push_back(point);
             return;
@@ -419,19 +423,7 @@ namespace MapEditorInternal {
         std::vector<Vector2> closedChain = manualSectorDots;
         closedChain.push_back(manualSectorDots.front());
 
-        const PendingSectorParams params{
-            wallTexture,
-            ceilTexture,
-            floorTexture,
-            floorHeight,
-            ceilHeight,
-            lightValue,
-            wallColor,
-            ceilColor,
-            floorColor
-        };
-
-        ApplyDrawnGeometry(closedChain, params);
+        ApplyDrawnGeometry(closedChain, BuildPendingSectorParams());
 
         manualSectorDots.clear();
     }
@@ -455,17 +447,11 @@ namespace MapEditorInternal {
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params) {
         Level& level = LevelManager::CurrentLevel();
 
-        const MapTopology::NewSectorParams topologyParams{
-            params.wallTexture,
-            params.ceilTexture,
-            params.floorTexture,
-            params.floorHeight,
-            params.ceilHeight,
-            params.lightValue,
-            params.wallColor,
-            params.ceilColor,
-            params.floorColor
-        };
+        MapTopology::NewSectorParams topologyParams;
+        topologyParams.wallTexture = params.wallTexture;
+        topologyParams.floors = params.floors;
+        topologyParams.lightValue = params.lightValue;
+        topologyParams.wallColor = params.wallColor;
 
         // Taken unconditionally, before we know whether the edit will be
         // accepted - cheap to discard if MapTopology::ApplyDrawnGeometry
@@ -719,6 +705,13 @@ namespace Editor {
 
         Sector copy = sector;
 
+        if (copy.floors.empty()) {
+            copy.floors.push_back({
+                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
+                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+            });
+        }
+
         if (copy.id == INVALID_ID) copy.id = level.nextSectorID++;
         else level.nextSectorID = std::max(level.nextSectorID, copy.id + 1);
 
@@ -727,38 +720,29 @@ namespace Editor {
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
-    // NOTE: kept from before the revamp for backward compatibility, in
-    // case something outside this file still calls it. It does NOT
-    // create/reuse walls or assign front/back sectors - the Sector Mode
-    // chain workflow uses MapEditorInternal::ApplyDrawnGeometry instead
-    // (see MapTopology.hpp/.cpp), which does both.
-    //
-    // Parameters changed from int texture indices to filenames along with
-    // Sector::floorTexture/ceilingTexture - an index can't be translated
-    // into a filename after the fact, so this had to follow suit rather
-    // than stay silently broken.
+    // Legacy single-room helper. Sector Mode uses
+    // MapEditorInternal::ApplyDrawnGeometry so walls and sector sides are
+    // created through MapTopology.
     void CreateSector(
-     const std::vector<Vector2>& vertices,
-     const float ceilHeight,
-     const float floorHeight,
-     const Vector3& ceilColor,
-     const Vector3& floorColor,
-     const std::string& ceilTexture,
-     const std::string& floorTexture
- ) {
-        Sector newSector{};
+        const std::vector<Vector2>& vertices,
+        const float ceilHeight,
+        const float floorHeight,
+        const Vector3& ceilColor,
+        const Vector3& floorColor,
+        const std::string& ceilTexture,
+        const std::string& floorTexture
+    ) {
+        if (ceilHeight <= floorHeight) return;
 
+        Sector newSector;
         newSector.vertices = vertices;
-        newSector.triangles = Geometry::Triangulate(newSector.vertices);
-
-        newSector.ceilingHeight = ceilHeight;
-        newSector.floorHeight = floorHeight;
-
-        newSector.ceilingColor = ceilColor;
-        newSector.floorColor = floorColor;
-
-        newSector.ceilingTexture = ceilTexture;
-        newSector.floorTexture = floorTexture;
+        newSector.triangles = Geometry::Triangulate(vertices);
+        newSector.floors = {
+            {
+                {floorHeight, floorColor, floorTexture},
+                {ceilHeight, ceilColor, ceilTexture}
+            }
+        };
 
         AddSector(newSector);
     }

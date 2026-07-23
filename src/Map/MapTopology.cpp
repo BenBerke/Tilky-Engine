@@ -209,20 +209,17 @@ namespace {
     // front/back included, though AssignAllWallSides recomputes those
     // for every wall from the traced faces regardless, so nothing here
     // needs to reason about which side is "correct" mid-split.
-    void SplitWallAt(std::vector<Wall>& walls, const int wallIndex, const Vector2& at, ID& nextWallID) {
+    void SplitWallAt(std::vector<Wall> &walls, const int wallIndex, const Vector2 &at,ID &nextWallID) {
         Wall farHalf = walls[wallIndex];
+
         farHalf.id = nextWallID++;
         farHalf.start = at;
-        farHalf.quad3DCount = 0;
-        farHalf.quads3D = {};
         farHalf.RefreshDerived();
 
         walls[wallIndex].end = at;
-        walls[wallIndex].quad3DCount = 0;
-        walls[wallIndex].quads3D = {};
         walls[wallIndex].RefreshDerived();
 
-        walls.push_back(farHalf);
+        walls.push_back(std::move(farHalf));
     }
 
     // If `v` lies in the interior of some existing wall, splits that
@@ -560,12 +557,7 @@ namespace {
 
     struct OldSectorInfo {
         ID id = INVALID_ID;
-        float floorHeight = 0.0f;
-        float ceilingHeight = 0.0f;
-        Vector3 floorColor{};
-        Vector3 ceilingColor{};
-        std::string floorTexture;
-        std::string ceilingTexture;
+        std::vector<SectorFloor> floors;
         float lightValue = 255.0f;
         std::vector<Vector2> vertices;
         Vector2 samplePoint{};
@@ -575,18 +567,15 @@ namespace {
         std::vector<OldSectorInfo> snapshot;
         snapshot.reserve(sectors.size());
 
-        for (const Sector& s : sectors) {
+        for (const Sector& sector : sectors) {
             OldSectorInfo info;
-            info.id = s.id;
-            info.floorHeight = s.floorHeight;
-            info.ceilingHeight = s.ceilingHeight;
-            info.floorColor = s.floorColor;
-            info.ceilingColor = s.ceilingColor;
-            info.floorTexture = s.floorTexture;
-            info.ceilingTexture = s.ceilingTexture;
-            info.lightValue = s.lightValue;
-            info.vertices = s.vertices;
-            info.samplePoint = InteriorSamplePoint(s.vertices, s.triangles);
+
+            info.id = sector.id;
+            info.floors = sector.floors;
+            info.lightValue = sector.lightValue;
+            info.vertices = sector.vertices;
+            info.samplePoint = InteriorSamplePoint(sector.vertices, sector.triangles);
+
             snapshot.push_back(std::move(info));
         }
 
@@ -669,32 +658,23 @@ namespace {
 
     // ---- Stage 7: rebuild Sector/Wall data from the reconciled faces ---------
 
-    std::vector<Sector> BuildFinalSectors(const std::vector<ReconciledFace>& reconciled, const NewSectorParams& params) {
+    std::vector<Sector> BuildFinalSectors(const std::vector<ReconciledFace> &reconciled, const NewSectorParams &params) {
         std::vector<Sector> sectors;
         sectors.reserve(reconciled.size());
 
-        for (const ReconciledFace& rf : reconciled) {
+        for (const ReconciledFace &reconciledFace: reconciled) {
             Sector sector;
-            sector.id = rf.sectorID;
-            sector.vertices = rf.face->vertices;
-            sector.triangles = rf.face->triangles;
 
-            if (rf.source != nullptr) {
-                sector.floorHeight = rf.source->floorHeight;
-                sector.ceilingHeight = rf.source->ceilingHeight;
-                sector.floorColor = rf.source->floorColor;
-                sector.ceilingColor = rf.source->ceilingColor;
-                sector.floorTexture = rf.source->floorTexture;
-                sector.ceilingTexture = rf.source->ceilingTexture;
-                sector.lightValue = rf.source->lightValue;
+            sector.id = reconciledFace.sectorID;
+            sector.vertices = reconciledFace.face->vertices;
+            sector.triangles = reconciledFace.face->triangles;
+
+            if (reconciledFace.source != nullptr) {
+                sector.floors = reconciledFace.source->floors;
+                sector.lightValue = reconciledFace.source->lightValue;
             }
             else {
-                sector.floorHeight = params.floorHeight;
-                sector.ceilingHeight = params.ceilHeight;
-                sector.floorColor = params.floorColor;
-                sector.ceilingColor = params.ceilColor;
-                sector.floorTexture = params.floorTexture;
-                sector.ceilingTexture = params.ceilTexture;
+                sector.floors = params.floors;
                 sector.lightValue = params.lightValue;
             }
 
@@ -760,6 +740,25 @@ namespace {
 
     PassResult RunTopologyPass(const Level& level, const std::vector<Vector2>& rawPoints, const NewSectorParams& params) {
         PassResult result;
+
+        if (params.floors.empty()) {
+            result.message = "A sector must contain at least one floor.";
+            return result;
+        }
+
+        for (size_t floorIndex = 0; floorIndex < params.floors.size(); ++floorIndex) {
+            const SectorFloor& floor = params.floors[floorIndex];
+
+            if (floor.floor.height >= floor.ceiling.height) {
+                result.message = "A sector floor ceiling must be above its floor.";
+                return result;
+            }
+
+            if (floorIndex > 0 && params.floors[floorIndex - 1].ceiling.height > floor.floor.height) {
+                result.message = "Sector floor intervals must not overlap.";
+                return result;
+            }
+        }
 
         const std::vector<Vector2> points = CleanDrawnPoints(rawPoints);
 

@@ -29,6 +29,8 @@ struct RayHit {
     Vector3 position;
     float distance = .0f;
 
+    int sectorFloorIndex = -1;
+
     [[nodiscard]] bool HitEntity() const { return type == RayHitType::Entity && entity != nullptr; }
     [[nodiscard]] bool HitWall() const { return type == RayHitType::Wall && wall != nullptr; }
     [[nodiscard]] bool HitSectorFloor() const { return type == RayHitType::SectorFloor && sector != nullptr; }

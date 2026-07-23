@@ -113,9 +113,12 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     {
         ZoneScopedN("Upload GPU Sectors");
+
         BuildGpuSectors();
+
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, sectorFloorSSBO);
 
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);

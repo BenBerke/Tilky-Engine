@@ -7,6 +7,54 @@
 #include "sol/sol.hpp"
 
 void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
+    lua.new_usertype<ScriptSectorFloor>(
+        "SectorFloorRef",
+
+        "index", sol::readonly_property(
+            &ScriptSectorFloor::GetIndex
+        ),
+
+        "isValid", sol::readonly_property(
+            &ScriptSectorFloor::IsValid
+        ),
+
+        "floorHeight", sol::property(
+            &ScriptSectorFloor::GetFloorHeight,
+            &ScriptSectorFloor::SetFloorHeight
+        ),
+
+        "ceilingHeight", sol::property(
+            &ScriptSectorFloor::GetCeilingHeight,
+            &ScriptSectorFloor::SetCeilingHeight
+        ),
+
+        "floorColor", sol::property(
+            &ScriptSectorFloor::GetFloorColor,
+            &ScriptSectorFloor::SetFloorColor
+        ),
+
+        "ceilingColor", sol::property(
+            &ScriptSectorFloor::GetCeilingColor,
+            &ScriptSectorFloor::SetCeilingColor
+        ),
+
+        "floorTexture", sol::property(
+            &ScriptSectorFloor::GetFloorTexture,
+            &ScriptSectorFloor::SetFloorTexture
+        ),
+
+        "ceilingTexture", sol::property(
+            &ScriptSectorFloor::GetCeilingTexture,
+            &ScriptSectorFloor::SetCeilingTexture
+        ),
+
+        "clearFloorTexture",
+        &ScriptSectorFloor::ClearFloorTexture,
+
+        "clearCeilingTexture",
+        &ScriptSectorFloor::ClearCeilingTexture
+    );
+
     lua.new_usertype<ScriptSector>(
         "SectorRef",
 
@@ -18,45 +66,13 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
             &ScriptSector::IsValid
         ),
 
-        "floorHeight", sol::property(
-            &ScriptSector::GetFloorHeight,
-            &ScriptSector::SetFloorHeight
-        ),
-
-        "ceilingHeight", sol::property(
-            &ScriptSector::GetCeilingHeight,
-            &ScriptSector::SetCeilingHeight
-        ),
-
-        "floorColor", sol::property(
-            &ScriptSector::GetFloorColor,
-            &ScriptSector::SetFloorColor
-        ),
-
-        "ceilingColor", sol::property(
-            &ScriptSector::GetCeilingColor,
-            &ScriptSector::SetCeilingColor
-        ),
-
-        "floorTexture", sol::property(
-            &ScriptSector::GetFloorTexture,
-            &ScriptSector::SetFloorTexture
-        ),
-
-        "ceilingTexture", sol::property(
-            &ScriptSector::GetCeilingTexture,
-            &ScriptSector::SetCeilingTexture
-        ),
-
-        "clearFloorTexture",
-        &ScriptSector::ClearFloorTexture,
-
-        "clearCeilingTexture",
-        &ScriptSector::ClearCeilingTexture,
-
         "lightValue", sol::property(
             &ScriptSector::GetLightValue,
             &ScriptSector::SetLightValue
+        ),
+
+        "floorCount", sol::readonly_property(
+            &ScriptSector::GetFloorCount
         ),
 
         "vertexCount", sol::readonly_property(
@@ -75,6 +91,7 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
             &ScriptSector::GetNeighborCount
         ),
 
+        "GetFloor", &ScriptSector::GetFloor,
         "GetVertex", &ScriptSector::GetVertex,
         "GetWall", &ScriptSector::GetWall,
         "GetEntity", &ScriptSector::GetEntity,

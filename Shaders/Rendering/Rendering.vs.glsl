@@ -45,10 +45,10 @@ struct Wall {
     vec4 color;
     vec4 heights;
     vec4 data;
-    //data.x = texture region/index;
-    //data.y = unused;
-    //data.z = texture anchor height;
-    //data.w = texture direction;
+//data.x = texture region/index;
+//data.y = unused;
+//data.z = texture anchor height;
+//data.w = texture direction;
     vec4 textureOffset_padding;
 };
 
@@ -61,10 +61,22 @@ struct FlatTriangle {
 };
 
 struct Sector {
+    vec4 floorData;
+// floorData.x = offset into sectorFloors
+// floorData.y = floor count
+};
+
+struct SectorFloor {
     vec4 heights;
+// heights.x = floor height
+// heights.y = ceiling height
+
     vec4 floorColor;
     vec4 ceilingColor;
+
     vec4 textureData;
+// textureData.x = floor texture region index
+// textureData.y = ceiling texture region index
 };
 
 struct Collider {
@@ -95,6 +107,10 @@ layout(std430, binding = 4) readonly buffer SectorBuffer {
 // 5 is used in the fragment shader
 layout(std430, binding = 6) readonly buffer ColliderBuffer {
     Collider colliders[];
+};
+
+layout(std430, binding = 7) readonly buffer SectorFloorBuffer {
+    SectorFloor sectorFloors[];
 };
 
 uniform mat4 uView;
@@ -500,46 +516,31 @@ void renderSprite() {
 
 void renderFlat() {
     FlatTriangle triangle = flatTriangles[gl_InstanceID];
-
-    vec4 point;
-
-    if (gl_VertexID == 0) {
-        point = triangle.a;
-    }
-    else if (gl_VertexID == 1) {
-        point = triangle.b;
-    }
-    else {
-        point = triangle.c;
-    }
+    vec4 point = gl_VertexID == 0 ? triangle.a : gl_VertexID == 1 ? triangle.b : triangle.c;
 
     int sectorIndex = int(triangle.data.x);
-    int boundaryIndex = int(triangle.data.y);
+    int floorIndex = int(triangle.data.y);
+    int surfaceType = int(triangle.data.z);
 
     Sector sector = sectors[sectorIndex];
+    int packedFloorIndex = int(sector.floorData.x) + floorIndex;
+    SectorFloor sectorFloor = sectorFloors[packedFloorIndex];
 
-    float storeyHeight = sector.heights.y - sector.heights.x;
+    bool isCeiling = surfaceType == 1;
 
-    point.z = sector.heights.x + storeyHeight * float(boundaryIndex);
-
-    if (boundaryIndex == 0) {
-        vColor = sector.floorColor / 255.0;
-    }
-    else {
-        vColor = sector.ceilingColor / 255.0;
-    }
-
-    vFlatTextureIndex = boundaryIndex == 0
-    ? int(sector.textureData.x)
-    : int(sector.textureData.y);
+    point.z = isCeiling ? sectorFloor.heights.y : sectorFloor.heights.x;
+    vColor = (isCeiling ? sectorFloor.ceilingColor : sectorFloor.floorColor) / 255.0;
+    vFlatTextureIndex = isCeiling ? int(sectorFloor.textureData.y) : int(sectorFloor.textureData.x);
 
     vTextureIndex = -1;
+    vSpriteTextureIndex = -1;
 
     vFlatUV = point.xy / tileSize;
     vWallUV = vec2(0.0);
+    vSpriteUV = vec2(0.0);
+    vDecalUV = vec2(0.0);
 
     vec3 worldPos = vec3(point.x, point.z, point.y);
-
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 

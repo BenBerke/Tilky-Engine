@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <Headers/Objects/Sector.hpp>
 
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
@@ -59,16 +60,16 @@ namespace MapTopology {
     // this module depending on the editor.
     struct NewSectorParams {
         std::string wallTexture;
-        std::string ceilTexture;
-        std::string floorTexture;
 
-        float floorHeight = 0.0f;
-        float ceilHeight = 0.0f;
+        std::vector<SectorFloor> floors = {
+            {
+                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
+                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+            }
+        };
+
         float lightValue = 255.0f;
-
-        Vector3 wallColor{};
-        Vector3 ceilColor{};
-        Vector3 floorColor{};
+        Vector3 wallColor = {255.0f, 255.0f, 255.0f};
     };
 
     struct ApplyResult {

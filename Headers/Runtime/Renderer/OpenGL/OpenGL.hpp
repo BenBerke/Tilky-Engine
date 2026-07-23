@@ -99,10 +99,14 @@ namespace OpenGLRendererInternal {
     };
 
     struct GpuSector {
-        Vector4 heights;
+        Vector4 floorData; // x = offset into sectorFloors, y = floor count
+    };
+
+    struct GpuSectorFloor {
+        Vector4 heights;      // x = floor height, y = ceiling height
         Vector4 floorColor;
         Vector4 ceilingColor;
-        Vector4 textureData;
+        Vector4 textureData;  // x = floor texture, y = ceiling texture
     };
 
     struct GpuCollider {
@@ -199,12 +203,17 @@ private:
     using GpuSector = OpenGLRendererInternal::GpuSector;
     using GPUTexture = OpenGLRendererInternal::GPUTexture;
     using GpuCollider = OpenGLRendererInternal::GpuCollider;
+    using GpuSectorFloor = OpenGLRendererInternal::GpuSectorFloor;
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
 
     GLuint VAO = 0;
     GLuint wallSSBO = 0;
+    GLuint sectorFloorSSBO = 0;
+
+    std::vector<GpuSector> gpuSectors;
+    std::vector<GpuSectorFloor> gpuSectorFloors;
 
     GLuint textVAO = 0;
     GLuint textVBO = 0;
@@ -249,7 +258,6 @@ private:
 
     std::vector<GpuDecal> gpuDecals;
     std::vector<GpuSprite> gpuSprites;
-    std::vector<GpuSector> gpuSectors;
     std::vector<GpuCollider> gpuColliders;
 
     std::vector<GPUTexture> textures;

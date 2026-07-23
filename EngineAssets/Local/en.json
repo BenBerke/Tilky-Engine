@@ -408,5 +408,12 @@
   "editor.tooltip.component.collider.is_trigger": "Triggers detect overlap but do not physically block movement.",
   "editor.tooltip.component.rigidbody.mass": "Mass in arbitrary units. Must be > 0 for dynamic bodies.",
   "editor.tooltip.component.rigidbody.gravity_scale": "Gravity multiplier (0 = floats, negative = repelled upward).",
-  "editor.tooltip.component.rigidbody.is_static": "Static bodies are unmovable by physics but still collide."
+  "editor.tooltip.component.rigidbody.is_static": "Static bodies are unmovable by physics but still collide.",
+  "sector.floor": "Floor",
+  "sector.add_floor": "Add Floor",
+  "sector.remove_floor": "Remove Floor",
+  "sector.lighting": "Lighting",
+  "editor.tooltip.sector.add_floor": "Adds another room interval above the current highest floor.",
+  "editor.tooltip.sector.remove_floor": "Removes this room interval. A sector must contain at least one floor.",
+  "editor.tooltip.sector.invalid_floor_heights": "The floor intervals overlap or the ceiling is not above the floor."
 }

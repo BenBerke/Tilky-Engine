@@ -92,6 +92,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
 
             "isValid", sol::property(&ScriptRigidbody::IsValid),
 
+            "isGrounded", sol::property(
+              &ScriptRigidbody::GetIsGrounded,
+              &ScriptRigidbody::SetIsGrounded
+            ),
+
             "isStatic", sol::property(
                 &ScriptRigidbody::GetIsStatic,
                 &ScriptRigidbody::SetIsStatic

@@ -249,99 +249,253 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawSectorEditor(Sector &sector, bool *open, const int sectorId, const bool draggable) {
-        bool deleteRequested = false;
+    bool DrawSectorEditor(Sector& sector, bool* open, const int sectorId, const bool draggable) {
+    constexpr float MIN_ROOM_HEIGHT = 0.01f;
 
-        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(Get("sector.title").c_str(), open, kInspectorFlags)) {
-            ImGui::End();
-            return false;
-        }
+    bool deleteRequested = false;
+    int floorToRemove = -1;
 
-        // ── Summary header ───────────────────────────────────────────────────
-        char idBuf[32] = "";
-        if (sectorId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", sectorId);
-        DrawInspectorHeader("Sector", idBuf);
+    if (sector.floors.empty()) {
+        sector.floors.push_back({
+            {0.0f, {255.0f, 255.0f, 255.0f}, {}},
+            {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+        });
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+
+    if (!ImGui::Begin(Get("sector.title").c_str(), open, kInspectorFlags)) {
+        ImGui::End();
+        return false;
+    }
+
+    char idBuf[32] = "";
+    if (sectorId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", sectorId);
+    DrawInspectorHeader("Sector", idBuf);
+
+    for (size_t floorIndex = 0; floorIndex < sector.floors.size(); ++floorIndex) {
+        ImGui::PushID(static_cast<int>(floorIndex));
+
+        SectorFloor &sectorFloor = sector.floors[floorIndex];
+        const std::string sectionTitle =
+                Get("sector.floor") + " " + std::to_string(floorIndex + 1);
+
+        BeginSection(sectionTitle.c_str());
 
         // ── Heights ──────────────────────────────────────────────────────────
-        BeginSection("Heights");
+
+        float floorHeight = sectorFloor.floor.height;
 
         FieldWidth(160.0f);
-        InputOrDrag(Get("sector.ceil_height").c_str(), &sector.ceilingHeight, draggable);
-        Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
 
-        FieldWidth(160.0f);
-        InputOrDrag(Get("sector.floor_height").c_str(), &sector.floorHeight, draggable);
+        if (InputOrDrag(Get("sector.floor_height").c_str(), &floorHeight, draggable)) {
+            const float minimumHeight =
+                    floorIndex > 0
+                        ? sector.floors[floorIndex - 1].ceiling.height
+                        : std::numeric_limits<float>::lowest();
+
+            const float maximumHeight =
+                    sectorFloor.ceiling.height - MIN_ROOM_HEIGHT;
+
+            if (minimumHeight <= maximumHeight) {
+                sectorFloor.floor.height =
+                        std::clamp(floorHeight, minimumHeight, maximumHeight);
+            }
+        }
+
         Tooltip(Get("editor.tooltip.sector.floor_height").c_str());
 
-        // Validation warning
-        if (sector.ceilingHeight < sector.floorHeight) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
-            ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_heights").c_str());
+        float ceilingHeight = sectorFloor.ceiling.height;
+
+        FieldWidth(160.0f);
+
+        if (InputOrDrag(Get("sector.ceil_height").c_str(), &ceilingHeight, draggable)) {
+            const float minimumHeight =
+                    sectorFloor.floor.height + MIN_ROOM_HEIGHT;
+
+            const float maximumHeight =
+                    floorIndex + 1 < sector.floors.size()
+                        ? sector.floors[floorIndex + 1].floor.height
+                        : std::numeric_limits<float>::max();
+
+            if (minimumHeight <= maximumHeight) {
+                sectorFloor.ceiling.height =
+                        std::clamp(ceilingHeight, minimumHeight, maximumHeight);
+            }
+        }
+
+        Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
+
+        const bool invalidRoom =
+                sectorFloor.floor.height >= sectorFloor.ceiling.height;
+
+        const bool overlapsPrevious =
+                floorIndex > 0 &&
+                sectorFloor.floor.height <
+                sector.floors[floorIndex - 1].ceiling.height;
+
+        const bool overlapsNext =
+                floorIndex + 1 < sector.floors.size() &&
+                sectorFloor.ceiling.height >
+                sector.floors[floorIndex + 1].floor.height;
+
+        if (invalidRoom || overlapsPrevious || overlapsNext) {
+            ImGui::PushStyleColor(
+                ImGuiCol_Text,
+                ImVec4(1.0f, 0.6f, 0.1f, 1.0f)
+            );
+
+            ImGui::TextWrapped(
+                Get("editor.tooltip.sector.invalid_floor_heights").c_str()
+            );
+
             ImGui::PopStyleColor();
         }
 
-        EndSection();
-
-        // ── Textures ─────────────────────────────────────────────────────────
-        BeginSection("Textures");
-
-        MapEditorInternal::DrawAssetField(Get("sector.floor_texture").c_str(), sector.floorTexture, AssetKind::Texture,
-                                          48.0f);
-        Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
-
-        MapEditorInternal::DrawAssetField(Get("sector.ceil_texture").c_str(), sector.ceilingTexture, AssetKind::Texture,
-                                          48.0f);
-        Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
-
-        EndSection();
-
-        // ── Colors ───────────────────────────────────────────────────────────
-        BeginSection("Colors");
-
-        FieldWidth(220.0f);
-        InputOrDrag3(Get("sector.ceil_color").c_str(), &sector.ceilingColor.x, draggable);
-        ResetFloat3Button("reset_ceil_color", &sector.ceilingColor.x);
-
-        FieldWidth(220.0f);
-        InputOrDrag3(Get("sector.floor_color").c_str(), &sector.floorColor.x, draggable);
-        ResetFloat3Button("reset_floor_color", &sector.floorColor.x);
-
-        EndSection();
-
-        // ── Lighting ─────────────────────────────────────────────────────────
-        BeginSection("Lighting");
-
-        FieldWidth(160.0f);
-        InputOrDrag(Get("sector.light_value").c_str(), &sector.lightValue, draggable);
-        Tooltip(Get("editor.tooltip.sector.light_value").c_str());
-
-        EndSection();
-
-        // ── Meta ─────────────────────────────────────────────────────────────
-        if (sectorId >= 0) {
-            ImGui::Spacing();
-            SmallMetaText("ID: %d", sector.id);
-        }
-
-        // ── Actions ──────────────────────────────────────────────────────────
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (DangerButton(Get("common.delete").c_str())) {
-            deleteRequested = true;
-            if (open) *open = false;
+        // ── Textures ─────────────────────────────────────────────────────────
+
+        MapEditorInternal::DrawAssetField(
+            Get("sector.floor_texture").c_str(),
+            sectorFloor.floor.texture,
+            AssetKind::Texture,
+            48.0f
+        );
+
+        Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
+
+        MapEditorInternal::DrawAssetField(
+            Get("sector.ceil_texture").c_str(),
+            sectorFloor.ceiling.texture,
+            AssetKind::Texture,
+            48.0f
+        );
+
+        Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ── Colors ───────────────────────────────────────────────────────────
+
+        FieldWidth(220.0f);
+
+        InputOrDrag3(
+            Get("sector.floor_color").c_str(),
+            &sectorFloor.floor.color.x,
+            draggable
+        );
+
+        ResetFloat3Button(
+            "reset_floor_color",
+            &sectorFloor.floor.color.x
+        );
+
+        FieldWidth(220.0f);
+
+        InputOrDrag3(
+            Get("sector.ceil_color").c_str(),
+            &sectorFloor.ceiling.color.x,
+            draggable
+        );
+
+        ResetFloat3Button(
+            "reset_ceil_color",
+            &sectorFloor.ceiling.color.x
+        );
+
+        ImGui::Spacing();
+
+        ImGui::BeginDisabled(sector.floors.size() <= 1);
+
+        if (DangerButton(Get("sector.remove_floor").c_str())) {
+            floorToRemove = static_cast<int>(floorIndex);
         }
-        Tooltip(Get("editor.tooltip.sector.delete").c_str());
 
-        ImGui::SameLine();
+        ImGui::EndDisabled();
 
-        if (ImGui::Button(Get("common.close").c_str()))
-            if (open) *open = false;
+        Tooltip(Get("editor.tooltip.sector.remove_floor").c_str());
 
-        ImGui::End();
-        return deleteRequested;
+        EndSection();
+        ImGui::PopID();
+    }
+
+    if (floorToRemove >= 0) {
+        sector.floors.erase(sector.floors.begin() + floorToRemove);
+    }
+
+    ImGui::Spacing();
+
+    if (ImGui::Button(Get("sector.add_floor").c_str())) {
+        const float floorHeight =
+                sector.floors.empty()
+                    ? 0.0f
+                    : sector.floors.back().ceiling.height + 10.0f;
+
+        sector.floors.push_back({
+            {
+                floorHeight,
+                {255.0f, 255.0f, 255.0f},
+                {}
+            },
+            {
+                floorHeight + 40.0f,
+                {255.0f, 255.0f, 255.0f},
+                {}
+            }
+        });
+    }
+
+    Tooltip(Get("editor.tooltip.sector.add_floor").c_str());
+
+    // ── Lighting ─────────────────────────────────────────────────────────────
+
+    BeginSection(Get("sector.lighting").c_str());
+
+    FieldWidth(160.0f);
+
+    InputOrDrag(
+        Get("sector.light_value").c_str(),
+        &sector.lightValue,
+        draggable
+    );
+
+    Tooltip(Get("editor.tooltip.sector.light_value").c_str());
+
+    EndSection();
+
+    // ── Meta ─────────────────────────────────────────────────────────────────
+
+    if (sectorId >= 0) {
+        ImGui::Spacing();
+        SmallMetaText("ID: %d", sector.id);
+    }
+
+    // ── Actions ──────────────────────────────────────────────────────────────
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    if (DangerButton(Get("common.delete").c_str())) {
+        deleteRequested = true;
+        if (open != nullptr) *open = false;
+    }
+
+    Tooltip(Get("editor.tooltip.sector.delete").c_str());
+
+    ImGui::SameLine();
+
+    if (ImGui::Button(Get("common.close").c_str())) {
+        if (open != nullptr) *open = false;
+    }
+
+    ImGui::End();
+    return deleteRequested;
     }
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor

@@ -80,6 +80,9 @@ struct ComponentRigidbody {
 
     Vector3 velocity = {.0f, .0f, .0f};
 
+    bool isGrounded = false;
+    Vector3 groundNormal = {.0f, 1.0f, .0f};
+
     void AddVelocity(const Vector3 &_velocity);
     void ApplyFriction(float _friction, float dt);
     void ApplyAirResistance(float resistance, float dt);
@@ -236,7 +239,6 @@ struct ComponentTransform {
 
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
-    [[nodiscard]] float GetSectorFloorHeight(const std::vector<Sector>& sectors) const;
     bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
 };
 

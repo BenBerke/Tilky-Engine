@@ -155,7 +155,7 @@ namespace MapEditorInternal {
     }
 
     void DrawExistingSectors() {
-        const Level& level = LevelManager::CurrentLevel();
+        const Level &level = LevelManager::CurrentLevel();
 
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
@@ -171,80 +171,124 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        const SDL_FColor hoveredSectorColor = {
+        constexpr SDL_FColor hoveredSectorColor = {
             1.0f,
             0.75f,
             0.0f,
             0.45f
         };
 
-        const int totalSectors = static_cast<int>(level.sectors.size());
+        const auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
+            float r = 0.0f;
+            float g = 0.0f;
+            float b = 0.0f;
 
-        auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
-            float r = 0.0f, g = 0.0f, b = 0.0f;
-            const int i = floor(h * 6);
-            const float f = h * 6 - i;
-            const float p = v * (1 - s);
-            const float q = v * (1 - f * s);
-            const float t = v * (1 - (1 - f) * s);
-            switch (i % 6) {
-                case 0: r = v, g = t, b = p; break;
-                case 1: r = q, g = v, b = p; break;
-                case 2: r = p, g = v, b = t; break;
-                case 3: r = p, g = q, b = v; break;
-                case 4: r = t, g = p, b = v; break;
-                case 5: r = v, g = p, b = q; break;
+            const int region = static_cast<int>(std::floor(h * 6.0f));
+            const float fraction = h * 6.0f - static_cast<float>(region);
+            const float p = v * (1.0f - s);
+            const float q = v * (1.0f - fraction * s);
+            const float t = v * (1.0f - (1.0f - fraction) * s);
+
+            switch (region % 6) {
+                case 0: r = v;
+                    g = t;
+                    b = p;
+                    break;
+                case 1: r = q;
+                    g = v;
+                    b = p;
+                    break;
+                case 2: r = p;
+                    g = v;
+                    b = t;
+                    break;
+                case 3: r = p;
+                    g = q;
+                    b = v;
+                    break;
+                case 4: r = t;
+                    g = p;
+                    b = v;
+                    break;
+                case 5: r = v;
+                    g = p;
+                    b = q;
+                    break;
                 default: break;
             }
-            return { r, g, b, .55f};
+
+            return {r, g, b, 0.55f};
         };
 
-        for (int i = 0; i < totalSectors; ++i) {
-            const Sector& sector = level.sectors[i];
+        const int totalSectors = static_cast<int>(level.sectors.size());
 
-            const float hue = std::fmod(static_cast<float>(i) * 0.618033988749895f, 1.0f);
+        for (int sectorIndex = 0; sectorIndex < totalSectors; ++sectorIndex) {
+            const Sector &sector = level.sectors[sectorIndex];
+
+            const float hue = std::fmod(
+                static_cast<float>(sectorIndex) * 0.618033988749895f,
+                1.0f
+            );
+
             const SDL_FColor normalSectorColor = HSVtoRGB(hue, 0.7f, 0.9f);
 
             const SDL_FColor sectorColor =
-                i == hoveredSectorIndex && currentMode == MODE_SECTOR
-                    ? hoveredSectorColor
-                    : normalSectorColor;
+                    sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR
+                        ? hoveredSectorColor
+                        : normalSectorColor;
 
-            //  Texture View Mode. Falls back safely to the normal
-            // editor color/white-box fill whenever the floor texture is -1
-            // or unavailable, so a missing texture can never break the view.
-            SDL_Texture* floorTexture = nullptr;
+            SDL_Texture *floorTexture = nullptr;
 
-            if (textureViewMode && !sector.floorTexture.empty()) floorTexture = GetEditorTexture(sector.floorTexture);
+            if (textureViewMode && !sector.floors.empty()) {
+                const std::string &textureFileName =
+                        sector.floors.front().floor.texture;
 
-            for (const Triangle& triangle : sector.triangles) {
-                if (floorTexture != nullptr)
-                    DrawFilledTriangleTextured(triangle, floorTexture, {1.0f, 1.0f, 1.0f, 1.0f});
-                else DrawFilledTriangle(triangle, sectorColor);
+                if (!textureFileName.empty()) {
+                    floorTexture = GetEditorTexture(textureFileName);
+                }
+            }
+
+            for (const Triangle &triangle: sector.triangles) {
+                if (floorTexture != nullptr) {
+                    DrawFilledTriangleTextured(
+                        triangle,
+                        floorTexture,
+                        {1.0f, 1.0f, 1.0f, 1.0f}
+                    );
+                } else {
+                    DrawFilledTriangle(triangle, sectorColor);
+                }
             }
         }
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
-        // Outline whichever sector is currently selected
-        // (e.g. via the Hierarchy panel), independent of mouse hover.
-        if (selectedSectorID != INVALID_ID) {
-            const Sector* selected = MapQueries::GetSectorByID(level, selectedSectorID);
+        if (selectedSectorID == INVALID_ID) return;
 
-            if (selected != nullptr && !selected->vertices.empty()) {
-                SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+        const Sector *selectedSector =
+                MapQueries::GetSectorByID(level, selectedSectorID);
 
-                const int n = static_cast<int>(selected->vertices.size());
+        if (selectedSector == nullptr || selectedSector->vertices.empty()) return;
 
-                for (int i = 0; i < n; ++i) {
-                    const Vector2 a = WorldToScreen(selected->vertices[i], cameraPos);
-                    const Vector2 b = WorldToScreen(selected->vertices[(i + 1) % n], cameraPos);
-                    DrawThickLine(renderer, a, b, 3.0f);
-                }
-            }
+        SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+
+        const int vertexCount =
+                static_cast<int>(selectedSector->vertices.size());
+
+        for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
+            const Vector2 start = WorldToScreen(
+                selectedSector->vertices[vertexIndex],
+                cameraPos
+            );
+
+            const Vector2 end = WorldToScreen(
+                selectedSector->vertices[(vertexIndex + 1) % vertexCount],
+                cameraPos
+            );
+
+            DrawThickLine(renderer, start, end, 3.0f);
         }
     }
-
     // "placedCorners" concept and are now ID-stable, off-grid-capable points.
     void DrawDots() {
         if (currentTheme == THEME_DARK)

@@ -22,6 +22,7 @@
 #include <cmath>
 #include <imgui.h>
 #include <numbers>
+#include <limits>
 
 namespace {
     IRenderer* runtimeRenderer = nullptr;
@@ -81,6 +82,7 @@ namespace {
     int selectedSector = -1;
 
     RayHitType selectedSectorSurface = RayHitType::None;
+    int selectedSectorFloor = -1;
 }
 
 namespace {
@@ -190,6 +192,7 @@ namespace RuntimeEditorUi {
                 editingSector = false;
                 selectedSector = -1;
                 selectedSectorSurface = RayHitType::None;
+                selectedSectorFloor = -1;
             }
             else {
                 bool open = true;
@@ -205,6 +208,7 @@ namespace RuntimeEditorUi {
                     editingSector = false;
                     selectedSector = -1;
                     selectedSectorSurface = RayHitType::None;
+                    selectedSectorFloor = -1;
                 }
             }
         }
@@ -384,6 +388,7 @@ namespace RuntimeEditor {
                     editingSector = false;
                     selectedSector = -1;
                     selectedSectorSurface = RayHitType::None;
+                    selectedSectorFloor = -1;
 
                     spdlog::info("Entity selection finished");
                     break;
@@ -414,6 +419,7 @@ namespace RuntimeEditor {
                     editingSector = false;
                     selectedSector = -1;
                     selectedSectorSurface = RayHitType::None;
+                    selectedSectorFloor = -1;
 
                     spdlog::info("Selected wall {}", selectedWall);
                     break;
@@ -433,12 +439,14 @@ namespace RuntimeEditor {
                         editingSector = false;
                         selectedSector = -1;
                         selectedSectorSurface = RayHitType::None;
+                        selectedSectorFloor = -1;
                         return;
                     }
 
                     editingSector = true;
                     selectedSector = sectorIndex;
                     selectedSectorSurface = hit->type;
+                    selectedSectorFloor = hit->sectorFloorIndex;
 
                     editingEntity = false;
                     selectedEntityId.reset();
@@ -448,8 +456,9 @@ namespace RuntimeEditor {
                     selectedWall = -1;
 
                     spdlog::info(
-                        "Selected sector {} surface={}",
+                        "Selected sector {} floor={} surface={}",
                         selectedSector,
+                        selectedSectorFloor,
                         hit->type == RayHitType::SectorFloor ? "floor" : "ceiling"
                     );
 
@@ -465,24 +474,53 @@ namespace RuntimeEditor {
 
         const float wheel = InputManager::GetMouseWheelScroll();
 
-        if (wheel != 0.0f && !mouseBlockedByImGui && hit.has_value() && hit->sector != nullptr) {
+        if (wheel != 0.0f &&
+            !mouseBlockedByImGui &&
+            hit.has_value() &&
+            hit->sector != nullptr &&
+            hit->sectorFloorIndex >= 0 &&
+            hit->sectorFloorIndex < static_cast<int>(hit->sector->floors.size())) {
             constexpr float HEIGHT_STEP = 1.0f;
-            constexpr float MIN_SECTOR_CLEARANCE = 1.0f;
+            constexpr float MIN_ROOM_HEIGHT = 1.0f;
 
             Sector& sector = *hit->sector;
+            const int floorIndex = hit->sectorFloorIndex;
+            SectorFloor& floor = sector.floors[floorIndex];
             const float heightDelta = wheel * HEIGHT_STEP;
 
-            if (hit->type == RayHitType::SectorCeiling) {
-                sector.ceilingHeight = std::max(
-                    sector.floorHeight + MIN_SECTOR_CLEARANCE,
-                    sector.ceilingHeight + heightDelta
-                );
+            if (hit->type == RayHitType::SectorFloor) {
+                const float minimumHeight =
+                    floorIndex > 0
+                        ? sector.floors[floorIndex - 1].ceiling.height
+                        : std::numeric_limits<float>::lowest();
+
+                const float maximumHeight =
+                    floor.ceiling.height - MIN_ROOM_HEIGHT;
+
+                if (minimumHeight <= maximumHeight) {
+                    floor.floor.height = std::clamp(
+                        floor.floor.height + heightDelta,
+                        minimumHeight,
+                        maximumHeight
+                    );
+                }
             }
-            else if (hit->type == RayHitType::SectorFloor) {
-                sector.floorHeight = std::min(
-                    sector.ceilingHeight - MIN_SECTOR_CLEARANCE,
-                    sector.floorHeight + heightDelta
-                );
+            else if (hit->type == RayHitType::SectorCeiling) {
+                const float minimumHeight =
+                    floor.floor.height + MIN_ROOM_HEIGHT;
+
+                const float maximumHeight =
+                    floorIndex + 1 < static_cast<int>(sector.floors.size())
+                        ? sector.floors[floorIndex + 1].floor.height
+                        : std::numeric_limits<float>::max();
+
+                if (minimumHeight <= maximumHeight) {
+                    floor.ceiling.height = std::clamp(
+                        floor.ceiling.height + heightDelta,
+                        minimumHeight,
+                        maximumHeight
+                    );
+                }
             }
         }
 
@@ -499,6 +537,15 @@ namespace RuntimeEditor {
         runtimeRenderer = nullptr;
         camera = nullptr;
         transform = nullptr;
+
+        editingEntity = false;
+        selectedEntityId.reset();
+        editingWall = false;
+        selectedWall = -1;
+        editingSector = false;
+        selectedSector = -1;
+        selectedSectorSurface = RayHitType::None;
+        selectedSectorFloor = -1;
 
         spdlog::info("Runtime editor shut down");
     }

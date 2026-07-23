@@ -23,40 +23,27 @@
 namespace fs = std::filesystem;
 
 namespace {
-    // Textures are referenced by filename now (Wall::textureFileName,
-    // Sector::floorTexture/ceilingTexture, ComponentSprite::textureFileNames)
-    // rather than by a permanent index into the removed Level::textures
-    // list. Collect every DISTINCT filename actually in use so each one
-    // gets packed into the atlas exactly once. std::set gives a stable,
-    // deterministic (alphabetical) pack order for free.
     std::vector<std::string> CollectReferencedTextureFileNames(const Level& level) {
         std::set<std::string> uniqueNames;
 
         for (const Wall& wall : level.walls) {
-            if (!wall.textureFileName.empty()) {
-                uniqueNames.insert(wall.textureFileName);
-            }
+            if (!wall.textureFileName.empty()) uniqueNames.insert(wall.textureFileName);
         }
 
         for (const Sector& sector : level.sectors) {
-            if (!sector.floorTexture.empty()) {
-                uniqueNames.insert(sector.floorTexture);
-            }
-
-            if (!sector.ceilingTexture.empty()) {
-                uniqueNames.insert(sector.ceilingTexture);
+            for (const SectorFloor& floor : sector.floors) {
+                if (!floor.floor.texture.empty()) uniqueNames.insert(floor.floor.texture);
+                if (!floor.ceiling.texture.empty()) uniqueNames.insert(floor.ceiling.texture);
             }
         }
 
         for (const ComponentSprite& sprite : level.sprites.components) {
             for (const std::string& fileName : sprite.textureFileNames) {
-                if (!fileName.empty()) {
-                    uniqueNames.insert(fileName);
-                }
+                if (!fileName.empty()) uniqueNames.insert(fileName);
             }
         }
 
-        return std::vector<std::string>(uniqueNames.begin(), uniqueNames.end());
+        return {uniqueNames.begin(), uniqueNames.end()};
     }
 }
 
@@ -451,15 +438,11 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 // it now - this definition replaces it, and having both will fail to link
 // with a duplicate symbol error.
 int OpenGL::GetTextureRegionIndex(const std::string& fileName) const {
-    if (fileName.empty()) {
-        return -1;
-    }
+    if (fileName.empty()) return -1;
 
     const auto found = textureRegionIndexByName.find(fileName);
 
-    if (found == textureRegionIndexByName.end()) {
-        return -1;
-    }
+    if (found == textureRegionIndexByName.end()) return -1;
 
     return found->second;
 }
@@ -509,10 +492,7 @@ bool OpenGL::InitProjection() {
 
     backgroundShader->use();
 
-    glUniform1i(
-        glGetUniformLocation(backgroundShader->ID, "backgroundTexture"),
-        0
-    );
+    glUniform1i(glGetUniformLocation(backgroundShader->ID, "backgroundTexture"), 0);
 
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
@@ -610,11 +590,8 @@ bool OpenGL::InitUI() {
 bool OpenGL::InitText() {
     using namespace OpenGLRendererInternal;
 
-    const fs::path glyphVsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.vs.glsl");
-
-    const fs::path glyphFsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.fs.glsl");
+    const fs::path glyphVsPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.vs.glsl");
+    const fs::path glyphFsPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.fs.glsl");
 
     textShader = std::make_unique<Shader>(
         glyphVsPath.string().c_str(),

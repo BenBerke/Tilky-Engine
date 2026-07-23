@@ -17,13 +17,6 @@ void ComponentTransform::AddPosition(const Vector3& position) {
     SetPosition(this->position + position);
 }
 
-float ComponentTransform::GetSectorFloorHeight(const std::vector<Sector>& sectors) const {
-    if (sectorIndex < 0 || sectorIndex >= static_cast<int>(sectors.size())) [[unlikely]]
-        return 0.0f;
-
-    return sectors[sectorIndex].floorHeight;
-}
-
 bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors) {
     if (this->ownerID == INVALID_ID || sectors.empty()) {
         sectorIndex = -1;
@@ -58,10 +51,6 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 
     if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
         sector.entitiesInside.push_back(this->ownerID);
-
-    // position.y is absolute world height.
-    // relativeHeight is height above the sector floor.
-    relativeHeight = position.y - sector.floorHeight;
 
     return true;
 }

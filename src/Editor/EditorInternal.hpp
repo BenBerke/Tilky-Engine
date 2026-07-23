@@ -67,16 +67,16 @@ namespace MapEditorInternal {
     // the instant a chain starts
     struct PendingSectorParams {
         std::string wallTexture;
-        std::string ceilTexture;
-        std::string floorTexture;
 
-        float floorHeight = 0.0f;
-        float ceilHeight = 0.0f;
+        std::vector<SectorFloor> floors = {
+            {
+                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
+                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+            }
+        };
+
         float lightValue = 255.0f;
-
-        Vector3 wallColor{};
-        Vector3 ceilColor{};
-        Vector3 floorColor{};
+        Vector3 wallColor = {255.0f, 255.0f, 255.0f};
     };
 
     // Whole-operation undo snapshot for ApplyDrawnGeometry - it can create

@@ -1,10 +1,12 @@
 //
 // Created by berke on 4/13/2026.
 //
+
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 #include "Headers/Engine/GameTime.hpp"
@@ -12,11 +14,14 @@
 #include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
-/// This is a built in script for handling player movement
-/// Anything in this script can technically be achieved through a user-made Lua script
+/// This is a built-in script for handling player movement.
+/// Anything in this script can technically be achieved through a user-made Lua script.
 
 namespace {
-    const Vector3 GetCameraPosition(const ComponentPlayerController& controller, const ComponentTransform& playerTransform) {
+    Vector3 GetCameraPosition(
+        const ComponentPlayerController& controller,
+        const ComponentTransform& playerTransform
+    ) {
         return {
             playerTransform.position.x,
             playerTransform.position.y + controller.eyeHeight,
@@ -40,25 +45,26 @@ namespace {
 
 namespace PlayerControllerSystem {
     void Start(
-        ComponentPlayerController &controller,
-        const ComponentTransform &playerTransform,
-        const ComponentRigidbody &rigidbody,
-        const ComponentCamera &camera,
-        const std::vector<Sector> &sectors
+        ComponentPlayerController& controller,
+        const ComponentTransform& playerTransform,
+        const ComponentRigidbody& rigidbody,
+        const ComponentCamera& camera,
+        const std::vector<Sector>& sectors
     ) {
-        (void) sectors;
-
+        (void)sectors;
         UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 
     void Update(
-        ComponentPlayerController &controller,
-        ComponentTransform &playerTransform,
-        ComponentCamera &camera,
-        ComponentRigidbody &rigidbody,
-        ComponentCollider *sphereCollider,
-        const std::vector<Sector> &sectors
+        ComponentPlayerController& controller,
+        ComponentTransform& playerTransform,
+        ComponentCamera& camera,
+        ComponentRigidbody& rigidbody,
+        ComponentCollider* sphereCollider,
+        const std::vector<Sector>& sectors
     ) {
+        (void)sectors;
+
         Vector2 input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
@@ -66,49 +72,65 @@ namespace PlayerControllerSystem {
         if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
 
-        const bool grounded =
-        playerTransform.sectorIndex != -1 &&
-        std::abs(playerTransform.position.y - sectors[playerTransform.sectorIndex].floorHeight) < 0.05f &&
-        rigidbody.velocity.y <= 0.0f;
+        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) {
+            jumpPressedTimeStamp = GameTime::timeInSeconds;
+        }
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::timeInSeconds;
+        const double jumpBufferSeconds =
+            static_cast<double>(controller.jumpBufferMs) / 1000.0;
 
-        // GameTime::time is seconds. controller.jumpBufferMs is milliseconds.
-        const double jumpBufferSeconds = static_cast<double>(controller.jumpBufferMs) / 1000.0;
+        const double jumpBufferAge =
+            GameTime::timeInSeconds - jumpPressedTimeStamp;
 
-        const double jumpBufferAge = GameTime::timeInSeconds - jumpPressedTimeStamp;
+        const bool hasBufferedJump =
+            jumpBufferAge >= 0.0 &&
+            jumpBufferAge <= jumpBufferSeconds;
 
-        const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
-
-        if (hasBufferedJump && grounded) {
+        if (hasBufferedJump && rigidbody.isGrounded) {
             rigidbody.velocity.y = controller.jumpPower;
+            rigidbody.isGrounded = false;
+            rigidbody.groundNormal = {};
             jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
         }
 
-        // Optional cleanup: expire old buffered input.
-        if (jumpBufferAge > jumpBufferSeconds) jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+        if (jumpBufferAge > jumpBufferSeconds) {
+            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+        }
 
         controller.currentSpeed =
-                InputManager::GetKey(SDL_SCANCODE_LSHIFT) && InputManager::GetKey(SDL_SCANCODE_W)
-                    ? controller.runningSpeed
-                    : controller.speed;
+            InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
+            InputManager::GetKey(SDL_SCANCODE_W)
+                ? controller.runningSpeed
+                : controller.speed;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
+        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
+            controller.noClip = !controller.noClip;
+        }
 
-        if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
+        if (sphereCollider != nullptr) {
+            sphereCollider->isActive = !controller.noClip;
+        }
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
-        camera.pitch = std::clamp(camera.pitch, controller.minPitch, controller.maxPitch);
+        camera.pitch = std::clamp(
+            camera.pitch,
+            controller.minPitch,
+            controller.maxPitch
+        );
 
         camera.yaw = std::fmod(camera.yaw, 360.0f);
-
         if (camera.yaw < 0.0f) camera.yaw += 360.0f;
 
-        camera.yaw = std::clamp(camera.yaw, controller.minYaw, controller.maxYaw);
+        camera.yaw = std::clamp(
+            camera.yaw,
+            controller.minYaw,
+            controller.maxYaw
+        );
 
-        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float yawRadians =
+            camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
@@ -117,9 +139,11 @@ namespace PlayerControllerSystem {
         const Vector2 right = {yawCos, -yawSin};
 
         if (input.x != 0.0f || input.y != 0.0f) {
-            const Vector2 moveDirection = Vector2Math::Normalized(right * input.x + forward * input.y);
+            const Vector2 moveDirection =
+                Vector2Math::Normalized(right * input.x + forward * input.y);
 
-            const Vector2 desiredVelocity = moveDirection * controller.currentSpeed;
+            const Vector2 desiredVelocity =
+                moveDirection * controller.currentSpeed;
 
             rigidbody.velocity.x = desiredVelocity.x;
             rigidbody.velocity.z = desiredVelocity.y;
@@ -128,8 +152,6 @@ namespace PlayerControllerSystem {
             rigidbody.velocity.x = 0.0f;
             rigidbody.velocity.z = 0.0f;
         }
-
-        (void)sectors; // Prevents annoying warnings
 
         UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }

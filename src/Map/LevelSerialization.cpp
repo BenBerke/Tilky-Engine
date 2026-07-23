@@ -966,14 +966,10 @@ namespace {
                 const ID ownerID =
                         rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
 
-                if (ownerID == INVALID_ENTITY_ID) {
-                    continue;
-                }
+                if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) {
-                    continue;
-                }
+                if (entity == nullptr) continue;
 
                 ComponentRigidbody &c = level.rigidbodies.Add(ownerID);
                 entity->componentsMask.set(CMP_RIGIDBODY);

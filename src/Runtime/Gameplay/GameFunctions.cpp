@@ -4,12 +4,30 @@
 
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <optional>
+#include <vector>
+
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/Constants.hpp"
 
 namespace {
-    std::optional<float> RayTriangleIntersection(const Vector3 &origin, const Vector3 &dir,
-                                                 const Vector3 &v0, const Vector3 &v1, const Vector3 &v2,
-                                                 const float maxDistance) {
+    constexpr float MIN_WALL_HEIGHT = 0.0001f;
+
+    struct WallSpan {
+        float bottom;
+        float top;
+    };
+
+    std::optional<float> RayTriangleIntersection(
+        const Vector3& origin,
+        const Vector3& dir,
+        const Vector3& v0,
+        const Vector3& v1,
+        const Vector3& v2,
+        const float maxDistance
+    ) {
         const Vector3 edge1 = v1 - v0;
         const Vector3 edge2 = v2 - v0;
 
@@ -19,62 +37,65 @@ namespace {
         if (std::abs(det) < Constants::Epsilon) return std::nullopt;
 
         const float invDet = 1.0f / det;
-
         const Vector3 tvec = origin - v0;
         const float u = Vector3Math::Dot(tvec, pvec) * invDet;
+
         if (u < 0.0f || u > 1.0f) return std::nullopt;
 
         const Vector3 qvec = Vector3Math::Cross(tvec, edge1);
         const float v = Vector3Math::Dot(dir, qvec) * invDet;
+
         if (v < 0.0f || u + v > 1.0f) return std::nullopt;
 
         const float t = Vector3Math::Dot(edge2, qvec) * invDet;
+
         if (t < 0.0f || t > maxDistance) return std::nullopt;
 
         return t;
     }
 
-    std::optional<float> RaySphereIntersection(const Vector3 &origin, const Vector3 &dir,
-                                               const Vector3 &sphereCenter, const float radius,
-                                               const float maxDistance) {
+    std::optional<float> RaySphereIntersection(
+        const Vector3& origin,
+        const Vector3& dir,
+        const Vector3& sphereCenter,
+        const float radius,
+        const float maxDistance
+    ) {
         const Vector3 oc = origin - sphereCenter;
-
         const float b = Vector3Math::Dot(oc, dir);
         const float c = Vector3Math::Dot(oc, oc) - radius * radius;
-
         const float discriminant = b * b - c;
 
         if (discriminant < 0.0f) return std::nullopt;
 
-        const float sqrtDisc = std::sqrt(discriminant);
+        const float sqrtDiscriminant = std::sqrt(discriminant);
+        float t = -b - sqrtDiscriminant;
 
-        float t = -b - sqrtDisc;
-
-        // Ray starts inside the sphere.
-        if (t < 0.0f) t = -b + sqrtDisc;
-
+        if (t < 0.0f) t = -b + sqrtDiscriminant;
         if (t < 0.0f || t > maxDistance) return std::nullopt;
 
         return t;
     }
 
     std::optional<float> RayAABBIntersection(
-        const Vector3 &rayOrigin,
-        const Vector3 &rayDir,
-        const Vector3 &boxMin,
-        const Vector3 &boxMax,
+        const Vector3& rayOrigin,
+        const Vector3& rayDir,
+        const Vector3& boxMin,
+        const Vector3& boxMax,
         const float maxDistance
     ) {
         float tMin = 0.0f;
         float tMax = maxDistance;
 
-        auto checkAxis = [&](
+        const auto checkAxis = [&](
             const float originAxis,
             const float dirAxis,
             const float minAxis,
             const float maxAxis
-        ) -> bool {
-            if (std::abs(dirAxis) < Constants::Epsilon) return originAxis >= minAxis && originAxis <= maxAxis;
+        ) {
+            if (std::abs(dirAxis) < Constants::Epsilon) {
+                return originAxis >= minAxis && originAxis <= maxAxis;
+            }
 
             float t1 = (minAxis - originAxis) / dirAxis;
             float t2 = (maxAxis - originAxis) / dirAxis;
@@ -94,13 +115,72 @@ namespace {
 
         return tMin;
     }
+
+    bool IsSectorOpenAtHeight(const Sector& sector, const float height) {
+        for (const SectorFloor& floor : sector.floors) {
+            if (height > floor.floor.height && height < floor.ceiling.height) return true;
+        }
+
+        return false;
+    }
+
+    void AddSectorBoundaryHeights(const Sector& sector, std::vector<float>& heights) {
+        for (const SectorFloor& floor : sector.floors) {
+            heights.push_back(floor.floor.height);
+            heights.push_back(floor.ceiling.height);
+        }
+    }
+
+    std::vector<WallSpan> BuildWallSpans(const Sector* frontSector, const Sector* backSector) {
+        std::vector<float> heights;
+
+        if (frontSector != nullptr) AddSectorBoundaryHeights(*frontSector, heights);
+        if (backSector != nullptr) AddSectorBoundaryHeights(*backSector, heights);
+
+        std::ranges::sort(heights);
+
+        heights.erase(
+            std::unique(
+                heights.begin(),
+                heights.end(),
+                [](const float a, const float b) {
+                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
+                }
+            ),
+            heights.end()
+        );
+
+        std::vector<WallSpan> spans;
+
+        for (size_t i = 0; i + 1 < heights.size(); ++i) {
+            const float bottom = heights[i];
+            const float top = heights[i + 1];
+
+            if (top - bottom <= MIN_WALL_HEIGHT) continue;
+
+            const float sampleHeight = (bottom + top) * 0.5f;
+            const bool frontOpen = frontSector != nullptr && IsSectorOpenAtHeight(*frontSector, sampleHeight);
+            const bool backOpen = backSector != nullptr && IsSectorOpenAtHeight(*backSector, sampleHeight);
+
+            if (frontOpen == backOpen) continue;
+
+            if (!spans.empty() && std::abs(spans.back().top - bottom) <= MIN_WALL_HEIGHT) {
+                spans.back().top = top;
+            }
+            else {
+                spans.push_back({bottom, top});
+            }
+        }
+
+        return spans;
+    }
 }
 
 namespace GameFunctions {
     std::optional<RayHit> Raycast(
-        Level &level,
+        Level& level,
         const Vector3 pos,
-        const Vector3 &dir,
+        const Vector3& dir,
         const float length,
         const ID ignoredEntity,
         const bool requireCollider
@@ -112,7 +192,7 @@ namespace GameFunctions {
         std::optional<RayHit> rayHit;
         float closestDistance = length;
 
-        auto submitWallHit = [&](Wall &wall, const float distance) {
+        const auto submitWallHit = [&](Wall& wall, const float distance) {
             if (distance >= closestDistance) return;
 
             closestDistance = distance;
@@ -122,13 +202,14 @@ namespace GameFunctions {
             hit.wall = &wall;
             hit.entity = nullptr;
             hit.sector = nullptr;
+            hit.sectorFloorIndex = -1;
             hit.position = pos + normalizedDir * distance;
             hit.distance = distance;
 
             rayHit = hit;
         };
 
-        auto submitEntityHit = [&](Entity &entity, const float distance) {
+        const auto submitEntityHit = [&](Entity& entity, const float distance) {
             if (distance >= closestDistance) return;
 
             closestDistance = distance;
@@ -138,14 +219,16 @@ namespace GameFunctions {
             hit.wall = nullptr;
             hit.entity = &entity;
             hit.sector = nullptr;
+            hit.sectorFloorIndex = -1;
             hit.position = pos + normalizedDir * distance;
             hit.distance = distance;
 
             rayHit = hit;
         };
 
-        auto submitSectorHit = [&](
-            Sector &sector,
+        const auto submitSectorHit = [&](
+            Sector& sector,
+            const int floorIndex,
             const RayHitType type,
             const float distance
         ) {
@@ -158,27 +241,32 @@ namespace GameFunctions {
             hit.wall = nullptr;
             hit.entity = nullptr;
             hit.sector = &sector;
+            hit.sectorFloorIndex = floorIndex;
             hit.position = pos + normalizedDir * distance;
             hit.distance = distance;
 
             rayHit = hit;
         };
 
-        // TODO: Use spatial partitioning instead of checking every wall.
-        for (Wall &wall: level.walls) {
-            for (int j = 0; j < wall.quad3DCount; ++j) {
-                const auto &quad = wall.quads3D[j];
+        for (Wall& wall : level.walls) {
+            const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
+            const Sector* backSector = MapQueries::GetSectorByID(level, wall.backSector);
 
-                // wall.quads3D must now use:
-                // x = world X
-                // y = world Y / vertical
-                // z = world Z / depth
-                const Vector3 &bottomStart = quad[0];
-                const Vector3 &bottomEnd = quad[1];
-                const Vector3 &topEnd = quad[2];
-                const Vector3 &topStart = quad[3];
+            if (frontSector == backSector) backSector = nullptr;
 
-                const std::optional<float> hitA = RayTriangleIntersection(
+            std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector);
+
+            if (spans.empty() && frontSector == nullptr && backSector == nullptr) {
+                spans.push_back({0.0f, 32.0f});
+            }
+
+            for (const WallSpan& span : spans) {
+                const Vector3 bottomStart = {wall.start.x, span.bottom, wall.start.y};
+                const Vector3 bottomEnd = {wall.end.x, span.bottom, wall.end.y};
+                const Vector3 topEnd = {wall.end.x, span.top, wall.end.y};
+                const Vector3 topStart = {wall.start.x, span.top, wall.start.y};
+
+                const std::optional<float> firstHit = RayTriangleIntersection(
                     pos,
                     normalizedDir,
                     bottomStart,
@@ -187,11 +275,9 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitA.has_value()) {
-                    submitWallHit(wall, *hitA);
-                }
+                if (firstHit.has_value()) submitWallHit(wall, *firstHit);
 
-                const std::optional<float> hitB = RayTriangleIntersection(
+                const std::optional<float> secondHit = RayTriangleIntersection(
                     pos,
                     normalizedDir,
                     bottomStart,
@@ -200,31 +286,16 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitB.has_value()) {
-                    submitWallHit(wall, *hitB);
-                }
+                if (secondHit.has_value()) submitWallHit(wall, *secondHit);
             }
         }
 
-        // Entity coordinate convention:
-        // position.x = world X
-        // position.y = world Y / vertical
-        // position.z = world Z / depth
-        //
-        // position.y represents the entity's bottom/feet height.
-        for (Entity &entity: level.entities) {
+        for (Entity& entity : level.entities) {
             if (entity.id == ignoredEntity) continue;
 
-            const ComponentTransform *transform = level.transforms.Get(entity.id);
+            const ComponentTransform* transform = level.transforms.Get(entity.id);
             if (transform == nullptr) [[unlikely]] continue;
 
-            // Raycast entities using their transform bounds when a collider
-            // is not required.
-            //
-            // Transform scale convention:
-            // scale.x = width along world X
-            // scale.y = height along world Y
-            // scale.z = depth along world Z
             if (!requireCollider) {
                 const Vector3 halfSize = transform->scale * 0.5f;
 
@@ -248,23 +319,17 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
-                    submitEntityHit(entity, *hitDistance);
-                }
-
+                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
                 continue;
             }
 
-            const ComponentCollider *collider = level.colliders.Get(entity.id);
+            const ComponentCollider* collider = level.colliders.Get(entity.id);
 
-            if (collider == nullptr) continue;
-            if (collider->isTrigger) continue;
+            if (collider == nullptr || !collider->isActive || collider->isTrigger) continue;
 
             if (collider->type == COLLIDERTYPE_SPHERE) {
-                const float radius = transform->scale.x;
+                const float radius = std::max(0.0f, collider->scale.x);
 
-                // position.y is the bottom of the sphere, so its center is
-                // one radius above the entity's position.
                 const Vector3 center = {
                     transform->position.x,
                     transform->position.y + radius,
@@ -279,10 +344,9 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
-                    submitEntityHit(entity, *hitDistance);
-                }
-            } else if (collider->type == COLLIDERTYPE_BOX) {
+                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+            }
+            else if (collider->type == COLLIDERTYPE_BOX) {
                 const Vector3 halfSize = collider->scale * 0.5f;
 
                 const Vector3 boxMin = {
@@ -305,87 +369,58 @@ namespace GameFunctions {
                     closestDistance
                 );
 
-                if (hitDistance.has_value()) {
-                    submitEntityHit(entity, *hitDistance);
-                }
+                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
             }
         }
 
-        // Sector triangle coordinates are stored in the horizontal XZ plane:
-        // triangle point x = world X
-        // triangle point y = world Z
-        //
-        // floorHeight and ceilingHeight are world Y values.
-        for (Sector &sector: level.sectors) {
-            for (const Triangle &triangle: sector.triangles) {
-                const Vector3 floorA = {
-                    triangle.a.x,
-                    sector.floorHeight,
-                    triangle.a.y
-                };
+        for (Sector& sector : level.sectors) {
+            for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+                const SectorFloor& floor = sector.floors[floorIndex];
 
-                const Vector3 floorB = {
-                    triangle.b.x,
-                    sector.floorHeight,
-                    triangle.b.y
-                };
+                for (const Triangle& triangle : sector.triangles) {
+                    const Vector3 floorA = {triangle.a.x, floor.floor.height, triangle.a.y};
+                    const Vector3 floorB = {triangle.b.x, floor.floor.height, triangle.b.y};
+                    const Vector3 floorC = {triangle.c.x, floor.floor.height, triangle.c.y};
 
-                const Vector3 floorC = {
-                    triangle.c.x,
-                    sector.floorHeight,
-                    triangle.c.y
-                };
-
-                const std::optional<float> floorHit = RayTriangleIntersection(
-                    pos,
-                    normalizedDir,
-                    floorA,
-                    floorB,
-                    floorC,
-                    closestDistance
-                );
-
-                if (floorHit.has_value()) {
-                    submitSectorHit(
-                        sector,
-                        RayHitType::SectorFloor,
-                        *floorHit
+                    const std::optional<float> floorHit = RayTriangleIntersection(
+                        pos,
+                        normalizedDir,
+                        floorA,
+                        floorB,
+                        floorC,
+                        closestDistance
                     );
-                }
 
-                const Vector3 ceilingA = {
-                    triangle.a.x,
-                    sector.ceilingHeight,
-                    triangle.a.y
-                };
+                    if (floorHit.has_value()) {
+                        submitSectorHit(
+                            sector,
+                            floorIndex,
+                            RayHitType::SectorFloor,
+                            *floorHit
+                        );
+                    }
 
-                const Vector3 ceilingB = {
-                    triangle.b.x,
-                    sector.ceilingHeight,
-                    triangle.b.y
-                };
+                    const Vector3 ceilingA = {triangle.a.x, floor.ceiling.height, triangle.a.y};
+                    const Vector3 ceilingB = {triangle.b.x, floor.ceiling.height, triangle.b.y};
+                    const Vector3 ceilingC = {triangle.c.x, floor.ceiling.height, triangle.c.y};
 
-                const Vector3 ceilingC = {
-                    triangle.c.x,
-                    sector.ceilingHeight,
-                    triangle.c.y
-                };
-
-                const std::optional<float> ceilingHit = RayTriangleIntersection(
-                    pos,
-                    normalizedDir,
-                    ceilingA,
-                    ceilingB,
-                    ceilingC,
-                    closestDistance
-                );
-
-                if (ceilingHit.has_value()) {
-                    submitSectorHit(
-                        sector,
-                        RayHitType::SectorCeiling,
-                        *ceilingHit
+                    const std::optional<float> ceilingHit = RayTriangleIntersection(
+                        pos,
+                        normalizedDir,
+                        ceilingA,
+                        ceilingB,
+                        ceilingC,
+                        closestDistance
                     );
+
+                    if (ceilingHit.has_value()) {
+                        submitSectorHit(
+                            sector,
+                            floorIndex,
+                            RayHitType::SectorCeiling,
+                            *ceilingHit
+                        );
+                    }
                 }
             }
         }
