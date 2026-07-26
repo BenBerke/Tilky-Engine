@@ -128,7 +128,8 @@ int main(int argc, char *argv[]) {
             std::cerr << "Failed to read base file: " << basePath << "\n";
             return 1;
         }
-    } else {
+    }
+    else {
         std::cout << "Base '" << firstInput << "' could not be found, falling back to en.json\n";
         const fs::path enPath = localDir / "en.json";
         baseContents = ReadEntireFile(enPath);
@@ -143,7 +144,8 @@ int main(int argc, char *argv[]) {
     if (foundTarget) {
         const fs::path targetPath = localDir / (secondInput + ".json");
         targetContents = ReadEntireFile(targetPath);
-    } else {
+    }
+    else {
         std::cout << "Target '" << secondInput << "' could not be found, creating new file\n";
         targetContents = "{}";
     }
@@ -168,11 +170,8 @@ int main(int argc, char *argv[]) {
     }
 
     // Merge missing keys
-    for (auto &[key, value] : baseJson.items()) {
-        if (!targetJson.contains(key)) {
-            targetJson[key] = "$Missing Translation";
-        }
-    }
+    for (auto &[key, value] : baseJson.items())
+        if (!targetJson.contains(key)) targetJson[key] = "$Missing Translation";
 
     // Write output
     const fs::path destinationPath = localDir / (secondInput + ".json");

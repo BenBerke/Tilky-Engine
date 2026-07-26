@@ -329,13 +329,122 @@ set(TILKY_RUNTIME_SOURCES
 )
 
 # ============================================================
+# Build-generated unified executable sources
+# Repository source files are not modified.
+# ============================================================
+
+set(TILKY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/Generated")
+file(MAKE_DIRECTORY "${TILKY_GENERATED_DIR}")
+
+# The editor currently starts tilky_exporter as a separate executable. Generate
+# a build-tree copy that starts Tilky_Engine --export instead, keeping the final
+# runtime directory limited to Tilky_Engine and Standalone.
+set(TILKY_MAP_EDITOR_UI_SOURCE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/Editor/MapEditor/MapEditorUI.cpp"
+)
+set(TILKY_GENERATED_MAP_EDITOR_UI
+        "${TILKY_GENERATED_DIR}/MapEditorUI.generated.cpp"
+)
+
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${TILKY_MAP_EDITOR_UI_SOURCE}"
+)
+
+file(READ "${TILKY_MAP_EDITOR_UI_SOURCE}" TILKY_MAP_EDITOR_UI_CONTENT)
+
+string(FIND "${TILKY_MAP_EDITOR_UI_CONTENT}"
+        [=[engineBasePath / "tilky_exporter.exe"]=]
+        TILKY_EXPORTER_WINDOWS_PATH_POSITION
+)
+string(FIND "${TILKY_MAP_EDITOR_UI_CONTENT}"
+        [=[engineBasePath / "tilky_exporter"]=]
+        TILKY_EXPORTER_UNIX_PATH_POSITION
+)
+string(FIND "${TILKY_MAP_EDITOR_UI_CONTENT}"
+        [=[L"\"" + exporterExe.wstring() + L"\" " +]=]
+        TILKY_EXPORTER_WINDOWS_COMMAND_POSITION
+)
+string(FIND "${TILKY_MAP_EDITOR_UI_CONTENT}"
+        [=[exporterExe.c_str(), exporterExe.c_str(),]=]
+        TILKY_EXPORTER_UNIX_COMMAND_POSITION
+)
+
+if(TILKY_EXPORTER_WINDOWS_PATH_POSITION EQUAL -1 OR
+        TILKY_EXPORTER_WINDOWS_COMMAND_POSITION EQUAL -1 OR
+        TILKY_EXPORTER_UNIX_PATH_POSITION EQUAL -1 OR
+        TILKY_EXPORTER_UNIX_COMMAND_POSITION EQUAL -1)
+    message(FATAL_ERROR
+            "MapEditorUI.cpp exporter code no longer matches the CMake-only integration"
+    )
+endif()
+
+string(REPLACE
+        [=[engineBasePath / "tilky_exporter.exe"]=]
+        [=[engineBasePath / "Tilky_Engine.exe"]=]
+        TILKY_MAP_EDITOR_UI_CONTENT
+        "${TILKY_MAP_EDITOR_UI_CONTENT}"
+)
+string(REPLACE
+        [=[engineBasePath / "tilky_exporter"]=]
+        [=[engineBasePath / "Tilky_Engine"]=]
+        TILKY_MAP_EDITOR_UI_CONTENT
+        "${TILKY_MAP_EDITOR_UI_CONTENT}"
+)
+string(REPLACE
+        [=[L"\"" + exporterExe.wstring() + L"\" " +]=]
+        [=[L"\"" + exporterExe.wstring() + L"\" --export " +]=]
+        TILKY_MAP_EDITOR_UI_CONTENT
+        "${TILKY_MAP_EDITOR_UI_CONTENT}"
+)
+string(REPLACE
+        [=[exporterExe.c_str(), exporterExe.c_str(),]=]
+        [=[exporterExe.c_str(), exporterExe.c_str(), "--export",]=]
+        TILKY_MAP_EDITOR_UI_CONTENT
+        "${TILKY_MAP_EDITOR_UI_CONTENT}"
+)
+
+file(WRITE "${TILKY_GENERATED_MAP_EDITOR_UI}"
+        "${TILKY_MAP_EDITOR_UI_CONTENT}"
+)
+
+# LauncherMain.cpp and EngineMain.cpp already contain their own main functions.
+# Rename those functions for this target and provide one generated dispatcher.
+set(TILKY_GENERATED_ENTRY
+        "${TILKY_GENERATED_DIR}/TilkyUnifiedEntry.generated.cpp"
+)
+
+file(WRITE "${TILKY_GENERATED_ENTRY}" [=[
+#include <cstring>
+
+#define SDL_MAIN_HANDLED
+#include <SDL3/SDL_main.h>
+
+int TilkyLauncherMain(int argc, char** argv);
+int TilkyEditorMain(int argc, char** argv);
+int TilkyExporterMain(int argc, char** argv);
+
+int main(const int argc, char** argv) {
+    SDL_SetMainReady();
+
+    if (argc > 1 && std::strcmp(argv[1], "--export") == 0)
+        return TilkyExporterMain(argc - 1, argv + 1);
+
+    for (int i = 1; i < argc; ++i)
+        if (std::strcmp(argv[i], "--project") == 0)
+            return TilkyEditorMain(argc, argv);
+
+    return TilkyLauncherMain(argc, argv);
+}
+]=])
+
+# ============================================================
 # Editor source list
 # ============================================================
 
 set(TILKY_EDITOR_SOURCES
         src/Editor/MapEditor/MapEditorDrawing.cpp
         src/Editor/MapEditor/MapEditorGeometry.cpp
-        src/Editor/MapEditor/MapEditorUI.cpp
+        ${TILKY_GENERATED_MAP_EDITOR_UI}
         src/Editor/MapEditor/MapEditorInput.cpp
 
         src/Editor/ImGuiDrawFunctions.cpp
@@ -486,8 +595,6 @@ if(WIN32)
 
     set(TILKY_GENERATED_ICON_RC
             "${CMAKE_CURRENT_BINARY_DIR}/TilkyIcon.generated.rc"
-            Headers/Editor/AssetBrowser.hpp
-            Headers/Map/MapTopology.hpp
     )
 
     configure_file(
@@ -608,39 +715,83 @@ function(configure_tilky_engine_executable target_name)
 endfunction()
 
 # ============================================================
-# Runnable 1: Tilky_Launcher
+# Unified executable entry points
 # ============================================================
 
-add_executable(Tilky_Launcher
+set_source_files_properties(
+        "${TILKY_GENERATED_ENTRY}"
+        PROPERTIES
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
+)
+
+set_source_files_properties(
         src/Launcher/LauncherMain.cpp
-        ${TILKY_ICON_OBJECTS}
+        PROPERTIES
+        COMPILE_DEFINITIONS "SDL_MAIN_HANDLED;main=TilkyLauncherMain"
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
 )
 
-target_link_libraries(Tilky_Launcher PRIVATE
-        Tilky_LauncherCore
+set_source_files_properties(
+        src/EngineApp/EngineMain.cpp
+        PROPERTIES
+        COMPILE_DEFINITIONS "SDL_MAIN_HANDLED;main=TilkyEditorMain"
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
 )
 
-set_target_properties(Tilky_Launcher PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+set_source_files_properties(
+        Tools/TilkyExporter/TilkyExporter.cpp
+        PROPERTIES
+        COMPILE_DEFINITIONS "main=TilkyExporterMain"
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
+)
+
+# Remove files left by the previous executable layout. These are not targets in
+# this build and must not remain launchable beside the current binaries.
+foreach(stale_executable
+        Tilky_Launcher
+        Tilky_All
+        Tilky_Exporter
+        tilky_exporter
+        tilky_localise
+)
+    file(REMOVE
+            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${stale_executable}${CMAKE_EXECUTABLE_SUFFIX}"
+    )
+endforeach()
 
 # ============================================================
-# Runnable 2: Tilky_Engine
-# Editor + runtime in one executable.
+# Runnable 1: Tilky_Engine
+# No arguments: launcher
+# --project <project.tilky>: editor
+# --export <project.tilky> <output> <Standalone>: exporter
 # ============================================================
 
 add_executable(Tilky_Engine
+        "${TILKY_GENERATED_ENTRY}"
+        src/Launcher/LauncherMain.cpp
         src/EngineApp/EngineMain.cpp
+        Tools/TilkyExporter/TilkyExporter.cpp
         ${TILKY_ENGINE_SOURCES}
         ${TILKY_ICON_OBJECTS}
 )
 
 configure_tilky_engine_executable(Tilky_Engine)
 
+target_link_libraries(Tilky_Engine PRIVATE
+        Tilky_LauncherCore
+)
+
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
 )
 
 # ============================================================
-# Runnable 3: Standalone
+# Runnable 2: Standalone
+# Copied into exported projects by the integrated exporter.
 # ============================================================
 
 add_executable(Tilky_Standalone
@@ -660,40 +811,12 @@ target_compile_definitions(Tilky_Standalone PRIVATE
         TILKY_STANDALONE=1
 )
 
-# ============================================================
-# Runnable 4: Tilky_Exporter
-# ============================================================
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/Exporter/ExporterMain.cpp")
-    add_executable(Tilky_Exporter
-            src/Exporter/ExporterMain.cpp
-            ${TILKY_ENGINE_SOURCES}
-            ${TILKY_ICON_OBJECTS}
-    )
-
-    configure_tilky_engine_executable(Tilky_Exporter)
-
-    target_compile_definitions(Tilky_Exporter PRIVATE
-            TILKY_EXPORTER=1
-            TILKY_EDITOR=1
-    )
-endif()
-
-# ============================================================
-# Runnable 5: Tilky_All
-# Build group only. Not an executable.
-# ============================================================
-
-add_custom_target(Tilky_All
-        DEPENDS
-        Tilky_Launcher
+# Build group only. It does not create or launch an executable.
+add_custom_target(Tilky_All)
+add_dependencies(Tilky_All
         Tilky_Engine
         Tilky_Standalone
 )
-
-if(TARGET Tilky_Exporter)
-    add_dependencies(Tilky_All Tilky_Exporter)
-endif()
 
 # ============================================================
 # Runtime assets
@@ -727,13 +850,9 @@ add_custom_target(Tilky_RuntimeAssets
         VERBATIM
 )
 
-add_dependencies(Tilky_Launcher Tilky_RuntimeAssets)
 add_dependencies(Tilky_Engine Tilky_RuntimeAssets)
 add_dependencies(Tilky_Standalone Tilky_RuntimeAssets)
 
-if(TARGET Tilky_Exporter)
-    add_dependencies(Tilky_Exporter Tilky_RuntimeAssets)
-endif()
 
 # ============================================================
 # Runtime DLLs
@@ -777,13 +896,9 @@ if(WIN32 AND MINGW)
         endforeach()
     endfunction()
 
-    copy_mingw_runtime_dlls(Tilky_Launcher)
     copy_mingw_runtime_dlls(Tilky_Engine)
     copy_mingw_runtime_dlls(Tilky_Standalone)
 
-    if(TARGET Tilky_Exporter)
-        copy_mingw_runtime_dlls(Tilky_Exporter)
-    endif()
 endif()
 
 # ============================================================
@@ -798,61 +913,8 @@ function(make_gui_in_release target_name)
     endif()
 endfunction()
 
-make_gui_in_release(Tilky_Launcher)
 # keep Tilky_Engine console visible
 make_gui_in_release(Tilky_Standalone)
 
-copy_runtime_dlls(Tilky_Launcher)
 copy_runtime_dlls(Tilky_Engine)
 copy_runtime_dlls(Tilky_Standalone)
-
-if(TARGET Tilky_Exporter)
-    copy_runtime_dlls(Tilky_Exporter)
-endif()
-
-# ============================================================
-# C++ Tool: TilkyExporter
-# ============================================================
-
-add_executable(Tilky_ToolExporter
-        Tools/TilkyExporter/TilkyExporter.cpp
-)
-
-set_target_properties(Tilky_ToolExporter PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-        OUTPUT_NAME "tilky_exporter"
-)
-
-# Copy beside Tilky_Engine.exe after build
-add_custom_command(TARGET Tilky_ToolExporter POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:Tilky_ToolExporter>
-        "$<TARGET_FILE_DIR:Tilky_Engine>/tilky_exporter${CMAKE_EXECUTABLE_SUFFIX}"
-        COMMENT "Copying tilky_exporter beside Tilky_Engine"
-)
-
-add_dependencies(Tilky_Engine Tilky_ToolExporter)
-add_dependencies(Tilky_All Tilky_ToolExporter)
-
-# ============================================================
-# C++ Tool: TilkyLocalise
-# ============================================================
-
-add_executable(Tilky_ToolLocalise
-        Tools/TilkyLocalise/TilkyLocalise.cpp
-)
-
-set_target_properties(Tilky_ToolLocalise PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-        OUTPUT_NAME "tilky_localise"
-)
-
-target_link_libraries(Tilky_ToolLocalise PRIVATE
-        nlohmann_json::nlohmann_json
-)
-
-add_dependencies(Tilky_All Tilky_ToolLocalise)
