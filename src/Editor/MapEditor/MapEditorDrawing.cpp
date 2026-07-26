@@ -144,9 +144,8 @@ namespace MapEditorInternal {
 
             const SDL_FColor redPreviewColor = {1.0f, 0.0f, 0.0f, 0.30f};
 
-            for (const Triangle& triangle : previewTriangles) {
-                DrawFilledTriangle(triangle, redPreviewColor);
-            }
+            for (const Triangle& triangle : previewTriangles) DrawFilledTriangle(triangle, redPreviewColor);
+
 
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
         }
