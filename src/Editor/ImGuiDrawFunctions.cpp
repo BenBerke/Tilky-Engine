@@ -1173,7 +1173,7 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.player_controller.speed").c_str(),         &c->speed,        draggable);
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
-                FieldWidth(-1.0f); // full width slider
+               // FieldWidth(-1.0f); // full width slider
                 ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
                 Tooltip(Get("editor.tooltip.component.player_controller.friction").c_str());
                 EndSection();
@@ -1190,7 +1190,7 @@ namespace ImGuiDrawFunctions {
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
                 Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
-                FieldWidth(-1.0f);
+                //FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
                                    &c->sensitivityX, 0.001f, 2.0f);
                 //FieldWidth(-1.0f);

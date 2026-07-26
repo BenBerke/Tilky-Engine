@@ -59,9 +59,8 @@ static std::string ReadEntireFile(const fs::path &path) {
 int main(int argc, char *argv[]) {
     // Resolve the executable's own path.
     fs::path exePath;
-    if (argc > 0 && argv[0] && argv[0][0] != '\0') {
-        exePath = fs::absolute(argv[0]);
-    } else {
+    if (argc > 0 && argv[0] && argv[0][0] != '\0') exePath = fs::absolute(argv[0]);
+    else {
         std::cerr << "Could not determine executable path.\n";
         return 1;
     }
