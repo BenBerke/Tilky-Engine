@@ -17,10 +17,11 @@ void OpenGL::BuildGpuSprites() {
 
         if (level.decals.Has(spriteComponent.ownerID)) continue;
 
-        if (transform->sectorIndex < 0 ||
-            transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] {
-            continue;
-        }
+        // Still render if sector is invalid, this is needed for the runtime editor
+        // if (transform->sectorIndex < 0 ||
+        //     transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] {
+        //     continue;
+        // }
 
         GpuSprite gpuSprite;
 
@@ -39,11 +40,7 @@ void OpenGL::BuildGpuSprites() {
             sector.lightValue,
             255.0f
         };
-
-        // spriteComponent.textureFileNames[i] are filenames now, not
-        // indices - sprites share the wall/sector/decal texture atlas, so
-        // each slot resolves the same way (see GetTextureRegionIndex,
-        // added alongside the atlas builder - not part of this file).
+        
         gpuSprite.textureIndices0 = {
             (GetTextureRegionIndex(spriteComponent.textureFileNames[0])), // N
             (GetTextureRegionIndex(spriteComponent.textureFileNames[1])), // NE

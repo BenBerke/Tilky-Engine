@@ -215,6 +215,9 @@ namespace {
 
         MapQueries::RebuildSectorRuntimeLinks(level);
 
+        for (ComponentTransform& transform : level.transforms.components)
+            transform.UpdateObjectSectorAndFloor(level.sectors);
+
         if (!StartRenderer(windowName, true)) return false;
 
         RuntimeEditor::Start(level, *renderer);
