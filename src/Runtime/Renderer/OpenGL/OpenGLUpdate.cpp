@@ -63,6 +63,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     ComponentTransform renderCameraTransform = *cameraTransform;
 
+    //todo stop using playercontroller and check for normal cameras
     if (!useEditorCamera) {
         for (const ComponentPlayerController& controller : level.playerControllers.components) {
             if (!controller.isActive) continue;
