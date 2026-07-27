@@ -314,6 +314,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/RuntimeSession.hpp
         Headers/Runtime/LevelSystem.hpp
         Headers/Runtime/Scripting/Lua/LuaScripting.hpp
+        Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp
         Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Gameplay/GameFunctions.hpp
 

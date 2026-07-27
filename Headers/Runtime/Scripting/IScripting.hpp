@@ -11,6 +11,7 @@ public:
 
     virtual void Start(Level& level) = 0;
     virtual void Update(Level& level) = 0;
+    virtual void Stop(Level& level) = 0;
     virtual void Shutdown() = 0;
 };
 

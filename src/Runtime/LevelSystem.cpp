@@ -13,6 +13,7 @@
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
 namespace {
     ComponentPlayerController *GetActivePlayerController(Level &level) {
@@ -82,20 +83,21 @@ namespace {
 
     ComponentPlayerController *activeController;
 
-    //todo Add C#
-    LuaScriptSystem luaScriptingSystem;
-    bool luaScriptingInitialized = false;
+    //todo Add Lua as well
+    LuaScriptSystem scriptingSystem;
+    //CSharpScriptSystem scriptingSystem;
+    bool scriptingInitialized = false;
 
     bool EnsureScriptingInitialized() {
-        if (luaScriptingInitialized) return true;
+        if (scriptingInitialized) return true;
 
 
-        if (!luaScriptingSystem.Initialize()) {
+        if (!scriptingSystem.Initialize()) {
             spdlog::critical("Failed to initialize script system");
             return false;
         }
 
-        luaScriptingInitialized = true;
+        scriptingInitialized = true;
         return true;
     }
 
@@ -105,31 +107,31 @@ namespace LevelSystem {
     void RefreshScriptAssets(Level& level) {
         if (!EnsureScriptingInitialized()) return;
 
-        luaScriptingSystem.RefreshScriptAssets(level);
+        scriptingSystem.RefreshScriptAssets(level);
     }
 
     bool EnsureScriptingInitialized() {
-        if (luaScriptingInitialized) return true;
+        if (scriptingInitialized) return true;
 
-        if (!luaScriptingSystem.Initialize()) {
+        if (!scriptingSystem.Initialize()) {
             spdlog::critical("Failed to initialize script system");
             return false;
         }
 
-        luaScriptingInitialized = true;
+        scriptingInitialized = true;
         return true;
     }
 
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName) {
         if (!EnsureScriptingInitialized()) return nullptr;
 
-        return luaScriptingSystem.GetPublicFieldsForScript(fileName);
+        return scriptingSystem.GetPublicFieldsForScript(fileName);
     }
 
     bool ReconcileScriptPublicValues(ComponentScript& script) {
         if (!EnsureScriptingInitialized()) return false;
 
-        return luaScriptingSystem.ReconcileScriptPublicValues(script);
+        return scriptingSystem.ReconcileScriptPublicValues(script);
     }
 
     ComponentCamera *GetActiveCamera(Level &level) {
@@ -195,7 +197,7 @@ namespace LevelSystem {
 
         } else spdlog::error("Level::Start skipped player controller: entity {} has no transform",activeController->ownerID);
 
-        luaScriptingSystem.Start(level);
+        scriptingSystem.Start(level);
 
         // Future level start systems will run here.
     }
@@ -207,7 +209,7 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Scripts");
-            luaScriptingSystem.Update(level);
+            scriptingSystem.Update(level);
         }
 
         if (activeController != nullptr && activeController->isActive) {
@@ -293,7 +295,7 @@ namespace LevelSystem {
     }
 
     void Shutdown(Level &level) {
-        luaScriptingSystem.Shutdown();
-        luaScriptingInitialized = false;
+        scriptingSystem.Shutdown();
+        scriptingInitialized = false;
     }
 }

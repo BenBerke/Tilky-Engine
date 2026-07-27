@@ -726,6 +726,10 @@ void LuaScriptSystem::Update(Level& level) {
     }
 }
 
+void LuaScriptSystem::Stop(Level& level) {
+
+}
+
 void LuaScriptSystem::Shutdown() {
     scriptInstances.clear();
     scriptInstancesByOwner.clear();

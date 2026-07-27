@@ -20,6 +20,7 @@ public:
 
     void Start(Level& level) override;
     void Update(Level& level) override;
+    void Stop(Level& level) override;
     void Shutdown() override;
 
     void RegisterVectorBindings(sol::state& lua);
