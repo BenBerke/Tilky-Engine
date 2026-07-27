@@ -1,4 +1,7 @@
 # Localisation Guide
+
+Run Tools/TilkyLocalise/TilkyLocalise.cpp and then follow the instructions inside the command line window.
+
 Do NOT touch the text to the left of “:” ONLY edit the right hand side
 
 The grey text after two slashes (//) is an explanation to give information about the text
