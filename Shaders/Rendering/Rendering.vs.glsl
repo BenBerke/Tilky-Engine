@@ -130,6 +130,10 @@ flat out int vSpriteTextureIndex;
 
 out vec2 vDecalUV;
 
+out vec3 vWorldPos;
+out vec2 vSurfaceCoord;
+flat out vec2 vSurfaceSize;
+
 const float tileSize = 32.0;
 const float PI = 3.14159265359;
 
@@ -298,6 +302,10 @@ void RenderColliderVertex() {
     ? vec4(0.2, 0.8, 1.0, 1.0)
     : vec4(1.0, 0.8, 0.2, 1.0);
 
+    vWorldPos = worldPosition;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
     gl_Position = uProjection * uView * vec4(worldPosition, 1.0);
 }
 
@@ -447,6 +455,9 @@ void renderDecal() {
 
     vDecalUV = uv;
     vColor = decal.color / 255.0;
+    vWorldPos = worldPos;
+    vSurfaceCoord = uv;
+    vSurfaceSize = vec2(1.0);
 
     gl_Position =
     uProjection *
@@ -511,6 +522,10 @@ void renderSprite() {
     vTextureIndex = -1;
     vFlatTextureIndex = -1;
 
+    vWorldPos = worldPos;
+    vSurfaceCoord = uv;
+    vSurfaceSize = vec2(1.0);
+
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
@@ -541,6 +556,10 @@ void renderFlat() {
     vDecalUV = vec2(0.0);
 
     vec3 worldPos = vec3(point.x, point.z, point.y);
+    vWorldPos = worldPos;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
@@ -599,6 +618,18 @@ void renderWall() {
     vec2(rightU, topV) + uvOffset
     );
 
+    float wallHeight = max(abs(topHeight - bottomHeight), 0.0001);
+
+    vec2 surfaceCoords[6] = vec2[6](
+    vec2(0.0, 0.0),
+    vec2(0.0, wallHeight),
+    vec2(wallLength, 0.0),
+
+    vec2(wallLength, 0.0),
+    vec2(0.0, wallHeight),
+    vec2(wallLength, wallHeight)
+    );
+
     vec3 worldPos = positions[gl_VertexID];
 
     vWallUV = uvs[gl_VertexID];
@@ -610,6 +641,10 @@ void renderWall() {
     vFlatTextureIndex = -1;
     vSpriteTextureIndex = -1;
     vColor = wall.color / 255.0;
+
+    vWorldPos = worldPos;
+    vSurfaceCoord = surfaceCoords[gl_VertexID];
+    vSurfaceSize = vec2(max(wallLength, 0.0001), wallHeight);
 
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }

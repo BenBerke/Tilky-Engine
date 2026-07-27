@@ -35,8 +35,7 @@ void OpenGL::BuildGpuDecals() {
 
             if (halfWidth <= MIN_DECAL_SIZE || halfDepth <= MIN_DECAL_SIZE) continue;
 
-            const float decalHeight =
-                transform->position.y + FLOOR_DECAL_OFFSET;
+            const float decalHeight = transform->position.y + FLOOR_DECAL_OFFSET;
 
             const Vector2 decalMin = {
                 transform->position.x - halfWidth,

@@ -40,7 +40,7 @@ void OpenGL::BuildGpuSprites() {
             sector.lightValue,
             255.0f
         };
-        
+
         gpuSprite.textureIndices0 = {
             (GetTextureRegionIndex(spriteComponent.textureFileNames[0])), // N
             (GetTextureRegionIndex(spriteComponent.textureFileNames[1])), // NE
