@@ -744,6 +744,7 @@ set_source_files_properties(
 
 set_source_files_properties(
         Tools/TilkyExporter/TilkyExporter.cpp
+        Tools/TilkyLocalise/TilkyLocalise.cpp
         PROPERTIES
         COMPILE_DEFINITIONS "main=TilkyExporterMain"
         SKIP_PRECOMPILE_HEADERS ON
