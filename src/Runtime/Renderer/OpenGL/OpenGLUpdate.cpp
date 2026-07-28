@@ -79,18 +79,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 
     {
-        const float cameraYaw = camera->yaw;
         ZoneScopedN("Background");
-
-        glDisable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-        glDisable(GL_BLEND);
-
-        DrawBackground(cameraYaw);
-
-        glDepthMask(GL_TRUE);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_GREATER);
+        DrawBackground(camera->yaw);
     }
 
     {
