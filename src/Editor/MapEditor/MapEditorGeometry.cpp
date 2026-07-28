@@ -719,37 +719,4 @@ namespace Editor {
 
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
-
-    // Legacy single-room helper. Sector Mode uses
-    // MapEditorInternal::ApplyDrawnGeometry so walls and sector sides are
-    // created through MapTopology.
-    // void CreateSector(
-    //     const std::vector<Vector2>& vertices,
-    //     const float ceilHeight,
-    //     const float floorHeight,
-    //     const Vector4& ceilColor,
-    //     const Vector4& floorColor,
-    //     const std::string& ceilTexture,
-    //     const std::string& floorTexture
-    // ) {
-    //     if (ceilHeight <= floorHeight) return;
-    //
-    //     Sector newSector;
-    //     newSector.vertices = vertices;
-    //     newSector.triangles = Geometry::Triangulate(vertices);
-    //     newSector.floors = {
-    //         {
-    //             {floorHeight, floorColor, floorTexture},
-    //             {ceilHeight, ceilColor, ceilTexture}
-    //         }
-    //     };
-    //
-    //     AddSector(newSector);
-    // }
-
-    // Legacy, probably should be removed in the future
-    //todo remove
-    void TriangulateSectors() {
-        LevelManager::TriangulateCurrentLevelSectors();
-    }
 }

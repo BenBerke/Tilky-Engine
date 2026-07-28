@@ -1,17 +1,8 @@
+#include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
-#ifdef TILKY_EDITOR
-namespace Editor {
-    extern std::string backgroundTextureFileName;
-}
-#endif
-
 void OpenGL::DrawBackground(const float playerAngle) {
-#ifdef TILKY_EDITOR
     const std::string& fileName = Editor::backgroundTextureFileName;
-#else
-    const std::string& fileName = backgroundTextureFileName;
-#endif
 
     if (backgroundShader == nullptr || fileName.empty()) return;
 
@@ -26,7 +17,7 @@ void OpenGL::DrawBackground(const float playerAngle) {
 
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
-    glDisable(GL_BLEND);
+    glEnable(GL_BLEND);
 
     backgroundShader->use();
 
