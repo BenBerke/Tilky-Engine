@@ -18,7 +18,7 @@ struct Triangle {
 
 struct SectorSurface {
     float height = 0.0f;
-    Vector3 color = {255.0f, 255.0f, 255.0f};
+    Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
     std::string texture;
 };
 
@@ -35,8 +35,8 @@ struct Sector {
 
     std::vector<SectorFloor> floors = {
         {
-            {0.0f, {255.0f, 255.0f, 255.0f}, {}},
-            {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+            {0.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}},
+            {40.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}}
         }
     };
 

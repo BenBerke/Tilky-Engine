@@ -70,9 +70,9 @@ namespace MapEditorInternal {
 
     float lightValue = 255.0f;
 
-    Vector3 wallColor = {255.0f, 255.0f, 255.0f};
-    Vector3 ceilColor = {255.0f, 255.0f, 255.0f};
-    Vector3 floorColor = {255.0f, 255.0f, 255.0f};
+    Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
+    Vector4 ceilColor = {255.0f, 255.0f, 255.0f, 255.0f};
+    Vector4 floorColor = {255.0f, 255.0f, 255.0f, 255.0f};
 
     bool manualSectorMode = false;
     std::vector<Vector2> manualSectorDots;

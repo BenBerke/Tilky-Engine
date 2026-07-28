@@ -121,7 +121,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, sectorFloorSSBO);
 
-        glDisable(GL_BLEND);
+        glEnable(GL_BLEND);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_FLAT);
@@ -135,7 +135,6 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
         glEnable(GL_BLEND);
-       // glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_WALL);

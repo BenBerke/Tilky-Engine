@@ -33,15 +33,15 @@ namespace Editor {
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);
 
-    void CreateSector(
-        const std::vector<Vector2>& vertices,
-        float ceilHeight,
-        float floorHeight,
-        Vector3 ceilColor,
-        const Vector3 &floorColor,
-        int ceilTextureIndex,
-        int floorTextureIndex
-    );
+    // void CreateSector(
+    //     const std::vector<Vector2>& vertices,
+    //     float ceilHeight,
+    //     float floorHeight,
+    //     Vector3 ceilColor,
+    //     const Vector3 &floorColor,
+    //     int ceilTextureIndex,
+    //     int floorTextureIndex
+    // );
 
     void TriangulateSectors();
 }

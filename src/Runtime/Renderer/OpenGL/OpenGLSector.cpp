@@ -39,14 +39,14 @@ void OpenGL::BuildGpuSectors() {
                 floor.floor.color.x - (255 - sector.light.x),
                 floor.floor.color.y - (255 - sector.light.y),
                 floor.floor.color.z - (255 - sector.light.z),
-                255.0f
+                floor.floor.color.w
             };
 
             gpuFloor.ceilingColor = {
                 floor.ceiling.color.x - (255 - sector.light.x),
                 floor.ceiling.color.y - (255 - sector.light.x),
                 floor.ceiling.color.z - (255 - sector.light.x),
-                255.0f
+                floor.ceiling.color.w
             };
 
             gpuFloor.textureData = {

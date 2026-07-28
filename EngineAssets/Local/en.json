@@ -291,6 +291,7 @@
   "editor.new_sector.wall_texture": "Wall Tex",
   "editor.new_sector.ceil_texture": "Ceil Tex",
   "editor.new_sector.floor_texture": "Floor Tex",
+  "sector.ceiling_color": "Ceiling Color",
   "editor.tooltip.floor_height": "Floor plane height for new sectors.",
   "editor.tooltip.ceil_height": "Ceiling plane height for new sectors.",
   "editor.tooltip.light_value": "Sector light level (0 = fully dark, 255 = full bright).",

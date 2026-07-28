@@ -382,31 +382,71 @@ namespace ImGuiDrawFunctions {
 
             // ── Colors ───────────────────────────────────────────────────────────
 
+            float floorColor[4] = {
+                sectorFloor.floor.color.x / 255.0f,
+                sectorFloor.floor.color.y / 255.0f,
+                sectorFloor.floor.color.z / 255.0f,
+                sectorFloor.floor.color.w / 255.0f
+            };
+
             FieldWidth(220.0f);
 
-            InputOrDrag3(
+            if (ImGui::ColorEdit4(
                 Get("sector.floor_color").c_str(),
-                &sectorFloor.floor.color.x,
-                draggable
-            );
+                floorColor,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_Uint8
+            )) {
+                sectorFloor.floor.color = {
+                    floorColor[0] * 255.0f,
+                    floorColor[1] * 255.0f,
+                    floorColor[2] * 255.0f,
+                    floorColor[3] * 255.0f
+                };
+            }
 
-            ResetFloat3Button(
-                "reset_floor_color",
-                &sectorFloor.floor.color.x
-            );
+            if (ImGui::SmallButton("Reset##floor_color")) {
+                sectorFloor.floor.color = {
+                    255.0f,
+                    255.0f,
+                    255.0f,
+                    255.0f
+                };
+            }
+
+            float ceilingColor[4] = {
+                sectorFloor.ceiling.color.x / 255.0f,
+                sectorFloor.ceiling.color.y / 255.0f,
+                sectorFloor.ceiling.color.z / 255.0f,
+                sectorFloor.ceiling.color.w / 255.0f
+            };
 
             FieldWidth(220.0f);
 
-            InputOrDrag3(
+            if (ImGui::ColorEdit4(
                 Get("sector.ceil_color").c_str(),
-                &sectorFloor.ceiling.color.x,
-                draggable
-            );
+                ceilingColor,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_Uint8
+            )) {
+                sectorFloor.ceiling.color = {
+                    ceilingColor[0] * 255.0f,
+                    ceilingColor[1] * 255.0f,
+                    ceilingColor[2] * 255.0f,
+                    ceilingColor[3] * 255.0f
+                };
+            }
 
-            ResetFloat3Button(
-                "reset_ceil_color",
-                &sectorFloor.ceiling.color.x
-            );
+            if (ImGui::SmallButton("Reset##ceiling_color")) {
+                sectorFloor.ceiling.color = {
+                    255.0f,
+                    255.0f,
+                    255.0f,
+                    255.0f
+                };
+            }
 
             ImGui::Spacing();
 

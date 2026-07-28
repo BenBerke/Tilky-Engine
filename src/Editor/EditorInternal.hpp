@@ -70,13 +70,13 @@ namespace MapEditorInternal {
 
         std::vector<SectorFloor> floors = {
             {
-                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
-                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+                {0.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}},
+                {40.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}}
             }
         };
 
         float lightValue = 255.0f;
-        Vector3 wallColor = {255.0f, 255.0f, 255.0f};
+        Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
     };
 
     // Whole-operation undo snapshot for ApplyDrawnGeometry - it can create
@@ -166,9 +166,9 @@ namespace MapEditorInternal {
 
     extern float lightValue;
 
-    extern Vector3 wallColor;
-    extern Vector3 ceilColor;
-    extern Vector3 floorColor;
+    extern Vector4 wallColor;
+    extern Vector4 ceilColor;
+    extern Vector4 floorColor;
 
     extern bool manualSectorMode;
     extern std::vector<Vector2> manualSectorDots;
