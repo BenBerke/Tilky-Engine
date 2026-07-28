@@ -290,7 +290,7 @@ private:
     void BuildVisibleFlatTriangles(const Vector2& playerPos, float playerAngle);
     void BuildFlatTrianglesFromSectors();
 
-    void DrawBackground(float playerAngle);
+    void DrawBackground(float pitch, float yaw, float horizontalFov, float parallaxStrength, float backgroundScroll);
     int GetOrCreateTextureIndex(const std::string& fileName);
     int GetTextureRegionIndex(const std::string& fileName) const;
 
