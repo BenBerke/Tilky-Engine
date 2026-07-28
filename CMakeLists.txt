@@ -744,9 +744,16 @@ set_source_files_properties(
 
 set_source_files_properties(
         Tools/TilkyExporter/TilkyExporter.cpp
-        Tools/TilkyLocalise/TilkyLocalise.cpp
         PROPERTIES
         COMPILE_DEFINITIONS "main=TilkyExporterMain"
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
+)
+
+set_source_files_properties(
+        Tools/TilkyLocalise/TilkyLocalise.cpp
+        PROPERTIES
+        COMPILE_DEFINITIONS "main=TilkyLocaliseMain"
         SKIP_PRECOMPILE_HEADERS ON
         SKIP_UNITY_BUILD_INCLUSION ON
 )

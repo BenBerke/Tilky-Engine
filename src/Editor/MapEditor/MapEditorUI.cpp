@@ -501,6 +501,84 @@ namespace {
         DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture, 32.0f);
         HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
 
+        ImGui::Spacing();
+        {
+            RendererTextureSettings &textureSetting = level.rendererSettings.textureSetting;
+
+            struct TexturePresetOption {
+                RendererTextureSettings value;
+                const char *labelKey;
+                const char *tooltipKey;
+            };
+
+            const std::array<TexturePresetOption, 6> presets = {
+                {
+                    {
+                        PIXEL_ART_SHIMMERY, "settings.rendering.texture_preset.pixel_art_shimmery",
+                        "settings.rendering.tooltip.texture_preset.pixel_art_shimmery"
+                    },
+                    {
+                        PIXEL_ART_LESS_MOIRE, "settings.rendering.texture_preset.pixel_art_less_moire",
+                        "settings.rendering.tooltip.texture_preset.pixel_art_less_moire"
+                    },
+                    {
+                        PIXEL_ART_SMOOTH_DISTANCE, "settings.rendering.texture_preset.pixel_art_smooth_distance",
+                        "settings.rendering.tooltip.texture_preset.pixel_art_smooth_distance"
+                    },
+                    {
+                        REALISTIC_NORMAL, "settings.rendering.texture_preset.realistic_normal",
+                        "settings.rendering.tooltip.texture_preset.realistic_normal"
+                    },
+                    {
+                        RETRO, "settings.rendering.texture_preset.retro",
+                        "settings.rendering.tooltip.texture_preset.retro"
+                    },
+                    {
+                        LOW_RES, "settings.rendering.texture_preset.low_res",
+                        "settings.rendering.tooltip.texture_preset.low_res"
+                    }
+                }
+            };
+
+            const TexturePresetOption *selectedPreset = &presets[0];
+
+            for (const TexturePresetOption &preset: presets) {
+                if (preset.value == textureSetting) {
+                    selectedPreset = &preset;
+                    break;
+                }
+            }
+
+            const std::string label = Get("settings.rendering.texture_preset");
+            const std::string preview = Get(selectedPreset->labelKey);
+
+            if (ImGui::BeginCombo(label.c_str(), preview.c_str())) {
+                for (const TexturePresetOption &preset: presets) {
+                    const bool selected = preset.value == textureSetting;
+                    const std::string presetLabel = Get(preset.labelKey);
+
+                    if (ImGui::Selectable(presetLabel.c_str(), selected)) {
+                        textureSetting = preset.value;
+                        selectedPreset = &preset;
+
+                        // Rebuild or update existing OpenGL textures here.
+                    }
+
+                    if (ImGui::IsItemHovered()) {
+                        const std::string tooltip = Get(preset.tooltipKey);
+                        ImGui::SetTooltip("%s", tooltip.c_str());
+                    }
+
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+
+            HoverTooltip(Get("settings.rendering.tooltip.texture_preset").c_str());
+            ImGui::TextDisabled("%s", Get(selectedPreset->tooltipKey).c_str());
+        }
+
         ImGui::End();
     }
 

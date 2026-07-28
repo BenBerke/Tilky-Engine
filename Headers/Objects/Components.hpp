@@ -4,7 +4,6 @@
 
 #ifndef TILKY_ENGINE_COMPONENTS_HPP
 #define TILKY_ENGINE_COMPONENTS_HPP
-#include <algorithm>
 #include <vector>
 #include <unordered_map>
 
@@ -13,7 +12,7 @@
 #include "EntityTypes.hpp"
 #include "ScriptPublicType.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
-#include "Headers/Project/ProjectManager.hpp"
+#include <span>
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
 enum ComponentType {

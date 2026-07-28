@@ -8,13 +8,10 @@
 #include <AL/al.h>
 #include <vector>
 #include <string>
-#include <spdlog/spdlog.h>
 
 #include "Components.hpp"
 #include "Entity.hpp"
 #include "Loadables.hpp"
-#include "../Runtime/Gameplay/PlayerControllerSystem.hpp"
-#include "../Runtime/Renderer/OpenGL/RendererTexture.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;

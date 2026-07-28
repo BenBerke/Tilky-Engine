@@ -167,12 +167,13 @@ namespace {
     }
 
     bool SphereIntersectsWallSpan(
-        const Wall& wall,
-        const WallSpan& span,
+        const Wall &wall,
+        const WallSpan &span,
         const float radius,
-        Vector3& sphereCentre,
-        ComponentTransform& transform,
-        ComponentRigidbody& rigidbody
+        const float stepSize,
+        Vector3 &sphereCentre,
+        ComponentTransform &transform,
+        ComponentRigidbody &rigidbody
     ) {
         const float minX = std::min(wall.start.x, wall.end.x) - radius;
         const float maxX = std::max(wall.start.x, wall.end.x) + radius;
@@ -220,6 +221,36 @@ namespace {
         const float penetration = radius - distance;
 
         if (penetration <= Constants::Epsilon) return false;
+
+        const float feetHeight = transform.position.y;
+        const float stepHeight = span.top - feetHeight;
+
+        const bool wallStartsAtFeet =
+            span.bottom <= feetHeight + GROUND_CONTACT_SLOP;
+
+        const bool canStep =
+                stepSize > 0.0f &&
+                wallStartsAtFeet &&
+                stepHeight > Constants::Epsilon &&
+                stepHeight <= stepSize + Constants::Epsilon;
+
+        if (canStep) {
+            const float verticalCorrection = stepHeight + PENETRATION_SLOP;
+
+            transform.AddPosition({0.0f, verticalCorrection, 0.0f});
+
+            sphereCentre.reg = _mm_add_ps(
+                sphereCentre.reg,
+                _mm_set_ps(0.0f, 0.0f, verticalCorrection, 0.0f)
+            );
+
+            if (rigidbody.velocity.y < 0.0f) rigidbody.velocity.y = 0.0f;
+
+            rigidbody.isGrounded = true;
+            rigidbody.groundNormal = {0.0f, 1.0f, 0.0f};
+
+            return true;
+        }
 
         const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(delta, inverseDistance), XZ_MASK);
 
@@ -427,30 +458,20 @@ namespace PhysicsSystem {
 
                     const __m128 calculatedDirection = _mm_mul_ps(delta, inverseDistance);
                     const __m128 fallbackDirection = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
-                    const __m128 hasDirection =
-                        _mm_cmpgt_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
-                    const __m128 hasDirectionBroad =
-                        TILKY_MM_SHUFFLE_PS(hasDirection, hasDirection, _MM_SHUFFLE(0, 0, 0, 0));
-                    const __m128 pushDirection =
-                        blend_ps(fallbackDirection, calculatedDirection, hasDirectionBroad);
+                    const __m128 hasDirection = _mm_cmpgt_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
+                    const __m128 hasDirectionBroad = TILKY_MM_SHUFFLE_PS(hasDirection, hasDirection, _MM_SHUFFLE(0, 0, 0, 0));
+                    const __m128 pushDirection = blend_ps(fallbackDirection, calculatedDirection, hasDirectionBroad);
 
-                    const float correctedPenetration =
-                        std::max(0.0f, penetration - PENETRATION_SLOP);
-
-                    const __m128 correction =
-                        _mm_mul_ps(pushDirection, _mm_set1_ps(correctedPenetration));
+                    const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
+                    const __m128 correction = _mm_mul_ps(pushDirection, _mm_set1_ps(correctedPenetration));
 
                     const float selfPush = otherIsStatic ? 1.0f : 0.5f;
 
-                    selfTransform->AddPosition(
-                        Vector3(_mm_mul_ps(correction, _mm_set1_ps(selfPush)))
-                    );
+                    selfTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(selfPush))));
 
-                    if (!otherIsStatic) {
-                        otherTransform->AddPosition(
-                            Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f)))
-                        );
-                    }
+                    if (!otherIsStatic)
+                        otherTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f))));
+
 
                     selfPosition = {
                         selfTransform->position.x,
@@ -468,16 +489,14 @@ namespace PhysicsSystem {
 
                     const std::ptrdiff_t wallIndex = wall - level.walls.data();
 
-                    if (wallIndex < 0 ||
-                        wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) {
-                        continue;
-                    }
+                    if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
 
                     for (const WallSpan& span : wallSpans[wallIndex]) {
                         SphereIntersectsWallSpan(
                             *wall,
                             span,
                             selfRadius,
+                            selfCollider.stepSize,
                             selfPosition,
                             *selfTransform,
                             *selfRigidbody

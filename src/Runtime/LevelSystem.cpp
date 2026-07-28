@@ -13,6 +13,7 @@
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
 namespace {
