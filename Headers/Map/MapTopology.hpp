@@ -68,7 +68,7 @@ namespace MapTopology {
             }
         };
 
-        float lightValue = 255.0f;
+        Vector3 lightValue = {255.0f, 255.0f, 255.0f};
         Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
     };
 

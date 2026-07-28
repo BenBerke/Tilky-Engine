@@ -1766,29 +1766,34 @@ namespace MapEditorInternal {
             HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
 
             if (ceilHeight <= floorHeight) {
-                ImGui::PushStyleColor(
-                    ImGuiCol_Text,
-                    ImVec4(1.0f, 0.6f, 0.1f, 1.0f)
-                );
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
 
-                ImGui::TextWrapped(
-                    Get("editor.tooltip.sector.invalid_floor_heights").c_str()
-                );
+                ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
 
                 ImGui::PopStyleColor();
             }
 
             ImGui::SetNextItemWidth(INPUT_WIDTH);
 
-            if (ImGui::InputFloat(
-                (Get("sector.light_value") + "##NewSectorLight").c_str(),
-                &lightValue,
-                1.0f,
-                10.0f,
-                "%.2f"
-            ))
-                hasUnsavedChanges = true;
+            float lightPicker[3] = {
+                lightValue.x / 255.0f,
+                lightValue.y / 255.0f,
+                lightValue.z / 255.0f
+            };
 
+            if (ImGui::ColorEdit3(
+                (Get("sector.light_value") + "##NewSectorLight").c_str(),
+                lightPicker,
+                ImGuiColorEditFlags_Uint8
+            )) {
+                lightValue = {
+                    lightPicker[0] * 255.0f,
+                    lightPicker[1] * 255.0f,
+                    lightPicker[2] * 255.0f
+                };
+
+                hasUnsavedChanges = true;
+            }
 
             HoverTooltip(Get("editor.tooltip.light_value").c_str());
 
@@ -1830,8 +1835,7 @@ namespace MapEditorInternal {
             initialFloor.floor.color = floorColor;
             initialFloor.floor.texture = floorTexture;
 
-            initialFloor.ceiling.height =
-                    std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
+            initialFloor.ceiling.height = std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
 
             initialFloor.ceiling.color = ceilColor;
             initialFloor.ceiling.texture = ceilTexture;

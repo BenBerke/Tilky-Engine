@@ -68,7 +68,7 @@ namespace MapEditorInternal {
     float floorHeight = .0f;
     float ceilHeight = 40.0f;
 
-    float lightValue = 255.0f;
+    Vector3 lightValue = {255.0f, 255.0f, 255.0f};
 
     Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
     Vector4 ceilColor = {255.0f, 255.0f, 255.0f, 255.0f};

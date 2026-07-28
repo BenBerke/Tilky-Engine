@@ -64,9 +64,8 @@ namespace {
     };
 
     bool IsSectorOpenAtHeight(const Sector& sector, const float height) {
-        for (const SectorFloor& floor : sector.floors) {
+        for (const SectorFloor& floor : sector.floors)
             if (height > floor.floor.height && height < floor.ceiling.height) return true;
-        }
 
         return false;
     }

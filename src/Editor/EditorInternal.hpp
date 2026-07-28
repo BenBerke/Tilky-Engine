@@ -75,7 +75,7 @@ namespace MapEditorInternal {
             }
         };
 
-        float lightValue = 255.0f;
+        Vector3 lightValue = {255.0f, 255.0f, 255.0f};
         Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
     };
 
@@ -164,7 +164,7 @@ namespace MapEditorInternal {
     extern float floorHeight;
     extern float ceilHeight;
 
-    extern float lightValue;
+    extern Vector3 lightValue;
 
     extern Vector4 wallColor;
     extern Vector4 ceilColor;
