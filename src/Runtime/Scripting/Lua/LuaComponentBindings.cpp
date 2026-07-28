@@ -377,6 +377,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptSprite::SetSideCount
         ),
 
+        "color", sol::property(
+            &ScriptSprite::GetColor,
+            &ScriptSprite::SetColor
+        ),
+
         "getTextureFileName",
         &ScriptSprite::GetTextureFileName,
 

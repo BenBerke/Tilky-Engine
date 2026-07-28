@@ -449,25 +449,33 @@ namespace {
         for (const Wall& wall : level.walls) {
             levelData["walls"].push_back({
                 {"id", wall.id},
-                {"start", {
-                    wall.start.x,
-                    wall.start.y
-                }},
-                {"end", {
-                    wall.end.x,
-                    wall.end.y
-                }},
-                {"color", {
-                    wall.color.x,
-                    wall.color.y,
-                    wall.color.z,
-                    wall.color.w
-                }},
+                {
+                    "start", {
+                        wall.start.x,
+                        wall.start.y
+                    }
+                },
+                {
+                    "end", {
+                        wall.end.x,
+                        wall.end.y
+                    }
+                },
+                {
+                    "color", {
+                        wall.color.x,
+                        wall.color.y,
+                        wall.color.z,
+                        wall.color.w
+                    }
+                },
                 {"textureFileName", wall.textureFileName},
-                {"textureOffset", {
-                    wall.textureOffset.x,
-                    wall.textureOffset.y
-                }},
+                {
+                    "textureOffset", {
+                        wall.textureOffset.x,
+                        wall.textureOffset.y
+                    }
+                },
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector}
             });
@@ -482,21 +490,21 @@ namespace {
         ID highestSectorID = 0;
         std::unordered_set<ID> seenSectorIDs;
 
-        const auto loadColor = [](const json &surfaceJson) -> Vector3 {
-            if (!surfaceJson.contains("color")) {
-                return {255.0f, 255.0f, 255.0f};
-            }
+        const auto loadVector3 = [](const json &parentJson,
+                                    const char *field,
+                                    const Vector3 &defaultValue) -> Vector3 {
+            if (!parentJson.contains(field)) return defaultValue;
 
-            const json &colorJson = surfaceJson.at("color");
+            const json &vectorJson = parentJson.at(field);
 
-            if (!colorJson.is_array() || colorJson.size() < 3) {
-                return {255.0f, 255.0f, 255.0f};
+            if (!vectorJson.is_array() || vectorJson.size() < 3) {
+                return defaultValue;
             }
 
             return {
-                colorJson[0].get<float>(),
-                colorJson[1].get<float>(),
-                colorJson[2].get<float>()
+                vectorJson[0].get<float>(),
+                vectorJson[1].get<float>(),
+                vectorJson[2].get<float>()
             };
         };
 
@@ -504,7 +512,11 @@ namespace {
             SectorSurface surface;
 
             surface.height = surfaceJson.value("height", 0.0f);
-            surface.color = loadColor(surfaceJson);
+            surface.color = loadVector3(
+                surfaceJson,
+                "color",
+                {255.0f, 255.0f, 255.0f}
+            );
             surface.texture = surfaceJson.value("texture", std::string{});
 
             return surface;
@@ -518,9 +530,6 @@ namespace {
             const json &sectorJson = sectorArray[sectorIndex];
 
             Sector sector;
-
-            // Critical: Sector has a default floor. Serialized floors must
-            // replace it rather than being appended after it.
             sector.floors.clear();
 
             sector.id = LoadIDField(
@@ -585,15 +594,10 @@ namespace {
                     }
 
                     SectorFloor sectorFloor;
+                    sectorFloor.floor = loadSurface(floorJson.at("floor"));
+                    sectorFloor.ceiling = loadSurface(floorJson.at("ceiling"));
 
-                    sectorFloor.floor =
-                            loadSurface(floorJson.at("floor"));
-
-                    sectorFloor.ceiling =
-                            loadSurface(floorJson.at("ceiling"));
-
-                    if (sectorFloor.floor.height >=
-                        sectorFloor.ceiling.height) {
+                    if (sectorFloor.floor.height >= sectorFloor.ceiling.height) {
                         spdlog::warn(
                             "LoadSectors: sector {} floor {} has invalid heights [{}, {}] - skipping",
                             sector.id,
@@ -609,25 +613,17 @@ namespace {
                 }
             }
 
-            std::ranges::sort(
-                sector.floors,
-                {},
-                [](const SectorFloor &floor) {
-                    return floor.floor.height;
-                }
-            );
+            std::ranges::sort(sector.floors, {}, [](const SectorFloor &floor) {
+                return floor.floor.height;
+            });
 
             for (int floorIndex = 1;
                  floorIndex < static_cast<int>(sector.floors.size());
                  ++floorIndex) {
-                const SectorFloor &previous =
-                        sector.floors[floorIndex - 1];
+                const SectorFloor &previous = sector.floors[floorIndex - 1];
+                const SectorFloor &current = sector.floors[floorIndex];
 
-                const SectorFloor &current =
-                        sector.floors[floorIndex];
-
-                if (previous.ceiling.height >
-                    current.floor.height) {
+                if (previous.ceiling.height > current.floor.height) {
                     spdlog::warn(
                         "LoadSectors: sector {} floors {} and {} overlap",
                         sector.id,
@@ -644,21 +640,16 @@ namespace {
                 );
 
                 sector.floors.push_back({
-                    {
-                        0.0f,
-                        {255.0f, 255.0f, 255.0f},
-                        {}
-                    },
-                    {
-                        40.0f,
-                        {255.0f, 255.0f, 255.0f},
-                        {}
-                    }
+                    {0.0f, {255.0f, 255.0f, 255.0f}, {}},
+                    {40.0f, {255.0f, 255.0f, 255.0f}, {}}
                 });
             }
 
-            sector.lightValue =
-                    sectorJson.value("lightValue", 255.0f);
+            sector.light = loadVector3(
+                sectorJson,
+                "light",
+                {255.0f, 255.0f, 255.0f}
+            );
 
             level.sectors.push_back(std::move(sector));
         }
@@ -721,7 +712,14 @@ namespace {
                 {"id", sector.id},
                 {"corners", std::move(cornerArray)},
                 {"floors", std::move(floorArray)},
-                {"lightValue", sector.lightValue}
+                {
+                    "light",
+                    {
+                        sector.light.x,
+                        sector.light.y,
+                        sector.light.z
+                    }
+                }
             });
         }
 
@@ -791,13 +789,22 @@ namespace {
 
                 const int sideCountValue = spriteJson.at("sideCount").get<int>();
 
-                if (sideCountValue != SIDECOUNT_SINGLE && sideCountValue != SIDECOUNT_90 &&
+                if (sideCountValue != SIDECOUNT_SINGLE &&
+                    sideCountValue != SIDECOUNT_90 &&
                     sideCountValue != SIDECOUNT_45) continue;
+
+                const json& colorJson = spriteJson.at("color");
 
                 ComponentSprite& c = level.sprites.Add(ownerID);
 
                 c.textureFileNames = textureFileNames;
                 c.sideCount = static_cast<SideCount>(sideCountValue);
+                c.color = {
+                    colorJson.at(0).get<float>(),
+                    colorJson.at(1).get<float>(),
+                    colorJson.at(2).get<float>(),
+                    colorJson.at(3).get<float>()
+                };
 
                 entity->componentsMask.set(CMP_SPRITE);
             }
@@ -1123,7 +1130,8 @@ namespace {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
                 {"textureFileNames", c.textureFileNames},
-                {"sideCount", static_cast<int>(c.sideCount)}
+                {"sideCount", static_cast<int>(c.sideCount)},
+                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
             });
         }
 

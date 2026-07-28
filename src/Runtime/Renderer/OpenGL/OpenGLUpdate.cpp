@@ -134,7 +134,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UploadGpuWallsFromMap();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
-        glDisable(GL_BLEND);
+        glEnable(GL_BLEND);
+       // glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_WALL);

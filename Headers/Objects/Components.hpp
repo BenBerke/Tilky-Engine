@@ -47,6 +47,7 @@ struct ComponentUIText {
 struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
 
+    //outdated
     int textureIndex{};
 };
 
@@ -253,6 +254,8 @@ struct ComponentSprite {
     std::array<std::string,8> textureFileNames;
 
     SideCount sideCount = SIDECOUNT_SINGLE;
+
+    Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
 };
 
 // MUST have a sprite component to work properly

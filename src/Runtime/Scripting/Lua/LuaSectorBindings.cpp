@@ -66,9 +66,9 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
             &ScriptSector::IsValid
         ),
 
-        "lightValue", sol::property(
-            &ScriptSector::GetLightValue,
-            &ScriptSector::SetLightValue
+        "light", sol::property(
+            &ScriptSector::GetLight,
+            &ScriptSector::SetLight
         ),
 
         "floorCount", sol::readonly_property(

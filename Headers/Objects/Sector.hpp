@@ -40,7 +40,7 @@ struct Sector {
         }
     };
 
-    float lightValue = 255.0f;
+    Vector3 light = {255.0f, 255.0f, 255.0f};
 
     ID id = INVALID_ID;
 

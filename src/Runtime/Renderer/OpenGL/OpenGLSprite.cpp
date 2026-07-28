@@ -10,8 +10,7 @@ void OpenGL::BuildGpuSprites() {
     Level& level = LevelManager::CurrentLevel();
 
     for (ComponentSprite& spriteComponent : level.sprites.components) {
-        ComponentTransform* transform =
-            level.transforms.Get(spriteComponent.ownerID);
+        ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;
 
@@ -35,10 +34,10 @@ void OpenGL::BuildGpuSprites() {
         const Sector& sector = level.sectors[transform->sectorIndex];
 
         gpuSprite.color = {
-            sector.lightValue,
-            sector.lightValue,
-            sector.lightValue,
-            255.0f
+            spriteComponent.color.x - (255 - sector.light.x),
+            spriteComponent.color.y - (255 - sector.light.y),
+            spriteComponent.color.z - (255 - sector.light.z),
+            spriteComponent.color.w
         };
 
         gpuSprite.textureIndices0 = {

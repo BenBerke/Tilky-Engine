@@ -558,7 +558,7 @@ namespace {
     struct OldSectorInfo {
         ID id = INVALID_ID;
         std::vector<SectorFloor> floors;
-        float lightValue = 255.0f;
+        Vector3 lightValue = {255.0f, 255.0f, 255.0f};
         std::vector<Vector2> vertices;
         Vector2 samplePoint{};
     };
@@ -572,7 +572,7 @@ namespace {
 
             info.id = sector.id;
             info.floors = sector.floors;
-            info.lightValue = sector.lightValue;
+            info.lightValue = sector.light;
             info.vertices = sector.vertices;
             info.samplePoint = InteriorSamplePoint(sector.vertices, sector.triangles);
 
@@ -671,11 +671,11 @@ namespace {
 
             if (reconciledFace.source != nullptr) {
                 sector.floors = reconciledFace.source->floors;
-                sector.lightValue = reconciledFace.source->lightValue;
+                sector.light = reconciledFace.source->lightValue;
             }
             else {
                 sector.floors = params.floors;
-                sector.lightValue = params.lightValue;
+                sector.light = params.lightValue;
             }
 
             sectors.push_back(std::move(sector));

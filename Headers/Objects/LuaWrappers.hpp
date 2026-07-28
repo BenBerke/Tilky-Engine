@@ -343,6 +343,24 @@ struct ScriptSprite {
                sideCount == SIDECOUNT_45;
     }
 
+    [[nodiscard]] Vector4 GetColor() const {
+        const ComponentSprite* sprite = GetComponent();
+
+        if (sprite == nullptr) {
+            return {255.0f, 255.0f, 255.0f, 255.0f};
+        }
+
+        return sprite->color;
+    }
+
+    void SetColor(const Vector4& color) const {
+        ComponentSprite* sprite = GetComponent();
+
+        if (sprite == nullptr) return;
+
+        sprite->color = color;
+    }
+
     [[nodiscard]] std::string GetTextureFileName(const int slot) const {
         const ComponentSprite* sprite = GetComponent();
 
@@ -1608,16 +1626,16 @@ struct ScriptSector {
         return GetSector() != nullptr;
     }
 
-    [[nodiscard]] float GetLightValue() const {
+    [[nodiscard]] Vector3 GetLight() const {
         const Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");
-        return sector->lightValue;
+        return sector->light;
     }
 
-    void SetLightValue(const float value) const {
+    void SetLight(const Vector3 &value) const {
         Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");
-        sector->lightValue = value;
+        sector->light = value;
     }
 
     [[nodiscard]] int GetFloorCount() const {
