@@ -81,7 +81,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     {
         ZoneScopedN("Background");
         //todo make this a world setting
-        constexpr float DEFAULT_PARALLAX = .01f;
+        constexpr float DEFAULT_PARALLAX = 1.0f;
         constexpr float BACKGROUND_SCROLL = 1.0f;
         DrawBackground(camera->pitch, camera->yaw, camera->fov, DEFAULT_PARALLAX, BACKGROUND_SCROLL);
     }

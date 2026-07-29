@@ -1799,24 +1799,22 @@ namespace MapEditorInternal {
 
             ImGui::Spacing();
 
-            if (ImGui::ColorEdit3(
-                (Get("wall.color") + "##NewSectorWallColor").c_str(),
-                &wallColor.x
-            ))
+            if (ImGui::ColorEdit4((Get("wall.color") + "##NewSectorWallColor").c_str(),&wallColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_Uint8))
                 hasUnsavedChanges = true;
 
-
-            if (ImGui::ColorEdit3(
-                (Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(),
-                &ceilColor.x
-            ))
+            if (ImGui::ColorEdit4((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(),&ceilColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_Uint8))
                 hasUnsavedChanges = true;
 
-
-            if (ImGui::ColorEdit3(
-                (Get("sector.floor_color") + "##NewSectorFloorColor").c_str(),
-                &floorColor.x
-            ))
+            if (ImGui::ColorEdit4((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_Uint8))
                 hasUnsavedChanges = true;
 
             ImGui::Spacing();
@@ -1827,7 +1825,6 @@ namespace MapEditorInternal {
 
             if (pendingSectorParams.floors.empty()) pendingSectorParams.floors.resize(1);
             else if (pendingSectorParams.floors.size() > 1) pendingSectorParams.floors.resize(1);
-
 
             SectorFloor &initialFloor = pendingSectorParams.floors.front();
 

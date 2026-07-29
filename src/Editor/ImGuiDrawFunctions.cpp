@@ -503,7 +503,7 @@ namespace ImGuiDrawFunctions {
         FieldWidth(220.0f);
 
         if (ImGui::ColorEdit3(
-                Get("sector.light_color").c_str(), lightColor,
+                Get("sector.light_value").c_str(), lightColor,
                 ImGuiColorEditFlags_Uint8 |
                 ImGuiColorEditFlags_DisplayRGB |
                 ImGuiColorEditFlags_PickerHueWheel)) {
@@ -516,9 +516,8 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SameLine();
 
-        if (ImGui::SmallButton(Get("common.reset").c_str())) {
+        if (ImGui::SmallButton(Get("common.reset").c_str()))
             sector.light = {255.0f, 255.0f, 255.0f};
-        }
 
         EndSection();
 
@@ -544,9 +543,8 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SameLine();
 
-        if (ImGui::Button(Get("common.close").c_str())) {
+        if (ImGui::Button(Get("common.close").c_str()))
             if (open != nullptr) *open = false;
-        }
 
         ImGui::End();
         return deleteRequested;

@@ -212,6 +212,7 @@
   "&Context_53": "Text field of the component -text-",
   "component.ui.text.text": "Текст",
   "common.delete": "Удалить",
+  "common.reset": "Сброс",
   "common.close": "Закрыть",
   "common.add": "Добавить",
   "common.edit": "Редактировать",

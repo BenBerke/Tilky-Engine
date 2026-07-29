@@ -330,6 +330,7 @@
   "editor.asset_field.tooltip": "Click to select an asset.",
   "editor.asset_field.clear": "Clear",
   "common.save": "Save",
+  "common.reset" : "Reset",
   "launcher.confirm_delete_title": "Delete Project?",
   "launcher.confirm_delete_message": "This will permanently delete the project folder and all its files. This cannot be undone.",
   "launcher.confirm_remove_message": "This will remove the project from your list. Files on disk will not be touched.",
