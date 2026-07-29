@@ -30,6 +30,8 @@ public:
 
     virtual int CreateTexture(const std::string& fileName) = 0;
 
+    virtual void RefreshTexturesFromLevel() = 0;
+
     virtual void RenderTextRaw(const std::string& text, Vector2 position, Vector2 scale, Vector3 color) = 0;
 
     virtual bool CreateMap() = 0;

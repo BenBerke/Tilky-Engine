@@ -294,10 +294,11 @@ private:
     int GetOrCreateTextureIndex(const std::string& fileName);
     int GetTextureRegionIndex(const std::string& fileName) const;
 
-    void RefreshTexturesFromLevel();
+    void RefreshTexturesFromLevel() override;
     [[nodiscard]] const GPUTexture& GetTexture(int index) const;
     [[nodiscard]] int GetTextureCount() const;
     void DestroyAllTextures();
+
     void RenderUIText(const ComponentUIText& text, const ComponentUITransform& transform);
 
     static constexpr int SECTOR_FLOOR_COUNT = 3;

@@ -32,6 +32,15 @@ struct AssetBrowserEntry {
     std::string displayName;
     bool isDirectory = false;
     AssetKind kind = AssetKind::Other;
+
+    // ToAssetReference(absolutePath, kind), precomputed once by
+    // ScanCurrentDirectory(). ToAssetReference resolves a canonical path
+    // under the hood (a real filesystem round-trip), which is fine to do
+    // once per scan but too expensive to redo every frame for every
+    // visible tile - which is what happened when DrawFileTile called it
+    // directly. Only populated for AssetKind::Texture, the only kind
+    // DrawFileTile needs a reference string for; empty otherwise.
+    std::string textureReference;
 };
 
 // Self-contained, reusable ImGui asset browser locked to a single root

@@ -240,6 +240,12 @@ void AssetBrowser::ScanCurrentDirectory() {
                 entry.isDirectory = false;
                 entry.kind = DetermineAssetKind(absolutePath);
 
+                // See the textureReference comment in AssetBrowser.hpp:
+                // do this canonicalizing work once here, not every frame
+                // in DrawFileTile.
+                if (entry.kind == AssetKind::Texture)
+                    entry.textureReference = ToAssetReference(absolutePath, AssetKind::Texture);
+
                 files.push_back(std::move(entry));
             } catch (const fs::filesystem_error& e) {
                 // One bad entry (broken symlink, permission issue, etc.)
@@ -434,7 +440,7 @@ void AssetBrowser::DrawFileTile(
     ImTextureID texture{};
 
     if (entry.kind == AssetKind::Texture && thumbnailProvider) {
-        texture = thumbnailProvider(ToAssetReference(entry.absolutePath, AssetKind::Texture));
+        texture = thumbnailProvider(entry.textureReference);
     }
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();

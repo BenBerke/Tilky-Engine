@@ -52,6 +52,7 @@ namespace {
     };
 
     struct ScriptGameTime {
+
     };
 
     sol::state lua;
@@ -78,26 +79,19 @@ namespace {
     ScriptInstance* FindScriptInstance(const ID ownerID, const std::string& scriptFile) {
         const std::string cleanScriptFile = CleanScriptFileName(scriptFile);
 
-        if (ownerID == INVALID_ENTITY_ID || cleanScriptFile.empty()) {
-            return nullptr;
-        }
+        if (ownerID == INVALID_ENTITY_ID || cleanScriptFile.empty()) return nullptr;
 
         const auto ownerIt = scriptInstancesByOwner.find(ownerID);
 
-        if (ownerIt == scriptInstancesByOwner.end()) {
-            return nullptr;
-        }
+        if (ownerIt == scriptInstancesByOwner.end()) return nullptr;
 
         for (const std::size_t instanceIndex : ownerIt->second) {
-            if (instanceIndex >= scriptInstances.size()) {
-                continue;
-            }
+            if (instanceIndex >= scriptInstances.size()) continue;
 
             ScriptInstance& instance = scriptInstances[instanceIndex];
 
-            if (instance.scriptFile == cleanScriptFile) {
-                return &instance;
-            }
+            if (instance.scriptFile == cleanScriptFile) return &instance;
+
         }
 
         return nullptr;

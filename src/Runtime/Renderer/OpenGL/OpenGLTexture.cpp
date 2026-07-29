@@ -139,7 +139,16 @@ void OpenGL::DestroyAllTextures() {
 }
 
 ImTextureID OpenGL::GetImGuiTextureID(const std::string& fileName) {
-    const int textureIndex = CreateTexture(fileName);
+    // Was calling CreateTexture() directly, which unconditionally decodes
+    // the file and uploads a brand-new GL texture on every call. This is
+    // called once per visible asset-browser thumbnail per frame, so that
+    // turned into a full IMG_Load + glTexImage2D + glGenerateMipmap for
+    // every visible tile, every frame, plus a permanently growing
+    // `textures` vector (a new never-freed GL texture per frame per tile,
+    // not just a one-time cost). GetOrCreateTextureIndex() already exists
+    // and already does the right thing: check the cache, only create on
+    // a miss.
+    const int textureIndex = GetOrCreateTextureIndex(fileName);
 
     if (textureIndex < 0 || textureIndex >= GetTextureCount()) return ImTextureID{};
 

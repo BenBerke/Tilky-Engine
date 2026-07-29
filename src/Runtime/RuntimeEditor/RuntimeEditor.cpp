@@ -213,11 +213,6 @@ namespace RuntimeEditorUi {
             }
         }
 
-        if (!MapEditorInternal::assetBrowserInitialized) {
-             MapEditorInternal::assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
-              MapEditorInternal::assetBrowserInitialized = true;
-        }
-
         if (editingEntity || editingSector || editingWall) {
             ImGui::Begin("Asset Browser##RuntimeEditor");
 
@@ -231,6 +226,8 @@ namespace RuntimeEditorUi {
             });
 
             ImGui::End();
+
+            //runtimeRenderer->RefreshTexturesFromLevel();
         }
 
         // Crosshair, useless because mouse position is used for selection
@@ -255,6 +252,11 @@ namespace RuntimeEditor {
 
         runtimeRenderer = &renderer;
 
+        if (runtimeRenderer == nullptr) {
+            spdlog::critical("Runtime renderer could not be found");
+            return;
+        }
+
         renderer.SetUseEditorCamera(true);
 
         camera = renderer.GetEditorCamera();
@@ -268,6 +270,11 @@ namespace RuntimeEditor {
         camera->forward = GetCameraForward(*camera);
 
         spdlog::info("Runtime editor is using renderer editor-only camera");
+
+        if (!MapEditorInternal::assetBrowserInitialized) {
+            MapEditorInternal::assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
+            MapEditorInternal::assetBrowserInitialized = true;
+        }
     }
 
     void Update(Level& level,
