@@ -9,7 +9,6 @@ uniform sampler2D backgroundTexture;
 uniform float playerAngle;
 uniform float playerPitch = 0.0;
 
-// Must match the camera's horizontal field of view.
 uniform float horizontalFov = 90.0;
 
 // 1.0 keeps the panorama fixed in the world. Lower values produce a
@@ -66,9 +65,13 @@ void main() {
     uv.x = atan(direction.x, direction.z) / TWO_PI + 0.5;
     uv.y = 0.5 - asin(clamp(direction.y, -1.0, 1.0)) / PI;
 
+    vec2 duvdx = dFdx(uv);
+    vec2 duvdy = dFdy(uv);
+    duvdx.x -= floor(duvdx.x + 0.5);
+    duvdy.x -= floor(duvdy.x + 0.5);
+
     uv += backgroundScroll;
     uv.x = fract(uv.x);
     uv.y = clamp(uv.y, 0.0, 1.0);
-
-    FragColor = texture(backgroundTexture, uv);
+    FragColor = textureGrad(backgroundTexture, uv, duvdx, duvdy);
 }
