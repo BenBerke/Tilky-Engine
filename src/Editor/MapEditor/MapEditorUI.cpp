@@ -786,9 +786,7 @@ namespace {
 
             ImGui::Spacing();
 
-            if (FullWidthButton(Get("editor.create_level").c_str())) {
-                createLevelModalRequested = true;
-            }
+            if (FullWidthButton(Get("editor.create_level").c_str())) createLevelModalRequested = true;
 
             HoverTooltip(Get("editor.tooltip.create_level").c_str());
 

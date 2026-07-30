@@ -254,7 +254,6 @@ private:
     GLsizei gpuWallCount = 0;
 
     std::vector<GpuFlatTriangle> flatTriangles;
-    std::vector<GpuFlatTriangle> visibleFlatTriangles;
 
     std::vector<GpuDecal> gpuDecals;
     std::vector<GpuSprite> gpuSprites;
@@ -287,7 +286,6 @@ private:
     void BuildGpuWallsFromMap();
     void UploadGpuWallsFromMap();
 
-    void BuildVisibleFlatTriangles(const Vector2& playerPos, float playerAngle);
     void BuildFlatTrianglesFromSectors();
 
     void DrawBackground(float pitch, float yaw, float horizontalFov, float parallaxStrength, float backgroundScroll);

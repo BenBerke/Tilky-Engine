@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <spdlog/spdlog.h>
 
-#include "Headers/Runtime/Renderer/RendererMath.hpp"
-
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -16,7 +14,7 @@ namespace {
 
     constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
-        enum class WallSpanSide {
+    enum class WallSpanSide {
         Front,
         Back
     };
@@ -170,80 +168,6 @@ namespace {
 
         gpuWalls.push_back(gpuWall);
     }
-
-    void ClipFlatTriangleAgainstNearPlane(
-        std::vector<GpuFlatTriangle> &visibleFlatTriangles,
-        const GpuFlatTriangle &triangle,
-        const Vector2 &playerPos,
-        const float playerAngle
-    ) {
-        using namespace OpenGLRendererInternal;
-
-        std::vector<Vector4> input = {
-            triangle.a,
-            triangle.b,
-            triangle.c
-        };
-
-        std::vector<Vector4> output;
-
-        for (int i = 0; i < static_cast<int>(input.size()); ++i) {
-            const Vector4 current = input[i];
-            const Vector4 next = input[(i + 1) % input.size()];
-
-            const float currentDepth =
-                    RendererMath::GetViewDepth(current, playerPos, playerAngle);
-
-            const float nextDepth =
-                    RendererMath::GetViewDepth(next, playerPos, playerAngle);
-
-            const bool currentInside = currentDepth >= FLAT_NEAR_PLANE;
-            const bool nextInside = nextDepth >= FLAT_NEAR_PLANE;
-
-            if (currentInside && nextInside) {
-                output.push_back(next);
-            } else if (currentInside && !nextInside) {
-                const float t =
-                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
-
-                output.push_back(RendererMath::LerpVector4(current, next, t));
-            } else if (!currentInside && nextInside) {
-                const float t =
-                        (FLAT_NEAR_PLANE - currentDepth) / (nextDepth - currentDepth);
-
-                output.push_back(RendererMath::LerpVector4(current, next, t));
-                output.push_back(next);
-            }
-        }
-
-        if (output.size() < 3) return;
-
-        if (output.size() == 3) {
-            visibleFlatTriangles.push_back({
-                output[0],
-                output[1],
-                output[2],
-                triangle.color,
-                triangle.data
-            });
-        } else if (output.size() == 4) {
-            visibleFlatTriangles.push_back({
-                output[0],
-                output[1],
-                output[2],
-                triangle.color,
-                triangle.data
-            });
-
-            visibleFlatTriangles.push_back({
-                output[0],
-                output[2],
-                output[3],
-                triangle.color,
-                triangle.data
-            });
-        }
-    }
 }
 
 //todo put this function to a seperate script because it might also be used by the vulkan renderer
@@ -318,31 +242,10 @@ void OpenGL::UploadGpuWallsFromMap() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
 }
 
-void OpenGL::BuildVisibleFlatTriangles(const Vector2 &playerPos, const float playerAngle) {
-    visibleFlatTriangles.clear();
-
-    for (const GpuFlatTriangle &triangle: flatTriangles)
-        ClipFlatTriangleAgainstNearPlane(visibleFlatTriangles, triangle, playerPos, playerAngle);
-
-    flatTriangleCount = static_cast<GLsizei>(visibleFlatTriangles.size());
-
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, flatSSBO);
-
-    glBufferData(
-        GL_SHADER_STORAGE_BUFFER,
-        visibleFlatTriangles.size() * sizeof(GpuFlatTriangle),
-        visibleFlatTriangles.empty() ? nullptr : visibleFlatTriangles.data(),
-        GL_DYNAMIC_DRAW
-    );
-
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
-}
-
 void OpenGL::BuildFlatTrianglesFromSectors() {
     Level& level = LevelManager::CurrentLevel();
 
     flatTriangles.clear();
-    visibleFlatTriangles.clear();
 
     for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
         const Sector& sector = level.sectors[sectorIndex];

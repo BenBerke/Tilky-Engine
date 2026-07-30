@@ -93,7 +93,6 @@ void OpenGL::Shutdown() {
     gpuSectors.clear();
     gpuWalls.clear();
     flatTriangles.clear();
-    visibleFlatTriangles.clear();
     gpuSprites.clear();
     gpuDecals.clear();
 

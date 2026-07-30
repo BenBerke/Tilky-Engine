@@ -54,8 +54,13 @@ namespace ProjectManager {
     // This function creates:
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\project.tilky
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Levels
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Textures
+    //
+    // It does NOT create Levels/Textures/Sounds/Scripts subfolders inside
+    // Assets. Assets may live in any folder under Assets, so nothing is
+    // pre-created at a fixed location - GetLevelsPath() / GetTexturesPath() /
+    // GetSoundsPath() / GetScriptsPath() below still return those
+    // conventional paths for anything that wants a sensible default, but
+    // the paths are not guaranteed to exist on disk.
     void CreateProject(const fs::path &directory, const std::string &projectName);
 
     // Creates a new project folder inside the top-level Projects folder, then creates
@@ -91,6 +96,12 @@ namespace ProjectManager {
     // currentAssetsPath     = ...\TestProject\Assets
     // currentLevelsPath     = ...\TestProject\Assets\Levels
     // currentTexturesPath   = ...\TestProject\Assets\Textures
+    //
+    // Only the Assets folder itself must actually exist on disk for this to
+    // succeed. The Levels/Textures/Sounds/Scripts paths above are always
+    // computed, but no longer required to exist - assets may live anywhere
+    // under Assets, so a project missing one of those particular subfolders
+    // is still considered valid.
     bool LoadProjectMetaData(const fs::path &path);
 
     // Returns whether a project has successfully been loaded into ProjectManager.

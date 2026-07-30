@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 #include <SDL3/SDL_filesystem.h>
 #include <nlohmann/json.hpp>
@@ -134,7 +135,8 @@ namespace ProjectManager {
             projectFile = path / "project.tilky";
         }
 
-        if (!fs::exists(projectFile)) {
+        std::error_code existsEc;
+        if (!fs::exists(projectFile, existsEc)) {
             spdlog::error("Missing .tilky project file at: {}", projectFile.string());
             return false;
         }
@@ -151,10 +153,6 @@ namespace ProjectManager {
 
     void CreateProject(const fs::path& directory, const std::string& projectName) {
         const fs::path assetsPath = directory / "Assets";
-        const fs::path levelsPath = assetsPath / "Levels";
-        const fs::path texturesPath = assetsPath / "Textures";
-        const fs::path soundsPath = assetsPath / "Sounds";
-        const fs::path scriptsPath = assetsPath / "Scripts";
 
         bool openProject = true;
 
@@ -167,37 +165,11 @@ namespace ProjectManager {
                 else spdlog::info("Created project assets folder: {}", assetsPath.string());
             }
 
-            if (!fs::exists(levelsPath)) {
-                if (!fs::create_directories(levelsPath)) {
-                    spdlog::critical("Could not create project levels folder: {}", levelsPath.string());
-                    openProject = false;
-                }
-                else spdlog::info("Created project levels folder: {}", levelsPath.string());
-            }
-
-            if (!fs::exists(texturesPath)) {
-                if (!fs::create_directories(texturesPath)) {
-                    spdlog::critical("Could not create project textures folder: {}", texturesPath.string());
-                    openProject = false;
-                }
-                else spdlog::info("Created project textures folder: {}", texturesPath.string());
-            }
-
-            if (!fs::exists(soundsPath)) {
-                if (!fs::create_directories(soundsPath)) {
-                    spdlog::critical("Could not create project sounds folder: {}", soundsPath.string());
-                    openProject = false;
-                }
-                else spdlog::info("Created sounds path folder: {}", soundsPath.string());
-            }
-
-            if (!fs::exists(scriptsPath)) {
-                if (!fs::create_directories(scriptsPath)) {
-                    spdlog::critical("Could not create project scripts folder: {}", scriptsPath.string());
-                    openProject = false;
-                }
-                else spdlog::info("Created sounds path folder: {}", scriptsPath.string());
-            }
+            // Levels/Textures/Sounds/Scripts subfolders are intentionally NOT
+            // created here anymore: assets are allowed in any folder under
+            // Assets, so nothing is pre-created at a fixed, predetermined
+            // location. The asset browser creates folders (and levels) on
+            // demand wherever the user actually asks for them instead.
 
             const fs::path dataPath = directory / "project.tilky";
 
@@ -255,7 +227,8 @@ namespace ProjectManager {
     }
 
     bool LoadProjectMetaData(const fs::path& tilkyEnginePath) {
-        if (!fs::exists(tilkyEnginePath)) {
+        std::error_code tilkyExistsEc;
+        if (!fs::exists(tilkyEnginePath, tilkyExistsEc)) {
             spdlog::error("Project file does not exist: {}", tilkyEnginePath.string());
             return false;
         }
@@ -287,28 +260,15 @@ namespace ProjectManager {
         currentSoundsPath = currentAssetsPath / "Sounds";
         currentScriptsPath = currentAssetsPath / "Scripts";
 
-        if (!fs::exists(currentAssetsPath)) {
+        // Only Assets itself is required. Levels/Textures/Sounds/Scripts are
+        // still computed above (for anything that wants a sensible default
+        // location), but are no longer mandatory - a project simply doesn't
+        // have to keep assets in those specific subfolders anymore. Code
+        // that actually reads from one of these paths (e.g. LevelManager)
+        // already checks for its own existence before using it.
+        std::error_code assetsExistsEc;
+        if (!fs::exists(currentAssetsPath, assetsExistsEc)) {
             spdlog::critical("Project is missing Assets folder: {}", currentAssetsPath.string());
-            return false;
-        }
-
-        if (!fs::exists(currentLevelsPath)) {
-            spdlog::critical("Project is missing Levels folder: {}", currentLevelsPath.string());
-            return false;
-        }
-
-        if (!fs::exists(currentTexturesPath)) {
-            spdlog::critical("Project is missing Textures folder: {}", currentTexturesPath.string());
-            return false;
-        }
-
-        if (!fs::exists(currentSoundsPath)) {
-            spdlog::critical("Project is missing Sounds folder: {}", currentSoundsPath.string());
-            return false;
-        }
-
-        if (!fs::exists(currentScriptsPath)) {
-            spdlog::critical("Project is missing Scripts folder: {}", currentScriptsPath.string());
             return false;
         }
 
@@ -351,20 +311,23 @@ namespace ProjectManager {
 
         const fs::path packagedPath = GetEngineBasePath() / relativePath;
 
+        std::error_code sourceExistsEc;
+        std::error_code packagedExistsEc;
+
 #ifndef NDEBUG
-        if (fs::exists(sourcePath)) {
+        if (fs::exists(sourcePath, sourceExistsEc)) {
             return sourcePath;
         }
 
-        if (fs::exists(packagedPath)) {
+        if (fs::exists(packagedPath, packagedExistsEc)) {
             return packagedPath;
         }
 #else
-        if (fs::exists(packagedPath)) {
+        if (fs::exists(packagedPath, packagedExistsEc)) {
             return packagedPath;
         }
 
-        if (fs::exists(sourcePath)) {
+        if (fs::exists(sourcePath, sourceExistsEc)) {
             return sourcePath;
         }
 #endif
@@ -412,7 +375,8 @@ namespace ProjectManager {
     std::string GetCurrentLanguageInLauncher() {
         const fs::path configPath = GetLauncherVariables();
 
-        if (!fs::exists(configPath)) {
+        std::error_code configExistsEc;
+        if (!fs::exists(configPath, configExistsEc)) {
             spdlog::warn("Launcher config not found. Falling back to English. Expected path: {}", configPath.string());
             return "en";
         }

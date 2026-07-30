@@ -183,6 +183,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDisable(GL_BLEND);
     }
 
+#ifndef TILKY_STANDALONE
     {
         ZoneScopedN("Build Colliders");
 
@@ -206,9 +207,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             }
         }
     }
-
     if (!renderUI) return;
-
+#endif
     {
         ZoneScopedN("Rendering UI Sprites");
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
