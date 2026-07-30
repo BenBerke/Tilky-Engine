@@ -306,10 +306,10 @@ namespace {
     // --- Create File (extensible "New File" submenu) ------------------------
 
     bool CreateGenericFileAsset(
-        const fs::path& destinationDirectory,
-        const std::string& fileName,
-        fs::path& createdFilePath,
-        std::string& errorMessage
+        const fs::path &destinationDirectory,
+        const std::string &fileName,
+        fs::path &createdFilePath,
+        std::string &errorMessage
     ) {
         std::string validationError;
         if (!IsValidNewFileSystemName(fileName, validationError)) {
@@ -318,7 +318,8 @@ namespace {
         }
 
         std::error_code destEc;
-        if (!fs::exists(destinationDirectory, destEc) || !fs::is_directory(destinationDirectory, destEc)) {
+        if (!fs::exists(destinationDirectory, destEc) ||
+            !fs::is_directory(destinationDirectory, destEc)) {
             errorMessage = "Destination folder no longer exists.";
             return false;
         }
@@ -336,9 +337,30 @@ namespace {
             errorMessage = "Could not create the file.";
             return false;
         }
-        file.close();
 
-        // TODO(TILKY): INSERT DEFAULT FILE TEMPLATE CONTENT HERE
+        if (destination.extension() == ".lua") {
+            file <<
+                    R"(function Start()
+
+end
+
+function Update()
+
+end
+)";
+        }
+
+        if (!file.good()) {
+            errorMessage = "Could not write to the file.";
+            file.close();
+
+            std::error_code removeEc;
+            fs::remove(destination, removeEc);
+
+            return false;
+        }
+
+        file.close();
 
         createdFilePath = destination;
         return true;
@@ -574,12 +596,6 @@ void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
         }
     }
 
-    // Deliberately no longer pre-creates Textures/Sounds/Scripts here: this
-    // is now a general-purpose hierarchical browser, so nothing is assumed
-    // to live at a predetermined path. See ToAssetReference for the one
-    // place folder-relative reference strings are still computed (a
-    // save-data-format concern, unrelated to where files may be browsed
-    // from or created).
     rootDirectory = root;
     currentDirectory = root;
     selectedFile.clear();
@@ -1050,9 +1066,7 @@ void AssetBrowser::DrawCreateFolderModal() {
                 Refresh();
                 if (wasVisible) selectedFile = createdPath;
             }
-            else {
-                activeModal.errorMessage = error;
-            }
+            else activeModal.errorMessage = error;
         }
         else if (action == AssetBrowserModalAction::Cancelled) {
             activeModal.kind = AssetBrowserModalKind::None;
@@ -1111,6 +1125,7 @@ void AssetBrowser::DrawCreateFileModal() {
 
     if (!ImGui::BeginPopupModal(kPopupId, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
+    //TILKY(TODO) translation json
     if (activeModal.kind == AssetBrowserModalKind::CreateFile) {
         const std::string description = activeModal.forcedExtension.empty()
             ? ("New file in \"" + DisplayRelative(activeModal.destinationDirectory) + "\" (include an extension):")
@@ -1121,9 +1136,8 @@ void AssetBrowser::DrawCreateFileModal() {
         if (action == AssetBrowserModalAction::Confirmed) {
             std::string enteredName = activeModal.nameBuffer;
 
-            if (!activeModal.forcedExtension.empty() && !fs::path(enteredName).has_extension()) {
+            if (!activeModal.forcedExtension.empty() && !fs::path(enteredName).has_extension())
                 enteredName += activeModal.forcedExtension;
-            }
 
             fs::path createdFilePath;
             std::string error;
@@ -1134,9 +1148,7 @@ void AssetBrowser::DrawCreateFileModal() {
                 Refresh();
                 if (wasVisible) selectedFile = createdFilePath;
             }
-            else {
-                activeModal.errorMessage = error;
-            }
+            else activeModal.errorMessage = error;
         }
         else if (action == AssetBrowserModalAction::Cancelled) {
             activeModal.kind = AssetBrowserModalKind::None;
@@ -1453,7 +1465,7 @@ void AssetBrowser::RequestConsumeAsFieldReference(const AssetKind kind, const st
     pendingConfirmedKind = kind;
 }
 
-void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path& destinationDirectory) {
+void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {
     if (ImGui::MenuItem("Script (.lua)")) RequestCreateFile(destinationDirectory, ".lua");
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
 }
