@@ -237,7 +237,7 @@ namespace Editor {
         if (!SDL_TextInputActive(window))
             if (!SDL_StartTextInput(window))
                 spdlog::error("SDL_StartTextInput failed: {}", SDL_GetError());
-        
+
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
 
         SDL_GetWindowSize(window, &screenWidth, &screenHeight);

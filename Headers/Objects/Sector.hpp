@@ -16,10 +16,21 @@ struct Triangle {
     Vector2 a, b, c;
 };
 
+// Towards
+enum SlopeDirection {
+    PLUS_X = 0,
+    MINUS_X = 1,
+    PLUS_Z = 2,
+    MINUS_Z = 3
+};
+
 struct SectorSurface {
     float height = 0.0f;
     Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
     std::string texture;
+
+    SlopeDirection slopeDirection = PLUS_X;
+    float slopeStrength = 0.0f;
 };
 
 struct SectorFloor {
@@ -27,12 +38,7 @@ struct SectorFloor {
     SectorSurface ceiling;
 };
 
-struct Entity;
-
 struct Sector {
-    std::vector<Vector2> vertices;
-    std::vector<Triangle> triangles;
-
     std::vector<SectorFloor> floors = {
         {
             {0.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}},
@@ -41,6 +47,9 @@ struct Sector {
     };
 
     Vector3 light = {255.0f, 255.0f, 255.0f};
+
+    std::vector<Vector2> vertices;
+    std::vector<Triangle> triangles;
 
     ID id = INVALID_ID;
 

@@ -19,6 +19,11 @@
 #define COLLIDER_SPHERE_VERTEX_COUNT (COLLIDER_SPHERE_SEGMENTS * 6)
 #define COLLIDER_VERTICES_PER_COLLIDER COLLIDER_SPHERE_VERTEX_COUNT
 
+#define SLOPE_PLUS_X 0
+#define SLOPE_MINUS_X 1
+#define SLOPE_PLUS_Z 2
+#define SLOPE_MINUS_Z 3
+
 struct Decal {
     vec4 startEnd;
     vec4 color;
@@ -68,8 +73,14 @@ struct Sector {
 
 struct SectorFloor {
     vec4 heights;
-// heights.x = floor height
-// heights.y = ceiling height
+// heights.x = floor base height
+// heights.y = ceiling base height
+
+    vec4 slopeData;
+// slopeData.x = floor slope direction
+// slopeData.y = floor slope strength
+// slopeData.z = ceiling slope direction
+// slopeData.w = ceiling slope strength
 
     vec4 floorColor;
     vec4 ceilingColor;
@@ -529,35 +540,133 @@ void renderSprite() {
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
+vec4 GetSectorBounds(int sectorIndex, FlatTriangle initialTriangle) {
+    vec2 minimum = min(
+    min(initialTriangle.a.xy, initialTriangle.b.xy),
+    initialTriangle.c.xy
+    );
+
+    vec2 maximum = max(
+    max(initialTriangle.a.xy, initialTriangle.b.xy),
+    initialTriangle.c.xy
+    );
+
+    for (int triangleIndex = 0;
+    triangleIndex < flatTriangles.length();
+    ++triangleIndex) {
+        FlatTriangle candidate = flatTriangles[triangleIndex];
+
+        if (int(candidate.data.x) != sectorIndex) continue;
+
+        minimum = min(minimum, candidate.a.xy);
+        minimum = min(minimum, candidate.b.xy);
+        minimum = min(minimum, candidate.c.xy);
+
+        maximum = max(maximum, candidate.a.xy);
+        maximum = max(maximum, candidate.b.xy);
+        maximum = max(maximum, candidate.c.xy);
+    }
+
+    return vec4(
+    minimum.x,
+    minimum.y,
+    maximum.x,
+    maximum.y
+    );
+}
+
+float GetSlopeOffset(
+vec2 worldXZ,
+vec4 sectorBounds,
+int slopeDirection,
+float slopeStrength
+) {
+    if (slopeStrength == 0.0) return 0.0;
+
+    switch (slopeDirection) {
+        case SLOPE_PLUS_X:
+        return (worldXZ.x - sectorBounds.x) * slopeStrength;
+
+        case SLOPE_MINUS_X:
+        return (sectorBounds.z - worldXZ.x) * slopeStrength;
+
+        case SLOPE_PLUS_Z:
+        return (worldXZ.y - sectorBounds.y) * slopeStrength;
+
+        case SLOPE_MINUS_Z:
+        return (sectorBounds.w - worldXZ.y) * slopeStrength;
+    }
+
+    return 0.0;
+}
+
 void renderFlat() {
     FlatTriangle triangle = flatTriangles[gl_InstanceID];
-    vec4 point = gl_VertexID == 0 ? triangle.a : gl_VertexID == 1 ? triangle.b : triangle.c;
+
+    vec4 point =
+    gl_VertexID == 0
+    ? triangle.a
+    : gl_VertexID == 1
+    ? triangle.b
+    : triangle.c;
 
     int sectorIndex = int(triangle.data.x);
     int floorIndex = int(triangle.data.y);
     int surfaceType = int(triangle.data.z);
 
     Sector sector = sectors[sectorIndex];
-    int packedFloorIndex = int(sector.floorData.x) + floorIndex;
-    SectorFloor sectorFloor = sectorFloors[packedFloorIndex];
+
+    int packedFloorIndex =
+    int(sector.floorData.x) + floorIndex;
+
+    SectorFloor sectorFloor =
+    sectorFloors[packedFloorIndex];
 
     bool isCeiling = surfaceType == 1;
 
-    point.z = isCeiling ? sectorFloor.heights.y : sectorFloor.heights.x;
-    vColor = (isCeiling ? sectorFloor.ceilingColor : sectorFloor.floorColor) / 255.0;
-    vFlatTextureIndex = isCeiling ? int(sectorFloor.textureData.y) : int(sectorFloor.textureData.x);
+    float baseHeight;
+    int slopeDirection;
+    float slopeStrength;
+
+    if (isCeiling) {
+        baseHeight = sectorFloor.heights.y;
+        slopeDirection = int(sectorFloor.slopeData.z);
+        slopeStrength = sectorFloor.slopeData.w;
+
+        vColor = sectorFloor.ceilingColor / 255.0;
+        vFlatTextureIndex = int(sectorFloor.textureData.y);
+    }
+    else {
+        baseHeight = sectorFloor.heights.x;
+        slopeDirection = int(sectorFloor.slopeData.x);
+        slopeStrength = sectorFloor.slopeData.y;
+
+        vColor = sectorFloor.floorColor / 255.0;
+        vFlatTextureIndex = int(sectorFloor.textureData.x);
+    }
+
+    vec4 sectorBounds = GetSectorBounds(sectorIndex, triangle);
+
+    point.z = baseHeight + GetSlopeOffset(
+    point.xy,
+    sectorBounds,
+    slopeDirection,
+    slopeStrength
+    );
 
     vTextureIndex = -1;
     vSpriteTextureIndex = -1;
 
     vFlatUV = point.xy / tileSize;
+
     vWallUV = vec2(0.0);
     vSpriteUV = vec2(0.0);
     vDecalUV = vec2(0.0);
 
     vec3 worldPos = vec3(point.x, point.z, point.y);
+
     vWorldPos = worldPos;
-    vSurfaceCoord = vec2(0.0);
+    vSurfaceCoord = point.xy;
     vSurfaceSize = vec2(1.0);
 
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
@@ -593,10 +702,29 @@ void renderWall() {
 
     vec2 uvOffset = wall.textureOffset_padding.xy / tileSize;
 
-    vec3 bottomLeft = vec3(wallStart2D.x, bottomHeight, wallStart2D.y);
-    vec3 topLeft = vec3(wallStart2D.x, topHeight, wallStart2D.y);
-    vec3 bottomRight = vec3(wallEnd2D.x, bottomHeight, wallEnd2D.y);
-    vec3 topRight = vec3(wallEnd2D.x, topHeight, wallEnd2D.y);
+    vec3 bottomLeft = vec3(
+    wallStart2D.x,
+    bottomHeight,
+    wallStart2D.y
+    );
+
+    vec3 topLeft = vec3(
+    wallStart2D.x,
+    topHeight,
+    wallStart2D.y
+    );
+
+    vec3 bottomRight = vec3(
+    wallEnd2D.x,
+    bottomHeight,
+    wallEnd2D.y
+    );
+
+    vec3 topRight = vec3(
+    wallEnd2D.x,
+    topHeight,
+    wallEnd2D.y
+    );
 
     vec3 positions[6] = vec3[6](
     bottomLeft,
@@ -650,22 +778,10 @@ void renderWall() {
 }
 
 void main() {
-    if (renderMode == RENDER_FLAT) {
-        renderFlat();
-    }
-    else if (renderMode == RENDER_WALL) {
-        renderWall();
-    }
-    else if (renderMode == RENDER_SPRITE) {
-        renderSprite();
-    }
-    else if (renderMode == RENDER_DECAL) {
-        renderDecal();
-    }
-    else if (renderMode == RENDER_COLLIDER) {
-        RenderColliderVertex();
-    }
-    else {
-        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
-    }
+    if (renderMode == RENDER_FLAT) renderFlat();
+    else if (renderMode == RENDER_WALL) renderWall();
+    else if (renderMode == RENDER_SPRITE) renderSprite();
+    else if (renderMode == RENDER_DECAL) renderDecal();
+    else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
+    else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
 }

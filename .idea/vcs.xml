@@ -2,6 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/External/ImGuiColorTextEdit" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/External/imgui" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/External/tracy" vcs="Git" />
   </component>

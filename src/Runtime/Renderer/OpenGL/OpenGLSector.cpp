@@ -35,17 +35,24 @@ void OpenGL::BuildGpuSectors() {
                 0.0f
             };
 
+            gpuFloor.slopeData = {
+                static_cast<float>(floor.floor.slopeDirection),
+                floor.floor.slopeStrength,
+                static_cast<float>(floor.ceiling.slopeDirection),
+                floor.ceiling.slopeStrength
+            };
+
             gpuFloor.floorColor = {
-                floor.floor.color.x - (255 - sector.light.x),
-                floor.floor.color.y - (255 - sector.light.y),
-                floor.floor.color.z - (255 - sector.light.z),
+                floor.floor.color.x - (255.0f - sector.light.x),
+                floor.floor.color.y - (255.0f - sector.light.y),
+                floor.floor.color.z - (255.0f - sector.light.z),
                 floor.floor.color.w
             };
 
             gpuFloor.ceilingColor = {
-                floor.ceiling.color.x - (255 - sector.light.x),
-                floor.ceiling.color.y - (255 - sector.light.y),
-                floor.ceiling.color.z - (255 - sector.light.z),
+                floor.ceiling.color.x - (255.0f - sector.light.x),
+                floor.ceiling.color.y - (255.0f - sector.light.y),
+                floor.ceiling.color.z - (255.0f - sector.light.z),
                 floor.ceiling.color.w
             };
 

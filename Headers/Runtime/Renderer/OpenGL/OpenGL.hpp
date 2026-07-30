@@ -36,7 +36,6 @@ namespace OpenGLRendererInternal {
 
     inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
 
-
     // Glyph Characters
     struct Character {
         unsigned int textureID = 0;
@@ -104,6 +103,7 @@ namespace OpenGLRendererInternal {
 
     struct GpuSectorFloor {
         Vector4 heights;      // x = floor height, y = ceiling height
+        Vector4 slopeData;    // x = floor direction, y = floor strength, // z = ceiling direction, w = ceiling strength
         Vector4 floorColor;
         Vector4 ceilingColor;
         Vector4 textureData;  // x = floor texture, y = ceiling texture

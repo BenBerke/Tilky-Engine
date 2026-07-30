@@ -126,7 +126,7 @@ namespace {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  NEW: UI primitive helpers
+    // UI primitive helpers
     // ─────────────────────────────────────────────────────────────────────────
 
     // Standard field input width – call before the next widget
@@ -356,6 +356,91 @@ namespace ImGuiDrawFunctions {
             ImGui::Separator();
             ImGui::Spacing();
 
+            // ── Slopes ───────────────────────────────────────────────────────────────
+
+            const char *slopeDirections[] = {
+                "+X",
+                "-X",
+                "+Z",
+                "-Z"
+            };
+
+            // Floor slope
+
+            ImGui::TextUnformatted(Get("sector.floor_slope").c_str());
+
+            int floorSlopeDirection = static_cast<int>(sectorFloor.floor.slopeDirection);
+
+            FieldWidth(160.0f);
+
+            const std::string floorDirectionLabel = Get("sector.slope_direction") + "##floor_slope_direction";
+
+            if (ImGui::Combo(
+                floorDirectionLabel.c_str(),
+                &floorSlopeDirection,
+                slopeDirections,
+                IM_ARRAYSIZE(slopeDirections))) {
+                sectorFloor.floor.slopeDirection =
+                        static_cast<SlopeDirection>(floorSlopeDirection);
+            }
+
+            FieldWidth(160.0f);
+
+            const std::string floorStrengthLabel = Get("sector.slope_strength") + "##floor_slope_strength";
+
+            InputOrDrag(
+                floorStrengthLabel.c_str(),
+                &sectorFloor.floor.slopeStrength,
+                draggable,
+                .001f
+            );
+
+            if (ImGui::SmallButton("Reset##floor_slope")) {
+                sectorFloor.floor.slopeDirection = PLUS_X;
+                sectorFloor.floor.slopeStrength = 0.0f;
+            }
+
+            ImGui::Spacing();
+
+            // Ceiling slope
+
+            ImGui::TextUnformatted(Get("sector.ceiling_slope").c_str());
+
+            int ceilingSlopeDirection = static_cast<int>(sectorFloor.ceiling.slopeDirection);
+
+            FieldWidth(160.0f);
+
+            const std::string ceilingDirectionLabel = Get("sector.slope_direction") + "##ceiling_slope_direction";
+
+            if (ImGui::Combo(
+                ceilingDirectionLabel.c_str(),
+                &ceilingSlopeDirection,
+                slopeDirections,
+                IM_ARRAYSIZE(slopeDirections))) {
+                sectorFloor.ceiling.slopeDirection =
+                        static_cast<SlopeDirection>(ceilingSlopeDirection);
+            }
+
+            FieldWidth(160.0f);
+
+            const std::string ceilingStrengthLabel = Get("sector.slope_strength") + "##ceiling_slope_strength";
+
+            InputOrDrag(
+                ceilingStrengthLabel.c_str(),
+                &sectorFloor.ceiling.slopeStrength,
+                draggable,
+                .001f
+            );
+
+            if (ImGui::SmallButton("Reset##ceiling_slope")) {
+                sectorFloor.ceiling.slopeDirection = PLUS_X;
+                sectorFloor.ceiling.slopeStrength = 0.0f;
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
             // ── Textures ─────────────────────────────────────────────────────────
 
             MapEditorInternal::DrawAssetField(
@@ -452,9 +537,7 @@ namespace ImGuiDrawFunctions {
 
             ImGui::BeginDisabled(sector.floors.size() <= 1);
 
-            if (DangerButton(Get("sector.remove_floor").c_str())) {
-                floorToRemove = static_cast<int>(floorIndex);
-            }
+            if (DangerButton(Get("sector.remove_floor").c_str())) floorToRemove = static_cast<int>(floorIndex);
 
             ImGui::EndDisabled();
 

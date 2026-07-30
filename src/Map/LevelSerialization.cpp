@@ -497,9 +497,7 @@ namespace {
 
             const json &vectorJson = parentJson.at(field);
 
-            if (!vectorJson.is_array() || vectorJson.size() != 3) {
-                return defaultValue;
-            }
+            if (!vectorJson.is_array() || vectorJson.size() != 3) return defaultValue;
 
             return {
                 vectorJson[0].get<float>(),
@@ -538,15 +536,26 @@ namespace {
             );
             surface.texture = surfaceJson.value("texture", std::string{});
 
+            const int slopeDirection = surfaceJson.value(
+                "slopeDirection",
+                static_cast<int>(PLUS_X)
+            );
+
+            if (slopeDirection >= static_cast<int>(PLUS_X) &&
+                slopeDirection <= static_cast<int>(MINUS_Z)) {
+                surface.slopeDirection =
+                        static_cast<SlopeDirection>(slopeDirection);
+                }
+
+            surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
+
             return surface;
         };
 
         const json &sectorArray = levelData.at("sectors");
         level.sectors.reserve(sectorArray.size());
 
-        for (int sectorIndex = 0;
-             sectorIndex < static_cast<int>(sectorArray.size());
-             ++sectorIndex) {
+        for (int sectorIndex = 0; sectorIndex < static_cast<int>(sectorArray.size()); ++sectorIndex) {
             const json &sectorJson = sectorArray[sectorIndex];
 
             Sector sector;
@@ -656,9 +665,7 @@ namespace {
                 }
             );
 
-            for (int floorIndex = 1;
-                 floorIndex < static_cast<int>(sector.floors.size());
-                 ++floorIndex) {
+            for (int floorIndex = 1; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
                 const SectorFloor &previous = sector.floors[floorIndex - 1];
                 const SectorFloor &current = sector.floors[floorIndex];
 
@@ -697,7 +704,6 @@ namespace {
                 "light",
                 {255.0f, 255.0f, 255.0f}
             );
-
             level.sectors.push_back(std::move(sector));
         }
 
@@ -734,7 +740,12 @@ namespace {
                             sectorFloor.floor.color.w
                         }
                     },
-                    {"texture", sectorFloor.floor.texture}
+                    {"texture", sectorFloor.floor.texture},
+                    {
+                        "slopeDirection",
+                        static_cast<int>(sectorFloor.floor.slopeDirection)
+                    },
+                    {"slopeStrength", sectorFloor.floor.slopeStrength}
                 };
 
                 const json ceilingSurface = {
@@ -748,7 +759,12 @@ namespace {
                             sectorFloor.ceiling.color.w
                         }
                     },
-                    {"texture", sectorFloor.ceiling.texture}
+                    {"texture", sectorFloor.ceiling.texture},
+                    {
+                        "slopeDirection",
+                        static_cast<int>(sectorFloor.ceiling.slopeDirection)
+                    },
+                    {"slopeStrength", sectorFloor.ceiling.slopeStrength}
                 };
 
                 floorArray.push_back({
