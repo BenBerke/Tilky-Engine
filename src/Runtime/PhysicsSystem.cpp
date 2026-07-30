@@ -490,7 +490,7 @@ namespace PhysicsSystem {
 
                     if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
 
-                    for (const WallSpan& span : wallSpans[wallIndex]) {
+                    for (const WallSpan &span: wallSpans[wallIndex]) {
                         SphereIntersectsWallSpan(
                             *wall,
                             span,
@@ -512,53 +512,179 @@ namespace PhysicsSystem {
                     selfTransform->position.z
                 };
 
-                if (!Geometry::IsPointInPolygon(sector.vertices, feetPoint)) continue;
-
-                const float bodyHeight =
-                    std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
-
-                const float feetHeight = selfTransform->position.y;
-                const float headHeight = feetHeight + bodyHeight;
-                const int floorIndex =
-                    FindBestSectorFloor(sector, feetHeight, headHeight);
-
-                if (floorIndex < 0) {
-                    selfTransform->relativeHeight = selfTransform->position.y;
+                if (sector.vertices.empty() ||
+                    !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) {
                     continue;
                 }
 
-                const SectorFloor& floor = sector.floors[floorIndex];
-                const float floorHeight = floor.floor.height;
-                const float ceilingHeight = floor.ceiling.height;
+                __m128 sectorMinReg = sector.vertices.front().reg;
+                __m128 sectorMaxReg = sector.vertices.front().reg;
 
-                if (selfTransform->position.y < floorHeight) {
-                    const float correction = floorHeight - selfTransform->position.y;
-                    selfTransform->AddPosition({0.0f, correction, 0.0f});
-
-                    if (selfRigidbody->velocity.y < 0.0f) selfRigidbody->velocity.y = 0.0f;
+                for (const Vector2 &vertex: sector.vertices) {
+                    sectorMinReg = _mm_min_ps(sectorMinReg, vertex.reg);
+                    sectorMaxReg = _mm_max_ps(sectorMaxReg, vertex.reg);
                 }
 
-                const float correctedFeetHeight = selfTransform->position.y;
-                const float correctedHeadHeight = correctedFeetHeight + bodyHeight;
+                Vector2 sectorMin;
+                Vector2 sectorMax;
 
-                if (correctedHeadHeight > ceilingHeight) {
-                    const float correction = ceilingHeight - correctedHeadHeight;
-                    selfTransform->AddPosition({0.0f, correction, 0.0f});
+                sectorMin.reg = sectorMinReg;
+                sectorMax.reg = sectorMaxReg;
 
-                    if (selfRigidbody->velocity.y > 0.0f) selfRigidbody->velocity.y = 0.0f;
+                const auto getSlopeAxis = [](const SlopeDirection direction) -> Vector2 {
+                    switch (direction) {
+                        case PLUS_X: return {1.0f, 0.0f};
+                        case MINUS_X: return {-1.0f, 0.0f};
+                        case PLUS_Z: return {0.0f, 1.0f};
+                        case MINUS_Z: return {0.0f, -1.0f};
+                    }
+
+                    return {1.0f, 0.0f};
+                };
+
+                const auto getSlopeOrigin = [&](const SlopeDirection direction) -> Vector2 {
+                    switch (direction) {
+                        case PLUS_X:
+                            return {sectorMin.x, feetPoint.y};
+
+                        case MINUS_X:
+                            return {sectorMax.x, feetPoint.y};
+
+                        case PLUS_Z:
+                            return {feetPoint.x, sectorMin.y};
+
+                        case MINUS_Z:
+                            return {feetPoint.x, sectorMax.y};
+                    }
+
+                    return feetPoint;
+                };
+
+                const auto getSurfaceHeight = [&](const SectorSurface &surface) -> float {
+                    if (surface.slopeStrength == 0.0f) return surface.height;
+
+                    const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
+                    const Vector2 slopeOrigin = getSlopeOrigin(surface.slopeDirection);
+
+                    const float distanceFromOrigin =
+                            Vector2Math::Dot(feetPoint - slopeOrigin, slopeAxis);
+
+                    return surface.height +
+                           distanceFromOrigin * surface.slopeStrength;
+                };
+
+                const auto getFloorNormal = [&](const SectorSurface &surface) -> Vector3 {
+                    const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
+
+                    return Vector3Math::Normalized({
+                        -slopeAxis.x * surface.slopeStrength,
+                        1.0f,
+                        -slopeAxis.y * surface.slopeStrength
+                    });
+                };
+
+                const auto getCeilingNormal = [&](const SectorSurface &surface) -> Vector3 {
+                    const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
+
+                    return Vector3Math::Normalized({
+                        slopeAxis.x * surface.slopeStrength,
+                        -1.0f,
+                        slopeAxis.y * surface.slopeStrength
+                    });
+                };
+
+                const float bodyHeight =
+                        std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
+
+                const float feetHeight = selfTransform->position.y;
+                const float headHeight = feetHeight + bodyHeight;
+                const float centreHeight = (feetHeight + headHeight) * 0.5f;
+
+                int floorIndex = -1;
+                float bestOverlap = -1.0f;
+                float bestCorrection = std::numeric_limits<float>::max();
+                bool bestCentreInside = false;
+
+                for (int candidateIndex = 0;
+                     candidateIndex < static_cast<int>(sector.floors.size());
+                     ++candidateIndex) {
+                    const SectorFloor &candidate = sector.floors[candidateIndex];
+
+                    const float candidateFloorHeight =
+                            getSurfaceHeight(candidate.floor);
+
+                    const float candidateCeilingHeight =
+                            getSurfaceHeight(candidate.ceiling);
+
+                    if (candidateCeilingHeight -
+                        candidateFloorHeight +
+                        Constants::Epsilon <
+                        bodyHeight) {
+                        continue;
+                    }
+
+                    const float overlap = std::max(
+                        0.0f,
+                        std::min(headHeight, candidateCeilingHeight) -
+                        std::max(feetHeight, candidateFloorHeight)
+                    );
+
+                    float correction = 0.0f;
+
+                    if (feetHeight < candidateFloorHeight) {
+                        correction = candidateFloorHeight - feetHeight;
+                    } else if (headHeight > candidateCeilingHeight) {
+                        correction = candidateCeilingHeight - headHeight;
+                    }
+
+                    const float correctionMagnitude = std::abs(correction);
+
+                    const bool centreInside =
+                            centreHeight >= candidateFloorHeight &&
+                            centreHeight <= candidateCeilingHeight;
+
+                    if ((centreInside && !bestCentreInside) ||
+                        (centreInside == bestCentreInside &&
+                         overlap > bestOverlap + Constants::Epsilon) ||
+                        (centreInside == bestCentreInside &&
+                         std::abs(overlap - bestOverlap) <= Constants::Epsilon &&
+                         correctionMagnitude < bestCorrection)) {
+                        floorIndex = candidateIndex;
+                        bestOverlap = overlap;
+                        bestCorrection = correctionMagnitude;
+                        bestCentreInside = centreInside;
+                    }
                 }
 
-                const float groundDistance =
-                    selfTransform->position.y - floorHeight;
+                if (floorIndex < 0) {
+                    selfTransform->relativeHeight =
+                            selfTransform->position.y;
+
+                    continue;
+                }
+
+                const SectorFloor &floor = sector.floors[floorIndex];
+
+                const float floorHeight = getSurfaceHeight(floor.floor);
+                const float ceilingHeight = getSurfaceHeight(floor.ceiling);
+
+                const Vector3 floorNormal = getFloorNormal(floor.floor);
+                const Vector3 ceilingTopNormal = getFloorNormal(floor.ceiling);
+                const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
+
+                const float groundDistance =selfTransform->position.y - floorHeight;
+                const float groundSeparatingSpeed = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
 
                 if (groundDistance <= GROUND_CONTACT_SLOP &&
-                    selfRigidbody->velocity.y <= MAX_GROUND_SEPARATING_SPEED) {
+                    groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
                     selfRigidbody->isGrounded = true;
-                    selfRigidbody->groundNormal = {0.0f, 1.0f, 0.0f};
+                    selfRigidbody->groundNormal = floorNormal;
+
+                    if (groundSeparatingSpeed < 0.0f)
+                        selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * groundSeparatingSpeed;
                 }
 
-                selfTransform->relativeHeight =
-                    selfTransform->position.y - floorHeight;
+                selfTransform->relativeHeight = selfTransform->position.y - floorHeight;
             }
         }
 
