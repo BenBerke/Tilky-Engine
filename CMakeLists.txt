@@ -147,6 +147,22 @@ else()
 endif()
 
 # ============================================================
+# ImGui text editor
+# ============================================================
+
+add_library(imgui_text_editor STATIC
+        External/ImGuiColorTextEdit/TextEditor.cpp
+)
+
+target_include_directories(imgui_text_editor PUBLIC
+        External/ImGuiColorTextEdit
+)
+
+target_link_libraries(imgui_text_editor PUBLIC
+        imgui
+)
+
+# ============================================================
 # Tracy Profiler
 # ============================================================
 
@@ -657,6 +673,7 @@ function(configure_tilky_engine_executable target_name)
             Freetype::Freetype
             glad
             imgui
+            imgui_text_editor
             Tilky_Project
             Tilky_Local
             nlohmann_json::nlohmann_json

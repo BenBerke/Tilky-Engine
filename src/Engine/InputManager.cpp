@@ -24,23 +24,27 @@ namespace {
 }
 
 namespace InputManager {
+    void Initialize(SDL_Window* window) {
+        SDL_PumpEvents();
+
+        keyboardState = SDL_GetKeyboardState(nullptr);
+        std::copy_n(keyboardState, SDL_SCANCODE_COUNT, prevKeyboardState);
+
+        mouseState = SDL_GetMouseState(&mousePosition.x, &mousePosition.y);
+        prevMouseState = mouseState;
+
+        mouseDelta = {0.0f, 0.0f};
+
+#if TILKY_USE_IMGUI
+        if (!SDL_TextInputActive(window))
+            if (!SDL_StartTextInput(window))
+                SDL_Log("SDL_StartTextInput failed: %s", SDL_GetError());
+#endif
+    }
 
     void BeginFrame() {
         mouseWheelScrollAmount = 0.0f;
         quitRequested = false;
-
-        // First time setup
-        if (!keyboardState) {
-            SDL_PumpEvents();
-
-            keyboardState = SDL_GetKeyboardState(nullptr);
-            std::copy_n(keyboardState, SDL_SCANCODE_COUNT, prevKeyboardState);
-
-            mouseState = SDL_GetMouseState(&mousePosition.x, &mousePosition.y);
-            prevMouseState = mouseState;
-
-            mouseDelta = {0.0f, 0.0f};
-        }
 
         // Save previous frame input
         std::copy_n(keyboardState, SDL_SCANCODE_COUNT, prevKeyboardState);
@@ -50,17 +54,11 @@ namespace InputManager {
 
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (ImGui::GetCurrentContext() != nullptr) {
-                ImGui_ImplSDL3_ProcessEvent(&event);
-            }
+            if (ImGui::GetCurrentContext() != nullptr) ImGui_ImplSDL3_ProcessEvent(&event);
 
-            if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-                mouseWheelScrollAmount += event.wheel.y;
-            }
+            if (event.type == SDL_EVENT_MOUSE_WHEEL) mouseWheelScrollAmount += event.wheel.y;
 
-            if (event.type == SDL_EVENT_QUIT) {
-                quitRequested = true;
-            }
+            if (event.type == SDL_EVENT_QUIT) quitRequested = true;
         }
 
         keyboardState = SDL_GetKeyboardState(nullptr);

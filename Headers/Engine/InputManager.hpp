@@ -4,6 +4,7 @@
 #include "../Math/Vector/Vector2.hpp"
 
 namespace InputManager {
+    void Initialize(SDL_Window* window); // Helps reduce the branch count, must be called
     void BeginFrame(); // Must be called at the start of every frame
 
     bool QuitRequested(); // Close button pressed

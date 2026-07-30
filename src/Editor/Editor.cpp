@@ -231,6 +231,13 @@ namespace Editor {
         }
 
         ImGui::Render();
+
+        // ImGui's SDL3 backend may stop text input because ImGuiColorTextEdit
+        // is a custom widget rather than ImGui::InputText.
+        if (!SDL_TextInputActive(window))
+            if (!SDL_StartTextInput(window))
+                spdlog::error("SDL_StartTextInput failed: {}", SDL_GetError());
+        
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
 
         SDL_GetWindowSize(window, &screenWidth, &screenHeight);
@@ -285,5 +292,10 @@ namespace Editor {
         quit = false;
         shutdown = false;
         SDL_Quit();
+    }
+
+
+    SDL_Window* GetWindow() {
+        return MapEditorInternal::window;
     }
 }

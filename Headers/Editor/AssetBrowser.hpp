@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <TextEditor.h>
 
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
 // which drag-and-drop payload type it uses.
@@ -255,6 +256,9 @@ class AssetBrowser {
 public:
     using ThumbnailProvider = std::function<ImTextureID(const std::string&)>;
 
+    void RequestOpenScript(const std::filesystem::path& absolutePath);
+    void DrawTextEditorWindow();
+
     // The one place the expected level-file extension is spelled out, per
     // the "make it configurable in one obvious constant" requirement.
     // LevelEntry's registration, the Create Level modal, and
@@ -354,6 +358,14 @@ public:
     void DrawCreateFileSubmenuItems(const std::filesystem::path& destinationDirectory);
 
 private:
+    void SaveOpenScript();
+
+    TextEditor scriptEditor;
+    std::filesystem::path openScriptPath;
+
+    bool scriptEditorOpen = false;
+    bool scriptEditorDirty = false;
+
     void NavigateTo(const std::filesystem::path& absoluteDirectory);
     void NavigateToParent();
     [[nodiscard]] bool IsPathWithinRoot(const std::filesystem::path& absolutePath) const;

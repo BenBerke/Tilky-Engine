@@ -4,3 +4,6 @@
 [submodule "External/tracy"]
 	path = External/tracy
 	url = https://github.com/wolfpld/tracy
+[submodule "External/ImGuiColorTextEdit"]
+	path = External/ImGuiColorTextEdit
+	url = https://github.com/BalazsJako/ImGuiColorTextEdit.git

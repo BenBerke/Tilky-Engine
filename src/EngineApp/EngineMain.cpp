@@ -260,6 +260,8 @@ int main(const int argc, char** argv) {
     if (!LoadProject(projectFile)) return 1;
     if (!StartMode(EngineMode::EDITOR)) return 1;
 
+    InputManager::Initialize(Editor::GetWindow());
+
     while (modeActive) {
         InputManager::BeginFrame();
 

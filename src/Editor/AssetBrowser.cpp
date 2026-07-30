@@ -9,8 +9,9 @@
 #include <system_error>
 #include <unordered_map>
 
-#include "imgui.h"
 #include <spdlog/spdlog.h>
+
+#include "imgui.h"
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -450,6 +451,107 @@ end
 }
 
 // ============================================================================
+// Text Editor
+// ============================================================================
+void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) {
+    if (!IsPathWithinRoot(absolutePath)) {
+        lastOperationError =
+            "Refused to open a script outside the asset root: " +
+            absolutePath.string();
+        return;
+    }
+
+    if (LowerCopy(absolutePath.extension().string()) != ".lua") {
+        lastOperationError = "Only Lua scripts can be opened.";
+        return;
+    }
+
+    std::ifstream file(absolutePath, std::ios::binary);
+    if (!file.is_open()) {
+        lastOperationError =
+            "Could not open script: " + absolutePath.string();
+        return;
+    }
+
+    const std::string contents{
+        std::istreambuf_iterator<char>{file},
+        std::istreambuf_iterator<char>{}
+    };
+
+    scriptEditor.SetLanguageDefinition(
+        TextEditor::LanguageDefinition::Lua()
+    );
+
+    scriptEditor.SetText(contents);
+
+    openScriptPath = absolutePath;
+    scriptEditorOpen = true;
+    scriptEditorDirty = false;
+    lastOperationError.clear();
+}
+
+void AssetBrowser::SaveOpenScript() {
+    if (openScriptPath.empty()) return;
+
+    std::ofstream file(openScriptPath, std::ios::binary | std::ios::trunc);
+
+    if (!file.is_open()) {
+        lastOperationError = "Could not save script: " + openScriptPath.string();
+        return;
+    }
+
+    file << scriptEditor.GetText();
+
+    if (!file.good()) {
+        lastOperationError = "Failed while writing script: " + openScriptPath.string();
+        return;
+    }
+
+    scriptEditorDirty = false;
+    lastOperationError.clear();
+}
+
+void AssetBrowser::DrawTextEditorWindow() {
+    if (!scriptEditorOpen) return;
+
+    std::string title = openScriptPath.filename().string();
+
+    if (scriptEditorDirty) title += " *";
+
+    title += "##TilkyScriptEditor";
+
+    ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f),ImGuiCond_FirstUseEver);
+
+    if (!ImGui::Begin(title.c_str(), &scriptEditorOpen, ImGuiWindowFlags_MenuBar)) {
+        ImGui::End();
+        return;
+    }
+
+    bool saveRequested = false;
+
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Save", "Ctrl+S", false, scriptEditorDirty)) saveRequested = true;
+
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMenuBar();
+    }
+
+    scriptEditor.Render("##LuaCodeEditor", ImGui::GetContentRegionAvail(),false);
+
+    if (scriptEditor.IsTextChanged()) scriptEditorDirty = true;
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+        && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) saveRequested = true;
+
+    if (saveRequested) SaveOpenScript();
+
+    ImGui::End();
+}
+
+// ============================================================================
 // AssetEntry hierarchy
 // ============================================================================
 
@@ -482,6 +584,11 @@ void DirectoryEntry::DrawContextMenu(AssetBrowser& browser) {
 }
 
 void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
+    if (kind == AssetKind::Script) {
+        browser.RequestOpenScript(GetPath());
+        return;
+    }
+
     if (kind != AssetKind::Other) {
         browser.RequestConsumeAsFieldReference(kind, GetPath());
     }

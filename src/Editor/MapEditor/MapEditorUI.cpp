@@ -1377,6 +1377,8 @@ namespace {
         });
 
         ImGui::End();
+
+        assetBrowser.DrawTextEditorWindow();
     }
 } // anonymous namespace
 

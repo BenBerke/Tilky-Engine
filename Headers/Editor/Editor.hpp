@@ -32,4 +32,6 @@ namespace Editor {
 
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);
+
+    SDL_Window* GetWindow();
 }

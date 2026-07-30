@@ -38,6 +38,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    InputManager::Initialize(nullptr);
+
     while (!InputManager::QuitRequested()) {
         InputManager::BeginFrame();
         RuntimeSession::Update();
