@@ -102,14 +102,17 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 
-        glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"),
-            static_cast<int>(textureRegions.size()));
+        glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
     }
 
     {
         ZoneScopedN("Upload GPU Sectors");
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
 
         BuildGpuSectors();
 
@@ -127,6 +130,11 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     {
         ZoneScopedN("Upload GPU Walls from Map");
+
+        // Walls can not have backface culling as all walls are potentially visible from both sides
+        // And they can change in runtime so we can not bake them
+        glDisable(GL_CULL_FACE);
+
         UploadGpuWallsFromMap();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
@@ -139,6 +147,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     {
         ZoneScopedN("Build GPU Sprites");
+
         BuildGpuSprites();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
