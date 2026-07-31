@@ -837,6 +837,8 @@ target_compile_definitions(Tilky_Standalone PRIVATE
         TILKY_STANDALONE=1
 )
 
+add_dependencies(Tilky_Engine Tilky_Standalone)
+
 # Build group only. It does not create or launch an executable.
 add_custom_target(Tilky_All)
 add_dependencies(Tilky_All
