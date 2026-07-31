@@ -16,6 +16,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Engine/InputManager.hpp"
 
 namespace fs = std::filesystem;
 
@@ -673,8 +674,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
 
 std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolutePath, const AssetKind kind) {
     switch (kind) {
-        case AssetKind::Texture:
-            return RelativeOrFallback(absolutePath, ProjectManager::GetTexturesPath()).generic_string();
+        case AssetKind::Texture:return RelativeOrFallback(absolutePath,ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound: {
             fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetSoundsPath());
@@ -688,8 +688,7 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
             return rel.generic_string();
         }
 
-        default:
-            return absolutePath.filename().string();
+        default: return absolutePath.filename().string();
     }
 }
 
@@ -969,9 +968,7 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
 
     if (clicked) {
         selectedFile = entry.GetPath();
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            entry.OnDoubleClick(*this);
-        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) entry.OnDoubleClick(*this);
     }
 
     if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
@@ -1000,15 +997,11 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     const ImVec2 boxMax = {topLeft.x + tileSize, topLeft.y + tileSize};
 
     ImTextureID texture{};
-    if (!isDirectory && thumbnailProvider) {
-        if (const std::optional<std::string> reference = entry.GetThumbnailReference()) {
-            texture = thumbnailProvider(*reference);
-        }
-    }
 
-    if (texture != ImTextureID{}) {
-        drawList->AddImage(texture, topLeft, boxMax);
-    }
+    if (!isDirectory && thumbnailProvider)
+        if (const std::optional<std::string> reference = entry.GetThumbnailReference()) texture = thumbnailProvider(*reference);
+
+    if (texture != ImTextureID{}) drawList->AddImage(texture, topLeft, boxMax);
     else if (isDirectory) {
         drawList->AddRectFilled(topLeft, boxMax, IM_COL32(90, 78, 45, 255), 4.0f);
         drawList->AddRect(topLeft, boxMax, IM_COL32(150, 130, 80, 255), 4.0f);
@@ -1105,12 +1098,8 @@ void AssetBrowser::DrawEntries(const ThumbnailProvider& thumbnailProvider) {
         isFirstInRow = (nextTileRight > rightEdge);
     }
 
-    if (entries.empty()) {
-        ImGui::TextDisabled("%s", "This folder is empty.");
-    }
-    else if (!anyVisible) {
-        ImGui::TextDisabled("%s", "No items match your search.");
-    }
+    if (entries.empty()) ImGui::TextDisabled("%s", "This folder is empty.");
+    else if (!anyVisible) ImGui::TextDisabled("%s", "No items match your search.");
 
     // Clicking truly empty space (not any tile, not a popup) clears the
     // selection.
@@ -1429,14 +1418,24 @@ void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
     lastWindowScreenMaxX = windowPos.x + windowSize.x;
     lastWindowScreenMaxY = windowPos.y + windowSize.y;
 
+    const Vector2 externalDragPosition = InputManager::GetExternalDragPosition();
+
+    SetExternalDragHovering(
+        InputManager::IsExternalDragActive() &&
+        IsScreenPointInside(externalDragPosition.x, externalDragPosition.y)
+    );
+
+    for (const InputManager::DroppedFile &droppedFile: InputManager::GetDroppedFiles()) {
+        if (!IsScreenPointInside(droppedFile.position.x, droppedFile.position.y)) continue;
+        ImportExternalFile(droppedFile.path);
+    }
+
     if (!lastOperationError.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
         ImGui::TextWrapped("%s", lastOperationError.c_str());
         ImGui::PopStyleColor();
         ImGui::SameLine();
-        if (ImGui::SmallButton("Dismiss##AssetBrowserError")) {
-            lastOperationError.clear();
-        }
+        if (ImGui::SmallButton("Dismiss##AssetBrowserError")) lastOperationError.clear();
         ImGui::Spacing();
     }
 

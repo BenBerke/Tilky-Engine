@@ -14,27 +14,19 @@ namespace {
 
 namespace EditorTextureCache {
     SDL_Texture* Get(SDL_Renderer* renderer, const std::string& relativeFileName) {
-        if (relativeFileName.empty() || renderer == nullptr)
-            return nullptr;
+        if (relativeFileName.empty() || renderer == nullptr)return nullptr;
 
         const auto found = cache.find(relativeFileName);
-        if (found != cache.end())
-            return found->second; // may be nullptr, from a previously failed load
+        if (found != cache.end()) return found->second; // may be nullptr, from a previously failed load
 
         const std::filesystem::path fullPath =
-            ProjectManager::GetTexturesPath() / relativeFileName;
+            ProjectManager::GetAssetsPath() / std::filesystem::path(relativeFileName).lexically_normal();
 
         SDL_Texture* texture = IMG_LoadTexture(renderer, fullPath.string().c_str());
 
-        if (texture == nullptr) {
-            spdlog::warn(
-                "EditorTextureCache: failed to load {}: {}",
-                fullPath.string(),
-                SDL_GetError()
-            );
-        } else {
-            spdlog::info("EditorTextureCache: loaded {}", fullPath.string());
-        }
+        if (texture == nullptr) spdlog::warn("EditorTextureCache: failed to load {}: {}", fullPath.string(), SDL_GetError());
+        else spdlog::info("EditorTextureCache: loaded {}", fullPath.string());
+
 
         // Cache the result either way so a broken reference doesn't retry
         // a disk read on every single frame.

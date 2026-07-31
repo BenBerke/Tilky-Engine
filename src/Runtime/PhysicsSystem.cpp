@@ -443,12 +443,10 @@ namespace PhysicsSystem {
 
                     if (distanceSq >= radiusSum * radiusSum) continue;
 
-                    const __m128 safeDistanceSq =
-                        _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
+                    const __m128 safeDistanceSq = _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
 
                     __m128 inverseDistance = rsqrt_nr_ss(safeDistanceSq);
-                    inverseDistance =
-                        TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
+                    inverseDistance = TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
 
                     const float distance = distanceSq * _mm_cvtss_f32(inverseDistance);
                     const float penetration = radiusSum - distance;
@@ -490,7 +488,7 @@ namespace PhysicsSystem {
 
                     if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
 
-                    for (const WallSpan &span: wallSpans[wallIndex]) {
+                    for (const WallSpan &span: wallSpans[wallIndex])
                         SphereIntersectsWallSpan(
                             *wall,
                             span,
@@ -500,7 +498,6 @@ namespace PhysicsSystem {
                             *selfTransform,
                             *selfRigidbody
                         );
-                    }
                 }
             }
 
@@ -512,10 +509,7 @@ namespace PhysicsSystem {
                     selfTransform->position.z
                 };
 
-                if (sector.vertices.empty() ||
-                    !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) {
-                    continue;
-                }
+                if (sector.vertices.empty() || !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) continue;
 
                 __m128 sectorMinReg = sector.vertices.front().reg;
                 __m128 sectorMaxReg = sector.vertices.front().reg;
@@ -538,23 +532,15 @@ namespace PhysicsSystem {
                         case PLUS_Z: return {0.0f, 1.0f};
                         case MINUS_Z: return {0.0f, -1.0f};
                     }
-
                     return {1.0f, 0.0f};
                 };
 
                 const auto getSlopeOrigin = [&](const SlopeDirection direction) -> Vector2 {
                     switch (direction) {
-                        case PLUS_X:
-                            return {sectorMin.x, feetPoint.y};
-
-                        case MINUS_X:
-                            return {sectorMax.x, feetPoint.y};
-
-                        case PLUS_Z:
-                            return {feetPoint.x, sectorMin.y};
-
-                        case MINUS_Z:
-                            return {feetPoint.x, sectorMax.y};
+                        case PLUS_X: return {sectorMin.x, feetPoint.y};
+                        case MINUS_X: return {sectorMax.x, feetPoint.y};
+                        case PLUS_Z:  return {feetPoint.x, sectorMin.y};
+                        case MINUS_Z: return {feetPoint.x, sectorMax.y};
                     }
 
                     return feetPoint;
@@ -566,11 +552,9 @@ namespace PhysicsSystem {
                     const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
                     const Vector2 slopeOrigin = getSlopeOrigin(surface.slopeDirection);
 
-                    const float distanceFromOrigin =
-                            Vector2Math::Dot(feetPoint - slopeOrigin, slopeAxis);
+                    const float distanceFromOrigin = Vector2Math::Dot(feetPoint - slopeOrigin, slopeAxis);
 
-                    return surface.height +
-                           distanceFromOrigin * surface.slopeStrength;
+                    return surface.height + distanceFromOrigin * surface.slopeStrength;
                 };
 
                 const auto getFloorNormal = [&](const SectorSurface &surface) -> Vector3 {
@@ -585,16 +569,11 @@ namespace PhysicsSystem {
 
                 const auto getCeilingNormal = [&](const SectorSurface &surface) -> Vector3 {
                     const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
-
-                    return Vector3Math::Normalized({
-                        slopeAxis.x * surface.slopeStrength,
-                        -1.0f,
-                        slopeAxis.y * surface.slopeStrength
-                    });
+                    return Vector3Math::Normalized(
+                        {slopeAxis.x * surface.slopeStrength, -1.0f, slopeAxis.y * surface.slopeStrength});
                 };
 
-                const float bodyHeight =
-                        std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
+                const float bodyHeight = std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
 
                 const float feetHeight = selfTransform->position.y;
                 const float headHeight = feetHeight + bodyHeight;
@@ -605,23 +584,12 @@ namespace PhysicsSystem {
                 float bestCorrection = std::numeric_limits<float>::max();
                 bool bestCentreInside = false;
 
-                for (int candidateIndex = 0;
-                     candidateIndex < static_cast<int>(sector.floors.size());
-                     ++candidateIndex) {
+                for (int candidateIndex = 0; candidateIndex < static_cast<int>(sector.floors.size()); ++candidateIndex) {
                     const SectorFloor &candidate = sector.floors[candidateIndex];
+                    const float candidateFloorHeight =getSurfaceHeight(candidate.floor);
+                    const float candidateCeilingHeight = getSurfaceHeight(candidate.ceiling);
 
-                    const float candidateFloorHeight =
-                            getSurfaceHeight(candidate.floor);
-
-                    const float candidateCeilingHeight =
-                            getSurfaceHeight(candidate.ceiling);
-
-                    if (candidateCeilingHeight -
-                        candidateFloorHeight +
-                        Constants::Epsilon <
-                        bodyHeight) {
-                        continue;
-                    }
+                    if (candidateCeilingHeight - candidateFloorHeight + Constants::Epsilon < bodyHeight) continue;
 
                     const float overlap = std::max(
                         0.0f,
@@ -631,17 +599,12 @@ namespace PhysicsSystem {
 
                     float correction = 0.0f;
 
-                    if (feetHeight < candidateFloorHeight) {
-                        correction = candidateFloorHeight - feetHeight;
-                    } else if (headHeight > candidateCeilingHeight) {
-                        correction = candidateCeilingHeight - headHeight;
-                    }
+                    if (feetHeight < candidateFloorHeight) correction = candidateFloorHeight - feetHeight;
+                    else if (headHeight > candidateCeilingHeight) correction = candidateCeilingHeight - headHeight;
+
 
                     const float correctionMagnitude = std::abs(correction);
-
-                    const bool centreInside =
-                            centreHeight >= candidateFloorHeight &&
-                            centreHeight <= candidateCeilingHeight;
+                    const bool centreInside = centreHeight >= candidateFloorHeight && centreHeight <= candidateCeilingHeight;
 
                     if ((centreInside && !bestCentreInside) ||
                         (centreInside == bestCentreInside &&
@@ -657,9 +620,7 @@ namespace PhysicsSystem {
                 }
 
                 if (floorIndex < 0) {
-                    selfTransform->relativeHeight =
-                            selfTransform->position.y;
-
+                    selfTransform->relativeHeight = selfTransform->position.y;
                     continue;
                 }
 
@@ -669,14 +630,44 @@ namespace PhysicsSystem {
                 const float ceilingHeight = getSurfaceHeight(floor.ceiling);
 
                 const Vector3 floorNormal = getFloorNormal(floor.floor);
-                const Vector3 ceilingTopNormal = getFloorNormal(floor.ceiling);
                 const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
 
-                const float groundDistance =selfTransform->position.y - floorHeight;
+                float correctedFeetHeight = selfTransform->position.y;
+                float correctedHeadHeight = correctedFeetHeight + bodyHeight;
+
+                if (correctedFeetHeight < floorHeight) {
+                    const float correction = floorHeight - correctedFeetHeight;
+
+                    selfTransform->AddPosition({0.0f, correction, 0.0f});
+
+                    correctedFeetHeight += correction;
+                    correctedHeadHeight += correction;
+
+                    const float velocityIntoFloor = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
+
+                    if (velocityIntoFloor < 0.0f)
+                        selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * velocityIntoFloor;
+                }
+
+                if (correctedHeadHeight > ceilingHeight) {
+                    const float correction = ceilingHeight - correctedHeadHeight;
+
+                    selfTransform->AddPosition({0.0f, correction, 0.0f});
+
+                    correctedFeetHeight += correction;
+                    correctedHeadHeight += correction;
+
+                    const float velocityIntoCeiling = Vector3Math::Dot(selfRigidbody->velocity, ceilingBottomNormal);
+
+                    if (velocityIntoCeiling < 0.0f)
+                        selfRigidbody->velocity = selfRigidbody->velocity - ceilingBottomNormal * velocityIntoCeiling;
+                }
+
+                const float groundDistance = correctedFeetHeight - floorHeight;
+
                 const float groundSeparatingSpeed = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
 
-                if (groundDistance <= GROUND_CONTACT_SLOP &&
-                    groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
+                if (groundDistance <= GROUND_CONTACT_SLOP && groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
                     selfRigidbody->isGrounded = true;
                     selfRigidbody->groundNormal = floorNormal;
 
@@ -684,7 +675,7 @@ namespace PhysicsSystem {
                         selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * groundSeparatingSpeed;
                 }
 
-                selfTransform->relativeHeight = selfTransform->position.y - floorHeight;
+                selfTransform->relativeHeight = correctedFeetHeight - floorHeight;
             }
         }
 

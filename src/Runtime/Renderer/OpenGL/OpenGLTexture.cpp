@@ -10,7 +10,9 @@
 #include "Headers/Map/LevelManager.hpp"
 
 int OpenGL::CreateTexture(const std::string& fileName) {
-    const std::filesystem::path path =ProjectManager::GetTexturesPath() / fileName;
+    std::filesystem::path path(fileName);
+
+    if (!path.is_absolute()) path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
 
     SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 
@@ -19,10 +21,7 @@ int OpenGL::CreateTexture(const std::string& fileName) {
         return -1;
     }
 
-    SDL_Surface* convertedSurface = SDL_ConvertSurface(
-        loadedSurface,
-        SDL_PIXELFORMAT_RGBA32
-    );
+    SDL_Surface* convertedSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
 
     SDL_DestroySurface(loadedSurface);
 

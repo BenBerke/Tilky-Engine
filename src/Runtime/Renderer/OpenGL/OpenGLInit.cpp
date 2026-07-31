@@ -243,7 +243,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     for (int i = 0; i < static_cast<int>(referencedFileNames.size()); ++i) {
         const std::string& fileName = referencedFileNames[i];
 
-        const std::filesystem::path path = ProjectManager::GetTexturesPath() / fileName;
+        const std::filesystem::path path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
 
         SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 

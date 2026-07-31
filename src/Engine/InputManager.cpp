@@ -21,6 +21,11 @@ namespace {
     bool relativeMouseMode = false;
 
     bool quitRequested = false;
+
+    std::vector<InputManager::DroppedFile> droppedFiles;
+
+    bool externalDragActive = false;
+    Vector2 externalDragPosition{};
 }
 
 namespace InputManager {
@@ -46,6 +51,8 @@ namespace InputManager {
         mouseWheelScrollAmount = 0.0f;
         quitRequested = false;
 
+        if (!droppedFiles.empty()) [[unlikely]] droppedFiles.clear();
+
         // Save previous frame input
         std::copy_n(keyboardState, SDL_SCANCODE_COUNT, prevKeyboardState);
         prevMouseState = mouseState;
@@ -54,11 +61,42 @@ namespace InputManager {
 
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (ImGui::GetCurrentContext() != nullptr) ImGui_ImplSDL3_ProcessEvent(&event);
+#if TILKY_USE_IMGUI
+            if (ImGui::GetCurrentContext() != nullptr) {
+                ImGui_ImplSDL3_ProcessEvent(&event);
+            }
+#endif
 
-            if (event.type == SDL_EVENT_MOUSE_WHEEL) mouseWheelScrollAmount += event.wheel.y;
+            switch (event.type) {
+                case SDL_EVENT_MOUSE_WHEEL: mouseWheelScrollAmount += event.wheel.y; break;
+                case SDL_EVENT_QUIT: quitRequested = true; break;
+                case SDL_EVENT_DROP_BEGIN: externalDragActive = true; break;
 
-            if (event.type == SDL_EVENT_QUIT) quitRequested = true;
+                case SDL_EVENT_DROP_POSITION:
+                    externalDragActive = true;
+                    externalDragPosition = {
+                        event.drop.x,
+                        event.drop.y
+                    };
+                    break;
+
+                case SDL_EVENT_DROP_FILE:
+                    externalDragPosition = {
+                        event.drop.x,
+                        event.drop.y
+                    };
+
+                    if (event.drop.data != nullptr) {
+                        droppedFiles.push_back({
+                            std::filesystem::path(event.drop.data),
+                            externalDragPosition
+                        });
+                    }
+                    break;
+
+                case SDL_EVENT_DROP_COMPLETE: externalDragActive = false; break;
+                default: break;
+            }
         }
 
         keyboardState = SDL_GetKeyboardState(nullptr);
@@ -173,5 +211,17 @@ namespace InputManager {
         SDL_GetRelativeMouseState(&dx, &dy);
 
         mouseDelta = {0.0f, 0.0f};
+    }
+
+    const std::vector<DroppedFile>& GetDroppedFiles() {
+        return droppedFiles;
+    }
+
+    bool IsExternalDragActive() {
+        return externalDragActive;
+    }
+
+    Vector2 GetExternalDragPosition() {
+        return externalDragPosition;
     }
 }

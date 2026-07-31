@@ -20,6 +20,24 @@ namespace fs = std::filesystem;
 // Helpers
 // ---------------------------------------------------------------------------
 
+static bool RecreateExportDirectory(const fs::path& directory) {
+    std::error_code ec;
+
+    fs::remove_all(directory, ec);
+    if (ec) {
+        std::cerr << "Failed to clean export folder: " << directory << " — " << ec.message() << "\n";
+        return false;
+    }
+
+    fs::create_directories(directory, ec);
+    if (ec) {
+        std::cerr << "Failed to create export folder: " << directory << " — " << ec.message() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
 static bool CopyFileChecked(const fs::path &from, const fs::path &to) {
     if (!fs::exists(from)) {
         std::cerr << "Source file does not exist: " << from << "\n";
@@ -129,6 +147,8 @@ int main(int argc, char *argv[]) {
     const fs::path projectDir   = metadataPath.parent_path();
     const fs::path standaloneDir = standaloneExePath.parent_path();
 
+    if (!RecreateExportDirectory(destinationPath)) return 1;
+
     // Copy project.tilky
     const fs::path metadataDest = destinationPath / "project.tilky";
     if (!CopyFileChecked(metadataPath, metadataDest)) return 1;
@@ -143,11 +163,11 @@ int main(int argc, char *argv[]) {
               << " to " << assetsDest << "\n";
 
     // Copy EngineAssets/Fonts
-    const fs::path fontsSrc  = standaloneDir / "EngineAssets" / "Fonts";
-    const fs::path fontsDest = destinationPath / "EngineAssets" / "Fonts";
-    if (!CopyDirRecursive(fontsSrc, fontsDest)) return 1;
-    std::cout << "Copied engine fonts from " << fontsSrc
-              << " to " << fontsDest << "\n";
+    const fs::path engineAssetsSrc = standaloneDir / "EngineAssets";
+    const fs::path engineAssetsDest = destinationPath / "EngineAssets";
+    if (!CopyDirRecursive(engineAssetsSrc, engineAssetsDest)) return 1;
+    std::cout << "Copied engine assets from "
+              << engineAssetsSrc << " to " << engineAssetsDest << "\n";
 
     // Copy Shaders/
     const fs::path shadersSrc  = standaloneDir / "Shaders";

@@ -83,6 +83,13 @@ namespace {
         return true;
     }
 
+    void PrepareRuntimeLevel(Level& level) {
+        MapQueries::RebuildSectorRuntimeLinks(level);
+
+        for (ComponentTransform& transform : level.transforms.components)
+            transform.UpdateObjectSectorAndFloor(level.sectors);
+    }
+
     bool StartGameSystems(Level& level) {
         if (!SoundManager::InitializeOpenAL()) {
             spdlog::critical("Failed to initialize OpenAL");
@@ -120,7 +127,7 @@ namespace {
 #ifdef TILKY_STANDALONE
 
     bool StartStandalone(Level& level, const std::string& windowName) {
-     //   LevelManager::PrepareLevel(level); ?????
+        PrepareRuntimeLevel(level);
 
         if (!StartRenderer(windowName, false)) return false;
 
@@ -233,7 +240,7 @@ namespace {
 
         spdlog::info("Runtime level snapshot created");
 
-        MapQueries::RebuildSectorRuntimeLinks(level);
+        PrepareRuntimeLevel(level);
 
         if (!StartRenderer(windowName, false)) {
             editorLevelSnapshot.reset();

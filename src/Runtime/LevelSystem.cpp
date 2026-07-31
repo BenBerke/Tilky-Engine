@@ -84,7 +84,7 @@ namespace {
 
     ComponentPlayerController *activeController;
 
-    //todo Add Lua as well
+    //todo Add C# as well
     LuaScriptSystem scriptingSystem;
     //CSharpScriptSystem scriptingSystem;
     bool scriptingInitialized = false;
