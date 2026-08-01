@@ -226,8 +226,6 @@ namespace RuntimeEditorUi {
             });
 
             ImGui::End();
-
-            //runtimeRenderer->RefreshTexturesFromLevel();
         }
 
         // Crosshair, useless because mouse position is used for selection
@@ -497,12 +495,9 @@ namespace RuntimeEditor {
 
             if (hit->type == RayHitType::SectorFloor) {
                 const float minimumHeight =
-                    floorIndex > 0
-                        ? sector.floors[floorIndex - 1].ceiling.height
-                        : std::numeric_limits<float>::lowest();
+                    floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
 
-                const float maximumHeight =
-                    floor.ceiling.height - MIN_ROOM_HEIGHT;
+                const float maximumHeight = floor.ceiling.height - MIN_ROOM_HEIGHT;
 
                 if (minimumHeight <= maximumHeight) {
                     floor.floor.height = std::clamp(
@@ -513,8 +508,7 @@ namespace RuntimeEditor {
                 }
             }
             else if (hit->type == RayHitType::SectorCeiling) {
-                const float minimumHeight =
-                    floor.floor.height + MIN_ROOM_HEIGHT;
+                const float minimumHeight = floor.floor.height + MIN_ROOM_HEIGHT;
 
                 const float maximumHeight =
                     floorIndex + 1 < static_cast<int>(sector.floors.size())
@@ -532,6 +526,8 @@ namespace RuntimeEditor {
         }
 
         ImGuiDrawFunctions::SetImGuiFocus(!relativeMouseMod);
+
+        if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesFromLevel();
     } // Update
 
     void Draw(Level& level) {

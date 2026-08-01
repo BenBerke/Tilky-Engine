@@ -110,6 +110,8 @@ namespace Editor {
 
         ImGuiIO &io = ImGui::GetIO();
 
+        scriptEditorFont = io.Fonts->AddFontFromFileTTF("EngineAssets/Fonts/jetbrainsmono.ttf");
+
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;

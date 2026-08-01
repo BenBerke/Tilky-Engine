@@ -1407,7 +1407,7 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponent<ComponentCamera>();
             if (c) {
                 BeginSection("Projection");
-                FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
                 Tooltip(Get("editor.tooltip.component.camera.fov").c_str());
                 FieldWidth(160.0f);

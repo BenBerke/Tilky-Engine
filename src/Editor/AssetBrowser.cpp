@@ -510,7 +510,7 @@ void AssetBrowser::SaveOpenScript() {
     lastOperationError.clear();
 }
 
-void AssetBrowser::DrawTextEditorWindow() {
+void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     if (!scriptEditorOpen) return;
 
     std::string title = openScriptPath.filename().string();
@@ -538,7 +538,9 @@ void AssetBrowser::DrawTextEditorWindow() {
         ImGui::EndMenuBar();
     }
 
+    if (scriptEditorFont != nullptr) [[likely]] ImGui::PushFont(scriptEditorFont);
     scriptEditor.Render("##LuaCodeEditor", ImGui::GetContentRegionAvail(),false);
+    if (scriptEditorFont != nullptr) [[likely]] ImGui::PopFont();
 
     if (scriptEditor.IsTextChanged()) scriptEditorDirty = true;
 

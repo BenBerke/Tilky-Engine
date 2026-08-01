@@ -14,6 +14,8 @@ namespace MapEditorInternal {
     TTF_Font* font = nullptr;
     TTF_TextEngine* textEngine = nullptr;
 
+    ImFont* scriptEditorFont = nullptr;
+
     float editorZoom = 1.0f;
     float GRID_SIZE = 32.0f;
 

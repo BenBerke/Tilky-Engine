@@ -257,7 +257,7 @@ public:
     using ThumbnailProvider = std::function<ImTextureID(const std::string&)>;
 
     void RequestOpenScript(const std::filesystem::path& absolutePath);
-    void DrawTextEditorWindow();
+    void DrawTextEditorWindow(ImFont* scriptEditorFont);
 
     // The one place the expected level-file extension is spelled out, per
     // the "make it configurable in one obvious constant" requirement.

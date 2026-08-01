@@ -264,16 +264,6 @@ namespace {
 
         EditorFunctions::UpdateConsole(GameTime::deltaTime);
 
-        RuntimeEditor::Update(
-            level,
-            *renderer,
-            relativeMouseMode,
-            io.WantCaptureMouse,
-            io.WantCaptureKeyboard,
-            renderer->screenWidth,
-            renderer->screenHeight
-        );
-
         {
             ZoneScopedN("Renderer");
 
@@ -297,6 +287,16 @@ namespace {
         }
 
         UpdateFpsCounter();
+
+        RuntimeEditor::Update(
+            level,
+            *renderer,
+            relativeMouseMode,
+            io.WantCaptureMouse,
+            io.WantCaptureKeyboard,
+            renderer->screenWidth,
+            renderer->screenHeight
+        );
     }
 
     void UpdatePlay(Level& level) {

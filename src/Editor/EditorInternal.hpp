@@ -115,6 +115,8 @@ namespace MapEditorInternal {
     extern TTF_Font* font;
     extern TTF_TextEngine* textEngine;
 
+    extern ImFont* scriptEditorFont;
+
     // --
 
     extern Vector2 cameraPos;

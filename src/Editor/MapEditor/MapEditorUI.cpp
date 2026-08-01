@@ -1378,7 +1378,7 @@ namespace {
 
         ImGui::End();
 
-        assetBrowser.DrawTextEditorWindow();
+        assetBrowser.DrawTextEditorWindow(scriptEditorFont);
     }
 } // anonymous namespace
 
