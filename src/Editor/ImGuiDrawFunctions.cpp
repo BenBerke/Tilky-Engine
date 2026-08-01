@@ -929,7 +929,7 @@ namespace ImGuiDrawFunctions {
 
             if (c) {
                 BeginSection("Position");
-                ImGui::TextDisabled("X                Y               Z(height)");
+                ImGui::TextDisabled("X                Y               Z");
                 FieldWidth(220.0f);
 
                 if (InputOrDrag3("##pos", &c->position.x, draggable)) c->isDirty = true;
@@ -940,21 +940,23 @@ namespace ImGuiDrawFunctions {
                 BeginSection("Rotation");
                 ImGui::TextDisabled("X                Y               Z");
 
-                Vector3 eulerDegrees = c->rotation.ToEulerDegrees();
+                static ID rotationEditorOwner = INVALID_ENTITY_ID;
+                static Vector3 rotationEuler = {0.0f, 0.0f, 0.0f};
+
+                if (rotationEditorOwner != c->ownerID) {
+                    rotationEditorOwner = c->ownerID;
+                    rotationEuler = c->rotation.ToEulerDegrees();
+                }
 
                 FieldWidth(220.0f);
 
-                if (InputOrDrag3("##rotation", &eulerDegrees.x, draggable)) {
-                    c->rotation = Quaternion::FromEulerDegrees(
-                        eulerDegrees.x,
-                        eulerDegrees.y,
-                        eulerDegrees.z
-                    );
-
+                if (InputOrDrag3("##rotation", &rotationEuler.x, draggable)) {
+                    c->rotation = Quaternion::FromEulerDegrees(rotationEuler.x, rotationEuler.y, rotationEuler.z);
                     c->isDirty = true;
                 }
 
                 if (ImGui::Button("Reset##rst_rotation")) {
+                    rotationEuler = {0.0f, 0.0f, 0.0f};
                     c->rotation = Quaternion::Identity();
                     c->isDirty = true;
                 }

@@ -456,9 +456,7 @@ end
 // ============================================================================
 void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) {
     if (!IsPathWithinRoot(absolutePath)) {
-        lastOperationError =
-            "Refused to open a script outside the asset root: " +
-            absolutePath.string();
+        lastOperationError = "Refused to open a script outside the asset root: " + absolutePath.string();
         return;
     }
 
