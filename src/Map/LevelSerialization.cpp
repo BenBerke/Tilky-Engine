@@ -794,7 +794,6 @@ namespace {
     void LoadComponents(const json &levelData, Level &level) {
         level.transforms.Clear();
         level.sprites.Clear();
-        level.decals.Clear();
         level.audioSources.Clear();
         level.scripts.Clear();
         level.playerControllers.Clear();
@@ -811,34 +810,37 @@ namespace {
         const json &componentsJson = levelData["components"];
 
         if (componentsJson.contains("transforms")) {
-            for (const json &transformJson: componentsJson["transforms"]) {
+            for (const json& transformJson : componentsJson["transforms"]) {
                 const ID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity *entity = level.GetEntity(ownerID);
+                Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentTransform &c = level.transforms.Add(ownerID);
+                ComponentTransform& c = level.transforms.Add(ownerID);
                 entity->componentsMask.set(CMP_TRANSFORM);
 
-                if (transformJson.contains("position")) {
-                    c.position = {
-                        transformJson["position"][0].get<float>(),
-                        transformJson["position"][1].get<float>(),
-                        transformJson["position"][2].get<float>()
-                    };
-                }
+                c.position = {
+                    transformJson["position"][0].get<float>(),
+                    transformJson["position"][1].get<float>(),
+                    transformJson["position"][2].get<float>()
+                };
 
-                c.sectorIndex = transformJson.value("sectorIndex", -1);
+                c.rotation = Quaternion{
+                    transformJson["rotation"][0].get<float>(),
+                    transformJson["rotation"][1].get<float>(),
+                    transformJson["rotation"][2].get<float>(),
+                    transformJson["rotation"][3].get<float>()
+                }.Normalized();
 
-                if (transformJson.contains("scale")) {
-                    c.scale = {
-                        transformJson["scale"][0].get<float>(),
-                        transformJson["scale"][1].get<float>(),
-                        transformJson["scale"][2].get<float>()
-                    };
-                }
+                c.sectorIndex = transformJson["sectorIndex"].get<int>();
+
+                c.scale = {
+                    transformJson["scale"][0].get<float>(),
+                    transformJson["scale"][1].get<float>(),
+                    transformJson["scale"][2].get<float>()
+                };
             }
         }
 
@@ -870,31 +872,9 @@ namespace {
                     colorJson.at(2).get<float>(),
                     colorJson.at(3).get<float>()
                 };
+                c.isStatic = spriteJson.at("isStatic").get<bool>();
 
                 entity->componentsMask.set(CMP_SPRITE);
-            }
-        }
-
-        if (componentsJson.contains("decals")) {
-            for (const json &decalJson: componentsJson["decals"]) {
-                const ID ownerID = decalJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentDecal &c = level.decals.Add(ownerID);
-                entity->componentsMask.set(CMP_DECAL);
-
-                c.wallIndex = decalJson.value("wallIndex", -1);
-                c.type = decalJson.value("type", WALL);
-                c.verticalPos = decalJson.value("verticalPos", 0.0f);
-                c.horizontalPos = decalJson.value("horizontalPos", -1.0f);
-                c.wallNormalOffset = decalJson.value("wallNormalOffset", 0.0f);
-                c.wallT = decalJson.value("wallT", 0.5f);
-                c.baseHeight = decalJson.value("baseHeight", 0.0f);
-                c.absHeight = decalJson.value("absHeight", false);
             }
         }
 
@@ -1171,7 +1151,6 @@ namespace {
 
         componentsJson["transforms"] = json::array();
         componentsJson["sprites"] = json::array();
-        componentsJson["decals"] = json::array();
         componentsJson["audioSources"] = json::array();
         componentsJson["scripts"] = json::array();
         componentsJson["uiTransforms"] = json::array();
@@ -1182,12 +1161,13 @@ namespace {
         componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
 
-        for (const ComponentTransform &c: level.transforms.components) {
+        for (const ComponentTransform& c : level.transforms.components) {
             componentsJson["transforms"].push_back({
                 {"ownerID", c.ownerID},
-                {"position", {c.position.x, c.position.y, c.position.z}},
+                {"position", {c.position.x,c.position.y,c.position.z}},
+                {"rotation", {c.rotation.x,c.rotation.y,c.rotation.z,c.rotation.w}},
                 {"sectorIndex", c.sectorIndex},
-                {"scale", {c.scale.x, c.scale.y, c.scale.z}}
+                {"scale", {c.scale.x,c.scale.y,c.scale.z}}
             });
         }
 
@@ -1196,21 +1176,8 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)},
-                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
-            });
-        }
-
-        for (const ComponentDecal &c: level.decals.components) {
-            componentsJson["decals"].push_back({
-                {"ownerID", c.ownerID},
-                {"wallIndex", c.wallIndex},
-                {"type", c.type},
-                {"verticalPos", c.verticalPos},
-                {"horizontalPos", c.horizontalPos},
-                {"wallNormalOffset", c.wallNormalOffset},
-                {"wallT", c.wallT},
-                {"baseHeight", c.baseHeight},
-                {"absHeight", c.absHeight}
+                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
+                    {"isStatic", c.isStatic},
             });
         }
 

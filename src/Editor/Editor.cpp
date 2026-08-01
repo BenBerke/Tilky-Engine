@@ -161,51 +161,7 @@ namespace Editor {
         const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
 
         if (currentState == STATE_MAP) {
-            // Update decals so they always stick to the wall they are attached to
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
-            for (ComponentDecal &decal: level.decals.components) {
-                ComponentTransform *transform = level.transforms.Get(decal.ownerID);
-
-                if (transform == nullptr) {
-                    continue;
-                }
-
-                if (decal.wallIndex < 0 ||
-                    decal.wallIndex >= static_cast<int>(level.walls.size())) {
-                    continue;
-                    }
-
-                const Wall &wall = level.walls[decal.wallIndex];
-
-                const Vector2 wallVector = wall.end - wall.start;
-
-                const float wallLengthSq =
-                        wallVector.x * wallVector.x +
-                        wallVector.y * wallVector.y;
-
-                if (wallLengthSq <= 0.0001f) {
-                    continue;
-                }
-
-                const Vector2 toObject = (Vector2){transform->position.x, transform->position.y} - wall.start;
-
-                float t = (toObject.x * wallVector.x + toObject.y * wallVector.y) / wallLengthSq;
-
-                t = std::clamp(t, 0.0f, 1.0f);
-
-                if (!editingComponent) {
-                    decal.wallT = t;
-                    decal.horizontalPos = std::sqrt(wallLengthSq) * decal.wallT;
-                }
-                auto lerp = [](const float a, const float b, const float t) -> float {
-                    return (1.0f - t) * a + t * b;
-                };
-
-                transform->position = {
-                    lerp(wall.start.x, wall.end.x, decal.wallT),
-                    lerp(wall.start.y, wall.end.y, decal.wallT)
-                };
-            }
 
             DrawGridDots();
             DrawExistingSectors();
@@ -213,9 +169,7 @@ namespace Editor {
             DrawWalls();
             DrawEntities();
 
-            if (currentMode == MODE_SECTOR) {
-                DrawSectorPreview();
-            }
+            if (currentMode == MODE_SECTOR) DrawSectorPreview();
 
             DrawEditorUI();
         }

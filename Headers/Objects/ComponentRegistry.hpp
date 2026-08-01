@@ -11,7 +11,6 @@
 #define TILKY_NORMAL_COMPONENTS(X) \
 X(ComponentTransform,        CMP_TRANSFORM,         transforms,         "component.transform") \
 X(ComponentSprite,           CMP_SPRITE,            sprites,            "component.sprite") \
-X(ComponentDecal,            CMP_DECAL,             decals,             "component.decal") \
 X(ComponentAudioSource,      CMP_AUDIO_SOURCE,      audioSources,       "component.audio_source") \
 X(ComponentScript,           CMP_SCRIPT,            scripts,            "component.script") \
 X(ComponentPlayerController, CMP_PLAYER_CONTROLLER, playerControllers,  "component.player_controller") \

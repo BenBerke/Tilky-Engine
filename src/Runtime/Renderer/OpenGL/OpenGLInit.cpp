@@ -429,7 +429,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
 // Resolves a texture filename to its slot in the atlas built above.
 // Returns -1 (the same "no texture" sentinel used throughout the wall/
-// sector/sprite/decal GPU builders) if the name is empty, was never
+// sector/sprite GPU builders) if the name is empty, was never
 // referenced by the level, or failed to pack. Safe to call every frame -
 // it's a plain hash lookup, no loading happens here.
 //

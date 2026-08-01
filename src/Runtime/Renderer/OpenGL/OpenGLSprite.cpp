@@ -10,19 +10,14 @@ void OpenGL::BuildGpuSprites() {
     Level& level = LevelManager::CurrentLevel();
 
     for (ComponentSprite& spriteComponent : level.sprites.components) {
-        ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
+        ComponentTransform* transform =
+            level.transforms.Get(spriteComponent.ownerID);
 
-        if (transform == nullptr) [[unlikely]] continue;
+        if (transform == nullptr) [[unlikely]] {
+            continue;
+        }
 
-        if (level.decals.Has(spriteComponent.ownerID)) continue;
-
-        // Still render if sector is invalid, this is needed for the runtime editor
-        // if (transform->sectorIndex < 0 ||
-        //     transform->sectorIndex >= static_cast<int>(level.sectors.size())) [[unlikely]] {
-        //     continue;
-        // }
-
-        GpuSprite gpuSprite;
+        GpuSprite gpuSprite{};
 
         gpuSprite.positionSize = {
             transform->position.x,
@@ -31,27 +26,39 @@ void OpenGL::BuildGpuSprites() {
             transform->scale.z
         };
 
-        const Sector& sector = level.sectors[transform->sectorIndex];
+        /*
+         * Keep rendering sprites with invalid sectors for the runtime editor.
+         * Invalid sectors simply do not apply sector lighting.
+         */
+        gpuSprite.color = spriteComponent.color;
 
-        gpuSprite.color = {
-            spriteComponent.color.x - (255 - sector.light.x),
-            spriteComponent.color.y - (255 - sector.light.y),
-            spriteComponent.color.z - (255 - sector.light.z),
-            spriteComponent.color.w
-        };
+        if (
+            transform->sectorIndex >= 0 &&
+            transform->sectorIndex < static_cast<int>(level.sectors.size())
+        ) {
+            const Sector& sector =
+                level.sectors[transform->sectorIndex];
+
+            gpuSprite.color = {
+                spriteComponent.color.x - (255.0f - sector.light.x),
+                spriteComponent.color.y - (255.0f - sector.light.y),
+                spriteComponent.color.z - (255.0f - sector.light.z),
+                spriteComponent.color.w
+            };
+        }
 
         gpuSprite.textureIndices0 = {
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[0])), // N
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[1])), // NE
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[2])), // E
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[3]))  // SE
+            GetTextureRegionIndex(spriteComponent.textureFileNames[0]), // N
+            GetTextureRegionIndex(spriteComponent.textureFileNames[1]), // NE
+            GetTextureRegionIndex(spriteComponent.textureFileNames[2]), // E
+            GetTextureRegionIndex(spriteComponent.textureFileNames[3])  // SE
         };
 
         gpuSprite.textureIndices1 = {
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[4])), // S
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[5])), // SW
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[6])), // W
-            (GetTextureRegionIndex(spriteComponent.textureFileNames[7]))  // NW
+            GetTextureRegionIndex(spriteComponent.textureFileNames[4]), // S
+            GetTextureRegionIndex(spriteComponent.textureFileNames[5]), // SW
+            GetTextureRegionIndex(spriteComponent.textureFileNames[6]), // W
+            GetTextureRegionIndex(spriteComponent.textureFileNames[7])  // NW
         };
 
         gpuSprite.data = {
@@ -59,6 +66,26 @@ void OpenGL::BuildGpuSprites() {
             static_cast<float>(spriteComponent.sideCount),
             transform->forward.x,
             transform->forward.y
+        };
+
+        Quaternion rotation = Quaternion::Identity();
+
+        if (spriteComponent.isStatic) {
+            rotation = transform->rotation.Normalized();
+        }
+
+        gpuSprite.rotation = {
+            rotation.x,
+            rotation.y,
+            rotation.z,
+            rotation.w
+        };
+
+        gpuSprite.flags = {
+            spriteComponent.isStatic ? 1 : 0,
+            0,
+            0,
+            0
         };
 
         gpuSprites.push_back(gpuSprite);
@@ -75,5 +102,9 @@ void OpenGL::BuildGpuSprites() {
         GL_DYNAMIC_DRAW
     );
 
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
+    glBindBufferBase(
+        GL_SHADER_STORAGE_BUFFER,
+        2,
+        spriteSSBO
+    );
 }

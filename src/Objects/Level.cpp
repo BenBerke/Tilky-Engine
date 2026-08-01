@@ -45,142 +45,131 @@ ID Level::CreateEntity(Entity& copy) {
     entity.name = copy.name + "Copy";
 
     if (copy.HasComponent<ComponentTransform>()) {
-        auto* t  = entity.AddComponent<ComponentTransform>();
-        const ComponentTransform* ct = copy.GetComponent<ComponentTransform>();
+        auto *s = entity.AddComponent<ComponentTransform>();
+        const ComponentTransform *cs = copy.GetComponent<ComponentTransform>();
 
-        t->position       = ct->position;
-        t->relativeHeight = ct->relativeHeight;
-        t->forward        = ct->forward;
-        t->scale          = ct->scale;
-        t->sectorIndex    = ct->sectorIndex;
-        t->isDirty        = ct->isDirty;
+        s->position = cs->position;
+        s->relativeHeight = cs->relativeHeight;
+        s->forward = cs->forward;
+        s->scale = cs->scale;
+        s->sectorIndex = cs->sectorIndex;
+        s->isDirty = cs->isDirty;
+        s->rotation = cs->rotation;
     }
 
     if (copy.HasComponent<ComponentSprite>()) {
-        auto* s  = entity.AddComponent<ComponentSprite>();
-        const ComponentSprite* cs = copy.GetComponent<ComponentSprite>();
+        auto *s = entity.AddComponent<ComponentSprite>();
+        const ComponentSprite *cs = copy.GetComponent<ComponentSprite>();
 
         s->textureFileNames = cs->textureFileNames;
         s->sideCount = cs->sideCount;
-    }
-
-    if (copy.HasComponent<ComponentDecal>()) {
-        auto* d  = entity.AddComponent<ComponentDecal>();
-        const ComponentDecal* cd = copy.GetComponent<ComponentDecal>();
-
-        d->wallIndex        = cd->wallIndex;
-        d->verticalPos      = cd->verticalPos;
-        d->horizontalPos    = cd->horizontalPos;
-        d->wallNormalOffset = cd->wallNormalOffset;
-        d->wallT            = cd->wallT;
-        d->baseHeight       = cd->baseHeight;
-        d->absHeight        = cd->absHeight;
+        s->isStatic = cs->isStatic;
     }
 
     if (copy.HasComponent<ComponentAudioSource>()) {
-        auto* a  = entity.AddComponent<ComponentAudioSource>();
-        const ComponentAudioSource* ca = copy.GetComponent<ComponentAudioSource>();
+        auto *s = entity.AddComponent<ComponentAudioSource>();
+        const ComponentAudioSource *ca = copy.GetComponent<ComponentAudioSource>();
 
-        a->name              = ca->name;
-        a->soundFileName     = ca->soundFileName;
-        a->pitch             = ca->pitch;
-        a->gain              = ca->gain;
-        a->looping           = ca->looping;
-        a->playOnStart       = ca->playOnStart;
-        a->referenceDistance = ca->referenceDistance;
-        a->maxDistance       = ca->maxDistance;
-        a->rollOffFactor     = ca->rollOffFactor;
-        a->innerConeAngle    = ca->innerConeAngle;
-        a->outerConeAngle    = ca->outerConeAngle;
-        a->outerGain         = ca->outerGain;
+        s->name = ca->name;
+        s->soundFileName = ca->soundFileName;
+        s->pitch = ca->pitch;
+        s->gain = ca->gain;
+        s->looping = ca->looping;
+        s->playOnStart = ca->playOnStart;
+        s->referenceDistance = ca->referenceDistance;
+        s->maxDistance = ca->maxDistance;
+        s->rollOffFactor = ca->rollOffFactor;
+        s->innerConeAngle = ca->innerConeAngle;
+        s->outerConeAngle = ca->outerConeAngle;
+        s->outerGain = ca->outerGain;
     }
 
     if (copy.HasComponent<ComponentScript>()) {
-        auto* s  = entity.AddComponent<ComponentScript>();
-        const ComponentScript* cs = copy.GetComponent<ComponentScript>();
+        auto *s = entity.AddComponent<ComponentScript>();
+        const ComponentScript *cs = copy.GetComponent<ComponentScript>();
 
         s->fileName = cs->fileName;
-        s->enabled  = cs->enabled;
+        s->enabled = cs->enabled;
     }
 
     if (copy.HasComponent<ComponentPlayerController>()) {
-        auto* p  = entity.AddComponent<ComponentPlayerController>();
-        const ComponentPlayerController* cp = copy.GetComponent<ComponentPlayerController>();
+        auto *s = entity.AddComponent<ComponentPlayerController>();
+        const ComponentPlayerController *cs = copy.GetComponent<ComponentPlayerController>();
 
-        p->isActive      = cp->isActive;
-        p->speed         = cp->speed;
-        p->runningSpeed  = cp->runningSpeed;
-        p->jumpPower     = cp->jumpPower;
-        p->eyeHeight     = cp->eyeHeight;
-        p->friction      = cp->friction;
-        p->sensitivityX  = cp->sensitivityX;
-        p->sensitivityY  = cp->sensitivityY;
-        p->noClip        = cp->noClip;
+        s->isActive = cs->isActive;
+        s->speed = cs->speed;
+        s->runningSpeed = cs->runningSpeed;
+        s->jumpPower = cs->jumpPower;
+        s->eyeHeight = cs->eyeHeight;
+        s->friction = cs->friction;
+        s->sensitivityX = cs->sensitivityX;
+        s->sensitivityY = cs->sensitivityY;
+        s->noClip = cs->noClip;
         // velocity, currentSpeed, currentEyeHeight intentionally left as default (read-only runtime state)
     }
 
     if (copy.HasComponent<ComponentCamera>()) {
-        auto* c  = entity.AddComponent<ComponentCamera>();
-        const ComponentCamera* cc = copy.GetComponent<ComponentCamera>();
+        auto *s = entity.AddComponent<ComponentCamera>();
+        const ComponentCamera *cs = copy.GetComponent<ComponentCamera>();
 
-        c->isActive    = cc->isActive;
-        c->yaw         = cc->yaw;
-        c->pitch       = cc->pitch;
-        c->fov         = cc->fov;
-        c->aspectRatio = cc->aspectRatio;
-        c->nearPlane   = cc->nearPlane;
-        c->farPlane    = cc->farPlane;
+        s->isActive = cs->isActive;
+        s->yaw = cs->yaw;
+        s->pitch = cs->pitch;
+        s->fov = cs->fov;
+        s->aspectRatio = cs->aspectRatio;
+        s->nearPlane = cs->nearPlane;
+        s->farPlane = cs->farPlane;
         // forward, target, view, projection intentionally left as default (runtime derived state)
     }
 
     if (copy.HasComponent<ComponentCollider>()) {
-        auto* c  = entity.AddComponent<ComponentCollider>();
-        const ComponentCollider* cc = copy.GetComponent<ComponentCollider>();
+        auto *s = entity.AddComponent<ComponentCollider>();
+        const ComponentCollider *cs = copy.GetComponent<ComponentCollider>();
 
-        c->type      = cc->type;
-        c->isActive  = cc->isActive;
-        c->isTrigger = cc->isTrigger;
-        c->scale     = cc->scale;
-        c->stepSize  = cc->stepSize;
+        s->type = cs->type;
+        s->isActive = cs->isActive;
+        s->isTrigger = cs->isTrigger;
+        s->scale = cs->scale;
+        s->stepSize = cs->stepSize;
     }
 
     if (copy.HasComponent<ComponentRigidbody>()) {
-        auto* r  = entity.AddComponent<ComponentRigidbody>();
-        const ComponentRigidbody* cr = copy.GetComponent<ComponentRigidbody>();
+        auto *s = entity.AddComponent<ComponentRigidbody>();
+        const ComponentRigidbody *cs = copy.GetComponent<ComponentRigidbody>();
 
-        r->isStatic     = cr->isStatic;
-        r->mass         = cr->mass;
-        r->gravityScale = cr->gravityScale;
-        r->friction     = cr->friction;
+        s->isStatic = cs->isStatic;
+        s->mass = cs->mass;
+        s->gravityScale = cs->gravityScale;
+        s->friction = cs->friction;
         // velocity intentionally left as default (runtime state)
     }
 
     // UI Components
     if (copy.HasComponent<ComponentUITransform>()) {
-        auto* t  = entity.AddComponent<ComponentUITransform>();
-        const ComponentUITransform* ct = copy.GetComponent<ComponentUITransform>();
+        auto *s = entity.AddComponent<ComponentUITransform>();
+        const ComponentUITransform *cs = copy.GetComponent<ComponentUITransform>();
 
-        t->anchorMin        = ct->anchorMin;
-        t->anchorMax        = ct->anchorMax;
-        t->pivot            = ct->pivot;
-        t->position         = ct->position;
-        t->scale            = ct->scale;
-        t->rotation         = ct->rotation;
+        s->anchorMin = cs->anchorMin;
+        s->anchorMax = cs->anchorMax;
+        s->pivot = cs->pivot;
+        s->position = cs->position;
+        s->scale = cs->scale;
+        s->rotation = cs->rotation;
         // resolvedPosition, resolvedSize intentionally left as default (runtime derived state)
     }
 
     if (copy.HasComponent<ComponentUISprite>()) {
-        auto* s  = entity.AddComponent<ComponentUISprite>();
-        const ComponentUISprite* cs = copy.GetComponent<ComponentUISprite>();
+        auto *s = entity.AddComponent<ComponentUISprite>();
+        const ComponentUISprite *cs = copy.GetComponent<ComponentUISprite>();
 
         s->textureIndex = cs->textureIndex;
     }
 
     if (copy.HasComponent<ComponentUIText>()) {
-        auto* t  = entity.AddComponent<ComponentUIText>();
-        const ComponentUIText* ct = copy.GetComponent<ComponentUIText>();
+        auto *s = entity.AddComponent<ComponentUIText>();
+        const ComponentUIText *cs = copy.GetComponent<ComponentUIText>();
 
-        t->text = ct->text;
+        s->text = cs->text;
     }
 
     entities.push_back(entity);
@@ -197,7 +186,6 @@ void Level::DestroyEntity(const ID entityID) {
     rigidbodies.Remove(entityID);
 
     sprites.Remove(entityID);
-    decals.Remove(entityID);
     audioSources.Remove(entityID);
     scripts.Remove(entityID);
     playerControllers.Remove(entityID);

@@ -47,20 +47,6 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             }
         ),
 
-        "hasDecal",
-        sol::property(&ScriptEntity::HasDecal),
-
-        "decal",
-        sol::property(
-            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
-                const sol::state_view luaState(state);
-
-                if (!entity.HasDecal()) return sol::nil;
-
-                return sol::make_object(luaState, entity.GetDecal());
-            }
-        ),
-
         "hasAudioSource",
         sol::property(&ScriptEntity::HasAudioSource),
 

@@ -335,11 +335,6 @@ bool OpenGL::CreateMap() {
 
     glEnable(GL_PROGRAM_POINT_SIZE);
 
-    glGenBuffers(1, &decalSSBO);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, decalSSBO);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, decalSSBO);
-
     // Sector
     glGenBuffers(1, &sectorSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, sectorSSBO);

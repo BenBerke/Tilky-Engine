@@ -925,30 +925,63 @@ namespace ImGuiDrawFunctions {
         //  Transform
         // ════════════════════════════════════════════════════════════════════
         if (state.selectedComponent == CMP_TRANSFORM) {
-            auto *c = entity.GetComponent<ComponentTransform>();
+            auto* c = entity.GetComponent<ComponentTransform>();
+
             if (c) {
                 BeginSection("Position");
                 ImGui::TextDisabled("X                Y               Z(height)");
                 FieldWidth(220.0f);
-                InputOrDrag3("##pos", &c->position.x, draggable);
+
+                if (InputOrDrag3("##pos", &c->position.x, draggable)) c->isDirty = true;
+
                 ResetFloat3Button("rst_pos", &c->position.x);
+                EndSection();
+
+                BeginSection("Rotation");
+                ImGui::TextDisabled("X                Y               Z");
+
+                Vector3 eulerDegrees = c->rotation.ToEulerDegrees();
+
+                FieldWidth(220.0f);
+
+                if (InputOrDrag3("##rotation", &eulerDegrees.x, draggable)) {
+                    c->rotation = Quaternion::FromEulerDegrees(
+                        eulerDegrees.x,
+                        eulerDegrees.y,
+                        eulerDegrees.z
+                    );
+
+                    c->isDirty = true;
+                }
+
+                if (ImGui::Button("Reset##rst_rotation")) {
+                    c->rotation = Quaternion::Identity();
+                    c->isDirty = true;
+                }
+
                 EndSection();
 
                 BeginSection("Scale");
                 ImGui::TextDisabled("X                Y               Z");
                 FieldWidth(220.0f);
-                InputOrDrag3("##scale", &c->scale.x, draggable);
+
+                if (InputOrDrag3("##scale", &c->scale.x, draggable)) {
+                    c->isDirty = true;
+                }
+
                 ResetFloat3Button("rst_scale", &c->scale.x);
                 EndSection();
 
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
+
                 if (DangerButton(Get("common.delete").c_str())) {
                     entity.RemoveComponent<ComponentTransform>();
                     CloseEditor();
                 }
-            } else { ImGui::TextDisabled("Transform component missing"); }
+            }
+            else ImGui::TextDisabled("Transform component missing");
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1135,6 +1168,11 @@ namespace ImGuiDrawFunctions {
                 }
 
                 ImGui::Spacing();
+
+                ImGui::Checkbox(Get("component.sprite.is_static").c_str(), &c->isStatic);
+                Tooltip(Get("editor.tooltip.component.sprite.is_static").c_str());
+
+                ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
 
@@ -1144,55 +1182,6 @@ namespace ImGuiDrawFunctions {
                 }
             }
             else ImGui::TextDisabled("Sprite component missing");
-        }
-
-        // ════════════════════════════════════════════════════════════════════
-        //  Decal
-        // ════════════════════════════════════════════════════════════════════
-        else if (state.selectedComponent == CMP_DECAL) {
-            auto *c = entity.GetComponent<ComponentDecal>();
-            if (c) {
-                BeginSection("Type");
-
-                const std::array typeLabels = {
-                    Get("component.decal.type.wall"),
-                    Get("component.decal.type.floor")
-                };
-                const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
-                static int selectedTypeIndex = 0;
-
-                FieldWidth(140.0f);
-                ImGui::Combo(Get("component.decal.type").c_str(),
-                             &selectedTypeIndex, items, IM_ARRAYSIZE(items));
-
-                c->type = static_cast<DecalType>(selectedTypeIndex);
-
-                EndSection();
-
-                BeginSection("Placement");
-
-                FieldWidth(160.0f);
-                InputOrDrag(Get("component.decal.attached_wall").c_str(), &c->wallIndex, draggable);
-                InputOrDrag(Get("component.decal.wall_offset").c_str(), &c->horizontalPos, draggable);
-                InputOrDrag(Get("component.decal.wall_normal_offset").c_str(), &c->wallNormalOffset, draggable);
-                InputOrDrag("Wall T", &c->wallT, draggable);
-                Tooltip(Get("editor.tooltip.component.decal.wall_t").c_str());
-                EndSection();
-
-                BeginSection("Vertical");
-                FieldWidth(160.0f);
-                InputOrDrag(Get("component.decal.z_offset").c_str(), &c->verticalPos, draggable);
-                InputOrDrag("Base Height",                             &c->baseHeight,  draggable);
-                ImGui::Checkbox(Get("component.decal.abs_height").c_str(), &c->absHeight);
-                Tooltip(Get("editor.tooltip.component.decal.abs_height").c_str());
-                EndSection();
-
-                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
-                if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentDecal>();
-                    CloseEditor();
-                }
-            } else { ImGui::TextDisabled("Decal component missing"); }
         }
 
         // ════════════════════════════════════════════════════════════════════

@@ -25,11 +25,6 @@ void OpenGL::Shutdown() {
         sectorSSBO = 0;
     }
 
-    if (decalSSBO != 0) {
-        glDeleteBuffers(1, &decalSSBO);
-        decalSSBO = 0;
-    }
-
     if (spriteSSBO != 0) {
         glDeleteBuffers(1, &spriteSSBO);
         spriteSSBO = 0;
@@ -94,12 +89,10 @@ void OpenGL::Shutdown() {
     gpuWalls.clear();
     flatTriangles.clear();
     gpuSprites.clear();
-    gpuDecals.clear();
 
     gpuWallCount = 0;
     flatTriangleCount = 0;
     spriteCount = 0;
-    decalCount = 0;
 
     if (ImGui::GetCurrentContext() != nullptr) {
         ImGui_ImplOpenGL3_Shutdown();

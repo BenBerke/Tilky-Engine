@@ -3,16 +3,12 @@
 #define RENDER_WALL 0
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
-#define RENDER_DECAL 3
 #define RENDER_COLLIDER 4
 
 // Collision Sphere debug view stuff
 #define SIDECOUNT_SINGLE 0
 #define SIDECOUNT_45 1
 #define SIDECOUNT_90 2
-
-#define DECAL_WALL 0
-#define DECAL_FLOOR 1
 
 #define COLLIDER_BOX_VERTEX_COUNT 24
 #define COLLIDER_SPHERE_SEGMENTS 24
@@ -23,13 +19,6 @@
 #define SLOPE_MINUS_X 1
 #define SLOPE_PLUS_Z 2
 #define SLOPE_MINUS_Z 3
-
-struct Decal {
-    vec4 startEnd;
-    vec4 color;
-    vec4 heights;
-    vec4 data;
-};
 
 struct Sprite {
     vec4 positionSize;
@@ -43,6 +32,12 @@ struct Sprite {
 // data.y = sideCount
 // data.z = forward.x
 // data.w = forward.y
+
+    vec4 rotation;
+// Quaternion layout: x, y, z, w
+
+    ivec4 flags;
+// flags.x = isStatic
 };
 
 struct Wall {
@@ -107,10 +102,6 @@ layout(std430, binding = 2) readonly buffer SpriteBuffer {
     Sprite sprites[];
 };
 
-layout(std430, binding = 3) readonly buffer DecalBuffer {
-    Decal decals[];
-};
-
 layout(std430, binding = 4) readonly buffer SectorBuffer {
     Sector sectors[];
 };
@@ -138,8 +129,6 @@ flat out vec4 vColor;
 
 out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
-
-out vec2 vDecalUV;
 
 out vec3 vWorldPos;
 out vec2 vSurfaceCoord;
@@ -332,148 +321,21 @@ vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
     return vec3(-toCamera.y, 0.0, toCamera.x);
 }
 
-void renderDecal() {
-    Decal decal = decals[gl_InstanceID];
+vec3 RotateByQuaternion(vec3 value, vec4 quaternion) {
+    float lengthSquared = dot(quaternion, quaternion);
 
-    int textureIndex = int(decal.data.x);
-    int decalType = int(decal.data.y);
-
-    vec3 worldPos;
-    vec2 uv;
-
-    if (decalType == DECAL_FLOOR) {
-        vec2 decalMin = decal.startEnd.xy;
-        vec2 decalMax = decal.startEnd.zw;
-
-        float floorHeight = decal.heights.x;
-
-        vec3 minMin = vec3(
-        decalMin.x,
-        floorHeight,
-        decalMin.y
-        );
-
-        vec3 minMax = vec3(
-        decalMin.x,
-        floorHeight,
-        decalMax.y
-        );
-
-        vec3 maxMin = vec3(
-        decalMax.x,
-        floorHeight,
-        decalMin.y
-        );
-
-        vec3 maxMax = vec3(
-        decalMax.x,
-        floorHeight,
-        decalMax.y
-        );
-
-        /*
-         * Counter-clockwise when viewed from above.
-         * This makes the decal face upward when face culling is enabled.
-         */
-        vec3 positions[6] = vec3[6](
-        minMin,
-        minMax,
-        maxMin,
-
-        maxMin,
-        minMax,
-        maxMax
-        );
-
-        vec2 uvs[6] = vec2[6](
-        vec2(0.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 1.0),
-
-        vec2(1.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0)
-        );
-
-        worldPos = positions[gl_VertexID];
-        uv = uvs[gl_VertexID];
-    }
-    else {
-        /*
-         * Existing wall decal behaviour.
-         */
-        vec2 decalStart2D = decal.startEnd.xy;
-        vec2 decalEnd2D = decal.startEnd.zw;
-
-        float bottomHeight = decal.heights.x;
-        float topHeight = decal.heights.y;
-
-        vec3 bottomLeft = vec3(
-        decalStart2D.x,
-        bottomHeight,
-        decalStart2D.y
-        );
-
-        vec3 topLeft = vec3(
-        decalStart2D.x,
-        topHeight,
-        decalStart2D.y
-        );
-
-        vec3 bottomRight = vec3(
-        decalEnd2D.x,
-        bottomHeight,
-        decalEnd2D.y
-        );
-
-        vec3 topRight = vec3(
-        decalEnd2D.x,
-        topHeight,
-        decalEnd2D.y
-        );
-
-        vec3 positions[6] = vec3[6](
-        bottomLeft,
-        topLeft,
-        bottomRight,
-
-        bottomRight,
-        topLeft,
-        topRight
-        );
-
-        vec2 uvs[6] = vec2[6](
-        vec2(0.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 1.0),
-
-        vec2(1.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0)
-        );
-
-        worldPos = positions[gl_VertexID];
-        uv = uvs[gl_VertexID];
+    if (lengthSquared < 0.000001) {
+        return value;
     }
 
-    vWallUV = vec2(0.0);
-    vFlatUV = vec2(0.0);
-    vSpriteUV = vec2(0.0);
+    vec4 normalizedQuaternion = quaternion * inversesqrt(lengthSquared);
+    vec3 quaternionVector = normalizedQuaternion.xyz;
 
-    vTextureIndex = textureIndex;
-    vFlatTextureIndex = -1;
-    vSpriteTextureIndex = -1;
-
-    vDecalUV = uv;
-    vColor = decal.color / 255.0;
-    vWorldPos = worldPos;
-    vSurfaceCoord = uv;
-    vSurfaceSize = vec2(1.0);
-
-    gl_Position =
-    uProjection *
-    uView *
-    vec4(worldPos, 1.0);
+    return value + 2.0 * cross(
+    quaternionVector,
+    cross(quaternionVector, value) +
+    normalizedQuaternion.w * value
+    );
 }
 
 void renderSprite() {
@@ -514,8 +376,24 @@ void renderSprite() {
 
     vec3 bottomCenter = spriteWorldPos;
 
-    vec3 spriteRight = GetYawOnlySpriteRight(spriteWorldPos);
-    vec3 spriteUp = vec3(0.0, 1.0, 0.0);
+    vec3 spriteRight;
+    vec3 spriteUp;
+
+    if (sprite.flags.x != 0) {
+        spriteRight = RotateByQuaternion(
+        vec3(1.0, 0.0, 0.0),
+        sprite.rotation
+        );
+
+        spriteUp = RotateByQuaternion(
+        vec3(0.0, 1.0, 0.0),
+        sprite.rotation
+        );
+    }
+    else {
+        spriteRight = GetYawOnlySpriteRight(spriteWorldPos);
+        spriteUp = vec3(0.0, 1.0, 0.0);
+    }
 
     vec3 worldPos =
     bottomCenter +
@@ -528,7 +406,6 @@ void renderSprite() {
 
     vWallUV = vec2(0.0);
     vFlatUV = vec2(0.0);
-    vDecalUV = vec2(0.0);
 
     vTextureIndex = -1;
     vFlatTextureIndex = -1;
@@ -661,7 +538,6 @@ void renderFlat() {
 
     vWallUV = vec2(0.0);
     vSpriteUV = vec2(0.0);
-    vDecalUV = vec2(0.0);
 
     vec3 worldPos = vec3(point.x, point.z, point.y);
 
@@ -763,7 +639,6 @@ void renderWall() {
     vWallUV = uvs[gl_VertexID];
     vFlatUV = vec2(0.0);
     vSpriteUV = vec2(0.0);
-    vDecalUV = vec2(0.0);
 
     vTextureIndex = int(wall.data.x);
     vFlatTextureIndex = -1;
@@ -781,7 +656,6 @@ void main() {
     if (renderMode == RENDER_FLAT) renderFlat();
     else if (renderMode == RENDER_WALL) renderWall();
     else if (renderMode == RENDER_SPRITE) renderSprite();
-    else if (renderMode == RENDER_DECAL) renderDecal();
     else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
     else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
 }

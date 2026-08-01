@@ -371,7 +371,6 @@ namespace MapEditorInternal {
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {
                 if (sprite != nullptr) SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
-                else if (level.decals.Get(entity.id) != nullptr) SDL_SetRenderDrawColor(renderer, 255, 120, 120, 255);
                 else SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
                 SDL_RenderFillRect(renderer, &rect);

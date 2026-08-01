@@ -64,7 +64,6 @@ struct Level {
 
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;
-    ComponentStorage<ComponentDecal> decals;
     ComponentStorage<ComponentAudioSource> audioSources;
     ComponentStorage<ComponentScript> scripts;
     ComponentStorage<ComponentPlayerController> playerControllers;

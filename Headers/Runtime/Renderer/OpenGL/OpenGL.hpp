@@ -28,7 +28,6 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_WALL = 0;
     inline constexpr int RENDER_FLAT = 1;
     inline constexpr int RENDER_SPRITE = 2;
-    inline constexpr int RENDER_DECAL = 3;
     inline constexpr int RENDER_COLLIDER = 4;
 
     constexpr int ATLAS_SIZE = 4096;
@@ -82,20 +81,17 @@ namespace OpenGLRendererInternal {
         Vector4 data;
         // data.x = sprite width / scale.x
         // data.y = sideCount
-        // data.z = facingYaw
-        // data.w = unused
+        // data.z = forward.x
+        // data.w = forward.y
+
+        Vector4 rotation;
+        // Quaternion: x, y, z, w
+
+        IntVector4 flags;
+        // flags.x = isStatic
     };
 
-    struct GpuDecal {
-        Vector4 startEnd;
-        Vector4 color;
-        Vector4 heights;
-        Vector4 data;
-        //data.x = textureIndex
-        //data.y = type
-        //data.z = 0
-        //data.w = 0
-    };
+    static_assert(sizeof(GpuSprite) == 112);
 
     struct GpuSector {
         Vector4 floorData; // x = offset into sectorFloors, y = floor count
@@ -199,7 +195,6 @@ private:
     using GpuFlatTriangle = OpenGLRendererInternal::GpuFlatTriangle;
     using GpuWall = OpenGLRendererInternal::GpuWall;
     using GpuSprite = OpenGLRendererInternal::GpuSprite;
-    using GpuDecal = OpenGLRendererInternal::GpuDecal;
     using GpuSector = OpenGLRendererInternal::GpuSector;
     using GPUTexture = OpenGLRendererInternal::GPUTexture;
     using GpuCollider = OpenGLRendererInternal::GpuCollider;
@@ -240,9 +235,6 @@ private:
     GLuint spriteSSBO = 0;
     GLsizei spriteCount = 0;
 
-    GLuint decalSSBO = 0;
-    GLsizei decalCount = 0;
-
     GLuint sectorSSBO = 0;
 
     GLuint colliderSSBO = 0;
@@ -255,7 +247,6 @@ private:
 
     std::vector<GpuFlatTriangle> flatTriangles;
 
-    std::vector<GpuDecal> gpuDecals;
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
 
@@ -280,7 +271,6 @@ private:
 
     void BuildGpuSectors();
     void BuildGpuSprites();
-    void BuildGpuDecals();
     void BuildGpuColliders();
 
     void BuildGpuWallsFromMap();

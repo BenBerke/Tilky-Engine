@@ -269,102 +269,107 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
                 &ScriptScript::GetEnabled,
                 &ScriptScript::SetEnabled
             )
-        );
+    );
 
-        lua.new_usertype<ScriptUITransform>(
-            "UITransform",
+    lua.new_usertype<ScriptUITransform>(
+        "UITransform",
 
-            "isValid", sol::property(&ScriptUITransform::IsValid),
+        "isValid", sol::property(&ScriptUITransform::IsValid),
 
-            "anchorMin", sol::property(
-                &ScriptUITransform::GetAnchorMin,
-                &ScriptUITransform::SetAnchorMin
-            ),
+        "anchorMin", sol::property(
+            &ScriptUITransform::GetAnchorMin,
+            &ScriptUITransform::SetAnchorMin
+        ),
 
-            "anchorMax", sol::property(
-                &ScriptUITransform::GetAnchorMax,
-                &ScriptUITransform::SetAnchorMax
-            ),
+        "anchorMax", sol::property(
+            &ScriptUITransform::GetAnchorMax,
+            &ScriptUITransform::SetAnchorMax
+        ),
 
-            "pivot", sol::property(
-                &ScriptUITransform::GetPivot,
-                &ScriptUITransform::SetPivot
-            ),
+        "pivot", sol::property(
+            &ScriptUITransform::GetPivot,
+            &ScriptUITransform::SetPivot
+        ),
 
-            "position", sol::property(
-                &ScriptUITransform::GetPosition,
-                &ScriptUITransform::SetPosition
-            ),
+        "position", sol::property(
+            &ScriptUITransform::GetPosition,
+            &ScriptUITransform::SetPosition
+        ),
 
-            "scale", sol::property(
-                &ScriptUITransform::GetScale,
-                &ScriptUITransform::SetScale
-            ),
+        "scale", sol::property(
+            &ScriptUITransform::GetScale,
+            &ScriptUITransform::SetScale
+        ),
 
-            "rotation", sol::property(
-                &ScriptUITransform::GetRotation,
-                &ScriptUITransform::SetRotation
-            ),
+        "rotation", sol::property(
+            &ScriptUITransform::GetRotation,
+            &ScriptUITransform::SetRotation
+        ),
 
-            "resolvedPosition", sol::property(&ScriptUITransform::GetResolvedPosition),
-            "resolvedSize", sol::property(&ScriptUITransform::GetResolvedSize)
-        );
+        "resolvedPosition", sol::property(&ScriptUITransform::GetResolvedPosition),
+        "resolvedSize", sol::property(&ScriptUITransform::GetResolvedSize)
+    );
 
-        lua.new_usertype<ScriptUISprite>(
-            "UISprite",
+    lua.new_usertype<ScriptUISprite>(
+        "UISprite",
 
-            "isValid", sol::property(&ScriptUISprite::IsValid),
+        "isValid", sol::property(&ScriptUISprite::IsValid),
 
-            "textureIndex", sol::property(
-                &ScriptUISprite::GetTextureIndex,
-                &ScriptUISprite::SetTextureIndex
-            )
-        );
+        "textureIndex", sol::property(
+            &ScriptUISprite::GetTextureIndex,
+            &ScriptUISprite::SetTextureIndex
+        )
+    );
 
-        lua.new_usertype<ScriptUIText>(
-            "UIText",
+    lua.new_usertype<ScriptUIText>(
+        "UIText",
 
-            "isValid", sol::property(&ScriptUIText::IsValid),
+        "isValid", sol::property(&ScriptUIText::IsValid),
 
-            "text", sol::property(
-                &ScriptUIText::GetText,
-                &ScriptUIText::SetText
-            )
-        );
+        "text", sol::property(
+            &ScriptUIText::GetText,
+            &ScriptUIText::SetText
+        )
+    );
 
-        lua.new_usertype<ScriptTransform>(
-            "Transform",
+    lua.new_usertype<ScriptTransform>(
+        "Transform",
 
-            "isValid", sol::property(&ScriptTransform::IsValid),
+        "isValid", sol::property(&ScriptTransform::IsValid),
 
-            "position", sol::property(
-                &ScriptTransform::GetPosition,
-                &ScriptTransform::SetPosition
-            ),
+        "position", sol::property(
+            &ScriptTransform::GetPosition,
+            &ScriptTransform::SetPosition
+        ),
 
-            "scale", sol::property(
-                &ScriptTransform::GetScale,
-                &ScriptTransform::SetScale
-            ),
+        "rotation", sol::property(
+            &ScriptTransform::GetRotation,
+            &ScriptTransform::SetRotation
+        ),
 
-            "relativeHeight", sol::property(
-                &ScriptTransform::GetRelativeHeight,
-                &ScriptTransform::SetRelativeHeight
-            ),
+        "scale", sol::property(
+            &ScriptTransform::GetScale,
+            &ScriptTransform::SetScale
+        ),
 
-            "forward", sol::property(
-                &ScriptTransform::GetForward,
-                &ScriptTransform::SetForward
-            ),
+        "relativeHeight", sol::property(
+            &ScriptTransform::GetRelativeHeight,
+            &ScriptTransform::SetRelativeHeight
+        ),
 
-            "sectorIndex", sol::property(&ScriptTransform::GetSectorIndex),
+        "forward", sol::property(
+            &ScriptTransform::GetForward,
+            &ScriptTransform::SetForward
+        ),
 
-            "isDirty", sol::property(
-                &ScriptTransform::GetIsDirty,
-                &ScriptTransform::SetIsDirty
-            ),
+        "sectorIndex", sol::property(&ScriptTransform::GetSectorIndex),
 
-            "addPosition", &ScriptTransform::AddPosition
+        "isDirty", sol::property(
+            &ScriptTransform::GetIsDirty,
+            &ScriptTransform::SetIsDirty
+        ),
+
+        "addPosition", &ScriptTransform::AddPosition
     );
 
     lua.new_usertype<ScriptSprite>(
@@ -434,43 +439,4 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptSprite::SetNorthWestTextureFileName
         )
     );
-
-        lua.new_usertype<ScriptDecal>(
-            "Decal",
-
-            "wallIndex", sol::property(
-                &ScriptDecal::GetWallIndex,
-                &ScriptDecal::SetWallIndex
-            ),
-
-            "verticalPos", sol::property(
-                &ScriptDecal::GetVerticalPos,
-                &ScriptDecal::SetVerticalPos
-            ),
-
-            "horizontalPos", sol::property(
-                &ScriptDecal::GetHorizontalPos,
-                &ScriptDecal::SetHorizontalPos
-            ),
-
-            "wallNormalOffset", sol::property(
-                &ScriptDecal::GetWallNormalOffset,
-                &ScriptDecal::SetWallNormalOffset
-            ),
-
-            "wallT", sol::property(
-                &ScriptDecal::GetWallT,
-                &ScriptDecal::SetWallT
-            ),
-
-            "baseHeight", sol::property(
-                &ScriptDecal::GetBaseHeight,
-                &ScriptDecal::SetBaseHeight
-            ),
-
-            "absHeight", sol::property(
-                &ScriptDecal::GetAbsHeight,
-                &ScriptDecal::SetAbsHeight
-            )
-        );
 }

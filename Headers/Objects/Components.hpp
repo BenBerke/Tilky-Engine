@@ -13,12 +13,13 @@
 #include "ScriptPublicType.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include <span>
+
+#include "Headers/Math/Quaternion/Quaternion.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 
 enum ComponentType {
     CMP_TRANSFORM,
     CMP_SPRITE,
-    CMP_DECAL,
     CMP_AUDIO_SOURCE,
     CMP_SCRIPT,
     CMP_PLAYER_CONTROLLER,
@@ -223,14 +224,17 @@ struct ComponentAudioSource {
 struct Sector;
 struct ComponentTransform {
     ID ownerID = -1;
+
     /*
      * relativeHeight = height relative to the current sector floor
      *
      * Transform origin is the object's feet
      */
-    Vector3 position = {.0f, .0f, .0f};
-    float relativeHeight = .0f;
-    Vector2 forward = {1.0f, .0f};
+    Vector3 position = {0.0f, 0.0f, 0.0f};
+    Quaternion rotation = Quaternion::Identity();
+
+    float relativeHeight = 0.0f;
+    Vector2 forward = {1.0f, 0.0f};
 
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 
@@ -256,27 +260,8 @@ struct ComponentSprite {
     SideCount sideCount = SIDECOUNT_SINGLE;
 
     Vector4 color = {255.0f, 255.0f, 255.0f, 255.0f};
-};
 
-// MUST have a sprite component to work properly
-enum DecalType {
-    WALL = 0,
-    FLOOR = 1
-};
-struct ComponentDecal {
-    ID ownerID = -1;
-
-    int wallIndex = -1;
-    DecalType type = WALL;
-
-    float verticalPos = 0; // Vertical Position
-    float horizontalPos = -1.0f; // Horizontal position
-    float wallNormalOffset = 0.0f;  // Distance away from the wall
-
-    float wallT = 0.5f; // Horizontal percentage among the wall
-
-    float baseHeight = 0.0f; // fixed world height of the wall floor when decal was placed
-    bool absHeight = false; // Move with the wall or not.
+    bool isStatic;
 };
 
 template<typename T>

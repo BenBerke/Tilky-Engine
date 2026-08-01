@@ -281,7 +281,6 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLSprite.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
         src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLDecal.cpp
         src/Runtime/Renderer/OpenGL/OpenGLSector.cpp
         src/Runtime/Renderer/OpenGL/OpenGLBackground.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
@@ -343,6 +342,7 @@ set(TILKY_RUNTIME_SOURCES
 
         Headers/Runtime/PhysicsSystem.hpp
         Headers/UISystem.hpp
+        Headers/Math/Quaternion/Quaternion.hpp
 )
 
 # ============================================================

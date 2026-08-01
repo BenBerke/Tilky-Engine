@@ -302,6 +302,23 @@ struct ScriptTransform {
         if (transform == nullptr) return;
         transform->isDirty = dirty;
     }
+
+    [[nodiscard]] Vector4 GetRotation() const {
+        const ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return {0.0f, 0.0f, 0.0f, 1.0f};
+
+
+        return {transform->rotation.x, transform->rotation.y, transform->rotation.z, transform->rotation.w};
+    }
+
+    void SetRotation(const Vector4& rotation) const {
+        ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return;
+
+        transform->rotation = Quaternion{rotation.x, rotation.y, rotation.z, rotation.w}.Normalized();
+
+        transform->isDirty = true;
+    }
 };
 
 // ---------------------------------------------------------
@@ -474,107 +491,17 @@ struct ScriptSprite {
     void SetNorthWestTextureFileName(const std::string& fileName) const {
         SetTextureFileName(SLOT_NW, fileName);
     }
-};
 
-// ---------------------------------------------------------
-// Decal
-// ---------------------------------------------------------
-
-struct ScriptDecal {
-    Level* level = nullptr;
-    ID ownerID = static_cast<ID>(-1);
-
-    [[nodiscard]] ComponentDecal* GetComponent() const {
-        if (level == nullptr) return nullptr;
-        return level->decals.Get(ownerID);
+    void SetIsStatic(const bool isStatic) const {
+        ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->isStatic = isStatic;
     }
 
-    [[nodiscard]] bool IsValid() const {
-        return GetComponent() != nullptr;
-    }
-
-    [[nodiscard]] int GetWallIndex() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return -1;
-        return decal->wallIndex;
-    }
-
-    void SetWallIndex(const int index) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->wallIndex = index;
-    }
-
-    [[nodiscard]] float GetVerticalPos() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return 0.0f;
-        return decal->verticalPos;
-    }
-
-    void SetVerticalPos(const float pos) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->verticalPos = pos;
-    }
-
-    [[nodiscard]] float GetHorizontalPos() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return -1.0f;
-        return decal->horizontalPos;
-    }
-
-    void SetHorizontalPos(const float pos) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->horizontalPos = pos;
-    }
-
-    [[nodiscard]] float GetWallNormalOffset() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return 0.0f;
-        return decal->wallNormalOffset;
-    }
-
-    void SetWallNormalOffset(const float offset) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->wallNormalOffset = offset;
-    }
-
-    [[nodiscard]] float GetWallT() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return 0.5f;
-        return decal->wallT;
-    }
-
-    void SetWallT(const float t) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->wallT = t;
-    }
-
-    [[nodiscard]] float GetBaseHeight() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return 0.0f;
-        return decal->baseHeight;
-    }
-
-    void SetBaseHeight(const float height) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->baseHeight = height;
-    }
-
-    [[nodiscard]] bool GetAbsHeight() const {
-        const ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return false;
-        return decal->absHeight;
-    }
-
-    void SetAbsHeight(const bool abs) const {
-        ComponentDecal* decal = GetComponent();
-        if (decal == nullptr) return;
-        decal->absHeight = abs;
+    [[nodiscard]] bool IsStatic() const {
+        const ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return false;
+        return sprite->isStatic;
     }
 };
 
@@ -1249,10 +1176,6 @@ struct ScriptEntity {
         return level != nullptr && level->sprites.Has(ownerID);
     }
 
-    [[nodiscard]] bool HasDecal() const {
-        return level != nullptr && level->decals.Has(ownerID);
-    }
-
     [[nodiscard]] bool HasAudioSource() const {
         return level != nullptr && level->audioSources.Has(ownerID);
     }
@@ -1294,10 +1217,6 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] ScriptSprite GetSprite() const {
-        return {level, ownerID};
-    }
-
-    [[nodiscard]] ScriptDecal GetDecal() const {
         return {level, ownerID};
     }
 

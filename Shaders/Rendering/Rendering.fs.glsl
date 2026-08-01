@@ -3,10 +3,7 @@
 #define RENDER_WALL 0
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
-#define RENDER_DECAL 3
 #define RENDER_COLLIDER 4
-
-in vec2 vDecalUV;
 
 in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
@@ -121,14 +118,6 @@ void main() {
     }
     else if (renderMode == RENDER_SPRITE) {
         vec4 texColor = SampleTexture(vSpriteTextureIndex, vSpriteUV, false);
-
-        if (texColor.a < 0.1) discard;
-
-        FragColor = ApplyLighting(texColor * vColor, false);
-        return;
-    }
-    else if (renderMode == RENDER_DECAL) {
-        vec4 texColor = SampleTexture(vTextureIndex, vDecalUV, false);
 
         if (texColor.a < 0.1) discard;
 

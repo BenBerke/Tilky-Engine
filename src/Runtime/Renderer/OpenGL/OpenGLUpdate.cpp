@@ -168,21 +168,6 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDisable(GL_BLEND);
     }
 
-    {
-        ZoneScopedN("Build GPU Decals");
-        BuildGpuDecals();
-
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, decalSSBO);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthFunc(GL_GEQUAL);
-        glDepthMask(GL_FALSE);
-        glUniform1i(renderModeUniform, RENDER_DECAL);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, decalCount);
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
-    }
-
 #ifndef TILKY_STANDALONE
     {
         ZoneScopedN("Build Colliders");
