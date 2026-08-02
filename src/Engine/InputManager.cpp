@@ -62,9 +62,8 @@ namespace InputManager {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
 #if TILKY_USE_IMGUI
-            if (ImGui::GetCurrentContext() != nullptr) {
-                ImGui_ImplSDL3_ProcessEvent(&event);
-            }
+            if (ImGui::GetCurrentContext() != nullptr) ImGui_ImplSDL3_ProcessEvent(&event);
+
 #endif
 
             switch (event.type) {
