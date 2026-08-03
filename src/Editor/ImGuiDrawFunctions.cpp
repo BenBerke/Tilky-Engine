@@ -257,8 +257,8 @@ namespace ImGuiDrawFunctions {
 
         if (sector.floors.empty()) {
             sector.floors.push_back({
-                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
-                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+                {0.0f, std::numeric_limits<uint_fast32_t>::max(), {}},
+                {40.0f, std::numeric_limits<uint_fast32_t>::max(), {}}
             });
         }
 
@@ -467,71 +467,40 @@ namespace ImGuiDrawFunctions {
 
             // ── Colors ───────────────────────────────────────────────────────────
 
-            float floorColor[4] = {
-                sectorFloor.floor.color.x / 255.0f,
-                sectorFloor.floor.color.y / 255.0f,
-                sectorFloor.floor.color.z / 255.0f,
-                sectorFloor.floor.color.w / 255.0f
-            };
+            ImVec4 floorColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(sectorFloor.floor.color));
 
             FieldWidth(220.0f);
 
             if (ImGui::ColorEdit4(
                 Get("sector.floor_color").c_str(),
-                floorColor,
+                &floorColor.x,
                 ImGuiColorEditFlags_AlphaBar |
                 ImGuiColorEditFlags_AlphaPreviewHalf |
                 ImGuiColorEditFlags_Uint8
             )) {
-                sectorFloor.floor.color = {
-                    floorColor[0] * 255.0f,
-                    floorColor[1] * 255.0f,
-                    floorColor[2] * 255.0f,
-                    floorColor[3] * 255.0f
-                };
+                sectorFloor.floor.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(floorColor));
             }
 
             if (ImGui::SmallButton("Reset##floor_color")) {
-                sectorFloor.floor.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
+                sectorFloor.floor.color = static_cast<uint_fast32_t>(IM_COL32(255, 255, 255, 255));
             }
 
-            float ceilingColor[4] = {
-                sectorFloor.ceiling.color.x / 255.0f,
-                sectorFloor.ceiling.color.y / 255.0f,
-                sectorFloor.ceiling.color.z / 255.0f,
-                sectorFloor.ceiling.color.w / 255.0f
-            };
+            ImVec4 ceilingColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(sectorFloor.ceiling.color));
 
             FieldWidth(220.0f);
 
             if (ImGui::ColorEdit4(
                 Get("sector.ceil_color").c_str(),
-                ceilingColor,
+                &ceilingColor.x,
                 ImGuiColorEditFlags_AlphaBar |
                 ImGuiColorEditFlags_AlphaPreviewHalf |
                 ImGuiColorEditFlags_Uint8
             )) {
-                sectorFloor.ceiling.color = {
-                    ceilingColor[0] * 255.0f,
-                    ceilingColor[1] * 255.0f,
-                    ceilingColor[2] * 255.0f,
-                    ceilingColor[3] * 255.0f
-                };
+                sectorFloor.ceiling.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(ceilingColor));
             }
 
-            if (ImGui::SmallButton("Reset##ceiling_color")) {
-                sectorFloor.ceiling.color = {
-                    255.0f,
-                    255.0f,
-                    255.0f,
-                    255.0f
-                };
-            }
+            if (ImGui::SmallButton("Reset##ceiling_color"))
+                sectorFloor.ceiling.color = static_cast<uint_fast32_t>(IM_COL32(255, 255, 255, 255));
 
             ImGui::Spacing();
 
@@ -560,12 +529,12 @@ namespace ImGuiDrawFunctions {
             sector.floors.push_back({
                 {
                     floorHeight,
-                    {255.0f, 255.0f, 255.0f},
+                    std::numeric_limits<uint_fast32_t>::max(),
                     {}
                 },
                 {
                     floorHeight + 40.0f,
-                    {255.0f, 255.0f, 255.0f},
+                     std::numeric_limits<uint_fast32_t>::max(),
                     {}
                 }
             });
@@ -687,27 +656,15 @@ namespace ImGuiDrawFunctions {
         Tooltip(Get("editor.tooltip.wall.texture").c_str());
 
         FieldWidth(220.0f);
-        float wallColor[4] = {
-            wall.color.x / 255.0f,
-            wall.color.y / 255.0f,
-            wall.color.z / 255.0f,
-            wall.color.w / 255.0f
-        };
-
+        ImVec4 wallColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(wall.color));
         if (ImGui::ColorEdit4(
             Get("wall.color").c_str(),
-            wallColor,
+            &wallColor.x,
             ImGuiColorEditFlags_AlphaBar |
             ImGuiColorEditFlags_AlphaPreviewHalf |
             ImGuiColorEditFlags_Uint8
-        )) {
-            wall.color = {
-                wallColor[0] * 255.0f,
-                wallColor[1] * 255.0f,
-                wallColor[2] * 255.0f,
-                wallColor[3] * 255.0f
-            };
-        }
+        )) wall.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(wallColor));
+
         Tooltip(Get("editor.tooltip.wall.color").c_str());
 
         EndSection();
@@ -1143,12 +1100,7 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Spacing();
 
-                float spriteColor[4] = {
-                    c->color.x / 255.0f,
-                    c->color.y / 255.0f,
-                    c->color.z / 255.0f,
-                    c->color.w / 255.0f
-                };
+                ImVec4 spriteColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(c->color));
 
                 ImGui::Text("%s", Get("component.sprite.color").c_str());
                 ImGui::SameLine();
@@ -1156,18 +1108,11 @@ namespace ImGuiDrawFunctions {
 
                 if (ImGui::ColorEdit4(
                     "##sprite_color",
-                    spriteColor,
+                    &spriteColor.x,
                     ImGuiColorEditFlags_AlphaBar |
                     ImGuiColorEditFlags_AlphaPreviewHalf |
                     ImGuiColorEditFlags_Uint8
-                )) {
-                    c->color = {
-                        spriteColor[0] * 255.0f,
-                        spriteColor[1] * 255.0f,
-                        spriteColor[2] * 255.0f,
-                        spriteColor[3] * 255.0f
-                    };
-                }
+                )) c->color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(spriteColor));
 
                 ImGui::Spacing();
 

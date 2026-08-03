@@ -9,6 +9,17 @@ void OpenGL::BuildGpuSprites() {
 
     Level& level = LevelManager::CurrentLevel();
 
+    const auto UnpackColor = [](const uint_fast32_t packedColor) -> Vector4 {
+        const uint32_t color = static_cast<uint32_t>(packedColor);
+
+        return {
+            static_cast<float>(color & 0xFFu),
+            static_cast<float>((color >> 8u) & 0xFFu),
+            static_cast<float>((color >> 16u) & 0xFFu),
+            static_cast<float>((color >> 24u) & 0xFFu)
+        };
+    };
+
     for (ComponentSprite& spriteComponent : level.sprites.components) {
         ComponentTransform* transform =
             level.transforms.Get(spriteComponent.ownerID);
@@ -26,11 +37,9 @@ void OpenGL::BuildGpuSprites() {
             transform->scale.z
         };
 
-        /*
-         * Keep rendering sprites with invalid sectors for the runtime editor.
-         * Invalid sectors simply do not apply sector lighting.
-         */
-        gpuSprite.color = spriteComponent.color;
+        const Vector4 spriteColor = UnpackColor(spriteComponent.color);
+
+        gpuSprite.color = spriteColor;
 
         if (
             transform->sectorIndex >= 0 &&
@@ -40,25 +49,25 @@ void OpenGL::BuildGpuSprites() {
                 level.sectors[transform->sectorIndex];
 
             gpuSprite.color = {
-                spriteComponent.color.x - (255.0f - sector.light.x),
-                spriteComponent.color.y - (255.0f - sector.light.y),
-                spriteComponent.color.z - (255.0f - sector.light.z),
-                spriteComponent.color.w
+                spriteColor.x - (255.0f - sector.light.x),
+                spriteColor.y - (255.0f - sector.light.y),
+                spriteColor.z - (255.0f - sector.light.z),
+                spriteColor.w
             };
         }
 
         gpuSprite.textureIndices0 = {
-            GetTextureRegionIndex(spriteComponent.textureFileNames[0]), // N
-            GetTextureRegionIndex(spriteComponent.textureFileNames[1]), // NE
-            GetTextureRegionIndex(spriteComponent.textureFileNames[2]), // E
-            GetTextureRegionIndex(spriteComponent.textureFileNames[3])  // SE
+            GetTextureRegionIndex(spriteComponent.textureFileNames[0]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[1]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[2]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[3])
         };
 
         gpuSprite.textureIndices1 = {
-            GetTextureRegionIndex(spriteComponent.textureFileNames[4]), // S
-            GetTextureRegionIndex(spriteComponent.textureFileNames[5]), // SW
-            GetTextureRegionIndex(spriteComponent.textureFileNames[6]), // W
-            GetTextureRegionIndex(spriteComponent.textureFileNames[7])  // NW
+            GetTextureRegionIndex(spriteComponent.textureFileNames[4]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[5]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[6]),
+            GetTextureRegionIndex(spriteComponent.textureFileNames[7])
         };
 
         gpuSprite.data = {

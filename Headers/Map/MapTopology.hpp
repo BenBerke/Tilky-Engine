@@ -63,13 +63,13 @@ namespace MapTopology {
 
         std::vector<SectorFloor> floors = {
             {
-                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
-                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+                {0.0f, std::numeric_limits<uint32_t>::max(), {}},
+                {40.0f, std::numeric_limits<uint32_t>::max(), {}}
             }
         };
 
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
-        Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
+        uint_fast32_t wallColor = std::numeric_limits<uint32_t>::max();
     };
 
     struct ApplyResult {

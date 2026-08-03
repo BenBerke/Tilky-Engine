@@ -70,13 +70,13 @@ namespace MapEditorInternal {
 
         std::vector<SectorFloor> floors = {
             {
-                {0.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}},
-                {40.0f, {255.0f, 255.0f, 255.0f, 255.0f}, {}}
+                {0.0f, std::numeric_limits<uint_fast32_t>::max(), {}},
+                {40.0f, std::numeric_limits<uint_fast32_t>::max(), {}}
             }
         };
 
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
-        Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
+        uint_fast32_t wallColor = std::numeric_limits<uint_fast32_t>::max();
     };
 
     // Whole-operation undo snapshot for ApplyDrawnGeometry - it can create
@@ -168,9 +168,9 @@ namespace MapEditorInternal {
 
     extern Vector3 lightValue;
 
-    extern Vector4 wallColor;
-    extern Vector4 ceilColor;
-    extern Vector4 floorColor;
+    extern uint_fast32_t wallColor;
+    extern uint_fast32_t ceilColor;
+    extern uint_fast32_t floorColor;
 
     extern bool manualSectorMode;
     extern std::vector<Vector2> manualSectorDots;

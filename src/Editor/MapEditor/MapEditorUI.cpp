@@ -1799,23 +1799,24 @@ namespace MapEditorInternal {
 
             ImGui::Spacing();
 
-            if (ImGui::ColorEdit4((Get("wall.color") + "##NewSectorWallColor").c_str(),&wallColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_Uint8))
-                hasUnsavedChanges = true;
+            ImVec4 wallColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(wallColor));
+            ImVec4 ceilColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(ceilColor));
+            ImVec4 floorColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(floorColor));
 
-            if (ImGui::ColorEdit4((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(),&ceilColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_Uint8))
+            if (ImGui::ColorEdit4((Get("wall.color") + "##NewSectorWallColor").c_str(), &wallColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
+                wallColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(wallColorEdit));
                 hasUnsavedChanges = true;
+            }
 
-            if (ImGui::ColorEdit4((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_Uint8))
+            if (ImGui::ColorEdit4((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(), &ceilColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
+                ceilColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(ceilColorEdit));
                 hasUnsavedChanges = true;
+            }
+
+            if (ImGui::ColorEdit4((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
+                floorColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(floorColorEdit));
+                hasUnsavedChanges = true;
+            }
 
             ImGui::Spacing();
 
@@ -1826,16 +1827,16 @@ namespace MapEditorInternal {
             if (pendingSectorParams.floors.empty()) pendingSectorParams.floors.resize(1);
             else if (pendingSectorParams.floors.size() > 1) pendingSectorParams.floors.resize(1);
 
-            SectorFloor &initialFloor = pendingSectorParams.floors.front();
+            auto &[floor, ceiling] = pendingSectorParams.floors.front();
 
-            initialFloor.floor.height = floorHeight;
-            initialFloor.floor.color = floorColor;
-            initialFloor.floor.texture = floorTexture;
+            floor.height = floorHeight;
+            floor.color = floorColor;
+            floor.texture = floorTexture;
 
-            initialFloor.ceiling.height = std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
+            ceiling.height = std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
 
-            initialFloor.ceiling.color = ceilColor;
-            initialFloor.ceiling.texture = ceilTexture;
+            ceiling.color = ceilColor;
+            ceiling.texture = ceilTexture;
         }
 
         // ---- Inspector ----------------------------------------------------

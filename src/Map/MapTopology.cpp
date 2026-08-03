@@ -261,7 +261,7 @@ namespace {
     ) {
         if (FindMatchingWall(walls, a, b) >= 0) return;
 
-        const Vector4 color{ params.wallColor.x, params.wallColor.y, params.wallColor.z, 255.0f };
+        const uint_fast32_t color = params.wallColor;
         Wall wall(a, b, color, INVALID_ID, INVALID_ID, params.wallTexture);
         wall.id = nextWallID++;
 

@@ -9,7 +9,6 @@
  *   3. Path to Standalone.exe.
  */
 
-#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -52,8 +51,7 @@ static bool CopyFileChecked(const fs::path &from, const fs::path &to) {
         std::error_code ec;
         fs::create_directories(to.parent_path(), ec);
         if (ec) {
-            std::cerr << "Failed to create folder: " << to.parent_path()
-                      << " — " << ec.message() << "\n";
+            std::cerr << "Failed to create folder: " << to.parent_path() << " — " << ec.message() << "\n";
             return false;
         }
     }
@@ -61,8 +59,7 @@ static bool CopyFileChecked(const fs::path &from, const fs::path &to) {
     std::error_code ec;
     fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
     if (ec) {
-        std::cerr << "Failed to copy file from " << from << " to " << to
-                  << " — " << ec.message() << "\n";
+        std::cerr << "Failed to copy file from " << from << " to " << to << " — " << ec.message() << "\n";
         return false;
     }
     return true;
@@ -81,8 +78,7 @@ static bool CopyDirRecursive(const fs::path &from, const fs::path &to) {
     std::error_code ec;
     fs::create_directories(to, ec);
     if (ec) {
-        std::cerr << "Failed to create destination folder: " << to
-                  << " — " << ec.message() << "\n";
+        std::cerr << "Failed to create destination folder: " << to << " — " << ec.message() << "\n";
         return false;
     }
 
@@ -90,11 +86,10 @@ static bool CopyDirRecursive(const fs::path &from, const fs::path &to) {
         const fs::path destPath = to / entry.path().filename();
 
         if (entry.is_directory()) {
-            if (!CopyDirRecursive(entry.path(), destPath))
-                return false;
-        } else {
-            if (!CopyFileChecked(entry.path(), destPath))
-                return false;
+            if (!CopyDirRecursive(entry.path(), destPath)) return false;
+        }
+        else {
+            if (!CopyFileChecked(entry.path(), destPath)) return false;
         }
     }
     return true;
@@ -112,6 +107,7 @@ static bool CopyAllDlls(const fs::path &from, const fs::path &to) {
         if (!entry.is_regular_file()) continue;
 
         const auto ext = entry.path().extension().string();
+        
         // Case-insensitive ".dll" check
         if (ext.size() != 4) continue;
         if (!(ext[0] == '.' &&

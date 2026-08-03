@@ -43,9 +43,7 @@ namespace ProjectManager {
         const char* userProfile = std::getenv("HOME");
 #endif
 
-        if (userProfile != nullptr) {
-            return fs::path(userProfile);
-        }
+        if (userProfile != nullptr) return fs::path(userProfile);
 
         spdlog::warn("Could not find user home directory. Falling back to current working directory.");
         return fs::current_path();

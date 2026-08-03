@@ -72,9 +72,9 @@ namespace MapEditorInternal {
 
     Vector3 lightValue = {255.0f, 255.0f, 255.0f};
 
-    Vector4 wallColor = {255.0f, 255.0f, 255.0f, 255.0f};
-    Vector4 ceilColor = {255.0f, 255.0f, 255.0f, 255.0f};
-    Vector4 floorColor = {255.0f, 255.0f, 255.0f, 255.0f};
+    uint_fast32_t wallColor = std::numeric_limits<uint_fast32_t>::max();
+    uint_fast32_t ceilColor = std::numeric_limits<uint_fast32_t>::max();
+    uint_fast32_t floorColor = std::numeric_limits<uint_fast32_t>::max();
 
     bool manualSectorMode = false;
     std::vector<Vector2> manualSectorDots;

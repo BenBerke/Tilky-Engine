@@ -73,10 +73,7 @@ namespace InputManager {
 
                 case SDL_EVENT_DROP_POSITION:
                     externalDragActive = true;
-                    externalDragPosition = {
-                        event.drop.x,
-                        event.drop.y
-                    };
+                    externalDragPosition = {event.drop.x,event.drop.y};
                     break;
 
                 case SDL_EVENT_DROP_FILE:
@@ -144,8 +141,7 @@ namespace InputManager {
     }
 
     bool GetMouseButtonDown(const Uint32 button) {
-        return (mouseState & SDL_BUTTON_MASK(button)) &&
-               !(prevMouseState & SDL_BUTTON_MASK(button));
+        return (mouseState & SDL_BUTTON_MASK(button)) && !(prevMouseState & SDL_BUTTON_MASK(button));
     }
 
     bool GetMouseButton(const Uint32 button) {
@@ -153,63 +149,48 @@ namespace InputManager {
     }
 
     bool GetMouseButtonUp(Uint32 button) {
-        return !(mouseState & SDL_BUTTON_MASK(button)) &&
-                (prevMouseState & SDL_BUTTON_MASK(button));
+        return !(mouseState & SDL_BUTTON_MASK(button)) && (prevMouseState & SDL_BUTTON_MASK(button));
     }
 
     SDL_Scancode GetAnyKey() {
         if (!keyboardState) return SDL_SCANCODE_UNKNOWN;
 
-        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) {
-            if (keyboardState[i]) {
-                return static_cast<SDL_Scancode>(i);
-            }
-        }
+        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (keyboardState[i]) return static_cast<SDL_Scancode>(i);
         return SDL_SCANCODE_UNKNOWN;
     }
 
     SDL_Scancode GetAnyKeyDown() {
-        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (keyboardState[i] && !prevKeyboardState[i]) return static_cast<
-            SDL_Scancode>(i);
+        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (keyboardState[i] && !prevKeyboardState[i])
+            return static_cast<SDL_Scancode>(i);
         return SDL_SCANCODE_UNKNOWN;
     }
 
     SDL_Scancode GetAnyKeyUp() {
-        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (!keyboardState[i] && prevKeyboardState[i]) return static_cast<
-            SDL_Scancode>(i);
+        for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (!keyboardState[i] && prevKeyboardState[i])
+            return static_cast<SDL_Scancode>(i);
         return SDL_SCANCODE_UNKNOWN;
     }
 
-    bool GetMouseWheelScrollUp() {
-         return mouseWheelScrollAmount > 0;
-    }
+    bool GetMouseWheelScrollUp() {return mouseWheelScrollAmount > 0; }
 
-    bool GetMouseWheelScrollDown() {
-        return mouseWheelScrollAmount < 0;
-    }
+    bool GetMouseWheelScrollDown() {return mouseWheelScrollAmount < 0;}
 
-    float GetMouseWheelScroll() {
-        return mouseWheelScrollAmount;
-    }
+    float GetMouseWheelScroll() {return mouseWheelScrollAmount;}
 
-    Vector2 GetMousePosition() {
-        return mousePosition;
-    }
+    Vector2 GetMousePosition() {return mousePosition;}
 
-    Vector2 GetMouseDelta() {
-        return mouseDelta;
-    }
+    Vector2 GetMouseDelta() {return mouseDelta;}
 
     void SetRelativeMouseMode(SDL_Window* window, const bool enabled) {
         relativeMouseMode = enabled;
 
         SDL_SetWindowRelativeMouseMode(window, enabled);
 
-        float dx = 0.0f;
-        float dy = 0.0f;
+        float dx = .0f;
+        float dy = .0f;
         SDL_GetRelativeMouseState(&dx, &dy);
 
-        mouseDelta = {0.0f, 0.0f};
+        mouseDelta = {.0f, .0f};
     }
 
     const std::vector<DroppedFile>& GetDroppedFiles() {

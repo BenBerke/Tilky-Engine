@@ -376,21 +376,9 @@ namespace {
                 wallJson.at("end").at(1).get<float>()
             };
 
-            Vector4 color = {
-                255.0f,
-                255.0f,
-                255.0f,
-                255.0f
-            };
-
-            if (wallJson.contains("color")) {
-                color = {
-                    wallJson.at("color").at(0).get<float>(),
-                    wallJson.at("color").at(1).get<float>(),
-                    wallJson.at("color").at(2).get<float>(),
-                    wallJson.at("color").at(3).get<float>()
-                };
-            }
+            const uint_fast32_t color = static_cast<uint_fast32_t>(
+                wallJson.value("color", std::uint32_t{0xFFFFFFFFu})
+            );
 
             Wall wall(
                 start,
@@ -406,9 +394,7 @@ namespace {
                     wallJson.at("textureOffset").at(0).get<float>(),
                     wallJson.at("textureOffset").at(1).get<float>()
                 };
-            }
-            else wall.textureOffset = {0.0f, 0.0f};
-
+            } else wall.textureOffset = {0.0f, 0.0f};
 
             wall.id = LoadIDField(
                 wallJson,
@@ -443,10 +429,10 @@ namespace {
         );
     }
 
-    void SaveWalls(json& levelData, const Level& level) {
+    void SaveWalls(json &levelData, const Level &level) {
         levelData["walls"] = json::array();
 
-        for (const Wall& wall : level.walls) {
+        for (const Wall &wall: level.walls) {
             levelData["walls"].push_back({
                 {"id", wall.id},
                 {
@@ -461,14 +447,7 @@ namespace {
                         wall.end.y
                     }
                 },
-                {
-                    "color", {
-                        wall.color.x,
-                        wall.color.y,
-                        wall.color.z,
-                        wall.color.w
-                    }
-                },
+                {"color", static_cast<std::uint32_t>(wall.color)},
                 {"textureFileName", wall.textureFileName},
                 {
                     "textureOffset", {
@@ -506,46 +485,18 @@ namespace {
             };
         };
 
-        const auto loadVector4 = [](const json &parentJson,
-                                    const char *field,
-                                    const Vector4 &defaultValue) -> Vector4 {
-            if (!parentJson.contains(field)) return defaultValue;
-
-            const json &vectorJson = parentJson.at(field);
-
-            if (!vectorJson.is_array() || vectorJson.size() != 4) {
-                return defaultValue;
-            }
-
-            return {
-                vectorJson[0].get<float>(),
-                vectorJson[1].get<float>(),
-                vectorJson[2].get<float>(),
-                vectorJson[3].get<float>()
-            };
-        };
-
-        const auto loadSurface = [&](const json &surfaceJson) -> SectorSurface {
+        const auto loadSurface = [](const json& surfaceJson) -> SectorSurface {
             SectorSurface surface;
 
             surface.height = surfaceJson.value("height", 0.0f);
-            surface.color = loadVector4(
-                surfaceJson,
-                "color",
-                {255.0f, 255.0f, 255.0f, 255.0f}
+            surface.color = static_cast<uint_fast32_t>(
+                surfaceJson.value("color", std::uint32_t{0xFFFFFFFFu})
             );
             surface.texture = surfaceJson.value("texture", std::string{});
 
-            const int slopeDirection = surfaceJson.value(
-                "slopeDirection",
-                static_cast<int>(PLUS_X)
-            );
-
-            if (slopeDirection >= static_cast<int>(PLUS_X) &&
-                slopeDirection <= static_cast<int>(MINUS_Z)) {
-                surface.slopeDirection =
-                        static_cast<SlopeDirection>(slopeDirection);
-                }
+            const int slopeDirection = surfaceJson.value("slopeDirection",static_cast<int>(PLUS_X));
+            if (slopeDirection >= static_cast<int>(PLUS_X) && slopeDirection <= static_cast<int>(MINUS_Z))
+                surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
 
             surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
 
@@ -657,13 +608,7 @@ namespace {
                 }
             }
 
-            std::ranges::sort(
-                sector.floors,
-                {},
-                [](const SectorFloor &floor) {
-                    return floor.floor.height;
-                }
-            );
+            std::ranges::sort(sector.floors, {}, [](const SectorFloor &floor) { return floor.floor.height;});
 
             for (int floorIndex = 1; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
                 const SectorFloor &previous = sector.floors[floorIndex - 1];
@@ -688,12 +633,12 @@ namespace {
                 sector.floors.push_back({
                     {
                         0.0f,
-                        {255.0f, 255.0f, 255.0f, 255.0f},
+                        std::numeric_limits<uint32_t>::max(),
                         {}
                     },
                     {
                         40.0f,
-                        {255.0f, 255.0f, 255.0f, 255.0f},
+                        std::numeric_limits<uint32_t>::max(),
                         {}
                     }
                 });
@@ -731,15 +676,7 @@ namespace {
             for (const SectorFloor &sectorFloor: sector.floors) {
                 const json floorSurface = {
                     {"height", sectorFloor.floor.height},
-                    {
-                        "color",
-                        {
-                            sectorFloor.floor.color.x,
-                            sectorFloor.floor.color.y,
-                            sectorFloor.floor.color.z,
-                            sectorFloor.floor.color.w
-                        }
-                    },
+                    {"color", static_cast<std::uint32_t>(sectorFloor.floor.color)},
                     {"texture", sectorFloor.floor.texture},
                     {
                         "slopeDirection",
@@ -750,15 +687,7 @@ namespace {
 
                 const json ceilingSurface = {
                     {"height", sectorFloor.ceiling.height},
-                    {
-                        "color",
-                        {
-                            sectorFloor.ceiling.color.x,
-                            sectorFloor.ceiling.color.y,
-                            sectorFloor.ceiling.color.z,
-                            sectorFloor.ceiling.color.w
-                        }
-                    },
+                    {"color", static_cast<std::uint32_t>(sectorFloor.ceiling.color)},
                     {"texture", sectorFloor.ceiling.texture},
                     {
                         "slopeDirection",
@@ -860,19 +789,14 @@ namespace {
                     sideCountValue != SIDECOUNT_90 &&
                     sideCountValue != SIDECOUNT_45) continue;
 
-                const json& colorJson = spriteJson.at("color");
-
                 ComponentSprite& c = level.sprites.Add(ownerID);
 
                 c.textureFileNames = textureFileNames;
                 c.sideCount = static_cast<SideCount>(sideCountValue);
-                c.color = {
-                    colorJson.at(0).get<float>(),
-                    colorJson.at(1).get<float>(),
-                    colorJson.at(2).get<float>(),
-                    colorJson.at(3).get<float>()
-                };
-                c.isStatic = spriteJson.at("isStatic").get<bool>();
+                c.color = static_cast<uint_fast32_t>(
+                    spriteJson.value("color", std::uint32_t{0xFFFFFFFFu})
+                );
+                c.isStatic = spriteJson.value("isStatic", false);
 
                 entity->componentsMask.set(CMP_SPRITE);
             }
@@ -1176,8 +1100,8 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)},
-                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
-                    {"isStatic", c.isStatic},
+                {"color", static_cast<std::uint32_t>(c.color)},
+                {"isStatic", c.isStatic}
             });
         }
 
@@ -1198,13 +1122,13 @@ namespace {
             });
         }
 
-        for (const ComponentScript &c: level.scripts.components) {
-            componentsJson["scripts"].push_back({
+        for (const ComponentSprite& c : level.sprites.components) {
+            componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"fileName", fs::path(c.fileName).stem().string()},
-                {"enabled", c.enabled},
-                {"publicValues", ScriptPublicValuesToJson(c.publicValues)},
-                {"schemaHash", c.schemaHash}
+                {"textureFileNames", c.textureFileNames},
+                {"sideCount", static_cast<int>(c.sideCount)},
+                {"color", static_cast<std::uint32_t>(c.color)},
+                {"isStatic", c.isStatic}
             });
         }
 

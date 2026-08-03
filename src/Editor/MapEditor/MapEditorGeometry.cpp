@@ -707,8 +707,8 @@ namespace Editor {
 
         if (copy.floors.empty()) {
             copy.floors.push_back({
-                {0.0f, {255.0f, 255.0f, 255.0f}, {}},
-                {40.0f, {255.0f, 255.0f, 255.0f}, {}}
+                {0.0f, std::numeric_limits<uint32_t>::max(), {}},
+                {40.0f, std::numeric_limits<uint32_t>::max(), {}}
             });
         }
 

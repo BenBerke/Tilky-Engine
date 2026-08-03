@@ -126,7 +126,7 @@ namespace {
     const Wall& wall,
     const float bottomHeight,
     const float topHeight,
-    const Vector4& color,
+    const uint_fast32_t packedColor,
     const float textureAnchorHeight,
     const float textureDirection,
     const float textureRegionIndex,
@@ -134,7 +134,9 @@ namespace {
 ) {
         if (topHeight - bottomHeight <= MIN_WALL_HEIGHT) return;
 
-        GpuWall gpuWall;
+        const uint32_t color = static_cast<uint32_t>(packedColor);
+
+        GpuWall gpuWall{};
 
         gpuWall.data = {
             textureRegionIndex,
@@ -150,7 +152,12 @@ namespace {
             wall.end.y
         };
 
-        gpuWall.color = color;
+        gpuWall.color = {
+            static_cast<float>(color & 0xFFu),
+            static_cast<float>((color >> 8u) & 0xFFu),
+            static_cast<float>((color >> 16u) & 0xFFu),
+            static_cast<float>((color >> 24u) & 0xFFu)
+        };
 
         gpuWall.heights = {
             bottomHeight,
@@ -180,11 +187,9 @@ void OpenGL::BuildGpuWallsFromMap() {
         const float textureRegionIndex =
             static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
 
-        const Sector* frontSector =
-            MapQueries::GetSectorByID(level, wall.frontSector);
+        const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
 
-        const Sector* backSector =
-            MapQueries::GetSectorByID(level, wall.backSector);
+        const Sector* backSector = MapQueries::GetSectorByID(level, wall.backSector);
 
         if (frontSector == backSector) backSector = nullptr;
 

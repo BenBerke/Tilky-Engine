@@ -5,6 +5,17 @@
 void OpenGL::BuildGpuSectors() {
     const Level& level = LevelManager::CurrentLevel();
 
+    const auto UnpackColor = [](const uint_fast32_t packedColor) -> Vector4 {
+        const uint32_t color = static_cast<uint32_t>(packedColor);
+
+        return {
+            static_cast<float>(color & 0xFFu),
+            static_cast<float>((color >> 8u) & 0xFFu),
+            static_cast<float>((color >> 16u) & 0xFFu),
+            static_cast<float>((color >> 24u) & 0xFFu)
+        };
+    };
+
     gpuSectors.clear();
     gpuSectorFloors.clear();
 
@@ -28,6 +39,9 @@ void OpenGL::BuildGpuSectors() {
         for (const SectorFloor& floor : sector.floors) {
             GpuSectorFloor gpuFloor;
 
+            const Vector4 floorColor = UnpackColor(floor.floor.color);
+            const Vector4 ceilingColor = UnpackColor(floor.ceiling.color);
+
             gpuFloor.heights = {
                 floor.floor.height,
                 floor.ceiling.height,
@@ -43,17 +57,17 @@ void OpenGL::BuildGpuSectors() {
             };
 
             gpuFloor.floorColor = {
-                floor.floor.color.x - (255.0f - sector.light.x),
-                floor.floor.color.y - (255.0f - sector.light.y),
-                floor.floor.color.z - (255.0f - sector.light.z),
-                floor.floor.color.w
+                floorColor.x - (255.0f - sector.light.x),
+                floorColor.y - (255.0f - sector.light.y),
+                floorColor.z - (255.0f - sector.light.z),
+                floorColor.w
             };
 
             gpuFloor.ceilingColor = {
-                floor.ceiling.color.x - (255.0f - sector.light.x),
-                floor.ceiling.color.y - (255.0f - sector.light.y),
-                floor.ceiling.color.z - (255.0f - sector.light.z),
-                floor.ceiling.color.w
+                ceilingColor.x - (255.0f - sector.light.x),
+                ceilingColor.y - (255.0f - sector.light.y),
+                ceilingColor.z - (255.0f - sector.light.z),
+                ceilingColor.w
             };
 
             gpuFloor.textureData = {
