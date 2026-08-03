@@ -1,0 +1,17 @@
+{
+  "name": "tilky-engine",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "spdlog",
+    "sdl3",
+    "sdl3-image",
+    "sdl3-ttf",
+    "freetype",
+    "nlohmann-json",
+    "sol2",
+    "lua",
+    "openal-soft",
+    "cpr",
+    "minizip-ng"
+  ]
+}

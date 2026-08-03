@@ -11,7 +11,15 @@
 namespace fs = std::filesystem;
 
 namespace ProjectManager {
-    void LaunchEngine(const fs::path &projectFile);
+    // Launches the engine executable with --project <projectFile>. Returns true if
+    // the process was successfully spawned.
+    // engineDirectory selects which installed copy of the engine to run:
+    // - Left empty (the default), this launches whatever copy sits next to the
+    //   currently running launcher (GetEngineBasePath()) - the original,
+    //   unversioned dev-build behaviour.
+    // - Passed explicitly (e.g. GetEngineVersionDirectory(version)), this launches
+    //   that specific installed engine version instead.
+    bool LaunchEngine(const fs::path &projectFile, const fs::path &engineDirectory = fs::path());
 
     // Returns the current user's home folder.
     // On Windows this usually comes from the USERPROFILE environment variable.
@@ -37,6 +45,17 @@ namespace ProjectManager {
     //
     // This function builds the project.tilky path internally, loads the project metadata,
     // then launches the engine with that .tilky file.
+    //
+    // If the project's "engineVersion" field is set, this launches that exact
+    // installed version (see GetEngineVersionDirectory()) and fails - logging an
+    // error and returning false without launching anything - if that version is
+    // not installed. Callers that let the user pick a project through the launcher
+    // UI should check EngineVersionManager::IsVersionInstalled() before offering to
+    // open a project at all; this check exists as a safety net, not as the primary
+    // "show an Install button" UX (see DrawProjectCard in LauncherApp.cpp).
+    // If "engineVersion" is unset (older projects, or projects created before this
+    // field existed), this falls back to the original unversioned behaviour and
+    // launches whatever engine copy sits next to the running launcher.
     bool OpenProject(const std::filesystem::path &path);
 
     // Creates the internal files/folders for a new project inside an already-created
@@ -96,6 +115,9 @@ namespace ProjectManager {
     // currentAssetsPath     = ...\TestProject\Assets
     // currentLevelsPath     = ...\TestProject\Assets\Levels
     // currentTexturesPath   = ...\TestProject\Assets\Textures
+    //
+    // This also reads the project's "engineVersion" field (empty string if the
+    // project predates it) - see GetProjectEngineVersion().
     //
     // Only the Assets folder itself must actually exist on disk for this to
     // succeed. The Levels/Textures/Sounds/Scripts paths above are always
@@ -174,6 +196,57 @@ namespace ProjectManager {
     // C:\Users\x\Documents\Tilky Engine\Exports\TestProject
     fs::path GetDefaultExportFolder();
 
+    // ============================================================================
+    // Engine version management (EngineVersionManager support)
+    //
+    // Installed engine versions live side by side under GetEngineVersionsFolder(),
+    // one directory per version, e.g.:
+    // C:\Users\x\Documents\Tilky Engine\EngineVersions\0.9.0\Tilky_Engine.exe
+    // C:\Users\x\Documents\Tilky Engine\EngineVersions\1.0.0\Tilky_Engine.exe
+    //
+    // These functions are the single source of truth for that layout - both
+    // EngineVersionManager (installing/removing versions) and OpenProject() above
+    // (launching a project's pinned version) resolve paths through them so the two
+    // can never disagree about where a version lives or what its executable is
+    // called.
+    // ============================================================================
+
+    // Returns the parent folder that holds every installed engine version.
+    // Example:
+    // C:\Users\x\Documents\Tilky Engine\EngineVersions
+    fs::path GetEngineVersionsFolder();
+
+    // Returns the install directory for one specific engine version. Does not
+    // guarantee the version is actually installed there - see
+    // IsEngineVersionInstalled().
+    // Example:
+    // C:\Users\x\Documents\Tilky Engine\EngineVersions\0.9.0
+    fs::path GetEngineVersionDirectory(const std::string &version);
+
+    // Returns where Tilky_Engine's executable would be for one specific installed
+    // version (Tilky_Engine.exe on Windows, Tilky_Engine with no extension on
+    // Linux/macOS - matching the real CMake target output name).
+    fs::path GetEngineVersionExecutablePath(const std::string &version);
+
+    // Returns where the Standalone player's executable would be for one specific
+    // installed version. Note the real build output is named "Standalone"
+    // (Tilky_Standalone's CMake OUTPUT_NAME), not "Tilky_Standalone" - this
+    // resolves to the name that's actually produced by the build.
+    fs::path GetEngineVersionStandaloneExecutablePath(const std::string &version);
+
+    // True if GetEngineVersionExecutablePath(version) exists on disk. This is a
+    // plain filesystem check with no manifest/network involvement - see
+    // EngineVersionManager::IsVersionInstalled() for the version manager's own
+    // (cached) copy of this same check.
+    bool IsEngineVersionInstalled(const std::string &version);
+
+    // Patches just the "engineVersion" field into a project's project.tilky,
+    // leaving every other field untouched. Accepts either the project's root
+    // folder or its project.tilky file directly. Returns false if the file
+    // couldn't be read/parsed/written; does not require the project to be the
+    // currently loaded one.
+    bool SetProjectEngineVersion(const fs::path &projectFolderOrFile, const std::string &version);
+
     std::string GetCurrentLanguageInLauncher();
 
     // Returns the name of the currently loaded project.
@@ -181,6 +254,11 @@ namespace ProjectManager {
     // Example result:
     // TestProject
     std::string GetProjectName();
+
+    // Returns the currently loaded project's pinned engine version, e.g. "0.9.0".
+    // This comes from the "engineVersion" field inside project.tilky and is empty
+    // for projects that don't have one set yet (see SetProjectEngineVersion()).
+    std::string GetProjectEngineVersion();
 
     std::filesystem::path GetContentRootPath();
 

@@ -88,6 +88,14 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 
+# Added for EngineVersionManager (launcher-side engine version installer):
+# cpr for HTTP downloads, minizip-ng for ZIP extraction. Both are added to
+# Tilky_LauncherCore only (see target_link_libraries(Tilky_LauncherCore ...)
+# below), which is linked into Tilky_Engine (its unified binary includes the
+# launcher) but not into Tilky_Standalone, which has no need for either.
+find_package(cpr CONFIG REQUIRED)
+find_package(minizip-ng CONFIG REQUIRED)
+
 # ============================================================
 # GLAD
 # ============================================================
@@ -557,10 +565,14 @@ endif()
 
 set(TILKY_LAUNCHER_SOURCES
         src/Launcher/LauncherApp.cpp
+        src/Launcher/EngineVersionManager.cpp
+        src/Launcher/Sha256.cpp
+
         Headers/Launcher/LauncherApp.hpp
+        Headers/Launcher/EngineVersionManager.hpp
+        Headers/Launcher/Sha256.hpp
         Headers/Runtime/Scripting/IScripting.hpp
 )
-
 # ============================================================
 # Launcher core library
 # ============================================================
@@ -584,6 +596,8 @@ target_link_libraries(Tilky_LauncherCore PUBLIC
         Tilky_Project
         Tilky_Local
         nlohmann_json::nlohmann_json
+        cpr::cpr
+        MINIZIP::minizip-ng
 )
 
 target_compile_definitions(Tilky_LauncherCore PUBLIC

@@ -1,0 +1,235 @@
+name: Release Engine
+
+# Publishes a new Tilky Engine version whenever a version tag (e.g. v0.9.0, or
+# v0.9.0-beta1 for a development-channel build) is pushed.
+#
+# See ENGINE_VERSION_MANAGEMENT.md at the repo root for:
+# - how to cut a new release (the two-command version: tag + push)
+# - where versions.json ends up and why
+# - what to change here if this repository is ever renamed or moved
+#
+# This workflow assumes your repository already has (or you add) a vcpkg.json
+# manifest at the repo root listing every dependency this project needs via
+# find_package(... CONFIG REQUIRED) in CMakeLists.txt, including the two added for
+# EngineVersionManager: "cpr" and "minizip-ng". In vcpkg manifest mode, the
+# configure step below installs everything vcpkg.json lists automatically - this
+# workflow does not (and should not need to) list packages itself. If you're not
+# using a vcpkg.json yet, see the guide for a starter one.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*" # allows development-channel tags, e.g. v0.9.0-beta1
+
+permissions:
+  contents: write # create the release, upload the asset, and commit versions.json back
+
+concurrency:
+  # Prevents two pushes to the same tag racing each other; does not block different
+  # tags from building concurrently.
+  group: release-engine-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # ============================================================================
+  # CONFIGURATION - the only two lines you should need to touch if this repo is
+  # ever renamed or moved to a different owner. Keep these in sync with
+  # MANIFEST_URL in Headers/Launcher/EngineVersionManager.cpp (the launcher reads
+  # versions.json from that URL, which is derived from the same owner/repo).
+  # ============================================================================
+  MANIFEST_BRANCH: main
+  MANIFEST_PATH: versions.json
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed so the "update versions.json" step can push a real commit later
+
+      - name: Derive version and channel from the tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          # Anything with a "-something" suffix (v0.9.0-beta1, v0.9.0-rc2, ...) is
+          # treated as a development-channel build; plain "v0.9.0" is stable.
+          if [[ "$VERSION" == *-* ]]; then
+            CHANNEL="development"
+          else
+            CHANNEL="stable"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "Publishing engine version $VERSION on the $CHANNEL channel"
+
+      - name: Refuse to overwrite an existing release for this tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::A release already exists for tag ${GITHUB_REF_NAME}. Engine builds are permanent release assets and are never overwritten - delete the existing release/tag first if this was a mistake, or publish a new version instead."
+            exit 1
+          fi
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}/vcpkg"
+          "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure (CMake + vcpkg)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -B build -S . \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-windows \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Tilky_Engine + Standalone + runtime assets)
+        shell: bash
+        run: cmake --build build --config Release --target Tilky_All --parallel
+
+      - name: Package into a versioned ZIP
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          BUILD_DIR="build"
+          STAGE_DIR="stage"
+          ZIP_NAME="Tilky_Engine-Windows-x64-${VERSION}.zip"
+
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+
+          # Everything CMake produces for a runnable install already lands flat in
+          # the build directory root (CMAKE_RUNTIME_OUTPUT_DIRECTORY in
+          # CMakeLists.txt), including DLLs copied next to the exe by the existing
+          # post-build $<TARGET_RUNTIME_DLLS:...> step. We deliberately copy an
+          # allow-list of known files/folders into a clean staging directory rather
+          # than zipping the raw build directory, so CMake/vcpkg/ninja intermediate
+          # files never end up in a release asset.
+          cp "$BUILD_DIR/Tilky_Engine.exe" "$STAGE_DIR/"
+
+          # Real build output name is "Standalone.exe" (Tilky_Standalone's CMake
+          # OUTPUT_NAME override) - not "Tilky_Standalone.exe".
+          cp "$BUILD_DIR/Standalone.exe" "$STAGE_DIR/"
+
+          shopt -s nullglob
+          dlls=("$BUILD_DIR"/*.dll)
+          if [ ${#dlls[@]} -gt 0 ]; then
+            cp "${dlls[@]}" "$STAGE_DIR/"
+          fi
+
+          # Keep this list in sync with TILKY_RUNTIME_ASSET_DIRS in CMakeLists.txt.
+          for dir in EngineAssets LauncherAssets Shaders Fonts Textures; do
+            if [ -d "$BUILD_DIR/$dir" ]; then
+              cp -r "$BUILD_DIR/$dir" "$STAGE_DIR/$dir"
+            fi
+          done
+
+          if [ ! -f "$STAGE_DIR/Tilky_Engine.exe" ]; then
+            echo "::error::Tilky_Engine.exe missing from the staged package - aborting before publishing a broken release."
+            exit 1
+          fi
+
+          (cd "$STAGE_DIR" && 7z a -tzip "../${ZIP_NAME}" . >/dev/null)
+
+          SHA256=$(sha256sum "${ZIP_NAME}" | cut -d ' ' -f1)
+          SIZE=$(stat -c%s "${ZIP_NAME}")
+
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
+
+          echo "Packaged ${ZIP_NAME} (${SIZE} bytes, sha256 ${SHA256})"
+
+      - name: Create GitHub Release and upload the ZIP
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.version.outputs.channel }}" = "development" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.package.outputs.zip_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "Tilky Engine ${{ steps.version.outputs.version }}" \
+            --notes "Automated release for ${GITHUB_REF_NAME}. Platform: windows-x64. Channel: ${{ steps.version.outputs.channel }}." \
+            $PRERELEASE_FLAG
+
+      - name: Update versions.json on ${{ env.MANIFEST_BRANCH }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # The release above is created against the pushed tag (a detached point in
+          # history), but versions.json is a living file that belongs on the default
+          # branch - check that out separately so this commit doesn't get lost on a
+          # tag no one branches from.
+          git fetch origin "${MANIFEST_BRANCH}"
+          git checkout "${MANIFEST_BRANCH}"
+
+          VERSION="${{ steps.version.outputs.version }}"
+          CHANNEL="${{ steps.version.outputs.channel }}"
+          ZIP_NAME="${{ steps.package.outputs.zip_name }}"
+          SHA256="${{ steps.package.outputs.sha256 }}"
+          SIZE="${{ steps.package.outputs.size }}"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+
+          if [ ! -f "${MANIFEST_PATH}" ]; then
+            echo '{"manifestVersion": 1, "versions": []}' > "${MANIFEST_PATH}"
+          fi
+
+          # Replaces any existing entry for this exact version+platform (so re-running
+          # after a mistake is idempotent) and appends the new one.
+          jq --arg version "$VERSION" \
+             --arg platform "windows-x64" \
+             --arg channel "$CHANNEL" \
+             --arg url "$DOWNLOAD_URL" \
+             --argjson size "$SIZE" \
+             --arg sha256 "$SHA256" \
+             '.manifestVersion = 1
+              | .versions = (
+                  [.versions[] | select(.version != $version or .platform != $platform)]
+                  + [{
+                      version: $version,
+                      platform: $platform,
+                      channel: $channel,
+                      downloadUrl: $url,
+                      size: $size,
+                      sha256: $sha256
+                    }]
+                )' \
+             "${MANIFEST_PATH}" > "${MANIFEST_PATH}.tmp"
+          mv "${MANIFEST_PATH}.tmp" "${MANIFEST_PATH}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${MANIFEST_PATH}"
+
+          if git diff --cached --quiet; then
+            echo "versions.json already up to date - nothing to commit."
+          else
+            git commit -m "Add engine version ${VERSION} (${CHANNEL}) to versions.json [skip ci]"
+            git push origin "HEAD:${MANIFEST_BRANCH}"
+          fi

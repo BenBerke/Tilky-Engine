@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -18,6 +19,7 @@
 
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Launcher/EngineVersionManager.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_render.h>
@@ -35,6 +37,16 @@
 using json = nlohmann::json;
 
 namespace {
+    // EngineVersionManager.hpp declares both a namespace and a class named
+    // EngineVersionManager (the spec for this feature explicitly asked for "class
+    // EngineVersionManager"), which makes call sites read as the fairly repetitive
+    // EngineVersionManager::EngineVersionManager::Instance(). This file calls into it
+    // often enough (the project card and the version-manager modal below) that a
+    // short local alias is worth it.
+    EngineVersionManager::EngineVersionManager& EVM() {
+        return EngineVersionManager::EngineVersionManager::Instance();
+    }
+
     // ============================================================================
     // Core window / renderer state (existing)
     // ============================================================================
@@ -95,6 +107,7 @@ namespace {
         bool isMissing = false;
         bool isPinned = false;
         long long lastOpenedUnix = 0;
+        std::string requiredEngineVersion; // "engineVersion" from project.tilky; empty = unpinned (dev fallback)
     };
 
     enum class ToastLevel { Info, Success, Warning, Error };
@@ -129,6 +142,20 @@ namespace {
     fs::path projectBeingRenamed;
     std::array<char, PROJECT_NAME_MAX_LENGTH> renameBuffer{};
     std::string renameValidationError;
+
+    // ============================================================================
+    // Engine version manager modal
+    // ============================================================================
+    bool wantOpenEngineVersionsPopup = false;
+    // When set, the modal was opened from a specific project's card ("Change
+    // Version") and installed rows grow a "Use for this project" button. When empty,
+    // it was opened from the top bar and the modal is pure install/remove management.
+    fs::path engineVersionsModalTargetProject;
+
+    bool wantOpenRemoveVersionConfirmPopup = false;
+    std::string versionPendingRemoval;
+    std::vector<std::string> versionPendingRemovalReferencingProjects;
+    bool versionPendingRemovalProcessRunning = false;
 
     std::vector<Toast> toasts;
 
@@ -166,8 +193,15 @@ namespace {
 
     void MarkProjectOpened(const ProjectEntry& entry);
     void RequestOpenProject(const ProjectEntry& entry);
+    // Shared gate for every "open this project" entry point (the card's Open button
+    // and its double-click-to-open Selectable): if the project has a pinned engine
+    // version that isn't installed, opens the Engine Versions modal scoped to that
+    // project instead of launching anything. Returns true if it actually requested an
+    // open (i.e. RequestOpenProject() ran).
+    bool TryOpenProject(const ProjectEntry& entry);
 
     std::string FormatRelativeTime(long long unixSeconds);
+    std::string FormatFileSize(std::uint64_t bytes);
 
     void PushToast(std::string message, ToastLevel level);
     void UpdateToasts(float deltaSeconds);
@@ -191,6 +225,11 @@ namespace {
     void DrawNewProjectModal();
     void DrawRenameModal();
     void DrawDeleteConfirmModal();
+    void DrawEngineVersionsModal();
+    void DrawRemoveVersionConfirmModal();
+    void PushEngineVersionInstallToasts();
+    std::string LocalizedInstallPhaseLabel(EngineVersionManager::InstallPhase phase);
+    void DrawVersionProgressInline(const EngineVersionManager::InstallProgress& progress);
     void DrawProjectCard(ProjectEntry& entry, float cardWidth);
     void DrawProjectList(float availableHeight);
     void DrawFooter();
@@ -537,6 +576,7 @@ namespace {
                 try {
                     json data = json::parse(file);
                     entry.name = data.value("name", dirEntry.path().filename().string());
+                    entry.requiredEngineVersion = data.value("engineVersion", std::string());
                 }
                 catch (const std::exception& e) {
                     spdlog::error("Failed to parse project file '{}': {}", tilkyFile.string(), e.what());
@@ -589,6 +629,7 @@ namespace {
                     try {
                         json data = json::parse(file);
                         entry.name = data.value("name", entry.folderPath.filename().string());
+                        entry.requiredEngineVersion = data.value("engineVersion", std::string());
                     }
                     catch (const std::exception& e) {
                         spdlog::error("Failed to parse imported project file '{}': {}", entry.tilkyFilePath.string(), e.what());
@@ -659,6 +700,26 @@ namespace {
         quitRequested = true;
     }
 
+    bool TryOpenProject(const ProjectEntry& entry) {
+        if (!entry.requiredEngineVersion.empty() && !EVM().IsVersionInstalled(entry.requiredEngineVersion)) {
+            // Don't launch anything - point the user at installing the exact version
+            // this project needs instead. Scoping the modal to this project surfaces
+            // a "Use for this project" button once it's installed, so this doubles as
+            // the entry point for fixing a project that got re-pointed at a version
+            // that was since removed.
+            engineVersionsModalTargetProject = entry.folderPath;
+            wantOpenEngineVersionsPopup = true;
+            PushToast(
+                Localisation::Get("launcher.toast_engine_version_required") + " " + entry.requiredEngineVersion,
+                ToastLevel::Warning
+            );
+            return false;
+        }
+
+        RequestOpenProject(entry);
+        return true;
+    }
+
     // ============================================================================
     // Relative time formatting ("3 hours ago", etc.)
     // ============================================================================
@@ -688,6 +749,26 @@ namespace {
 
         const long long years = months / 12;
         return std::to_string(years) + " " + Localisation::Get("launcher.time_years_ago");
+    }
+
+    // ============================================================================
+    // Byte-size formatting ("142.3 MB", etc.) for engine version download sizes
+    // ============================================================================
+    std::string FormatFileSize(const std::uint64_t bytes) {
+        static constexpr const char* UNITS[] = {"B", "KB", "MB", "GB", "TB"};
+        static constexpr int UNIT_COUNT = 5;
+
+        double size = static_cast<double>(bytes);
+        int unitIndex = 0;
+
+        while (size >= 1024.0 && unitIndex < UNIT_COUNT - 1) {
+            size /= 1024.0;
+            ++unitIndex;
+        }
+
+        char buffer[32];
+        std::snprintf(buffer, sizeof(buffer), unitIndex == 0 ? "%.0f %s" : "%.1f %s", size, UNITS[unitIndex]);
+        return std::string(buffer);
     }
 
     // ============================================================================
@@ -967,6 +1048,12 @@ namespace {
             projectListDirty = true;
         }
 
+        ImGui::SameLine();
+        if (ImGui::Button(Localisation::Get("launcher.evm_manage_versions").c_str())) {
+            engineVersionsModalTargetProject.clear();
+            wantOpenEngineVersionsPopup = true;
+        }
+
         ImGui::Spacing();
         ImGui::TextUnformatted(Localisation::Get("launcher.projects").c_str());
         ImGui::Spacing();
@@ -1064,6 +1151,17 @@ namespace {
                 const fs::path projectPath = ProjectManager::GetDefaultProjectsFolder() / typedName;
 
                 CopyLuaAutocompleteFiles(projectPath);
+
+                // New projects default to whatever engine version is already
+                // installed and newest-stable, so they open with a specific version
+                // from the start instead of falling back to "whatever's next to the
+                // launcher". If nothing is installed yet, this leaves engineVersion
+                // unset - same as the pre-EngineVersionManager behaviour - until the
+                // user installs one and picks it via "Change Version".
+                const std::optional<std::string> defaultVersion = EVM().GetLatestInstalledStableVersion();
+                if (defaultVersion) {
+                    ProjectManager::SetProjectEngineVersion(projectPath, *defaultVersion);
+                }
 
                 PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
 
@@ -1254,6 +1352,269 @@ namespace {
     }
 
     // ============================================================================
+    // Engine-version-manager helpers shared by the project card and the modals below
+    // ============================================================================
+    std::string LocalizedInstallPhaseLabel(const EngineVersionManager::InstallPhase phase) {
+        switch (phase) {
+            case EngineVersionManager::InstallPhase::Downloading:   return Localisation::Get("launcher.evm_phase_downloading");
+            case EngineVersionManager::InstallPhase::VerifyingHash: return Localisation::Get("launcher.evm_phase_verifying");
+            case EngineVersionManager::InstallPhase::Extracting:    return Localisation::Get("launcher.evm_phase_extracting");
+            case EngineVersionManager::InstallPhase::Validating:    return Localisation::Get("launcher.evm_phase_validating");
+            case EngineVersionManager::InstallPhase::Complete:      return Localisation::Get("launcher.evm_phase_complete");
+            case EngineVersionManager::InstallPhase::Failed:        return Localisation::Get("launcher.evm_phase_failed");
+            case EngineVersionManager::InstallPhase::NotInstalling:
+            default:
+                return std::string();
+        }
+    }
+
+    void DrawVersionProgressInline(const EngineVersionManager::InstallProgress& progress) {
+        const std::string label = LocalizedInstallPhaseLabel(progress.phase);
+
+        if (progress.phase == EngineVersionManager::InstallPhase::Downloading ||
+            progress.phase == EngineVersionManager::InstallPhase::Extracting) {
+            char overlay[48];
+            std::snprintf(overlay, sizeof(overlay), "%s %d%%", label.c_str(), static_cast<int>(progress.fraction * 100.0f));
+            ImGui::ProgressBar(progress.fraction, ImVec2(140.0f, 0.0f), overlay);
+        } else {
+            ImGui::TextDisabled("%s", label.c_str());
+        }
+    }
+
+    // Drains EngineVersionManager::PollEvents() and turns each terminal result into
+    // exactly one toast. Called once per frame from Update().
+    void PushEngineVersionInstallToasts() {
+        for (const auto& event : EVM().PollEvents()) {
+            if (event.success) {
+                PushToast(Localisation::Get("launcher.toast_evm_install_success") + " v" + event.version, ToastLevel::Success);
+            } else {
+                PushToast(
+                    Localisation::Get("launcher.toast_evm_install_failed") + " v" + event.version + ": " + event.errorMessage,
+                    ToastLevel::Error
+                );
+            }
+        }
+    }
+
+    // ============================================================================
+    // Engine Versions modal - install/remove available engine versions, and (when
+    // opened from a project card via "Change Version" or an Install prompt) pin one
+    // to that project.
+    // ============================================================================
+    void DrawEngineVersionsModal() {
+        const std::string popupId = Localisation::Get("launcher.evm_title") + "###engine_versions_modal";
+
+        if (wantOpenEngineVersionsPopup) {
+            ImGui::OpenPopup(popupId.c_str());
+            wantOpenEngineVersionsPopup = false;
+            EVM().RefreshManifestAsync(); // no-op if a fetch is already in flight
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(620.0f, 480.0f), ImGuiCond_Appearing);
+        const ImGuiIO& io = ImGui::GetIO();
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) {
+            ProjectEntry* targetProject = nullptr;
+            if (!engineVersionsModalTargetProject.empty()) {
+                for (ProjectEntry& candidate : projectEntries) {
+                    if (candidate.folderPath == engineVersionsModalTargetProject) {
+                        targetProject = &candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (targetProject != nullptr) {
+                ImGui::TextWrapped("%s", (Localisation::Get("launcher.evm_scoped_to_project") + " " + targetProject->name).c_str());
+                ImGui::Spacing();
+            }
+
+            if (EVM().IsManifestLoading()) {
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.evm_checking_for_versions").c_str());
+            }
+
+            const std::optional<std::string> manifestError = EVM().GetManifestError();
+            if (manifestError) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+                ImGui::TextWrapped("%s: %s", Localisation::Get("launcher.evm_manifest_error").c_str(), manifestError->c_str());
+                ImGui::PopStyleColor();
+
+                ImGui::SameLine();
+                if (ImGui::SmallButton(Localisation::Get("launcher.evm_retry").c_str())) {
+                    EVM().RefreshManifestAsync();
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            std::vector<EngineVersionManager::VersionInfo> versions = EVM().GetAvailableVersions();
+            std::sort(versions.begin(), versions.end(),
+                [](const EngineVersionManager::VersionInfo& a, const EngineVersionManager::VersionInfo& b) { return a.version > b.version; });
+
+            if (versions.empty() && !EVM().IsManifestLoading() && !manifestError) {
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.evm_no_versions").c_str());
+            }
+
+            if (ImGui::BeginChild("##engine_versions_list", ImVec2(0.0f, -36.0f), true)) {
+                for (const EngineVersionManager::VersionInfo& info : versions) {
+                    ImGui::PushID(info.version.c_str());
+
+                    const bool installing = EVM().IsInstalling(info.version);
+                    const EngineVersionManager::InstallProgress progress =
+                        installing ? EVM().GetInstallProgress(info.version) : EngineVersionManager::InstallProgress{};
+                    const bool isPinnedToTarget = targetProject != nullptr && targetProject->requiredEngineVersion == info.version;
+
+                    ImGui::BeginGroup();
+
+                    std::string headline = "v" + info.version;
+                    if (!info.channel.empty() && info.channel != "unknown") headline += "  [" + info.channel + "]";
+                    if (isPinnedToTarget) headline += "  *";
+                    ImGui::TextUnformatted(headline.c_str());
+
+                    if (info.sizeBytes > 0) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("(%s)", FormatFileSize(info.sizeBytes).c_str());
+                    }
+
+                    if (progress.phase == EngineVersionManager::InstallPhase::Failed && !progress.errorMessage.empty()) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+                        ImGui::TextWrapped("%s", progress.errorMessage.c_str());
+                        ImGui::PopStyleColor();
+                    }
+
+                    if (installing) {
+                        DrawVersionProgressInline(progress);
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton(Localisation::Get("common.cancel").c_str())) {
+                            EVM().CancelInstall(info.version);
+                        }
+                    } else if (!info.installed) {
+                        if (ImGui::SmallButton(Localisation::Get("launcher.evm_install").c_str())) {
+                            EVM().InstallVersion(info.version);
+                        }
+                    } else {
+                        if (targetProject != nullptr) {
+                            ImGui::BeginDisabled(isPinnedToTarget);
+                            if (ImGui::SmallButton(Localisation::Get("launcher.evm_use_for_project").c_str())) {
+                                if (ProjectManager::SetProjectEngineVersion(targetProject->folderPath, info.version)) {
+                                    targetProject->requiredEngineVersion = info.version;
+                                    PushToast(Localisation::Get("launcher.toast_evm_version_selected") + " v" + info.version, ToastLevel::Success);
+                                } else {
+                                    PushToast(Localisation::Get("launcher.toast_evm_version_select_failed"), ToastLevel::Error);
+                                }
+                            }
+                            ImGui::EndDisabled();
+                            ImGui::SameLine();
+                        }
+
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.20f, 0.20f, 1.0f));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.24f, 0.24f, 1.0f));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.16f, 0.16f, 1.0f));
+                        if (ImGui::SmallButton(Localisation::Get("launcher.evm_remove").c_str())) {
+                            const EngineVersionManager::RemovalCheck check = EVM().CheckVersionRemoval(info.version);
+
+                            versionPendingRemoval = info.version;
+                            versionPendingRemovalProcessRunning = check.processRunning;
+                            versionPendingRemovalReferencingProjects.clear();
+                            for (const ProjectEntry& candidate : projectEntries) {
+                                if (candidate.requiredEngineVersion == info.version) {
+                                    versionPendingRemovalReferencingProjects.push_back(candidate.name);
+                                }
+                            }
+                            wantOpenRemoveVersionConfirmPopup = true;
+                        }
+                        ImGui::PopStyleColor(3);
+                    }
+
+                    ImGui::EndGroup();
+                    ImGui::Separator();
+
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::Spacing();
+            if (ImGui::Button(Localisation::Get("launcher.evm_close").c_str())) {
+                engineVersionsModalTargetProject.clear();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    // ============================================================================
+    // Remove-version confirmation - warns about referencing projects (informational)
+    // and hard-blocks while the version's engine currently looks like it's running.
+    // ============================================================================
+    void DrawRemoveVersionConfirmModal() {
+        const std::string popupId = Localisation::Get("launcher.evm_remove_confirm_title") + "###remove_version_confirm_modal";
+
+        if (wantOpenRemoveVersionConfirmPopup) {
+            ImGui::OpenPopup(popupId.c_str());
+            wantOpenRemoveVersionConfirmPopup = false;
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(440.0f, 0.0f), ImGuiCond_Appearing);
+        const ImGuiIO& io = ImGui::GetIO();
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::PushTextWrapPos(400.0f);
+
+            ImGui::Text("%s v%s?", Localisation::Get("launcher.evm_remove_confirm_message").c_str(), versionPendingRemoval.c_str());
+
+            if (versionPendingRemovalProcessRunning) {
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+                ImGui::TextWrapped("%s", Localisation::Get("launcher.evm_remove_blocked_running").c_str());
+                ImGui::PopStyleColor();
+            }
+
+            if (!versionPendingRemovalReferencingProjects.empty()) {
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", Localisation::Get("launcher.evm_remove_warning_referenced").c_str());
+                for (const std::string& projectName : versionPendingRemovalReferencingProjects) {
+                    ImGui::BulletText("%s", projectName.c_str());
+                }
+            }
+
+            ImGui::PopTextWrapPos();
+            ImGui::Spacing();
+
+            ImGui::BeginDisabled(versionPendingRemovalProcessRunning);
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.20f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.24f, 0.24f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.16f, 0.16f, 1.0f));
+            if (ImGui::Button(Localisation::Get("launcher.evm_remove").c_str())) {
+                if (EVM().RemoveVersion(versionPendingRemoval)) {
+                    PushToast(Localisation::Get("launcher.toast_evm_version_removed") + " v" + versionPendingRemoval, ToastLevel::Success);
+                } else {
+                    PushToast(Localisation::Get("launcher.toast_evm_version_remove_failed") + " v" + versionPendingRemoval, ToastLevel::Error);
+                }
+                versionPendingRemoval.clear();
+                versionPendingRemovalReferencingProjects.clear();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            if (ImGui::Button(Localisation::Get("common.cancel").c_str())) {
+                versionPendingRemoval.clear();
+                versionPendingRemovalReferencingProjects.clear();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    // ============================================================================
     // A single project card: name + subtext (selectable, click to select, double
     // click to open) plus an action-button row (Open/Pin/Rename/Show in folder/
     // Delete, or Locate/Remove for missing entries).
@@ -1280,7 +1641,7 @@ namespace {
         if (selectableClicked) {
             selectedProjectPath = entry.folderPath;
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !entry.isMissing) {
-                RequestOpenProject(entry);
+                TryOpenProject(entry);
             }
         }
 
@@ -1313,8 +1674,28 @@ namespace {
             }
         }
         else {
-            if (ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str())) {
-                RequestOpenProject(entry);
+            const bool hasPinnedVersion = !entry.requiredEngineVersion.empty();
+            const bool versionInstalling = hasPinnedVersion && EVM().IsInstalling(entry.requiredEngineVersion);
+            const bool versionMissing = hasPinnedVersion && !versionInstalling && !EVM().IsVersionInstalled(entry.requiredEngineVersion);
+
+            if (versionInstalling) {
+                ImGui::BeginDisabled();
+                ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str());
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                DrawVersionProgressInline(EVM().GetInstallProgress(entry.requiredEngineVersion));
+            } else if (versionMissing) {
+                const std::string installLabel = Localisation::Get("launcher.evm_install") + " v" + entry.requiredEngineVersion;
+                if (ImGui::SmallButton(installLabel.c_str())) {
+                    engineVersionsModalTargetProject = entry.folderPath;
+                    EVM().InstallVersion(entry.requiredEngineVersion);
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.evm_version_required_suffix").c_str());
+            } else {
+                if (ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str())) {
+                    TryOpenProject(entry);
+                }
             }
             ImGui::SameLine();
 
@@ -1338,6 +1719,12 @@ namespace {
                 }
                 ImGui::SameLine();
             }
+
+            if (ImGui::SmallButton(Localisation::Get("launcher.evm_change_version").c_str())) {
+                engineVersionsModalTargetProject = entry.folderPath;
+                wantOpenEngineVersionsPopup = true;
+            }
+            ImGui::SameLine();
 
             if (ImGui::SmallButton(Localisation::Get("launcher.show_in_folder").c_str())) {
                 RevealInFileManager(entry.folderPath);
@@ -1652,6 +2039,9 @@ namespace LauncherApp {
         }
 
         projectListDirty = true;
+
+        EVM().Initialize();
+
         launcherStarted = true;
     }
 
@@ -1693,6 +2083,7 @@ namespace LauncherApp {
         ImGui::NewFrame();
 
         UpdateToasts(ImGui::GetIO().DeltaTime);
+        PushEngineVersionInstallToasts();
 
         ImGui::SetNextWindowSize(ImVec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight)), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -1714,6 +2105,8 @@ namespace LauncherApp {
         DrawNewProjectModal();
         DrawRenameModal();
         DrawDeleteConfirmModal();
+        DrawEngineVersionsModal();
+        DrawRemoveVersionConfirmModal();
 
         ImGui::End();
 
@@ -1746,6 +2139,13 @@ namespace LauncherApp {
     void Destroy() {
         if (!launcherStarted) return;
         launcherStarted = false;
+
+        // First: EngineVersionManager owns background threads (installs, manifest
+        // fetch) that don't touch ImGui/SDL at all, so there's no ordering dependency
+        // with the teardown below - doing it first just means we're not leaving
+        // worker threads running any longer than necessary while the rest of this
+        // function runs.
+        EVM().Shutdown();
 
         if (logo != nullptr) {
             SDL_DestroyTexture(logo);

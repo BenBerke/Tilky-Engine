@@ -32,6 +32,7 @@ namespace {
     fs::path currentScriptsPath;
 
     std::string currentProjectName;
+    std::string currentEngineVersion;
 }
 
 namespace ProjectManager {
@@ -43,7 +44,9 @@ namespace ProjectManager {
         const char* userProfile = std::getenv("HOME");
 #endif
 
-        if (userProfile != nullptr) return fs::path(userProfile);
+        if (userProfile != nullptr) {
+            return fs::path(userProfile);
+        }
 
         spdlog::warn("Could not find user home directory. Falling back to current working directory.");
         return fs::current_path();
@@ -63,16 +66,18 @@ namespace ProjectManager {
 #endif
     }
 
-    void LaunchEngine(const fs::path& projectFile) {
+    bool LaunchEngine(const fs::path& projectFile, const fs::path& engineDirectory) {
+        const fs::path resolvedEngineDir = engineDirectory.empty() ? GetEngineBasePath() : engineDirectory;
+
 #ifdef _WIN32
-        const fs::path engineExe = GetEngineBasePath() / "Tilky_Engine.exe";
+        const fs::path engineExe = resolvedEngineDir / "Tilky_Engine.exe";
 
         std::wstring appPath = engineExe.wstring();
 
         std::wstring commandLine =
             L"\"" + appPath + L"\" --project \"" + projectFile.wstring() + L"\"";
 
-        std::wstring workingDirectory = GetEngineBasePath().wstring();
+        std::wstring workingDirectory = resolvedEngineDir.wstring();
 
         STARTUPINFOW startupInfo{};
         startupInfo.cb = sizeof(startupInfo);
@@ -101,14 +106,21 @@ namespace ProjectManager {
                 GetLastError(),
                 engineExe.string()
             );
-            return;
+            return false;
         }
 
         CloseHandle(processInfo.hProcess);
         CloseHandle(processInfo.hThread);
 
+        return true;
+
 #else
-        const fs::path engineExe = GetEngineBasePath() / "TIlky_Engine";
+        // NOTE: this was already a typo'd "TIlky_Engine" (capital I) before this
+        // change, which meant it never actually matched the real CMake target output
+        // name ("Tilky_Engine") on Linux/macOS - fixed here since EngineVersionManager
+        // needs this exact name to match on every platform it validates installs on
+        // (see ProjectManager::GetEngineVersionExecutablePath).
+        const fs::path engineExe = resolvedEngineDir / "Tilky_Engine";
 
         const std::string command =
             "\"" + engineExe.string() + "\" --project \"" + projectFile.string() + "\"";
@@ -119,7 +131,10 @@ namespace ProjectManager {
 
         if (result != 0) {
             spdlog::error("Engine process returned non-zero exit code: {}", result);
+            return false;
         }
+
+        return true;
 #endif
     }
 
@@ -144,9 +159,24 @@ namespace ProjectManager {
             return false;
         }
 
-        LaunchEngine(projectFile);
+        if (currentEngineVersion.empty()) {
+            // No engine version pinned (project predates EngineVersionManager, or was
+            // never assigned one) - fall back to the original behaviour and launch
+            // whatever engine copy sits next to the running launcher.
+            return LaunchEngine(projectFile);
+        }
 
-        return true;
+        if (!IsEngineVersionInstalled(currentEngineVersion)) {
+            spdlog::error(
+                "Project '{}' requires engine version {}, which is not installed. Expected executable at: {}",
+                currentProjectName,
+                currentEngineVersion,
+                GetEngineVersionExecutablePath(currentEngineVersion).string()
+            );
+            return false;
+        }
+
+        return LaunchEngine(projectFile, GetEngineVersionDirectory(currentEngineVersion));
     }
 
     void CreateProject(const fs::path& directory, const std::string& projectName) {
@@ -174,6 +204,7 @@ namespace ProjectManager {
             json projectData;
             projectData["name"] = projectName;
             projectData["assetsFolder"] = "Assets";
+            projectData["engineVersion"] = ""; // set later by the launcher (new-project default pin) or via "Select Version"
 
             std::ofstream file(dataPath);
 
@@ -249,6 +280,7 @@ namespace ProjectManager {
         currentProjectFile = tilkyEnginePath;
         currentProjectFolder = tilkyEnginePath.parent_path();
         currentProjectName = projectData.value("name", currentProjectFolder.filename().string());
+        currentEngineVersion = projectData.value("engineVersion", std::string());
 
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
 
@@ -275,6 +307,7 @@ namespace ProjectManager {
         spdlog::info("Loaded project metadata: {}", tilkyEnginePath.string());
         spdlog::info("Current project name: {}", currentProjectName);
         spdlog::info("Project assets path: {}", currentAssetsPath.string());
+        spdlog::info("Project engine version: {}", currentEngineVersion.empty() ? "(none pinned)" : currentEngineVersion);
 
         return true;
     }
@@ -368,6 +401,91 @@ namespace ProjectManager {
         return GetEngineFolder() / "Exports" / projectName;
     }
 
+    fs::path GetEngineVersionsFolder() {
+        return GetEngineFolder() / "EngineVersions";
+    }
+
+    fs::path GetEngineVersionDirectory(const std::string& version) {
+        return GetEngineVersionsFolder() / version;
+    }
+
+    fs::path GetEngineVersionExecutablePath(const std::string& version) {
+#ifdef _WIN32
+        return GetEngineVersionDirectory(version) / "Tilky_Engine.exe";
+#else
+        return GetEngineVersionDirectory(version) / "Tilky_Engine";
+#endif
+    }
+
+    fs::path GetEngineVersionStandaloneExecutablePath(const std::string& version) {
+        // Matches Tilky_Standalone's CMake OUTPUT_NAME ("Standalone"), not the
+        // target name - see the note on this function in the header.
+#ifdef _WIN32
+        return GetEngineVersionDirectory(version) / "Standalone.exe";
+#else
+        return GetEngineVersionDirectory(version) / "Standalone";
+#endif
+    }
+
+    bool IsEngineVersionInstalled(const std::string& version) {
+        if (version.empty()) return false;
+
+        std::error_code existsEc;
+        return fs::exists(GetEngineVersionExecutablePath(version), existsEc);
+    }
+
+    bool SetProjectEngineVersion(const fs::path& projectFolderOrFile, const std::string& version) {
+        fs::path tilkyFile = projectFolderOrFile;
+        if (tilkyFile.extension() != ".tilky") {
+            tilkyFile = tilkyFile / "project.tilky";
+        }
+
+        std::error_code existsEc;
+        if (!fs::exists(tilkyFile, existsEc)) {
+            spdlog::error("Cannot set engine version - project file does not exist: {}", tilkyFile.string());
+            return false;
+        }
+
+        json projectData;
+
+        {
+            std::ifstream inFile(tilkyFile);
+            if (!inFile.is_open()) {
+                spdlog::error("Cannot set engine version - failed to open project file: {}", tilkyFile.string());
+                return false;
+            }
+
+            try { inFile >> projectData; }
+            catch (const std::exception& e) {
+                spdlog::error("Cannot set engine version - failed to parse project file '{}': {}", tilkyFile.string(), e.what());
+                return false;
+            }
+        }
+
+        projectData["engineVersion"] = version;
+
+        std::ofstream outFile(tilkyFile);
+        if (!outFile.is_open()) {
+            spdlog::error("Cannot set engine version - failed to open project file for writing: {}", tilkyFile.string());
+            return false;
+        }
+
+        outFile << projectData.dump(4);
+        outFile.close();
+
+        // Keep the in-memory copy consistent if this happens to be the currently
+        // loaded project, so callers don't have to re-run LoadProjectMetaData just to
+        // see their own write reflected in GetProjectEngineVersion().
+        std::error_code equivalentEc;
+        if (fs::equivalent(tilkyFile, currentProjectFile, equivalentEc)) {
+            currentEngineVersion = version;
+        }
+
+        spdlog::info("Set engine version for '{}' to {}", tilkyFile.string(), version);
+
+        return true;
+    }
+
     fs::path GetLauncherVariables() { return GetEngineFolder() / "Launcher.tilky";}
 
     std::string GetCurrentLanguageInLauncher() {
@@ -403,4 +521,6 @@ namespace ProjectManager {
     }
 
     std::string GetProjectName() { return currentProjectName;}
+
+    std::string GetProjectEngineVersion() { return currentEngineVersion;}
 }

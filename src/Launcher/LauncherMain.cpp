@@ -170,10 +170,17 @@ int main(int argc, char* argv[]) {
 
         if (!projectToOpen.empty()) {
             spdlog::info("Opening project at {}", projectToOpen.string());
-            ProjectManager::OpenProject(projectToOpen);
-        } else {
-            spdlog::info("Launcher closed without selecting a project");
+
+            if (!ProjectManager::OpenProject(projectToOpen)) {
+                // Shouldn't normally happen - the launcher UI only offers "Open" once
+                // EngineVersionManager reports the project's pinned version as
+                // installed - but ProjectManager::OpenProject() re-checks before
+                // launching, so surface it rather than silently discarding a failure.
+                spdlog::critical("Failed to open project at {} (see the preceding log line for why)", projectToOpen.string());
+                exitCode = 1;
+            }
         }
+        else spdlog::info("Launcher closed without selecting a project");
     }
     catch (const std::exception &e) {
         spdlog::critical("Unhandled exception in launcher: {}", e.what());
