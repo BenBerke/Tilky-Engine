@@ -1268,7 +1268,7 @@ namespace LevelSerialization {
         try {
             levelData = json::from_bson(bsonData);
         }
-        catch (const json::exception& e) {
+        catch (const std::exception& e) {
             SetError(
                 errorMessage,
                 "Failed to parse BSON level file " + levelFile.string() +
@@ -1295,7 +1295,7 @@ namespace LevelSerialization {
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
         }
-        catch (const nlohmann::json::exception& e) {
+        catch (const std::exception& e) {
             SetError(
                 errorMessage,
                 "Level BSON schema error while loading " +
@@ -1303,7 +1303,7 @@ namespace LevelSerialization {
             );
             return false;
         }
-        catch (const json::exception& e) {
+        catch (const std::exception& e) {
             SetError(
                 errorMessage,
                 "Unexpected error while loading level " +
