@@ -1,12 +1,18 @@
 # 🛠️ Tilky Engine
 
-\
-
 **Tilky Engine** is a custom **sector-based 3D game engine, editor, and project toolchain** built in C++20.
 
 Inspired by classic 90s engines such as *Doom* and *Build Engine*, Tilky Engine uses a specialized 3D rendering pipeline where maps are constructed from topological sectors, textured walls, floors, ceilings, slopes, sprites, and entities.
 
 Tilky Engine is designed as a complete development environment rather than only a  rendering library. It includes a project launcher, visual level editor, asset browser, embedded Lua editor, OpenGL runtime, custom physics, OpenAL audio, engine version management, automated releases, localization tooling, profiling, and standalone project exporting.
+
+## 🚀 Download Tilky Engine
+
+The recommended way to install and use Tilky Engine is through the **Tilky Launcher**. The launcher handles project creation, engine installation, version switching, and opening projects with the correct engine version. No manual compilation is required!
+
+[**Download the Tilky Launcher from GitHub Releases →**](https://github.com/BenBerke/Tilky-Engine-Launcher/releases)
+
+The source build instructions below are intended for contributors and developers modifying the engine itself.
 
 ## 🕹️ Editor & Engine Workflow
 
