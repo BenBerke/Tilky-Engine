@@ -964,24 +964,26 @@ foreach(engine_asset_subdirectory
 endforeach()
 
 # MinGW runtime.
-foreach(runtime_dll
-        libstdc++-6.dll
-        libgcc_s_seh-1.dll
-        libwinpthread-1.dll
-)
-    if(EXISTS "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}")
-        list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
-                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
-                "${TILKY_LAUNCHER_PACKAGE_DIR}"
-        )
-    else()
-        message(FATAL_ERROR
-                "Missing MinGW runtime DLL: "
-                "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
-        )
-    endif()
-endforeach()
+if(MINGW)
+    foreach(runtime_dll
+            libstdc++-6.dll
+            libgcc_s_seh-1.dll
+            libwinpthread-1.dll
+    )
+        if(EXISTS "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}")
+            list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+                    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
+                    "${TILKY_LAUNCHER_PACKAGE_DIR}"
+            )
+        else()
+            message(FATAL_ERROR
+                    "Missing MinGW runtime DLL: "
+                    "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
+            )
+        endif()
+    endforeach()
+endif()
 
 add_custom_target(Launcher_Only
         ${TILKY_LAUNCHER_PACKAGE_COMMANDS}
