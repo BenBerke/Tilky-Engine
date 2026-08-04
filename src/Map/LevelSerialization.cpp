@@ -1295,7 +1295,7 @@ namespace LevelSerialization {
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
         }
-        catch (const std::exception& e) {
+        catch (const nlohmann::json::exception& e) {
             SetError(
                 errorMessage,
                 "Level BSON schema error while loading " +
