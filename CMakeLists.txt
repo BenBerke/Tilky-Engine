@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 4.1)
 
-project(Tilky_Engine LANGUAGES C CXX RC)
+# Tilky deploys its runtime DLLs explicitly below. Disable vcpkg's app-local
+# step so it cannot leave a partial or configuration-mismatched DLL set beside
+# the executables.
+set(VCPKG_APPLOCAL_DEPS OFF CACHE BOOL "Tilky handles runtime DLL deployment" FORCE)
+
+project(Tilky_Engine VERSION 0.1.0 LANGUAGES C CXX RC)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -360,6 +365,25 @@ set(TILKY_RUNTIME_SOURCES
 
 set(TILKY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/Generated")
 file(MAKE_DIRECTORY "${TILKY_GENERATED_DIR}")
+
+# Untouched LauncherMain copy for the separate launcher executable.
+# The original source is renamed to TilkyLauncherMain for Tilky_Engine.
+set(TILKY_GENERATED_LAUNCHER_MAIN
+        "${TILKY_GENERATED_DIR}/LauncherMain.generated.cpp"
+)
+
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/Launcher/LauncherMain.cpp"
+        "${TILKY_GENERATED_LAUNCHER_MAIN}"
+        COPYONLY
+)
+
+set_source_files_properties(
+        "${TILKY_GENERATED_LAUNCHER_MAIN}"
+        PROPERTIES
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON
+)
 
 # The editor currently starts tilky_exporter as a separate executable. Generate
 # a build-tree copy that starts Tilky_Engine --export instead, keeping the final
@@ -792,7 +816,6 @@ set_source_files_properties(
 # Remove files left by the previous executable layout. These are not targets in
 # this build and must not remain launchable beside the current binaries.
 foreach(stale_executable
-        Tilky_Launcher
         Tilky_All
         Tilky_Exporter
         tilky_exporter
@@ -827,6 +850,154 @@ target_link_libraries(Tilky_Engine PRIVATE
 
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
+)
+
+# ============================================================
+# Separate launcher executable
+# ============================================================
+
+set(TILKY_LAUNCHER_OUTPUT_DIR
+        "${CMAKE_BINARY_DIR}/LauncherBuild"
+)
+
+add_executable(Tilky_Launcher
+        "${TILKY_GENERATED_LAUNCHER_MAIN}"
+        ${TILKY_ICON_OBJECTS}
+)
+
+set_target_properties(Tilky_Launcher PROPERTIES
+        CXX_SCAN_FOR_MODULES OFF
+        OUTPUT_NAME "Tilky_Launcher"
+        RUNTIME_OUTPUT_DIRECTORY "${TILKY_LAUNCHER_OUTPUT_DIR}"
+        WIN32_EXECUTABLE "$<CONFIG:Release>"
+)
+
+target_include_directories(Tilky_Launcher PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+target_link_libraries(Tilky_Launcher PRIVATE
+        Tilky_LauncherCore
+)
+
+target_compile_definitions(Tilky_Launcher PRIVATE
+        TILKY_LAUNCHER=1
+)
+
+tilky_configure_unity_build(Tilky_Launcher)
+
+# ============================================================
+# Launcher-only package
+# ============================================================
+
+if(NOT DEFINED VCPKG_INSTALLED_DIR)
+    message(FATAL_ERROR "VCPKG_INSTALLED_DIR is not defined")
+endif()
+
+if(NOT DEFINED VCPKG_TARGET_TRIPLET)
+    message(FATAL_ERROR "VCPKG_TARGET_TRIPLET is not defined")
+endif()
+
+set(TILKY_LAUNCHER_PACKAGE_DIR
+        "${CMAKE_BINARY_DIR}/Launcher Only"
+)
+
+set(TILKY_LAUNCHER_VCPKG_ROOT
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}"
+)
+
+get_filename_component(
+        TILKY_LAUNCHER_MINGW_BIN_DIR
+        "${CMAKE_CXX_COMPILER}"
+        DIRECTORY
+)
+
+set(TILKY_LAUNCHER_PACKAGE_COMMANDS
+        COMMAND "${CMAKE_COMMAND}" -E rm -rf
+        "${TILKY_LAUNCHER_PACKAGE_DIR}"
+
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${TILKY_LAUNCHER_PACKAGE_DIR}"
+
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:Tilky_Launcher>"
+        "${TILKY_LAUNCHER_PACKAGE_DIR}/Tilky_Launcher${CMAKE_EXECUTABLE_SUFFIX}"
+
+        # Copy release DLLs first. Some dependencies only exist here.
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+        "${TILKY_LAUNCHER_VCPKG_ROOT}/bin"
+        "${TILKY_LAUNCHER_PACKAGE_DIR}"
+)
+
+# Debug DLLs overwrite matching release DLLs and add debug-only names such as
+# libpng16d.dll and libzlibd1.dll.
+if(TILKY_BUILD_TYPE_UPPER STREQUAL "DEBUG")
+    list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+            "${TILKY_LAUNCHER_VCPKG_ROOT}/debug/bin"
+            "${TILKY_LAUNCHER_PACKAGE_DIR}"
+    )
+endif()
+
+# Launcher assets.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/LauncherAssets")
+    list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/LauncherAssets"
+            "${TILKY_LAUNCHER_PACKAGE_DIR}/LauncherAssets"
+    )
+endif()
+
+foreach(engine_asset_subdirectory
+        Local
+        Fonts
+        AutoComplete
+)
+    if(EXISTS
+            "${CMAKE_CURRENT_SOURCE_DIR}/EngineAssets/${engine_asset_subdirectory}")
+        list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/EngineAssets/${engine_asset_subdirectory}"
+                "${TILKY_LAUNCHER_PACKAGE_DIR}/EngineAssets/${engine_asset_subdirectory}"
+        )
+    endif()
+endforeach()
+
+# MinGW runtime.
+foreach(runtime_dll
+        libstdc++-6.dll
+        libgcc_s_seh-1.dll
+        libwinpthread-1.dll
+)
+    if(EXISTS "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}")
+        list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
+                "${TILKY_LAUNCHER_PACKAGE_DIR}"
+        )
+    else()
+        message(FATAL_ERROR
+                "Missing MinGW runtime DLL: "
+                "${TILKY_LAUNCHER_MINGW_BIN_DIR}/${runtime_dll}"
+        )
+    endif()
+endforeach()
+
+add_custom_target(Launcher_Only
+        ${TILKY_LAUNCHER_PACKAGE_COMMANDS}
+
+        COMMAND "${CMAKE_COMMAND}" -E echo
+        "Launcher package created at: ${TILKY_LAUNCHER_PACKAGE_DIR}"
+
+        DEPENDS
+        Tilky_Launcher
+
+        COMMENT "Building self-contained Tilky launcher package"
+        VERBATIM
+)
+
+set_target_properties(Launcher_Only PROPERTIES
+        PROJECT_LABEL "Launcher Only"
 )
 
 # ============================================================
@@ -897,50 +1068,162 @@ add_dependencies(Tilky_Standalone Tilky_RuntimeAssets)
 
 
 # ============================================================
-# Runtime DLLs
+# Runtime DLL deployment
+#
+# vcpkg's automatic app-local step previously copied SDL3_image.dll without
+# all of its codec dependencies. Tilky therefore deploys every DLL from the
+# matching vcpkg runtime folders:
+#
+#   Debug:   release bin first, then debug/bin over it
+#   Release: release bin only
+#
+# Copying release first in Debug is intentional. Some ports only provide a
+# release-named runtime DLL, while debug-specific DLLs must take precedence
+# when both folders contain the same filename.
 # ============================================================
 
-function(copy_runtime_dlls target_name)
-    if(WIN32)
-        add_custom_command(TARGET ${target_name} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_RUNTIME_DLLS:${target_name}>
-                $<TARGET_FILE_DIR:${target_name}>
-                COMMAND_EXPAND_LISTS
-                COMMENT "Copying runtime DLLs for ${target_name}"
+if(WIN32)
+    if(NOT DEFINED VCPKG_INSTALLED_DIR OR VCPKG_INSTALLED_DIR STREQUAL "")
+        message(FATAL_ERROR
+                "VCPKG_INSTALLED_DIR is unavailable. Configure CMake with the vcpkg toolchain file."
         )
     endif()
+
+    if(NOT DEFINED VCPKG_TARGET_TRIPLET OR VCPKG_TARGET_TRIPLET STREQUAL "")
+        message(FATAL_ERROR
+                "VCPKG_TARGET_TRIPLET is unavailable. Configure CMake with the vcpkg toolchain file."
+        )
+    endif()
+
+    set(TILKY_VCPKG_TRIPLET_ROOT
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}"
+    )
+
+    set(TILKY_VCPKG_RELEASE_BIN
+            "${TILKY_VCPKG_TRIPLET_ROOT}/bin"
+    )
+
+    set(TILKY_VCPKG_DEBUG_BIN
+            "${TILKY_VCPKG_TRIPLET_ROOT}/debug/bin"
+    )
+
+    if(NOT IS_DIRECTORY "${TILKY_VCPKG_RELEASE_BIN}")
+        message(FATAL_ERROR
+                "Missing vcpkg runtime directory: ${TILKY_VCPKG_RELEASE_BIN}"
+        )
+    endif()
+
+    if(MINGW)
+        get_filename_component(TILKY_MINGW_BIN_DIR
+                "${CMAKE_CXX_COMPILER}"
+                DIRECTORY
+        )
+    else()
+        set(TILKY_MINGW_BIN_DIR "")
+    endif()
+
+    set(TILKY_DEPLOY_RUNTIME_SCRIPT
+            "${CMAKE_CURRENT_BINARY_DIR}/Generated/DeployRuntimeDlls.cmake"
+    )
+
+    file(MAKE_DIRECTORY
+            "${CMAKE_CURRENT_BINARY_DIR}/Generated"
+    )
+
+    file(WRITE "${TILKY_DEPLOY_RUNTIME_SCRIPT}" [=[
+if(NOT DEFINED TILKY_DESTINATION_DIR OR TILKY_DESTINATION_DIR STREQUAL "")
+    message(FATAL_ERROR "TILKY_DESTINATION_DIR was not provided")
+endif()
+
+file(MAKE_DIRECTORY "${TILKY_DESTINATION_DIR}")
+
+function(tilky_copy_dll_directory source_directory)
+    if("${source_directory}" STREQUAL "")
+        return()
+    endif()
+
+    if(NOT IS_DIRECTORY "${source_directory}")
+        message(FATAL_ERROR "Runtime DLL directory does not exist: ${source_directory}")
+    endif()
+
+    file(GLOB runtime_dlls
+            LIST_DIRECTORIES FALSE
+            "${source_directory}/*.dll"
+    )
+
+    foreach(runtime_dll IN LISTS runtime_dlls)
+        execute_process(
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${runtime_dll}"
+                "${TILKY_DESTINATION_DIR}"
+                RESULT_VARIABLE copy_result
+        )
+
+        if(NOT copy_result EQUAL 0)
+            message(FATAL_ERROR "Failed to deploy runtime DLL: ${runtime_dll}")
+        endif()
+    endforeach()
 endfunction()
 
-# ============================================================
-# MinGW runtime DLLs
-# ============================================================
+# Release DLLs are the fallback set. In Debug, debug DLLs are copied afterward
+# and therefore replace same-named release DLLs.
+tilky_copy_dll_directory("${TILKY_RELEASE_RUNTIME_DIR}")
+tilky_copy_dll_directory("${TILKY_DEBUG_RUNTIME_DIR}")
 
-if(WIN32 AND MINGW)
-    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-
-    function(copy_mingw_runtime_dlls target_name)
-        foreach(runtime_dll
-                libstdc++-6.dll
-                libgcc_s_seh-1.dll
-                libwinpthread-1.dll
+if(DEFINED TILKY_MINGW_RUNTIME_DIR
+        AND NOT TILKY_MINGW_RUNTIME_DIR STREQUAL "")
+    foreach(mingw_runtime_dll
+            libstdc++-6.dll
+            libgcc_s_seh-1.dll
+            libwinpthread-1.dll
+    )
+        set(mingw_runtime_path
+                "${TILKY_MINGW_RUNTIME_DIR}/${mingw_runtime_dll}"
         )
-            if(EXISTS "${MINGW_BIN_DIR}/${runtime_dll}")
-                add_custom_command(TARGET ${target_name} POST_BUILD
-                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "${MINGW_BIN_DIR}/${runtime_dll}"
-                        "$<TARGET_FILE_DIR:${target_name}>"
-                        COMMENT "Copying ${runtime_dll} for ${target_name}"
-                )
-            else()
-                message(WARNING "Could not find MinGW runtime DLL: ${MINGW_BIN_DIR}/${runtime_dll}")
-            endif()
-        endforeach()
+
+        if(NOT EXISTS "${mingw_runtime_path}")
+            message(FATAL_ERROR
+                    "Missing MinGW runtime DLL: ${mingw_runtime_path}"
+            )
+        endif()
+
+        execute_process(
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${mingw_runtime_path}"
+                "${TILKY_DESTINATION_DIR}"
+                RESULT_VARIABLE copy_result
+        )
+
+        if(NOT copy_result EQUAL 0)
+            message(FATAL_ERROR
+                    "Failed to deploy MinGW runtime DLL: ${mingw_runtime_path}"
+            )
+        endif()
+    endforeach()
+endif()
+]=])
+
+    function(tilky_deploy_runtime_dlls target_name)
+        if(NOT TARGET ${target_name})
+            message(FATAL_ERROR
+                    "tilky_deploy_runtime_dlls called for missing target: ${target_name}"
+            )
+        endif()
+
+        add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                "-DTILKY_DESTINATION_DIR=$<TARGET_FILE_DIR:${target_name}>"
+                "-DTILKY_RELEASE_RUNTIME_DIR=${TILKY_VCPKG_RELEASE_BIN}"
+                "-DTILKY_DEBUG_RUNTIME_DIR=$<$<CONFIG:Debug>:${TILKY_VCPKG_DEBUG_BIN}>"
+                "-DTILKY_MINGW_RUNTIME_DIR=${TILKY_MINGW_BIN_DIR}"
+                -P "${TILKY_DEPLOY_RUNTIME_SCRIPT}"
+                COMMENT "Deploying complete runtime DLL set for ${target_name}"
+                VERBATIM
+        )
     endfunction()
 
-    copy_mingw_runtime_dlls(Tilky_Engine)
-    copy_mingw_runtime_dlls(Tilky_Standalone)
-
+    tilky_deploy_runtime_dlls(Tilky_Engine)
+    tilky_deploy_runtime_dlls(Tilky_Standalone)
 endif()
 
 # ============================================================
@@ -955,8 +1238,76 @@ function(make_gui_in_release target_name)
     endif()
 endfunction()
 
-# keep Tilky_Engine console visible
+# Keep Tilky_Engine console visible.
 make_gui_in_release(Tilky_Standalone)
 
-copy_runtime_dlls(Tilky_Engine)
-copy_runtime_dlls(Tilky_Standalone)
+# ============================================================
+# Engine-version package
+#
+# Build this target from release-msys2 and upload/archive the generated folder:
+#
+#   cmake --build <release build directory> --target Tilky_EngineVersionPackage
+#
+# The launcher should extract that folder into:
+#
+#   Documents/Tilky Engine/EngineVersions/<version>
+# ============================================================
+
+set(TILKY_ENGINE_VERSION
+        "${PROJECT_VERSION}"
+        CACHE STRING
+        "Version folder name used by Tilky_EngineVersionPackage"
+)
+
+set(TILKY_ENGINE_VERSION_STAGE_DIR
+        "${CMAKE_BINARY_DIR}/EngineVersions/${TILKY_ENGINE_VERSION}"
+        CACHE PATH
+        "Staging directory for a complete installable Tilky engine version"
+)
+
+set(TILKY_ENGINE_VERSION_ASSET_COMMANDS "")
+
+foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}")
+        list(APPEND TILKY_ENGINE_VERSION_ASSET_COMMANDS
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}"
+                "${TILKY_ENGINE_VERSION_STAGE_DIR}/${asset_dir}"
+        )
+    endif()
+endforeach()
+
+add_custom_target(Tilky_EngineVersionPackage
+        COMMAND "${CMAKE_COMMAND}" -E rm -rf
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}"
+
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}"
+
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:Tilky_Engine>"
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Tilky_Engine.exe"
+
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:Tilky_Standalone>"
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Standalone.exe"
+
+        ${TILKY_ENGINE_VERSION_ASSET_COMMANDS}
+
+        COMMAND "${CMAKE_COMMAND}"
+        "-DTILKY_DESTINATION_DIR=${TILKY_ENGINE_VERSION_STAGE_DIR}"
+        "-DTILKY_RELEASE_RUNTIME_DIR=${TILKY_VCPKG_RELEASE_BIN}"
+        "-DTILKY_DEBUG_RUNTIME_DIR=$<$<CONFIG:Debug>:${TILKY_VCPKG_DEBUG_BIN}>"
+        "-DTILKY_MINGW_RUNTIME_DIR=${TILKY_MINGW_BIN_DIR}"
+        -P "${TILKY_DEPLOY_RUNTIME_SCRIPT}"
+
+        DEPENDS
+        Tilky_Engine
+        Tilky_Standalone
+        Tilky_RuntimeAssets
+
+        COMMENT
+        "Staging complete engine version ${TILKY_ENGINE_VERSION} at ${TILKY_ENGINE_VERSION_STAGE_DIR}"
+
+        VERBATIM
+)

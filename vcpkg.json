@@ -4,7 +4,12 @@
   "dependencies": [
     "spdlog",
     "sdl3",
-    "sdl3-image",
+    {
+      "name": "sdl3-image",
+      "features": [
+        "png"
+      ]
+    },
     "sdl3-ttf",
     "freetype",
     "nlohmann-json",
