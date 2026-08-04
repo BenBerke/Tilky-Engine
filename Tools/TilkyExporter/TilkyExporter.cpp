@@ -129,7 +129,7 @@ static bool CopyAllDlls(const fs::path &from, const fs::path &to) {
 // Main
 // ---------------------------------------------------------------------------
 
-int main(int argc, char *argv[]) {
+int main(int argc, char** argv) {
     if (argc != 4) {
         std::cerr << "Usage: tilky_exporter <project_metadata_path> "
                      "<destination_path> <standalone_exe_path>\n";
