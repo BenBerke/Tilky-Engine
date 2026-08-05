@@ -465,5 +465,8 @@
   "launcher.toast_evm_version_selected": "Now using engine version",
   "launcher.toast_evm_version_select_failed": "Couldn't update this project's engine version",
   "launcher.toast_evm_version_removed": "Removed engine version",
-  "launcher.toast_evm_version_remove_failed": "Couldn't remove engine version"
+  "launcher.toast_evm_version_remove_failed": "Couldn't remove engine version",
+  "launcher.engine_version_label": "Engine Version",
+  "launcher.engine_version_unpinned": "Unpinned",
+  "launcher.no_installed_versions_hint": "No engine versions installed — install one from Manage Versions first."
 }

@@ -137,6 +137,7 @@ namespace {
     bool wantOpenNewProjectPopup = false;
     std::array<char, PROJECT_NAME_MAX_LENGTH> newProjectNameBuffer{};
     std::string newProjectValidationError;
+    std::string newProjectSelectedVersion; // engine version to pin the new project to; empty = leave unset
 
     bool wantOpenRenamePopup = false;
     fs::path projectBeingRenamed;
@@ -1108,6 +1109,9 @@ namespace {
     if (wantOpenNewProjectPopup) {
         ImGui::OpenPopup(popupId);
         wantOpenNewProjectPopup = false;
+        // Same default the old auto-pin logic used (latest installed stable), but now
+        // surfaced via the picker below instead of being applied silently.
+        newProjectSelectedVersion = EVM().GetLatestInstalledStableVersion().value_or(std::string());
     }
 
     ImGui::SetNextWindowSize(ImVec2(420.0f, 0.0f), ImGuiCond_Appearing);
@@ -1137,6 +1141,53 @@ namespace {
 
         ImGui::Spacing();
 
+        // Engine-version picker - lets the new project be pinned to a specific
+        // installed version up front instead of always silently taking "latest
+        // installed stable" the way project creation did before this combo existed.
+        ImGui::TextUnformatted(Localisation::Get("launcher.engine_version_label").c_str());
+
+        std::vector<EngineVersionManager::VersionInfo> installedVersions = EVM().GetAvailableVersions();
+        installedVersions.erase(
+            std::remove_if(installedVersions.begin(), installedVersions.end(),
+                [](const EngineVersionManager::VersionInfo& v) { return !v.installed; }),
+            installedVersions.end()
+        );
+        std::sort(installedVersions.begin(), installedVersions.end(),
+            [](const EngineVersionManager::VersionInfo& a, const EngineVersionManager::VersionInfo& b) { return a.version > b.version; });
+
+        if (installedVersions.empty()) {
+            ImGui::TextDisabled("%s", Localisation::Get("launcher.no_installed_versions_hint").c_str());
+            newProjectSelectedVersion.clear();
+        } else {
+            const std::string comboLabel = newProjectSelectedVersion.empty()
+                ? Localisation::Get("launcher.engine_version_unpinned")
+                : ("v" + newProjectSelectedVersion);
+
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            if (ImGui::BeginCombo("##new_project_engine_version", comboLabel.c_str())) {
+                const bool isNoneSelected = newProjectSelectedVersion.empty();
+                if (ImGui::Selectable(Localisation::Get("launcher.engine_version_unpinned").c_str(), isNoneSelected)) {
+                    newProjectSelectedVersion.clear();
+                }
+                if (isNoneSelected) ImGui::SetItemDefaultFocus();
+
+                for (const EngineVersionManager::VersionInfo& info : installedVersions) {
+                    const bool isSelected = (info.version == newProjectSelectedVersion);
+
+                    std::string optionLabel = "v" + info.version;
+                    if (!info.channel.empty() && info.channel != "unknown") optionLabel += "  [" + info.channel + "]";
+
+                    if (ImGui::Selectable(optionLabel.c_str(), isSelected)) {
+                        newProjectSelectedVersion = info.version;
+                    }
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+
+        ImGui::Spacing();
+
         const bool triggerCreate = enterPressed || ImGui::Button(Localisation::Get("launcher.create").c_str());
 
         if (triggerCreate) {
@@ -1152,15 +1203,14 @@ namespace {
 
                 CopyLuaAutocompleteFiles(projectPath);
 
-                // New projects default to whatever engine version is already
-                // installed and newest-stable, so they open with a specific version
-                // from the start instead of falling back to "whatever's next to the
-                // launcher". If nothing is installed yet, this leaves engineVersion
-                // unset - same as the pre-EngineVersionManager behaviour - until the
-                // user installs one and picks it via "Change Version".
-                const std::optional<std::string> defaultVersion = EVM().GetLatestInstalledStableVersion();
-                if (defaultVersion) {
-                    ProjectManager::SetProjectEngineVersion(projectPath, *defaultVersion);
+                // Pin to whichever installed version the user chose in the picker
+                // above (pre-selected at latest-installed-stable, mirroring the old
+                // default, but overridable). If nothing is installed yet, this leaves
+                // engineVersion unset - same as the pre-EngineVersionManager
+                // behaviour - until the user installs one and pins it via "Change
+                // Version".
+                if (!newProjectSelectedVersion.empty()) {
+                    ProjectManager::SetProjectEngineVersion(projectPath, newProjectSelectedVersion);
                 }
 
                 PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
@@ -1179,6 +1229,7 @@ namespace {
             std::ranges::fill(newProjectNameBuffer, '\0');
 
             newProjectValidationError.clear();
+            newProjectSelectedVersion.clear();
             ImGui::CloseCurrentPopup();
         }
 
@@ -1629,6 +1680,12 @@ namespace {
         const ImVec2 cardTopLeft = ImGui::GetCursorScreenPos();
         const bool isSelected = (selectedProjectPath == entry.folderPath);
 
+        // Hoisted so both the right-aligned version badge below and the action-button
+        // row further down can use them without querying EngineVersionManager twice.
+        const bool hasPinnedVersion = !entry.isMissing && !entry.requiredEngineVersion.empty();
+        const bool versionInstalling = hasPinnedVersion && EVM().IsInstalling(entry.requiredEngineVersion);
+        const bool versionMissing = hasPinnedVersion && !versionInstalling && !EVM().IsVersionInstalled(entry.requiredEngineVersion);
+
         ImGui::BeginGroup();
         ImGui::Indent(12.0f);
         ImGui::Dummy(ImVec2(1.0f, 6.0f));
@@ -1660,6 +1717,34 @@ namespace {
         ImGui::TextDisabled("%s", subText.c_str());
         ImGui::EndGroup();
 
+        // Engine-version badge, right-aligned in the space the 0.6x-wide selectable
+        // above leaves free. Missing entries have no .tilky file to read a version
+        // from, so there's nothing to show here for them.
+        if (!entry.isMissing) {
+            const std::string versionText = hasPinnedVersion
+                ? ("v" + entry.requiredEngineVersion)
+                : Localisation::Get("launcher.engine_version_unpinned");
+
+            constexpr float VERSION_BADGE_RIGHT_MARGIN = 16.0f;
+            const ImVec2 versionTextSize = ImGui::CalcTextSize(versionText.c_str());
+            const ImVec2 returnCursor = ImGui::GetCursorScreenPos();
+
+            ImGui::SetCursorScreenPos(ImVec2(
+                cardTopLeft.x + cardWidth - versionTextSize.x - VERSION_BADGE_RIGHT_MARGIN,
+                nameBlockCursor.y + 2.0f
+            ));
+
+            if (versionMissing) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82f, 0.69f, 0.31f, 1.0f)); // pinned but not installed - same gold as the pinned-card outline
+                ImGui::TextUnformatted(versionText.c_str());
+                ImGui::PopStyleColor();
+            } else {
+                ImGui::TextDisabled("%s", versionText.c_str());
+            }
+
+            ImGui::SetCursorScreenPos(returnCursor);
+        }
+
         ImGui::Dummy(ImVec2(1.0f, 4.0f));
 
         if (entry.isMissing) {
@@ -1674,10 +1759,6 @@ namespace {
             }
         }
         else {
-            const bool hasPinnedVersion = !entry.requiredEngineVersion.empty();
-            const bool versionInstalling = hasPinnedVersion && EVM().IsInstalling(entry.requiredEngineVersion);
-            const bool versionMissing = hasPinnedVersion && !versionInstalling && !EVM().IsVersionInstalled(entry.requiredEngineVersion);
-
             if (versionInstalling) {
                 ImGui::BeginDisabled();
                 ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str());
@@ -1805,16 +1886,12 @@ namespace {
     }
 
     void DrawProjectList(const float availableHeight) {
-        if (projectListDirty) {
-            RefreshProjectList();
-        }
+        if (projectListDirty) RefreshProjectList();
 
         ProcessPendingImport();
         ProcessPendingLocate();
 
-        if (visibleProjectListDirty) {
-            RebuildVisibleProjectList();
-        }
+        if (visibleProjectListDirty) RebuildVisibleProjectList();
 
         ImGui::BeginChild("##project_scroll_region", ImVec2(0.0f, availableHeight), true);
 
@@ -1823,14 +1900,12 @@ namespace {
             if (projectEntries.empty()) {
                 ImGui::TextDisabled("%s", Localisation::Get("launcher.no_projects_title").c_str());
                 ImGui::TextDisabled("%s", Localisation::Get("launcher.no_projects_hint").c_str());
-            } else {
-                ImGui::TextDisabled("%s", Localisation::Get("launcher.no_search_results").c_str());
             }
-        } else {
+            else ImGui::TextDisabled("%s", Localisation::Get("launcher.no_search_results").c_str());
+        }
+        else {
             const float cardWidth = ImGui::GetContentRegionAvail().x;
-            for (ProjectEntry* entry : visibleProjectEntries) {
-                DrawProjectCard(*entry, cardWidth);
-            }
+            for (ProjectEntry* entry : visibleProjectEntries) DrawProjectCard(*entry, cardWidth);
         }
 
         ImGui::EndChild();
@@ -1843,29 +1918,22 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (ImGui::Button(Localisation::Get("launcher.quit").c_str())) {
-            quitRequested = true;
-        }
+        if (ImGui::Button(Localisation::Get("launcher.quit").c_str())) quitRequested = true;
 
         ImGui::SameLine();
         ImGui::TextDisabled("%s", Localisation::Get("launcher.shortcuts_hint").c_str());
 
         ImGui::SameLine();
 
-        if (languages.empty()) {
-            RefreshLanguages();
-        }
+        if (languages.empty()) RefreshLanguages();
 
         const std::string currentLangCode = Localisation::CurrentLanguage();
-        const std::string currentLangDisplay = languages.count(currentLangCode)
-            ? languages.at(currentLangCode)
-            : currentLangCode;
+        const std::string currentLangDisplay
+        = languages.count(currentLangCode) ? languages.at(currentLangCode) : currentLangCode;
 
         constexpr float comboWidth = 160.0f;
         const float availableWidth = ImGui::GetContentRegionAvail().x;
-        if (availableWidth > comboWidth) {
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availableWidth - comboWidth);
-        }
+        if (availableWidth > comboWidth) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + availableWidth - comboWidth);
 
         ImGui::SetNextItemWidth(comboWidth);
         if (ImGui::BeginCombo("##language_select", currentLangDisplay.c_str())) {
@@ -1876,7 +1944,8 @@ namespace {
                         if (Localisation::LoadLanguage(code)) {
                             spdlog::info("Changed language to {}", code);
                             SDL_SetWindowTitle(window, Localisation::Get("launcher.name").c_str());
-                        } else {
+                        }
+                        else {
                             spdlog::error("Failed to change language to {}", code);
                             PushToast(Localisation::Get("launcher.toast_language_failed"), ToastLevel::Error);
                         }
@@ -1896,9 +1965,7 @@ namespace {
         const ImGuiIO& io = ImGui::GetIO();
         if (io.WantTextInput) return;
 
-        if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-            projectListDirty = true;
-        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F5)) projectListDirty = true;
 
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N)) {
             std::fill(newProjectNameBuffer.begin(), newProjectNameBuffer.end(), '\0');
@@ -1906,10 +1973,7 @@ namespace {
             wantOpenNewProjectPopup = true;
         }
 
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F)) {
-            focusSearchBoxRequested = true;
-        }
-
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F)) focusSearchBoxRequested = true;
         if (!selectedProjectPath.empty()) {
             const auto it = std::find_if(projectEntries.begin(), projectEntries.end(),
                 [](const ProjectEntry& e) { return e.folderPath == selectedProjectPath; });
@@ -2000,10 +2064,7 @@ namespace LauncherApp {
 
         spdlog::info("Loading ImGui font from: {}", fontPath.string());
 
-        io.Fonts->AddFontFromFileTTF(
-            fontPath.string().c_str(),
-            18.0f
-        );
+        io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(), 18.0f);
 
         ImGui::StyleColorsDark();
         ApplyLauncherStyle();
@@ -2025,14 +2086,12 @@ namespace LauncherApp {
         // Background/logo texture
         const fs::path logoPath = basePath / "LauncherAssets" / "LogoWithWhiteText.png";
 
-        if (!fs::exists(logoPath)) {
-            spdlog::error("Background logo does not exists at: {}", logoPath.string());
-        } else {
+        if (!fs::exists(logoPath)) spdlog::error("Background logo does not exists at: {}", logoPath.string());
+        else {
             logo = IMG_LoadTexture(renderer, logoPath.string().c_str());
 
-            if (logo == nullptr) {
-                spdlog::error("Failed to load logo {}", SDL_GetError());
-            } else {
+            if (logo == nullptr) spdlog::error("Failed to load logo {}", SDL_GetError());
+            else {
                 SDL_SetTextureBlendMode(logo, SDL_BLENDMODE_BLEND);
                 SDL_SetTextureAlphaMod(logo, 145);
             }
