@@ -922,7 +922,7 @@ namespace {
                 ComponentUISprite &c = level.ui_sprites.Add(ownerID);
                 entity->componentsMask.set(CMP_UI_SPRITE);
 
-                c.textureIndex = spriteJson.value("textureIndex", -1);
+                c.texture = spriteJson.value("texture", "");
             }
         }
 
@@ -1147,7 +1147,7 @@ namespace {
         for (const ComponentUISprite &c: level.ui_sprites.components) {
             componentsJson["uiSprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"textureIndex", c.textureIndex}
+                {"texture", c.texture}
             });
         }
 

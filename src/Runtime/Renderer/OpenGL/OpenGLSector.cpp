@@ -51,9 +51,9 @@ void OpenGL::BuildGpuSectors() {
 
             gpuFloor.slopeData = {
                 static_cast<float>(floor.floor.slopeDirection),
-                floor.floor.slopeStrength,
+                floor.floor.slopeStrength * Constants::DegToRad,
                 static_cast<float>(floor.ceiling.slopeDirection),
-                floor.ceiling.slopeStrength
+                floor.ceiling.slopeStrength * Constants::DegToRad,
             };
 
             gpuFloor.floorColor = {

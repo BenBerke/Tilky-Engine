@@ -211,7 +211,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
                 transform->resolvedSize,
                 {255.0f, 255.0f, 255.0f, 255.0f},
                 transform->rotation,
-                sprite.textureIndex
+                sprite.texture
             );
         }
     }

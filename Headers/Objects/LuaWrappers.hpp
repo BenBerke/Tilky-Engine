@@ -1098,16 +1098,16 @@ struct ScriptUISprite {
         return GetComponent() != nullptr;
     }
 
-    [[nodiscard]] int GetTextureIndex() const {
+    [[nodiscard]] std::string GetTextureIndex() const {
         const ComponentUISprite* sprite = GetComponent();
-        if (sprite == nullptr) return -1;
-        return sprite->textureIndex;
+        if (sprite == nullptr) return "";
+        return sprite->texture;
     }
 
     void SetTextureIndex(const int index) const {
         ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return;
-        sprite->textureIndex = index;
+        sprite->texture = index;
     }
 };
 

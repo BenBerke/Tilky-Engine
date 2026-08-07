@@ -48,8 +48,7 @@ struct ComponentUIText {
 struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
 
-    //outdated
-    int textureIndex{};
+    std::string texture;
 };
 
 struct ComponentUITransform {

@@ -162,7 +162,7 @@ ID Level::CreateEntity(Entity& copy) {
         auto *s = entity.AddComponent<ComponentUISprite>();
         const ComponentUISprite *cs = copy.GetComponent<ComponentUISprite>();
 
-        s->textureIndex = cs->textureIndex;
+        s->texture = cs->texture;
     }
 
     if (copy.HasComponent<ComponentUIText>()) {
