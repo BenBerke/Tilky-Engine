@@ -186,6 +186,53 @@ namespace MapEditorInternal {
     extern AssetBrowser assetBrowser;
     extern bool assetBrowserInitialized;
 
+    // =========================================================================
+    //  UI Editor — shared state
+    // =========================================================================
+    // Added alongside the UIEditorUI.cpp / UIEditorDraw.cpp / UIEditorInput.cpp
+    // implementation. Mirrors the existing conventions above: selection is a
+    // bare stable ID (like selectedSectorID/selectedDotID/selectedWallID, NOT
+    // a cached Entity copy — resolve via LevelManager::CurrentLevel().GetEntity()
+    // right before use), and view/overlay state is plain extern data owned by
+    // EditorState.cpp.
+    //
+    // The UI canvas renders full-screen via UIEditorDraw() (the same way
+    // DrawGridDots()/DrawWalls()/DrawEntities() etc. draw the Map Editor's
+    // view directly onto the SDL window, unclipped, with ImGui panels
+    // floating on top) rather than into a bounded ImGui child panel — so
+    // uiCanvasPan/uiCanvasZoom play exactly the role cameraPos/editorZoom
+    // play for the Map Editor: uiCanvasPan is the canvas-space point
+    // currently at the centre of the screen.
+
+    constexpr float MIN_UI_CANVAS_ZOOM = 0.10f;
+    constexpr float MAX_UI_CANVAS_ZOOM = 8.00f;
+
+    // Selection within the UI Editor. Independent of selectedEntity/editingEntity
+    // above, which belong to the Map Editor's MODE_ENTITY and are left untouched.
+    extern ID selectedUIEntityID;
+    extern ID hoveredUIEntityID; // recomputed each frame in HandleUIEditorInput(); read-only elsewhere, for hover highlighting.
+
+    // Canvas pan/zoom. uiCanvasPan is the canvas-space point currently at
+    // the centre of the screen (mirrors cameraPos's role exactly).
+    extern Vector2 uiCanvasPan;
+    extern float uiCanvasZoom;
+
+    // The design resolution the canvas previews against. ComponentUITransform
+    // anchors are fractions (0..1) of this rect; (0,0) is the top-left corner.
+    extern Vector2 uiTargetResolution;
+
+    // Canvas overlay toggles, set from the toolbar in DrawUIEditorUI().
+    extern bool showUIGrid;
+    extern bool showUICenterLines;
+    extern bool showUISafeArea;
+
+    // Canvas-space (0,0 = top-left of uiTargetResolution) <-> screen-space,
+    // through the current uiCanvasPan/uiCanvasZoom and screenWidth/screenHeight
+    // (same inputs WorldToScreen/ScreenToWorld use for the Map Editor's own
+    // camera). Defined in UIEditorUI.cpp.
+    [[nodiscard]] Vector2 UICanvasToScreen(const Vector2& canvasPos);
+    [[nodiscard]] Vector2 ScreenToUICanvas(const Vector2& screenPos);
+
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);

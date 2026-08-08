@@ -1759,9 +1759,8 @@ namespace MapEditorInternal {
                 1.0f,
                 10.0f,
                 "%.2f"
-            )) {
-                hasUnsavedChanges = true;
-            }
+            )) hasUnsavedChanges = true;
+
 
             HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
 

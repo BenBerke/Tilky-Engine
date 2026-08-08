@@ -82,4 +82,22 @@ namespace MapEditorInternal {
     // Dot Mode — Wall inspector (right-click select)
     bool editingWall = false;
     ID selectedWallID = INVALID_ID;
+
+    // =========================================================================
+    //  UI Editor — shared state (see EditorInternal.hpp for the rationale)
+    // =========================================================================
+
+    ID selectedUIEntityID = INVALID_ID;
+    ID hoveredUIEntityID = INVALID_ID;
+
+    // Centre of the default 1920x1080 target resolution, mirroring how
+    // cameraPos = {0,0} starts the Map Editor centred on the world origin.
+    Vector2 uiCanvasPan = {960.0f, 540.0f};
+    float uiCanvasZoom = 1.0f;
+
+    Vector2 uiTargetResolution = {1920.0f, 1080.0f};
+
+    bool showUIGrid = false;
+    bool showUICenterLines = true;
+    bool showUISafeArea = false;
 }

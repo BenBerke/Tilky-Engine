@@ -213,7 +213,15 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     const Level& level = LevelManager::CurrentLevel();
 
-    const std::vector<std::string> referencedFileNames = CollectReferencedTextureFileNames(level);
+    std::vector<std::string> referencedFileNames =
+    CollectReferencedTextureFileNames(level);
+
+    for (const ComponentUISprite& uiSprite : level.ui_sprites.components) {
+        if (uiSprite.texture.empty()) continue;
+
+        if (std::find(referencedFileNames.begin(), referencedFileNames.end(), uiSprite.texture)
+            == referencedFileNames.end()) referencedFileNames.push_back(uiSprite.texture);
+    }
 
     std::vector<LoadedTextureSurface> loadedSurfaces;
     textureRegions.clear();
@@ -355,6 +363,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         SDL_DestroySurface(surface);
     }
+
 
     glGenTextures(1, &atlasTexture);
     glBindTexture(GL_TEXTURE_2D, atlasTexture);

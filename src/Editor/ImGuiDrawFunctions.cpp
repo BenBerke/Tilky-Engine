@@ -129,66 +129,6 @@ namespace {
     // UI primitive helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Standard field input width – call before the next widget
-    void FieldWidth(float width = 200.0f) { ImGui::SetNextItemWidth(width); }
-
-    // Small grey metadata text (IDs, read-only info)
-    void SmallMetaText(const char *fmt, ...) {
-        va_list args;
-        va_start(args, fmt);
-        char buf[256];
-        vsnprintf(buf, sizeof(buf), fmt, args);
-        va_end(args);
-        ImGui::TextDisabled("%s", buf);
-    }
-
-    // Tooltip on last item
-    void Tooltip(const char *text) {
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("%s", text);
-    }
-
-    // Section header with SeparatorText (falls back gracefully)
-    void BeginSection(const char *label) {
-        ImGui::Spacing();
-        ImGui::SeparatorText(label);
-    }
-
-    // (No-op closer kept for readability parity)
-    void EndSection() { ImGui::Spacing(); }
-
-    // Selection summary bar – compact coloured header line
-    // e.g.  DrawInspectorHeader("Sector", "#3")
-    void DrawInspectorHeader(const char *kind, const char *detail = nullptr) {
-        ImGuiStyle &style = ImGui::GetStyle();
-        // Slightly tinted background strip
-        ImVec2 pos  = ImGui::GetCursorScreenPos();
-        ImVec2 size = ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeightWithSpacing() + style.FramePadding.y * 2.0f);
-        ImDrawList *dl = ImGui::GetWindowDrawList();
-        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                          IM_COL32(60, 80, 110, 160), 4.0f);
-        ImGui::Indent(style.FramePadding.x);
-        ImGui::Spacing();
-        if (detail && detail[0] != '\0')
-            ImGui::Text("Selected: %s  %s", kind, detail);
-        else
-            ImGui::Text("Selected: %s", kind);
-        ImGui::Unindent(style.FramePadding.x);
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-    }
-
-    // Red "danger" delete button
-    bool DangerButton(const char *label) {
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.50f, 0.08f, 0.08f, 1.0f));
-        bool pressed = ImGui::Button(label);
-        ImGui::PopStyleColor(3);
-        return pressed;
-    }
-
     // Reset a float3 to zero with a small inline button
     bool ResetFloat3Button(const char *id, float *v) {
         ImGui::PushID(id);
@@ -236,6 +176,66 @@ namespace {
 // ─────────────────────────────────────────────────────────────────────────────
 namespace ImGuiDrawFunctions {
     using namespace Localisation;
+
+    // Selection summary bar – compact coloured header line
+    // e.g.  DrawInspectorHeader("Sector", "#3")
+    void DrawInspectorHeader(const char *kind, const char *detail) {
+        ImGuiStyle &style = ImGui::GetStyle();
+        // Slightly tinted background strip
+        ImVec2 pos  = ImGui::GetCursorScreenPos();
+        ImVec2 size = ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeightWithSpacing() + style.FramePadding.y * 2.0f);
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                          IM_COL32(60, 80, 110, 160), 4.0f);
+        ImGui::Indent(style.FramePadding.x);
+        ImGui::Spacing();
+        if (detail && detail[0] != '\0')
+            ImGui::Text("Selected: %s  %s", kind, detail);
+        else
+            ImGui::Text("Selected: %s", kind);
+        ImGui::Unindent(style.FramePadding.x);
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    }
+
+    // Red "danger" delete button
+    bool DangerButton(const char *label) {
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.50f, 0.08f, 0.08f, 1.0f));
+        bool pressed = ImGui::Button(label);
+        ImGui::PopStyleColor(3);
+        return pressed;
+    }
+
+    // (No-op closer kept for readability parity)
+    void EndSection() { ImGui::Spacing(); }
+
+    // Standard field input width – call before the next widget
+    void FieldWidth(const float width) { ImGui::SetNextItemWidth(width); }
+
+    // Section header with SeparatorText (falls back gracefully)
+    void BeginSection(const char *label) {
+        ImGui::Spacing();
+        ImGui::SeparatorText(label);
+    }
+
+    // Small grey metadata text (IDs, read-only info)
+    void SmallMetaText(const char *fmt, ...) {
+        va_list args;
+        va_start(args, fmt);
+        char buf[256];
+        vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        ImGui::TextDisabled("%s", buf);
+    }
+
+    // Tooltip on last item
+    void Tooltip(const char *text) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            ImGui::SetTooltip("%s", text);
+    }
 
     // Runtime-safe inspector window flags:
     // NoNav prevents the window from stealing keyboard focus (WASD stays functional).

@@ -37,6 +37,13 @@ namespace ImGuiDrawFunctions {
     bool DrawWallEditor     (Wall   &wall,   bool *open, int wallId,    bool draggable);
     bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
+    void SmallMetaText(const char* fmt, ...);
+    void Tooltip(const char *text);
+    void BeginSection(const char *label);
+    void FieldWidth(float width = 200.0f);
+    void EndSection();
+    bool DangerButton(const char *label);
+    void DrawInspectorHeader(const char *kind, const char *detail = nullptr);
 
     // ── Runtime-only HUD overlay ──────────────────────────────────────────────
     // Compact keybind hint shown only in Runtime Editor.

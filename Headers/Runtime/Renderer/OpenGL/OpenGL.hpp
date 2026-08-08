@@ -168,11 +168,11 @@ public:
     ) override;
 
     void DrawUIRectangle(
-        const Vector2& position,
-        const Vector2& size,
-        const Vector4& color = Vector4{255.0f, 255.0f, 255.0f, 255.0f},
-        float rotation = 0,
-        int textureIndex = -1
+        const Vector2 &position,
+        const Vector2 &size,
+        const Vector4 &color,
+        float rotation,
+        const std::string &texture
     ) const;
 
     [[nodiscard]] SDL_Window* GetWindow() const override {
