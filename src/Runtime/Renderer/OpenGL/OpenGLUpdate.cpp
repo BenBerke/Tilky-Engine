@@ -196,6 +196,30 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 #endif
     {
         ZoneScopedN("Rendering UI Sprites");
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        uiShader->use();
+
+        if (uiShader == nullptr) {
+            spdlog::critical("DrawUIRectangle failed: uiShader is null");
+            return;
+        }
+
+        if (uiShader->ID == 0) {
+            spdlog::critical("DrawUIRectangle failed: uiShader program ID is 0");
+            return;
+        }
+
+        if (uiVAO == 0 || glIsVertexArray(uiVAO) == GL_FALSE) {
+            spdlog::critical("DrawUIRectangle failed: invalid uiVAO {}", uiVAO);
+            return;
+        }
+
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {

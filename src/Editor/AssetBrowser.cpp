@@ -43,8 +43,7 @@ namespace {
     // Shrinks `text` (plus an ellipsis) until it fits inside `maxWidth`.
     // Relies on the currently bound ImGui font, so only call while drawing.
     std::string TruncateToWidth(const std::string& text, const float maxWidth) {
-        if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth)
-            return text;
+        if (ImGui::CalcTextSize(text.c_str()).x <= maxWidth) return text;
 
         constexpr const char* ellipsis = "...";
         const float ellipsisWidth = ImGui::CalcTextSize(ellipsis).x;
@@ -391,14 +390,6 @@ end
         const fs::path normalizedLevelPath = fs::weakly_canonical(levelPath, canonicalEc);
         const fs::path& levelPathToOpen = canonicalEc ? levelPath : normalizedLevelPath;
 
-        // Supplied-implementation integration point: LevelManager::
-        // LoadLevelFromFile(const fs::path&) is the authoritative,
-        // already-supplied level-opening implementation - it already owns
-        // updating LevelManager's loadedLevels/currentLevelIndex state, so
-        // that behavior is preserved unchanged by calling straight into it
-        // rather than duplicating any of its logic here. It reports
-        // detailed errors to stderr internally rather than returning them,
-        // so the message surfaced to the UI below is necessarily generic.
         if (!LevelManager::LoadLevelFromFile(levelPathToOpen)) {
             errorMessage = "Failed to open level (see log for details): " + levelPathToOpen.string();
             return false;
@@ -434,9 +425,9 @@ end
         if (entry.GetType() == AssetEntryType::Level) return "lvl";
 
         switch (entry.GetAssetKind()) {
-            case AssetKind::Sound:  return "wav";
+            case AssetKind::Sound: return "wav";
             case AssetKind::Script: return "lua";
-            default:                return "file";
+            default: return "file";
         }
     }
 
@@ -444,9 +435,9 @@ end
         if (entry.GetType() == AssetEntryType::Level) return IM_COL32(90, 60, 110, 255);
 
         switch (entry.GetAssetKind()) {
-            case AssetKind::Sound:  return IM_COL32(45, 70, 90, 255);
+            case AssetKind::Sound: return IM_COL32(45, 70, 90, 255);
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
-            default:                return IM_COL32(60, 60, 65, 255);
+            default: return IM_COL32(60, 60, 65, 255);
         }
     }
 }
@@ -477,9 +468,7 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
         std::istreambuf_iterator<char>{}
     };
 
-    scriptEditor.SetLanguageDefinition(
-        TextEditor::LanguageDefinition::Lua()
-    );
+    scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
 
     scriptEditor.SetText(contents);
 
@@ -697,7 +686,8 @@ void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
         try {
             fs::create_directories(root);
             spdlog::warn("Asset browser: created missing asset root folder: {}", root.string());
-        } catch (const fs::filesystem_error& e) {
+        }
+        catch (const fs::filesystem_error& e) {
             spdlog::error("Asset browser: failed to create asset root folder {}: {}", root.string(), e.what());
         }
     }
@@ -737,17 +727,14 @@ bool AssetBrowser::IsPathWithinRoot(const std::filesystem::path& absolutePath) c
 std::string AssetBrowser::DisplayRelative(const std::filesystem::path& absolutePath) const {
     const fs::path relative = absolutePath.lexically_relative(rootDirectory);
 
-    if (relative.empty() || relative == ".") {
+    if (relative.empty() || relative == ".")
         return rootDirectory.filename().empty() ? std::string("Assets") : rootDirectory.filename().string();
-    }
 
     return relative.generic_string();
 }
 
 AssetEntry* AssetBrowser::FindEntry(const std::filesystem::path& absolutePath) const {
-    for (const std::unique_ptr<AssetEntry>& entry : entries) {
-        if (entry->GetPath() == absolutePath) return entry.get();
-    }
+    for (const std::unique_ptr<AssetEntry>& entry : entries) if (entry->GetPath() == absolutePath) return entry.get();
     return nullptr;
 }
 
@@ -818,13 +805,15 @@ void AssetBrowser::ScanCurrentDirectory() {
                 if (!isDirectory && !dirEntry.is_regular_file()) continue; // skip devices, broken symlinks, etc.
 
                 entries.push_back(CreateAssetEntry(absolutePath, rootDirectory, isDirectory));
-            } catch (const fs::filesystem_error& e) {
+            }
+            catch (const fs::filesystem_error& e) {
                 // One bad entry (broken symlink, permission issue, etc.)
                 // must not take the whole listing down with it.
                 spdlog::warn("Asset browser: skipping inaccessible entry: {}", e.what());
             }
         }
-    } catch (const fs::filesystem_error& e) {
+    }
+    catch (const fs::filesystem_error& e) {
         spdlog::warn("Asset browser: failed to read directory {}: {}", currentDirectory.string(), e.what());
         entries.clear();
         scanFailed = true;
@@ -858,16 +847,14 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
     // ... convention rather than prompting to overwrite, since importing
     // happens from an asynchronous OS drop callback with no good place to
     // block for a confirmation dialog).
-    if (sourceIsDirectory) {
-        for (int suffix = 2; fs::exists(destination); ++suffix) {
+    if (sourceIsDirectory)
+        for (int suffix = 2; fs::exists(destination); ++suffix)
             destination = currentDirectory / (sourceAbsolutePath.filename().string() + " (" + std::to_string(suffix) + ")");
-        }
-    } else {
+    else {
         const std::string stem = sourceAbsolutePath.stem().string();
         const std::string ext = sourceAbsolutePath.extension().string();
-        for (int suffix = 2; fs::exists(destination); ++suffix) {
+        for (int suffix = 2; fs::exists(destination); ++suffix)
             destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
-        }
     }
 
     std::error_code copyEc;
@@ -876,9 +863,9 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
         // structure, rather than leaving this unimplemented - a plain
         // recursive fs::copy is enough to do this safely.
         fs::copy(sourceAbsolutePath, destination, fs::copy_options::recursive, copyEc);
-    } else {
-        fs::copy_file(sourceAbsolutePath, destination, fs::copy_options::none, copyEc);
     }
+    else fs::copy_file(sourceAbsolutePath, destination, fs::copy_options::none, copyEc);
+
 
     if (copyEc) {
         lastOperationError = "Failed to import \"" + sourceAbsolutePath.filename().string() + "\": " + copyEc.message();
@@ -912,12 +899,9 @@ void AssetBrowser::DrawBreadcrumbs() {
 
     ImGui::SameLine(0.0f, 10.0f);
 
-    const std::string rootLabel = rootDirectory.filename().empty()
-                                       ? std::string("Assets")
-                                       : rootDirectory.filename().string();
+    const std::string rootLabel = rootDirectory.filename().empty() ? std::string("Assets") : rootDirectory.filename().string();
 
-    if (ImGui::SmallButton(rootLabel.c_str()))
-        NavigateTo(rootDirectory);
+    if (ImGui::SmallButton(rootLabel.c_str())) NavigateTo(rootDirectory);
 
     const fs::path relative = currentDirectory.lexically_relative(rootDirectory);
 
@@ -933,8 +917,7 @@ void AssetBrowser::DrawBreadcrumbs() {
             ImGui::TextUnformatted("/");
             ImGui::SameLine(0.0f, 2.0f);
 
-            if (ImGui::SmallButton(part.string().c_str()))
-                NavigateTo(accumulated);
+            if (ImGui::SmallButton(part.string().c_str())) NavigateTo(accumulated);
 
             ImGui::PopID();
         }
@@ -946,8 +929,7 @@ void AssetBrowser::DrawSearchBar() {
     ImGui::InputTextWithHint("##AssetBrowserSearch", "Search this folder...", searchBuffer, sizeof(searchBuffer));
 
     ImGui::SameLine(0.0f, 4.0f);
-    if (ImGui::SmallButton("x"))
-        searchBuffer[0] = '\0';
+    if (ImGui::SmallButton("x")) searchBuffer[0] = '\0';
 }
 
 void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const ThumbnailProvider& thumbnailProvider) {
@@ -971,9 +953,8 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) entry.OnDoubleClick(*this);
     }
 
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
         selectedFile = entry.GetPath(); // right-click selects the target before its context menu opens
-    }
 
     if (!isDirectory && entry.GetAssetKind() != AssetKind::Other && ImGui::BeginDragDropSource()) {
         const std::string payloadPath = entry.GetPath().string();
@@ -1027,9 +1008,8 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
         );
     }
 
-    if (isSelected) {
+    if (isSelected)
         drawList->AddRect(topLeft, boxMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
-    }
 
     const std::string name = TruncateToWidth(entry.GetDisplayName(), tileSize);
     const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
@@ -1080,13 +1060,11 @@ void AssetBrowser::DrawEntries(const ThumbnailProvider& thumbnailProvider) {
     bool isFirstInRow = true;
 
     for (const std::unique_ptr<AssetEntry>& entry : entries) {
-        if (filtering && LowerCopy(entry->GetDisplayName()).find(searchLower) == std::string::npos)
-            continue;
+        if (filtering && LowerCopy(entry->GetDisplayName()).find(searchLower) == std::string::npos) continue;
 
         anyVisible = true;
 
-        if (!isFirstInRow)
-            ImGui::SameLine();
+        if (!isFirstInRow) ImGui::SameLine();
 
         ImGui::PushID(entry->GetPath().string().c_str());
         DrawEntryTile(*entry, tileSize, thumbnailProvider);
@@ -1103,9 +1081,8 @@ void AssetBrowser::DrawEntries(const ThumbnailProvider& thumbnailProvider) {
 
     // Clicking truly empty space (not any tile, not a popup) clears the
     // selection.
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered())
         selectedFile.clear();
-    }
 
     DrawEmptySpaceContextMenu();
 }
@@ -1114,9 +1091,7 @@ AssetBrowserModalAction AssetBrowser::DrawNameEntryModalBody(const std::string& 
     ImGui::TextWrapped("%s", description.c_str());
     ImGui::Spacing();
 
-    if (ImGui::IsWindowAppearing()) {
-        ImGui::SetKeyboardFocusHere();
-    }
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
 
     ImGui::SetNextItemWidth(280.0f);
     const bool enterPressed = ImGui::InputText(
@@ -1124,9 +1099,8 @@ AssetBrowserModalAction AssetBrowser::DrawNameEntryModalBody(const std::string& 
         ImGuiInputTextFlags_EnterReturnsTrue
     );
 
-    if (!activeModal.errorMessage.empty()) {
+    if (!activeModal.errorMessage.empty())
         ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.0f), "%s", activeModal.errorMessage.c_str());
-    }
 
     ImGui::Spacing();
 
@@ -1269,9 +1243,7 @@ void AssetBrowser::DrawRenameModal() {
         ImGui::Text("Renaming \"%s\"", activeModal.targetPath.filename().string().c_str());
         ImGui::Spacing();
 
-        if (ImGui::IsWindowAppearing()) {
-            ImGui::SetKeyboardFocusHere();
-        }
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
 
         ImGui::SetNextItemWidth(280.0f);
         const bool enterPressed = ImGui::InputText(
@@ -1279,9 +1251,8 @@ void AssetBrowser::DrawRenameModal() {
             ImGuiInputTextFlags_EnterReturnsTrue
         );
 
-        if (!activeModal.errorMessage.empty()) {
+        if (!activeModal.errorMessage.empty())
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.0f), "%s", activeModal.errorMessage.c_str());
-        }
 
         ImGui::Spacing();
         const bool renamePressed = ImGui::Button("Rename") || enterPressed;
@@ -1303,9 +1274,7 @@ void AssetBrowser::DrawRenameModal() {
 
                 Refresh();
             }
-            else {
-                activeModal.errorMessage = error;
-            }
+            else activeModal.errorMessage = error;
         }
         else if (cancelPressed) {
             activeModal.kind = AssetBrowserModalKind::None;
@@ -1333,13 +1302,11 @@ void AssetBrowser::DrawDeleteConfirmModal() {
         ImGui::TextWrapped("Delete \"%s\"?", relative.c_str());
 
         std::error_code emptyEc;
-        if (activeModal.targetIsDirectory && !fs::is_empty(activeModal.targetPath, emptyEc) && !emptyEc) {
+        if (activeModal.targetIsDirectory && !fs::is_empty(activeModal.targetPath, emptyEc) && !emptyEc)
             ImGui::TextWrapped("This folder is not empty - everything inside it will be deleted too.");
-        }
 
-        if (!activeModal.errorMessage.empty()) {
+        if (!activeModal.errorMessage.empty())
             ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.0f), "%s", activeModal.errorMessage.c_str());
-        }
 
         ImGui::Spacing();
         const bool deletePressed = ImGui::Button("Delete");
@@ -1357,16 +1324,13 @@ void AssetBrowser::DrawDeleteConfirmModal() {
                 ClearSelectionUnder(deletedPath);
                 if (pendingConfirmedPath.has_value()) {
                     const fs::path pendingRel = pendingConfirmedPath->lexically_relative(deletedPath);
-                    if (*pendingConfirmedPath == deletedPath || (!pendingRel.empty() && *pendingRel.begin() != "..")) {
+                    if (*pendingConfirmedPath == deletedPath || (!pendingRel.empty() && *pendingRel.begin() != ".."))
                         pendingConfirmedPath.reset();
-                    }
                 }
 
                 Refresh();
             }
-            else {
-                activeModal.errorMessage = error;
-            }
+            else activeModal.errorMessage = error;
         }
         else if (cancelPressed) {
             activeModal.kind = AssetBrowserModalKind::None;
@@ -1397,15 +1361,12 @@ void AssetBrowser::HandleKeyboardShortcuts() {
     AssetEntry* selectedEntry = FindEntry(selectedFile);
     if (selectedEntry == nullptr) return; // stale selection (e.g. deleted externally) - nothing to act on
 
-    if (ImGui::IsKeyPressed(ImGuiKey_F2)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_F2))
         RequestRename(selectedEntry->GetPath(), selectedEntry->GetType() == AssetEntryType::Directory);
-    }
-    else if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+    else if (ImGui::IsKeyPressed(ImGuiKey_Delete))
         RequestDelete(selectedEntry->GetPath(), selectedEntry->GetType() == AssetEntryType::Directory);
-    }
-    else if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
+    else if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
         selectedEntry->OnDoubleClick(*this);
-    }
 }
 
 void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
@@ -1481,11 +1442,8 @@ const std::filesystem::path& AssetBrowser::GetSelectedFile() const {
 }
 
 bool AssetBrowser::ConsumePendingConfirmedSelection(const AssetKind expectedKind, std::filesystem::path& outAbsolutePath) {
-    if (!pendingConfirmedPath.has_value())
-        return false;
-
-    if (pendingConfirmedKind != expectedKind)
-        return false; // wrong kind - leave it queued for a matching field
+    if (!pendingConfirmedPath.has_value()) return false;
+    if (pendingConfirmedKind != expectedKind) return false; // wrong kind - leave it queued for a matching field
 
     outAbsolutePath = *pendingConfirmedPath;
     pendingConfirmedPath.reset();
