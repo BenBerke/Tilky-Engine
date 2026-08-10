@@ -87,15 +87,8 @@ namespace {
         float tMin = 0.0f;
         float tMax = maxDistance;
 
-        const auto checkAxis = [&](
-            const float originAxis,
-            const float dirAxis,
-            const float minAxis,
-            const float maxAxis
-        ) {
-            if (std::abs(dirAxis) < Constants::Epsilon) {
-                return originAxis >= minAxis && originAxis <= maxAxis;
-            }
+        const auto checkAxis = [&](const float originAxis, const float dirAxis, const float minAxis, const float maxAxis) {
+            if (std::abs(dirAxis) < Constants::Epsilon) return originAxis >= minAxis && originAxis <= maxAxis;
 
             float t1 = (minAxis - originAxis) / dirAxis;
             float t2 = (maxAxis - originAxis) / dirAxis;
@@ -117,9 +110,9 @@ namespace {
     }
 
     bool IsSectorOpenAtHeight(const Sector& sector, const float height) {
-        for (const SectorFloor& floor : sector.floors) {
-            if (height > floor.floor.height && height < floor.ceiling.height) return true;
-        }
+        for (const auto&[floor, ceiling] : sector.floors)
+            if (height > floor.height && height < ceiling.height) return true;
+
 
         return false;
     }
@@ -140,13 +133,11 @@ namespace {
         std::ranges::sort(heights);
 
         heights.erase(
-            std::unique(
-                heights.begin(),
-                heights.end(),
-                [](const float a, const float b) {
-                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
-                }
-            ),
+            std::ranges::unique(heights,
+                                [](const float a, const float b) {
+                                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
+                                }
+            ).begin(),
             heights.end()
         );
 
@@ -164,12 +155,8 @@ namespace {
 
             if (frontOpen == backOpen) continue;
 
-            if (!spans.empty() && std::abs(spans.back().top - bottom) <= MIN_WALL_HEIGHT) {
-                spans.back().top = top;
-            }
-            else {
-                spans.push_back({bottom, top});
-            }
+            if (!spans.empty() && std::abs(spans.back().top - bottom) <= MIN_WALL_HEIGHT) spans.back().top = top;
+            else spans.push_back({bottom, top});
         }
 
         return spans;

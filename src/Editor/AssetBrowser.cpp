@@ -267,7 +267,7 @@ namespace {
         fs::path& createdLevelPath,
         std::string& errorMessage
     ) {
-        (void)createdLevelPath; // only assigned on the success path, unreachable until the TODO below is resolved
+        (void)createdLevelPath;
 
         std::string validationError;
         if (!IsValidNewFileSystemName(levelName, validationError)) {
