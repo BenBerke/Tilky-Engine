@@ -1865,9 +1865,8 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 ShowNotification(Get("levels.notification.saved").c_str());
-            } else {
-                ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
             }
+            else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
         }
         PopAccentStyle();
         HoverTooltip(Get("editor.tooltip.save").c_str());

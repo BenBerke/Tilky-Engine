@@ -338,7 +338,7 @@ namespace {
         UpdateFpsCounter();
     }
 
-    void ShutdownEditor(const Level& level) {
+    void ShutdownEditor(Level& level) {
         RuntimeEditor::Shutdown(level);
     }
 

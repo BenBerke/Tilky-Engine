@@ -265,6 +265,8 @@ namespace RuntimeEditor {
             return;
         }
 
+        transform->position = level.runtimeCamPos;
+
         camera->forward = GetCameraForward(*camera);
 
         spdlog::info("Runtime editor is using renderer editor-only camera");
@@ -534,8 +536,10 @@ namespace RuntimeEditor {
         RuntimeEditorUi::Draw(level);
     }
 
-    void Shutdown(const Level& level) {
+    void Shutdown(Level& level) {
         (void)level;
+
+        level.runtimeCamPos = transform->position;
 
         runtimeRenderer = nullptr;
         camera = nullptr;

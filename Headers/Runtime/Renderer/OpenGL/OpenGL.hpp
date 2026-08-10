@@ -33,7 +33,7 @@ namespace OpenGLRendererInternal {
     constexpr int ATLAS_SIZE = 4096;
     constexpr int ATLAS_PADDING = 2;
 
-    inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+    inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
 
     // Glyph Characters
     struct Character {

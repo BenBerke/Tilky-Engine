@@ -96,9 +96,7 @@ namespace {
                     RuntimeSession::PLAY
                 );
 
-                if (started) {
-                    spdlog::info("Starting the game loop");
-                }
+                if (started) spdlog::info("Starting the game loop");
                 break;
 
             case EngineMode::RUNTIME_EDITOR:
@@ -203,8 +201,7 @@ namespace {
     bool UpdateEditorMode() {
         Editor::Update();
 
-        if (InputManager::QuitRequested() ||
-            Editor::ShutdownRequested()) {
+        if (InputManager::QuitRequested() || Editor::ShutdownRequested()) {
             StopCurrentMode(false);
             return false;
         }

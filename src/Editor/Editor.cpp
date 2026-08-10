@@ -79,8 +79,7 @@ namespace Editor {
         const fs::path iconPath = ProjectManager::GetEngineBasePath() / "LauncherAssets" / "Fox.png";
         SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
 
-        if (windowIcon == nullptr)
-            spdlog::error("Map editor failed to load window icon {}", SDL_GetError());
+        if (windowIcon == nullptr) spdlog::error("Map editor failed to load window icon {}", SDL_GetError());
         else {
             if (!SDL_SetWindowIcon(window, windowIcon)) spdlog::error("Mapeditor failed to set window icon {}", SDL_GetError());
             SDL_DestroySurface(windowIcon);
@@ -133,7 +132,9 @@ namespace Editor {
     void Update() {
         using namespace MapEditorInternal;
 
-        if (ProcessPendingLevelLoad()) {
+        if (ProcessPendingLevelLoad()) [[unlikely]] {
+            cameraPos = LevelManager::CurrentLevel().editorCamPos;
+
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderClear(renderer);
             SDL_RenderPresent(renderer);
@@ -144,8 +145,6 @@ namespace Editor {
             LevelManager::loadedLevels.emplace_back();
             LevelManager::currentLevelIndex = 0;
         }
-
-        Level &level = LevelManager::CurrentLevel();
 
         if (currentTheme == THEME_DARK)
             SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
@@ -219,6 +218,8 @@ namespace Editor {
 
     void Destroy() {
         using namespace MapEditorInternal;
+
+        LevelManager::CurrentLevel().editorCamPos = cameraPos;
 
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();

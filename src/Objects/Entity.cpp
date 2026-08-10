@@ -56,7 +56,6 @@ T* Entity::AddComponent() {
         AddComponentBit(componentsMask, Bit); \
         return &level.Storage.Add(id); \
     } else
-
     TILKY_COMPONENTS(ENTITY_ADD_COMPONENT_CASE)
     {
         static_assert(AlwaysFalseV<T>, "Unsupported component type in Entity::AddComponent<T>()");

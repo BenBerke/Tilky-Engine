@@ -20,7 +20,7 @@ namespace RuntimeEditor {
         float screenHeight
     );
     void Draw(Level& level);
-    void Shutdown(const Level& level);
+    void Shutdown(Level& level);
 }
 
 #endif //TILKY_ENGINE_RUNTIMEEDITOR_H

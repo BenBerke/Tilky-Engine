@@ -1217,6 +1217,40 @@ namespace {
 
         levelData["components"] = componentsJson;
     }
+
+    void LoadMetadata(const json& levelData, Level& level) {
+        if (levelData.contains("metadata")) {
+            const json& metadatajson = levelData["metadata"];
+
+            if (metadatajson.contains("editorCamPos") && metadatajson["editorCamPos"].is_array()) {
+                level.editorCamPos.x = metadatajson["editorCamPos"][0];
+                level.editorCamPos.y = metadatajson["editorCamPos"][1];
+            }
+
+            if (metadatajson.contains("runtimeCamPos") && metadatajson["runtimeCamPos"].is_array()) {
+                level.runtimeCamPos.x = metadatajson["runtimeCamPos"][0];
+                level.runtimeCamPos.y = metadatajson["runtimeCamPos"][1];
+                level.runtimeCamPos.z = metadatajson["runtimeCamPos"][2];
+            }
+        }
+    }
+
+    void SaveMetadata(json &levelData, const Level &level) {
+        json metadatajson;
+
+        metadatajson["editorCamPos"] = {
+            level.editorCamPos.x,
+            level.editorCamPos.y,
+        };
+
+        metadatajson["runtimeCamPos"] = {
+            level.runtimeCamPos.x,
+            level.runtimeCamPos.y,
+            level.runtimeCamPos.z,
+        };
+
+        levelData["metadata"] = metadatajson;
+    }
 }
 
 namespace LevelSerialization {
@@ -1294,6 +1328,7 @@ namespace LevelSerialization {
             LoadTextures(levelData, loadedLevel);
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
+            LoadMetadata(levelData, loadedLevel);
         }
         catch (const nlohmann::json::exception& e) {
             SetError(
@@ -1341,6 +1376,7 @@ namespace LevelSerialization {
         SaveSectors(levelData, level);
         SaveTextures(levelData, level);
         SaveSounds(levelData, level);
+        SaveMetadata(levelData, level);
 
         try {
             fs::create_directories(levelFile.parent_path());

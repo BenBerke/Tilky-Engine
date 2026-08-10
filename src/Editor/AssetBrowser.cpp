@@ -253,9 +253,7 @@ namespace {
 
         if (stem.size() >= ext.size()) {
             const std::string tail = stem.substr(stem.size() - ext.size());
-            if (LowerCopy(tail) == LowerCopy(ext)) {
-                stem.resize(stem.size() - ext.size());
-            }
+            if (LowerCopy(tail) == LowerCopy(ext)) stem.resize(stem.size() - ext.size());
         }
 
         return fs::path(stem + ext);

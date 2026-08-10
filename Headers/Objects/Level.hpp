@@ -75,6 +75,10 @@ struct Level {
     ComponentStorage<ComponentUISprite> ui_sprites;
     ComponentStorage<ComponentUIText> ui_texts;
 
+    //todo remove from standalone through #ifdef
+    Vector2 editorCamPos = {0.0f, 0.0f};
+    Vector3 runtimeCamPos = {0.0f, 0.0f, 0.0f};
+
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;
     ID CreateEntity(bool uiEntity);

@@ -18,10 +18,7 @@
 /// Anything in this script can technically be achieved through a user-made Lua script.
 
 namespace {
-    Vector3 GetCameraPosition(
-        const ComponentPlayerController& controller,
-        const ComponentTransform& playerTransform
-    ) {
+    Vector3 GetCameraPosition(const ComponentPlayerController& controller, const ComponentTransform& playerTransform) {
         return {
             playerTransform.position.x,
             playerTransform.position.y + controller.eyeHeight,
@@ -74,15 +71,11 @@ namespace PlayerControllerSystem {
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::timeInSeconds;
 
-        const double jumpBufferSeconds =
-            static_cast<double>(controller.jumpBufferMs) / 1000.0;
+        const double jumpBufferSeconds = static_cast<double>(controller.jumpBufferMs) / 1000.0;
 
-        const double jumpBufferAge =
-            GameTime::timeInSeconds - jumpPressedTimeStamp;
+        const double jumpBufferAge = GameTime::timeInSeconds - jumpPressedTimeStamp;
 
-        const bool hasBufferedJump =
-            jumpBufferAge >= 0.0 &&
-            jumpBufferAge <= jumpBufferSeconds;
+        const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
 
         if (hasBufferedJump && rigidbody.isGrounded) {
             rigidbody.velocity.y = controller.jumpPower;
@@ -91,9 +84,7 @@ namespace PlayerControllerSystem {
             jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
         }
 
-        if (jumpBufferAge > jumpBufferSeconds) {
-            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
-        }
+        if (jumpBufferAge > jumpBufferSeconds) jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 
         controller.currentSpeed =
             InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
@@ -103,28 +94,17 @@ namespace PlayerControllerSystem {
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
 
-
-        if (sphereCollider != nullptr) {
-            sphereCollider->isActive = !controller.noClip;
-        }
+        if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
 
         camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
         camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
-        camera.pitch = std::clamp(
-            camera.pitch,
-            controller.minPitch,
-            controller.maxPitch
-        );
+        camera.pitch = std::clamp(camera.pitch, controller.minPitch, controller.maxPitch);
 
         camera.yaw = std::fmod(camera.yaw, 360.0f);
         if (camera.yaw < 0.0f) camera.yaw += 360.0f;
 
-        camera.yaw = std::clamp(
-            camera.yaw,
-            controller.minYaw,
-            controller.maxYaw
-        );
+        camera.yaw = std::clamp(camera.yaw, controller.minYaw, controller.maxYaw);
 
         const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
 
@@ -135,11 +115,8 @@ namespace PlayerControllerSystem {
         const Vector2 right = {yawCos, -yawSin};
 
         if (input.x != 0.0f || input.y != 0.0f) {
-            const Vector2 moveDirection =
-                Vector2Math::Normalized(right * input.x + forward * input.y);
-
-            const Vector2 desiredVelocity =
-                moveDirection * controller.currentSpeed;
+            const Vector2 moveDirection = Vector2Math::Normalized(right * input.x + forward * input.y);
+            const Vector2 desiredVelocity = moveDirection * controller.currentSpeed;
 
             rigidbody.velocity.x = desiredVelocity.x;
             rigidbody.velocity.z = desiredVelocity.y;

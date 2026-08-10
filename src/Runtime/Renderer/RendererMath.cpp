@@ -13,16 +13,6 @@ namespace RendererMath {
         };
     }
 
-    // Legacy
-    Vector2 WorldToDebugNdc(const Vector2& worldPoint, const Vector2& playerPos) {
-        const Vector2 relative = {
-            worldPoint.x - playerPos.x,
-            worldPoint.y - playerPos.y
-        };
-
-        return {relative.x / DEBUG_MAP_SCALE, relative.y / DEBUG_MAP_SCALE};
-    }
-
     float GetViewDepth(const Vector4& point, const Vector2& playerPos, const float playerAngle) {
         const Vector2 worldPos = { point.x, point.y};
         const Vector2 relative = {worldPos.x - playerPos.x, worldPos.y - playerPos.y};
