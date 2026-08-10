@@ -1218,6 +1218,7 @@ namespace {
         levelData["components"] = componentsJson;
     }
 
+#ifndef TILKY_STANDALONE
     void LoadMetadata(const json& levelData, Level& level) {
         if (levelData.contains("metadata")) {
             const json& metadatajson = levelData["metadata"];
@@ -1251,6 +1252,7 @@ namespace {
 
         levelData["metadata"] = metadatajson;
     }
+#endif
 }
 
 namespace LevelSerialization {
@@ -1328,7 +1330,10 @@ namespace LevelSerialization {
             LoadTextures(levelData, loadedLevel);
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
+
+#ifndef TILKY_STANDALONE
             LoadMetadata(levelData, loadedLevel);
+#endif
         }
         catch (const nlohmann::json::exception& e) {
             SetError(
@@ -1376,11 +1381,11 @@ namespace LevelSerialization {
         SaveSectors(levelData, level);
         SaveTextures(levelData, level);
         SaveSounds(levelData, level);
-        SaveMetadata(levelData, level);
 
-        try {
-            fs::create_directories(levelFile.parent_path());
-        }
+#ifndef TILKY_STANDALONE
+        SaveMetadata(levelData, level);
+#endif
+        try {fs::create_directories(levelFile.parent_path());}
         catch (const json::exception& e) {
             SetError(
                 errorMessage,

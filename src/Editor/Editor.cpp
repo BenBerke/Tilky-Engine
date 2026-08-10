@@ -133,8 +133,9 @@ namespace Editor {
         using namespace MapEditorInternal;
 
         if (ProcessPendingLevelLoad()) [[unlikely]] {
+#ifndef TILKY_STANDALONE
             cameraPos = LevelManager::CurrentLevel().editorCamPos;
-
+#endif
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderClear(renderer);
             SDL_RenderPresent(renderer);
@@ -218,9 +219,9 @@ namespace Editor {
 
     void Destroy() {
         using namespace MapEditorInternal;
-
+#ifndef TILKY_STANDALONE
         LevelManager::CurrentLevel().editorCamPos = cameraPos;
-
+#endif
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();

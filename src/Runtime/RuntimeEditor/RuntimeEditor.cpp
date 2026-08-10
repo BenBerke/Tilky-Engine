@@ -264,9 +264,9 @@ namespace RuntimeEditor {
             spdlog::error("RuntimeEditor::Start failed: editor camera or transform was not created");
             return;
         }
-
+#ifndef TILKY_STANDALONE
         transform->position = level.runtimeCamPos;
-
+#endif
         camera->forward = GetCameraForward(*camera);
 
         spdlog::info("Runtime editor is using renderer editor-only camera");
@@ -538,9 +538,9 @@ namespace RuntimeEditor {
 
     void Shutdown(Level& level) {
         (void)level;
-
+#ifndef TILKY_STANDALONE
         level.runtimeCamPos = transform->position;
-
+#endif
         runtimeRenderer = nullptr;
         camera = nullptr;
         transform = nullptr;
