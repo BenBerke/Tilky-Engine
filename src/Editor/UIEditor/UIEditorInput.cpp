@@ -7,8 +7,6 @@
 #include "Headers/UISystem.hpp"
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/Objects/Entity.hpp"
-// ASSUMPTION: same as UIEditorUI.cpp/UIEditorDraw.cpp - adjust to wherever
-// ComponentUITransform actually lives in your project.
 #include "Headers/Objects/Components.hpp"
 
 #include <algorithm>
@@ -134,8 +132,7 @@ namespace {
             offset.x * sinA + offset.y * cosA
         };
 
-        return local.x >= -size.x * 0.5f && local.x <= size.x * 0.5f &&
-               local.y >= -size.y * 0.5f && local.y <= size.y * 0.5f;
+        return local.x >= -size.x * 0.5f && local.x <= size.x * 0.5f && local.y >= -size.y * 0.5f && local.y <= size.y * 0.5f;
     }
 
     ID UIEntityAtCanvasPoint(Level& level, const Vector2& canvasPoint) {
@@ -143,9 +140,8 @@ namespace {
         // DrawExistingSectors()'s hover scan in MapEditorDrawing.cpp.
         for (int i = static_cast<int>(level.entities.size()) - 1; i >= 0; --i) {
             Entity& entity = level.entities[i];
-            ComponentUITransform* transform = entity.GetComponent<ComponentUITransform>();
-            if (transform != nullptr && CanvasPointInsideTransform(canvasPoint, *transform))
-                return entity.id;
+            auto* transform = entity.GetComponent<ComponentUITransform>();
+            if (transform != nullptr && CanvasPointInsideTransform(canvasPoint, *transform)) return entity.id;
         }
         return INVALID_ID;
     }
@@ -173,9 +169,8 @@ namespace {
         if (outwardLen > 0.0001f) {
             outward.x /= outwardLen;
             outward.y /= outwardLen;
-        } else {
-            outward = {0.0f, -1.0f};
         }
+        else outward = {0.0f, -1.0f};
 
         outRotateHandle = {
             topCenterScreen.x + outward.x * UI_ROTATE_HANDLE_OFFSET,
@@ -232,10 +227,8 @@ namespace {
                 // On a non-stretched axis UISystem treats scale as the final
                 // pixel size. Dividing by resolvedSize produced a ratio and
                 // then resolved that ratio as a size on the following frame.
-                if (transform->anchorMin.x == transform->anchorMax.x)
-                    transform->scale.x = localMouse.x;
-                if (transform->anchorMin.y == transform->anchorMax.y)
-                    transform->scale.y = localMouse.y;
+                if (transform->anchorMin.x == transform->anchorMax.x) transform->scale.x = localMouse.x;
+                if (transform->anchorMin.y == transform->anchorMax.y) transform->scale.y = localMouse.y;
                 break;
             }
             case UIDragMode::Rotate: {
@@ -246,8 +239,7 @@ namespace {
                 break;
             }
             case UIDragMode::None:
-            default:
-                break;
+            default: break;
         }
     }
 
@@ -315,8 +307,7 @@ namespace MapEditorInternal {
                 uiCanvasPan.y -= mouseDelta.y / uiCanvasZoom;
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
-                Entity* uiSelectedEntity = selectedUIEntityID != INVALID_ID
-                    ? level.GetEntity(selectedUIEntityID) : nullptr;
+                Entity* uiSelectedEntity = selectedUIEntityID != INVALID_ID ? level.GetEntity(selectedUIEntityID) : nullptr;
                 ComponentUITransform* uiSelectedTransform = uiSelectedEntity != nullptr
                     ? uiSelectedEntity->GetComponent<ComponentUITransform>() : nullptr;
 
@@ -325,17 +316,9 @@ namespace MapEditorInternal {
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && uiDragMode != UIDragMode::None)
                 ContinueUIDrag(level, mouseCanvas);
-
-            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT))
-                uiDragMode = UIDragMode::None;
+            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) uiDragMode = UIDragMode::None;
 
             UpdateUICanvasZoom();
         }
-
-        // Note: Delete-to-remove-selected-entity is handled inside
-        // DrawUIEntityEditor() (UIEditorUI.cpp) now, right next to its
-        // Delete button - mirroring where the real DrawEntityEditor() checks
-        // SDL_SCANCODE_DELETE, rather than being polled here too. Polling it
-        // in both places would double-handle the same keypress.
     }
 } // namespace MapEditorInternal

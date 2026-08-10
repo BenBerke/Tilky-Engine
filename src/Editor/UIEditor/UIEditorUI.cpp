@@ -30,36 +30,12 @@
 #include <vector>
 
 /// This script is responsible for drawing the ImGUI of the UI Editor.
-///
-/// The entity/component editing portion of this file is a direct port of
-/// ImGuiDrawFunctions::DrawEntityEditor() / DrawComponentEditor() (the real
-/// implementation, not my own approximation this time): a card list of the
-/// entity's present components with per-row "Edit" buttons opening a
-/// separate component window, a real "Add Component" combo (skipping
-/// Transform, exactly like CMP_TRANSFORM is skipped in yours), and
-/// entity.RemoveComponent<T>() wired to each component's Delete button.
-/// BeginSection/EndSection/FieldWidth/DangerButton/Tooltip/DrawInspectorHeader
-/// below are your real ImGuiDrawFunctions:: calls (via the include above),
-/// not local reimplementations - I have enough call-site evidence now
-/// (exact argument shapes, used consistently) to call them directly rather
-/// than guess at a substitute.
-///
-/// Everything OUTSIDE the entity/component editor (Hierarchy panel, Canvas
-/// View toolbar, Actions) still uses the OTHER, file-local style system -
-/// SectionHeader/HoverTooltip/FullWidthButton/PushDangerStyle/PushAccentStyle
-/// below - because that's genuinely the system MapEditorUI.cpp's own
-/// non-entity panels use (DrawHierarchyPanel, DrawProjectSettingsWindow,
-/// etc. all use their own local statics, not ImGuiDrawFunctions::). These
-/// two systems are kept distinct on purpose, matching how your own codebase
-/// keeps them distinct.
 namespace {
     using namespace Localisation;
     using namespace MapEditorInternal;
 
     void Spacing(const int count = 1) {
-        for (int i = 0; i < count; ++i) {
-            ImGui::Spacing();
-        }
+        for (int i = 0; i < count; ++i) ImGui::Spacing();
     }
 
     // ---------------------------------------------------------------------
@@ -91,20 +67,6 @@ namespace {
 
     bool FullWidthButton(const char* label) {
         return ImGui::Button(label, ImVec2(ImGui::GetContentRegionAvail().x, 0.0f));
-    }
-
-    void MetaText(const std::string& text) {
-        ImGui::TextDisabled("%s", text.c_str());
-    }
-
-    void PushDangerStyle() {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.15f, 0.15f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.70f, 0.20f, 0.20f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.10f, 0.10f, 1.00f));
-    }
-
-    void PopDangerStyle() {
-        ImGui::PopStyleColor(3);
     }
 
     void PushAccentStyle() {
@@ -441,14 +403,12 @@ namespace {
         ImGuiDrawFunctions::BeginSection("Anchors");
 
         ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_min").c_str(), &transform.anchorMin.x,
-                               0.001f, 0.0f, 1.0f, "%.3f"))
+        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_min").c_str(), &transform.anchorMin.x, 0.001f, 0.0f, 1.0f, "%.3f"))
             changed = true;
         ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_min").c_str());
 
         ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_max").c_str(), &transform.anchorMax.x,
-                               0.001f, 0.0f, 1.0f, "%.3f"))
+        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_max").c_str(), &transform.anchorMax.x, 0.001f, 0.0f, 1.0f, "%.3f"))
             changed = true;
         ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_max").c_str());
 
@@ -508,8 +468,7 @@ namespace {
         // Deliberately unbounded (v_min = v_max = 0.0f means "no limit" in
         // ImGui) - negative scale must stay possible, per spec.
         ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.scale").c_str(), &transform.scale.x,
-                               0.01f, 0.0f, 0.0f, "%.3f"))
+        if (ImGui::DragFloat2(Get("editor.ui.transform.scale").c_str(), &transform.scale.x, 0.01f, 0.0f, 0.0f, "%.3f"))
             changed = true;
         ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_scale").c_str());
         ImGui::SameLine();
@@ -577,8 +536,7 @@ namespace {
         }
 
         Spacing();
-        if (ImGui::SmallButton(Get("editor.ui.text.clear").c_str()))
-            text.text.clear();
+        if (ImGui::SmallButton(Get("editor.ui.text.clear").c_str())) text.text.clear();
 
         ImGuiDrawFunctions::EndSection();
 
@@ -627,7 +585,7 @@ namespace {
             ImGui::Image(reinterpret_cast<ImTextureID>(preview), ImVec2(drawW, drawH));
         } else if (!sprite.texture.empty()) {
             // Assigned but not resolvable -> missing-texture feedback.
-            const char* warn = "!";
+            const auto warn = "!";
             const ImVec2 warnSize = ImGui::CalcTextSize(warn);
             drawList->AddText(ImVec2(cursor.x + (previewSize - warnSize.x) * 0.5f,
                                       cursor.y + (previewSize - warnSize.y) * 0.5f),
@@ -721,9 +679,9 @@ namespace {
             if (!UIEntityHasComponent(entity, UIComponentType::Text)) addable.push_back(UIComponentType::Text);
             if (!UIEntityHasComponent(entity, UIComponentType::Sprite)) addable.push_back(UIComponentType::Sprite);
 
-            if (addable.empty()) {
+            if (addable.empty())
                 ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.component.all_added").c_str());
-            } else {
+            else {
                 if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
                     state.componentToAdd = 0;
 
@@ -856,7 +814,7 @@ namespace {
         ImGuiDrawFunctions::DrawInspectorHeader("Component", componentName.c_str());
 
         if (componentType == UIComponentType::Transform) {
-            if (ComponentUITransform* transform = entity.GetComponent<ComponentUITransform>()) {
+            if (auto* transform = entity.GetComponent<ComponentUITransform>()) {
                 DrawUITransformInspector(*transform);
                 ImGui::Spacing();
                 ImGui::Separator();
@@ -866,12 +824,11 @@ namespace {
                     uiHasUnsavedChanges = true;
                     closeRequested = true;
                 }
-            } else {
-                ImGui::TextDisabled("Transform component missing");
             }
+            else ImGui::TextDisabled("Transform component missing");
         }
         else if (componentType == UIComponentType::Text) {
-            if (ComponentUIText* text = entity.GetComponent<ComponentUIText>()) {
+            if (auto* text = entity.GetComponent<ComponentUIText>()) {
                 DrawUITextInspector(*text);
                 ImGui::Spacing();
                 ImGui::Separator();
@@ -881,9 +838,8 @@ namespace {
                     uiHasUnsavedChanges = true;
                     closeRequested = true;
                 }
-            } else {
-                ImGui::TextDisabled("Text component missing");
             }
+            else ImGui::TextDisabled("Text component missing");
         }
         else if (componentType == UIComponentType::Sprite) {
             if (ComponentUISprite* sprite = entity.GetComponent<ComponentUISprite>()) {
@@ -1008,10 +964,6 @@ namespace {
         HoverTooltip(Get("editor.ui.hierarchy.tooltip_add_entity").c_str());
 
         if (addRequested) {
-            // ASSUMPTION: CreateEntity(true) attaches ComponentUITransform to
-            // the new entity on its own (Text/Sprite are deliberately left
-            // off - they're optional, added via the entity editor's "Add
-            // Component" combo).
             const ID newEntityID = level.CreateEntity(true);
             selectedUIEntityID = newEntityID;
             uiHasUnsavedChanges = true;
@@ -1029,7 +981,7 @@ namespace {
 
         const std::string searchLower = [&] {
             std::string s = uiHierarchySearchBuf;
-            std::transform(s.begin(), s.end(), s.begin(), [](const unsigned char c) {
+            std::ranges::transform(s, s.begin(), [](const unsigned char c) {
                 return static_cast<char>(std::tolower(c));
             });
             return s;
@@ -1050,9 +1002,7 @@ namespace {
         Spacing();
 
         int uiEntityCount = 0;
-        for (Entity& entity : level.entities)
-            if (entity.GetComponent<ComponentUITransform>() != nullptr)
-                ++uiEntityCount;
+        for (Entity& entity : level.entities) if (entity.GetComponent<ComponentUITransform>() != nullptr) ++uiEntityCount;
 
         if (uiEntityCount == 0) {
             Spacing(2);
@@ -1066,18 +1016,17 @@ namespace {
         ID entityPendingDelete = INVALID_ID;
 
         for (Entity& entity : level.entities) {
-            ComponentUITransform* uiTransform = entity.GetComponent<ComponentUITransform>();
+            const auto* uiTransform = entity.GetComponent<ComponentUITransform>();
             if (uiTransform == nullptr) continue;
 
             const std::string label = entity.name.empty()
-                ? (Get("editor.ui.hierarchy.unnamed") + " #" + std::to_string(entity.id))
-                : entity.name;
+            ? (Get("editor.ui.hierarchy.unnamed") + " #" + std::to_string(entity.id)) : entity.name;
             if (!matches(label)) continue;
 
             ImGui::PushID(static_cast<int>(entity.id));
 
-            ComponentUIText* entityText = entity.GetComponent<ComponentUIText>();
-            ComponentUISprite* entitySprite = entity.GetComponent<ComponentUISprite>();
+            const auto* entityText = entity.GetComponent<ComponentUIText>();
+            const auto* entitySprite = entity.GetComponent<ComponentUISprite>();
             const bool hasText = entityText != nullptr && !entityText->text.empty();
             const bool hasSprite = entitySprite != nullptr && !entitySprite->texture.empty();
 
@@ -1091,8 +1040,7 @@ namespace {
                 selectedUIEntityID = entity.id;
 
             if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem(Get("editor.delete").c_str()))
-                    entityPendingDelete = entity.id;
+                if (ImGui::MenuItem(Get("editor.delete").c_str())) entityPendingDelete = entity.id;
                 ImGui::EndPopup();
             }
 
@@ -1239,16 +1187,13 @@ namespace MapEditorInternal {
         Spacing();
 
         PushAccentStyle();
-        if (FullWidthButton(Get("editor.save").c_str())) {
-            if (Save(Editor::currentMap)) uiHasUnsavedChanges = false;
-        }
+        if (FullWidthButton(Get("editor.save").c_str())) if (Save(Editor::currentMap)) uiHasUnsavedChanges = false;
         PopAccentStyle();
         HoverTooltip(Get("editor.tooltip.save").c_str());
 
         Spacing();
 
-        if (FullWidthButton(Get("editor.ui.back_to_map_editor").c_str()))
-            currentState = STATE_MAP;
+        if (FullWidthButton(Get("editor.ui.back_to_map_editor").c_str())) currentState = STATE_MAP;
 
         ImGui::End();
 

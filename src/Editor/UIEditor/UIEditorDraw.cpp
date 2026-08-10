@@ -80,7 +80,8 @@ namespace {
                     SDL_RenderFillRect(renderer, &cellRect);
                 }
             }
-        } else {
+        }
+        else {
             SDL_SetRenderDrawColor(renderer, 62, 62, 68, 255);
             const SDL_FRect wholeRect = {
                 topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y
@@ -152,9 +153,6 @@ namespace {
     void DrawUICanvasSafeArea() {
         if (!showUISafeArea) return;
 
-        // ASSUMPTION: no device safe-area API was available in the reference
-        // material, so this approximates it as a flat 5% inset margin. Wire
-        // this up to real per-device insets if your engine has them.
         constexpr float marginFraction = 0.05f;
         const Vector2 screenRes = CurrentScreenResolution();
         const Vector2 inset = {screenRes.x * marginFraction, screenRes.y * marginFraction};
@@ -184,9 +182,6 @@ namespace {
     };
 
     UIEntityScreenQuad ComputeUIEntityScreenQuad(const ComponentUITransform& transform) {
-        // UISystem has already applied transform.scale while resolving the
-        // final pixel size. Multiplying by scale again here made the editor
-        // preview use scale squared while the runtime used resolvedSize.
         const Vector2 size = transform.resolvedSize;
 
         // resolvedPosition is the TOP-LEFT corner (matches UI_vs.glsl's
@@ -252,17 +247,6 @@ namespace {
     void DrawUITextEntity(const ComponentUIText& text, const ComponentUITransform& transform) {
         if (text.text.empty() || textEngine == nullptr || font == nullptr) return;
 
-        // ASSUMPTION: SDL3_ttf's TTF_Text object API (TTF_CreateText /
-        // TTF_SetTextColor / TTF_DrawRendererText / TTF_DestroyText), matching
-        // the already-declared `textEngine`/`font` externs. This renders
-        // axis-aligned only - SDL_ttf's renderer-text draw doesn't take a
-        // rotation angle the way the real UI_vs.glsl shader does for
-        // sprites, so `rotation`/`scale` aren't applied to text, only
-        // `position` (which, per the shader, is the top-left corner
-        // directly - no pivot adjustment needed here any more). Also
-        // uncached (creates/destroys a TTF_Text per entity per frame) -
-        // fine for a moderate entity count, but worth caching per-entity if
-        // this becomes a hot path for you.
         TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.text.c_str(), text.text.size());
         if (renderedText == nullptr) return;
 
@@ -326,9 +310,9 @@ namespace {
         if (outwardLen > 0.0001f) {
             outward.x /= outwardLen;
             outward.y /= outwardLen;
-        } else {
-            outward = {0.0f, -1.0f};
         }
+        else outward = {0.0f, -1.0f};
+
         const Vector2 rotationHandlePos = {topCenter.x + outward.x * 24.0f, topCenter.y + outward.y * 24.0f};
 
         SDL_SetRenderDrawColor(renderer, 170, 255, 130, 255);
@@ -379,20 +363,16 @@ namespace MapEditorInternal {
         SDL_SetRenderClipRect(renderer, &clipRect);
 
         for (Entity& entity : level.entities) {
-            ComponentUITransform* transform = entity.GetComponent<ComponentUITransform>();
+            auto* transform = entity.GetComponent<ComponentUITransform>();
             if (transform == nullptr) continue;
 
             const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transform);
 
-            if (ComponentUISprite* sprite = entity.GetComponent<ComponentUISprite>()) {
-                if (!sprite->texture.empty()) {
-                    if (SDL_Texture* texture = GetEditorTexture(sprite->texture))
+            if (auto* sprite = entity.GetComponent<ComponentUISprite>())
+                if (!sprite->texture.empty())  if (SDL_Texture* texture = GetEditorTexture(sprite->texture))
                         DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, 1.0f});
-                }
-            }
 
-            if (ComponentUIText* text = entity.GetComponent<ComponentUIText>())
-                DrawUITextEntity(*text, *transform);
+            if (const auto* text = entity.GetComponent<ComponentUIText>()) DrawUITextEntity(*text, *transform);
 
             DrawUIEntityGizmos(quad, *transform, entity.id == selectedUIEntityID, entity.id == hoveredUIEntityID);
         }
