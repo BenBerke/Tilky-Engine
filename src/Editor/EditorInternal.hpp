@@ -217,19 +217,19 @@ namespace MapEditorInternal {
     extern Vector2 uiCanvasPan;
     extern float uiCanvasZoom;
 
-    // The design resolution the canvas previews against. ComponentUITransform
-    // anchors are fractions (0..1) of this rect; (0,0) is the top-left corner.
-    extern Vector2 uiTargetResolution;
-
     // Canvas overlay toggles, set from the toolbar in DrawUIEditorUI().
     extern bool showUIGrid;
     extern bool showUICenterLines;
     extern bool showUISafeArea;
 
-    // Canvas-space (0,0 = top-left of uiTargetResolution) <-> screen-space,
-    // through the current uiCanvasPan/uiCanvasZoom and screenWidth/screenHeight
-    // (same inputs WorldToScreen/ScreenToWorld use for the Map Editor's own
-    // camera). Defined in UIEditorUI.cpp.
+    // Canvas-space (0,0 = top-left of the current screen, matching how
+    // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
+    // separate design/reference resolution, so the canvas boundary is
+    // always exactly screenWidth x screenHeight, not a user-editable
+    // value) <-> screen-space, through the current uiCanvasPan/
+    // uiCanvasZoom and screenWidth/screenHeight (same inputs
+    // WorldToScreen/ScreenToWorld use for the Map Editor's own camera).
+    // Defined in UIEditorUI.cpp.
     [[nodiscard]] Vector2 UICanvasToScreen(const Vector2& canvasPos);
     [[nodiscard]] Vector2 ScreenToUICanvas(const Vector2& screenPos);
 

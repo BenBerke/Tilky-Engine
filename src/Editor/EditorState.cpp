@@ -90,12 +90,12 @@ namespace MapEditorInternal {
     ID selectedUIEntityID = INVALID_ID;
     ID hoveredUIEntityID = INVALID_ID;
 
-    // Centre of the default 1920x1080 target resolution, mirroring how
-    // cameraPos = {0,0} starts the Map Editor centred on the world origin.
-    Vector2 uiCanvasPan = {960.0f, 540.0f};
+    // {0,0} until the first DrawUIEditorUI() call centres it on the actual
+    // current screen (screenWidth/screenHeight aren't known yet at static
+    // init time) - see the one-time centring check at the top of that
+    // function.
+    Vector2 uiCanvasPan = {0.0f, 0.0f};
     float uiCanvasZoom = 1.0f;
-
-    Vector2 uiTargetResolution = {1920.0f, 1080.0f};
 
     bool showUIGrid = false;
     bool showUICenterLines = true;

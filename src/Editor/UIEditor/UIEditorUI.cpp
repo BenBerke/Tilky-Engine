@@ -123,6 +123,12 @@ namespace {
     // dirty-state symbol this file can reach.
     bool uiHasUnsavedChanges = false;
 
+    // Centres the canvas pan on the actual current screen once, the first
+    // time the UI Editor is opened - screenWidth/screenHeight aren't known
+    // at static init time. After that, pan is fully user-controlled (drag
+    // to pan, "Center" button to reset).
+    bool uiCanvasCentered = false;
+
     // Hierarchy search filter (mirrors hierarchySearchBuf in MapEditorUI.cpp).
     char uiHierarchySearchBuf[64] = "";
 
@@ -967,7 +973,7 @@ namespace {
 
         ImGui::SameLine(0.0f, 12.0f);
         if (ImGui::Button(Get("editor.ui.canvas.center").c_str())) {
-            uiCanvasPan = {uiTargetResolution.x * 0.5f, uiTargetResolution.y * 0.5f};
+            uiCanvasPan = {static_cast<float>(screenWidth) * 0.5f, static_cast<float>(screenHeight) * 0.5f};
             uiCanvasZoom = 1.0f;
         }
         HoverTooltip(Get("editor.ui.canvas.tooltip_center").c_str());
@@ -980,17 +986,12 @@ namespace {
         ImGui::SameLine();
         ImGui::Checkbox(Get("editor.ui.canvas.safe_area").c_str(), &showUISafeArea);
 
-        ImGui::SetNextItemWidth(60.0f);
-        ImGui::DragFloat("##UITargetResW", &uiTargetResolution.x, 1.0f, 64.0f, 8192.0f, "%.0f");
-        HoverTooltip(Get("editor.ui.canvas.tooltip_target_resolution").c_str());
-        ImGui::SameLine(0.0f, 4.0f);
-        ImGui::TextUnformatted("x");
-        ImGui::SameLine(0.0f, 4.0f);
-        ImGui::SetNextItemWidth(60.0f);
-        ImGui::DragFloat("##UITargetResH", &uiTargetResolution.y, 1.0f, 64.0f, 8192.0f, "%.0f");
-
-        uiTargetResolution.x = std::max(uiTargetResolution.x, 64.0f);
-        uiTargetResolution.y = std::max(uiTargetResolution.y, 64.0f);
+        // Not user-editable: UI_vs.glsl resolves uPosition/uSize straight
+        // against uScreenSize (the actual current screen), with no separate
+        // design/reference resolution - so the canvas always previews at
+        // whatever the real screen size is, read-only here.
+        ImGuiDrawFunctions::SmallMetaText("%s: %d x %d", Get("editor.ui.canvas.previewing_at").c_str(),
+                                           screenWidth, screenHeight);
     }
 
     // ---------------------------------------------------------------------
@@ -1197,6 +1198,11 @@ namespace MapEditorInternal {
         DrawUIEditorDockSpace();
 
         Level& level = LevelManager::CurrentLevel();
+
+        if (!uiCanvasCentered && screenWidth > 0 && screenHeight > 0) {
+            uiCanvasPan = {static_cast<float>(screenWidth) * 0.5f, static_cast<float>(screenHeight) * 0.5f};
+            uiCanvasCentered = true;
+        }
 
         // Reset component-editor state on any selection change, regardless
         // of which file caused it (hierarchy click here, canvas click in

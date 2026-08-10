@@ -4,6 +4,7 @@
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/UISystem.hpp"
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/Objects/Entity.hpp"
 // ASSUMPTION: same as UIEditorUI.cpp/UIEditorDraw.cpp - adjust to wherever
@@ -16,11 +17,11 @@
 /// This script is responsible for handling keyboard/mouse input inside the UI Editor.
 ///
 /// Structure mirrors HandleEditorInput()/UpdateEditorZoom() in
-/// MapEditorInput.cpp directly: mouse-wheel/keyboard zoom around the cursor,
-/// middle-mouse pan, all gated behind `!mouseBlockedByImGui`, since the
-/// canvas is now a full-screen view (see UIEditorDraw.cpp) rather than a
-/// bounded panel - there's no "is the mouse over some rect" check needed
-/// any more than there is for the Map Editor's own equivalent.
+/// MapEditorInput.cpp. Hit-testing/handle-placement math is ported from
+/// UI_vs.glsl the same way UIEditorDraw.cpp's is: resolvedPosition is the
+/// rect's top-left corner, rotation is always around the rect's own centre
+/// (never around `pivot`) - see the file comment at the top of
+/// UIEditorDraw.cpp for the full explanation.
 ///
 /// hoveredUIEntityID is owned entirely by this file: HandleUIEditorInput()
 /// recomputes it unconditionally on every call, so nothing elsewhere should
@@ -76,6 +77,13 @@ namespace {
         return (dx * dx + dy * dy) <= radius * radius;
     }
 
+    Vector2 UITransformCenterCanvas(const ComponentUITransform& transform) {
+        return {
+            transform.resolvedPosition.x + transform.resolvedSize.x * 0.5f,
+            transform.resolvedPosition.y + transform.resolvedSize.y * 0.5f
+        };
+    }
+
     // Rotated-rect corners in CANVAS space, TL/TR/BR/BL. Mirrors
     // ComputeUIEntityScreenQuad()'s corner math in UIEditorDraw.cpp exactly
     // (kept in canvas space here rather than converting to screen inline, so
@@ -85,20 +93,18 @@ namespace {
     // aware helpers into a shared location later, this is the first
     // candidate to de-duplicate.
     void ComputeUIEntityCanvasCorners(const ComponentUITransform& transform, Vector2 outCorners[4]) {
-        const Vector2 size = {
-            transform.resolvedSize.x * transform.scale.x,
-            transform.resolvedSize.y * transform.scale.y
-        };
+        const Vector2 size = transform.resolvedSize;
+        const Vector2 center = UITransformCenterCanvas(transform);
 
         const float rad = transform.rotation * (UI_INPUT_PI / 180.0f);
         const float cosA = std::cos(rad);
         const float sinA = std::sin(rad);
 
         const Vector2 localCorners[4] = {
-            {-transform.pivot.x * size.x, -transform.pivot.y * size.y},
-            {(1.0f - transform.pivot.x) * size.x, -transform.pivot.y * size.y},
-            {(1.0f - transform.pivot.x) * size.x, (1.0f - transform.pivot.y) * size.y},
-            {-transform.pivot.x * size.x, (1.0f - transform.pivot.y) * size.y},
+            {-size.x * 0.5f, -size.y * 0.5f},
+            {size.x * 0.5f, -size.y * 0.5f},
+            {size.x * 0.5f, size.y * 0.5f},
+            {-size.x * 0.5f, size.y * 0.5f},
         };
 
         for (int i = 0; i < 4; ++i) {
@@ -106,24 +112,19 @@ namespace {
                 localCorners[i].x * cosA - localCorners[i].y * sinA,
                 localCorners[i].x * sinA + localCorners[i].y * cosA
             };
-            outCorners[i] = {transform.resolvedPosition.x + rotated.x, transform.resolvedPosition.y + rotated.y};
+            outCorners[i] = {center.x + rotated.x, center.y + rotated.y};
         }
     }
 
     // Point-in-rotated-rect test: inverse-rotate the point into the
-    // transform's own local space around resolvedPosition, then test against
-    // the (unrotated, by construction) local rect. Correct for any rotation
-    // value, unlike a plain axis-aligned box test against resolvedPosition/
-    // resolvedSize would be.
+    // transform's own local space around its CENTRE (matching UI_vs.glsl -
+    // see the file comment in UIEditorDraw.cpp), then test against the
+    // (unrotated, by construction) centred local rect. Correct for any
+    // rotation value, unlike a plain axis-aligned box test would be.
     bool CanvasPointInsideTransform(const Vector2& canvasPoint, const ComponentUITransform& transform) {
-        const Vector2 size = {
-            transform.resolvedSize.x * transform.scale.x,
-            transform.resolvedSize.y * transform.scale.y
-        };
-        const Vector2 offset = {
-            canvasPoint.x - transform.resolvedPosition.x,
-            canvasPoint.y - transform.resolvedPosition.y
-        };
+        const Vector2 size = transform.resolvedSize;
+        const Vector2 center = UITransformCenterCanvas(transform);
+        const Vector2 offset = {canvasPoint.x - center.x, canvasPoint.y - center.y};
 
         const float rad = -transform.rotation * (UI_INPUT_PI / 180.0f); // inverse rotation
         const float cosA = std::cos(rad);
@@ -133,8 +134,8 @@ namespace {
             offset.x * sinA + offset.y * cosA
         };
 
-        return local.x >= -transform.pivot.x * size.x && local.x <= (1.0f - transform.pivot.x) * size.x &&
-               local.y >= -transform.pivot.y * size.y && local.y <= (1.0f - transform.pivot.y) * size.y;
+        return local.x >= -size.x * 0.5f && local.x <= size.x * 0.5f &&
+               local.y >= -size.y * 0.5f && local.y <= size.y * 0.5f;
     }
 
     ID UIEntityAtCanvasPoint(Level& level, const Vector2& canvasPoint) {
@@ -150,10 +151,9 @@ namespace {
     }
 
     // Screen-space rotate/scale handle positions for a transform, matching
-    // DrawUIEntityGizmos()'s placement in UIEditorDraw.cpp exactly (same
-    // corner math, same top-centre-outward / bottom-right-corner rule, same
-    // fixed screen-pixel offset) so what's clickable matches what's drawn
-    // even when the element is rotated.
+    // DrawUIEntityGizmos()'s placement in UIEditorDraw.cpp exactly, so
+    // what's clickable matches what's drawn even when the element is
+    // rotated.
     void GetUIHandleScreenPositions(const ComponentUITransform& transform, Vector2& outRotateHandle,
                                      Vector2& outScaleHandle) {
         Vector2 canvasCorners[4];
@@ -161,14 +161,14 @@ namespace {
 
         Vector2 screenCorners[4];
         for (int i = 0; i < 4; ++i) screenCorners[i] = UICanvasToScreen(canvasCorners[i]);
-        const Vector2 pivotScreen = UICanvasToScreen(transform.resolvedPosition);
+        const Vector2 centerScreen = UICanvasToScreen(UITransformCenterCanvas(transform));
 
         const Vector2 topCenterScreen = {
             (screenCorners[0].x + screenCorners[1].x) * 0.5f,
             (screenCorners[0].y + screenCorners[1].y) * 0.5f
         };
 
-        Vector2 outward = {topCenterScreen.x - pivotScreen.x, topCenterScreen.y - pivotScreen.y};
+        Vector2 outward = {topCenterScreen.x - centerScreen.x, topCenterScreen.y - centerScreen.y};
         const float outwardLen = std::sqrt(outward.x * outward.x + outward.y * outward.y);
         if (outwardLen > 0.0001f) {
             outward.x /= outwardLen;
@@ -207,15 +207,17 @@ namespace {
                 break;
             }
             case UIDragMode::Scale: {
-                // Anchored at the pivot: solve for the scale that makes the
-                // (unrotated-local) bottom-right corner land under the
-                // mouse, expressed in the transform's own rotated frame so a
-                // rotated element still scales along its own axes rather
-                // than the canvas's.
-                const Vector2 extent = {
-                    (1.0f - transform->pivot.x) * transform->resolvedSize.x,
-                    (1.0f - transform->pivot.y) * transform->resolvedSize.y
-                };
+                // Solves for the scale that puts the bottom-right corner
+                // under the mouse, using resolvedPosition (the fixed
+                // top-left reference - unlike the rect's centre, it doesn't
+                // move as scale changes) and inverse-rotating the mouse
+                // around it. The real render rotation pivot is the rect's
+                // centre, which itself shifts with scale - using
+                // resolvedPosition here instead is an approximation that's
+                // exact at rotation=0 and close enough for typical drag
+                // ranges otherwise, rather than solving that circular
+                // (centre depends on scale, scale depends on centre)
+                // relationship exactly.
                 const Vector2 offset = {
                     mouseCanvas.x - transform->resolvedPosition.x,
                     mouseCanvas.y - transform->resolvedPosition.y
@@ -227,15 +229,18 @@ namespace {
                     offset.x * cosA - offset.y * sinA,
                     offset.x * sinA + offset.y * cosA
                 };
-                if (std::abs(extent.x) > 0.01f) transform->scale.x = localMouse.x / extent.x;
-                if (std::abs(extent.y) > 0.01f) transform->scale.y = localMouse.y / extent.y;
+                // On a non-stretched axis UISystem treats scale as the final
+                // pixel size. Dividing by resolvedSize produced a ratio and
+                // then resolved that ratio as a size on the following frame.
+                if (transform->anchorMin.x == transform->anchorMax.x)
+                    transform->scale.x = localMouse.x;
+                if (transform->anchorMin.y == transform->anchorMax.y)
+                    transform->scale.y = localMouse.y;
                 break;
             }
             case UIDragMode::Rotate: {
-                const Vector2 toMouse = {
-                    mouseCanvas.x - transform->resolvedPosition.x,
-                    mouseCanvas.y - transform->resolvedPosition.y
-                };
+                const Vector2 center = UITransformCenterCanvas(*transform);
+                const Vector2 toMouse = {mouseCanvas.x - center.x, mouseCanvas.y - center.y};
                 const float angleToMouse = std::atan2(toMouse.y, toMouse.x) * (180.0f / UI_INPUT_PI);
                 transform->rotation = uiDragStartRotation + (angleToMouse - uiDragStartAngleToMouse);
                 break;
@@ -255,10 +260,8 @@ namespace {
             if (NearScreenPoint(mouseScreen, rotateHandle, UI_HANDLE_HIT_RADIUS)) {
                 uiDragMode = UIDragMode::Rotate;
                 uiDragStartRotation = selectedTransform->rotation;
-                const Vector2 toMouse = {
-                    mouseCanvas.x - selectedTransform->resolvedPosition.x,
-                    mouseCanvas.y - selectedTransform->resolvedPosition.y
-                };
+                const Vector2 center = UITransformCenterCanvas(*selectedTransform);
+                const Vector2 toMouse = {mouseCanvas.x - center.x, mouseCanvas.y - center.y};
                 uiDragStartAngleToMouse = std::atan2(toMouse.y, toMouse.x) * (180.0f / UI_INPUT_PI);
                 return;
             }
@@ -285,6 +288,14 @@ namespace {
 namespace MapEditorInternal {
     void HandleUIEditorInput(const bool mouseBlockedByImGui, const bool /*keyboardBlockedByImgui*/) {
         Level& level = LevelManager::CurrentLevel();
+
+        // Hit testing and handle placement must use the same current layout
+        // values as both the editor drawing pass and the runtime renderer.
+        UISystem::UpdateAllTransforms(
+            level,
+            static_cast<float>(screenWidth),
+            static_cast<float>(screenHeight)
+        );
 
         // Defensively drop a selection that no longer resolves (e.g. deleted
         // from outside the normal path) - mirrors ValidateSelections() in
@@ -320,5 +331,11 @@ namespace MapEditorInternal {
 
             UpdateUICanvasZoom();
         }
+
+        // Note: Delete-to-remove-selected-entity is handled inside
+        // DrawUIEntityEditor() (UIEditorUI.cpp) now, right next to its
+        // Delete button - mirroring where the real DrawEntityEditor() checks
+        // SDL_SCANCODE_DELETE, rather than being polled here too. Polling it
+        // in both places would double-handle the same keypress.
     }
 } // namespace MapEditorInternal

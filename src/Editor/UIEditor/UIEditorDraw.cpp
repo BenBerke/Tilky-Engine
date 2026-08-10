@@ -22,29 +22,43 @@
 ///
 /// Renders full-screen via direct SDL calls, the same way DrawGridDots() /
 /// DrawDots() / DrawWalls() / DrawExistingSectors() / DrawEntities() render
-/// the Map Editor's view in MapEditorDrawing.cpp - there is no bounded
-/// ImGui child panel here, so this mirrors that file's structure closely:
-/// a handful of focused Draw*() functions, called in back-to-front order
-/// from UIEditorDraw() below, each doing its own SDL_SetRenderDrawColor +
-/// immediate-mode SDL calls.
+/// the Map Editor's view in MapEditorDrawing.cpp.
 ///
-/// resolvedPosition/resolvedSize are read, never computed, here - per spec
-/// that belongs to the UI layout system (UISystem.hpp, already included by
-/// the original stub). See the ASSUMPTION note inside UIEditorDraw() below.
+/// Position/rotation math below is ported from UI_vs.glsl (the real runtime
+/// vertex shader, via OpenGLUI.cpp's DrawUIRectangle): uPosition is the
+/// rect's TOP-LEFT corner, not a pivot-relative point, and rotation is
+/// always applied to the quad's local geometry BEFORE it's offset/scaled
+/// from that top-left corner - i.e. always around the rect's own centre,
+/// never around `pivot`. `pivot` only affects how the UI layout system
+/// computed resolvedPosition in the first place (which point of the
+/// element lands on the anchor); by the time resolvedPosition reaches
+/// here, that's already resolved into a plain top-left corner, same as
+/// what gets handed to DrawUIRectangle's `position` argument at runtime.
+/// There's also no separate design/reference resolution: UI_vs.glsl's
+/// uScreenSize is the actual current screen size, so the canvas boundary
+/// here is always exactly screenWidth x screenHeight, not a configurable
+/// value.
+///
+/// resolvedPosition/resolvedSize are computed by UISystem before the editor
+/// reads them, using the same screen dimensions as the runtime renderer.
 
 namespace {
     using namespace MapEditorInternal;
 
     constexpr float UI_DRAW_PI = 3.14159265358979323846f;
 
+    Vector2 CurrentScreenResolution() {
+        return {static_cast<float>(screenWidth), static_cast<float>(screenHeight)};
+    }
+
     // ---------------------------------------------------------------------
     // Canvas chrome - checkerboard / grid / boundary / centre-lines / safe
-    // area, bounded to the uiTargetResolution rect (not the whole screen).
+    // area, bounded to the current screen rect (0,0)-(screenWidth,screenHeight).
     // ---------------------------------------------------------------------
 
     void DrawUICanvasCheckerboard() {
         const Vector2 topLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 bottomRight = UICanvasToScreen(uiTargetResolution);
+        const Vector2 bottomRight = UICanvasToScreen(CurrentScreenResolution());
 
         constexpr float cell = 16.0f;
         const float cellScreen = cell * uiCanvasZoom;
@@ -83,7 +97,7 @@ namespace {
         if (stepScreen < 4.0f) return;
 
         const Vector2 topLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 bottomRight = UICanvasToScreen(uiTargetResolution);
+        const Vector2 bottomRight = UICanvasToScreen(CurrentScreenResolution());
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 22);
@@ -98,7 +112,7 @@ namespace {
 
     void DrawUICanvasBoundary() {
         const Vector2 topLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 bottomRight = UICanvasToScreen(uiTargetResolution);
+        const Vector2 bottomRight = UICanvasToScreen(CurrentScreenResolution());
 
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 180);
         const SDL_FRect boundary = {
@@ -110,9 +124,10 @@ namespace {
     void DrawUICanvasCenterLines() {
         if (!showUICenterLines) return;
 
+        const Vector2 screenRes = CurrentScreenResolution();
         const Vector2 topLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 bottomRight = UICanvasToScreen(uiTargetResolution);
-        const Vector2 center = UICanvasToScreen({uiTargetResolution.x * 0.5f, uiTargetResolution.y * 0.5f});
+        const Vector2 bottomRight = UICanvasToScreen(screenRes);
+        const Vector2 center = UICanvasToScreen({screenRes.x * 0.5f, screenRes.y * 0.5f});
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 255, 210, 90, 130);
@@ -141,9 +156,10 @@ namespace {
         // material, so this approximates it as a flat 5% inset margin. Wire
         // this up to real per-device insets if your engine has them.
         constexpr float marginFraction = 0.05f;
-        const Vector2 inset = {uiTargetResolution.x * marginFraction, uiTargetResolution.y * marginFraction};
+        const Vector2 screenRes = CurrentScreenResolution();
+        const Vector2 inset = {screenRes.x * marginFraction, screenRes.y * marginFraction};
         const Vector2 topLeft = UICanvasToScreen(inset);
-        const Vector2 bottomRight = UICanvasToScreen({uiTargetResolution.x - inset.x, uiTargetResolution.y - inset.y});
+        const Vector2 bottomRight = UICanvasToScreen({screenRes.x - inset.x, screenRes.y - inset.y});
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 120, 220, 140, 200);
@@ -158,43 +174,60 @@ namespace {
     // Entity rendering + selection/hover gizmos
     // ---------------------------------------------------------------------
 
-    // Screen-space corners of a UI entity's rect, honouring pivot/rotation/
-    // scale (but not anchors directly - those already fed into
-    // resolvedPosition/resolvedSize upstream).
+    // Screen-space corners of a UI entity's rect (TL, TR, BR, BL), plus its
+    // rotation centre and where `pivot` currently sits - all matching
+    // UI_vs.glsl's actual math (see the file comment above).
     struct UIEntityScreenQuad {
-        Vector2 corners[4]; // TL, TR, BR, BL
-        Vector2 pivotScreen;
+        Vector2 corners[4];
+        Vector2 centerScreen;      // rotation centre - resolvedPosition + size*0.5, then rotated (invariant under its own rotation)
+        Vector2 pivotMarkerScreen; // where `pivot` sits on the rect, for the visual marker only - not used for position/rotation
     };
 
     UIEntityScreenQuad ComputeUIEntityScreenQuad(const ComponentUITransform& transform) {
-        const Vector2 size = {
-            transform.resolvedSize.x * transform.scale.x,
-            transform.resolvedSize.y * transform.scale.y
+        // UISystem has already applied transform.scale while resolving the
+        // final pixel size. Multiplying by scale again here made the editor
+        // preview use scale squared while the runtime used resolvedSize.
+        const Vector2 size = transform.resolvedSize;
+
+        // resolvedPosition is the TOP-LEFT corner (matches UI_vs.glsl's
+        // uPosition) - the centre, which is what rotation is actually
+        // applied around, is derived from it plus half the size.
+        const Vector2 centerCanvas = {
+            transform.resolvedPosition.x + size.x * 0.5f,
+            transform.resolvedPosition.y + size.y * 0.5f
         };
 
         const float rad = transform.rotation * (UI_DRAW_PI / 180.0f);
         const float cosA = std::cos(rad);
         const float sinA = std::sin(rad);
 
-        const Vector2 localCorners[4] = {
-            {-transform.pivot.x * size.x, -transform.pivot.y * size.y},
-            {(1.0f - transform.pivot.x) * size.x, -transform.pivot.y * size.y},
-            {(1.0f - transform.pivot.x) * size.x, (1.0f - transform.pivot.y) * size.y},
-            {-transform.pivot.x * size.x, (1.0f - transform.pivot.y) * size.y},
+        const auto RotateAroundCenter = [&](const Vector2& offsetFromCenter) -> Vector2 {
+            const Vector2 rotated = {
+                offsetFromCenter.x * cosA - offsetFromCenter.y * sinA,
+                offsetFromCenter.x * sinA + offsetFromCenter.y * cosA
+            };
+            return UICanvasToScreen({centerCanvas.x + rotated.x, centerCanvas.y + rotated.y});
+        };
+
+        const Vector2 localCornersFromCenter[4] = {
+            {-size.x * 0.5f, -size.y * 0.5f},
+            {size.x * 0.5f, -size.y * 0.5f},
+            {size.x * 0.5f, size.y * 0.5f},
+            {-size.x * 0.5f, size.y * 0.5f},
         };
 
         UIEntityScreenQuad quad;
-        for (int i = 0; i < 4; ++i) {
-            const Vector2 rotated = {
-                localCorners[i].x * cosA - localCorners[i].y * sinA,
-                localCorners[i].x * sinA + localCorners[i].y * cosA
-            };
-            quad.corners[i] = UICanvasToScreen({
-                transform.resolvedPosition.x + rotated.x,
-                transform.resolvedPosition.y + rotated.y
-            });
-        }
-        quad.pivotScreen = UICanvasToScreen(transform.resolvedPosition);
+        for (int i = 0; i < 4; ++i)
+            quad.corners[i] = RotateAroundCenter(localCornersFromCenter[i]);
+
+        quad.centerScreen = UICanvasToScreen(centerCanvas);
+
+        const Vector2 pivotOffsetFromCenter = {
+            transform.pivot.x * size.x - size.x * 0.5f,
+            transform.pivot.y * size.y - size.y * 0.5f
+        };
+        quad.pivotMarkerScreen = RotateAroundCenter(pivotOffsetFromCenter);
+
         return quad;
     }
 
@@ -223,21 +256,19 @@ namespace {
         // TTF_SetTextColor / TTF_DrawRendererText / TTF_DestroyText), matching
         // the already-declared `textEngine`/`font` externs. This renders
         // axis-aligned only - SDL_ttf's renderer-text draw doesn't take a
-        // rotation angle the way SDL_RenderTextureRotated does for sprites,
-        // so `rotation`/`scale` aren't applied to text, only `position`
-        // (adjusted for pivot). Also uncached (creates/destroys a TTF_Text
-        // per entity per frame) - fine for a moderate entity count, but
-        // worth caching per-entity if this becomes a hot path for you.
+        // rotation angle the way the real UI_vs.glsl shader does for
+        // sprites, so `rotation`/`scale` aren't applied to text, only
+        // `position` (which, per the shader, is the top-left corner
+        // directly - no pivot adjustment needed here any more). Also
+        // uncached (creates/destroys a TTF_Text per entity per frame) -
+        // fine for a moderate entity count, but worth caching per-entity if
+        // this becomes a hot path for you.
         TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.text.c_str(), text.text.size());
         if (renderedText == nullptr) return;
 
         TTF_SetTextColor(renderedText, 255, 255, 255, 255);
 
-        const Vector2 topLeftCanvas = {
-            transform.resolvedPosition.x - transform.pivot.x * transform.resolvedSize.x,
-            transform.resolvedPosition.y - transform.pivot.y * transform.resolvedSize.y
-        };
-        const Vector2 screenPos = UICanvasToScreen(topLeftCanvas);
+        const Vector2 screenPos = UICanvasToScreen(transform.resolvedPosition);
 
         TTF_DrawRendererText(renderedText, screenPos.x, screenPos.y);
         TTF_DestroyText(renderedText);
@@ -255,24 +286,27 @@ namespace {
 
         if (!selected) return; // handles/markers are for the active selection only
 
-        // Pivot marker
+        // Pivot marker - where `pivot` currently sits on the (rotated) rect;
+        // visual reference only, not the rotation centre (see the file
+        // comment at the top for why those differ now).
         SDL_SetRenderDrawColor(renderer, 90, 220, 255, 255);
         constexpr float pivotRadius = 4.0f;
         const SDL_FRect pivotRect = {
-            quad.pivotScreen.x - pivotRadius, quad.pivotScreen.y - pivotRadius,
+            quad.pivotMarkerScreen.x - pivotRadius, quad.pivotMarkerScreen.y - pivotRadius,
             pivotRadius * 2.0f, pivotRadius * 2.0f
         };
         SDL_RenderFillRect(renderer, &pivotRect);
 
-        // Anchor markers - where anchorMin/anchorMax currently sit against the
-        // full target-resolution canvas (independent of this entity's own
+        // Anchor markers - where anchorMin/anchorMax currently sit against
+        // the full current-screen canvas (independent of this entity's own
         // rotation - anchors are always axis-aligned against the canvas).
         SDL_SetRenderDrawColor(renderer, 255, 150, 60, 255);
+        const Vector2 screenRes = CurrentScreenResolution();
         const Vector2 anchorMinScreen = UICanvasToScreen({
-            transform.anchorMin.x * uiTargetResolution.x, transform.anchorMin.y * uiTargetResolution.y
+            transform.anchorMin.x * screenRes.x, transform.anchorMin.y * screenRes.y
         });
         const Vector2 anchorMaxScreen = UICanvasToScreen({
-            transform.anchorMax.x * uiTargetResolution.x, transform.anchorMax.y * uiTargetResolution.y
+            transform.anchorMax.x * screenRes.x, transform.anchorMax.y * screenRes.y
         });
         for (const Vector2& anchorPoint : {anchorMinScreen, anchorMaxScreen}) {
             const SDL_FRect marker = {anchorPoint.x - 4.0f, anchorPoint.y - 4.0f, 8.0f, 8.0f};
@@ -280,13 +314,14 @@ namespace {
         }
 
         // Rotation handle - offset outward from the rect's own top-centre
-        // edge, along that edge's outward normal, so it tracks the shape as
-        // it rotates.
+        // edge, along the direction from the TRUE rotation centre (not the
+        // pivot marker) to that edge midpoint, so it tracks the shape
+        // correctly as it rotates.
         const Vector2 topCenter = {
             (quad.corners[0].x + quad.corners[1].x) * 0.5f,
             (quad.corners[0].y + quad.corners[1].y) * 0.5f
         };
-        Vector2 outward = {topCenter.x - quad.pivotScreen.x, topCenter.y - quad.pivotScreen.y};
+        Vector2 outward = {topCenter.x - quad.centerScreen.x, topCenter.y - quad.centerScreen.y};
         const float outwardLen = std::sqrt(outward.x * outward.x + outward.y * outward.y);
         if (outwardLen > 0.0001f) {
             outward.x /= outwardLen;
@@ -316,26 +351,27 @@ namespace MapEditorInternal {
     void UIEditorDraw() {
         Level& level = LevelManager::CurrentLevel();
 
-        // ASSUMPTION: something keeps ComponentUITransform::resolvedPosition/
-        // resolvedSize current against uiTargetResolution every frame (the UI
-        // layout system, presumably reachable through UISystem.hpp above).
-        // Nothing in this file computes those values itself - per spec they
-        // belong to that system, not the editor. If yours only resolves
-        // layout on an explicit pass rather than continuously, trigger that
-        // pass here first, e.g.:
-        //     UISystem::ResolveLayout(level, uiTargetResolution);
+        // Resolve against the same dimensions sent to uScreenSize at runtime.
+        // This also makes inspector changes visible immediately instead of
+        // drawing stale resolvedPosition/resolvedSize values.
+        UISystem::UpdateAllTransforms(
+            level,
+            static_cast<float>(screenWidth),
+            static_cast<float>(screenHeight)
+        );
 
         DrawUICanvasCheckerboard();
         DrawUICanvasGrid();
 
-        // Clip entity rendering to the target-resolution boundary (not the
-        // whole screen), so an element positioned outside its own canvas
-        // doesn't bleed across the rest of the editor view.
+        // Clip entity rendering to the current-screen boundary (not
+        // whatever the editor's own viewport happens to show at the
+        // current zoom/pan), so an element positioned outside the actual
+        // screen doesn't bleed across the rest of the editor view.
         // ASSUMPTION: SDL3's SDL_SetRenderClipRect takes an integer SDL_Rect*
         // (clip rects stayed int-based in SDL3 even where most render calls
         // moved to float SDL_FRect); adjust if your SDL3 revision differs.
         const Vector2 clipTopLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 clipBottomRight = UICanvasToScreen(uiTargetResolution);
+        const Vector2 clipBottomRight = UICanvasToScreen(CurrentScreenResolution());
         const SDL_Rect clipRect = {
             static_cast<int>(clipTopLeft.x), static_cast<int>(clipTopLeft.y),
             static_cast<int>(clipBottomRight.x - clipTopLeft.x), static_cast<int>(clipBottomRight.y - clipTopLeft.y)

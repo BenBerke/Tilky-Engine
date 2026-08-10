@@ -545,5 +545,6 @@
   "editor.ui.transform.tooltip_scale": "Scale multiplier - negative values flip the element",
   "editor.ui.transform.values": "Position / Scale / Rotation",
   "editor.ui.component.all_added": "All available components are already on this entity",
-  "editor.ui.entity.title": "UI Entity"
+  "editor.ui.entity.title": "UI Entity",
+  "editor.ui.canvas.previewing_at": "Previewing at"
 }
