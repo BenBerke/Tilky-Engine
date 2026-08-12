@@ -100,4 +100,9 @@ namespace MapEditorInternal {
     bool showUIGrid = false;
     bool showUICenterLines = true;
     bool showUISafeArea = false;
+
+    std::vector<ID> selectedEntities = {};
+    std::vector<ID> selectedSectors = {};
+    std::vector<ID> selectedDots = {};
+    std::vector<ID> selectedWalls = {};
 }

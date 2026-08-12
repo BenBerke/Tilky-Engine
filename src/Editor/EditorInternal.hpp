@@ -222,6 +222,11 @@ namespace MapEditorInternal {
     extern bool showUICenterLines;
     extern bool showUISafeArea;
 
+    extern std::vector<ID> selectedEntities;
+    extern std::vector<ID> selectedSectors;
+    extern std::vector<ID> selectedDots;
+    extern std::vector<ID> selectedWalls;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is
@@ -304,7 +309,7 @@ namespace MapEditorInternal {
 
     // Dot lifecycle.
     void AddDot(const Vector2& position);
-    void RemoveDot(ID dotID);
+    void DeleteDot(ID dotID);
 
     // Sector deletion with full ID-safety cleanup.
     void DeleteSector(ID sectorID);

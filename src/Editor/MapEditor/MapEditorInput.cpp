@@ -163,7 +163,6 @@ namespace MapEditorInternal {
                     HandleSectorModeRightClick(mouseWorld);
 
                 else if (currentMode == MODE_DOT) HandleDotModeRightClick(mouseWorld);
-
             }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
@@ -193,7 +192,7 @@ namespace MapEditorInternal {
             if (actions.empty()) return;
             switch (actions.back()) {
                 case ACTION_CREATE_CORNER:
-                    if (!dots.empty()) RemoveDot(dots.back().id);
+                    if (!dots.empty()) DeleteDot(dots.back().id);
                     break;
                 case ACTION_CREATE_WALL:
                     if (!level.walls.empty()) DeleteWall(level.walls.back().id);
@@ -232,5 +231,33 @@ namespace MapEditorInternal {
 
         if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]]
             if (hasEntityInClipboard) level.CreateEntity(entityInClipboard);
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) [[unlikely]] {
+            if (!selectedEntities.empty()) {
+                const std::vector<ID> entitiesToDelete = selectedEntities;
+                selectedEntities.clear();
+
+                for (const ID id : entitiesToDelete) level.DestroyEntity(id);
+            }
+            if (!selectedSectors.empty()) {
+                const std::vector<ID> sectorsToDelete = selectedSectors;
+                selectedSectors.clear();
+
+                for (const ID id : sectorsToDelete) DeleteSector(id);
+            }
+            if (!selectedWalls.empty()) {
+                const std::vector<ID> wallsToDelete = selectedWalls;
+                selectedWalls.clear();
+
+                for (const ID id : wallsToDelete) DeleteWall(id);
+            }
+            if (!selectedDots.empty()) {
+                const std::vector<ID> dotsToDelete = selectedDots;
+                selectedDots.clear();
+
+                for (const ID id : dotsToDelete) DeleteDot(id);
+            }
+            editingEntity = false;
+        }
     }
 }

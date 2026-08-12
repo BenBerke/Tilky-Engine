@@ -508,7 +508,7 @@ namespace MapEditorInternal {
         actions.push_back(ACTION_CREATE_CORNER);
     }
 
-    void RemoveDot(const ID dotID) {
+    void DeleteDot(const ID dotID) {
         const auto it = dotIDToIndex.find(dotID);
 
         if (it == dotIDToIndex.end()) {
@@ -530,10 +530,6 @@ namespace MapEditorInternal {
         RebuildDotIDLookup();
     }
 
-    // Feature #11 "When deleting a sector": removes the sector, clears the
-    // selection if it pointed at this sector, detaches any walls that
-    // referenced it (dropping walls that become orphaned on both sides), and
-    // rebuilds the ID maps immediately.
     void DeleteSector(const ID sectorID) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -612,7 +608,6 @@ namespace MapEditorInternal {
         editingWall    = true;
     }
 
-    // Mirrors DeleteSector's ID-safe pattern — needed by the reinstated wall inspector's delete button.
     void DeleteWall(const ID wallID) {
         Level& level = LevelManager::CurrentLevel();
 

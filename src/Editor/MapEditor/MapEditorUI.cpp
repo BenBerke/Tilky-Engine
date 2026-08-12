@@ -19,6 +19,7 @@
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -247,10 +248,8 @@ namespace {
 
     std::optional<std::string> pendingLevelToLoad;
 
-    // Feature #1: Project Settings overlay
     bool projectSettingsOpen = false;
 
-    // Feature #3: Create Level modal gate
     bool createLevelModalRequested = false;
 
     // Confirmation guards
@@ -264,10 +263,7 @@ namespace {
     // Unsaved-changes flag — set on any edit, cleared on Save / new level
     bool hasUnsavedChanges = false;
 
-    // Note: the shared AssetBrowser instance now lives in the real
-    // MapEditorInternal namespace further down this file (next to
-    // GetEditorTexture/DrawAssetField), not here, so ImGuiDrawFunctions.cpp
-    // can reach it too via the extern declaration in EditorInternal.hpp.
+
 
     // =========================================================================
     //  Utility
@@ -746,7 +742,7 @@ namespace {
     }
 
     // =========================================================================
-    //  Project Settings window (Feature #1)
+    //  Project Settings window
     // =========================================================================
 
     void DrawProjectSettingsWindow() {
@@ -940,7 +936,7 @@ namespace {
     }
 
     // =========================================================================
-    //  Hierarchy panel (Feature #10) — search, type-coloured icons, counts,
+    //  Hierarchy panel — search, type-coloured icons, counts,
     //  deferred deletion, copy-ID context menu
     // =========================================================================
 
@@ -1004,11 +1000,35 @@ namespace {
 
                     ImGui::SameLine(0.0f, 6.0f);
 
-                    const bool selected = (selectedSectorID == sector.id);
+                    const auto selectedIt = std::find(selectedSectors.begin(), selectedSectors.end(), sector.id);
+
+                    const bool selected = selectedIt != selectedSectors.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
+                        const ID lastSelectedSectorID = selectedSectorID;
+                        const bool hadSelectedSector = editingSector;
+
                         selectedSectorID = sector.id;
                         editingSector = true;
                         currentMode = MODE_SECTOR;
+
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedSector) {
+                            selectedSectors.clear();
+                            const ID firstID = std::min(sector.id, lastSelectedSectorID);
+                            const ID lastID = std::max(sector.id, lastSelectedSectorID);
+
+                            for (const Sector &rangeSector: level.sectors) {
+                                if (rangeSector.id >= firstID && rangeSector.id <= lastID)
+                                    selectedSectors.push_back(rangeSector.id);
+                            }
+                        }
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
+                            if (selectedIt == selectedSectors.end()) selectedSectors.push_back(sector.id);
+                            else selectedSectors.erase(selectedIt);
+                        }
+                        else {
+                            selectedSectors.clear();
+                            selectedSectors.push_back(sector.id);
+                        }
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1029,6 +1049,80 @@ namespace {
             }
         }
 
+        // ---- Walls --------------------------------------------------------
+        {
+            const bool open = ImGui::CollapsingHeader(
+                "Walls",
+                ImGuiTreeNodeFlags_DefaultOpen
+            );
+            DrawCountBadge(static_cast<int>(level.walls.size()));
+
+            if (open) {
+                ImGui::Indent();
+
+                ID wallPendingDelete = INVALID_ID;
+
+                for (const Wall &wall: level.walls) {
+                    const std::string label = "Wall #" + std::to_string(wall.id);
+                    if (!matches(label)) continue;
+
+                    ImGui::PushID(static_cast<int>(wall.id));
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
+                    ImGui::TextUnformatted("[W]");
+                    ImGui::PopStyleColor();
+
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const auto selectedIt = std::find(selectedWalls.begin(), selectedWalls.end(), wall.id);
+
+                    const bool selected = selectedIt != selectedWalls.end();
+                    if (ImGui::Selectable(label.c_str(), selected)) {
+                        const ID lastSelectedWallID = selectedWallID;
+                        const bool hadSelectedWall = editingWall;
+
+                        selectedWallID = wall.id;
+                        editingWall = true;
+                        currentMode = MODE_DOT;
+
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedWall) {
+                            selectedWalls.clear();
+                            const ID firstID = std::min(wall.id, lastSelectedWallID);
+                            const ID lastID = std::max(wall.id, lastSelectedWallID);
+
+                            for (const Wall &rangeWall: level.walls) {
+                                if (rangeWall.id >= firstID && rangeWall.id <= lastID)
+                                    selectedWalls.push_back(rangeWall.id);
+                            }
+                        }
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
+                            if (selectedIt == selectedWalls.end()) selectedWalls.push_back(wall.id);
+                            else selectedWalls.erase(selectedIt);
+                        }
+                        else {
+                            selectedWalls.clear();
+                            selectedWalls.push_back(wall.id);
+                        }
+                    }
+
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem(Get("editor.delete").c_str()))
+                            wallPendingDelete = wall.id;
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+
+                if (wallPendingDelete != INVALID_ID) {
+                    DeleteWall(wallPendingDelete);
+                    hasUnsavedChanges = true;
+                }
+            }
+        }
+
         // ---- Entities -----------------------------------------------------
         {
             const bool open = ImGui::CollapsingHeader(
@@ -1042,9 +1136,8 @@ namespace {
 
                 ID entityPendingDelete = INVALID_ID;
 
-                for (const Entity &entity: level.entities) {
-                    const std::string label =
-                            entity.name + "  (#" + std::to_string(entity.id) + ")";
+                for (Entity &entity: level.entities) {
+                    const std::string label = entity.name + "  (#" + std::to_string(entity.id) + ")";
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(entity.id));
@@ -1055,11 +1148,36 @@ namespace {
 
                     ImGui::SameLine(0.0f, 6.0f);
 
-                    const bool selected = editingEntity && (selectedEntity.id == entity.id);
+                    const auto selectedIt = std::find(selectedEntities.begin(), selectedEntities.end(), entity.id);
+
+                    const bool selected = selectedIt != selectedEntities.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
+                        const ID lastSelectedID = selectedEntity.id;
+                        const bool hadSelectedEntity = editingEntity;
+
                         selectedEntity = entity;
                         editingEntity = true;
                         currentMode = MODE_ENTITY;
+
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedEntity) {
+                            selectedEntities.clear();
+
+                            const ID firstID = std::min(entity.id, lastSelectedID);
+                            const ID lastID = std::max(entity.id, lastSelectedID);
+
+                            for (const Entity &rangeEntity: level.entities) {
+                                if (rangeEntity.id >= firstID && rangeEntity.id <= lastID)
+                                    selectedEntities.push_back(rangeEntity.id);
+                            }
+                        }
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
+                            if (selectedIt == selectedEntities.end()) selectedEntities.push_back(entity.id);
+                            else selectedEntities.erase(selectedIt);
+                        }
+                        else {
+                            selectedEntities.clear();
+                            selectedEntities.push_back(entity.id);
+                        }
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1123,10 +1241,34 @@ namespace {
 
                     ImGui::SameLine(0.0f, 6.0f);
 
-                    const bool selected = (selectedDotID == dot.id);
+                    const auto selectedIt = std::find(selectedDots.begin(), selectedDots.end(), dot.id);
+
+                    const bool selected = selectedIt != selectedDots.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
+                        const ID lastSelectedDotID = selectedDotID;
+                        const bool hadSelectedDot = selectedDotID != INVALID_ID;
+
                         selectedDotID = dot.id;
                         currentMode = MODE_DOT;
+
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedDot) {
+                            selectedDots.clear();
+                            const ID firstID = std::min(dot.id, lastSelectedDotID);
+                            const ID lastID = std::max(dot.id, lastSelectedDotID);
+
+                            for (const Dot &rangeDot: dots) {
+                                if (rangeDot.id >= firstID && rangeDot.id <= lastID)
+                                    selectedDots.push_back(rangeDot.id);
+                            }
+                        }
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
+                            if (selectedIt == selectedDots.end()) selectedDots.push_back(dot.id);
+                            else selectedDots.erase(selectedIt);
+                        }
+                        else {
+                            selectedDots.clear();
+                            selectedDots.push_back(dot.id);
+                        }
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1140,8 +1282,7 @@ namespace {
 
                 ImGui::Unindent();
 
-                if (dotPendingDelete != INVALID_ID)
-                    RemoveDot(dotPendingDelete);
+                if (dotPendingDelete != INVALID_ID) DeleteDot(dotPendingDelete);
             }
         }
 
@@ -1164,7 +1305,8 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
+            }
+            else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
@@ -1195,16 +1337,16 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
+            }
+            else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
             }
 
             if (ImGui::Button(Get("mode.sector").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                if (currentMode != MODE_SECTOR) {
-                    currentMode = MODE_SECTOR;
-                }
+                if (currentMode != MODE_SECTOR) currentMode = MODE_SECTOR;
+
             }
 
             ImGui::PopStyleColor(3);
@@ -1220,7 +1362,8 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
+            }
+            else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
