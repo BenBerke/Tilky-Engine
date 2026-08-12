@@ -702,7 +702,7 @@ namespace {
     }
 
     bool TryOpenProject(const ProjectEntry& entry) {
-        if (!entry.requiredEngineVersion.empty() && !EVM().IsVersionInstalled(entry.requiredEngineVersion)) {
+        if (entry.requiredEngineVersion.empty() || !EVM().IsVersionInstalled(entry.requiredEngineVersion)) {
             // Don't launch anything - point the user at installing the exact version
             // this project needs instead. Scoping the modal to this project surfaces
             // a "Use for this project" button once it's installed, so this doubles as
@@ -1697,9 +1697,7 @@ namespace {
 
         if (selectableClicked) {
             selectedProjectPath = entry.folderPath;
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !entry.isMissing) {
-                TryOpenProject(entry);
-            }
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !entry.isMissing) TryOpenProject(entry);
         }
 
         ImGui::SetCursorScreenPos(nameBlockCursor);
@@ -1707,13 +1705,11 @@ namespace {
         ImGui::TextUnformatted(entry.name.c_str());
 
         std::string subText;
-        if (entry.isMissing) {
-            subText = Localisation::Get("launcher.missing_project");
-        } else if (entry.isImported) {
+        if (entry.isMissing) subText = Localisation::Get("launcher.missing_project");
+        else if (entry.isImported)
             subText = Localisation::Get("launcher.imported_project_label") + "   " + FormatRelativeTime(entry.lastOpenedUnix);
-        } else {
-            subText = FormatRelativeTime(entry.lastOpenedUnix);
-        }
+        else subText = FormatRelativeTime(entry.lastOpenedUnix);
+
         ImGui::TextDisabled("%s", subText.c_str());
         ImGui::EndGroup();
 
@@ -1738,9 +1734,8 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82f, 0.69f, 0.31f, 1.0f)); // pinned but not installed - same gold as the pinned-card outline
                 ImGui::TextUnformatted(versionText.c_str());
                 ImGui::PopStyleColor();
-            } else {
-                ImGui::TextDisabled("%s", versionText.c_str());
             }
+            else ImGui::TextDisabled("%s", versionText.c_str());
 
             ImGui::SetCursorScreenPos(returnCursor);
         }
@@ -1765,7 +1760,8 @@ namespace {
                 ImGui::EndDisabled();
                 ImGui::SameLine();
                 DrawVersionProgressInline(EVM().GetInstallProgress(entry.requiredEngineVersion));
-            } else if (versionMissing) {
+            }
+            else if (versionMissing) {
                 const std::string installLabel = Localisation::Get("launcher.evm_install") + " v" + entry.requiredEngineVersion;
                 if (ImGui::SmallButton(installLabel.c_str())) {
                     engineVersionsModalTargetProject = entry.folderPath;
@@ -1773,11 +1769,8 @@ namespace {
                 }
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", Localisation::Get("launcher.evm_version_required_suffix").c_str());
-            } else {
-                if (ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str())) {
-                    TryOpenProject(entry);
-                }
             }
+            else if (ImGui::SmallButton(Localisation::Get("launcher.open_project").c_str())) TryOpenProject(entry);
             ImGui::SameLine();
 
             const std::string pinLabel = entry.isPinned
@@ -1987,7 +1980,7 @@ namespace {
 
                 if (!it->isMissing &&
                     (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) {
-                    RequestOpenProject(*it);
+                    TryOpenProject(*it);
                 }
             }
         }
