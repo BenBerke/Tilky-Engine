@@ -52,6 +52,8 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     if (std::ranges::find(sector.entitiesInside, this->ownerID) == sector.entitiesInside.end())
         sector.entitiesInside.push_back(this->ownerID);
 
+    sectorId = sector.id;
+
     return true;
 }
 

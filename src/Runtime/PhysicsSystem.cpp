@@ -221,27 +221,67 @@ namespace {
 
         if (penetration <= Constants::Epsilon) return false;
 
+        const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(delta, inverseDistance), XZ_MASK);
+
+        const float planeDistance =
+            (sphereCentre.x - wall.start.x) * wall.normal.x + (sphereCentre.z - wall.start.y) * wall.normal.y;
+
+        const float normalDirection = planeDistance < 0.0f ? -1.0f : 1.0f;
+
+        const __m128 fallbackNormal = _mm_set_ps(
+            0.0f,
+            wall.normal.y * normalDirection,
+            0.0f,
+            wall.normal.x * normalDirection
+        );
+
+        const __m128 horizontalLengthSqReg = dot_xz_ss(calculatedNormal, calculatedNormal);
+
+        const __m128 hasCalculatedNormal = _mm_cmpgt_ss(horizontalLengthSqReg, _mm_set_ss(Constants::Epsilon));
+
+        const __m128 hasCalculatedNormalBroad =
+                TILKY_MM_SHUFFLE_PS(
+                    hasCalculatedNormal,
+                    hasCalculatedNormal,
+                    _MM_SHUFFLE(0, 0, 0, 0)
+                );
+
+        __m128 collisionNormal = blend_ps(fallbackNormal, calculatedNormal, hasCalculatedNormalBroad);
+
+        const __m128 normalLengthSqReg = dot_xz_ss(collisionNormal, collisionNormal);
+
+        if (_mm_cvtss_f32(normalLengthSqReg) <= Constants::Epsilon)
+            return false;
+
+        __m128 inverseNormalLength = rsqrt_nr_ss(normalLengthSqReg);
+        inverseNormalLength = TILKY_MM_SHUFFLE_PS(
+            inverseNormalLength,
+            inverseNormalLength,
+            _MM_SHUFFLE(0, 0, 0, 0)
+        );
+
+        collisionNormal = _mm_mul_ps(collisionNormal, inverseNormalLength);
+
+        const float velocityIntoWall = _mm_cvtss_f32(dot3_ss(rigidbody.velocity.reg, collisionNormal));
+
         const float feetHeight = transform.position.y;
         const float stepHeight = span.top - feetHeight;
 
-        const bool wallStartsAtFeet =
-            span.bottom <= feetHeight + GROUND_CONTACT_SLOP;
+        const bool wallStartsAtFeet = span.bottom <= feetHeight + GROUND_CONTACT_SLOP;
 
         const bool canStep =
                 stepSize > 0.0f &&
                 wallStartsAtFeet &&
                 stepHeight > Constants::Epsilon &&
-                stepHeight <= stepSize + Constants::Epsilon;
+                stepHeight <= stepSize + Constants::Epsilon &&
+                velocityIntoWall < -Constants::Epsilon;
 
         if (canStep) {
             const float verticalCorrection = stepHeight + PENETRATION_SLOP;
 
             transform.AddPosition({0.0f, verticalCorrection, 0.0f});
 
-            sphereCentre.reg = _mm_add_ps(
-                sphereCentre.reg,
-                _mm_set_ps(0.0f, 0.0f, verticalCorrection, 0.0f)
-            );
+            sphereCentre.reg = _mm_add_ps(sphereCentre.reg,_mm_set_ps(0.0f, 0.0f, verticalCorrection,0.0f));
 
             if (rigidbody.velocity.y < 0.0f) rigidbody.velocity.y = 0.0f;
 
@@ -251,51 +291,16 @@ namespace {
             return true;
         }
 
-        const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(delta, inverseDistance), XZ_MASK);
-
-        const float planeDistance =
-            (sphereCentre.x - wall.start.x) * wall.normal.x +
-            (sphereCentre.z - wall.start.y) * wall.normal.y;
-
-        const float normalDirection = planeDistance < 0.0f ? -1.0f : 1.0f;
-        const __m128 fallbackNormal = _mm_set_ps(
-            0.0f,
-            wall.normal.y * normalDirection,
-            0.0f,
-            wall.normal.x * normalDirection
-        );
-
-        const __m128 horizontalLengthSqReg = dot_xz_ss(calculatedNormal, calculatedNormal);
-        const __m128 hasCalculatedNormal =
-            _mm_cmpgt_ss(horizontalLengthSqReg, _mm_set_ss(Constants::Epsilon));
-        const __m128 hasCalculatedNormalBroad =
-            TILKY_MM_SHUFFLE_PS(hasCalculatedNormal, hasCalculatedNormal, _MM_SHUFFLE(0, 0, 0, 0));
-
-        __m128 collisionNormal = blend_ps(fallbackNormal, calculatedNormal, hasCalculatedNormalBroad);
-        const __m128 normalLengthSqReg = dot_xz_ss(collisionNormal, collisionNormal);
-
-        if (_mm_cvtss_f32(normalLengthSqReg) <= Constants::Epsilon) return false;
-
-        __m128 inverseNormalLength = rsqrt_nr_ss(normalLengthSqReg);
-        inverseNormalLength =
-            TILKY_MM_SHUFFLE_PS(inverseNormalLength, inverseNormalLength, _MM_SHUFFLE(0, 0, 0, 0));
-        collisionNormal = _mm_mul_ps(collisionNormal, inverseNormalLength);
-
         const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
+
         const __m128 correction = _mm_mul_ps(collisionNormal, _mm_set1_ps(correctedPenetration));
 
         transform.AddPosition(Vector3(correction));
         sphereCentre.reg = _mm_add_ps(sphereCentre.reg, correction);
 
-        const float velocityIntoWall =
-            _mm_cvtss_f32(dot3_ss(rigidbody.velocity.reg, collisionNormal));
-
-        if (velocityIntoWall < 0.0f) {
-            rigidbody.velocity.reg = _mm_sub_ps(
-                rigidbody.velocity.reg,
-                _mm_mul_ps(collisionNormal, _mm_set1_ps(velocityIntoWall))
+        if (velocityIntoWall < 0.0f)
+            rigidbody.velocity.reg = _mm_sub_ps(rigidbody.velocity.reg, _mm_mul_ps(collisionNormal,_mm_set1_ps(velocityIntoWall))
             );
-        }
 
         return true;
     }

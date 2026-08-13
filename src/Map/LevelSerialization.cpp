@@ -1014,17 +1014,17 @@ namespace {
                 }
 
                 c.fov = cameraJson.value("fov", 90.0f);
-                c.aspectRatio =
-                        cameraJson.value("aspectRatio", 1680.0f / 960.0f);
+                c.aspectRatio = cameraJson.value("aspectRatio", 1680.0f / 960.0f);
                 c.nearPlane = cameraJson.value("nearPlane", 0.1f);
                 c.farPlane = cameraJson.value("farPlane", 10000.0f);
+                c.smoothStep = cameraJson.value("smoothStep", false);
+                c.smoothingStrength = cameraJson.value("smoothingStrength", 1.0f);
             }
         }
 
         if (componentsJson.contains("colliders")) {
             for (const json &colliderJson: componentsJson["colliders"]) {
-                const ID ownerID =
-                        colliderJson.value("ownerID", INVALID_ENTITY_ID);
+                const ID ownerID = colliderJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
@@ -1190,7 +1190,9 @@ namespace {
                 {"fov", c.fov},
                 {"aspectRatio", c.aspectRatio},
                 {"nearPlane", c.nearPlane},
-                {"farPlane", c.farPlane}
+                {"farPlane", c.farPlane},
+                {"smoothStep", c.smoothStep},
+                {"smoothingStrength", c.smoothingStrength}
             });
         }
 

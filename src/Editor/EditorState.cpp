@@ -17,7 +17,7 @@ namespace MapEditorInternal {
     ImFont* scriptEditorFont = nullptr;
 
     float editorZoom = 1.0f;
-    float GRID_SIZE = 32.0f;
+    float GRID_SIZE = 12.0f; // todo TILKY_TODO, make this a setting
 
     Vector2 cameraPos = {0.0f, 0.0f};
 

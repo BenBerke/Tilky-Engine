@@ -161,13 +161,22 @@ struct ComponentCamera {
     float nearPlane = 0.1f;
     float farPlane = 10000.0f;
 
-    // Read-only, do not change
+    bool smoothStep = true; // When true, smoothly move up/down steps instead of teleporting
+    float smoothingStrength = 1.0f;
+
+    // Read-only, do not change in game via scripts
+    float smoothStepStartY = 0.0f;
+    float smoothStepTargetY = 0.0f;
+    float stepOffsetY = 0.0f;
+    bool isStepping = false;
+    float previousTransformY = 0.0f;
+    bool hasPreviousTransformY = false;
+
     Vector3 forward = {0.0f, 0.0f, 1.0f};
     Vector3 target = {0.0f, 0.0f, 1.0f};
 
     Matrix4 view = Matrix4::Identity();
     Matrix4 projection = Matrix4::Identity();
-
 };
 
 // Custom Lua script written by the user
@@ -237,7 +246,8 @@ struct ComponentTransform {
 
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 
-    int sectorIndex = -1;
+    int sectorIndex = -1; // Stores the index of the sector in level.sectors vector. Allows for fast lookup
+    ID sectorId = -1; // Stores the absoulete ID of the sector, this should be for things like scripting
     bool isDirty = false;
 
     void AddPosition(const Vector3& position);

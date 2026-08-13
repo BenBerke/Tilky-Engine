@@ -11,6 +11,7 @@
 #include "imgui_impl_sdl3.h"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/UISystem.hpp"
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
@@ -31,8 +32,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             spdlog::error("OpenGL::Update failed: editor camera was not created");
             return;
         }
-    }
-    else {
+    } else {
         camera = LevelSystem::GetActiveCamera(level);
 
         if (camera == nullptr) [[unlikely]] {
@@ -59,22 +59,129 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     glViewport(0, 0, screenWidth, screenHeight);
 
     if (screenHeight > 0) [[likely]]
-        camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
+            camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
     ComponentTransform renderCameraTransform = *cameraTransform;
 
-    //todo stop using playercontroller and check for normal cameras
+    //todo TILKY_TODO stop using playercontroller and check for normal cameras
+
     if (!useEditorCamera) {
-        for (const ComponentPlayerController& controller : level.playerControllers.components) {
+        float eyeHeight = 0.0f;
+
+        for (const ComponentPlayerController &controller:
+             level.playerControllers.components) {
             if (!controller.isActive) continue;
 
             if (controller.ownerID == camera->ownerID) {
-                renderCameraTransform.position.y =
-                    cameraTransform->position.y + controller.eyeHeight;
+                eyeHeight = controller.eyeHeight;
                 break;
             }
         }
+
+        const float actualTransformY =
+                cameraTransform->position.y;
+
+        if (!camera->hasPreviousTransformY) {
+            camera->previousTransformY = actualTransformY;
+            camera->hasPreviousTransformY = true;
+        }
+
+        const float transformDeltaY =
+                actualTransformY - camera->previousTransformY;
+
+        const ComponentCollider *collider =
+                level.colliders.Get(camera->ownerID);
+
+        const ComponentRigidbody *rigidbody =
+                level.rigidbodies.Get(camera->ownerID);
+
+        // Detect the upward teleport performed by PhysicsSystem.
+        const bool steppedUp =
+                camera->smoothStep &&
+                collider != nullptr &&
+                rigidbody != nullptr &&
+                rigidbody->isGrounded &&
+                collider->stepSize > 0.0f &&
+                transformDeltaY > 0.01f &&
+                transformDeltaY <=
+                collider->stepSize + Constants::Epsilon;
+
+        if (steppedUp) {
+            float previousVisualY =
+                    camera->previousTransformY;
+
+            // Preserve an unfinished smoothing animation.
+            if (camera->isStepping) {
+                previousVisualY =
+                        camera->smoothStepStartY +
+                        camera->stepOffsetY +
+                        (
+                            camera->previousTransformY -
+                            camera->smoothStepTargetY
+                        );
+            }
+
+            camera->smoothStepStartY = previousVisualY;
+            camera->smoothStepTargetY = actualTransformY;
+            camera->stepOffsetY = 0.0f;
+            camera->isStepping = true;
+        }
+
+        float currentCameraY = actualTransformY;
+
+        if (camera->smoothStep && camera->isStepping) {
+            const float targetOffset =
+                    camera->smoothStepTargetY -
+                    camera->smoothStepStartY;
+
+            const float interpolation =
+                    1.0f -
+                    std::exp(
+                        -std::max(
+                            camera->smoothingStrength,
+                            0.01f
+                        ) *
+                        GameTime::deltaTime
+                    );
+
+            camera->stepOffsetY +=
+                    (targetOffset - camera->stepOffsetY) *
+                    interpolation;
+
+            // Apply later jumping/falling directly.
+            const float movementAfterStep =
+                    actualTransformY -
+                    camera->smoothStepTargetY;
+
+            currentCameraY =
+                    camera->smoothStepStartY +
+                    camera->stepOffsetY +
+                    movementAfterStep;
+
+            if (std::abs(
+                    targetOffset -
+                    camera->stepOffsetY
+                ) <= 0.001f) {
+                currentCameraY = actualTransformY;
+
+                camera->smoothStepStartY = actualTransformY;
+                camera->smoothStepTargetY = actualTransformY;
+                camera->stepOffsetY = 0.0f;
+                camera->isStepping = false;
+            }
+        } else if (!camera->smoothStep) {
+            camera->smoothStepStartY = actualTransformY;
+            camera->smoothStepTargetY = actualTransformY;
+            camera->stepOffsetY = 0.0f;
+            camera->isStepping = false;
+        }
+
+        camera->previousTransformY = actualTransformY;
+
+        renderCameraTransform.position.y =
+                currentCameraY + eyeHeight;
     }
+
 
     CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 

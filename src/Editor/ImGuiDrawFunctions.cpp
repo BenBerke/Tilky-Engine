@@ -1310,7 +1310,7 @@ namespace ImGuiDrawFunctions {
                 Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
                 //FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
-                                   &c->sensitivityX, 0.001f, 2.0f);
+                    &c->sensitivityX, 0.001f, 2.0f);
                 //FieldWidth(-1.0f);
                 ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
                                    &c->sensitivityY, 0.001f, 2.0f);
@@ -1367,6 +1367,11 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.camera.far_plane").c_str(),  &c->farPlane,  draggable);
                 Tooltip(Get("editor.tooltip.component.camera.far_plane").c_str());
                 EndSection();
+
+                BeginSection("Gameplay");
+                ImGui::Checkbox(Get("component.camera.smooth_step").c_str(), &c->smoothStep);
+                Tooltip(Get("editor.tooltip.component.camera.smooth_step").c_str());
+                InputOrDrag(Get("component.camera.smoothing_strength").c_str(), &c->smoothingStrength, draggable);
 
                 BeginSection("State");
                 ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);

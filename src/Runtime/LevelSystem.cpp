@@ -247,7 +247,8 @@ namespace LevelSystem {
         }
 
         {
-            //todo sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
+            //todo TILKY_TODO
+            // sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
             ZoneScopedN("Physics");
             constexpr int COLLISION_ITERATIONS = 1;
             const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
@@ -269,8 +270,7 @@ namespace LevelSystem {
                     r.ApplyFriction(0, subDeltaTime);
                     r.ApplyAirResistance(0, subDeltaTime);
 
-                    if (!r.velocity.IsZero())
-                        transform->AddPosition(r.velocity * subDeltaTime);
+                    if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
                 }
                 PhysicsSystem::Run(level);
             }
@@ -288,7 +288,78 @@ namespace LevelSystem {
                 }
 
                 if (level.rigidbodies.Get(transform.ownerID) == nullptr || !transform.isDirty) continue;
+                const int oldSectorIndex = transform.sectorIndex;
                 transform.UpdateObjectSectorAndFloor(level.sectors);
+
+                const int newSectorIndex = transform.sectorIndex;
+
+                // UpdateObjectSectorAndFloor() shouldn't change the transform position
+                // Doing this is technically slower but it is cleaner
+                if (oldSectorIndex != newSectorIndex) {
+                    const ComponentCollider* collider =
+                        owner->GetComponent<ComponentCollider>();
+
+                    if (collider == nullptr) continue;
+
+                    const float oldHeight =
+                        level.sectors[oldSectorIndex]
+                            .floors[0].floor.height;
+
+                    const float newHeight =
+                        level.sectors[newSectorIndex]
+                            .floors[0].floor.height;
+
+                    // Upward stepping and camera smoothing are already detected
+                    // from the physical Y change in the renderer.
+                    if (newHeight >= oldHeight) continue;
+
+                    ComponentCamera* camera =
+                        owner->GetComponent<ComponentCamera>();
+
+                    const float distanceToStep =
+                        transform.position.y - newHeight;
+
+                    const bool canStepDown =
+                        collider->stepSize > 0.0f &&
+                        distanceToStep > Constants::Epsilon &&
+                        distanceToStep <=
+                            collider->stepSize + Constants::Epsilon;
+
+                    if (!canStepDown) continue;
+
+                    const float previousTransformY =
+                        transform.position.y;
+
+                    transform.AddPosition({
+                        0.0f,
+                        -distanceToStep,
+                        0.0f
+                    });
+
+                    transform.relativeHeight = 0.0f;
+
+                    if (camera != nullptr && camera->smoothStep) {
+                        float currentVisualY =
+                            previousTransformY;
+
+                        if (camera->isStepping) {
+                            currentVisualY =
+                                camera->smoothStepStartY +
+                                camera->stepOffsetY +
+                                (
+                                    previousTransformY -
+                                    camera->smoothStepTargetY
+                                );
+                        }
+
+                        camera->smoothStepStartY = currentVisualY;
+                        camera->smoothStepTargetY =
+                            transform.position.y;
+
+                        camera->stepOffsetY = 0.0f;
+                        camera->isStepping = true;
+                    }
+                }
             }
         }
 
