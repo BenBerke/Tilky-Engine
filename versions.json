@@ -2,14 +2,6 @@
   "manifestVersion": 1,
   "versions": [
     {
-      "version": "0.1.0",
-      "platform": "windows-x64",
-      "channel": "stable",
-      "downloadUrl": "https://github.com/BenBerke/Tilky-Engine/releases/download/v0.1.0/Tilky_Engine-Windows-x64-0.1.0.zip",
-      "size": 9139867,
-      "sha256": "2f1dc30349aa441ef9d52e28b34eda82bb640bc93b491d87e2ff0f606e2c4a86"
-    },
-    {
       "version": "1.0.1",
       "platform": "windows-x64",
       "channel": "stable",
