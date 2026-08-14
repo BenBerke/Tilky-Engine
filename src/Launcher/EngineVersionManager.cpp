@@ -21,6 +21,8 @@
 #include "Headers/Launcher/Sha256.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
+#include <chrono>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -338,12 +340,21 @@ namespace EngineVersionManager {
 
     void EngineVersionManager::RunManifestFetch() {
         cpr::Session session;
-        session.SetUrl(cpr::Url{MANIFEST_URL});
+        const auto cacheBust = std::chrono::system_clock::now().time_since_epoch().count();
+
+        session.SetUrl(cpr::Url{std::string(MANIFEST_URL) + "?nocache=" +std::to_string(cacheBust)});
+
+        session.SetHeader(cpr::Header{
+            {"Cache-Control", "no-cache"},
+            {"Pragma", "no-cache"}
+        });
         session.SetTimeout(cpr::Timeout{MANIFEST_TIMEOUT_MS});
         session.SetConnectTimeout(cpr::ConnectTimeout{CONNECT_TIMEOUT_MS});
         session.SetRedirect(cpr::Redirect{true});
 
         const cpr::Response response = session.Get();
+
+        spdlog::info("versions.json response:\n{}", response.text);
 
         std::lock_guard<std::mutex> lock(mutex_);
         manifestLoading_ = false;

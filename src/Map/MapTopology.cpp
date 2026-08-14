@@ -16,8 +16,7 @@
 #include "Headers/Math/Vector/Vector2Math.hpp"
 
 // ============================================================================
-// Algorithm overview (stage numbers match the design doc this was built
-// from):
+// Algorithm overview
 //
 //   2. Canonicalize   - epsilon predicates; CleanDrawnPoints dedupes the
 //                        input and IsDrawnChainSelfIntersecting rejects
