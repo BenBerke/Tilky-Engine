@@ -467,9 +467,7 @@ namespace EngineVersionManager {
             const bool isStable = manifestEntry == manifestVersions_.end() || manifestEntry->channel == "stable";
             if (!isStable) continue;
 
-            if (!latest || IsVersionNewer(installedVersion, *latest)) {
-                latest = installedVersion;
-            }
+            if (!latest || IsVersionNewer(installedVersion, *latest)) latest = installedVersion;
         }
 
         return latest;
