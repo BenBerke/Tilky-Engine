@@ -54,8 +54,8 @@ namespace {
 #endif
 
     bool StartRenderer(const std::string& windowName, const bool useEditorCamera) {
-        // TODO: Try Vulkan first when Vulkan support is ready.
-        renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
+        // TODO: TILKY_TODO Try Vulkan first when Vulkan support is ready.
+        renderer = RendererFactory::CreateRenderer(RendererBackend::VULKAN);
 
         if (!renderer) {
             spdlog::critical("Failed to create renderer");

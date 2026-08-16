@@ -92,6 +92,7 @@ find_package(Freetype REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Lua REQUIRED)
+find_package(Vulkan REQUIRED)
 
 # Added for EngineVersionManager (launcher-side engine version installer):
 # cpr for HTTP downloads, minizip-ng for ZIP extraction. Both are added to
@@ -133,6 +134,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             External/imgui/backends/imgui_impl_sdl3.cpp
             External/imgui/backends/imgui_impl_sdlrenderer3.cpp
             External/imgui/backends/imgui_impl_opengl3.cpp
+            External/imgui/backends/imgui_impl_vulkan.cpp
     )
 
     target_include_directories(imgui PUBLIC
@@ -144,6 +146,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             SDL3::SDL3
             SDL3::Headers
             OpenGL::GL
+            Vulkan::Vulkan
     )
 
     target_precompile_headers(imgui PRIVATE
@@ -299,7 +302,11 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
         src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
-        src/Runtime/Renderer/Vulkan/VulkanRenderer.cpp
+
+        Headers/Runtime/Renderer/Vulkan/Vulkan.hpp
+        src/Runtime/Renderer/Vulkan/VulkanInit.cpp
+        src/Runtime/Renderer/Vulkan/Vulkan.cpp
+        src/Runtime/Renderer/Vulkan/VulkanUpdate.cpp
 
         src/Runtime/PhysicsSystem.cpp
 
@@ -351,11 +358,19 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Renderer/RendererFactory.hpp
         Headers/Runtime/Renderer/RendererMath.hpp
         Headers/Runtime/Renderer/OpenGL/OpenGL.hpp
-        Headers/Runtime/Renderer/Vulkan/VulkanRenderer.hpp
 
         Headers/Runtime/PhysicsSystem.hpp
         Headers/UISystem.hpp
         Headers/Math/Quaternion/Quaternion.hpp
+        src/Runtime/Renderer/Vulkan/VulkanMapBuild.cpp
+        src/Runtime/Renderer/Vulkan/VulkanSector.cpp
+        src/Runtime/Renderer/Vulkan/VulkanSprite.cpp
+        src/Runtime/Renderer/Vulkan/VulkanCollider.cpp
+        src/Runtime/Renderer/Vulkan/VulkanTexture.cpp
+        src/Runtime/Renderer/Vulkan/VulkanUI.cpp
+        src/Runtime/Renderer/Vulkan/VulkanText.cpp
+        src/Runtime/Renderer/Vulkan/VulkanBackground.cpp
+        src/Runtime/Renderer/Vulkan/VulkanDestroy.cpp
 )
 
 # ============================================================

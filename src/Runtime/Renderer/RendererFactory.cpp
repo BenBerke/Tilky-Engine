@@ -4,7 +4,9 @@
 
 #include "Headers/Runtime/Renderer/RendererFactory.hpp"
 
+#include "common/TracyQueue.hpp"
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
+#include "Headers/Runtime/Renderer/Vulkan/Vulkan.hpp"
 // Later:
 // #include "Runtime/Renderer/Vulkan/VulkanRenderer.hpp"
 
@@ -14,8 +16,7 @@ std::unique_ptr<IRenderer> RendererFactory::CreateRenderer(RendererBackend backe
             return std::make_unique<OpenGL>();
 
         case RendererBackend::VULKAN:
-            // Later:
-            // return std::make_unique<VulkanRenderer>();
+            return std::make_unique<Vulkan>();
             return nullptr;
 
         case RendererBackend::AUTO:
