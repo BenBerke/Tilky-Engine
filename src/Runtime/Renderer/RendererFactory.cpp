@@ -16,7 +16,7 @@ std::unique_ptr<IRenderer> RendererFactory::CreateRenderer(RendererBackend backe
             return std::make_unique<OpenGL>();
 
         case RendererBackend::VULKAN:
-            return std::make_unique<Vulkan>();
+           // return std::make_unique<Vulkan>();
             return nullptr;
 
         case RendererBackend::AUTO:
