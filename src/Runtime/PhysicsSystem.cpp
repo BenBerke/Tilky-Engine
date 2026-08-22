@@ -684,9 +684,33 @@ namespace PhysicsSystem {
             }
         }
 
-        for (ComponentCollider& boxCollider : colliders.ActiveBoxes()) {
-            (void)boxCollider;
-            // TODO
+        for (ComponentCollider& selfCollider : colliders.ActiveBoxes()) {
+            ZoneScopedN("AABB");
+            // TODO TILKY_TODO AABB Collision
+            /* use boxCollider.scale.x/y/z for the AABB size
+               selfTransform.position for the position
+                Make sure to follow the SIMD style as sphere
+                You can look at the sphere collision to see how things are done
+
+                Required features:
+                AABB-AABB
+                AABB-Sphere
+                AABB-Wall
+                AABB-Ceiling/Floor (with slopes)
+            */
+
+            if (selfCollider.isTrigger) continue;
+
+            ComponentTransform* selfTransform = level.transforms.Get(selfCollider.ownerID);
+            if (selfTransform == nullptr) [[unlikely]] continue;
+
+            ComponentRigidbody* selfRigidbody = level.rigidbodies.Get(selfCollider.ownerID);
+            if (selfRigidbody == nullptr || selfRigidbody->isStatic) continue;
+
+            const int sectorIndex = selfTransform->sectorIndex;
+            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+            Sector& sector = level.sectors[sectorIndex];
         }
     }
 }
