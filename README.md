@@ -21,8 +21,8 @@ The source build instructions below are intended for contributors and developers
 This minute long walkthrough demonstrates the UI layout, texture and sector workflows, asset pipeline, and real-time editor-to-runtime testing.
 
 <p align="center">
-  <a href="https://youtu.be/SaR1wiwHZIg">
-    <img src="https://img.youtube.com/vi/SaR1wiwHZIg/maxresdefault.jpg" alt="Editor Workflow" width="700">
+  <a href="https://www.youtube.com/watch?v=rNt0sh8btuk">
+    <img src="https://img.youtube.com/vi/_2Y0dR1GkY8/maxresdefault.jpg" alt="Editor Workflow" width="700">
   </a>
 </p>
 
