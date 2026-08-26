@@ -10,7 +10,7 @@ Tilky Engine is designed as a complete development environment rather than only 
 
 The recommended way to install and use Tilky Engine is through **Tilky Engine** on Steam. The launcher handles project creation, engine installation, version switching, and opening projects with the correct engine version. No manual compilation is required! Alternatively, you can install from our GitHub repository.
 
-[[**Install Tilky Engine on Steam →**]](https://store.steampowered.com/app/4956400/Tilky_Engine/?beta=0)
+[**Install Tilky Engine on Steam →**](https://store.steampowered.com/app/4956400/Tilky_Engine/?beta=0)
 
 [**Download the Tilky Launcher from GitHub Releases →**](https://github.com/BenBerke/Tilky-Engine-Launcher/releases)
 
@@ -21,7 +21,7 @@ The source build instructions below are intended for contributors and developers
 This 80-second walkthrough demonstrates the UI layout, texture and sector workflows, asset pipeline, and real-time editor-to-runtime testing.
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=_2Y0dR1GkY8">
+  <a href="https://www.youtube.com/watch?v=rNt0sh8btuk">
     <img src="https://img.youtube.com/vi/_2Y0dR1GkY8/maxresdefault.jpg" alt="Editor Workflow" width="700">
   </a>
 </p>
