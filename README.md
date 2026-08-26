@@ -8,7 +8,9 @@ Tilky Engine is designed as a complete development environment rather than only 
 
 ## 🚀 Download Tilky Engine
 
-The recommended way to install and use Tilky Engine is through the **Tilky Launcher**. The launcher handles project creation, engine installation, version switching, and opening projects with the correct engine version. No manual compilation is required!
+The recommended way to install and use Tilky Engine is through **Tilky Engine** on Steam. The launcher handles project creation, engine installation, version switching, and opening projects with the correct engine version. No manual compilation is required! Alternatively, you can install from our GitHub repository.
+
+[[**Install Tilky Engine on Steam →**]](https://store.steampowered.com/app/4956400/Tilky_Engine/?beta=0)
 
 [**Download the Tilky Launcher from GitHub Releases →**](https://github.com/BenBerke/Tilky-Engine-Launcher/releases)
 
