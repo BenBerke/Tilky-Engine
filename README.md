@@ -18,7 +18,7 @@ The source build instructions below are intended for contributors and developers
 
 ## 🕹️ Editor & Engine Workflow
 
-This 80-second walkthrough demonstrates the UI layout, texture and sector workflows, asset pipeline, and real-time editor-to-runtime testing.
+This minute long walkthrough demonstrates the UI layout, texture and sector workflows, asset pipeline, and real-time editor-to-runtime testing.
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=rNt0sh8btuk">
