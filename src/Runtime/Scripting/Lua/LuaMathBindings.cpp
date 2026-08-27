@@ -1,9 +1,16 @@
-//
+
 // Created by berke on 6/20/2026.
 //
 #include "Headers/Engine/GameTime.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+
+#include <spdlog/spdlog.h>
 
 namespace {
     //todo make this an engine setting
@@ -91,17 +98,27 @@ namespace {
         return min + normalized * (max - min);
     }
 
-    static float GetRandomFast() {
-        static int currentIndex = 0;
-        return randomNumbers[currentIndex++];
+    float GetRandomFast() {
+        static std::size_t currentIndex = 0;
+        const float value = randomNumbers[currentIndex];
+        currentIndex = (currentIndex + 1) % std::size(randomNumbers);
+        return value;
     }
 }
 
 void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
+    const sol::object existing = lua["Tmath"];
     sol::table math;
 
-    if (lua["Tmath"].valid()) math = lua["Tmath"];
-    else math = lua.create_named_table("Tmath");
+    if (existing.get_type() == sol::type::table) {
+        math = existing.as<sol::table>();
+    } else {
+        if (existing.get_type() != sol::type::nil) {
+            spdlog::warn("Replacing Lua global 'Tmath' because it is not a table");
+        }
+
+        math = lua.create_named_table("Tmath");
+    }
 
     math.set_function("DegToRad", [](const float value) -> float {
         return value * Constants::DegToRad;
@@ -148,7 +165,7 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     });
 
     math.set_function("Random", sol::overload(
-        // One arg: int 0 to max
+        // One arg: int in [0, max).
         [](const int max) -> int {
             if (max <= 0) return 0;
             return XorShift32() % max;
@@ -174,5 +191,5 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
         }
     ));
 
-    math.set_function("RandomFast", sol::overload([]() -> float { return GetRandomFast(); }));
+    math.set_function("RandomFast", []() -> float { return GetRandomFast(); });
 }

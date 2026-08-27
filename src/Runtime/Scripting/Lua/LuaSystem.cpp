@@ -1,4 +1,4 @@
-//
+
 // Created by berke on 5/15/2026.
 //
 
@@ -47,8 +47,10 @@ namespace {
 
         sol::protected_function startFunction;
         sol::protected_function updateFunction;
+        sol::protected_function stopFunction;
 
         bool started = false;
+        bool updateFailed = false;
     };
 
     struct ScriptGameTime {
@@ -95,6 +97,41 @@ namespace {
         }
 
         return nullptr;
+    }
+
+    ComponentScript* FindScriptComponent(Level& level, const ScriptInstance& instance) {
+        for (ComponentScript& script : level.scripts.components) {
+            if (script.ownerID == instance.ownerID &&
+                CleanScriptFileName(script.fileName) == instance.scriptFile) {
+                return &script;
+            }
+        }
+
+        return nullptr;
+    }
+
+    sol::protected_function GetOptionalScriptFunction(
+        sol::environment environment,
+        const char* functionName,
+        const std::string& scriptFile
+    ) {
+        const sol::object value = environment[functionName];
+
+        if (value.get_type() == sol::type::nil) {
+            return {};
+        }
+
+        if (value.get_type() != sol::type::function) {
+            spdlog::warn(
+                "Lua '{}' in script '{}' is not a function and will be ignored",
+                functionName,
+                scriptFile
+            );
+
+            return {};
+        }
+
+        return value.as<sol::protected_function>();
     }
 
     const char* ScriptValueTypeToString(const ScriptValueType type) {
@@ -474,6 +511,7 @@ namespace {
         instance.ownerID = script.ownerID;
         instance.scriptFile = cleanFileName;
         instance.started = false;
+        instance.updateFailed = false;
 
         instance.environment = sol::environment(
             lua,
@@ -524,8 +562,9 @@ namespace {
             return false;
         }
 
-        instance.startFunction = instance.environment["Start"];
-        instance.updateFunction = instance.environment["Update"];
+        instance.startFunction = GetOptionalScriptFunction(instance.environment, "Start", cleanFileName);
+        instance.updateFunction = GetOptionalScriptFunction(instance.environment, "Update", cleanFileName);
+        instance.stopFunction = GetOptionalScriptFunction(instance.environment, "Stop", cleanFileName);
 
         return true;
     }
@@ -554,13 +593,31 @@ namespace {
         }
     }
 
+    void CallStop(ScriptInstance& instance) {
+        if (!instance.started || !instance.stopFunction.valid()) {
+            return;
+        }
+
+        const sol::protected_function_result stopResult = instance.stopFunction();
+
+        if (!stopResult.valid()) {
+            const sol::error error = stopResult;
+
+            spdlog::error(
+                "Lua Stop error in '{}': {}",
+                instance.scriptFile,
+                error.what()
+            );
+        }
+    }
+
     void RegisterGameTimeBindings(sol::state& luaState) {
         luaState.new_usertype<ScriptGameTime>(
             "ScriptGameTime",
             sol::no_constructor,
 
             "deltaTime",
-            sol::property([] {
+            sol::property([](const ScriptGameTime&) {
                 return GameTime::deltaTime;
             })
         );
@@ -649,10 +706,7 @@ void LuaScriptSystem::Start(Level& level) {
         const std::string cleanFileName = CleanScriptFileName(script.fileName);
 
         if (cleanFileName.empty()) {
-            spdlog::warn(
-                "Skipping script component with empty file name on entity {}",
-                script.ownerID
-            );
+            spdlog::warn("Skipping script component with empty file name on entity {}",script.ownerID);
 
             continue;
         }
@@ -660,10 +714,7 @@ void LuaScriptSystem::Start(Level& level) {
         const fs::path path = GetScriptPathFromFileName(cleanFileName);
 
         if (!fs::exists(path)) {
-            spdlog::error(
-                "Lua script does not exist: {}",
-                path.string()
-            );
+            spdlog::error("Lua script does not exist: {}",path.string());
 
             continue;
         }
@@ -674,9 +725,7 @@ void LuaScriptSystem::Start(Level& level) {
 
         ScriptInstance instance;
 
-        if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance)) {
-            continue;
-        }
+        if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance)) continue;
 
         const std::size_t instanceIndex = scriptInstances.size();
 
@@ -685,11 +734,9 @@ void LuaScriptSystem::Start(Level& level) {
     }
 
     for (ScriptInstance& instance : scriptInstances) {
-        ComponentScript* script = level.scripts.Get(instance.ownerID);
+        ComponentScript* script = FindScriptComponent(level, instance);
 
-        if (script == nullptr || !script->enabled) {
-            continue;
-        }
+        if (script == nullptr || !script->enabled) continue;
 
         CallStart(instance);
     }
@@ -697,19 +744,20 @@ void LuaScriptSystem::Start(Level& level) {
 
 void LuaScriptSystem::Update(Level& level) {
     for (ScriptInstance& instance : scriptInstances) {
-        ComponentScript* script = level.scripts.Get(instance.ownerID);
+        ComponentScript* script = FindScriptComponent(level, instance);
 
         if (script == nullptr || !script->enabled) continue;
 
         if (!instance.started) CallStart(instance);
 
-        if (!instance.updateFunction.valid()) continue;
+        if (!instance.updateFunction.valid() || instance.updateFailed) continue;
 
 
         const sol::protected_function_result result = instance.updateFunction();
 
         if (!result.valid()) {
             const sol::error error = result;
+            instance.updateFailed = true;
 
             spdlog::error(
                 "Lua Update error in '{}': {}",
@@ -720,8 +768,8 @@ void LuaScriptSystem::Update(Level& level) {
     }
 }
 
-void LuaScriptSystem::Stop(Level& level) {
-
+void LuaScriptSystem::Stop(Level&) {
+    for (ScriptInstance& instance : scriptInstances) CallStop(instance);
 }
 
 void LuaScriptSystem::Shutdown() {
@@ -737,15 +785,11 @@ void LuaScriptSystem::Shutdown() {
 const std::vector<ScriptPublicField>* LuaScriptSystem::GetPublicFieldsForScript(const std::string& fileName) {
     const std::string cleanFileName = CleanScriptFileName(fileName);
 
-    if (cleanFileName.empty()) {
-        return nullptr;
-    }
+    if (cleanFileName.empty()) return nullptr;
 
     const fs::path path = GetScriptPathFromFileName(cleanFileName);
 
-    if (!fs::exists(path)) {
-        return nullptr;
-    }
+    if (!fs::exists(path)) return nullptr;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
     return &asset.publicFields;
@@ -754,15 +798,11 @@ const std::vector<ScriptPublicField>* LuaScriptSystem::GetPublicFieldsForScript(
 bool LuaScriptSystem::ReconcileScriptPublicValues(ComponentScript& script) {
     const std::string cleanFileName = CleanScriptFileName(script.fileName);
 
-    if (cleanFileName.empty()) {
-        return false;
-    }
+    if (cleanFileName.empty()) return false;
 
     const fs::path path = GetScriptPathFromFileName(cleanFileName);
 
-    if (!fs::exists(path)) {
-        return false;
-    }
+    if (!fs::exists(path)) return false;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(cleanFileName, path);
     ReconcilePublicValues(script, asset);
@@ -773,7 +813,5 @@ bool LuaScriptSystem::ReconcileScriptPublicValues(ComponentScript& script) {
 void LuaScriptSystem::RefreshScriptAssets(Level& level) {
     scriptAssets.clear();
 
-    for (ComponentScript& script : level.scripts.components) {
-        ReconcileScriptPublicValues(script);
-    }
+    for (ComponentScript& script : level.scripts.components) ReconcileScriptPublicValues(script);
 }

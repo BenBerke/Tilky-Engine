@@ -6,6 +6,9 @@
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 
+#include <string>
+#include <unordered_map>
+
 namespace {
     const std::unordered_map<std::string, SDL_Scancode> keys = {
         {"A", SDL_SCANCODE_A},
@@ -103,22 +106,28 @@ void LuaScriptSystem::RegisterInputBindings(sol::state& lua) {
     });
 
     inputManager.set_function("GetAnyKey", []() -> std::string {
+        const SDL_Scancode pressedKey = InputManager::GetAnyKey();
+
         for (const auto& [key, val] : keys)
-            if (val == InputManager::GetAnyKey()) return key;
+            if (val == pressedKey) return key;
 
         return "UNKNOWN";
    });
 
     inputManager.set_function("GetAnyKeyDown", []() -> std::string {
+        const SDL_Scancode pressedKey = InputManager::GetAnyKeyDown();
+
         for (const auto &[key, val]: keys)
-            if (val == InputManager::GetAnyKeyDown()) return key;
+            if (val == pressedKey) return key;
 
         return "UNKNOWN";
     });
 
     inputManager.set_function("GetAnyKeyUp", []() -> std::string {
+        const SDL_Scancode releasedKey = InputManager::GetAnyKeyUp();
+
         for (const auto &[key, val]: keys)
-            if (val == InputManager::GetAnyKeyUp()) return key;
+            if (val == releasedKey) return key;
 
         return "UNKNOWN";
     });
@@ -127,21 +136,18 @@ void LuaScriptSystem::RegisterInputBindings(sol::state& lua) {
         const SDL_Scancode scancode = GetScancodeFromString(key);
         const SDL_Scancode scancodeTwo = GetScancodeFromString(keyTwo);
 
-        if (scancode == SDL_SCANCODE_UNKNOWN) return false;
+        if (scancode == SDL_SCANCODE_UNKNOWN || scancodeTwo == SDL_SCANCODE_UNKNOWN) return false;
 
-        return InputManager::GetDoubleKeyDown(scancodeTwo, scancode);
+        return InputManager::GetDoubleKeyDown(scancode, scancodeTwo);
     });
 
     inputManager.set_function("GetDoubleKey", [](const std::string& key, const std::string& keyTwo) -> bool {
         const SDL_Scancode scancode = GetScancodeFromString(key);
         const SDL_Scancode scancodeTwo = GetScancodeFromString(keyTwo);
 
-        if (scancode == SDL_SCANCODE_UNKNOWN) return false;
+        if (scancode == SDL_SCANCODE_UNKNOWN || scancodeTwo == SDL_SCANCODE_UNKNOWN) return false;
 
-        for (const auto& [key, val] : keys) {
-
-        }
-        return InputManager::GetDoubleKey(scancodeTwo, scancode);
+        return InputManager::GetDoubleKey(scancode, scancodeTwo);
     });
 
     inputManager.set_function("GetMouseButtonDown", [](const int button) -> bool {

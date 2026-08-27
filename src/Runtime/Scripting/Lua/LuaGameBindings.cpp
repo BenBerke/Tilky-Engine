@@ -1,4 +1,4 @@
-//
+
 // Created by berke on 6/22/2026.
 //
 
@@ -8,6 +8,11 @@
 
 #include "Headers/Editor/Editor.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+
+#include <optional>
+#include <string>
+
+#include <spdlog/spdlog.h>
 
 static const char *RayHitTypeToString(const RayHitType type) {
     switch (type) {
@@ -20,10 +25,18 @@ static const char *RayHitTypeToString(const RayHitType type) {
 }
 
 void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
+    const sol::object existing = lua["Game"];
     sol::table game;
 
-    if (lua["Game"].valid()) game = lua["Game"];
-    else game = lua.create_named_table("Game");
+    if (existing.get_type() == sol::type::table) {
+        game = existing.as<sol::table>();
+    } else {
+        if (existing.get_type() != sol::type::nil) {
+            spdlog::warn("Replacing Lua global 'Game' because it is not a table");
+        }
+
+        game = lua.create_named_table("Game");
+    }
 
     game.set_function("LoadLevel", [](const std::string& levelName)->void {
        Editor::LoadLevel(levelName);

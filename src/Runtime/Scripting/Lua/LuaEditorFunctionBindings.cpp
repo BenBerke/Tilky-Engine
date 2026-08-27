@@ -6,54 +6,78 @@
 #include "sol/sol.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
+#include <sstream>
+#include <string>
+
+#include <spdlog/spdlog.h>
+
 namespace {
-   std::string LuaArgsToString(sol::variadic_args args) {
-      std::ostringstream out;
+    sol::table GetOrCreateTable(sol::state& lua, const char* name) {
+        const sol::object existing = lua[name];
 
-      bool first = true;
+        if (existing.get_type() == sol::type::table) {
+            return existing.as<sol::table>();
+        }
 
-      for (const sol::object& arg : args) {
-         if (!first) out << " ";
-         first = false;
+        if (existing.get_type() != sol::type::nil) {
+            spdlog::warn("Replacing Lua global '{}' because it is not a table", name);
+        }
 
-         if (arg == sol::nil) out << "nil";
-         else if (arg.is<std::string>()) out << arg.as<std::string>();
-         else if (arg.is<const char*>()) out << arg.as<const char*>();
-         else if (arg.is<int>()) out << arg.as<int>();
-         else if (arg.is<float>()) out << arg.as<float>();
-         else if (arg.is<double>()) out << arg.as<double>();
-         else if (arg.is<bool>()) out << (arg.as<bool>() ? "true" : "false");
-         else out << "<object>";
+        return lua.create_named_table(name);
+    }
 
-      }
+    std::string LuaArgsToString(const sol::this_state state, const sol::variadic_args args) {
+        const sol::state_view lua(state);
+        const sol::protected_function toString = lua["tostring"];
+        std::ostringstream out;
 
-      return out.str();
-   }
+        bool first = true;
+
+        for (const sol::object& arg : args) {
+            if (!first) out << " ";
+            first = false;
+
+            if (!toString.valid()) {
+                out << "<unprintable>";
+                continue;
+            }
+
+            const sol::protected_function_result result = toString(arg);
+
+            if (!result.valid()) {
+                out << "<unprintable>";
+                continue;
+            }
+
+            out << result.get<std::string>();
+        }
+
+        return out.str();
+    }
 }
 
 void LuaScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
-    sol::table debug;
+    sol::table debug = GetOrCreateTable(lua, "Debug");
 
-    if (lua["Debug"].valid()) debug = lua["Debug"];
-    else debug = lua.create_named_table("Debug");
+    debug.set_function("Print", [](const sol::this_state state, const sol::variadic_args args) {
+        const std::string message = LuaArgsToString(state, args);
+        EditorFunctions::Print(message);
+        spdlog::info("[Lua] {}", message);
+    });
 
-   debug.set_function("Print", [](const sol::variadic_args &args)->void {
-       EditorFunctions::Print(LuaArgsToString(args));
-   });
+    debug.set_function("LogInfo", [](const sol::this_state state, const sol::variadic_args args) {
+        spdlog::info("{}", LuaArgsToString(state, args));
+    });
 
-   debug.set_function("LogInfo", [](const sol::variadic_args &args)->void {
-       spdlog::info("{}", LuaArgsToString(args));
-   });
+    debug.set_function("LogError", [](const sol::this_state state, const sol::variadic_args args) {
+        spdlog::error("{}", LuaArgsToString(state, args));
+    });
 
-   debug.set_function("LogError", [](const sol::variadic_args &args)->void {
-       spdlog::error("{}", LuaArgsToString(args));
-   });
+    debug.set_function("LogCritical", [](const sol::this_state state, const sol::variadic_args args) {
+        spdlog::critical("{}", LuaArgsToString(state, args));
+    });
 
-   debug.set_function("LogCritical", [](const sol::variadic_args &args)->void {
-       spdlog::critical("{}", LuaArgsToString(args));
-   });
-
-   debug.set_function("LogWarning", [](const sol::variadic_args &args)->void {
-       spdlog::warn("{}", LuaArgsToString(args));
-   });
+    debug.set_function("LogWarning", [](const sol::this_state state, const sol::variadic_args args) {
+        spdlog::warn("{}", LuaArgsToString(state, args));
+    });
 }

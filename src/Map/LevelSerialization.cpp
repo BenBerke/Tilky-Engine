@@ -1095,13 +1095,13 @@ namespace {
             });
         }
 
-        for (const ComponentSprite& c : level.sprites.components) {
-            componentsJson["sprites"].push_back({
+        for (const ComponentScript& c : level.scripts.components) {
+            componentsJson["scripts"].push_back({
                 {"ownerID", c.ownerID},
-                {"textureFileNames", c.textureFileNames},
-                {"sideCount", static_cast<int>(c.sideCount)},
-                {"color", static_cast<std::uint32_t>(c.color)},
-                {"isStatic", c.isStatic}
+                {"fileName", c.fileName},
+                {"enabled", c.enabled},
+                {"schemaHash", c.schemaHash},
+                {"publicValues", ScriptPublicValuesToJson(c.publicValues)}
             });
         }
 
@@ -1354,7 +1354,6 @@ namespace LevelSerialization {
             return false;
         }
 
-        RebuildNextEntityID(loadedLevel);
         RebuildNextEntityID(loadedLevel);
         MapQueries::RebuildSectorRuntimeLinks(loadedLevel);
 
