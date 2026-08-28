@@ -339,12 +339,19 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                    R"(function Start()
-
+                    R"(-- Start gets called once when the game starts
+function Start()
+    Debug.Print("Level Started", Owner.id, true)
 end
 
+-- Update gets called once per frame after Start
 function Update()
+    Debug.Print("Delta time:", GameTime.deltaTime)
+end
 
+-- Stop gets called once on level termination
+function Stop()
+    Debug.Print("Level finished")
 end
 )";
         }

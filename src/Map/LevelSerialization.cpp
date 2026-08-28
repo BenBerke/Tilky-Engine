@@ -1401,10 +1401,7 @@ namespace LevelSerialization {
         std::ofstream file(levelFile, std::ios::binary);
 
         if (!file.is_open()) {
-            SetError(
-                errorMessage,
-                "Failed to open BSON level for saving: " + levelFile.string()
-            );
+            SetError(errorMessage,"Failed to open BSON level for saving: " + levelFile.string());
             return false;
         }
 
