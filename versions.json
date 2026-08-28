@@ -16,6 +16,14 @@
       "downloadUrl": "https://github.com/BenBerke/Tilky-Engine/releases/download/v1.0.2/Tilky_Engine-Windows-x64-1.0.2.zip",
       "size": 9458304,
       "sha256": "d6ae0078759ae2bff1a002f89639b75f4a46b36c5c97dfb827d3860dfd239ebd"
+    },
+    {
+      "version": "0.1.3",
+      "platform": "windows-x64",
+      "channel": "stable",
+      "downloadUrl": "https://github.com/BenBerke/Tilky-Engine/releases/download/v0.1.3/Tilky_Engine-Windows-x64-0.1.3.zip",
+      "size": 9558780,
+      "sha256": "4a723effca7dc8b6733f183272caa1ff3519cfb6e50c7bbe0ef15c1d4f713166"
     }
   ]
 }
