@@ -40,6 +40,19 @@ namespace {
         return !name.empty() && name.front() == '.';
     }
 
+    // Drag-and-drop payload type for moving an entry within this browser
+    // itself (dropped onto a folder tile, the "^ Up" button, or a
+    // breadcrumb segment - see AssetBrowser::DrawMoveDropTarget()). Kept
+    // separate from AssetBrowser::DragDropPayloadTypeFor(), the public
+    // per-AssetKind type field widgets elsewhere accept: this one is a
+    // purely internal implementation detail, so it never needs to be
+    // visible outside this file. A Texture/Sound/Script file is dragged
+    // with its usual field-reference payload instead of this one (an entry
+    // never offers both at once - see DrawEntryTile) and still moves
+    // correctly, because DrawMoveDropTarget() also accepts each of those
+    // payload types as a move.
+    constexpr const char* kMoveEntryPayloadType = "TILKY_MOVE_ENTRY";
+
     // Shrinks `text` (plus an ellipsis) until it fits inside `maxWidth`.
     // Relies on the currently bound ImGui font, so only call while drawing.
     std::string TruncateToWidth(const std::string& text, const float maxWidth) {
@@ -242,6 +255,90 @@ namespace {
         return true;
     }
 
+    // --- Move (drag-and-drop within the browser) ----------------------------
+
+    // Moves `sourcePath` into `destinationDirectory`, keeping its filename.
+    // Used exclusively for drags that start and end inside this browser -
+    // see AssetBrowser::HandleDroppedMove(). ImportExternalFile() above
+    // handles the separate case of an OS-level drop from outside the
+    // project, and uses the same auto-uniquify convention on a name
+    // collision.
+    bool TryMoveEntry(const fs::path& sourcePath, const bool sourceIsDirectory,
+                       const fs::path& destinationDirectory, fs::path& newPath, std::string& errorMessage) {
+        std::error_code existsEc;
+        if (!fs::exists(sourcePath, existsEc)) {
+            errorMessage = "This item no longer exists.";
+            return false;
+        }
+
+        std::error_code destExistsEc;
+        if (!fs::exists(destinationDirectory, destExistsEc) || !fs::is_directory(destinationDirectory, destExistsEc)) {
+            errorMessage = "Destination folder no longer exists.";
+            return false;
+        }
+
+        // Dropped back onto the folder that already contains it - a
+        // harmless no-op rather than an error, since this is exactly what
+        // happens for any drag that starts and ends without actually
+        // crossing onto a different folder.
+        std::error_code sameParentEc;
+        if (fs::equivalent(sourcePath.parent_path(), destinationDirectory, sameParentEc) && !sameParentEc) {
+            newPath = sourcePath;
+            return true;
+        }
+
+        if (sourceIsDirectory) {
+            // A folder can never be moved into itself...
+            std::error_code selfEc;
+            if (fs::equivalent(sourcePath, destinationDirectory, selfEc) && !selfEc) {
+                errorMessage = "Can't move a folder into itself.";
+                return false;
+            }
+
+            // ...or into one of its own subfolders - fs::rename would
+            // either fail with a confusing OS error or, on some platforms,
+            // corrupt the tree, so this is checked explicitly up front.
+            std::error_code sourceCanonEc;
+            const fs::path canonicalSource = fs::weakly_canonical(sourcePath, sourceCanonEc);
+            if (!sourceCanonEc) {
+                std::error_code destCanonEc;
+                const fs::path canonicalDestination = fs::weakly_canonical(destinationDirectory, destCanonEc);
+                if (!destCanonEc) {
+                    const fs::path rel = canonicalDestination.lexically_relative(canonicalSource);
+                    if (!rel.empty() && *rel.begin() != "..") {
+                        errorMessage = "Can't move a folder into one of its own subfolders.";
+                        return false;
+                    }
+                }
+            }
+        }
+
+        fs::path destination = destinationDirectory / sourcePath.filename();
+
+        // Same auto-uniquify convention as ImportExternalFile: append
+        // " (2)", " (3)", ... on a name collision rather than overwriting
+        // or blocking the move behind a confirmation dialog.
+        if (sourceIsDirectory)
+            for (int suffix = 2; fs::exists(destination); ++suffix)
+                destination = destinationDirectory / (sourcePath.filename().string() + " (" + std::to_string(suffix) + ")");
+        else {
+            const std::string stem = sourcePath.stem().string();
+            const std::string ext = sourcePath.extension().string();
+            for (int suffix = 2; fs::exists(destination); ++suffix)
+                destination = destinationDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
+        }
+
+        std::error_code renameEc;
+        fs::rename(sourcePath, destination, renameEc);
+        if (renameEc) {
+            errorMessage = "Could not move: " + renameEc.message();
+            return false;
+        }
+
+        newPath = destination;
+        return true;
+    }
+
     // --- Create Level ------------------------------------------------------
 
     // Strips a trailing, case-insensitive occurrence of the level extension
@@ -339,19 +436,12 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                    R"(-- Start gets called once when the game starts
-function Start()
-    Debug.Print("Level Started", Owner.id, true)
+                    R"(function Start()
+
 end
 
--- Update gets called once per frame after Start
 function Update()
-    Debug.Print("Delta time:", GameTime.deltaTime)
-end
 
--- Stop gets called once on level termination
-function Stop()
-    Debug.Print("Level finished")
 end
 )";
         }
@@ -902,11 +992,24 @@ void AssetBrowser::DrawBreadcrumbs() {
         NavigateToParent();
     ImGui::EndDisabled();
 
+    // Dropping a dragged entry onto "^ Up" moves it to the parent folder,
+    // matching a normal file explorer's breadcrumb trail. Skipped entirely
+    // while disabled (atRoot): there's no parent to move to in that state.
+    if (!atRoot && DrawMoveDropTarget(currentDirectory.parent_path())) {
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                             IM_COL32(120, 220, 120, 255), 3.0f, 0, 2.0f);
+    }
+
     ImGui::SameLine(0.0f, 10.0f);
 
     const std::string rootLabel = rootDirectory.filename().empty() ? std::string("Assets") : rootDirectory.filename().string();
 
     if (ImGui::SmallButton(rootLabel.c_str())) NavigateTo(rootDirectory);
+
+    if (DrawMoveDropTarget(rootDirectory)) {
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                             IM_COL32(120, 220, 120, 255), 3.0f, 0, 2.0f);
+    }
 
     const fs::path relative = currentDirectory.lexically_relative(rootDirectory);
 
@@ -924,6 +1027,13 @@ void AssetBrowser::DrawBreadcrumbs() {
 
             if (ImGui::SmallButton(part.string().c_str())) NavigateTo(accumulated);
 
+            // Every breadcrumb segment is a valid "move here" target too,
+            // exactly like the root button above.
+            if (DrawMoveDropTarget(accumulated)) {
+                ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                                     IM_COL32(120, 220, 120, 255), 3.0f, 0, 2.0f);
+            }
+
             ImGui::PopID();
         }
     }
@@ -935,6 +1045,68 @@ void AssetBrowser::DrawSearchBar() {
 
     ImGui::SameLine(0.0f, 4.0f);
     if (ImGui::SmallButton("x")) searchBuffer[0] = '\0';
+}
+
+bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDirectory) {
+    if (!ImGui::BeginDragDropTarget()) return false;
+
+    // Only one of these ever actually matches the drag in progress this
+    // frame - see kMoveEntryPayloadType's comment for why an entry never
+    // offers more than one payload type at once - so probing all of them
+    // here is how a drop target stays agnostic to which one a given
+    // dragged entry happened to be offering.
+    static constexpr std::array<AssetKind, 3> kFieldReferenceKinds = {
+        AssetKind::Texture, AssetKind::Sound, AssetKind::Script
+    };
+
+    for (const AssetKind kind : kFieldReferenceKinds) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(DragDropPayloadTypeFor(kind))) {
+            HandleDroppedMove(*payload, destinationDirectory);
+        }
+    }
+
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kMoveEntryPayloadType)) {
+        HandleDroppedMove(*payload, destinationDirectory);
+    }
+
+    ImGui::EndDragDropTarget();
+    return true;
+}
+
+void AssetBrowser::HandleDroppedMove(const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory) {
+    // Deliberately just records the request - see this function's header
+    // comment for why calling TryMoveEntry()/Refresh() here (synchronously,
+    // from inside DrawEntries()'s loop over `entries` for a folder-tile
+    // drop) is not safe. `destinationDirectory` is copied into the struct
+    // by value here, while it's still guaranteed valid, before anything
+    // has a chance to invalidate it.
+    pendingMove = AssetBrowserPendingMove{
+        fs::path(static_cast<const char*>(payload.Data)),
+        destinationDirectory
+    };
+}
+
+void AssetBrowser::PerformPendingMove() {
+    if (!pendingMove.has_value()) return;
+
+    const AssetBrowserPendingMove move = *pendingMove;
+    pendingMove.reset();
+
+    std::error_code isDirEc;
+    const bool sourceIsDirectory = fs::is_directory(move.source, isDirEc);
+
+    fs::path newPath;
+    std::string error;
+    if (TryMoveEntry(move.source, sourceIsDirectory, move.destinationDirectory, newPath, error)) {
+        if (selectedFile == move.source) selectedFile = newPath;
+        if (pendingConfirmedPath.has_value() && *pendingConfirmedPath == move.source) pendingConfirmedPath = newPath;
+        lastOperationError.clear();
+        Refresh();
+    }
+    else {
+        lastOperationError = error;
+        spdlog::warn("Asset browser: {}", error);
+    }
 }
 
 void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const ThumbnailProvider& thumbnailProvider) {
@@ -961,18 +1133,44 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
         selectedFile = entry.GetPath(); // right-click selects the target before its context menu opens
 
-    if (!isDirectory && entry.GetAssetKind() != AssetKind::Other && ImGui::BeginDragDropSource()) {
+    // Drag source: every entry can be picked up and dropped onto a folder
+    // tile / breadcrumb / the "^ Up" button elsewhere in this browser to
+    // move it there, like a normal file explorer - see
+    // DrawMoveDropTarget(). A file with a field-reference AssetKind
+    // (Texture/Sound/Script) keeps offering exactly the payload type it
+    // always has instead of the move type, so existing field widgets
+    // elsewhere are unaffected; DrawMoveDropTarget() already knows to
+    // accept that same payload as a move too, so nothing is lost.
+    if (ImGui::BeginDragDropSource()) {
+        selectedFile = entry.GetPath(); // dragging an item selects it too
+
         const std::string payloadPath = entry.GetPath().string();
 
-        ImGui::SetDragDropPayload(
-            DragDropPayloadTypeFor(entry.GetAssetKind()),
-            payloadPath.c_str(),
-            payloadPath.size() + 1
-        );
+        if (!isDirectory && entry.GetAssetKind() != AssetKind::Other) {
+            ImGui::SetDragDropPayload(
+                DragDropPayloadTypeFor(entry.GetAssetKind()),
+                payloadPath.c_str(),
+                payloadPath.size() + 1
+            );
+        }
+        else {
+            ImGui::SetDragDropPayload(
+                kMoveEntryPayloadType,
+                payloadPath.c_str(),
+                payloadPath.size() + 1
+            );
+        }
 
         ImGui::TextUnformatted(entry.GetDisplayName().c_str());
         ImGui::EndDragDropSource();
     }
+
+    // Drop target: only folders accept items dropped onto them, checked
+    // here (right after the drag source, before BeginPopupContextItem)
+    // while this tile is still guaranteed to be the last-submitted item.
+    // A folder being dragged is never a target for its own drag - ImGui's
+    // BeginDragDropTarget() already excludes the payload's own source item.
+    const bool isDropHighlighted = isDirectory && DrawMoveDropTarget(entry.GetPath());
 
     if (ImGui::BeginPopupContextItem()) {
         entry.DrawContextMenu(*this);
@@ -1015,6 +1213,9 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
 
     if (isSelected)
         drawList->AddRect(topLeft, boxMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
+
+    if (isDropHighlighted)
+        drawList->AddRect(topLeft, boxMax, IM_COL32(120, 220, 120, 255), 4.0f, 0, 3.0f);
 
     const std::string name = TruncateToWidth(entry.GetDisplayName(), tileSize);
     const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());
@@ -1413,6 +1614,10 @@ void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
     ImGui::Spacing();
 
     DrawEntries(thumbnailProvider);
+
+    // Only safe once DrawEntries() has fully returned - see
+    // HandleDroppedMove()'s comment for why.
+    PerformPendingMove();
 
     DrawCreateFolderModal();
     DrawCreateLevelModal();

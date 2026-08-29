@@ -241,6 +241,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         // Walls can not have backface culling as all walls are potentially visible from both sides
         // And they can change in runtime so we can not bake them
         glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
 
         UploadGpuWallsFromMap();
 
@@ -250,6 +251,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_WALL);
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, gpuWallCount);
+        glDisable(GL_BLEND);
     }
 
     {

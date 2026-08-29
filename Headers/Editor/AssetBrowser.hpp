@@ -236,6 +236,16 @@ struct AssetBrowserModalState {
     bool justOpened = false; // true for exactly one frame, so ImGui::OpenPopup() fires once
 };
 
+// A drag-and-drop move accepted by AssetBrowser::DrawMoveDropTarget(),
+// queued for AssetBrowser::PerformPendingMove() to actually carry out once
+// the entries grid has fully finished drawing for this frame. See
+// AssetBrowser::HandleDroppedMove()'s comment for why performing the move
+// immediately, from inside the grid's own draw pass, isn't safe.
+struct AssetBrowserPendingMove {
+    std::filesystem::path source;
+    std::filesystem::path destinationDirectory;
+};
+
 // Self-contained, reusable ImGui asset browser locked to a single root
 // directory (intended to be the current project's Assets folder). A
 // general-purpose hierarchical filesystem browser: any file type is
@@ -280,9 +290,16 @@ public:
     // predetermined path.
     void SetRootDirectory(const std::filesystem::path& root);
 
-    // Re-scans the CURRENT directory only. Safe to call any time - e.g.
-    // from a user-facing "Refresh" button after files changed on disk, or
-    // after this browser's own create/rename/delete/import operations.
+    // Re-scans the CURRENT directory only. Safe to call any time from
+    // outside the entries grid's own draw pass - e.g. from a user-facing
+    // "Refresh" button after files changed on disk, or after this
+    // browser's own create/rename/delete/import operations. NOT safe to
+    // call synchronously from inside DrawEntries()'s loop over `entries`
+    // (e.g. from DrawEntryTile()): it destroys every current AssetEntry,
+    // including the one whose Draw call may still be on the stack.
+    // Anything triggered from there must defer through a pending-state
+    // field instead (see pendingNavigation, pendingMove) and be carried
+    // out only after DrawEntries() has returned.
     void Refresh();
 
     // Draws the error banner (if any), breadcrumbs, search field, the
@@ -379,6 +396,34 @@ private:
     void DrawSearchBar();
     void DrawEntries(const ThumbnailProvider& thumbnailProvider);
     void DrawEntryTile(AssetEntry& entry, float tileSize, const ThumbnailProvider& thumbnailProvider);
+
+    // Shared by DrawEntryTile() (folder tiles) and DrawBreadcrumbs() (the
+    // "^ Up" button and each breadcrumb segment): call right after this
+    // element is drawn. Accepts a drag currently hovering over it as a
+    // request to move whatever's being dragged into `destinationDirectory`,
+    // queuing the move via HandleDroppedMove() rather than performing it
+    // here - see pendingMove for why. Returns true whenever a compatible
+    // drag is hovering - even before release - so the caller can draw a
+    // highlight.
+    bool DrawMoveDropTarget(const std::filesystem::path& destinationDirectory);
+
+    // Queues a drop accepted by DrawMoveDropTarget() into pendingMove
+    // instead of performing the move immediately. This runs from inside
+    // DrawEntries()'s loop over `entries` for a folder-tile drop - a move
+    // can delete and recreate every AssetEntry via Refresh(), including
+    // the very folder entry whose DrawEntryTile() call is still executing
+    // higher up the call stack, so doing it here would free that entry
+    // (and invalidate `entries` itself) out from under code still using
+    // it. PerformPendingMove() does the actual move once Draw() has
+    // returned from DrawEntries() entirely.
+    void HandleDroppedMove(const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory);
+
+    // Performs a move queued by HandleDroppedMove(), if any is pending.
+    // Called once per frame from Draw(), after DrawEntries() has fully
+    // returned - see HandleDroppedMove()'s comment for why the move can't
+    // happen any earlier than that.
+    void PerformPendingMove();
+
     void DrawEmptySpaceContextMenu();
     void HandleKeyboardShortcuts();
 
@@ -396,6 +441,12 @@ private:
     std::filesystem::path currentDirectory;
 
     std::optional<std::filesystem::path> pendingNavigation;
+
+    // Set by HandleDroppedMove() when a drag-and-drop move is accepted
+    // this frame; consumed by PerformPendingMove(), called from Draw()
+    // only after DrawEntries() has returned. See HandleDroppedMove()'s
+    // comment for why this can't be performed immediately.
+    std::optional<AssetBrowserPendingMove> pendingMove;
 
     std::vector<std::unique_ptr<AssetEntry>> entries;
     bool scanFailed = false;

@@ -21,12 +21,10 @@ void OpenGL::BuildGpuSprites() {
     };
 
     for (ComponentSprite& spriteComponent : level.sprites.components) {
-        ComponentTransform* transform =
-            level.transforms.Get(spriteComponent.ownerID);
+        ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
-        if (transform == nullptr) [[unlikely]] {
-            continue;
-        }
+        if (transform == nullptr) [[unlikely]] continue;
+
 
         GpuSprite gpuSprite{};
 
