@@ -1235,6 +1235,11 @@ namespace {
                 level.runtimeCamPos.y = metadatajson["runtimeCamPos"][1];
                 level.runtimeCamPos.z = metadatajson["runtimeCamPos"][2];
             }
+
+            if (metadatajson.contains("runtimeCamRot") && metadatajson["runtimeCamRot"].is_array()) {
+                level.runtimeCamRot.x = metadatajson["runtimeCamRot"][0];
+                level.runtimeCamRot.y = metadatajson["runtimeCamRot"][1];
+            }
         }
     }
 
@@ -1250,6 +1255,11 @@ namespace {
             level.runtimeCamPos.x,
             level.runtimeCamPos.y,
             level.runtimeCamPos.z,
+        };
+
+        metadatajson["runtimeCamRot"] = {
+            level.runtimeCamRot.x,
+            level.runtimeCamRot.y,
         };
 
         levelData["metadata"] = metadatajson;
@@ -1362,12 +1372,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    bool SaveLevelToFile(
-        const fs::path& levelFile,
-        const Level& level,
-        const LevelExtraData* extraData,
-        std::string* errorMessage
-    ) {
+    bool SaveLevelToFile(const fs::path& levelFile, const Level& level, const LevelExtraData* extraData, std::string* errorMessage) {
         json levelData;
 
         levelData["id"] = level.id;

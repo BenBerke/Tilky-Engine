@@ -209,7 +209,8 @@ namespace LevelSystem {
                     *activeCamera,
                     level.sectors
                 );
-            } else {
+            }
+            else {
                 const ID controllerEntityID = activeController->ownerID;
                 activeController = nullptr;
 
@@ -218,9 +219,7 @@ namespace LevelSystem {
                     controllerEntityID
                 );
             }
-        } else {
-            spdlog::info("Level started without an active player controller");
-        }
+        } else spdlog::info("Level started without an active player controller");
 
         scriptingSystem.Start(level);
 

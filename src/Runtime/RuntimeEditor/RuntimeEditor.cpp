@@ -266,6 +266,8 @@ namespace RuntimeEditor {
         }
 #ifndef TILKY_STANDALONE
         transform->position = level.runtimeCamPos;
+        camera->pitch = level.runtimeCamRot.x;
+        camera->yaw = level.runtimeCamRot.y;
 #endif
         camera->forward = GetCameraForward(*camera);
 
@@ -540,6 +542,8 @@ namespace RuntimeEditor {
         (void)level;
 #ifndef TILKY_STANDALONE
         level.runtimeCamPos = transform->position;
+        level.runtimeCamRot.x = camera->pitch;
+        level.runtimeCamRot.y = camera->yaw;
 #endif
         runtimeRenderer = nullptr;
         camera = nullptr;

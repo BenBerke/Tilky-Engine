@@ -254,6 +254,9 @@ namespace {
         }
 
         FinishStartup();
+
+        GameTime::Update();
+        
         return true;
     }
 

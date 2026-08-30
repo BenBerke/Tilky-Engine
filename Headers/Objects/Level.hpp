@@ -78,6 +78,7 @@ struct Level {
 #ifndef TILKY_STANDALONE
     Vector2 editorCamPos = {0.0f, 0.0f};
     Vector3 runtimeCamPos = {0.0f, 0.0f, 0.0f};
+    Vector2 runtimeCamRot = {.0f, .0f};
 #endif
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;
