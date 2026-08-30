@@ -12,6 +12,7 @@
 
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Math/Geometry/Geometry.hpp"
+#include "Headers/Objects/Components.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 namespace fs = std::filesystem;
@@ -92,5 +93,45 @@ namespace LevelManager {
 
             sector.triangles = Geometry::Triangulate(sector.vertices);
         }
+    }
+
+    void RenameTextureReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (Wall& wall : level.walls)
+            if (wall.textureFileName == oldReference) wall.textureFileName = newReference;
+
+        for (Sector& sector : level.sectors)
+            for (SectorFloor& floor : sector.floors) {
+                if (floor.floor.texture == oldReference) floor.floor.texture = newReference;
+                if (floor.ceiling.texture == oldReference) floor.ceiling.texture = newReference;
+            }
+
+        for (ComponentSprite& sprite : level.sprites.components)
+            for (std::string& fileName : sprite.textureFileNames)
+                if (fileName == oldReference) fileName = newReference;
+
+        for (ComponentUISprite& uiSprite : level.ui_sprites.components)
+            if (uiSprite.texture == oldReference) uiSprite.texture = newReference;
+    }
+
+    void RenameSoundReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentAudioSource& audioSource : level.audioSources.components)
+            if (audioSource.soundFileName == oldReference) audioSource.soundFileName = newReference;
+    }
+
+    void RenameScriptReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentScript& script : level.scripts.components)
+            if (script.fileName == oldReference) script.fileName = newReference;
     }
 }

@@ -568,33 +568,25 @@ namespace {
     }
 
     void CallStart(ScriptInstance& instance) {
-        if (instance.started) {
-            return;
-        }
+        if (instance.started) return;
 
         instance.started = true;
 
-        if (!instance.startFunction.valid()) {
-            return;
-        }
+        if (!instance.startFunction.valid()) return;
 
         const sol::protected_function_result startResult = instance.startFunction();
 
         if (!startResult.valid()) {
             const sol::error error = startResult;
 
-            spdlog::error(
-                "Lua Start error in '{}': {}",
-                instance.scriptFile,
-                error.what()
-            );
+            spdlog::error("Lua Start error in '{}': {}", instance.scriptFile,error.what());
         }
+
+        spdlog::info("Start had called");
     }
 
     void CallStop(ScriptInstance& instance) {
-        if (!instance.started || !instance.stopFunction.valid()) {
-            return;
-        }
+        if (!instance.started || !instance.stopFunction.valid()) return;
 
         const sol::protected_function_result stopResult = instance.stopFunction();
 
@@ -715,10 +707,7 @@ void LuaScriptSystem::Start(Level& level) {
         const fs::path path = GetScriptPathFromFileName(cleanFileName);
 
         if (!fs::exists(path)) {
-            spdlog::error(
-                "Lua script does not exist: {}",
-                path.string()
-            );
+            spdlog::error("Lua script does not exist: {}",path.string());
 
             continue;
         }
@@ -729,9 +718,8 @@ void LuaScriptSystem::Start(Level& level) {
 
         ScriptInstance instance;
 
-        if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance)) {
+        if (!LoadScriptIntoInstance(level, script, cleanFileName, path, instance))
             continue;
-        }
 
         const std::size_t instanceIndex = scriptInstances.size();
 
@@ -742,9 +730,7 @@ void LuaScriptSystem::Start(Level& level) {
     for (ScriptInstance& instance : scriptInstances) {
         ComponentScript* script = FindScriptComponent(level, instance);
 
-        if (script == nullptr || !script->enabled) {
-            continue;
-        }
+        if (script == nullptr || !script->enabled) continue;
 
         CallStart(instance);
     }
@@ -752,14 +738,13 @@ void LuaScriptSystem::Start(Level& level) {
 
 void LuaScriptSystem::Update(Level& level) {
     for (ScriptInstance& instance : scriptInstances) {
-        ComponentScript* script = FindScriptComponent(level, instance);
+        ComponentScript* script =
+            FindScriptComponent(level, instance);
 
         if (script == nullptr || !script->enabled) continue;
 
-        if (!instance.started) CallStart(instance);
-
+        // Following frames: call Update.
         if (!instance.updateFunction.valid()) continue;
-
 
         const sol::protected_function_result result = instance.updateFunction();
 

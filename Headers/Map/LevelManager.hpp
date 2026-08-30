@@ -24,6 +24,10 @@ namespace LevelManager {
     bool LoadLevelByName(const std::string& levelName);
     bool LoadFirstProjectLevel();
     void TriangulateCurrentLevelSectors();
+
+    void RenameTextureReference(const std::string& oldReference, const std::string& newReference);
+    void RenameSoundReference(const std::string& oldReference, const std::string& newReference);
+    void RenameScriptReference(const std::string& oldReference, const std::string& newReference);
 }
 
 #endif // TILKY_ENGINE_LEVELMANAGER_H

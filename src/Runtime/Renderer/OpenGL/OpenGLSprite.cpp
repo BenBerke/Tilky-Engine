@@ -39,12 +39,8 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.color = spriteColor;
 
-        if (
-            transform->sectorIndex >= 0 &&
-            transform->sectorIndex < static_cast<int>(level.sectors.size())
-        ) {
-            const Sector& sector =
-                level.sectors[transform->sectorIndex];
+        if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size())) {
+            const Sector& sector = level.sectors[transform->sectorIndex];
 
             gpuSprite.color = {
                 spriteColor.x - (255.0f - sector.light.x),
@@ -77,9 +73,7 @@ void OpenGL::BuildGpuSprites() {
 
         Quaternion rotation = Quaternion::Identity();
 
-        if (spriteComponent.isStatic) {
-            rotation = transform->rotation.Normalized();
-        }
+        if (spriteComponent.isStatic) rotation = transform->rotation.Normalized();
 
         gpuSprite.rotation = {
             rotation.x,
@@ -109,9 +103,5 @@ void OpenGL::BuildGpuSprites() {
         GL_DYNAMIC_DRAW
     );
 
-    glBindBufferBase(
-        GL_SHADER_STORAGE_BUFFER,
-        2,
-        spriteSSBO
-    );
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2,spriteSSBO);
 }

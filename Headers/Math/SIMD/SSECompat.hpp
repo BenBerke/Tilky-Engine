@@ -15,9 +15,7 @@
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_NEON) || defined(__ARM_NEON__)
     #include "sse2neon.h"
 #else
-    #define NOSIMD // If we swtich to box3d for physics, we can use this define to check if the computer doesnt support SIMD
-                  // and fallback to a single instruction math headers
-    #error "No SIMD backend available for this platform"
+    #define NOSIMD
 #endif
 
 #if defined(TILKY_CLANGD) // Work around the compiler mistakenly marking __mm_shuffle_ps as an error

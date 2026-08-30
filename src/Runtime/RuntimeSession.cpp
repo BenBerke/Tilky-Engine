@@ -262,8 +262,6 @@ namespace {
 
         UpdateMouseCapture(io.WantCaptureMouse, false);
 
-        EditorFunctions::UpdateConsole(GameTime::deltaTime);
-
         {
             ZoneScopedN("Renderer");
 
@@ -297,14 +295,14 @@ namespace {
             renderer->screenWidth,
             renderer->screenHeight
         );
+
+        EditorFunctions::UpdateConsole(GameTime::deltaTime);
     }
 
     void UpdatePlay(Level& level) {
         const ImGuiIO& io = ImGui::GetIO();
 
         UpdateMouseCapture(io.WantCaptureMouse, true);
-
-        EditorFunctions::UpdateConsole(GameTime::deltaTime);
 
         if (relativeMouseMode) {
             ZoneScopedN("Level");
@@ -329,6 +327,8 @@ namespace {
 
             renderer->EndFrame();
         }
+
+        EditorFunctions::UpdateConsole(GameTime::deltaTime);
 
         {
             ZoneScopedN("Audio");

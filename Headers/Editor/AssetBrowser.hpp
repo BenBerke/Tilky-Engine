@@ -231,6 +231,14 @@ struct AssetBrowserModalState {
     bool targetIsDirectory = false;             // Rename / DeleteConfirm
     std::string forcedExtension;                // CreateFile only: appended automatically if non-empty
 
+    // Rename only: the target's AssetKind at the moment RequestRename() was
+    // called, captured before anything can change - see
+    // AssetBrowser::NotifyAssetReferenceRenamed(), called from
+    // DrawRenameModal()'s success branch once the rename actually happens.
+    // AssetKind::Other (its default, and DirectoryEntry's fixed value) means
+    // "not a reference-tracked kind" - see NotifyAssetReferenceRenamed().
+    AssetKind targetAssetKind = AssetKind::Other;
+
     char nameBuffer[256] = "";
     std::string errorMessage;
     bool justOpened = false; // true for exactly one frame, so ImGui::OpenPopup() fires once
@@ -244,6 +252,13 @@ struct AssetBrowserModalState {
 struct AssetBrowserPendingMove {
     std::filesystem::path source;
     std::filesystem::path destinationDirectory;
+
+    // Which payload type this drag was actually offering - see
+    // DrawEntryTile()'s drag source and DrawMoveDropTarget()'s probing
+    // loop. AssetKind::Other covers both folders and non-reference-tracked
+    // files; AssetBrowser::NotifyAssetReferenceRenamed() treats it as
+    // "nothing to propagate".
+    AssetKind kind = AssetKind::Other;
 };
 
 // Self-contained, reusable ImGui asset browser locked to a single root
@@ -415,14 +430,39 @@ private:
     // higher up the call stack, so doing it here would free that entry
     // (and invalidate `entries` itself) out from under code still using
     // it. PerformPendingMove() does the actual move once Draw() has
-    // returned from DrawEntries() entirely.
-    void HandleDroppedMove(const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory);
+    // returned from DrawEntries() entirely. `kind` is whichever payload
+    // type DrawMoveDropTarget() actually matched (AssetKind::Other for a
+    // folder or a non-reference-tracked file) - see
+    // NotifyAssetReferenceRenamed().
+    void HandleDroppedMove(AssetKind kind, const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory);
 
     // Performs a move queued by HandleDroppedMove(), if any is pending.
     // Called once per frame from Draw(), after DrawEntries() has fully
     // returned - see HandleDroppedMove()'s comment for why the move can't
     // happen any earlier than that.
     void PerformPendingMove();
+
+    // Called after a Texture/Sound/Script entry is successfully moved
+    // (PerformPendingMove()) or renamed (DrawRenameModal()) to whichever
+    // absolute path it's now at. Textures, sounds, and scripts are all
+    // referenced elsewhere (wall/sector/sprite textures; sound and script
+    // components) by the exact string ToAssetReference() computes for
+    // their kind - moving or renaming the underlying file without telling
+    // whoever holds that string leaves it pointing at a name nothing
+    // resolves to anymore, which is why "moving a sprite's texture breaks
+    // it" in the first place. This looks up the old and new reference
+    // strings and asks LevelManager to rewrite any match in the currently
+    // loaded level. A no-op for AssetKind::Other (folders, Levels, and
+    // anything else with no tracked reference) or when the computed
+    // reference string doesn't actually change.
+    //
+    // Requires LevelManager to expose RenameTextureReference(),
+    // RenameSoundReference(), and RenameScriptReference() (each taking the
+    // old and new reference strings and rewriting every matching field in
+    // the current level) - these do not exist yet as of this writing.
+    void NotifyAssetReferenceRenamed(
+        AssetKind kind, const std::filesystem::path& oldAbsolutePath, const std::filesystem::path& newAbsolutePath
+    );
 
     void DrawEmptySpaceContextMenu();
     void HandleKeyboardShortcuts();

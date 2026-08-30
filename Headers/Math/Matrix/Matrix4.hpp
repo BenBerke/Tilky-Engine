@@ -11,7 +11,7 @@
 #ifndef NOSIMD
 struct alignas(16) Matrix4 {
     union {
-        float m[4][4];          // Array access for standard lookups
+        float m[4][4]{};          // Array access for standard lookups
         float data[16];         // Flat array access
         __m128 rows[4];         // 4 SIMD registers representing each row
     };
@@ -132,7 +132,7 @@ struct alignas(16) Matrix4 {
     float *Data() { return &m[0][0]; }
 
     // ============================================================
-    // Projection Matrices (Kept unchanged but loaded efficiently)
+    // Projection Matrices
     // ============================================================
     static Matrix4 Orthographic(
         const float left, const float right, const float bottom, const float top, const float nearPlane, const float farPlane) {
@@ -188,7 +188,7 @@ struct alignas(16) Matrix4 {
     }
 
     // ============================================================
-    // LookAt & Inversion (Using updated Vector3 and Matrix layouts)
+    // LookAt & Inversion
     // ============================================================
 
     static Matrix4 LookAt(const Vector3 &eye, const Vector3 &target, const Vector3 &up) {

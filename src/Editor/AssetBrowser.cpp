@@ -436,14 +436,22 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                    R"(function Start()
+                R"lua(
+-- Called once when the script starts
+function Start()
 
 end
 
+-- Called once every frame
 function Update()
 
 end
-)";
+
+-- Called once when the script stops
+function Stop()
+
+end
+)lua";
         }
 
         if (!file.good()) {
@@ -1061,19 +1069,19 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
 
     for (const AssetKind kind : kFieldReferenceKinds) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(DragDropPayloadTypeFor(kind))) {
-            HandleDroppedMove(*payload, destinationDirectory);
+            HandleDroppedMove(kind, *payload, destinationDirectory);
         }
     }
 
     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kMoveEntryPayloadType)) {
-        HandleDroppedMove(*payload, destinationDirectory);
+        HandleDroppedMove(AssetKind::Other, *payload, destinationDirectory);
     }
 
     ImGui::EndDragDropTarget();
     return true;
 }
 
-void AssetBrowser::HandleDroppedMove(const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory) {
+void AssetBrowser::HandleDroppedMove(const AssetKind kind, const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory) {
     // Deliberately just records the request - see this function's header
     // comment for why calling TryMoveEntry()/Refresh() here (synchronously,
     // from inside DrawEntries()'s loop over `entries` for a folder-tile
@@ -1082,7 +1090,8 @@ void AssetBrowser::HandleDroppedMove(const ImGuiPayload& payload, const std::fil
     // has a chance to invalidate it.
     pendingMove = AssetBrowserPendingMove{
         fs::path(static_cast<const char*>(payload.Data)),
-        destinationDirectory
+        destinationDirectory,
+        kind
     };
 }
 
@@ -1100,6 +1109,9 @@ void AssetBrowser::PerformPendingMove() {
     if (TryMoveEntry(move.source, sourceIsDirectory, move.destinationDirectory, newPath, error)) {
         if (selectedFile == move.source) selectedFile = newPath;
         if (pendingConfirmedPath.has_value() && *pendingConfirmedPath == move.source) pendingConfirmedPath = newPath;
+
+        if (newPath != move.source) NotifyAssetReferenceRenamed(move.kind, move.source, newPath);
+
         lastOperationError.clear();
         Refresh();
     }
@@ -1108,6 +1120,28 @@ void AssetBrowser::PerformPendingMove() {
         spdlog::warn("Asset browser: {}", error);
     }
 }
+
+// See this function's declaration in AssetBrowser.hpp for the full
+// rationale. LevelManager::RenameTextureReference() /
+// RenameSoundReference() / RenameScriptReference() do not exist yet - this
+// will not compile until they're added there.
+void AssetBrowser::NotifyAssetReferenceRenamed(
+    const AssetKind kind, const std::filesystem::path& oldAbsolutePath, const std::filesystem::path& newAbsolutePath
+) {
+    if (kind == AssetKind::Other) return; // folders / Levels / non-tracked files: nothing references these by name
+
+    const std::string oldReference = ToAssetReference(oldAbsolutePath, kind);
+    const std::string newReference = ToAssetReference(newAbsolutePath, kind);
+    if (oldReference == newReference) return;
+
+    switch (kind) {
+        case AssetKind::Texture: LevelManager::RenameTextureReference(oldReference, newReference); break;
+        case AssetKind::Sound:   LevelManager::RenameSoundReference(oldReference, newReference); break;
+        case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
+        default: break; // AssetKind::Other already handled above; AssetKind::Folder does not exist as a GetAssetKind() value
+    }
+}
+
 
 void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const ThumbnailProvider& thumbnailProvider) {
     const bool isDirectory = entry.GetType() == AssetEntryType::Directory;
@@ -1470,6 +1504,7 @@ void AssetBrowser::DrawRenameModal() {
             std::string error;
             if (TryRenameEntry(activeModal.targetPath, activeModal.targetIsDirectory, activeModal.nameBuffer, newPath, error)) {
                 const fs::path oldPath = activeModal.targetPath;
+                const AssetKind renamedKind = activeModal.targetAssetKind;
 
                 activeModal.kind = AssetBrowserModalKind::None;
                 ImGui::CloseCurrentPopup();
@@ -1477,6 +1512,8 @@ void AssetBrowser::DrawRenameModal() {
                 // Update any cached paths this browser owns before refreshing.
                 if (selectedFile == oldPath) selectedFile = newPath;
                 if (pendingConfirmedPath.has_value() && *pendingConfirmedPath == oldPath) pendingConfirmedPath = newPath;
+
+                if (newPath != oldPath) NotifyAssetReferenceRenamed(renamedKind, oldPath, newPath);
 
                 Refresh();
             }
@@ -1672,6 +1709,14 @@ void AssetBrowser::RequestRename(const std::filesystem::path& targetAbsolutePath
     activeModal.kind = AssetBrowserModalKind::Rename;
     activeModal.targetPath = targetAbsolutePath;
     activeModal.targetIsDirectory = targetIsDirectory;
+
+    // Captured now, while the entry is still guaranteed to be in `entries`
+    // - see NotifyAssetReferenceRenamed(), called once the rename actually
+    // succeeds in DrawRenameModal(). A directory (or a stale/missing
+    // entry, which shouldn't normally happen here) falls back to
+    // AssetKind::Other, meaning "nothing to propagate".
+    const AssetEntry* targetEntry = FindEntry(targetAbsolutePath);
+    activeModal.targetAssetKind = targetEntry != nullptr ? targetEntry->GetAssetKind() : AssetKind::Other;
 
     CopyIntoNameBuffer(activeModal.nameBuffer, sizeof(activeModal.nameBuffer), targetAbsolutePath.filename().string());
 

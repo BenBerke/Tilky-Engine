@@ -62,7 +62,6 @@ void LuaScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
     debug.set_function("Print", [](const sol::this_state state, const sol::variadic_args args) {
         const std::string message = LuaArgsToString(state, args);
         EditorFunctions::Print(message);
-        spdlog::info("[Lua] {}", message);
     });
 
     debug.set_function("LogInfo", [](const sol::this_state state, const sol::variadic_args args) {
