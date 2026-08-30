@@ -2,7 +2,9 @@
 // Created by berke on 5/26/2026.
 //
 
-/// This script handles the runtime renderer. Does not run in the editor
+/// This script updates everything that will run in the level.
+/// Such as renderer, physics and scripts
+/// Does not run in the editor
 
 #include "../../Headers/Runtime/LevelSystem.hpp"
 
@@ -82,7 +84,7 @@ namespace {
             );
     }
 
-    ComponentPlayerController *activeController;
+    ComponentPlayerController *activeController = nullptr;
 
     //todo Add C# as well
     LuaScriptSystem scriptingSystem;
@@ -175,6 +177,24 @@ namespace LevelSystem {
         for (ComponentTransform &transform: level.transforms.components)
             transform.UpdateObjectSectorAndFloor(level.sectors);
 
+        ComponentCamera *activeCamera = GetActiveCamera(level);
+        if (activeCamera == nullptr && !level.cameras.components.empty()) {
+            const ID cameraEntityID = level.cameras.components.front().ownerID;
+            SetActiveCamera(cameraEntityID, level);
+            activeCamera = GetActiveCamera(level);
+
+            spdlog::info(
+                "No active camera was selected; using camera entity {}",
+                cameraEntityID
+            );
+        }
+
+        if (activeCamera == nullptr) {
+            activeController = nullptr;
+            spdlog::error("Level::Start failed: the level has no camera");
+            return;
+        }
+
         activeController = GetActivePlayerController(level);
 
         if (activeController != nullptr) {
@@ -182,21 +202,25 @@ namespace LevelSystem {
             const ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
 
             if (playerTransform != nullptr && playerRigidbody != nullptr) [[likely]] {
-                ComponentCamera *activeCamera = GetActiveCamera(level);
+                PlayerControllerSystem::Start(
+                    *activeController,
+                    *playerTransform,
+                    *playerRigidbody,
+                    *activeCamera,
+                    level.sectors
+                );
+            } else {
+                const ID controllerEntityID = activeController->ownerID;
+                activeController = nullptr;
 
-                if (activeCamera != nullptr) {
-                    PlayerControllerSystem::Start(
-                        *activeController,
-                        *playerTransform,
-                        *playerRigidbody,
-                        *activeCamera,
-                        level.sectors
-                    );
-                } else spdlog::warn("Level::Start skipped player controller: no active camera");
-
-            } else spdlog::error("Level::Start skipped player controller: entity {} is missing transform or rigidbody", activeController->ownerID);
-
-        } else spdlog::error("Level::Start skipped player controller: entity {} has no transform",activeController->ownerID);
+                spdlog::error(
+                    "Level::Start skipped player controller: entity {} is missing transform or rigidbody",
+                    controllerEntityID
+                );
+            }
+        } else {
+            spdlog::info("Level started without an active player controller");
+        }
 
         scriptingSystem.Start(level);
 
@@ -219,31 +243,28 @@ namespace LevelSystem {
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
             if (!playerTransform) [[unlikely]] {
                 spdlog::error("Player controller entity {} has no transform", ownerID);
-                return;
+            } else {
+                ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
+                if (!playerRigidbody) [[unlikely]] {
+                    spdlog::error("Player controller entity {} has no rigidbody", ownerID);
+                } else {
+                    ComponentCamera *activeCamera = GetActiveCamera(level);
+                    if (!activeCamera) [[unlikely]] {
+                        spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
+                    } else {
+                        ComponentCollider *playerCollider = level.colliders.Get(ownerID);
+
+                        PlayerControllerSystem::Update(
+                            *activeController,
+                            *playerTransform,
+                            *activeCamera,
+                            *playerRigidbody,
+                            playerCollider,
+                            level.sectors
+                        );
+                    }
+                }
             }
-
-            ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
-            if (!playerRigidbody) [[unlikely]] {
-                spdlog::error("Player controller entity {} has no rigidbody", ownerID);
-                return;
-            }
-
-            ComponentCollider *playerCollider = level.colliders.Get(ownerID);
-
-            ComponentCamera *activeCamera = GetActiveCamera(level);
-            if (!activeCamera) [[unlikely]] {
-                spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
-                return;
-            }
-
-            PlayerControllerSystem::Update(
-                *activeController,
-                *playerTransform,
-                *activeCamera,
-                *playerRigidbody,
-                playerCollider,
-                level.sectors
-            );
         }
 
         {
@@ -369,5 +390,6 @@ namespace LevelSystem {
     void Shutdown(Level &level) {
         scriptingSystem.Shutdown();
         scriptingInitialized = false;
+        activeController = nullptr;
     }
 }
