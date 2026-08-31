@@ -28,12 +28,10 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     const sol::object existing = lua["Game"];
     sol::table game;
 
-    if (existing.get_type() == sol::type::table) {
-        game = existing.as<sol::table>();
-    } else {
-        if (existing.get_type() != sol::type::nil) {
+    if (existing.get_type() == sol::type::table) game = existing.as<sol::table>();
+    else {
+        if (existing.get_type() != sol::type::nil)
             spdlog::warn("Replacing Lua global 'Game' because it is not a table");
-        }
 
         game = lua.create_named_table("Game");
     }

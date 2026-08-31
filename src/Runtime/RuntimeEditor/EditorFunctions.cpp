@@ -31,9 +31,7 @@ namespace {
     std::deque<ConsoleLine> lines;
     std::mutex linesMutex;
 
-    float Clamp01(const float value) {
-        return std::clamp(value, 0.0f, 1.0f);
-    }
+    float Clamp01(const float value) { return std::clamp(value, 0.0f, 1.0f); }
 
     Vector3 ApplyFade(const Vector3 &color, const float alpha) {
         return {color.x * alpha, color.y * alpha, color.z * alpha};

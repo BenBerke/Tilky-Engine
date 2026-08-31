@@ -726,16 +726,15 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
     fs::path relativePath = absolutePath.lexically_relative(rootDirectory);
     std::string displayName = absolutePath.filename().string();
 
-    if (isDirectory) {
+    if (isDirectory)
         return std::make_unique<DirectoryEntry>(absolutePath, std::move(relativePath), std::move(displayName));
-    }
+
 
     const std::string extension = LowerCopy(absolutePath.extension().string());
     const auto it = kExtensionRegistry.find(extension);
 
-    if (it == kExtensionRegistry.end()) {
+    if (it == kExtensionRegistry.end())
         return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Other);
-    }
 
     switch (it->second) {
         case RegisteredExtensionKind::Texture:
