@@ -11,7 +11,6 @@
 #include "Headers/UISystem.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Engine/InputManager.hpp"
-#include "Headers/Objects/Entity.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"

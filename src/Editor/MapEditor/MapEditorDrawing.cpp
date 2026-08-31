@@ -239,12 +239,9 @@ namespace MapEditorInternal {
             SDL_Texture *floorTexture = nullptr;
 
             if (textureViewMode && !sector.floors.empty()) {
-                const std::string &textureFileName =
-                        sector.floors.front().floor.texture;
+                const std::string &textureFileName = sector.floors.front().floor.texture;
 
-                if (!textureFileName.empty()) {
-                    floorTexture = GetEditorTexture(textureFileName);
-                }
+                if (!textureFileName.empty()) floorTexture = GetEditorTexture(textureFileName);
             }
 
             for (const Triangle &triangle: sector.triangles) {
@@ -254,9 +251,8 @@ namespace MapEditorInternal {
                         floorTexture,
                         {1.0f, 1.0f, 1.0f, 1.0f}
                     );
-                } else {
-                    DrawFilledTriangle(triangle, sectorColor);
                 }
+                else DrawFilledTriangle(triangle, sectorColor);
             }
         }
 
@@ -264,15 +260,13 @@ namespace MapEditorInternal {
 
         if (selectedSectorID == INVALID_ID) return;
 
-        const Sector *selectedSector =
-                MapQueries::GetSectorByID(level, selectedSectorID);
+        const Sector *selectedSector = MapQueries::GetSectorByID(level, selectedSectorID);
 
         if (selectedSector == nullptr || selectedSector->vertices.empty()) return;
 
         SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
 
-        const int vertexCount =
-                static_cast<int>(selectedSector->vertices.size());
+        const int vertexCount = static_cast<int>(selectedSector->vertices.size());
 
         for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
             const Vector2 start = WorldToScreen(
@@ -290,10 +284,8 @@ namespace MapEditorInternal {
     }
     // "placedCorners" concept and are now ID-stable, off-grid-capable points.
     void DrawDots() {
-        if (currentTheme == THEME_DARK)
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        else if (currentTheme == THEME_LIGHT)
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        if (currentTheme == THEME_DARK) SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        else if (currentTheme == THEME_LIGHT) SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
         for (const Dot& dot : dots) {
             const Vector2 screenPos = WorldToScreen(dot.position, cameraPos);
@@ -366,7 +358,8 @@ namespace MapEditorInternal {
             const ComponentSprite* sprite = level.sprites.Get(entity.id);
             SDL_Texture* spriteTexture = nullptr;
 
-            if (textureViewMode && sprite != nullptr) spriteTexture = GetEditorTexture(0);
+            if (textureViewMode && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty()) 
+                spriteTexture = GetEditorTexture(sprite->textureFileNames[0]);
 
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {
