@@ -65,7 +65,7 @@ struct Level {
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;
     ComponentStorage<ComponentAudioSource> audioSources;
-    ComponentStorage<ComponentScript> scripts;
+    ScriptComponentStorage scripts;
     ComponentStorage<ComponentPlayerController> playerControllers;
     ComponentStorage<ComponentCamera> cameras;
     ColliderStorage colliders;

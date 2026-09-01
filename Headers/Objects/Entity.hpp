@@ -4,6 +4,7 @@
 #include <bitset>
 #include <string>
 
+#include "Components.hpp"
 #include "EntityTypes.hpp"
 
 #define MAX_COMPONENTS 128
@@ -30,6 +31,16 @@ struct Entity {
 
     template<typename T>
     bool HasComponent();
+
+    ComponentScript& AddScript();
+
+    ComponentScript* GetScript(ScriptInstanceID instanceID);
+
+    std::vector<ComponentScript*> GetScripts();
+
+    bool RemoveScript(ScriptInstanceID instanceID);
+
+    bool RemoveAllScripts();
 };
 
 #endif

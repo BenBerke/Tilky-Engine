@@ -1,4 +1,4 @@
-// ImGuiDrawFunctions.cpp  –  Revamped inspector UI
+
 // Created by berke on 6/2/2026.  Revamped for cleaner tool-style inspector.
 //
 // Changes vs original
@@ -24,6 +24,7 @@
 #include <array>
 #include <string>
 #include <algorithm>
+#include <type_traits>
 #include <Headers/Runtime/LevelSystem.hpp>
 
 #include "EditorInternal.hpp"
@@ -40,7 +41,6 @@
 //  Internal helpers (anonymous namespace)
 // ─────────────────────────────────────────────────────────────────────────────
 namespace {
-
     // ── Component label lookup ────────────────────────────────────────────────
 
     static const char *GetComponentLabelKey(const int componentType) {
@@ -75,13 +75,11 @@ namespace {
                 cam->isActive = true;
             }
         } else if constexpr (std::is_same_v<T, ComponentScript>) {
-            if (!entity.HasComponent<ComponentScript>()) {
-                auto *script = entity.AddComponent<ComponentScript>();
-                script->enabled    = true;
-                script->fileName.clear();
-                script->publicValues.clear();
-                script->schemaHash = 0;
-            }
+            ComponentScript &script = entity.AddScript();
+            script.enabled = true;
+            script.fileName.clear();
+            script.publicValues.clear();
+            script.schemaHash = 0;
         } else {
             if (!entity.HasComponent<T>()) entity.AddComponent<T>();
         }
@@ -735,8 +733,16 @@ namespace ImGuiDrawFunctions {
         BeginSection("Components");
 
         // Each component rendered as a card-like row: [name]  [Edit ▶]
-        auto DrawComponentCard = [&](const char *label, const int componentType) {
-            ImGui::PushID(componentType);
+        auto DrawComponentCard = [&](
+            const char *label,
+            const int componentType,
+            const ScriptInstanceID scriptInstanceID = INVALID_SCRIPT_INSTANCE_ID)
+        {
+            const std::string cardID =
+                "component_" + std::to_string(componentType) +
+                "_script_" + std::to_string(scriptInstanceID);
+
+            ImGui::PushID(cardID.c_str());
 
             // Subtle background for the row
             ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -755,6 +761,10 @@ namespace ImGuiDrawFunctions {
             if (ImGui::SmallButton("Edit")) {
                 state.selectedComponent  = componentType;
                 state.editingComponent   = true;
+                state.selectedScriptInstanceID =
+                    componentType == CMP_SCRIPT
+                        ? scriptInstanceID
+                        : INVALID_SCRIPT_INSTANCE_ID;
             }
 
             ImGui::Unindent(6.0f);
@@ -763,12 +773,21 @@ namespace ImGuiDrawFunctions {
         };
 
 #define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
-        if (entity.HasComponent<Type>()) \
+        if ((Bit) != CMP_SCRIPT && entity.HasComponent<Type>()) \
             DrawComponentCard(Get(LabelKey).c_str(), Bit);
 
         TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
 
 #undef DRAW_ENTITY_COMPONENT_ROW
+
+        for (ComponentScript *script : entity.GetScripts()) {
+            if (script == nullptr) continue;
+
+            std::string label = GetComponentDisplayName(CMP_SCRIPT);
+            label += script->fileName.empty() ? ": Empty" : ": " + script->fileName;
+
+            DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID);
+        }
 
         EndSection();
 
@@ -805,7 +824,15 @@ namespace ImGuiDrawFunctions {
 
             //  ImGui::SameLine();
             if (ImGui::Button(Get("common.add").c_str())) {
-                AddEditorComponentByType(entity, state.componentToAdd);
+                if (state.componentToAdd == CMP_SCRIPT) {
+                    ComponentScript &script = entity.AddScript();
+                    state.selectedComponent = CMP_SCRIPT;
+                    state.selectedScriptInstanceID = script.instanceID;
+                    state.editingComponent = true;
+                } else {
+                    AddEditorComponentByType(entity, state.componentToAdd);
+                }
+
                 state.addingComponent = false;
                 state.componentToAdd  = CMP_SPRITE;
             }
@@ -828,6 +855,7 @@ namespace ImGuiDrawFunctions {
             deleteRequested            = true;
             state.editingComponent     = false;
             state.selectedComponent    = -1;
+            state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
             if (open) *open = false;
         }
         Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
@@ -836,6 +864,7 @@ namespace ImGuiDrawFunctions {
         if (ImGui::Button(Get("common.close").c_str())) {
             state.editingComponent  = false;
             state.selectedComponent = -1;
+            state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
             if (open) *open = false;
         }
 
@@ -851,12 +880,21 @@ namespace ImGuiDrawFunctions {
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, const bool draggable) {
         if (state.selectedComponent == -1) {
             state.editingComponent = false;
+            state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
             if (open) *open = false;
             return;
         }
 
         const std::string componentName = GetComponentDisplayName(state.selectedComponent);
-        const std::string windowTitle = componentName + "##component_editor";
+        std::string editorID =
+            "component_editor_" + std::to_string(entity.id) +
+            "_" + std::to_string(state.selectedComponent);
+
+        if (state.selectedComponent == CMP_SCRIPT) {
+            editorID += "_" + std::to_string(state.selectedScriptInstanceID);
+        }
+
+        const std::string windowTitle = componentName + "##" + editorID;
 
         bool fallbackOpen = true;
         bool *windowOpen = open ? open : &fallbackOpen;
@@ -866,11 +904,13 @@ namespace ImGuiDrawFunctions {
             ImGui::End();
             if (!*windowOpen) {
                 state.editingComponent = false;
-                state.selectedComponent = -1; }
+                state.selectedComponent = -1;
+                state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
+            }
             return;
         }
 
-        ImGui::PushID(state.selectedComponent);
+        ImGui::PushID(editorID.c_str());
 
         bool closeRequested = false;
         auto CloseEditor    = [&]() { closeRequested = true; };
@@ -1183,10 +1223,15 @@ namespace ImGuiDrawFunctions {
         //  Script
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SCRIPT) {
-            auto *c = entity.GetComponent<ComponentScript>();
+            ComponentScript *c = entity.GetScript(state.selectedScriptInstanceID);
 
             if (c) {
                 BeginSection("Script File");
+
+                SmallMetaText(
+                    "Instance ID: %llu",
+                    static_cast<unsigned long long>(c->instanceID)
+                );
 
                 if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), c->fileName, AssetKind::Script)) {
                     LevelSystem::ReconcileScriptPublicValues(*c);
@@ -1251,7 +1296,8 @@ namespace ImGuiDrawFunctions {
 
                         ImGui::SameLine();
 
-                        const std::string delLabel = "Remove##orphan_" + valueName;
+                        const std::string delLabel =
+                            "Remove##orphan_" + std::to_string(c->instanceID) + "_" + valueName;
 
                         if (ImGui::SmallButton(delLabel.c_str())) {
                             valueIt = c->publicValues.erase(valueIt);
@@ -1272,11 +1318,13 @@ namespace ImGuiDrawFunctions {
                 ImGui::Spacing();
 
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentScript>();
+                    const ScriptInstanceID removedInstanceID = c->instanceID;
+                    entity.RemoveScript(removedInstanceID);
+                    state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
                     CloseEditor();
                 }
             } else {
-                ImGui::TextDisabled("Script component missing");
+                ImGui::TextDisabled("Selected script instance no longer exists.");
             }
         }
 
@@ -1471,6 +1519,7 @@ namespace ImGuiDrawFunctions {
         if (closeRequested || !*windowOpen) {
             state.editingComponent  = false;
             state.selectedComponent = -1;
+            state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
             if (open) *open = false;
         }
 

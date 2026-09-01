@@ -179,20 +179,118 @@ struct ComponentCamera {
     Matrix4 projection = Matrix4::Identity();
 };
 
-// Custom Lua script written by the user
 struct ComponentScript {
+    ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
     ID ownerID = static_cast<ID>(-1);
 
     std::string fileName;
     bool enabled = true;
 
-    // Serialized per entity.
+    // Serialized separately for each attached script.
     std::unordered_map<std::string, ScriptValue> publicValues;
 
-    // Optional, useful for detecting schema changes.
     std::uint64_t schemaHash = 0;
 };
 
+class ScriptComponentStorage {
+public:
+    std::vector<ComponentScript> components;
+
+    ComponentScript& Add(const ID ownerID, const ScriptInstanceID requestedID = INVALID_SCRIPT_INSTANCE_ID) {
+        ScriptInstanceID instanceID = requestedID;
+
+        if (instanceID == INVALID_SCRIPT_INSTANCE_ID || GetByID(instanceID) != nullptr)instanceID = GenerateID();
+        else if (instanceID >= nextInstanceID) nextInstanceID = instanceID + 1;
+
+        ComponentScript& script = components.emplace_back();
+        script.ownerID = ownerID;
+        script.instanceID = instanceID;
+
+        return script;
+    }
+
+    ComponentScript* GetByID(const ScriptInstanceID instanceID) {
+        for (ComponentScript& script : components)  if (script.instanceID == instanceID) return &script;
+
+        return nullptr;
+    }
+
+    [[nodiscard]] const ComponentScript* GetByID(const ScriptInstanceID instanceID) const {
+        for (const ComponentScript& script : components) if (script.instanceID == instanceID) return &script;
+
+        return nullptr;
+    }
+
+    ComponentScript* GetFirstByOwner(const ID ownerID) {
+        for (ComponentScript& script : components) if (script.ownerID == ownerID) return &script;
+
+        return nullptr;
+    }
+
+    ComponentScript* Get(const ID ownerID) {
+        return GetFirstByOwner(ownerID);
+    }
+
+    [[nodiscard]] const ComponentScript* Get(const ID ownerID) const {
+        for (const ComponentScript& script : components)  if (script.ownerID == ownerID) return &script;
+
+        return nullptr;
+    }
+
+    std::vector<ComponentScript*> GetAll(const ID ownerID) {
+        std::vector<ComponentScript*> result;
+
+        for (ComponentScript& script : components) if (script.ownerID == ownerID) result.push_back(&script);
+
+        return result;
+    }
+
+    [[nodiscard]] bool HasAny(const ID ownerID) const {
+        for (const ComponentScript& script : components) if (script.ownerID == ownerID) return true;
+        return false;
+    }
+
+    bool Remove(const ScriptInstanceID instanceID) {
+        const auto it = std::find_if(
+            components.begin(),
+            components.end(),
+            [instanceID](const ComponentScript& script) {
+                return script.instanceID == instanceID;
+            }
+        );
+
+        if (it == components.end()) return false;
+
+        components.erase(it);
+        return true;
+    }
+
+    bool RemoveAll(const ID ownerID) {
+        const std::size_t previousSize = components.size();
+
+        std::erase_if(components,
+            [ownerID](const ComponentScript& script) {
+                return script.ownerID == ownerID;
+            }
+        );
+
+        return components.size() != previousSize;
+    }
+
+    void Clear() {
+        components.clear();
+        nextInstanceID = 1;
+    }
+
+private:
+    ScriptInstanceID nextInstanceID = 1;
+
+    ScriptInstanceID GenerateID() {
+        while (GetByID(nextInstanceID) != nullptr) ++nextInstanceID;
+
+        return nextInstanceID++;
+    }
+};
 // OpenAL Audio source. What sound it will play can change during gameplay.
 struct ComponentAudioSource {
     ID ownerID = static_cast<ID>(-1);

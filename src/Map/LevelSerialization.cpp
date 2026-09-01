@@ -911,28 +911,30 @@ namespace {
         }
 
         if (componentsJson.contains("scripts")) {
-            for (const json &scriptJson: componentsJson["scripts"]) {
+            for (const json& scriptJson : componentsJson["scripts"]) {
                 const ID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
 
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
-                Entity *entity = level.GetEntity(ownerID);
+                Entity* entity = level.GetEntity(ownerID);
 
                 if (entity == nullptr) continue;
 
-                ComponentScript &c = level.scripts.Add(ownerID);
-                entity->componentsMask.set(CMP_SCRIPT);
+                const ScriptInstanceID instanceID = scriptJson.value("instanceID",INVALID_SCRIPT_INSTANCE_ID);
+
+                ComponentScript& c = level.scripts.Add(ownerID, instanceID);
 
                 const std::string loadedName = scriptJson.value("fileName", std::string{});
 
-                c.ownerID = ownerID;
                 c.enabled = scriptJson.value("enabled", true);
                 c.fileName = fs::path(loadedName).stem().string();
-                c.schemaHash = scriptJson.value("schemaHash", static_cast<std::uint64_t>(0));
+                c.schemaHash = scriptJson.value("schemaHash", std::uint64_t{0});
 
                 if (scriptJson.contains("publicValues"))
                     c.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
                 else c.publicValues.clear();
+
+                entity->componentsMask.set(CMP_SCRIPT);
             }
         }
 
@@ -1174,6 +1176,7 @@ namespace {
 
         for (const ComponentScript& c : level.scripts.components) {
             componentsJson["scripts"].push_back({
+                {"instanceID", c.instanceID},
                 {"ownerID", c.ownerID},
                 {"fileName", c.fileName},
                 {"enabled", c.enabled},

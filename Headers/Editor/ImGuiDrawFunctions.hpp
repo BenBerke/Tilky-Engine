@@ -22,6 +22,7 @@ namespace ImGuiDrawFunctions {
 
         int selectedComponent = -1;
         int componentToAdd = CMP_SPRITE;
+        ScriptInstanceID selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
     };
 
     // ── Spacing utility ───────────────────────────────────────────────────────

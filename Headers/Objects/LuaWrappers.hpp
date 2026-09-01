@@ -1177,7 +1177,7 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] bool HasScript() const {
-        return level != nullptr && level->scripts.Has(ownerID);
+        return level != nullptr && level->scripts.HasAny(ownerID);
     }
 
     [[nodiscard]] bool HasPlayerController() const {
