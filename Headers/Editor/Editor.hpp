@@ -33,5 +33,7 @@ namespace Editor {
     void AddWall(const Wall& wall);
     void AddSector(const Sector& sector);
 
+    bool NewLevel(const std::string& levelName);
+
     SDL_Window* GetWindow();
 }

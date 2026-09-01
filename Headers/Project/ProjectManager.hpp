@@ -247,6 +247,22 @@ namespace ProjectManager {
     // currently loaded one.
     bool SetProjectEngineVersion(const fs::path &projectFolderOrFile, const std::string &version);
 
+    // Returns the currently loaded project's "last open level" name - the level
+    // that was open when the editor last recorded one (see
+    // SetLastOpenLevelName()). This is a plain level name with no path or
+    // extension, exactly what Editor::LoadLevel()/Editor::currentMap use, read
+    // from the "lastOpenLevel" field inside project.tilky. Returns an empty
+    // string if no level has been recorded yet, or if no project is currently
+    // loaded.
+    std::string GetLastOpenLevelName();
+
+    // Patches just the "lastOpenLevel" field into the currently loaded project's
+    // project.tilky, leaving every other field untouched - the same one-field
+    // patch pattern as SetProjectEngineVersion() above. Returns false if
+    // project.tilky couldn't be read/written, or if no project is currently
+    // loaded.
+    bool SetLastOpenLevelName(const std::string &levelName);
+
     std::string GetCurrentLanguageInLauncher();
 
     // Returns the name of the currently loaded project.

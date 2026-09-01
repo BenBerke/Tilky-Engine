@@ -38,15 +38,11 @@ namespace MapEditorInternal {
 
     std::string currentMap;
 
-    float entitySize = 15.0f;
-
     Mode currentMode = MODE_DOT;
     State currentState = STATE_MAP;
 
     EditorTheme currentTheme = THEME_DARK;
     bool textureViewMode = false;
-
-    bool playerPlaced = false;
 
     std::vector<Action> actions;
     std::vector<GeometrySnapshot> geometrySnapshots;

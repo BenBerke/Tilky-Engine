@@ -23,11 +23,11 @@ namespace MapEditorInternal {
 
     extern float editorZoom;
     extern float GRID_SIZE; // fixed world-space grid/snap spacing - NOT affected by editorZoom. Adjustable at runtime via the Grid & Snapping panel.
-    constexpr float MIN_EDITOR_ZOOM = 0.20f;
-    constexpr float MAX_EDITOR_ZOOM = 5.00f;
+    constexpr float MIN_EDITOR_ZOOM = 0.10f;
+    constexpr float MAX_EDITOR_ZOOM = 10.00f;
     constexpr float MIN_GRID_SIZE = 1.0f;
 
-    constexpr float ENTITY_SIZE = 32.0f;
+    constexpr float ENTITY_SIZE = 10.0f;
 
     // Below this world-space size, a drawing tool's shape is considered
     // degenerate (zero-width rectangle, zero-radius circle, a curve
@@ -166,7 +166,6 @@ namespace MapEditorInternal {
     extern bool editingComponent;
     extern bool editingEntity;
     extern Entity selectedEntity;
-    extern float entitySize;
 
     extern std::string currentMap;
 
@@ -175,8 +174,6 @@ namespace MapEditorInternal {
 
     extern EditorTheme currentTheme;
     extern bool textureViewMode;
-
-    extern bool playerPlaced;
 
     extern int currentFloor;
 

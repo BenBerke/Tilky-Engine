@@ -654,7 +654,7 @@ namespace MapEditorInternal {
 
             const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
 
-            const float screenEntitySize = entitySize * editorZoom;
+            const float screenEntitySize = ENTITY_SIZE * editorZoom;
 
             SDL_FRect rect = {
                 screenPos.x - screenEntitySize * 0.5f,

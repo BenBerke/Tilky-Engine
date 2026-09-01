@@ -134,4 +134,64 @@ namespace Editor {
 
         return true;
     }
+
+    // Creates a brand-new, empty level named levelName, saves it to disk, and
+    // makes it the current level - the "start from scratch" counterpart to
+    // LoadLevel() above. Unlike MapEditorInternal::Save(), which persists
+    // whatever level is already current, this always replaces the current level
+    // with a fresh one first, so it can't accidentally overwrite an existing
+    // level's contents under a new name.
+    bool NewLevel(const std::string& levelName) {
+        using namespace MapEditorInternal;
+
+        const std::string cleanName = LevelSerialization::CleanLevelName(levelName);
+
+        if (cleanName.empty()) {
+            spdlog::warn("Can not create a new level with an empty name");
+            return false;
+        }
+
+        LevelManager::loadedLevels.assign(1, Level{});
+        LevelManager::currentLevelIndex = 0;
+
+        Level& level = LevelManager::CurrentLevel();
+        level.name = cleanName;
+
+        LevelSerialization::LevelExtraData extraData;
+        extraData.backgroundTextureFileName.clear();
+
+        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
+        std::string errorMessage;
+
+        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
+            spdlog::critical("{}", errorMessage);
+            return false;
+        }
+
+        backgroundTextureFileName = extraData.backgroundTextureFileName;
+        currentMap = cleanName;
+
+        // Same editor-session reset as LoadLevel(): a brand-new level starts with
+        // a clean session too, not whatever was left over from the previous one.
+        dots.clear();
+        dotIDToIndex.clear();
+        nextDotID = 0;
+        selectedDotID = INVALID_ID;
+
+        sectorBeingCreated.clear();
+        pendingSectorParams = PendingSectorParams{};
+
+        editingSector = false;
+        selectedSectorID = INVALID_ID;
+
+        actions.clear();
+
+        LevelSystem::RefreshScriptAssets(level);
+
+        spdlog::info("New level created and saved successfully {}", path.string());
+
+        UpdateLevels();
+
+        return true;
+    }
 }

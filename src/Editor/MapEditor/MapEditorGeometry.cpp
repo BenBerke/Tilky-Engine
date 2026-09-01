@@ -995,7 +995,7 @@ namespace MapEditorInternal {
                 //               Localisation::Get("editor.draw.measure.points").c_str(),
                 //               Localisation::Get("editor.draw.measure.next_edge").c_str(),
                 //               edgeLength);
-                
+
                 return buffer;
             }
 

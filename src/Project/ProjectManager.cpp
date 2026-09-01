@@ -33,6 +33,7 @@ namespace {
 
     std::string currentProjectName;
     std::string currentEngineVersion;
+    std::string currentLastOpenLevelName;
 }
 
 namespace ProjectManager {
@@ -282,6 +283,11 @@ namespace ProjectManager {
         currentProjectName = projectData.value("name", currentProjectFolder.filename().string());
         currentEngineVersion = projectData.value("engineVersion", std::string());
 
+        // Empty when the project has never had a level recorded yet (or predates
+        // this field). A plain level name, same shape Editor::LoadLevel() and
+        // Editor::currentMap use - no path or extension.
+        currentLastOpenLevelName = projectData.value("lastOpenLevel", std::string());
+
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
 
         currentAssetsPath = currentProjectFolder / assetsFolder;
@@ -482,6 +488,53 @@ namespace ProjectManager {
         }
 
         spdlog::info("Set engine version for '{}' to {}", tilkyFile.string(), version);
+
+        return true;
+    }
+
+    std::string GetLastOpenLevelName() {
+        return currentLastOpenLevelName;
+    }
+
+    bool SetLastOpenLevelName(const std::string& levelName) {
+        if (currentProjectFile.empty()) {
+            spdlog::error("Cannot set last open level - no project is currently loaded.");
+            return false;
+        }
+
+        json projectData;
+
+        {
+            std::ifstream inFile(currentProjectFile);
+            if (!inFile.is_open()) {
+                spdlog::error("Cannot set last open level - failed to open project file: {}", currentProjectFile.string());
+                return false;
+            }
+
+            try { inFile >> projectData; }
+            catch (const std::exception& e) {
+                spdlog::error("Cannot set last open level - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
+                return false;
+            }
+        }
+
+        projectData["lastOpenLevel"] = levelName;
+
+        std::ofstream outFile(currentProjectFile);
+        if (!outFile.is_open()) {
+            spdlog::error("Cannot set last open level - failed to open project file for writing: {}", currentProjectFile.string());
+            return false;
+        }
+
+        outFile << projectData.dump(4);
+        outFile.close();
+
+        // This function only ever operates on the currently loaded project (unlike
+        // SetProjectEngineVersion, which can target an arbitrary one), so the
+        // in-memory copy is always the one to update.
+        currentLastOpenLevelName = levelName;
+
+        spdlog::info("Set last open level for '{}' to '{}'", currentProjectName, levelName);
 
         return true;
     }

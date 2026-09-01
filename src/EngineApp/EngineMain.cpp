@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -176,6 +177,57 @@ namespace {
         return false;
     }
 
+    // Picks which level opens with this project: the level that was open last
+    // session (if it still loads), otherwise the first .bson level found in the
+    // project's Levels folder (ProjectManager::GetLevelsPath()), otherwise a
+    // brand-new "New Level" (see Editor::NewLevel). Whichever one succeeds is
+    // written back as the new "last open level" so next launch resumes it
+    // directly instead of falling through to the Levels-folder scan again.
+    bool OpenStartupLevel() {
+        std::string levelName = ProjectManager::GetLastOpenLevelName();
+
+        if (!levelName.empty() && !Editor::LoadLevel(levelName)) {
+            spdlog::warn("Last open level '{}' could not be loaded; looking for another", levelName);
+            levelName.clear();
+        }
+
+        if (levelName.empty()) {
+            const fs::path levelsFolder = ProjectManager::GetLevelsPath();
+
+            std::error_code ec;
+            if (fs::exists(levelsFolder, ec)) {
+                for (const auto& entry : fs::directory_iterator(levelsFolder, ec)) {
+                    if (!entry.is_regular_file() || entry.path().extension() != ".bson") continue;
+
+                    const std::string foundName = entry.path().stem().string();
+
+                    if (Editor::LoadLevel(foundName)) {
+                        levelName = foundName;
+                        spdlog::info("No last open level recorded. Opened existing level: {}", levelName);
+                        break;
+                    }
+
+                    spdlog::warn("Found level '{}' but failed to load it; trying another", foundName);
+                }
+            }
+        }
+
+        if (levelName.empty()) {
+            spdlog::info(R"(No existing levels found. Creating "New Level")");
+
+            if (!Editor::NewLevel("New Level")) {
+                spdlog::critical("Failed to create new level");
+                return false;
+            }
+
+            levelName = "New Level";
+        }
+
+        ProjectManager::SetLastOpenLevelName(levelName);
+
+        return true;
+    }
+
     bool LoadProject(const fs::path& projectFile) {
         if (!ProjectManager::LoadProjectMetaData(projectFile)) {
             spdlog::critical("Failed to load project metadata from {}",projectFile.string());
@@ -185,12 +237,18 @@ namespace {
 
         const std::string languageCode = ProjectManager::GetCurrentLanguageInLauncher();
 
-        if (Localisation::LoadLanguage(languageCode)) return true;
+        if (!Localisation::LoadLanguage(languageCode)) {
+            spdlog::error("Failed to load localisation '{}'. Falling back to English.",languageCode);
 
-        spdlog::error("Failed to load localisation '{}'. Falling back to English.",languageCode);
+            if (!Localisation::LoadLanguage("en")) {
+                spdlog::critical("Failed to load fallback English localisation");
 
-        if (!Localisation::LoadLanguage("en")) {
-            spdlog::critical("Failed to load fallback English localisation");
+                return false;
+            }
+        }
+
+        if (!OpenStartupLevel()) {
+            spdlog::critical("Failed to open a startup level for this project");
 
             return false;
         }

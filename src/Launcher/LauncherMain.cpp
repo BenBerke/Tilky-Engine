@@ -98,7 +98,8 @@ int main(int argc, char** argv) {
     try {
         fs::create_directories(projectsPath);
         spdlog::info("Projects folder ready at: {}", projectsPath.string());
-    } catch (std::exception &e) {
+    }
+    catch (std::exception &e) {
         spdlog::critical("Failed to create projects directory {}", e.what());
         return 1;
     }
@@ -121,13 +122,15 @@ int main(int argc, char** argv) {
     if (launcherVars.is_open()) {
         try {
             launcherVars >> launcherVariablesData;
-        } catch (std::exception &e) {
+        }
+        catch (std::exception &e) {
             spdlog::warn("Launcher variables could not load. Falling back to default values {}", e.what());
             launcherVariablesData = DefaultLauncherVariables();
         }
 
         launcherVars.close();
-    } else {
+    }
+    else {
         launcherVariablesData = DefaultLauncherVariables();
 
         std::ofstream varFile(launcherVarsPath);
@@ -137,9 +140,8 @@ int main(int argc, char** argv) {
             varFile.close();
 
             spdlog::info("Created launcher vars at: {}", launcherVarsPath.string());
-        } else {
-            spdlog::critical("Failed to create launcher variables at: {}", launcherVarsPath.string());
         }
+        else  spdlog::critical("Failed to create launcher variables at: {}", launcherVarsPath.string());
     }
 
     int exitCode = 0;
@@ -154,9 +156,7 @@ int main(int argc, char** argv) {
         LauncherApp::Start(launcherVariablesData);
         spdlog::info("Starting the launcher app");
 
-        while (!LauncherApp::QuitRequested()) {
-            LauncherApp::Update();
-        }
+        while (!LauncherApp::QuitRequested()) LauncherApp::Update();
 
         spdlog::info("Quitting the launcher app");
 
@@ -164,9 +164,8 @@ int main(int argc, char** argv) {
 
         launcherVariablesData["lang"] = Localisation::CurrentLanguage();
 
-        if (!WriteLauncherVariablesJson(launcherVariablesData)) {
+        if (!WriteLauncherVariablesJson(launcherVariablesData))
             spdlog::warn("Failed to persist launcher variables on exit");
-        }
 
         if (!projectToOpen.empty()) {
             spdlog::info("Opening project at {}", projectToOpen.string());

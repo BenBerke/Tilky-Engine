@@ -1875,10 +1875,11 @@ namespace MapEditorInternal {
         DrawToolButton(Get("editor.draw.tool.freehand").c_str(), DRAWTOOL_FREEHAND, toolButtonWidth);
         ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.rectangle").c_str(), DRAWTOOL_RECTANGLE, toolButtonWidth);
-        ImGui::SameLine(0.0f, 4.0f);
+
+        //ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.polygon").c_str(), DRAWTOOL_POLYGON, toolButtonWidth);
 
-        DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
+        //DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
         ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.curve").c_str(), DRAWTOOL_CURVE, toolButtonWidth);
 
