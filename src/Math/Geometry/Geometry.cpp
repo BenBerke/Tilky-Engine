@@ -260,11 +260,8 @@ namespace Geometry {
 
     std::vector<Triangle> Triangulate(std::vector<Vector2> vertices, std::vector<std::vector<Vector2>> holes) {
         if (vertices.size() < 3) return {};
-
         if (PolygonAreaSigned(vertices) < 0.0f) std::ranges::reverse(vertices);
-
         for (const std::vector<Vector2>& hole : holes) vertices = BridgeHoleIntoOuter(vertices, hole);
-
         return Triangulate(std::move(vertices));
     }
 }

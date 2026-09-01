@@ -81,6 +81,8 @@ namespace LevelManager {
         return LoadLevelFromFile(levelFiles.front());
     }
 
+    // The reason its here is for legacy reasons
+    // todo TILKY_TODO put this in a place it makes sense
     void TriangulateCurrentLevelSectors() {
         if (!HasCurrentLevel()) return;
 
@@ -91,7 +93,7 @@ namespace LevelManager {
 
             if (sector.vertices.size() < 3) continue;
 
-            sector.triangles = Geometry::Triangulate(sector.vertices);
+            sector.triangles = Geometry::Triangulate(sector.vertices, sector.innerLoops);
         }
     }
 

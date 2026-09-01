@@ -187,7 +187,7 @@ namespace MapEditorInternal {
             std::snprintf(buffer, sizeof(buffer), "%.1f", length);
 
             const Vector2 midpoint = {(worldA.x + worldB.x) * 0.5f, (worldA.y + worldB.y) * 0.5f};
-            DrawWorldLabel(buffer, midpoint, ThemeTextColor());
+          s  DrawWorldLabel(buffer, midpoint, ThemeTextColor());
         }
 
         void DrawPreviewOutline(const std::vector<Vector2>& points, const bool closeLoop, const bool valid) {
