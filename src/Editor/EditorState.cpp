@@ -17,7 +17,7 @@ namespace MapEditorInternal {
     ImFont* scriptEditorFont = nullptr;
 
     float editorZoom = 1.0f;
-    float GRID_SIZE = 12.0f; // todo TILKY_TODO, make this a setting
+    float GRID_SIZE = 12.0f; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)
 
     Vector2 cameraPos = {0.0f, 0.0f};
 
@@ -78,6 +78,28 @@ namespace MapEditorInternal {
 
     bool manualSectorMode = false;
     std::vector<Vector2> manualSectorDots;
+
+    // Sector Mode — drawing tools
+    DrawTool currentDrawTool = DRAWTOOL_FREEHAND;
+
+    bool gridSnapEnabled = true;
+    bool vertexSnapEnabled = true;
+
+    bool rectangleHasFirstCorner = false;
+    Vector2 rectangleFirstCorner = {0.0f, 0.0f};
+
+    bool polygonHasCenter = false;
+    Vector2 polygonCenter = {0.0f, 0.0f};
+    int polygonSideCount = 6; // hexagon by default
+
+    bool circleHasCenter = false;
+    Vector2 circleCenter = {0.0f, 0.0f};
+    int circleSegments = 24;
+
+    CurveStage curveStage = CURVE_STAGE_START;
+    Vector2 curveStart = {0.0f, 0.0f};
+    Vector2 curveEnd = {0.0f, 0.0f};
+    int curveSubdivisions = 12;
 
     // Dot Mode — Wall inspector (right-click select)
     bool editingWall = false;

@@ -1,11 +1,17 @@
 #include "../EditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
+#include "Headers/Math/Vector/Vector2Math.hpp" // This includes "SSECompat.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
+
 #include <spdlog/spdlog.h>
 
 #include "Headers/Math/Geometry/Geometry.hpp"
@@ -108,46 +114,331 @@ namespace MapEditorInternal {
         SDL_RenderRect(renderer, &ring);
     }
 
-    // Draws already-placed chain edges, a rubber-band preview
-    // edge to the resolved snap point, a translucent fill once there are
-    // enough points, and the snap indicator itself.
-    void DrawSectorPreview() {
-        if (sectorBeingCreated.empty()) {
-            DrawSnapIndicator();
-            return;
+    // =========================================================================
+    //  Sector Mode — drawing-tool previews
+    // =========================================================================
+    //
+    // One function per tool renders that tool's live in-progress shape;
+    // DrawSectorPreview() (bottom of this block) just picks which one
+    // applies. They share a handful of outline/fill/label/anchor
+    // primitives so every tool looks and behaves consistently, and they
+    // reuse GetActiveDrawToolMeasurementText() (MapEditorGeometry.cpp)
+    // for on-canvas labels so the floating label next to the shape and
+    // the status-overlay text always agree.
+    namespace {
+        struct PreviewColor { Uint8 r, g, b, a; };
+
+        // Gold = "this would be accepted if you clicked/confirmed now",
+        // red = "this would be rejected". Reused everywhere a shape is
+        // being previewed, replacing the old freehand-only, always-red
+        // fill, so every tool gives the same at-a-glance feedback.
+        constexpr PreviewColor kValidLineColor = {255, 220, 80, 255};
+        constexpr PreviewColor kInvalidLineColor = {230, 70, 70, 255};
+        constexpr PreviewColor kAnchorColor = {80, 220, 255, 255}; // matches DrawSnapIndicator/selection cyan
+        constexpr SDL_FColor kValidFillColor = {1.0f, 0.863f, 0.314f, 0.28f};
+        constexpr SDL_FColor kInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
+
+        SDL_FColor ThemeTextColor() {
+            if (currentTheme == THEME_LIGHT) return {0.0f, 0.0f, 0.0f, 1.0f};
+            return {1.0f, 1.0f, 1.0f, 1.0f};
         }
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
-        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-        const Vector2 snapped = ResolveSnapPoint(mouseWorld);
+        // Renders `text` in world space, anchored just above `worldPos`
+        // on screen, at whatever point size `font` is already configured
+        // with. Deliberately never calls TTF_SetFontSize - font/textEngine
+        // are shared globals, and mutating font size here could leak into
+        // any other text drawn this frame.
+        void DrawWorldLabel(const std::string& text, const Vector2& worldPos, const SDL_FColor color) {
+            if (font == nullptr || textEngine == nullptr || text.empty()) return;
 
-        SDL_SetRenderDrawColor(renderer, 255, 220, 80, 255);
+            TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.c_str(), 0);
+            if (renderedText == nullptr) return;
 
-        for (std::size_t i = 0; i + 1 < sectorBeingCreated.size(); ++i) {
-            const Vector2 a = WorldToScreen(sectorBeingCreated[i], cameraPos);
-            const Vector2 b = WorldToScreen(sectorBeingCreated[i + 1], cameraPos);
-            DrawThickLine(renderer, a, b, 3.0f);
+            TTF_SetTextColor(
+                renderedText,
+                static_cast<Uint8>(color.r * 255.0f),
+                static_cast<Uint8>(color.g * 255.0f),
+                static_cast<Uint8>(color.b * 255.0f),
+                static_cast<Uint8>(color.a * 255.0f)
+            );
+
+            int textWidth = 0;
+            int textHeight = 0;
+            TTF_GetTextSize(renderedText, &textWidth, &textHeight);
+
+            const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
+
+            // Clamp on-screen so a label near the edge of the view never
+            // renders half off the window.
+            const float maxX = std::max(2.0f, screenWidth - static_cast<float>(textWidth) - 2.0f);
+            const float maxY = std::max(2.0f, screenHeight - static_cast<float>(textHeight) - 2.0f);
+
+            const float labelX = std::clamp(screenPos.x - static_cast<float>(textWidth) * 0.5f, 2.0f, maxX);
+            const float labelY = std::clamp(screenPos.y - static_cast<float>(textHeight) - 8.0f, 2.0f, maxY);
+
+            TTF_DrawRendererText(renderedText, labelX, labelY);
+            TTF_DestroyText(renderedText);
         }
 
-        SDL_SetRenderDrawColor(renderer, 255, 220, 80, 160);
+        void DrawEdgeLengthLabel(const Vector2& worldA, const Vector2& worldB) {
+            const float length = std::sqrt(Vector2Math::DistanceSquared(worldA, worldB));
 
-        const Vector2 lastScreen = WorldToScreen(sectorBeingCreated.back(), cameraPos);
-        const Vector2 previewScreen = WorldToScreen(snapped, cameraPos);
-        DrawThickLine(renderer, lastScreen, previewScreen, 2.0f);
+            char buffer[32];
+            std::snprintf(buffer, sizeof(buffer), "%.1f", length);
 
-        const std::vector<Vector2> previewVertices = GetSectorVerticesWithoutClosingDuplicate();
+            const Vector2 midpoint = {(worldA.x + worldB.x) * 0.5f, (worldA.y + worldB.y) * 0.5f};
+            DrawWorldLabel(buffer, midpoint, ThemeTextColor());
+        }
 
-        if (previewVertices.size() >= 3) {
-            const std::vector<Triangle> previewTriangles = Geometry::Triangulate(previewVertices);
+        void DrawPreviewOutline(const std::vector<Vector2>& points, const bool closeLoop, const bool valid) {
+            if (points.size() < 2) return;
+
+            const PreviewColor color = valid ? kValidLineColor : kInvalidLineColor;
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+
+            const std::size_t segmentCount = closeLoop ? points.size() : points.size() - 1;
+
+            for (std::size_t i = 0; i < segmentCount; ++i) {
+                const Vector2 a = WorldToScreen(points[i], cameraPos);
+                const Vector2 b = WorldToScreen(points[(i + 1) % points.size()], cameraPos);
+                DrawThickLine(renderer, a, b, 3.0f);
+            }
+        }
+
+        // `closedLoopPoints` is an open (no repeated closing point) ring,
+        // matching what GetSectorVerticesWithoutClosingDuplicate()/the
+        // Build*() shape generators already produce.
+        void DrawPreviewFill(const std::vector<Vector2>& closedLoopPoints, const bool valid) {
+            if (closedLoopPoints.size() < 3) return;
+
+            const std::vector<Triangle> triangles = Geometry::Triangulate(closedLoopPoints);
 
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-            const SDL_FColor redPreviewColor = {1.0f, 0.0f, 0.0f, 0.30f};
-
-            for (const Triangle& triangle : previewTriangles) DrawFilledTriangle(triangle, redPreviewColor);
-
-
+            const SDL_FColor fillColor = valid ? kValidFillColor : kInvalidFillColor;
+            for (const Triangle& triangle : triangles) DrawFilledTriangle(triangle, fillColor);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+        }
+
+        void DrawAnchorPoint(const Vector2& worldPos) {
+            const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
+            SDL_SetRenderDrawColor(renderer, kAnchorColor.r, kAnchorColor.g, kAnchorColor.b, kAnchorColor.a);
+
+            constexpr float half = 4.0f;
+            const SDL_FRect rect = {screenPos.x - half, screenPos.y - half, half * 2.0f, half * 2.0f};
+            SDL_RenderFillRect(renderer, &rect);
+        }
+
+        // Freehand keeps its own logic (including the manual-corners
+        // sub-mode) rather than going through a Resolve+Build pair like
+        // the other four tools, since it commits one point at a time via
+        // TrySectorChainClick/CreateManualSector rather than a fixed
+        // shape formula.
+        void DrawFreehandPreview() {
+            if (manualSectorMode) {
+                DrawPreviewOutline(manualSectorDots, false, true);
+
+                for (std::size_t i = 0; i + 1 < manualSectorDots.size(); ++i)
+                    DrawEdgeLengthLabel(manualSectorDots[i], manualSectorDots[i + 1]);
+
+                for (const Vector2& dot : manualSectorDots) DrawAnchorPoint(dot);
+
+                return;
+            }
+
+            if (sectorBeingCreated.empty()) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+            const Vector2 previewPoint = ResolveFreehandPoint(mouseWorld);
+
+            DrawPreviewOutline(sectorBeingCreated, false, true);
+
+            for (std::size_t i = 0; i + 1 < sectorBeingCreated.size(); ++i)
+                DrawEdgeLengthLabel(sectorBeingCreated[i], sectorBeingCreated[i + 1]);
+
+            const PreviewColor rubberBand = kValidLineColor;
+            SDL_SetRenderDrawColor(renderer, rubberBand.r, rubberBand.g, rubberBand.b, 160);
+
+            const Vector2 lastScreen = WorldToScreen(sectorBeingCreated.back(), cameraPos);
+            const Vector2 previewScreen = WorldToScreen(previewPoint, cameraPos);
+            DrawThickLine(renderer, lastScreen, previewScreen, 2.0f);
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), previewPoint, ThemeTextColor());
+
+            const std::vector<Vector2> committedLoop = GetSectorVerticesWithoutClosingDuplicate();
+            const std::vector<Vector2> dedupedLoop = DedupeConsecutivePoints(committedLoop);
+            const bool wouldCloseCleanly = dedupedLoop.size() >= 3 && !ClosedLoopSelfIntersects(dedupedLoop);
+
+            DrawPreviewFill(committedLoop, wouldCloseCleanly);
+
+            for (const Vector2& point : sectorBeingCreated) DrawAnchorPoint(point);
+        }
+
+        void DrawRectanglePreview() {
+            if (!rectangleHasFirstCorner) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+            const Vector2 opposite = ResolveRectangleCorner(mouseWorld);
+
+            const float width = std::fabs(opposite.x - rectangleFirstCorner.x);
+            const float height = std::fabs(opposite.y - rectangleFirstCorner.y);
+            const bool valid = width >= MIN_DRAW_SHAPE_DIMENSION && height >= MIN_DRAW_SHAPE_DIMENSION;
+
+            const std::vector<Vector2> corners = {
+                rectangleFirstCorner,
+                {opposite.x, rectangleFirstCorner.y},
+                opposite,
+                {rectangleFirstCorner.x, opposite.y}
+            };
+
+            DrawPreviewOutline(corners, true, valid);
+            DrawPreviewFill(corners, valid);
+            DrawAnchorPoint(rectangleFirstCorner);
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), opposite, ThemeTextColor());
+        }
+
+        void DrawPolygonPreview() {
+            if (!polygonHasCenter) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+            const Vector2 handle = ResolvePolygonHandle(mouseWorld);
+
+            const float radius = std::sqrt(Vector2Math::DistanceSquared(polygonCenter, handle));
+            const bool valid = radius >= MIN_DRAW_SHAPE_DIMENSION;
+
+            const std::vector<Vector2> corners = BuildRegularPolygon(polygonCenter, handle, polygonSideCount);
+
+            DrawPreviewOutline(corners, true, valid);
+            DrawPreviewFill(corners, valid);
+            DrawAnchorPoint(polygonCenter);
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), handle, ThemeTextColor());
+        }
+
+        void DrawCirclePreview() {
+            if (!circleHasCenter) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+            const Vector2 handle = ResolveCircleHandle(mouseWorld);
+
+            const float radiusX = std::fabs(handle.x - circleCenter.x);
+            const float radiusY = std::fabs(handle.y - circleCenter.y);
+            const bool valid = radiusX >= MIN_DRAW_SHAPE_DIMENSION && radiusY >= MIN_DRAW_SHAPE_DIMENSION;
+
+            const std::vector<Vector2> points = BuildEllipse(circleCenter, radiusX, radiusY, circleSegments);
+
+            DrawPreviewOutline(points, true, valid);
+            DrawPreviewFill(points, valid);
+            DrawAnchorPoint(circleCenter);
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), handle, ThemeTextColor());
+        }
+
+        void DrawCurvePreview() {
+            if (curveStage == CURVE_STAGE_START) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+
+            if (curveStage == CURVE_STAGE_END) {
+                const Vector2 end = ResolveCurveEnd(mouseWorld);
+                const bool valid = Vector2Math::DistanceSquared(curveStart, end) >=
+                                    MIN_DRAW_SHAPE_DIMENSION * MIN_DRAW_SHAPE_DIMENSION;
+
+                DrawPreviewOutline({curveStart, end}, false, valid);
+                DrawAnchorPoint(curveStart);
+                DrawWorldLabel(GetActiveDrawToolMeasurementText(), end, ThemeTextColor());
+                return;
+            }
+
+            // CURVE_STAGE_CONTROL - the curve itself plus thin guide lines
+            // out to the control handle, all in the same "valid" gold
+            // (a control point can't make the curve invalid on its own).
+            const Vector2 control = ResolveSnapPoint(mouseWorld);
+            const std::vector<Vector2> curvePoints = BuildQuadraticCurve(curveStart, control, curveEnd, curveSubdivisions);
+
+            DrawPreviewOutline(curvePoints, false, true);
+            DrawPreviewOutline({curveStart, control}, false, true);
+            DrawPreviewOutline({curveEnd, control}, false, true);
+            DrawAnchorPoint(curveStart);
+            DrawAnchorPoint(curveEnd);
+            DrawAnchorPoint(control);
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), control, ThemeTextColor());
+        }
+
+        // Small always-on-top HUD: active tool, grid size/snap state, and
+        // that tool's live measurement text - so none of the above is
+        // only discoverable by already knowing it's there.
+        void DrawStatusOverlay() {
+            if (font == nullptr || textEngine == nullptr) return;
+
+            // .c_str() on named locals, not on Get()/GetActiveDrawToolName()
+            // temporaries - the temporaries would be destroyed before
+            // snprintf ran.
+            const std::string toolName = GetActiveDrawToolName();
+            const std::string gridWord = Localisation::Get("editor.draw.status.grid");
+            const std::string gridSnapOff = gridSnapEnabled
+                                                ? std::string()
+                                                : "  " + Localisation::Get("editor.draw.status.grid_snap_off");
+            const std::string pointSnapOff = vertexSnapEnabled
+                                                 ? std::string()
+                                                 : "  " + Localisation::Get("editor.draw.status.point_snap_off");
+
+            char line[192];
+            std::snprintf(
+                line, sizeof(line), "%s   %s %.0f%s%s",
+                toolName.c_str(),
+                gridWord.c_str(),
+                GRID_SIZE,
+                gridSnapOff.c_str(),
+                pointSnapOff.c_str()
+            );
+
+            const std::string measurement = GetActiveDrawToolMeasurementText();
+
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 140);
+            const SDL_FRect background = {8.0f, 8.0f, 360.0f, measurement.empty() ? 24.0f : 44.0f};
+            SDL_RenderFillRect(renderer, &background);
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+            const auto drawScreenLine = [](const char* text, const float x, const float y) {
+                TTF_Text* renderedText = TTF_CreateText(textEngine, font, text, 0);
+                if (renderedText == nullptr) return;
+
+                TTF_SetTextColor(renderedText, 255, 255, 255, 255);
+                TTF_DrawRendererText(renderedText, x, y);
+                TTF_DestroyText(renderedText);
+            };
+
+            drawScreenLine(line, 14.0f, 12.0f);
+            if (!measurement.empty()) drawScreenLine(measurement.c_str(), 14.0f, 30.0f);
+        }
+    }
+
+    // Dispatches to whichever tool is active. DRAWTOOL_FREEHAND (the
+    // original behaviour) and the four shape tools all end up going
+    // through the same commit path (ApplyDrawnGeometry, by way of
+    // CommitClosedShape/CommitOpenShape in MapEditorGeometry.cpp) once
+    // confirmed, so this function is purely about what's shown while a
+    // shape is still in progress. The snap indicator keeps rendering in
+    // every mode exactly as before, since it's just as useful for
+    // precisely placing a Dot or Entity as it is for Sector drawing.
+    void DrawSectorPreview() {
+        if (currentMode == MODE_SECTOR) {
+            if (IsDrawingInProgress()) {
+                switch (currentDrawTool) {
+                    case DRAWTOOL_FREEHAND:  DrawFreehandPreview(); break;
+                    case DRAWTOOL_RECTANGLE: DrawRectanglePreview(); break;
+                    case DRAWTOOL_POLYGON:   DrawPolygonPreview(); break;
+                    case DRAWTOOL_CIRCLE:    DrawCirclePreview(); break;
+                    case DRAWTOOL_CURVE:     DrawCurvePreview(); break;
+                    default: break;
+                }
+            }
+
+            // this looks bad
+            // DrawStatusOverlay();
         }
 
         DrawSnapIndicator();
@@ -228,8 +519,21 @@ namespace MapEditorInternal {
         for (int sectorIndex = 0; sectorIndex < totalSectors; ++sectorIndex) {
             const Sector &sector = level.sectors[sectorIndex];
 
+            // BUG FIX: hue used to be derived from `sectorIndex` (this
+            // sector's position in level.sectors), which shifts for
+            // every sector after the one that changed whenever an
+            // *unrelated* sector is created, deleted, or reordered
+            // (level.sectors.erase(...) shifts everything after it) -
+            // so previews would visibly recolour themselves any time
+            // the sector list changed at all. `sector.id` is stable for
+            // the sector's whole lifetime (IDs are never reused - see
+            // Editor::AddSector/DeleteSector), so hashing that instead
+            // keeps each sector's colour fixed regardless of what
+            // happens to any other sector. The golden-ratio-conjugate
+            // multiply is unchanged - it's what gives evenly spread,
+            // visually distinct hues across sequential IDs.
             const float hue = std::fmod(
-                static_cast<float>(sectorIndex) * 0.618033988749895f,
+                static_cast<float>(sector.id) * 0.618033988749895f,
                 1.0f
             );
 
@@ -365,7 +669,7 @@ namespace MapEditorInternal {
             const ComponentSprite* sprite = level.sprites.Get(entity.id);
             SDL_Texture* spriteTexture = nullptr;
 
-            if (textureViewMode && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty()) 
+            if (textureViewMode && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty())
                 spriteTexture = GetEditorTexture(sprite->textureFileNames[0]);
 
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
@@ -381,15 +685,45 @@ namespace MapEditorInternal {
         }
     }
 
-    void DrawGridDots() {
-        constexpr float dotSize = 3.0f;
+    namespace {
+        // Every Nth true grid line (counted in fixed GRID_SIZE units,
+        // never in the zoom-adaptive render stride) is drawn as a
+        // bigger, brighter "major" dot so the grid reads at a glance
+        // instead of as a uniform field of dots.
+        constexpr int MAJOR_GRID_LINE_INTERVAL = 8;
 
-        if (currentTheme == THEME_DARK)
-            SDL_SetRenderDrawColor(renderer, 225, 225, 225, 255);
-        else if (currentTheme == THEME_LIGHT)
-            SDL_SetRenderDrawColor(renderer, 25, 25, 25, 255);
+        bool IsOnMajorGridLine(const float worldCoord) {
+            const float stepsFromOrigin = worldCoord / GRID_SIZE;
+            const float rounded = std::round(stepsFromOrigin);
+
+            // Guards against float drift landing just off the nearest
+            // integer grid step before checking it's a multiple of the
+            // major interval.
+            if (std::fabs(stepsFromOrigin - rounded) > 0.01f) return false;
+
+            const long long stepIndex = static_cast<long long>(std::llround(rounded));
+            return (stepIndex % MAJOR_GRID_LINE_INTERVAL) == 0;
+        }
+    }
+
+    void DrawGridDots() {
+        constexpr float minorDotSize = 3.0f;
+        constexpr float majorDotSize = 5.0f;
+
+        Uint8 baseR = 225, baseG = 225, baseB = 225;
+        if (currentTheme == THEME_LIGHT) { baseR = 25; baseG = 25; baseB = 25; }
 
         const float activeGridSize = GetActiveGridSize();
+
+        // Once zoom has forced the render stride coarser than the true
+        // grid unit, every dot actually being drawn already skipped
+        // some real grid lines to stay legible - dim minor dots a touch
+        // in that state as a visual hint that this isn't the full,
+        // fine-grained grid (the major dots stay full brightness so the
+        // overall layout still reads clearly). This never changes what
+        // SnapToGrid uses, only how dense/bright this render pass looks.
+        const bool renderingCoarserThanTrueGrid = activeGridSize > GRID_SIZE + 0.001f;
+        const Uint8 minorAlpha = renderingCoarserThanTrueGrid ? 150 : 255;
 
         const float visibleHalfWidthWorld = (screenWidth * 0.5f) / editorZoom;
         const float visibleHalfHeightWorld = (screenHeight * 0.5f) / editorZoom;
@@ -402,8 +736,18 @@ namespace MapEditorInternal {
         const float startX = std::floor(leftWorld / activeGridSize) * activeGridSize;
         const float startY = std::floor(bottomWorld / activeGridSize) * activeGridSize;
 
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
         for (float worldX = startX; worldX <= rightWorld; worldX += activeGridSize) {
+            const bool majorX = IsOnMajorGridLine(worldX);
+
             for (float worldY = startY; worldY <= topWorld; worldY += activeGridSize) {
+                const bool major = majorX && IsOnMajorGridLine(worldY);
+                const float dotSize = major ? majorDotSize : minorDotSize;
+                const Uint8 alpha = major ? 255 : minorAlpha;
+
+                SDL_SetRenderDrawColor(renderer, baseR, baseG, baseB, alpha);
+
                 const Vector2 screenPos = WorldToScreen({worldX, worldY}, cameraPos);
 
                 SDL_FRect dotRect = {
@@ -416,5 +760,7 @@ namespace MapEditorInternal {
                 SDL_RenderFillRect(renderer, &dotRect);
             }
         }
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }
 }

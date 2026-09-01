@@ -1317,10 +1317,7 @@ namespace {
                     const Mode previousMode = currentMode;
                     currentMode = MODE_DOT;
 
-                    if (previousMode == MODE_SECTOR) {
-                        CancelSectorChain();
-                        ClearManualSectorSelection();
-                    }
+                    if (previousMode == MODE_SECTOR) CancelActiveDrawing();
                 }
             }
 
@@ -1374,10 +1371,7 @@ namespace {
                     const Mode previousMode = currentMode;
                     currentMode = MODE_ENTITY;
 
-                    if (previousMode == MODE_SECTOR) {
-                        CancelSectorChain();
-                        ClearManualSectorSelection();
-                    }
+                    if (previousMode == MODE_SECTOR) CancelActiveDrawing();
                 }
             }
 
@@ -1706,10 +1700,7 @@ namespace MapEditorInternal {
         const Mode previousMode = currentMode;
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
 
-        if (previousMode == MODE_SECTOR) {
-            CancelSectorChain();
-            ClearManualSectorSelection();
-        }
+        if (previousMode == MODE_SECTOR) CancelActiveDrawing();
     }
 
     void ApplyEditorTheme(const EditorTheme theme) {
@@ -1786,7 +1777,11 @@ namespace MapEditorInternal {
         selectedSectorID = INVALID_ID;
         editingEntity = false;
 
-        sectorBeingCreated.clear();
+        // Was a bare sectorBeingCreated.clear() - now goes through
+        // CancelActiveDrawing() so a Rectangle/Polygon/Circle/Curve tool
+        // left mid-shape (not just the freehand chain) is also reset
+        // when the level underneath it changes.
+        CancelActiveDrawing();
         pendingSectorParams = PendingSectorParams{};
         actions.clear();
 
@@ -1801,6 +1796,190 @@ namespace MapEditorInternal {
         Editor::LoadLevel(levelToLoad);
 
         return true;
+    }
+
+    // =========================================================================
+    //  Grid & Snapping / Drawing Tools panels
+    // =========================================================================
+    //
+    // All labels go through Get()/Localisation as everything else in this
+    // file does. The manual-corner controls reuse the editor.manual_sector.*
+    // keys that already existed for this sub-mode; everything else needs the
+    // new editor.grid.* / editor.draw.* keys.
+
+    void DrawGridSnappingSection() {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        SectionHeader(Get("editor.grid.title").c_str());
+        ImGui::Spacing();
+
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::InputFloat(
+            (Get("editor.grid.size") + "##EditorGridSize").c_str(),
+            &GRID_SIZE,
+            1.0f,
+            8.0f,
+            "%.1f"
+        ))
+            GRID_SIZE = std::max(GRID_SIZE, MIN_GRID_SIZE);
+
+        HoverTooltip(Get("editor.tooltip.grid.size").c_str());
+
+        ImGui::Checkbox(Get("editor.grid.snap_to_grid").c_str(), &gridSnapEnabled);
+        HoverTooltip(Get("editor.tooltip.grid.snap_to_grid").c_str());
+
+        ImGui::SameLine(0.0f, 16.0f);
+
+        ImGui::Checkbox(Get("editor.grid.snap_to_points").c_str(), &vertexSnapEnabled);
+        HoverTooltip(Get("editor.tooltip.grid.snap_to_points").c_str());
+    }
+
+    void DrawToolButton(const char* label, const DrawTool tool, const float width) {
+        const bool active = (currentDrawTool == tool);
+
+        if (active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+        }
+        else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
+        }
+
+        if (ImGui::Button(label, ImVec2(width, 0.0f))) SetActiveDrawTool(tool);
+
+        ImGui::PopStyleColor(3);
+    }
+
+    // Tool-select buttons plus whichever settings/hint text apply to
+    // the active tool. Sector Mode only, placed right above the existing
+    // "New sector properties" section, since every tool here ultimately
+    // produces a sector through that same pending-params pipeline.
+    //
+    // Three buttons per row (matching DrawMode's layout) rather than five
+    // across, so translated tool names have room instead of being clipped.
+    void DrawDrawingToolsPanel() {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        SectionHeader(Get("editor.draw.title").c_str());
+        ImGui::Spacing();
+
+        const float toolButtonWidth = (ImGui::GetContentRegionAvail().x - 8.0f) / 3.0f;
+
+        DrawToolButton(Get("editor.draw.tool.freehand").c_str(), DRAWTOOL_FREEHAND, toolButtonWidth);
+        ImGui::SameLine(0.0f, 4.0f);
+        DrawToolButton(Get("editor.draw.tool.rectangle").c_str(), DRAWTOOL_RECTANGLE, toolButtonWidth);
+        ImGui::SameLine(0.0f, 4.0f);
+        DrawToolButton(Get("editor.draw.tool.polygon").c_str(), DRAWTOOL_POLYGON, toolButtonWidth);
+
+        DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
+        ImGui::SameLine(0.0f, 4.0f);
+        DrawToolButton(Get("editor.draw.tool.curve").c_str(), DRAWTOOL_CURVE, toolButtonWidth);
+
+        ImGui::Spacing();
+
+        switch (currentDrawTool) {
+            case DRAWTOOL_FREEHAND: {
+                ImGui::Checkbox(Get("editor.manual_sector.mode").c_str(), &manualSectorMode);
+                HoverTooltip(Get("editor.manual_sector.tooltip.mode").c_str());
+
+                if (manualSectorMode) {
+                    const int cornerCount = static_cast<int>(manualSectorDots.size());
+
+                    const std::string cornerText = (cornerCount == 1)
+                                                       ? Get("editor.manual_sector.corner_selected")
+                                                       : Get("editor.manual_sector.corners_selected");
+
+                    ImGui::Text(cornerText.c_str(), cornerCount);
+
+                    ImGui::BeginDisabled(manualSectorDots.size() < 3);
+                    if (ImGui::Button(Get("editor.manual_sector.create").c_str())) CreateManualSector();
+                    ImGui::EndDisabled();
+
+                    HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
+
+                    ImGui::SameLine();
+
+                    ImGui::BeginDisabled(manualSectorDots.empty());
+                    if (ImGui::Button(Get("editor.manual_sector.clear_selected_dots").c_str()))
+                        ClearManualSectorSelection();
+                    ImGui::EndDisabled();
+                }
+                else ImGui::TextDisabled("%s", Get("editor.draw.hint.freehand").c_str());
+
+                break;
+            }
+
+            case DRAWTOOL_RECTANGLE:
+                ImGui::TextDisabled("%s", Get("editor.draw.hint.rectangle").c_str());
+                break;
+
+            case DRAWTOOL_POLYGON: {
+                ImGui::SetNextItemWidth(110.0f);
+                ImGui::SliderInt(
+                    (Get("editor.draw.sides") + "##DrawPolygonSides").c_str(),
+                    &polygonSideCount,
+                    3,
+                    MAX_POLYGON_SIDES
+                );
+                polygonSideCount = std::clamp(polygonSideCount, 3, MAX_POLYGON_SIDES);
+                HoverTooltip(Get("editor.tooltip.draw.sides").c_str());
+
+                ImGui::SameLine();
+
+                if (ImGui::Button(Get("editor.draw.hexagon").c_str())) polygonSideCount = 6;
+                HoverTooltip(Get("editor.tooltip.draw.hexagon").c_str());
+
+                ImGui::TextDisabled("%s", Get("editor.draw.hint.polygon").c_str());
+                break;
+            }
+
+            case DRAWTOOL_CIRCLE:
+                ImGui::SetNextItemWidth(110.0f);
+                ImGui::SliderInt(
+                    (Get("editor.draw.segments") + "##DrawCircleSegments").c_str(),
+                    &circleSegments,
+                    3,
+                    128
+                );
+                circleSegments = std::max(circleSegments, 3);
+                HoverTooltip(Get("editor.tooltip.draw.segments").c_str());
+
+                ImGui::TextDisabled("%s", Get("editor.draw.hint.circle").c_str());
+                break;
+
+            case DRAWTOOL_CURVE:
+                ImGui::SetNextItemWidth(110.0f);
+                ImGui::SliderInt(
+                    (Get("editor.draw.subdivisions") + "##DrawCurveSubdivisions").c_str(),
+                    &curveSubdivisions,
+                    1,
+                    64
+                );
+                curveSubdivisions = std::max(curveSubdivisions, 1);
+                HoverTooltip(Get("editor.tooltip.draw.subdivisions").c_str());
+
+                ImGui::TextDisabled("%s", Get("editor.draw.hint.curve").c_str());
+                break;
+
+            default: break;
+        }
+
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.general").c_str());
+        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.constrain").c_str());
+
+        if (currentDrawTool == DRAWTOOL_POLYGON)
+            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.sides").c_str());
+
+        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.tools").c_str());
     }
 
     // =========================================================================
@@ -1837,8 +2016,15 @@ namespace MapEditorInternal {
         ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
         HoverTooltip(Get("editor.tooltip.texture_view_mode").c_str());
 
+        // ---- Grid & snapping (visible in every mode - Dot Mode's
+        // shift-to-snap placement and every Sector drawing tool both
+        // read GRID_SIZE/gridSnapEnabled/vertexSnapEnabled) -----------------
+        DrawGridSnappingSection();
+
         // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {
+            DrawDrawingToolsPanel();
+
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -2020,6 +2206,7 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 SDL_Log("%s", Editor::currentMap.c_str());
+                CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
                 switchToRuntime = true;
             }
         }
@@ -2034,6 +2221,7 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 SDL_Log("%s", Editor::currentMap.c_str());
+                CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
                 quit = true;
                 play = true;
             }
@@ -2047,6 +2235,7 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 SDL_Log("%s", Editor::currentMap.c_str());
+                CancelActiveDrawing();
                 quit = true;
             }
         }

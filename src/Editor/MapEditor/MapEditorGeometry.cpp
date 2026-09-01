@@ -14,6 +14,10 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/MapTopology.hpp"
 #include "Headers/Objects/Entity.hpp"
+#include "Headers/Engine/InputManager.hpp"
+#include "Headers/Engine/Local/Local.hpp"
+
+#include <cstdio>
 
 // This is an internal file for functions related to mathematical calculations about the map,
 // plus (after the editor revamp) the Sector Mode chain workflow and Dot lifecycle.
@@ -167,12 +171,20 @@ namespace MapEditorInternal {
         };
     }
 
+    // BUG FIX: this used to snap against GetActiveGridSize(), which
+    // doubles as the camera zooms out (to keep DrawGridDots() from
+    // rendering an unreadably dense mass of dots). That's exactly right
+    // for *rendering*, but using the same value here meant the actual
+    // snapping interval silently changed with zoom - panning/zooming
+    // out would make everything snap to a coarser grid than what was
+    // used a moment ago at a closer zoom. Snapping must always use the
+    // fixed, user-set GRID_SIZE, independent of editorZoom.
     Vector2 SnapToGrid(const Vector2& worldPos) {
-        const float activeGridSize = GetActiveGridSize();
+        const float gridSize = std::max(GRID_SIZE, MIN_GRID_SIZE);
 
         return {
-            std::round(worldPos.x / activeGridSize) * activeGridSize,
-            std::round(worldPos.y / activeGridSize) * activeGridSize
+            std::round(worldPos.x / gridSize) * gridSize,
+            std::round(worldPos.y / gridSize) * gridSize
         };
     }
 
@@ -184,42 +196,46 @@ namespace MapEditorInternal {
     // or end mid-wall - committing the chain is what actually splits the
     // wall there (see ApplyDrawnGeometry / MapTopology::ApplyDrawnGeometry).
     Vector2 ResolveSnapPoint(const Vector2& mouseWorld) {
-        constexpr float snapRadiusPixels = 12.0f;
-        const float safeZoom = std::max(editorZoom, 0.0001f);
-        const float snapRadiusWorld = snapRadiusPixels / safeZoom;
-        const float snapRadiusSq = snapRadiusWorld * snapRadiusWorld;
+        if (vertexSnapEnabled) {
+            constexpr float snapRadiusPixels = 12.0f;
+            const float safeZoom = std::max(editorZoom, 0.0001f);
+            const float snapRadiusWorld = snapRadiusPixels / safeZoom;
+            const float snapRadiusSq = snapRadiusWorld * snapRadiusWorld;
 
-        Vector2 best{};
-        float bestDistSq = std::numeric_limits<float>::max();
-        bool found = false;
+            Vector2 best{};
+            float bestDistSq = std::numeric_limits<float>::max();
+            bool found = false;
 
-        const auto consider = [&](const Vector2& candidate) {
-            const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
+            const auto consider = [&](const Vector2& candidate) {
+                const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
 
-            if (distSq <= snapRadiusSq && distSq < bestDistSq) {
-                bestDistSq = distSq;
-                best = candidate;
-                found = true;
+                if (distSq <= snapRadiusSq && distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    best = candidate;
+                    found = true;
+                }
+            };
+
+            for (const Dot& dot : dots) {
+                consider(dot.position);
             }
-        };
 
-        for (const Dot& dot : dots) {
-            consider(dot.position);
+            const Level& level = LevelManager::CurrentLevel();
+
+            for (const Wall& wall : level.walls) {
+                consider(wall.start);
+                consider(wall.end);
+            }
+
+            if (found) return best;
+
+            Vector2 onWall{};
+            if (MapTopology::ClosestPointOnAnyWall(level.walls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
         }
 
-        const Level& level = LevelManager::CurrentLevel();
+        if (gridSnapEnabled) return SnapToGrid(mouseWorld);
 
-        for (const Wall& wall : level.walls) {
-            consider(wall.start);
-            consider(wall.end);
-        }
-
-        if (found) return best;
-
-        Vector2 onWall{};
-        if (MapTopology::ClosestPointOnAnyWall(level.walls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
-
-        return SnapToGrid(mouseWorld);
+        return mouseWorld;
     }
 
     bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
@@ -450,6 +466,620 @@ namespace MapEditorInternal {
         }
 
         AddSectorSelectionPoint(point);
+    }
+
+    // =========================================================================
+    //  Sector Mode — drawing tools (Rectangle / Polygon / Circle / Curve)
+    // =========================================================================
+    //
+    // All four tools funnel their finished shape through the same
+    // CommitDrawnShape() -> ApplyDrawnGeometry() path the freehand chain
+    // above already uses, so they get the same wall/sector-splitting,
+    // undo snapshotting, and rejection reporting for free.
+
+    namespace {
+        constexpr float kPi = 3.14159265358979323846f;
+
+        bool NearlyEqualPoints(const Vector2& a, const Vector2& b) {
+            constexpr float epsilon = 0.01f;
+            return Vector2Math::DistanceSquared(a, b) < epsilon * epsilon;
+        }
+
+        // Standard orientation-based *proper* segment intersection test -
+        // segments that only touch at an endpoint (as every pair of
+        // adjacent polygon edges does) are deliberately not flagged.
+        float SignedArea2(const Vector2& o, const Vector2& a, const Vector2& b) {
+            return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        }
+
+        bool ProperSegmentsIntersect(const Vector2& p1, const Vector2& p2, const Vector2& p3, const Vector2& p4) {
+            const float d1 = SignedArea2(p3, p4, p1);
+            const float d2 = SignedArea2(p3, p4, p2);
+            const float d3 = SignedArea2(p1, p2, p3);
+            const float d4 = SignedArea2(p1, p2, p4);
+
+            const bool straddles1 = (d1 > 0.0f && d2 < 0.0f) || (d1 < 0.0f && d2 > 0.0f);
+            const bool straddles2 = (d3 > 0.0f && d4 < 0.0f) || (d3 < 0.0f && d4 > 0.0f);
+
+            return straddles1 && straddles2;
+        }
+
+        // Validates and normalises `loop` in place: strips duplicate
+        // consecutive points, requires >= 3 unique corners, rejects a
+        // self-intersecting boundary, then re-closes the ring (repeats
+        // the first point) the way ApplyDrawnGeometry expects. Leaves
+        // `loop` unspecified-but-valid-to-discard on rejection.
+        bool ValidateClosedLoop(std::vector<Vector2>& loop, std::string* outError) {
+            if (loop.size() >= 2 && SamePoint(loop.front(), loop.back())) loop.pop_back();
+
+            loop = DedupeConsecutivePoints(loop);
+
+            if (loop.size() < 3) {
+                *outError = Localisation::Get("editor.draw.error.min_corners");
+                return false;
+            }
+
+            if (ClosedLoopSelfIntersects(loop)) {
+                *outError = Localisation::Get("editor.draw.error.self_intersect");
+                return false;
+            }
+
+            loop.push_back(loop.front());
+            return true;
+        }
+
+        bool ValidateOpenPolyline(std::vector<Vector2>& points, std::string* outError) {
+            points = DedupeConsecutivePoints(points);
+
+            if (points.size() < 2) {
+                *outError = Localisation::Get("editor.draw.error.min_points");
+                return false;
+            }
+
+            return true;
+        }
+
+        // Shared commit path for every drawing tool below (freehand's
+        // FinishSectorSelection/manual sector's CreateManualSector go
+        // through ApplyDrawnGeometry directly instead, since they have
+        // their own validation history already). Reports rejections
+        // through lastGeometryError exactly like ApplyDrawnGeometry does
+        // on its own, so the toast in DrawEditorUI picks up either kind.
+        bool CommitClosedShape(std::vector<Vector2> loop) {
+            std::string error;
+
+            if (!ValidateClosedLoop(loop, &error)) {
+                lastGeometryError = error;
+                return false;
+            }
+
+            return ApplyDrawnGeometry(loop, BuildPendingSectorParams());
+        }
+
+        bool CommitOpenShape(std::vector<Vector2> points) {
+            std::string error;
+
+            if (!ValidateOpenPolyline(points, &error)) {
+                lastGeometryError = error;
+                return false;
+            }
+
+            return ApplyDrawnGeometry(points, BuildPendingSectorParams());
+        }
+
+        void HandleRectangleClick(const Vector2& rawMouseWorld) {
+            if (!rectangleHasFirstCorner) {
+                rectangleFirstCorner = ResolveSnapPoint(rawMouseWorld);
+                rectangleHasFirstCorner = true;
+                return;
+            }
+
+            const Vector2 opposite = ResolveRectangleCorner(rawMouseWorld);
+
+            const float width = std::fabs(opposite.x - rectangleFirstCorner.x);
+            const float height = std::fabs(opposite.y - rectangleFirstCorner.y);
+
+            if (width < MIN_DRAW_SHAPE_DIMENSION || height < MIN_DRAW_SHAPE_DIMENSION) {
+                lastGeometryError = Localisation::Get("editor.draw.error.rectangle_zero_size");
+                return; // stay in progress so the user can just move and click again
+            }
+
+            const Vector2 a = rectangleFirstCorner;
+            const Vector2 b = {opposite.x, rectangleFirstCorner.y};
+            const Vector2 c = opposite;
+            const Vector2 d = {rectangleFirstCorner.x, opposite.y};
+
+            if (CommitClosedShape({a, b, c, d})) rectangleHasFirstCorner = false;
+        }
+
+        void HandlePolygonClick(const Vector2& rawMouseWorld) {
+            if (!polygonHasCenter) {
+                polygonCenter = ResolveSnapPoint(rawMouseWorld);
+                polygonHasCenter = true;
+                return;
+            }
+
+            const Vector2 handle = ResolvePolygonHandle(rawMouseWorld);
+            const float radius = std::sqrt(Vector2Math::DistanceSquared(polygonCenter, handle));
+
+            if (radius < MIN_DRAW_SHAPE_DIMENSION) {
+                lastGeometryError = Localisation::Get("editor.draw.error.polygon_radius");
+                return;
+            }
+
+            if (CommitClosedShape(BuildRegularPolygon(polygonCenter, handle, polygonSideCount)))
+                polygonHasCenter = false;
+        }
+
+        void HandleCircleClick(const Vector2& rawMouseWorld) {
+            if (!circleHasCenter) {
+                circleCenter = ResolveSnapPoint(rawMouseWorld);
+                circleHasCenter = true;
+                return;
+            }
+
+            const Vector2 handle = ResolveCircleHandle(rawMouseWorld);
+            const float radiusX = std::fabs(handle.x - circleCenter.x);
+            const float radiusY = std::fabs(handle.y - circleCenter.y);
+
+            if (radiusX < MIN_DRAW_SHAPE_DIMENSION || radiusY < MIN_DRAW_SHAPE_DIMENSION) {
+                lastGeometryError = Localisation::Get("editor.draw.error.circle_radius");
+                return;
+            }
+
+            if (CommitClosedShape(BuildEllipse(circleCenter, radiusX, radiusY, circleSegments)))
+                circleHasCenter = false;
+        }
+
+        void HandleCurveClick(const Vector2& rawMouseWorld) {
+            switch (curveStage) {
+                case CURVE_STAGE_START:
+                    curveStart = ResolveSnapPoint(rawMouseWorld);
+                    curveStage = CURVE_STAGE_END;
+                    break;
+
+                case CURVE_STAGE_END: {
+                    const Vector2 end = ResolveCurveEnd(rawMouseWorld);
+
+                    if (Vector2Math::DistanceSquared(curveStart, end) < MIN_DRAW_SHAPE_DIMENSION * MIN_DRAW_SHAPE_DIMENSION) {
+                        lastGeometryError = Localisation::Get("editor.draw.error.curve_same_point");
+                        return;
+                    }
+
+                    curveEnd = end;
+                    curveStage = CURVE_STAGE_CONTROL;
+                    break;
+                }
+
+                case CURVE_STAGE_CONTROL: {
+                    const Vector2 control = ResolveSnapPoint(rawMouseWorld);
+                    const std::vector<Vector2> curvePoints = BuildQuadraticCurve(curveStart, control, curveEnd, curveSubdivisions);
+
+                    if (CommitOpenShape(curvePoints)) curveStage = CURVE_STAGE_START;
+                    break;
+                }
+
+                default: break;
+            }
+        }
+    }
+
+    bool IsConstrainModifierHeld() {
+        return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+    }
+
+    Vector2 ConstrainToAngleStep(const Vector2& reference, const Vector2& target, const float stepRadians) {
+        const float dx = target.x - reference.x;
+        const float dy = target.y - reference.y;
+
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (length < 0.0001f) return target;
+
+        float angle = std::atan2(dy, dx);
+        angle = std::round(angle / stepRadians) * stepRadians;
+
+        return {reference.x + std::cos(angle) * length, reference.y + std::sin(angle) * length};
+    }
+
+    std::vector<Vector2> DedupeConsecutivePoints(const std::vector<Vector2>& points) {
+        std::vector<Vector2> result;
+        result.reserve(points.size());
+
+        for (const Vector2& point : points) {
+            if (result.empty() || !NearlyEqualPoints(result.back(), point)) result.push_back(point);
+        }
+
+        return result;
+    }
+
+    bool ClosedLoopSelfIntersects(const std::vector<Vector2>& uniqueRingPoints) {
+        const int n = static_cast<int>(uniqueRingPoints.size());
+        if (n < 4) return false;
+
+        for (int i = 0; i < n; ++i) {
+            const Vector2& a1 = uniqueRingPoints[i];
+            const Vector2& a2 = uniqueRingPoints[(i + 1) % n];
+
+            for (int j = i + 1; j < n; ++j) {
+                const bool adjacent = (j == (i + 1) % n) || ((j + 1) % n == i);
+                if (adjacent) continue;
+
+                const Vector2& b1 = uniqueRingPoints[j];
+                const Vector2& b2 = uniqueRingPoints[(j + 1) % n];
+
+                if (ProperSegmentsIntersect(a1, a2, b1, b2)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    Vector2 ResolveFreehandPoint(const Vector2& mouseWorld) {
+        Vector2 point = ResolveSnapPoint(mouseWorld);
+
+        if (!manualSectorMode && !sectorBeingCreated.empty() && IsConstrainModifierHeld())
+            point = ConstrainToAngleStep(sectorBeingCreated.back(), point, kPi / 4.0f);
+
+        return point;
+    }
+
+    Vector2 ResolveRectangleCorner(const Vector2& mouseWorld) {
+        Vector2 corner = ResolveSnapPoint(mouseWorld);
+        if (!rectangleHasFirstCorner) return corner;
+
+        if (IsConstrainModifierHeld()) {
+            const float width = corner.x - rectangleFirstCorner.x;
+            const float height = corner.y - rectangleFirstCorner.y;
+            const float side = std::max(std::fabs(width), std::fabs(height));
+
+            const float signedWidth = width < 0.0f ? -side : side;
+            const float signedHeight = height < 0.0f ? -side : side;
+
+            corner = {rectangleFirstCorner.x + signedWidth, rectangleFirstCorner.y + signedHeight};
+        }
+
+        return corner;
+    }
+
+    Vector2 ResolvePolygonHandle(const Vector2& mouseWorld) {
+        Vector2 handle = ResolveSnapPoint(mouseWorld);
+        if (!polygonHasCenter) return handle;
+
+        if (IsConstrainModifierHeld()) {
+            constexpr float rotationStep = kPi / 12.0f; // 15 degrees
+            handle = ConstrainToAngleStep(polygonCenter, handle, rotationStep);
+        }
+
+        return handle;
+    }
+
+    Vector2 ResolveCircleHandle(const Vector2& mouseWorld) {
+        Vector2 handle = ResolveSnapPoint(mouseWorld);
+        if (!circleHasCenter) return handle;
+
+        if (IsConstrainModifierHeld()) {
+            const float radiusX = std::fabs(handle.x - circleCenter.x);
+            const float radiusY = std::fabs(handle.y - circleCenter.y);
+            const float radius = std::max(radiusX, radiusY);
+
+            const float signX = (handle.x < circleCenter.x) ? -1.0f : 1.0f;
+            const float signY = (handle.y < circleCenter.y) ? -1.0f : 1.0f;
+
+            handle = {circleCenter.x + signX * radius, circleCenter.y + signY * radius};
+        }
+
+        return handle;
+    }
+
+    Vector2 ResolveCurveEnd(const Vector2& mouseWorld) {
+        Vector2 end = ResolveSnapPoint(mouseWorld);
+
+        if (IsConstrainModifierHeld()) end = ConstrainToAngleStep(curveStart, end, kPi / 4.0f);
+
+        return end;
+    }
+
+    std::vector<Vector2> BuildRegularPolygon(const Vector2& center, const Vector2& handle, int sideCount) {
+        sideCount = std::max(sideCount, 3);
+
+        const float dx = handle.x - center.x;
+        const float dy = handle.y - center.y;
+        const float radius = std::sqrt(dx * dx + dy * dy);
+        const float startAngle = std::atan2(dy, dx);
+
+        std::vector<Vector2> points;
+        points.reserve(sideCount);
+
+        for (int i = 0; i < sideCount; ++i) {
+            const float angle = startAngle + (2.0f * kPi * static_cast<float>(i)) / static_cast<float>(sideCount);
+            points.push_back({center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)});
+        }
+
+        return points;
+    }
+
+    std::vector<Vector2> BuildEllipse(const Vector2& center, const float radiusX, const float radiusY, int segments) {
+        segments = std::max(segments, 3);
+
+        std::vector<Vector2> points;
+        points.reserve(segments);
+
+        for (int i = 0; i < segments; ++i) {
+            const float angle = (2.0f * kPi * static_cast<float>(i)) / static_cast<float>(segments);
+            points.push_back({center.x + radiusX * std::cos(angle), center.y + radiusY * std::sin(angle)});
+        }
+
+        return points;
+    }
+
+    std::vector<Vector2> BuildQuadraticCurve(const Vector2& start, const Vector2& control, const Vector2& end, int subdivisions) {
+        subdivisions = std::max(subdivisions, 1);
+
+        std::vector<Vector2> points;
+        points.reserve(subdivisions + 1);
+
+        for (int i = 0; i <= subdivisions; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(subdivisions);
+            const float oneMinusT = 1.0f - t;
+
+            const float x = oneMinusT * oneMinusT * start.x + 2.0f * oneMinusT * t * control.x + t * t * end.x;
+            const float y = oneMinusT * oneMinusT * start.y + 2.0f * oneMinusT * t * control.y + t * t * end.y;
+
+            points.push_back({x, y});
+        }
+
+        return points;
+    }
+
+    bool IsDrawingInProgress() {
+        if (!sectorBeingCreated.empty() || manualSectorMode) return true;
+        if (rectangleHasFirstCorner) return true;
+        if (polygonHasCenter) return true;
+        if (circleHasCenter) return true;
+        if (curveStage != CURVE_STAGE_START) return true;
+
+        return false;
+    }
+
+    void CancelActiveDrawing() {
+        CancelSectorChain();
+        ClearManualSectorSelection();
+
+        rectangleHasFirstCorner = false;
+        polygonHasCenter = false;
+        circleHasCenter = false;
+        curveStage = CURVE_STAGE_START;
+    }
+
+    void SetActiveDrawTool(const DrawTool tool) {
+        if (tool == currentDrawTool) return;
+
+        CancelActiveDrawing();
+        currentDrawTool = tool;
+    }
+
+    void HandleSectorDrawClick(const Vector2& rawMouseWorld) {
+        switch (currentDrawTool) {
+            case DRAWTOOL_FREEHAND:
+                TrySectorChainClick(ResolveFreehandPoint(rawMouseWorld));
+                break;
+
+            case DRAWTOOL_RECTANGLE:
+                HandleRectangleClick(rawMouseWorld);
+                break;
+
+            case DRAWTOOL_POLYGON:
+                HandlePolygonClick(rawMouseWorld);
+                break;
+
+            case DRAWTOOL_CIRCLE:
+                HandleCircleClick(rawMouseWorld);
+                break;
+
+            case DRAWTOOL_CURVE:
+                HandleCurveClick(rawMouseWorld);
+                break;
+
+            default: break;
+        }
+    }
+
+    void UndoLastDrawPoint() {
+        switch (currentDrawTool) {
+            case DRAWTOOL_FREEHAND:
+                if (manualSectorMode) {
+                    if (!manualSectorDots.empty()) manualSectorDots.pop_back();
+                }
+                else if (!sectorBeingCreated.empty()) {
+                    sectorBeingCreated.pop_back();
+                }
+                break;
+
+            case DRAWTOOL_RECTANGLE:
+                rectangleHasFirstCorner = false;
+                break;
+
+            case DRAWTOOL_POLYGON:
+                polygonHasCenter = false;
+                break;
+
+            case DRAWTOOL_CIRCLE:
+                circleHasCenter = false;
+                break;
+
+            case DRAWTOOL_CURVE:
+                if (curveStage == CURVE_STAGE_CONTROL) curveStage = CURVE_STAGE_END;
+                else if (curveStage == CURVE_STAGE_END) curveStage = CURVE_STAGE_START;
+                break;
+
+            default: break;
+        }
+    }
+
+    void ConfirmActiveDrawing() {
+        if (currentMode != MODE_SECTOR) return;
+
+        if (currentDrawTool == DRAWTOOL_FREEHAND) {
+            if (manualSectorMode) {
+                if (manualSectorDots.size() >= 3) CreateManualSector();
+            }
+            else if (sectorBeingCreated.size() >= 3) {
+                FinishSectorSelection();
+            }
+
+            return;
+        }
+
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+
+        HandleSectorDrawClick(mouseWorld);
+    }
+
+    // Returns by value rather than as a const char*: Localisation::Get
+    // hands back a std::string by value, so a .c_str() out of one would
+    // dangle the moment this function returned.
+    std::string GetActiveDrawToolName() {
+        switch (currentDrawTool) {
+            case DRAWTOOL_FREEHAND:
+                return Localisation::Get(manualSectorMode
+                                             ? "editor.draw.tool.freehand_manual"
+                                             : "editor.draw.tool.freehand");
+            case DRAWTOOL_RECTANGLE: return Localisation::Get("editor.draw.tool.rectangle");
+            case DRAWTOOL_POLYGON:   return Localisation::Get("editor.draw.tool.polygon");
+            case DRAWTOOL_CIRCLE:    return Localisation::Get("editor.draw.tool.circle");
+            case DRAWTOOL_CURVE:     return Localisation::Get("editor.draw.tool.curve");
+            default:                 return Localisation::Get("bug.unknown");
+        }
+    }
+
+    // Live, tool-specific measurement/prompt line, shared by the on-canvas
+    // label next to the shape and the status overlay so the two can never
+    // disagree.
+    //
+    // Localised words are injected into compile-time literal format
+    // strings via %s rather than pulling whole format strings out of the
+    // translation data - a translation that dropped or reordered a %.1f
+    // would otherwise be undefined behaviour at runtime. The two manual-
+    // corner keys are the exception: they already exist as "%d corner(s)
+    // selected" strings and are consumed the same way elsewhere in the
+    // editor (see the sector-chain reminder in DrawMode).
+    std::string GetActiveDrawToolMeasurementText() {
+        if (currentMode != MODE_SECTOR) return "";
+
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+
+        char buffer[160];
+
+        switch (currentDrawTool) {
+            case DRAWTOOL_FREEHAND: {
+                if (manualSectorMode) {
+                    const int cornerCount = static_cast<int>(manualSectorDots.size());
+
+                    const std::string cornerText = (cornerCount == 1)
+                        ? Localisation::Get("editor.manual_sector.corner_selected")
+                        : Localisation::Get("editor.manual_sector.corners_selected");
+
+                    std::snprintf(buffer, sizeof(buffer), cornerText.c_str(), cornerCount);
+                    return buffer;
+                }
+
+                if (sectorBeingCreated.empty()) return "";
+
+                const Vector2 next = ResolveFreehandPoint(mouseWorld);
+                const float edgeLength = std::sqrt(Vector2Math::DistanceSquared(sectorBeingCreated.back(), next));
+
+                // std::snprintf(buffer, sizeof(buffer), "%d %s   %s: %.1f",
+                //               static_cast<int>(sectorBeingCreated.size()),
+                //               Localisation::Get("editor.draw.measure.points").c_str(),
+                //               Localisation::Get("editor.draw.measure.next_edge").c_str(),
+                //               edgeLength);
+                
+                return buffer;
+            }
+
+            case DRAWTOOL_RECTANGLE: {
+                if (!rectangleHasFirstCorner) return Localisation::Get("editor.draw.prompt.first_corner");
+
+                const Vector2 opposite = ResolveRectangleCorner(mouseWorld);
+                const float width = std::fabs(opposite.x - rectangleFirstCorner.x);
+                const float height = std::fabs(opposite.y - rectangleFirstCorner.y);
+
+                std::snprintf(buffer, sizeof(buffer), "%.1f x %.1f   %s: %.1f",
+                              width, height,
+                              Localisation::Get("editor.draw.measure.area").c_str(),
+                              width * height);
+                return buffer;
+            }
+
+            case DRAWTOOL_POLYGON: {
+                if (!polygonHasCenter) return Localisation::Get("editor.draw.prompt.centre");
+
+                const Vector2 handle = ResolvePolygonHandle(mouseWorld);
+                const float radius = std::sqrt(Vector2Math::DistanceSquared(polygonCenter, handle));
+                const int sides = std::max(polygonSideCount, 3);
+                const float sideLength = 2.0f * radius * std::sin(kPi / static_cast<float>(sides));
+
+                std::snprintf(buffer, sizeof(buffer), "%s %.1f   %s %.1f   %d %s",
+                              Localisation::Get("editor.draw.measure.radius").c_str(), radius,
+                              Localisation::Get("editor.draw.measure.side").c_str(), sideLength,
+                              sides,
+                              Localisation::Get("editor.draw.measure.sides").c_str());
+                return buffer;
+            }
+
+            case DRAWTOOL_CIRCLE: {
+                if (!circleHasCenter) return Localisation::Get("editor.draw.prompt.centre");
+
+                const Vector2 handle = ResolveCircleHandle(mouseWorld);
+                const float radiusX = std::fabs(handle.x - circleCenter.x);
+                const float radiusY = std::fabs(handle.y - circleCenter.y);
+
+                if (std::fabs(radiusX - radiusY) < 0.01f)
+                    std::snprintf(buffer, sizeof(buffer), "%s %.1f   %d %s",
+                                  Localisation::Get("editor.draw.measure.radius").c_str(), radiusX,
+                                  circleSegments,
+                                  Localisation::Get("editor.draw.measure.segments").c_str());
+                else
+                    std::snprintf(buffer, sizeof(buffer), "%.1f x %.1f   %d %s",
+                                  radiusX * 2.0f, radiusY * 2.0f,
+                                  circleSegments,
+                                  Localisation::Get("editor.draw.measure.segments").c_str());
+
+                return buffer;
+            }
+
+            case DRAWTOOL_CURVE: {
+                if (curveStage == CURVE_STAGE_START) return Localisation::Get("editor.draw.prompt.curve_start");
+
+                if (curveStage == CURVE_STAGE_END) {
+                    const Vector2 end = ResolveCurveEnd(mouseWorld);
+                    const float chord = std::sqrt(Vector2Math::DistanceSquared(curveStart, end));
+
+                    std::snprintf(buffer, sizeof(buffer), "%s %.1f   %s",
+                                  Localisation::Get("editor.draw.measure.chord").c_str(), chord,
+                                  Localisation::Get("editor.draw.prompt.curve_end").c_str());
+                    return buffer;
+                }
+
+                // CURVE_STAGE_CONTROL
+                const Vector2 control = ResolveSnapPoint(mouseWorld);
+                const std::vector<Vector2> curvePoints = BuildQuadraticCurve(curveStart, control, curveEnd, curveSubdivisions);
+
+                float totalLength = 0.0f;
+                for (std::size_t i = 0; i + 1 < curvePoints.size(); ++i)
+                    totalLength += std::sqrt(Vector2Math::DistanceSquared(curvePoints[i], curvePoints[i + 1]));
+
+                std::snprintf(buffer, sizeof(buffer), "%s %.1f   %d %s",
+                              Localisation::Get("editor.draw.measure.length").c_str(), totalLength,
+                              curveSubdivisions,
+                              Localisation::Get("editor.draw.measure.segments").c_str());
+                return buffer;
+            }
+
+            default: return "";
+        }
     }
 
     void ClearManualSectorSelection() {

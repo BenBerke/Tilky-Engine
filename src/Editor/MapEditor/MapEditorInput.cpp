@@ -117,8 +117,12 @@ namespace MapEditorInternal {
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 if (currentMode == MODE_SECTOR) {
-                    const Vector2 snapped = ResolveSnapPoint(mouseWorld);
-                    TrySectorChainClick(snapped);
+                    // Dispatches to whichever drawing tool is active
+                    // (Freehand/Rectangle/Polygon/Circle/Curve); each one
+                    // resolves its own grid/vertex snapping internally
+                    // (via Resolve*Point, mirroring what ResolveSnapPoint
+                    // used to do here directly for the freehand-only path).
+                    HandleSectorDrawClick(mouseWorld);
                 }
                 else if (currentMode == MODE_DOT) {
                     const bool snapToGridHeld =
@@ -152,16 +156,25 @@ namespace MapEditorInternal {
             }
 
             //right click cancels/stops sector chain creation.
-            if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) CancelSectorChain();
+            if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+                // BUG FIX: this used to call CancelSectorChain() here
+                // unconditionally and *then*, in the block below, gate
+                // select/inspect on sectorBeingCreated.empty() - but by
+                // that point the chain had already just been cleared, so
+                // that check was always vacuously true and a right-click
+                // mid-chain both cancelled the chain *and* immediately
+                // selected/inspected whatever was under the cursor in the
+                // same click. Capturing whether a drawing was actually in
+                // progress *before* cancelling restores the originally
+                // intended behaviour: right-click during an in-progress
+                // drawing only cancels it.
+                const bool wasDrawingInProgress = IsDrawingInProgress();
+                CancelActiveDrawing();
 
-            if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                if (currentMode == MODE_ENTITY)
-                    HandleEntityModeRightClick(mouseWorld);
-                else if (currentMode == MODE_SECTOR && sectorBeingCreated.empty() && !manualSectorMode)
-                    // Only select/inspect when there's no chain in progress —
-                    // the line above already uses right click to cancel a chain.
-                    HandleSectorModeRightClick(mouseWorld);
-
+                if (!wasDrawingInProgress) HandleSectorModeRightClick(mouseWorld);
+            }
+            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+                if (currentMode == MODE_ENTITY) HandleEntityModeRightClick(mouseWorld);
                 else if (currentMode == MODE_DOT) HandleDotModeRightClick(mouseWorld);
             }
 
@@ -177,8 +190,32 @@ namespace MapEditorInternal {
         }
 
         if (!keyboardBlockedByImgui) {
-            if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelSectorChain();
+            if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelActiveDrawing();
             if (InputManager::GetKeyDown(SDL_SCANCODE_F)) FocusCameraOnSelection();
+
+            // Drawing-tool shortcuts - all Sector Mode only, and all
+            // no-ops when nothing relevant is in progress (ConfirmActiveDrawing/
+            // UndoLastDrawPoint already check that internally).
+            if (currentMode == MODE_SECTOR) {
+                if (InputManager::GetKeyDown(SDL_SCANCODE_RETURN) || InputManager::GetKeyDown(SDL_SCANCODE_KP_ENTER))
+                    ConfirmActiveDrawing();
+
+                if (InputManager::GetKeyDown(SDL_SCANCODE_BACKSPACE)) UndoLastDrawPoint();
+
+                // [ / ] adjust the Regular Polygon tool's side count even
+                // while a polygon is mid-preview, so the shape under the
+                // cursor updates live instead of only from the UI slider.
+                if (InputManager::GetKeyDown(SDL_SCANCODE_LEFTBRACKET))
+                    polygonSideCount = std::max(3, polygonSideCount - 1);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_RIGHTBRACKET))
+                    polygonSideCount = std::min(MAX_POLYGON_SIDES, polygonSideCount + 1);
+
+                if (InputManager::GetKeyDown(SDL_SCANCODE_1)) SetActiveDrawTool(DRAWTOOL_FREEHAND);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_2)) SetActiveDrawTool(DRAWTOOL_RECTANGLE);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_3)) SetActiveDrawTool(DRAWTOOL_POLYGON);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_4)) SetActiveDrawTool(DRAWTOOL_CIRCLE);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_5)) SetActiveDrawTool(DRAWTOOL_CURVE);
+            }
         }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
