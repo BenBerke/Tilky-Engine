@@ -505,14 +505,10 @@ namespace {
                 static_cast<int>(PLUS_X)
             );
 
-            if (slopeDirection >= static_cast<int>(PLUS_X) &&
-                slopeDirection <= static_cast<int>(MINUS_Z)) {
-                surface.slopeDirection =
-                        static_cast<SlopeDirection>(slopeDirection);
-            }
+            if (slopeDirection >= static_cast<int>(PLUS_X) && slopeDirection <= static_cast<int>(MINUS_Z))
+                surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
 
-            surface.slopeStrength =
-                    surfaceJson.value("slopeStrength", 0.0f);
+            surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
 
             return surface;
         };
@@ -543,16 +539,11 @@ namespace {
         const json &sectorArray = levelData.at("sectors");
         level.sectors.reserve(sectorArray.size());
 
-        for (int sectorIndex = 0;
-             sectorIndex < static_cast<int>(sectorArray.size());
-             ++sectorIndex) {
+        for (int sectorIndex = 0; sectorIndex < static_cast<int>(sectorArray.size()); ++sectorIndex) {
             const json &sectorJson = sectorArray[sectorIndex];
 
             if (!sectorJson.is_object()) {
-                spdlog::warn(
-                    "LoadSectors: sector at array index {} is not an object",
-                    sectorIndex
-                );
+                spdlog::warn("LoadSectors: sector at array index {} is not an object", sectorIndex);
                 continue;
             }
 
@@ -575,10 +566,8 @@ namespace {
             if (seenSectorIDs.contains(sector.id)) {
                 ID reassignedID = highestSectorID + 1;
 
-                while (seenSectorIDs.contains(reassignedID) ||
-                       reassignedID == INVALID_ID) {
+                while (seenSectorIDs.contains(reassignedID) || reassignedID == INVALID_ID)
                     ++reassignedID;
-                }
 
                 spdlog::warn(
                     "LoadSectors: duplicate sector id {} at array index {} "
