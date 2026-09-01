@@ -49,6 +49,15 @@ struct Sector {
     Vector3 light = {255.0f, 255.0f, 255.0f};
 
     std::vector<Vector2> vertices;
+
+    // Boundary of each sector nested directly inside this one - a pillar,
+    // island, or any other fully-enclosed sector cut out of this one's
+    // floor/ceiling. Only direct children: a hole inside one of these
+    // holes belongs to that child's own innerLoops, not here. Rebuilt
+    // from scratch by MapTopology alongside `vertices`/`triangles` on
+    // every topology edit, same as the outer boundary.
+    std::vector<std::vector<Vector2>> innerLoops;
+
     std::vector<Triangle> triangles;
 
     ID id = INVALID_ID;

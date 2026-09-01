@@ -281,6 +281,54 @@ namespace MapEditorInternal {
             }
         }
 
+        // A point that's genuinely inside `sector`, holes included -
+        // the centroid of its first triangle, since the triangles are
+        // already the hole-aware ones. A plain vertex average would sit
+        // inside the hole for a sector with something nested in it,
+        // which is exactly the case this is needed for.
+        Vector2 SectorInteriorPoint(const Sector& sector) {
+            if (!sector.triangles.empty()) {
+                const Triangle& triangle = sector.triangles.front();
+
+                return {
+                    (triangle.a.x + triangle.b.x + triangle.c.x) / 3.0f,
+                    (triangle.a.y + triangle.b.y + triangle.c.y) / 3.0f
+                };
+            }
+
+            Vector2 sum{0.0f, 0.0f};
+            for (const Vector2& vertex : sector.vertices) {
+                sum.x += vertex.x;
+                sum.y += vertex.y;
+            }
+
+            const float count = std::max(1.0f, static_cast<float>(sector.vertices.size()));
+            return {sum.x / count, sum.y / count};
+        }
+
+        // Finds the sector that currently lists `inner` as one of its
+        // holes, if any, reporting which loop that is through
+        // `outLoopIndex`. Once `inner` is deleted that loop is provably
+        // stale, and DeleteSector has to drop it before re-tracing -
+        // otherwise reconciliation still believes the enclosing sector
+        // has a hole there and refuses to match it to its own face.
+        ID FindEnclosingSectorID(const Level& level, const Sector& inner, int* outLoopIndex) {
+            const Vector2 interior = SectorInteriorPoint(inner);
+
+            for (const Sector& candidate : level.sectors) {
+                if (candidate.id == inner.id) continue;
+
+                for (int loopIndex = 0; loopIndex < static_cast<int>(candidate.innerLoops.size()); ++loopIndex) {
+                    if (!Geometry::IsPointInPolygon(candidate.innerLoops[loopIndex], interior)) continue;
+
+                    *outLoopIndex = loopIndex;
+                    return candidate.id;
+                }
+            }
+
+            return INVALID_ID;
+        }
+
         PendingSectorParams BuildPendingSectorParams() {
             PendingSectorParams params;
             params.wallTexture = wallTexture;
@@ -530,6 +578,11 @@ namespace MapEditorInternal {
         RebuildDotIDLookup();
     }
 
+    // Deleting a sector returns its space to whatever surrounded it: for
+    // an ordinary sector that's the level exterior (its walls were only
+    // holding back open space, so they go with it), and for a sector
+    // nested inside another it's the enclosing sector, which reclaims
+    // the space and inherits anything that was nested deeper still.
     void DeleteSector(const ID sectorID) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -545,6 +598,9 @@ namespace MapEditorInternal {
             return;
         }
 
+        int enclosingLoopIndex = -1;
+        const ID enclosingSectorID = FindEnclosingSectorID(level, level.sectors[index], &enclosingLoopIndex);
+
         level.sectors.erase(level.sectors.begin() + index);
 
         if (selectedSectorID == sectorID) {
@@ -552,25 +608,50 @@ namespace MapEditorInternal {
             editingSector = false;
         }
 
+        if (enclosingSectorID != INVALID_ID) {
+            for (Sector& sector : level.sectors) {
+                if (sector.id != enclosingSectorID) continue;
+
+                if (enclosingLoopIndex < static_cast<int>(sector.innerLoops.size()))
+                    sector.innerLoops.erase(sector.innerLoops.begin() + enclosingLoopIndex);
+
+                break;
+            }
+        }
+
         for (int i = static_cast<int>(level.walls.size()) - 1; i >= 0; --i) {
             Wall& wall = level.walls[i];
 
-            bool touched = false;
+            const bool referencedInFront = wall.frontSector == sectorID;
+            const bool referencedInBack = wall.backSector == sectorID;
 
-            if (wall.frontSector == sectorID) {
-                wall.frontSector = INVALID_ID;
-                touched = true;
-            }
+            if (!referencedInFront && !referencedInBack) continue;
 
-            if (wall.backSector == sectorID) {
-                wall.backSector = INVALID_ID;
-                touched = true;
-            }
+            // A wall goes only when it stops separating two different
+            // things. Facing open space on its far side is the existing
+            // condition; facing the enclosing sector is the same
+            // situation one nesting level in, since that sector is about
+            // to absorb this space. A wall whose far side is some *other*
+            // sector still borders that one and has to stay.
+            const ID otherSide = referencedInFront ? wall.backSector : wall.frontSector;
 
-            if (touched && wall.frontSector == INVALID_ID && wall.backSector == INVALID_ID) {
+            if (otherSide == INVALID_ID || otherSide == enclosingSectorID) {
                 level.walls.erase(level.walls.begin() + i);
+                continue;
             }
+
+            if (referencedInFront) wall.frontSector = INVALID_ID;
+            if (referencedInBack) wall.backSector = INVALID_ID;
         }
+
+        // Nested deletion changes which sectors enclose which, and that
+        // can't be patched by hand - deleting one room of a two-room
+        // island, for instance, leaves the enclosing sector needing a
+        // hole around the *surviving* room, which no amount of editing
+        // the old loop produces. Re-derive the sector layer from the
+        // walls instead; sectors still enclosed the same way keep their
+        // IDs and properties.
+        if (enclosingSectorID != INVALID_ID && MapTopology::RebuildSectorsFromWalls(level)) return;
 
         MapQueries::RebuildSectorRuntimeLinks(level);
     }

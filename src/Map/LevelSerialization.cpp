@@ -464,7 +464,10 @@ namespace {
     void LoadSectors(const json &levelData, Level &level) {
         level.sectors.clear();
 
-        if (!levelData.contains("sectors") || !levelData.at("sectors").is_array()) return;
+        if (!levelData.contains("sectors") ||
+            !levelData.at("sectors").is_array()) {
+            return;
+        }
 
         ID highestSectorID = 0;
         std::unordered_set<ID> seenSectorIDs;
@@ -476,7 +479,9 @@ namespace {
 
             const json &vectorJson = parentJson.at(field);
 
-            if (!vectorJson.is_array() || vectorJson.size() != 3) return defaultValue;
+            if (!vectorJson.is_array() || vectorJson.size() != 3) {
+                return defaultValue;
+            }
 
             return {
                 vectorJson[0].get<float>(),
@@ -485,32 +490,75 @@ namespace {
             };
         };
 
-        const auto loadSurface = [](const json& surfaceJson) -> SectorSurface {
+        const auto loadSurface = [](const json &surfaceJson,
+                                    const float defaultHeight) -> SectorSurface {
             SectorSurface surface;
 
-            surface.height = surfaceJson.value("height", 0.0f);
+            surface.height = surfaceJson.value("height", defaultHeight);
             surface.color = static_cast<uint_fast32_t>(
                 surfaceJson.value("color", std::uint32_t{0xFFFFFFFFu})
             );
             surface.texture = surfaceJson.value("texture", std::string{});
 
-            const int slopeDirection = surfaceJson.value("slopeDirection",static_cast<int>(PLUS_X));
-            if (slopeDirection >= static_cast<int>(PLUS_X) && slopeDirection <= static_cast<int>(MINUS_Z))
-                surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
+            const int slopeDirection = surfaceJson.value(
+                "slopeDirection",
+                static_cast<int>(PLUS_X)
+            );
 
-            surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
+            if (slopeDirection >= static_cast<int>(PLUS_X) &&
+                slopeDirection <= static_cast<int>(MINUS_Z)) {
+                surface.slopeDirection =
+                        static_cast<SlopeDirection>(slopeDirection);
+            }
+
+            surface.slopeStrength =
+                    surfaceJson.value("slopeStrength", 0.0f);
 
             return surface;
+        };
+
+        const auto loadLoop = [](const json &loopJson) {
+            std::vector<Vector2> loop;
+
+            if (!loopJson.is_array()) return loop;
+
+            loop.reserve(loopJson.size());
+
+            for (const json &pointJson: loopJson) {
+                if (!pointJson.is_object() ||
+                    !pointJson.contains("x") ||
+                    !pointJson.contains("y")) {
+                    continue;
+                }
+
+                loop.emplace_back(
+                    pointJson.at("x").get<float>(),
+                    pointJson.at("y").get<float>()
+                );
+            }
+
+            return loop;
         };
 
         const json &sectorArray = levelData.at("sectors");
         level.sectors.reserve(sectorArray.size());
 
-        for (int sectorIndex = 0; sectorIndex < static_cast<int>(sectorArray.size()); ++sectorIndex) {
+        for (int sectorIndex = 0;
+             sectorIndex < static_cast<int>(sectorArray.size());
+             ++sectorIndex) {
             const json &sectorJson = sectorArray[sectorIndex];
+
+            if (!sectorJson.is_object()) {
+                spdlog::warn(
+                    "LoadSectors: sector at array index {} is not an object",
+                    sectorIndex
+                );
+                continue;
+            }
 
             Sector sector;
             sector.vertices.clear();
+            sector.innerLoops.clear();
             sector.triangles.clear();
             sector.floors.clear();
 
@@ -533,7 +581,8 @@ namespace {
                 }
 
                 spdlog::warn(
-                    "LoadSectors: duplicate sector id {} at array index {} - reassigning to {}",
+                    "LoadSectors: duplicate sector id {} at array index {} "
+                    "- reassigning to {}",
                     sector.id,
                     sectorIndex,
                     reassignedID
@@ -545,25 +594,36 @@ namespace {
             seenSectorIDs.insert(sector.id);
             highestSectorID = std::max(highestSectorID, sector.id);
 
-            if (sectorJson.contains("corners") &&
-                sectorJson.at("corners").is_array()) {
-                const json &cornerArray = sectorJson.at("corners");
-                sector.vertices.reserve(cornerArray.size());
+            // Outer boundary
+            if (sectorJson.contains("corners")) {
+                sector.vertices = loadLoop(sectorJson.at("corners"));
+            }
 
-                for (const json &cornerJson: cornerArray) {
-                    if (!cornerJson.contains("x") ||
-                        !cornerJson.contains("y")) {
+            // Hole boundaries
+            if (sectorJson.contains("innerLoops") &&
+                sectorJson.at("innerLoops").is_array()) {
+                const json &innerLoopArray = sectorJson.at("innerLoops");
+                sector.innerLoops.reserve(innerLoopArray.size());
+
+                for (int loopIndex = 0;
+                     loopIndex < static_cast<int>(innerLoopArray.size());
+                     ++loopIndex) {
+                    std::vector<Vector2> loop =
+                            loadLoop(innerLoopArray[loopIndex]);
+
+                    if (loop.size() < 3) {
+                        spdlog::warn(
+                            "LoadSectors: sector {} inner loop {} has fewer "
+                            "than three valid vertices - skipping",
+                            sector.id,
+                            loopIndex
+                        );
                         continue;
                     }
 
-                    sector.vertices.emplace_back(
-                        cornerJson.at("x").get<float>(),
-                        cornerJson.at("y").get<float>()
-                    );
+                    sector.innerLoops.push_back(std::move(loop));
                 }
             }
-
-            sector.triangles = Geometry::Triangulate(sector.vertices);
 
             if (sectorJson.contains("floors") &&
                 sectorJson.at("floors").is_array()) {
@@ -575,32 +635,36 @@ namespace {
                      ++floorIndex) {
                     const json &floorJson = floorArray[floorIndex];
 
-                    if (!floorJson.contains("floor") ||
+                    if (!floorJson.is_object() ||
+                        !floorJson.contains("floor") ||
                         !floorJson.at("floor").is_object() ||
                         !floorJson.contains("ceiling") ||
                         !floorJson.at("ceiling").is_object()) {
                         spdlog::warn(
-                            "LoadSectors: sector {} floor {} is missing floor or ceiling data",
+                            "LoadSectors: sector {} floor {} is missing "
+                            "floor or ceiling data",
                             sector.id,
                             floorIndex
                         );
-
                         continue;
                     }
 
                     SectorFloor sectorFloor;
-                    sectorFloor.floor = loadSurface(floorJson.at("floor"));
-                    sectorFloor.ceiling = loadSurface(floorJson.at("ceiling"));
+                    sectorFloor.floor =
+                            loadSurface(floorJson.at("floor"), 0.0f);
+                    sectorFloor.ceiling =
+                            loadSurface(floorJson.at("ceiling"), 40.0f);
 
-                    if (sectorFloor.floor.height >= sectorFloor.ceiling.height) {
+                    if (sectorFloor.floor.height >=
+                        sectorFloor.ceiling.height) {
                         spdlog::warn(
-                            "LoadSectors: sector {} floor {} has invalid heights [{}, {}] - skipping",
+                            "LoadSectors: sector {} floor {} has invalid "
+                            "heights [{}, {}] - skipping",
                             sector.id,
                             floorIndex,
                             sectorFloor.floor.height,
                             sectorFloor.ceiling.height
                         );
-
                         continue;
                     }
 
@@ -608,11 +672,21 @@ namespace {
                 }
             }
 
-            std::ranges::sort(sector.floors, {}, [](const SectorFloor &floor) { return floor.floor.height;});
+            std::ranges::sort(
+                sector.floors,
+                {},
+                [](const SectorFloor &floor) {
+                    return floor.floor.height;
+                }
+            );
 
-            for (int floorIndex = 1; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
-                const SectorFloor &previous = sector.floors[floorIndex - 1];
-                const SectorFloor &current = sector.floors[floorIndex];
+            for (int floorIndex = 1;
+                 floorIndex < static_cast<int>(sector.floors.size());
+                 ++floorIndex) {
+                const SectorFloor &previous =
+                        sector.floors[floorIndex - 1];
+                const SectorFloor &current =
+                        sector.floors[floorIndex];
 
                 if (previous.ceiling.height > current.floor.height) {
                     spdlog::warn(
@@ -626,19 +700,20 @@ namespace {
 
             if (sector.floors.empty()) {
                 spdlog::warn(
-                    "LoadSectors: sector {} has no valid floors - inserting one default floor",
+                    "LoadSectors: sector {} has no valid floors - "
+                    "inserting one default floor",
                     sector.id
                 );
 
                 sector.floors.push_back({
                     {
                         0.0f,
-                        std::numeric_limits<uint32_t>::max(),
+                        std::numeric_limits<uint_fast32_t>::max(),
                         {}
                     },
                     {
                         40.0f,
-                        std::numeric_limits<uint32_t>::max(),
+                        std::numeric_limits<uint_fast32_t>::max(),
                         {}
                     }
                 });
@@ -649,6 +724,13 @@ namespace {
                 "light",
                 {255.0f, 255.0f, 255.0f}
             );
+
+            // Triangles are derived rather than serialized.
+            sector.triangles = Geometry::Triangulate(
+                sector.vertices,
+                sector.innerLoops
+            );
+
             level.sectors.push_back(std::move(sector));
         }
 
@@ -659,52 +741,58 @@ namespace {
     }
 
     void SaveSectors(json &levelData, const Level &level) {
-        json sectorArray = json::array();
+        const auto saveLoop = [](const std::vector<Vector2> &loop) {
+            json loopJson = json::array();
 
-        for (const Sector &sector: level.sectors) {
-            json cornerArray = json::array();
-
-            for (const Vector2 &point: sector.vertices) {
-                cornerArray.push_back({
+            for (const Vector2 &point: loop) {
+                loopJson.push_back({
                     {"x", point.x},
                     {"y", point.y}
                 });
             }
 
+            return loopJson;
+        };
+
+        const auto saveSurface = [](const SectorSurface &surface) {
+            return json{
+                {"height", surface.height},
+                {
+                    "color",
+                    static_cast<std::uint32_t>(surface.color)
+                },
+                {"texture", surface.texture},
+                {
+                    "slopeDirection",
+                    static_cast<int>(surface.slopeDirection)
+                },
+                {"slopeStrength", surface.slopeStrength}
+            };
+        };
+
+        json sectorArray = json::array();
+
+        for (const Sector &sector: level.sectors) {
+            json innerLoopArray = json::array();
+
+            for (const std::vector<Vector2> &innerLoop:
+                 sector.innerLoops) {
+                innerLoopArray.push_back(saveLoop(innerLoop));
+            }
+
             json floorArray = json::array();
 
             for (const SectorFloor &sectorFloor: sector.floors) {
-                const json floorSurface = {
-                    {"height", sectorFloor.floor.height},
-                    {"color", static_cast<std::uint32_t>(sectorFloor.floor.color)},
-                    {"texture", sectorFloor.floor.texture},
-                    {
-                        "slopeDirection",
-                        static_cast<int>(sectorFloor.floor.slopeDirection)
-                    },
-                    {"slopeStrength", sectorFloor.floor.slopeStrength}
-                };
-
-                const json ceilingSurface = {
-                    {"height", sectorFloor.ceiling.height},
-                    {"color", static_cast<std::uint32_t>(sectorFloor.ceiling.color)},
-                    {"texture", sectorFloor.ceiling.texture},
-                    {
-                        "slopeDirection",
-                        static_cast<int>(sectorFloor.ceiling.slopeDirection)
-                    },
-                    {"slopeStrength", sectorFloor.ceiling.slopeStrength}
-                };
-
                 floorArray.push_back({
-                    {"floor", floorSurface},
-                    {"ceiling", ceilingSurface}
+                    {"floor", saveSurface(sectorFloor.floor)},
+                    {"ceiling", saveSurface(sectorFloor.ceiling)}
                 });
             }
 
             sectorArray.push_back({
                 {"id", sector.id},
-                {"corners", std::move(cornerArray)},
+                {"corners", saveLoop(sector.vertices)},
+                {"innerLoops", std::move(innerLoopArray)},
                 {"floors", std::move(floorArray)},
                 {
                     "light",

@@ -12,22 +12,31 @@ namespace MapQueries {
     {
         // Fast path: still in the same sector (overwhelmingly common)
         if (hintSector >= 0 && hintSector < static_cast<int>(sectors.size())) {
-            if (Geometry::IsPointInPolygon(sectors[hintSector].vertices, position)) return hintSector;
+            if (Geometry::IsPointInPolygon(sectors[hintSector].vertices, sectors[hintSector].innerLoops, position)) return hintSector;
 
-            // Check neighbours before doing a full scan
+            // Check neighbours before doing a full scan. This is also
+            // what catches the hint sector having been left through a
+            // hole: the sector nested inside it is one of its neighbours
+            // (the wall between them puts a sector on each side), so it
+            // gets tried here without any nesting-specific logic.
             for (const Sector* nb : sectors[hintSector].neighbors) {
                 if (nb == nullptr) continue;
                 const int ni = static_cast<int>(nb - sectors.data());
-                if (Geometry::IsPointInPolygon(sectors[ni].vertices, position)) return ni;
+                if (Geometry::IsPointInPolygon(sectors[ni].vertices, sectors[ni].innerLoops, position)) return ni;
             }
         }
 
-        // Full scan fallback — only hits when entity moves far in one frame
+        // Full scan fallback — only hits when entity moves far in one frame.
+        // Smallest-area-wins remains a useful tie-break for malformed or
+        // transiently-overlapping geometry, but well-formed nested sectors
+        // no longer need it to disambiguate: the hole-aware test above
+        // already excludes a parent from claiming a point that's really
+        // inside one of its children.
         int bestSector = -1;
         float bestArea = std::numeric_limits<float>::max();
 
         for (int i = 0; i < static_cast<int>(sectors.size()); ++i) {
-            if (!Geometry::IsPointInPolygon(sectors[i].vertices, position)) continue;
+            if (!Geometry::IsPointInPolygon(sectors[i].vertices, sectors[i].innerLoops, position)) continue;
             const float area = Geometry::PolygonAreaAbs(sectors[i].vertices);
             if (area < bestArea) {
                 bestArea = area;

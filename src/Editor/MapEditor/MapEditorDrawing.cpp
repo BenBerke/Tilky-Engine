@@ -161,8 +161,12 @@ namespace MapEditorInternal {
 
         int hoveredSectorIndex = -1;
 
+        // Hole-aware on purpose: a sector with something nested inside it
+        // doesn't occupy that inner space, so hovering there has to fall
+        // through to the sector that does rather than highlighting the
+        // parent (the plain polygon test can't tell the two apart).
         for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
-            if (IsPointInsidePolygon(level.sectors[i].vertices, mouseWorld)) {
+            if (Geometry::IsPointInPolygon(level.sectors[i].vertices, level.sectors[i].innerLoops, mouseWorld)) {
                 hoveredSectorIndex = i;
                 break;
             }
@@ -266,21 +270,24 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
 
-        const int vertexCount = static_cast<int>(selectedSector->vertices.size());
+        const auto outlineLoop = [](const std::vector<Vector2>& loop) {
+            const int vertexCount = static_cast<int>(loop.size());
 
-        for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
-            const Vector2 start = WorldToScreen(
-                selectedSector->vertices[vertexIndex],
-                cameraPos
-            );
+            for (int vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex) {
+                const Vector2 start = WorldToScreen(loop[vertexIndex], cameraPos);
+                const Vector2 end = WorldToScreen(loop[(vertexIndex + 1) % vertexCount], cameraPos);
 
-            const Vector2 end = WorldToScreen(
-                selectedSector->vertices[(vertexIndex + 1) % vertexCount],
-                cameraPos
-            );
+                DrawThickLine(renderer, start, end, 3.0f);
+            }
+        };
 
-            DrawThickLine(renderer, start, end, 3.0f);
-        }
+        outlineLoop(selectedSector->vertices);
+
+        // A selected sector's inner boundaries are part of its outline
+        // too - without these, selecting a sector with something nested
+        // inside it highlights only its outer edge and gives no visual
+        // indication of where its floor actually stops.
+        for (const std::vector<Vector2>& innerLoop : selectedSector->innerLoops) outlineLoop(innerLoop);
     }
     // "placedCorners" concept and are now ID-stable, off-grid-capable points.
     void DrawDots() {

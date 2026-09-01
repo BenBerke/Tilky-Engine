@@ -109,11 +109,23 @@ namespace MapTopology {
     // MapQueries::RebuildSectorRuntimeLinks(level) has already been
     // called - the caller only still owns any undo snapshot and
     // selection follow-up beyond `affectedSectorIDs`.
-    ApplyResult ApplyDrawnGeometry(
-        Level& level,
-        const std::vector<Vector2>& drawnPoints,
-        const NewSectorParams& params
-    );
+    ApplyResult ApplyDrawnGeometry(Level& level, const std::vector<Vector2>& drawnPoints, const NewSectorParams& params);
+
+    // Re-derives every sector purely from `level.walls` as they
+    // currently stand, without inserting any new geometry. Runs the
+    // exact same trace/nesting/reconcile/rebuild stages
+    // ApplyDrawnGeometry does, so sectors that are still enclosed the
+    // same way keep their IDs and properties, sectors whose bounding
+    // walls have gone disappear, and any hole relationships are
+    // recomputed from scratch.
+    //
+    // Intended for callers that edit `level.walls` directly (deleting a
+    // sector's bounding walls, for instance) and need the sector layer
+    // brought back in sync afterwards - hand-patching a parent's
+    // innerLoops is not reliable once several sectors can share one
+    // hole. Returns false only if the pass itself failed, in which case
+    // `level` is untouched.
+    bool RebuildSectorsFromWalls(Level& level);
 
     // Runs the exact same algorithm as ApplyDrawnGeometry without ever
     // touching `level`, returning whether it would enclose at least one

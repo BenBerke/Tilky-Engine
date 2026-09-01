@@ -21,13 +21,13 @@ namespace GameTime {
         deltaTime = static_cast<float>(static_cast<double>(diff) / static_cast<double>(SDL_GetPerformanceFrequency()));
         timeInSeconds += deltaTime;
 
-        float instantFPS = deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f;
-        smoothedFPS = smoothedFPS * 0.9f + instantFPS * 0.1f;
-
         frame++;
     }
 
     float GetFPS() {
+        float instantFPS = deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f;
+        smoothedFPS = smoothedFPS * 0.9f + instantFPS * 0.1f;
+
         return smoothedFPS;
     }
 }

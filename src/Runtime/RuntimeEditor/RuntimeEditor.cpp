@@ -24,6 +24,8 @@
 #include <numbers>
 #include <limits>
 
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
+
 namespace {
     IRenderer* runtimeRenderer = nullptr;
     ComponentCamera* camera = nullptr;

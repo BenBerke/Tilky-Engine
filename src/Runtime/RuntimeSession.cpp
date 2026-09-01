@@ -300,6 +300,7 @@ namespace {
         );
 
         EditorFunctions::UpdateConsole(GameTime::deltaTime);
+        EditorFunctions::ClearConsole();
     }
 
     void UpdatePlay(Level& level) {
