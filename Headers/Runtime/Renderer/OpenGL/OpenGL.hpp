@@ -30,8 +30,11 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_COLLIDER = 4;
 
-    constexpr int ATLAS_SIZE = 4096;
-    constexpr int ATLAS_PADDING = 2;
+    inline constexpr int ATLAS_SIZE = 4096;
+    inline constexpr int ATLAS_PADDING = 2;
+
+    inline constexpr float UI_FONT_SIZE = 48.0f;
+    inline constexpr float UI_TEXT_PADDING = 8.0f;
 
     inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
 

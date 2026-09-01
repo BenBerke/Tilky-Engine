@@ -60,7 +60,7 @@ bool OpenGL::InitializeFont() {
         return false;
     }
 
-    FT_Set_Pixel_Sizes(face, 0, 48);
+    FT_Set_Pixel_Sizes(face, 0, static_cast<FT_UInt>(OpenGLRendererInternal::UI_FONT_SIZE));
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -248,13 +248,11 @@ void OpenGL::RenderUIText(
     const ComponentUIText& text,
     const ComponentUITransform& transform
 ) {
-    constexpr float fontPixelSize = 48.0f;
-    constexpr float padding = 8.0f;
     constexpr float fontScale = 1.0f;
 
     const Vector2 textPosition = {
-        transform.resolvedPosition.x + padding,
-        transform.resolvedPosition.y + padding + fontPixelSize * fontScale
+        transform.resolvedPosition.x + OpenGLRendererInternal::UI_TEXT_PADDING,
+        transform.resolvedPosition.y + OpenGLRendererInternal::UI_TEXT_PADDING + OpenGLRendererInternal::UI_FONT_SIZE
     };
 
     RenderTextRaw(

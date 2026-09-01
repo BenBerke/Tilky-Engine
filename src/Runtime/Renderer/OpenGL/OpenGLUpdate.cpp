@@ -352,8 +352,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     {
         ZoneScopedN("Rendering UI Text");
         for (ComponentUIText& text : level.ui_texts.components) {
-            const ComponentUITransform* transform =
-                level.ui_transforms.Get(text.ownerID);
+            const ComponentUITransform* transform = level.ui_transforms.Get(text.ownerID);
 
             if (transform == nullptr) [[unlikely]] {
                 spdlog::error("UI Text does not have UI transform");

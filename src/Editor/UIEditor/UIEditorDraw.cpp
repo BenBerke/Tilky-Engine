@@ -45,8 +45,6 @@
 namespace {
     using namespace MapEditorInternal;
 
-    constexpr float UI_DRAW_PI = 3.14159265358979323846f;
-
     Vector2 CurrentScreenResolution() {
         return {static_cast<float>(screenWidth), static_cast<float>(screenHeight)};
     }
@@ -192,7 +190,7 @@ namespace {
             transform.resolvedPosition.y + size.y * 0.5f
         };
 
-        const float rad = transform.rotation * (UI_DRAW_PI / 180.0f);
+        const float rad = transform.rotation * Constants::DegToRad;
         const float cosA = std::cos(rad);
         const float sinA = std::sin(rad);
 
@@ -212,8 +210,7 @@ namespace {
         };
 
         UIEntityScreenQuad quad;
-        for (int i = 0; i < 4; ++i)
-            quad.corners[i] = RotateAroundCenter(localCornersFromCenter[i]);
+        for (int i = 0; i < 4; ++i) quad.corners[i] = RotateAroundCenter(localCornersFromCenter[i]);
 
         quad.centerScreen = UICanvasToScreen(centerCanvas);
 
@@ -247,19 +244,29 @@ namespace {
     void DrawUITextEntity(const ComponentUIText& text, const ComponentUITransform& transform) {
         if (text.text.empty() || textEngine == nullptr || font == nullptr) return;
 
+        const float requiredFontSize = UI_FONT_SIZE * uiCanvasZoom;
+        if (std::abs(TTF_GetFontSize(font) - requiredFontSize) > 0.01f)
+            if (!TTF_SetFontSize(font, requiredFontSize)) return;
+
         TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.text.c_str(), text.text.size());
         if (renderedText == nullptr) return;
 
         TTF_SetTextColor(renderedText, 255, 255, 255, 255);
 
-        const Vector2 screenPos = UICanvasToScreen(transform.resolvedPosition);
+        const Vector2 screenPos = UICanvasToScreen({
+            transform.resolvedPosition.x + UI_TEXT_PADDING,
+            transform.resolvedPosition.y + UI_TEXT_PADDING
+        });
 
         TTF_DrawRendererText(renderedText, screenPos.x, screenPos.y);
         TTF_DestroyText(renderedText);
     }
 
-    void DrawUIEntityGizmos(const UIEntityScreenQuad& quad, const ComponentUITransform& transform,
-                             const bool selected, const bool hovered) {
+    void DrawUIEntityGizmos(
+        const UIEntityScreenQuad& quad,
+        const ComponentUITransform& transform,
+        const bool selected,
+        const bool hovered) {
         if (!selected && !hovered) return;
 
         if (selected) SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
@@ -351,9 +358,6 @@ namespace MapEditorInternal {
         // whatever the editor's own viewport happens to show at the
         // current zoom/pan), so an element positioned outside the actual
         // screen doesn't bleed across the rest of the editor view.
-        // ASSUMPTION: SDL3's SDL_SetRenderClipRect takes an integer SDL_Rect*
-        // (clip rects stayed int-based in SDL3 even where most render calls
-        // moved to float SDL_FRect); adjust if your SDL3 revision differs.
         const Vector2 clipTopLeft = UICanvasToScreen({0.0f, 0.0f});
         const Vector2 clipBottomRight = UICanvasToScreen(CurrentScreenResolution());
         const SDL_Rect clipRect = {
@@ -362,19 +366,43 @@ namespace MapEditorInternal {
         };
         SDL_SetRenderClipRect(renderer, &clipRect);
 
-        for (Entity& entity : level.entities) {
-            auto* transform = entity.GetComponent<ComponentUITransform>();
-            if (transform == nullptr) continue;
+        std::unordered_map<ID, const ComponentUITransform *> transformsByOwner;
+        transformsByOwner.reserve(level.ui_transforms.components.size());
 
-            const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transform);
+        for (const ComponentUITransform &transform:
+             level.ui_transforms.components) {
+            transformsByOwner.emplace(transform.ownerID, &transform);
+        }
 
-            if (auto* sprite = entity.GetComponent<ComponentUISprite>())
-                if (!sprite->texture.empty())  if (SDL_Texture* texture = GetEditorTexture(sprite->texture))
-                        DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, 1.0f});
+        // Draw sprites.
+        for (const ComponentUISprite &sprite: level.ui_sprites.components) {
+            if (sprite.texture.empty()) continue;
 
-            if (const auto* text = entity.GetComponent<ComponentUIText>()) DrawUITextEntity(*text, *transform);
+            const auto transformIt = transformsByOwner.find(sprite.ownerID);
+            if (transformIt == transformsByOwner.end()) continue;
 
-            DrawUIEntityGizmos(quad, *transform, entity.id == selectedUIEntityID, entity.id == hoveredUIEntityID);
+            SDL_Texture *texture = GetEditorTexture(sprite.texture);
+            if (texture == nullptr) continue;
+
+            const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
+
+            DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, 1.0f});
+        }
+
+        // Draw text.
+        for (const ComponentUIText &text: level.ui_texts.components) {
+            const auto transformIt = transformsByOwner.find(text.ownerID);
+
+            if (transformIt == transformsByOwner.end()) continue;
+
+            DrawUITextEntity(text, *transformIt->second);
+        }
+
+        // Draw transform gizmos last.
+        for (const ComponentUITransform &transform: level.ui_transforms.components) {
+            const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(transform);
+
+            DrawUIEntityGizmos(quad, transform, transform.ownerID == selectedUIEntityID, transform.ownerID == hoveredUIEntityID);
         }
 
         SDL_SetRenderClipRect(renderer, nullptr);

@@ -12,9 +12,9 @@ namespace Constants {
 
     // --- Pi and Angles ---
     constexpr float Pi           = 3.14159265359f;
-    constexpr float TwoPi        = 6.28318530718f; // One full rotation (Tau)
-    constexpr float HalfPi       = 1.57079632679f; // 90 degrees
-    constexpr float QuarterPi    = 0.78539816339f; // 45 degrees
+    constexpr float TwoPi        = Pi * 2.0f; // One full rotation (Tau)
+    constexpr float HalfPi       = Pi * .5f; // 90 degrees
+    constexpr float QuarterPi    = Pi * .25f; // 45 degrees
 
     // --- Conversions ---
     constexpr float DegToRad     = Pi / 180.0f;    // Multiply by this to get Radians

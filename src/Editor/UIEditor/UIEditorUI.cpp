@@ -258,8 +258,9 @@ namespace {
     }
 
     void DrawAnchorPresetPopup(ComponentUITransform& transform, bool& changed) {
-        if (ImGui::Button(Get("editor.ui.transform.anchor_presets").c_str()))
-            ImGui::OpenPopup("##UIAnchorPresetPopup");
+        const std::string label = Get("editor.ui.transform.anchor_presets") + "##AnchorPresetButton";
+
+        if (ImGui::Button(label.c_str())) ImGui::OpenPopup("##UIAnchorPresetPopup");
 
         if (ImGui::BeginPopup("##UIAnchorPresetPopup")) {
             ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.transform.anchor_presets_hint").c_str());
@@ -309,8 +310,9 @@ namespace {
     }
 
     void DrawPivotPresetPopup(ComponentUITransform& transform, bool& changed) {
-        if (ImGui::Button(Get("editor.ui.transform.pivot_presets").c_str()))
-            ImGui::OpenPopup("##UIPivotPresetPopup");
+        const std::string label = Get("editor.ui.transform.pivot_presets") + "##PivotPresetButton";
+
+        if (ImGui::Button(label.c_str())) ImGui::OpenPopup("##UIPivotPresetPopup");
 
         if (ImGui::BeginPopup("##UIPivotPresetPopup")) {
             // `const`, not `constexpr` - we don't have Vector2's exact

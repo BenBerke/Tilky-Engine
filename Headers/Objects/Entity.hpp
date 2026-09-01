@@ -6,7 +6,7 @@
 
 #include "EntityTypes.hpp"
 
-#define MAX_COMPONENTS 64
+#define MAX_COMPONENTS 128
 using ComponentMask = std::bitset<MAX_COMPONENTS>;
 
 struct Entity {

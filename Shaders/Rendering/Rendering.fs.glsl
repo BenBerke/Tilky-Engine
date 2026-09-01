@@ -92,9 +92,7 @@ float GetWallAmbientOcclusion() {
 vec4 ApplyLighting(vec4 color, bool applyWallAO) {
     float light = GetDistanceLight();
 
-    if (applyWallAO) {
-        light *= GetWallAmbientOcclusion();
-    }
+    if (applyWallAO) light *= GetWallAmbientOcclusion();
 
     return vec4(color.rgb * light, color.a);
 }

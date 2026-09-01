@@ -240,17 +240,17 @@ namespace LevelSystem {
             const ID ownerID = activeController->ownerID;
 
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
-            if (!playerTransform) [[unlikely]] {
+            if (!playerTransform) [[unlikely]]
                 spdlog::error("Player controller entity {} has no transform", ownerID);
-            } else {
+            else {
                 ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
-                if (!playerRigidbody) [[unlikely]] {
+                if (!playerRigidbody) [[unlikely]]
                     spdlog::error("Player controller entity {} has no rigidbody", ownerID);
-                } else {
+                else {
                     ComponentCamera *activeCamera = GetActiveCamera(level);
-                    if (!activeCamera) [[unlikely]] {
+                    if (!activeCamera) [[unlikely]]
                         spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
-                    } else {
+                    else {
                         ComponentCollider *playerCollider = level.colliders.Get(ownerID);
 
                         PlayerControllerSystem::Update(
@@ -333,22 +333,17 @@ namespace LevelSystem {
                     // from the physical Y change in the renderer.
                     if (newHeight >= oldHeight) continue;
 
-                    ComponentCamera* camera =
-                        owner->GetComponent<ComponentCamera>();
+                    ComponentCamera* camera = owner->GetComponent<ComponentCamera>();
 
-                    const float distanceToStep =
-                        transform.position.y - newHeight;
+                    const float distanceToStep = transform.position.y - newHeight;
 
-                    const bool canStepDown =
-                        collider->stepSize > 0.0f &&
+                    const bool canStepDown = collider->stepSize > 0.0f &&
                         distanceToStep > Constants::Epsilon &&
-                        distanceToStep <=
-                            collider->stepSize + Constants::Epsilon;
+                        distanceToStep <= collider->stepSize + Constants::Epsilon;
 
                     if (!canStepDown) continue;
 
-                    const float previousTransformY =
-                        transform.position.y;
+                    const float previousTransformY = transform.position.y;
 
                     transform.AddPosition({
                         0.0f,
@@ -362,19 +357,12 @@ namespace LevelSystem {
                         float currentVisualY =
                             previousTransformY;
 
-                        if (camera->isStepping) {
+                        if (camera->isStepping)
                             currentVisualY =
-                                camera->smoothStepStartY +
-                                camera->stepOffsetY +
-                                (
-                                    previousTransformY -
-                                    camera->smoothStepTargetY
-                                );
-                        }
+                                camera->smoothStepStartY + camera->stepOffsetY + (previousTransformY - camera->smoothStepTargetY);
 
                         camera->smoothStepStartY = currentVisualY;
-                        camera->smoothStepTargetY =
-                            transform.position.y;
+                        camera->smoothStepTargetY = transform.position.y;
 
                         camera->stepOffsetY = 0.0f;
                         camera->isStepping = true;

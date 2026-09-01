@@ -456,7 +456,7 @@ namespace {
                     }
                 },
                 {"frontSector", wall.frontSector},
-                {"backSector", wall.backSector}
+                {"backSector", wall.backSector},
             });
         }
     }

@@ -421,9 +421,8 @@ namespace PhysicsSystem {
                     if (otherCollider == nullptr ||
                         !otherCollider->isActive ||
                         otherCollider->isTrigger ||
-                        otherCollider->type != COLLIDERTYPE_SPHERE) {
-                        continue;
-                    }
+                        otherCollider->type != COLLIDERTYPE_SPHERE) continue;
+
 
                     ComponentTransform* otherTransform = level.transforms.Get(otherID);
                     if (otherTransform == nullptr) [[unlikely]] continue;

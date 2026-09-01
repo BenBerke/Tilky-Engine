@@ -92,7 +92,8 @@ namespace Editor {
 
         const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
-        font = TTF_OpenFont(fontPath.string().c_str(), FONT_SIZE);
+        font = TTF_OpenFont(fontPath.string().c_str(), UI_FONT_SIZE);
+        TTF_SetFontKerning(font, false);
 
         if (!font) {
             spdlog::critical("TTF_OpenFont failed {}", SDL_GetError());

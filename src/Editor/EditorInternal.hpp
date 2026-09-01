@@ -15,7 +15,8 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 namespace MapEditorInternal {
-    constexpr int FONT_SIZE = 24;
+    inline constexpr float UI_FONT_SIZE = 48.0f;
+    inline constexpr float UI_TEXT_PADDING = 8.0f;
 
     extern int screenWidth;
     extern int screenHeight;
@@ -338,7 +339,7 @@ namespace MapEditorInternal {
     // `value` changes.
     bool DrawAssetField(const char* label, std::string& value, AssetKind kind, float previewSize = 0.0f);
 
-    // Call this from your SDL event loop whenever you receive
+    // Call this from SDL event loop whenever it receives
     // SDL_EVENT_DROP_FILE while the Map Editor window is active, e.g.:
     //
     //   case SDL_EVENT_DROP_FILE:
