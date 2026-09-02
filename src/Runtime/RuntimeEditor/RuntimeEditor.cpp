@@ -32,9 +32,9 @@ namespace {
     ComponentTransform* transform = nullptr;
 
     constexpr float MOUSE_SENSITIVITY = 0.5f;
-    constexpr float MOVE_SPEED = 50.0f;
-    constexpr float FAST_MOVE_SPEED = 175.0f;
+    constexpr float BASE_MOVE_SPEED = 50.0f;
     constexpr float RAY_LENGTH = 10000.0f;
+    float moveSpeed = 50.0f;
 
     Vector3 GetCameraForward(const ComponentCamera& camera) {
         const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
@@ -325,15 +325,17 @@ namespace RuntimeEditor {
             if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.y += 1.0f;
             if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.y -= 1.0f;
 
-            const float movementLengthSq =
-                movement.x * movement.x +
-                movement.y * movement.y +
-                movement.z * movement.z;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) moveSpeed += 3.0f;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_E)) moveSpeed -= 3.0f;
+            if (InputManager::GetKey(SDL_SCANCODE_LSHIFT)) moveSpeed = BASE_MOVE_SPEED;
+
+            moveSpeed = std::fmax(moveSpeed, 0.0001f);
+
+            const float movementLengthSq = movement.x * movement.x + movement.y * movement.y + movement.z * movement.z;
 
             if (movementLengthSq > 0.0f) {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
-                const float speed = InputManager::GetKey(SDL_SCANCODE_LSHIFT) ? FAST_MOVE_SPEED : MOVE_SPEED;
-                transform->AddPosition(movement * speed * GameTime::deltaTime);
+                transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
             }
         }
 

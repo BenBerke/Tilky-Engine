@@ -33,6 +33,63 @@ namespace {
             {"projectMeta", json::object()}
         };
     }
+
+    bool RepairLauncherVariables(json& data) {
+        const json defaults = DefaultLauncherVariables();
+        bool repaired = false;
+
+        if (!data.is_object()) {
+            data = defaults;
+            return true;
+        }
+
+        const auto repairField = [&](const char* key, const auto& validator) {
+            if (!data.contains(key) || !validator(data[key])) {
+                data[key] = defaults[key];
+                repaired = true;
+            }
+        };
+
+        repairField("lang", [](const json& value) {
+            return value.is_string();
+        });
+
+        repairField("projectCount", [](const json& value) {
+            return value.is_number_integer();
+        });
+
+        repairField("sortMode", [](const json& value) {
+            return value.is_string();
+        });
+
+        repairField("importedProjects", [](const json& value) {
+            return value.is_array();
+        });
+
+        repairField("projectMeta", [](const json& value) {
+            return value.is_object();
+        });
+
+        if (!data.contains("window") || !data["window"].is_object()) {
+            data["window"] = defaults["window"];
+            repaired = true;
+        }
+        else {
+            if (!data["window"].contains("width") ||
+                !data["window"]["width"].is_number_integer()) {
+                data["window"]["width"] = defaults["window"]["width"];
+                repaired = true;
+                }
+
+            if (!data["window"].contains("height") ||
+                !data["window"]["height"].is_number_integer()) {
+                data["window"]["height"] = defaults["window"]["height"];
+                repaired = true;
+                }
+        }
+
+        return repaired;
+    }
 }
 
 bool WriteLauncherVariablesJson(const json &launcherVariablesData) {
@@ -122,10 +179,18 @@ int main(int argc, char** argv) {
     if (launcherVars.is_open()) {
         try {
             launcherVars >> launcherVariablesData;
+
+            if (RepairLauncherVariables(launcherVariablesData)) {
+                spdlog::warn("Invalid launcher variables were repaired and reset to safe values");
+
+                WriteLauncherVariablesJson(launcherVariablesData);
+            }
         }
-        catch (std::exception &e) {
-            spdlog::warn("Launcher variables could not load. Falling back to default values {}", e.what());
+        catch (const std::exception& e) {
+            spdlog::warn("Launcher variables could not load. Falling back to defaults: {}", e.what());
+
             launcherVariablesData = DefaultLauncherVariables();
+            WriteLauncherVariablesJson(launcherVariablesData);
         }
 
         launcherVars.close();

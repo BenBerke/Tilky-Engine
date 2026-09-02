@@ -590,7 +590,7 @@
   "editor.draw.subdivisions": "Subdivisions",
   "editor.tooltip.draw.subdivisions": "How many straight wall segments approximate the curve. Higher values look smoother but create more walls.",
   "&Context_NEW_12": "Keyboard shortcut legend shown at the bottom of the Drawing Tools panel. Keep the key names (Enter, Esc, Backspace, Shift, and the bracket and number keys) as they are - they are physical keys.",
-  "editor.draw.shortcuts.general": "Enter: confirm   Esc: cancel   Backspace: undo point",
+  "editor.draw.shortcuts.general": "Space: place   Esc: cancel   Backspace: undo point",
   "&Context_NEW_13": "-Constrain- means holding Shift restricts the shape: forces a square, snaps the angle",
   "editor.draw.shortcuts.constrain": "Shift: constrain (square / angle snap)",
   "editor.draw.shortcuts.sides": "'[' or ']': fewer / more sides",

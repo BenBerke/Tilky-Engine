@@ -24,6 +24,7 @@
 // subclass - and therefore which browser behavior - an entry gets. A
 // level file has its own AssetEntryType but is not a field-reference kind
 // at all, so it simply has no AssetKind of its own (defaults to Other).
+
 enum class AssetKind {
     Folder,
     Texture,

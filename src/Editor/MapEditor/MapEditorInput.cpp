@@ -447,7 +447,9 @@ namespace MapEditorInternal {
             // no-ops when nothing relevant is in progress (ConfirmActiveDrawing/
             // UndoLastDrawPoint already check that internally).
             if (currentMode == MODE_SECTOR) {
-                if (InputManager::GetKeyDown(SDL_SCANCODE_RETURN) || InputManager::GetKeyDown(SDL_SCANCODE_KP_ENTER))
+                if (InputManager::GetKeyDown(SDL_SCANCODE_RETURN) ||
+                    InputManager::GetKeyDown(SDL_SCANCODE_KP_ENTER) ||
+                    InputManager::GetKeyDown(SDL_SCANCODE_SPACE))
                     ConfirmActiveDrawing();
 
                 if (InputManager::GetKeyDown(SDL_SCANCODE_BACKSPACE)) UndoLastDrawPoint();

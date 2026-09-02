@@ -504,11 +504,6 @@ namespace MapEditorInternal {
     // Geometry Mode's canvas overlay: hover highlight, selection
     // highlight, and the draggable endpoint handles of the selected
     // wall(s). Draws nothing in any other mode.
-    //
-    // This REPLACED DrawDots() in the editor's render loop: swap that
-    // call for this one. It must run AFTER DrawWalls(), so the hover /
-    // selection highlights and the handles sit on top of the walls
-    // rather than under them.
     void DrawGeometryEditOverlay();
     void DrawEntities();
     void DrawGridDots();

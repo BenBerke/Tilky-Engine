@@ -16,7 +16,9 @@ namespace {
     //todo make this an engine setting
     uint32_t engineSeedState = 123456789;
 
-    const float randomNumbers[512] = {
+    constexpr int RANDOM_NUMBER_SIZE = 512;
+
+    const float randomNumbers[RANDOM_NUMBER_SIZE] = {
     0.840188f, 0.394383f, 0.783099f, 0.798440f, 0.911647f, 0.197551f, 0.335223f, 0.768230f,
     0.277775f, 0.553970f, 0.477397f, 0.628871f, 0.364784f, 0.513401f, 0.952230f, 0.916195f,
     0.635712f, 0.717297f, 0.141603f, 0.606969f, 0.016301f, 0.242887f, 0.137232f, 0.804177f,
@@ -100,9 +102,8 @@ namespace {
 
     float GetRandomFast() {
         static std::size_t currentIndex = 0;
-        const float value = randomNumbers[currentIndex];
-        currentIndex = (currentIndex + 1) % std::size(randomNumbers);
-        return value;
+        if (currentIndex >= RANDOM_NUMBER_SIZE) currentIndex = 0;
+        return randomNumbers[++currentIndex];
     }
 }
 
@@ -112,10 +113,10 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
 
     if (existing.get_type() == sol::type::table) {
         math = existing.as<sol::table>();
-    } else {
-        if (existing.get_type() != sol::type::nil) {
+    }
+    else {
+        if (existing.get_type() != sol::type::nil) 
             spdlog::warn("Replacing Lua global 'Tmath' because it is not a table");
-        }
 
         math = lua.create_named_table("Tmath");
     }

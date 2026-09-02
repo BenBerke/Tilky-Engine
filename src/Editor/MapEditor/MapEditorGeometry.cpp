@@ -611,6 +611,31 @@ namespace MapEditorInternal {
             return ApplyDrawnGeometry(points, BuildPendingSectorParams());
         }
 
+        // Freehand's confirm (Enter) path: commits the in-progress chain
+        // exactly as it was drawn, without adding a closing edge back to the
+        // start the way FinishSectorSelection does. MapTopology only raises a
+        // face where the drawn points actually enclose one, so an open chain
+        // committed here just lays its walls down - splitting whatever they
+        // land on or cross, same as any other drawn geometry - and stops
+        // there. A chain the user already closed by hand still becomes a
+        // sector, because its own points enclose the face on their own.
+        //
+        // Unlike CommitOpenShape this uses the chain's snapshotted
+        // pendingSectorParams rather than re-reading the Editor menu, so a
+        // chain commits with the properties that were showing when it was
+        // started - the same rule FinishSectorSelection follows.
+        bool CommitSectorChainAsDrawn() {
+            std::vector<Vector2> chain = sectorBeingCreated;
+            std::string error;
+
+            if (!ValidateOpenPolyline(chain, &error)) {
+                lastGeometryError = error;
+                return false;
+            }
+
+            return ApplyDrawnGeometry(chain, pendingSectorParams);
+        }
+
         void HandleRectangleClick(const Vector2& rawMouseWorld) {
             if (!rectangleHasFirstCorner) {
                 rectangleFirstCorner = ResolveSnapPoint(rawMouseWorld);
@@ -966,10 +991,28 @@ namespace MapEditorInternal {
         if (currentDrawTool == DRAWTOOL_FREEHAND) {
             if (manualSectorMode) {
                 if (manualSectorDots.size() >= 3) CreateManualSector();
+                return;
             }
-            else if (sectorBeingCreated.size() >= 3) {
-                FinishSectorSelection();
-            }
+
+            // Enter commits whatever is currently on screen instead of only
+            // ever force-closing a >= 3 point chain into a sector: two points
+            // lay down a single wall, an open three-point chain lays down two,
+            // and so on. Closing a loop into a sector is still done by
+            // clicking back onto the chain's own start point (handled in
+            // TrySectorChainClick), which is the only place that adds the
+            // closing edge for you.
+            //
+            // Guarded on empty rather than left to CommitSectorChainAsDrawn's
+            // own validation so that Enter with nothing drawn stays the silent
+            // no-op it has always been, instead of raising a "need at least 2
+            // points" toast at someone who hasn't started drawing yet.
+            if (sectorBeingCreated.empty()) return;
+
+            // Rejected geometry deliberately leaves the chain in place - the
+            // user can back a point off with Backspace and retry, matching how
+            // the Rectangle/Polygon/Circle/Curve tools hold their in-progress
+            // state when a commit is refused.
+            if (CommitSectorChainAsDrawn()) sectorBeingCreated.clear();
 
             return;
         }
