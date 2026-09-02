@@ -21,10 +21,11 @@ namespace MapEditorInternal {
 
     Vector2 cameraPos = {0.0f, 0.0f};
 
+    // Internal snap anchors only - nothing user-facing creates, selects
+    // or lists dots since Dot Mode became Geometry Mode.
     std::vector<Dot> dots;
     ID nextDotID = 0;
     std::unordered_map<ID, int> dotIDToIndex;
-    ID selectedDotID = INVALID_ID;
 
     std::vector<Vector2> sectorBeingCreated;
     PendingSectorParams pendingSectorParams;
@@ -38,7 +39,7 @@ namespace MapEditorInternal {
 
     std::string currentMap;
 
-    Mode currentMode = MODE_DOT;
+    Mode currentMode = MODE_GEOMETRY;
     State currentState = STATE_MAP;
 
     EditorTheme currentTheme = THEME_DARK;
@@ -97,9 +98,11 @@ namespace MapEditorInternal {
     Vector2 curveEnd = {0.0f, 0.0f};
     int curveSubdivisions = 12;
 
-    // Dot Mode — Wall inspector (right-click select)
+    // Geometry / Wall Edit Mode — selection, hover and drag state
     bool editingWall = false;
     ID selectedWallID = INVALID_ID;
+    ID hoveredWallID = INVALID_ID;
+    bool draggingWallGeometry = false;
 
     // =========================================================================
     //  UI Editor — shared state (see EditorInternal.hpp for the rationale)
@@ -121,6 +124,5 @@ namespace MapEditorInternal {
 
     std::vector<ID> selectedEntities = {};
     std::vector<ID> selectedSectors = {};
-    std::vector<ID> selectedDots = {};
     std::vector<ID> selectedWalls = {};
 }

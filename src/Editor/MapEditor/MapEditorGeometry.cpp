@@ -20,7 +20,8 @@
 #include <cstdio>
 
 // This is an internal file for functions related to mathematical calculations about the map,
-// plus (after the editor revamp) the Sector Mode chain workflow and Dot lifecycle.
+// plus (after the editor revamp) the Sector Mode chain workflow, the internal
+// Dot lifecycle, and Geometry Mode's wall picking/selection/editing.
 namespace MapEditorInternal {
     float GetActiveGridSize() {
         constexpr float minPixelSpacing = 24.0f;
@@ -195,7 +196,14 @@ namespace MapEditorInternal {
     // Snapping onto a wall's interior is what lets a drawn chain start
     // or end mid-wall - committing the chain is what actually splits the
     // wall there (see ApplyDrawnGeometry / MapTopology::ApplyDrawnGeometry).
-    Vector2 ResolveSnapPoint(const Vector2& mouseWorld) {
+    //
+    // The exclusion lists exist for Geometry Mode's drags: a dragged
+    // endpoint is itself a snap candidate, and the wall it belongs to is
+    // itself a wall-interior candidate, so without them a drag snaps
+    // straight back onto where it started and nothing ever moves.
+    Vector2 ResolveSnapPointExcluding(const Vector2& mouseWorld,
+                                      const std::vector<Vector2>& ignoredPoints,
+                                      const std::vector<ID>& ignoredWallIDs) {
         if (vertexSnapEnabled) {
             constexpr float snapRadiusPixels = 12.0f;
             const float safeZoom = std::max(editorZoom, 0.0001f);
@@ -206,7 +214,16 @@ namespace MapEditorInternal {
             float bestDistSq = std::numeric_limits<float>::max();
             bool found = false;
 
+            const auto isIgnoredPoint = [&](const Vector2& candidate) {
+                for (const Vector2& ignored : ignoredPoints)
+                    if (SamePoint(ignored, candidate)) return true;
+
+                return false;
+            };
+
             const auto consider = [&](const Vector2& candidate) {
+                if (isIgnoredPoint(candidate)) return;
+
                 const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
 
                 if (distSq <= snapRadiusSq && distSq < bestDistSq) {
@@ -222,7 +239,30 @@ namespace MapEditorInternal {
 
             const Level& level = LevelManager::CurrentLevel();
 
-            for (const Wall& wall : level.walls) {
+            // An ignored wall contributes neither its endpoints nor its
+            // interior. Ignoring only the *original* positions isn't
+            // enough: mid-drag a moving wall's stored coordinates are
+            // already wherever the cursor last put them, so leaving the
+            // wall in would let the drag snap onto itself and freeze one
+            // frame in.
+            const bool filteringWalls = !ignoredWallIDs.empty();
+
+            std::vector<Wall> candidateWalls;
+
+            if (filteringWalls) {
+                candidateWalls.reserve(level.walls.size());
+
+                for (const Wall& wall : level.walls) {
+                    const bool ignored =
+                        std::find(ignoredWallIDs.begin(), ignoredWallIDs.end(), wall.id) != ignoredWallIDs.end();
+
+                    if (!ignored) candidateWalls.push_back(wall);
+                }
+            }
+
+            const std::vector<Wall>& snapCandidateWalls = filteringWalls ? candidateWalls : level.walls;
+
+            for (const Wall& wall : snapCandidateWalls) {
                 consider(wall.start);
                 consider(wall.end);
             }
@@ -230,12 +270,16 @@ namespace MapEditorInternal {
             if (found) return best;
 
             Vector2 onWall{};
-            if (MapTopology::ClosestPointOnAnyWall(level.walls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
+            if (MapTopology::ClosestPointOnAnyWall(snapCandidateWalls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
         }
 
         if (gridSnapEnabled) return SnapToGrid(mouseWorld);
 
         return mouseWorld;
+    }
+
+    Vector2 ResolveSnapPoint(const Vector2& mouseWorld) {
+        return ResolveSnapPointExcluding(mouseWorld, {}, {});
     }
 
     bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point) {
@@ -1115,11 +1159,20 @@ namespace MapEditorInternal {
             snapshot.nextSectorID = level.nextSectorID;
             snapshot.selectedSectorID = selectedSectorID;
             snapshot.selectedWallID = selectedWallID;
-            snapshot.selectedDotID = selectedDotID;
+            snapshot.selectedWalls = selectedWalls;
             snapshot.editingSector = editingSector;
             snapshot.editingWall = editingWall;
             return snapshot;
         }
+    }
+
+    GeometrySnapshot CaptureGeometryUndoSnapshot() {
+        return CaptureGeometrySnapshot(LevelManager::CurrentLevel());
+    }
+
+    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot) {
+        geometrySnapshots.push_back(std::move(snapshot));
+        actions.push_back(ACTION_APPLY_GEOMETRY);
     }
 
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params) {
@@ -1168,7 +1221,7 @@ namespace MapEditorInternal {
 
         selectedSectorID = snapshot.selectedSectorID;
         selectedWallID = snapshot.selectedWallID;
-        selectedDotID = snapshot.selectedDotID;
+        selectedWalls = snapshot.selectedWalls;
         editingSector = snapshot.editingSector;
         editingWall = snapshot.editingWall;
 
@@ -1200,10 +1253,6 @@ namespace MapEditorInternal {
         }
 
         dots.erase(dots.begin() + index);
-
-        if (selectedDotID == dotID) {
-            selectedDotID = INVALID_ID;
-        }
 
         RebuildDotIDLookup();
     }
@@ -1310,15 +1359,6 @@ namespace MapEditorInternal {
         editingSector    = true;
     }
 
-    // Dot Mode — right click on a wall selects it and opens the wall inspector.
-    void HandleDotModeRightClick(const Vector2& point) {
-        Level& level = LevelManager::CurrentLevel();
-        const int wallIndex = GetWallAtPoint(point);
-        if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) return;
-        selectedWallID = level.walls[wallIndex].id;
-        editingWall    = true;
-    }
-
     void DeleteWall(const ID wallID) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -1330,12 +1370,21 @@ namespace MapEditorInternal {
 
         level.walls.erase(level.walls.begin() + index);
 
+        const auto selectedIt = std::find(selectedWalls.begin(), selectedWalls.end(), wallID);
+        if (selectedIt != selectedWalls.end()) selectedWalls.erase(selectedIt);
+
+        // The inspector follows the primary wall, so hand it to whatever
+        // is left of the selection rather than closing on a multi-select.
         if (selectedWallID == wallID) {
-            selectedWallID = INVALID_ID;
-            editingWall    = false;
+            selectedWallID = selectedWalls.empty() ? INVALID_ID : selectedWalls.front();
+            editingWall    = selectedWallID != INVALID_ID;
         }
 
-        MapQueries::RebuildSectorRuntimeLinks(level);
+        // Was a bare RebuildSectorRuntimeLinks(). Removing a wall can open
+        // a sector's boundary, and no amount of relinking fixes that - the
+        // sector layer has to be re-derived from the surviving walls (with
+        // the relink as the fallback when it can't be).
+        RebuildGeometryAfterEdit();
     }
 
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b) {
@@ -1364,7 +1413,10 @@ namespace MapEditorInternal {
     int GetWallAtPoint(const Vector2& worldPoint) {
         Level& level = LevelManager::CurrentLevel();
 
-        constexpr float clickRadiusPixels = 10.0f;
+        // Shared with Geometry Mode's handles (WALL_ENDPOINT_PICK_RADIUS_PIXELS)
+        // so body and endpoint picking use one consistent, zoom-independent
+        // tolerance instead of two numbers that can drift apart.
+        constexpr float clickRadiusPixels = WALL_PICK_RADIUS_PIXELS;
         const float safeZoom = std::max(editorZoom, 0.0001f);
 
         const float clickRadiusWorld = clickRadiusPixels / safeZoom;
@@ -1389,6 +1441,345 @@ namespace MapEditorInternal {
         }
 
         return closestWallIndex;
+    }
+
+    // =========================================================================
+    //  Geometry / Wall Edit Mode
+    // =========================================================================
+    //
+    // Picking, selection and wall editing for MODE_GEOMETRY.
+    //
+    // Moving geometry edits the sectors in place rather than re-deriving
+    // them. A Sector carries far more than its outline - floors, wall/
+    // floor/ceiling textures, light, colours, its ID and its entity list -
+    // and none of that can be recovered from the wall graph, so rebuilding
+    // the sector layer after every drag would quietly reset it. Since a
+    // move doesn't change *which* faces exist, only where their corners
+    // are, the correct sector is the one already there with its boundary
+    // points moved and its triangles regenerated.
+    namespace {
+        // Regenerates `sector.triangles` from its current boundary. Kept
+        // defensive about degenerate input: a drag that lands one corner
+        // exactly on top of its neighbour collapses an edge to nothing,
+        // and feeding that to the triangulator produces garbage rather
+        // than an error.
+        void RetriangulateSector(Sector& sector) {
+            std::vector<Vector2> outerRing = DedupeConsecutivePoints(sector.vertices);
+
+            // DedupeConsecutivePoints only looks at adjacent entries in a
+            // linear list, so a ring that closes back onto its own first
+            // point needs that trailing duplicate stripped separately.
+            if (outerRing.size() >= 2 && SamePoint(outerRing.front(), outerRing.back())) outerRing.pop_back();
+
+            if (outerRing.size() < 3) {
+                sector.triangles.clear();
+                return;
+            }
+
+            std::vector<std::vector<Vector2>> holeRings;
+            holeRings.reserve(sector.innerLoops.size());
+
+            for (const std::vector<Vector2>& innerLoop : sector.innerLoops) {
+                std::vector<Vector2> holeRing = DedupeConsecutivePoints(innerLoop);
+
+                if (holeRing.size() >= 2 && SamePoint(holeRing.front(), holeRing.back())) holeRing.pop_back();
+                if (holeRing.size() >= 3) holeRings.push_back(std::move(holeRing));
+            }
+
+            if (holeRings.empty()) {
+                sector.triangles = Geometry::Triangulate(outerRing);
+                return;
+            }
+
+            // Hole-aware overload, mirroring the (outer, innerLoops, ...)
+            // pair Geometry::IsPointInPolygon already takes. If the
+            // Geometry header spells this differently, this is the only
+            // line that needs adjusting.
+            sector.triangles = Geometry::Triangulate(outerRing, holeRings);
+        }
+    }
+
+    ID PickWallAt(const Vector2& mouseWorld) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const int index = GetWallAtPoint(mouseWorld);
+        if (index < 0 || index >= static_cast<int>(level.walls.size())) return INVALID_ID;
+
+        return level.walls[index].id;
+    }
+
+    bool PickSelectedWallEndpointAt(const Vector2& mouseWorld, ID* outWallID, bool* outIsStart) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float pickRadiusWorld = WALL_ENDPOINT_PICK_RADIUS_PIXELS / safeZoom;
+
+        float bestDistSq = pickRadiusWorld * pickRadiusWorld;
+        bool found = false;
+
+        for (const ID wallID : selectedWalls) {
+            const auto it = level.wallIDToIndex.find(wallID);
+            if (it == level.wallIDToIndex.end()) continue;
+
+            const int index = it->second;
+            if (index < 0 || index >= static_cast<int>(level.walls.size())) continue;
+
+            const Wall& wall = level.walls[index];
+
+            const float startDistSq = Vector2Math::DistanceSquared(mouseWorld, wall.start);
+
+            if (startDistSq <= bestDistSq) {
+                bestDistSq = startDistSq;
+                if (outWallID != nullptr) *outWallID = wall.id;
+                if (outIsStart != nullptr) *outIsStart = true;
+                found = true;
+            }
+
+            const float endDistSq = Vector2Math::DistanceSquared(mouseWorld, wall.end);
+
+            if (endDistSq <= bestDistSq) {
+                bestDistSq = endDistSq;
+                if (outWallID != nullptr) *outWallID = wall.id;
+                if (outIsStart != nullptr) *outIsStart = false;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    void ClearWallSelection() {
+        selectedWalls.clear();
+        selectedWallID = INVALID_ID;
+        editingWall = false;
+    }
+
+    void SelectWall(const ID wallID) {
+        if (wallID == INVALID_ID) {
+            ClearWallSelection();
+            return;
+        }
+
+        selectedWalls.clear();
+        selectedWalls.push_back(wallID);
+
+        // Selecting a wall always opens the inspector - that is the whole
+        // point of the mode, and it is the same panel the hierarchy opens.
+        selectedWallID = wallID;
+        editingWall = true;
+    }
+
+    void ToggleWallSelection(const ID wallID) {
+        if (wallID == INVALID_ID) return;
+
+        const auto it = std::find(selectedWalls.begin(), selectedWalls.end(), wallID);
+
+        if (it != selectedWalls.end()) {
+            selectedWalls.erase(it);
+
+            if (selectedWallID == wallID) {
+                selectedWallID = selectedWalls.empty() ? INVALID_ID : selectedWalls.back();
+                editingWall = selectedWallID != INVALID_ID;
+            }
+
+            return;
+        }
+
+        selectedWalls.push_back(wallID);
+
+        selectedWallID = wallID;
+        editingWall = true;
+    }
+
+    void ExtendWallSelectionTo(const ID wallID) {
+        if (wallID == INVALID_ID) return;
+
+        if (selectedWallID == INVALID_ID) {
+            SelectWall(wallID);
+            return;
+        }
+
+        const Level& level = LevelManager::CurrentLevel();
+
+        const ID firstID = std::min(wallID, selectedWallID);
+        const ID lastID = std::max(wallID, selectedWallID);
+
+        selectedWalls.clear();
+
+        for (const Wall& wall : level.walls)
+            if (wall.id >= firstID && wall.id <= lastID) selectedWalls.push_back(wall.id);
+
+        selectedWallID = wallID;
+        editingWall = true;
+    }
+
+    void MoveSharedEndpoint(const Vector2& from, const Vector2& to) {
+        if (SamePoint(from, to)) return;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        // Every wall touching that corner moves with it - that is what
+        // stops a shared vertex from being torn into two coincident-then-
+        // divergent points and silently breaking the sector loops built
+        // on top of it.
+        for (Wall& wall : level.walls) {
+            if (SamePoint(wall.start, from)) wall.start = to;
+            if (SamePoint(wall.end, from)) wall.end = to;
+        }
+
+        // ...and so does every sector corner sitting on it. The sector
+        // keeps its identity and all its properties; only the point moves.
+        for (Sector& sector : level.sectors) {
+            bool touched = false;
+
+            for (Vector2& vertex : sector.vertices) {
+                if (!SamePoint(vertex, from)) continue;
+
+                vertex = to;
+                touched = true;
+            }
+
+            for (std::vector<Vector2>& innerLoop : sector.innerLoops) {
+                for (Vector2& vertex : innerLoop) {
+                    if (!SamePoint(vertex, from)) continue;
+
+                    vertex = to;
+                    touched = true;
+                }
+            }
+
+            if (touched) RetriangulateSector(sector);
+        }
+    }
+
+    void ApplyGeometryDragOffset(const std::vector<Wall>& originalWalls,
+                                 const std::vector<Sector>& originalSectors,
+                                 const std::vector<Vector2>& movingPoints,
+                                 const Vector2& delta) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const auto follows = [&](const Vector2& point) {
+            for (const Vector2& movingPoint : movingPoints)
+                if (SamePoint(movingPoint, point)) return true;
+
+            return false;
+        };
+
+        const auto offset = [&](const Vector2& point) -> Vector2 {
+            return {point.x + delta.x, point.y + delta.y};
+        };
+
+        std::unordered_map<ID, const Wall*> originalWallByID;
+        originalWallByID.reserve(originalWalls.size());
+
+        for (const Wall& wall : originalWalls) originalWallByID[wall.id] = &wall;
+
+        // Recomputed from the drag-start capture rather than nudged, so a
+        // point that is shared by several walls lands on exactly the same
+        // coordinate in all of them however many frames the drag lasts -
+        // SamePoint()'s exact comparison depends on that.
+        for (Wall& wall : level.walls) {
+            const auto it = originalWallByID.find(wall.id);
+            if (it == originalWallByID.end()) continue;
+
+            const Wall& original = *it->second;
+
+            wall.start = follows(original.start) ? offset(original.start) : original.start;
+            wall.end = follows(original.end) ? offset(original.end) : original.end;
+        }
+
+        std::unordered_map<ID, const Sector*> originalSectorByID;
+        originalSectorByID.reserve(originalSectors.size());
+
+        for (const Sector& sector : originalSectors) originalSectorByID[sector.id] = &sector;
+
+        // The sector objects themselves are never replaced - only the
+        // boundary points that the drag moves, plus the triangles derived
+        // from them. Everything else a Sector carries (floors, textures,
+        // light, colours, entitiesInside) is left exactly as it was, which
+        // is the whole reason moves don't go through MapTopology.
+        for (Sector& sector : level.sectors) {
+            const auto it = originalSectorByID.find(sector.id);
+            if (it == originalSectorByID.end()) continue;
+
+            const Sector& original = *it->second;
+
+            bool touched = false;
+
+            const auto rewriteLoop = [&](std::vector<Vector2>& target, const std::vector<Vector2>& source) {
+                target = source;
+
+                for (Vector2& point : target) {
+                    if (!follows(point)) continue;
+
+                    point = offset(point);
+                    touched = true;
+                }
+            };
+
+            rewriteLoop(sector.vertices, original.vertices);
+
+            sector.innerLoops.resize(original.innerLoops.size());
+
+            for (std::size_t loopIndex = 0; loopIndex < original.innerLoops.size(); ++loopIndex)
+                rewriteLoop(sector.innerLoops[loopIndex], original.innerLoops[loopIndex]);
+
+            // Only the sectors the drag actually reaches pay for
+            // triangulation, and only while they're being dragged.
+            if (touched) RetriangulateSector(sector);
+        }
+    }
+
+    void RebuildGeometryAfterMove() {
+        // Deliberately NOT MapTopology::RebuildSectorsFromWalls: the
+        // sector layer is already correct (its points moved with the walls
+        // and its triangles were regenerated as they moved), and
+        // re-deriving it would replace every Sector with a freshly built
+        // one, losing textures, floor/ceiling heights, light and colours.
+        // All that's left is to refresh the ID lookups and the
+        // sector/wall/entity links that point into them.
+        MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
+    }
+
+    void RebuildGeometryAfterEdit() {
+        Level& level = LevelManager::CurrentLevel();
+
+        // For edits that changed which faces exist, where re-deriving is
+        // the only correct answer - see RebuildGeometryAfterMove() for the
+        // move case, which must NOT come through here.
+        //
+        // RebuildSectorsFromWalls re-derives sector loops, holes and
+        // triangulation from the wall graph and relinks the runtime data
+        // itself on success (the same contract DeleteSector relies on for
+        // its nested case); if it can't reconcile the level, the plain
+        // relink at least leaves the ID lookups valid.
+        if (MapTopology::RebuildSectorsFromWalls(level)) return;
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
+    }
+
+    void DeleteSelectedWalls() {
+        if (selectedWalls.empty()) return;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        const std::vector<ID> wallsToDelete = selectedWalls;
+
+        // One undo entry and one topology rebuild for the whole
+        // selection, rather than one of each per wall.
+        PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot());
+
+        ClearWallSelection();
+
+        for (int i = static_cast<int>(level.walls.size()) - 1; i >= 0; --i) {
+            const ID wallID = level.walls[i].id;
+
+            if (std::find(wallsToDelete.begin(), wallsToDelete.end(), wallID) == wallsToDelete.end()) continue;
+
+            level.walls.erase(level.walls.begin() + i);
+        }
+
+        RebuildGeometryAfterEdit();
     }
 }
 

@@ -106,7 +106,6 @@ namespace Editor {
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
-        selectedDotID = INVALID_ID;
 
         sectorBeingCreated.clear();
         pendingSectorParams = PendingSectorParams{};
@@ -176,7 +175,6 @@ namespace Editor {
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
-        selectedDotID = INVALID_ID;
 
         sectorBeingCreated.clear();
         pendingSectorParams = PendingSectorParams{};

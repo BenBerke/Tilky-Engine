@@ -593,7 +593,7 @@
   "editor.draw.shortcuts.general": "Enter: confirm   Esc: cancel   Backspace: undo point",
   "&Context_NEW_13": "-Constrain- means holding Shift restricts the shape: forces a square, snaps the angle",
   "editor.draw.shortcuts.constrain": "Shift: constrain (square / angle snap)",
-  "editor.draw.shortcuts.sides": "[ / ]: fewer / more sides",
+  "editor.draw.shortcuts.sides": "'[' or ']': fewer / more sides",
   "editor.draw.shortcuts.tools": "1-5: switch tool",
   "&Context_NEW_14": "Button label for creating a sector out of hand-picked existing corners. Its tooltip key (editor.manual_sector.tooltip.create) already exists in your file.",
   "editor.manual_sector.create": "Create Sector",
@@ -630,5 +630,12 @@
   "editor.draw.error.rectangle_zero_size": "Rectangle must have non-zero width and height.",
   "editor.draw.error.polygon_radius": "Polygon radius is too small.",
   "editor.draw.error.circle_radius": "Circle radius is too small.",
-  "editor.draw.error.curve_same_point": "The curve's start and end points must be different."
+  "editor.draw.error.curve_same_point": "The curve's start and end points must be different.",
+  "mode.geometry": "Geometry",
+  "editor.geometry.title": "Wall Editing",
+  "editor.geometry.hint.select": "Click a wall to select it and open its inspector. Click empty space to deselect.",
+  "editor.geometry.hint.drag": "Drag a wall to move it, or drag a square handle to move that endpoint. Connected walls follow shared corners.",
+  "editor.geometry.hint.delete": "Ctrl/Shift click to multi-select. Delete removes the selected walls.",
+  "editor.geometry.selected_singular": "%d wall selected",
+  "editor.geometry.selected_plural": "%d walls selected"
 }

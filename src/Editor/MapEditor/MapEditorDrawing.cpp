@@ -422,7 +422,8 @@ namespace MapEditorInternal {
     // confirmed, so this function is purely about what's shown while a
     // shape is still in progress. The snap indicator keeps rendering in
     // every mode exactly as before, since it's just as useful for
-    // precisely placing a Dot or Entity as it is for Sector drawing.
+    // precisely placing an Entity or dragging a wall endpoint as it is
+    // for Sector drawing.
     void DrawSectorPreview() {
         if (currentMode == MODE_SECTOR) {
             if (IsDrawingInProgress()) {
@@ -592,41 +593,134 @@ namespace MapEditorInternal {
         // indication of where its floor actually stops.
         for (const std::vector<Vector2>& innerLoop : selectedSector->innerLoops) outlineLoop(innerLoop);
     }
-    // "placedCorners" concept and are now ID-stable, off-grid-capable points.
-    void DrawDots() {
-        if (currentTheme == THEME_DARK) SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        else if (currentTheme == THEME_LIGHT) SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    // =========================================================================
+    //  Geometry / Wall Edit Mode — canvas overlay
+    // =========================================================================
+    //
+    // Replaced DrawDots(), which drew dots as an independent, selectable
+    // object type. Dots are internal snap anchors now (see the Dot struct
+    // in EditorInternal.hpp) and are not drawn at all; what this draws
+    // instead is Geometry Mode's hover highlight, selection highlight and
+    // endpoint handles.
+    namespace {
+        // DrawThickLine() deliberately forces the theme's wall colour, so
+        // it can't be used for highlights - this is the same thickness
+        // logic with the caller's draw colour left alone.
+        void DrawColoredThickLine(const Vector2& startScreen, const Vector2& endScreen, const float thickness) {
+            const float dx = endScreen.x - startScreen.x;
+            const float dy = endScreen.y - startScreen.y;
 
-        for (const Dot& dot : dots) {
-            const Vector2 screenPos = WorldToScreen(dot.position, cameraPos);
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= 0.0001f) return;
 
-            SDL_FRect dotRect = {
-                screenPos.x - 3.0f,
-                screenPos.y - 3.0f,
-                6.0f,
-                6.0f
-            };
+            const float normalX = -dy / length;
+            const float normalY = dx / length;
 
-            SDL_RenderFillRect(renderer, &dotRect);
+            const int halfThickness = static_cast<int>(thickness * 0.5f);
+
+            for (int i = -halfThickness; i <= halfThickness; ++i) {
+                const float offsetX = normalX * static_cast<float>(i);
+                const float offsetY = normalY * static_cast<float>(i);
+
+                SDL_RenderLine(
+                    renderer,
+                    startScreen.x + offsetX, startScreen.y + offsetY,
+                    endScreen.x + offsetX, endScreen.y + offsetY
+                );
+            }
         }
 
-        if (selectedDotID != INVALID_ID) {
-            const auto it = dotIDToIndex.find(selectedDotID);
+        // Fixed *pixel* size, like the picking tolerance it mirrors: a
+        // handle has to stay grabbable at every zoom level.
+        void DrawEndpointHandle(const Vector2& worldPos, const bool hovered) {
+            const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
 
-            if (it != dotIDToIndex.end() && it->second >= 0 && it->second < static_cast<int>(dots.size())) {
-                const Vector2 screenPos = WorldToScreen(dots[it->second].position, cameraPos);
+            const float halfSize = hovered ? 6.0f : 4.5f;
 
-                SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+            const SDL_FRect handle = {
+                screenPos.x - halfSize,
+                screenPos.y - halfSize,
+                halfSize * 2.0f,
+                halfSize * 2.0f
+            };
 
-                const SDL_FRect highlightRect = {
-                    screenPos.x - 6.0f,
-                    screenPos.y - 6.0f,
-                    12.0f,
-                    12.0f
-                };
+            if (hovered) SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            else SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
 
-                SDL_RenderRect(renderer, &highlightRect);
+            SDL_RenderFillRect(renderer, &handle);
+
+            SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+            SDL_RenderRect(renderer, &handle);
+        }
+    }
+
+    void DrawGeometryEditOverlay() {
+        if (currentMode != MODE_GEOMETRY) return;
+
+        const Level& level = LevelManager::CurrentLevel();
+
+        const auto findWall = [&](const ID wallID) -> const Wall* {
+            const auto it = level.wallIDToIndex.find(wallID);
+            if (it == level.wallIDToIndex.end()) return nullptr;
+            if (it->second < 0 || it->second >= static_cast<int>(level.walls.size())) return nullptr;
+
+            return &level.walls[it->second];
+        };
+
+        const auto isSelected = [](const ID wallID) {
+            return std::find(selectedWalls.begin(), selectedWalls.end(), wallID) != selectedWalls.end();
+        };
+
+        // Hover highlight, amber - skipped for a wall that is already
+        // selected, which has its own, stronger highlight below.
+        if (hoveredWallID != INVALID_ID && !isSelected(hoveredWallID)) {
+            if (const Wall* wall = findWall(hoveredWallID)) {
+                SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+
+                DrawColoredThickLine(
+                    WorldToScreen(wall->start, cameraPos),
+                    WorldToScreen(wall->end, cameraPos),
+                    7.0f
+                );
             }
+        }
+
+        // Selection highlight, cyan - matching the selected-sector outline
+        // and the snap indicator.
+        for (const ID wallID : selectedWalls) {
+            const Wall* wall = findWall(wallID);
+            if (wall == nullptr) continue;
+
+            SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+
+            DrawColoredThickLine(
+                WorldToScreen(wall->start, cameraPos),
+                WorldToScreen(wall->end, cameraPos),
+                7.0f
+            );
+        }
+
+        // Handles last, so they sit on top of every selected wall's line.
+        // Asking PickSelectedWallEndpointAt() which handle is hovered
+        // (rather than re-deriving it here) is what keeps the highlighted
+        // handle and the grabbable handle the same one.
+        ID hoveredHandleWallID = INVALID_ID;
+        bool hoveredHandleIsStart = false;
+
+        const bool handleHovered = PickSelectedWallEndpointAt(
+            ScreenToWorld(InputManager::GetMousePosition(), cameraPos),
+            &hoveredHandleWallID,
+            &hoveredHandleIsStart
+        );
+
+        for (const ID wallID : selectedWalls) {
+            const Wall* wall = findWall(wallID);
+            if (wall == nullptr) continue;
+
+            const bool hoveredHandleIsOnThisWall = handleHovered && hoveredHandleWallID == wallID;
+
+            DrawEndpointHandle(wall->start, hoveredHandleIsOnThisWall && hoveredHandleIsStart);
+            DrawEndpointHandle(wall->end, hoveredHandleIsOnThisWall && !hoveredHandleIsStart);
         }
     }
 

@@ -445,5 +445,12 @@
   "editor.tooltip.component.rigidbody.friction": "Gövde başka bir yüzeyle temas hâlindeyken kaymaya karşı uygulanan direnç.",
   "editor.tooltip.component.ui_transform.anchor_min": "Üst kullanıcı arayüzü öğesi içindeki normalize edilmiş alt çapa. (0,0) sol alt, (1,1) sağ üst köşedir.",
   "editor.tooltip.component.ui_transform.anchor_max": "Üst kullanıcı arayüzü öğesi içindeki normalize edilmiş üst çapa. Alt çapadan uzaklaştırılması öğeyi esnetir.",
-  "editor.tooltip.component.ui_transform.pivot": "Konumlandırma, döndürme ve ölçeklendirme işlemlerinde başlangıç noktası olarak kullanılan, öğe içindeki normalize edilmiş nokta."
+  "editor.tooltip.component.ui_transform.pivot": "Konumlandırma, döndürme ve ölçeklendirme işlemlerinde başlangıç noktası olarak kullanılan, öğe içindeki normalize edilmiş nokta.",
+  "mode.geometry": "Geometri",
+  "editor.geometry.title": "Duvar Düzenleme",
+  "editor.geometry.hint.select": "Seçmek ve denetleyicisini açmak için bir duvara tıklayın. Seçimi kaldırmak için boş alana tıklayın.",
+  "editor.geometry.hint.drag": "Duvarı taşımak için sürükleyin, uç noktayı taşımak için kare tutamacı sürükleyin. Bağlı duvarlar ortak köşeleri takip eder.",
+  "editor.geometry.hint.delete": "Çoklu seçim için Ctrl/Shift ile tıklayın. Delete seçili duvarları siler.",
+  "editor.geometry.selected_singular": "%d duvar seçildi",
+  "editor.geometry.selected_plural": "%d duvar seçildi"
 }

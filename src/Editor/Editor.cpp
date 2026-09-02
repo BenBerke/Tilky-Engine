@@ -46,7 +46,10 @@ namespace Editor {
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
-        selectedDotID = INVALID_ID;
+
+        ClearWallSelection();
+        hoveredWallID = INVALID_ID;
+        draggingWallGeometry = false;
 
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
             spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
@@ -167,11 +170,22 @@ namespace Editor {
 
             DrawGridDots();
             DrawExistingSectors();
-            DrawDots();
             DrawWalls();
+
+            // Geometry Mode's hover/selection highlights and endpoint
+            // handles. This took the place of DrawDots(), but has to be
+            // drawn AFTER DrawWalls() rather than before it the way
+            // DrawDots() was - it highlights the walls, so drawing it
+            // first would put every highlight underneath them.
+            DrawGeometryEditOverlay();
+
             DrawEntities();
 
-            if (currentMode == MODE_SECTOR) DrawSectorPreview();
+            // Also called in Geometry Mode for the snap indicator: wall
+            // and endpoint dragging obey the same grid/point snapping as
+            // sector drawing, so it needs the same preview of where a
+            // point will actually land.
+            if (currentMode == MODE_SECTOR || currentMode == MODE_GEOMETRY) DrawSectorPreview();
 
             DrawEditorUI();
         }

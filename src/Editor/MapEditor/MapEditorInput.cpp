@@ -1,5 +1,8 @@
 #include <iostream>
 
+#include <algorithm>
+#include <vector>
+
 #include "../EditorInternal.hpp"
 
 #include "Headers/Engine/InputManager.hpp"
@@ -49,9 +52,18 @@ namespace MapEditorInternal {
                 editingSector = false;
             }
 
-            if (selectedDotID != INVALID_ID &&
-                dotIDToIndex.find(selectedDotID) == dotIDToIndex.end()) {
-                selectedDotID = INVALID_ID;
+            // Walls can disappear from under the Geometry Mode selection
+            // without going through DeleteWall - an undo, a level load, or
+            // a topology rebuild that merged or dropped them - so prune it
+            // the same defensive way.
+            for (int i = static_cast<int>(selectedWalls.size()) - 1; i >= 0; --i)
+                if (level.wallIDToIndex.find(selectedWalls[i]) == level.wallIDToIndex.end())
+                    selectedWalls.erase(selectedWalls.begin() + i);
+
+            if (selectedWallID != INVALID_ID &&
+                level.wallIDToIndex.find(selectedWallID) == level.wallIDToIndex.end()) {
+                selectedWallID = selectedWalls.empty() ? INVALID_ID : selectedWalls.front();
+                editingWall = selectedWallID != INVALID_ID;
             }
         }
 
@@ -85,11 +97,17 @@ namespace MapEditorInternal {
                 return;
             }
 
-            if (currentMode == MODE_DOT && selectedDotID != INVALID_ID) {
-                const auto it = dotIDToIndex.find(selectedDotID);
+            if (currentMode == MODE_GEOMETRY && selectedWallID != INVALID_ID) {
+                const auto it = level.wallIDToIndex.find(selectedWallID);
 
-                if (it != dotIDToIndex.end()) cameraPos = dots[it->second].position;
+                if (it != level.wallIDToIndex.end()) {
+                    const Wall& wall = level.walls[it->second];
 
+                    cameraPos = {
+                        (wall.start.x + wall.end.x) * 0.5f,
+                        (wall.start.y + wall.end.y) * 0.5f
+                    };
+                }
 
                 return;
             }
@@ -97,6 +115,236 @@ namespace MapEditorInternal {
             if (currentMode == MODE_ENTITY && editingEntity)
                 if (const ComponentTransform* transform = level.transforms.Get(selectedEntity.id))
                     cameraPos = {transform->position.x, transform->position.y};
+        }
+
+        // =====================================================================
+        //  Geometry / Wall Edit Mode — pointer handling
+        // =====================================================================
+        //
+        // Drag state lives here rather than in EditorState.cpp because
+        // nothing outside this file needs it: drawing only needs to know
+        // *that* a drag is running (draggingWallGeometry) and which wall is
+        // hovered (hoveredWallID), and both of those are shared state.
+        //
+        // dragOriginalWalls/dragOriginalSectors are the wall and sector
+        // lists as they were when the drag started. Every frame rewrites
+        // the level from them (see ApplyGeometryDragOffset) instead of
+        // nudging by a per-frame delta, so nothing drifts and a corner
+        // shared by several walls can't end up half-moved.
+        //
+        // The sectors are captured for the same reason: a move edits the
+        // existing sectors in place so they keep their textures, heights,
+        // light and IDs, which means the drag needs their pre-drag
+        // boundaries to recompute from.
+        std::vector<Wall> dragOriginalWalls;
+        std::vector<Sector> dragOriginalSectors;
+        std::vector<Vector2> dragMovingPoints;
+        std::vector<ID> dragSnapIgnoredWalls;
+
+        Vector2 dragAnchorOrigin{}; // the point whose snapped position defines the drag's offset
+        Vector2 dragGrabOffset{};   // mouseWorld - anchor at press, so a body drag doesn't jump on grab
+
+        GeometrySnapshot dragUndoSnapshot;
+        bool dragMutatedGeometry = false;
+
+        void BeginWallDrag(const Vector2& mouseWorld,
+                           const std::vector<Vector2>& movingPoints,
+                           const Vector2& anchor,
+                           const bool keepGrabOffset) {
+            const Level& level = LevelManager::CurrentLevel();
+
+            dragOriginalWalls = level.walls;
+            dragOriginalSectors = level.sectors;
+            dragMovingPoints = movingPoints;
+
+            // Anything this drag is deforming has to stop being a snap
+            // target for the drag itself, or the moving point snaps
+            // straight back onto its own starting position.
+            dragSnapIgnoredWalls.clear();
+
+            for (const Wall& wall : level.walls) {
+                for (const Vector2& movingPoint : movingPoints) {
+                    if (!SamePoint(wall.start, movingPoint) && !SamePoint(wall.end, movingPoint)) continue;
+
+                    dragSnapIgnoredWalls.push_back(wall.id);
+                    break;
+                }
+            }
+
+            dragAnchorOrigin = anchor;
+
+            // Endpoint drags put the handle exactly where the (snapped)
+            // cursor is; body drags keep the offset the wall was grabbed
+            // at, so it doesn't jump to centre itself on the pointer.
+            dragGrabOffset = keepGrabOffset
+                                 ? Vector2{mouseWorld.x - anchor.x, mouseWorld.y - anchor.y}
+                                 : Vector2{0.0f, 0.0f};
+
+            dragUndoSnapshot = CaptureGeometryUndoSnapshot();
+            dragMutatedGeometry = false;
+
+            draggingWallGeometry = true;
+        }
+
+        void UpdateWallDrag(const Vector2& mouseWorld) {
+            const Vector2 desired = {
+                mouseWorld.x - dragGrabOffset.x,
+                mouseWorld.y - dragGrabOffset.y
+            };
+
+            // Same grid/vertex snapping settings every other placement in
+            // the editor obeys - ResolveSnapPoint's usual behaviour, minus
+            // the geometry this drag is moving.
+            const Vector2 target = ResolveSnapPointExcluding(desired, dragMovingPoints, dragSnapIgnoredWalls);
+
+            const Vector2 delta = {
+                target.x - dragAnchorOrigin.x,
+                target.y - dragAnchorOrigin.y
+            };
+
+            // The undo entry is pushed lazily, on the first frame the drag
+            // actually changes something, so a click that merely happens to
+            // land on a wall doesn't litter the undo stack.
+            if (!dragMutatedGeometry && (delta.x != 0.0f || delta.y != 0.0f)) {
+                PushGeometryUndoSnapshot(dragUndoSnapshot);
+                dragMutatedGeometry = true;
+            }
+
+            ApplyGeometryDragOffset(dragOriginalWalls, dragOriginalSectors, dragMovingPoints, delta);
+        }
+
+        // Commits whatever the drag ended up doing. Called on mouse-up, and
+        // also when ImGui takes the mouse mid-drag: the walls have already
+        // visibly moved by then, so finishing is far less surprising than
+        // silently reverting.
+        void EndWallDrag() {
+            if (!draggingWallGeometry) return;
+
+            draggingWallGeometry = false;
+
+            dragOriginalWalls.clear();
+            dragOriginalSectors.clear();
+            dragMovingPoints.clear();
+            dragSnapIgnoredWalls.clear();
+
+            if (!dragMutatedGeometry) return;
+
+            dragMutatedGeometry = false;
+
+            // The move variant, not RebuildGeometryAfterEdit: the sectors
+            // moved with the walls and were re-triangulated as they went,
+            // so re-deriving them here would throw away perfectly good
+            // sectors (and their textures) to build identical new ones.
+            RebuildGeometryAfterMove();
+        }
+
+        // The distinct endpoint positions of the current selection. A
+        // corner shared by two selected walls must appear once, or it gets
+        // offset twice and the walls tear apart.
+        std::vector<Vector2> UniqueEndpointsOfSelection() {
+            const Level& level = LevelManager::CurrentLevel();
+
+            std::vector<Vector2> points;
+
+            const auto add = [&](const Vector2& point) {
+                for (const Vector2& existing : points)
+                    if (SamePoint(existing, point)) return;
+
+                points.push_back(point);
+            };
+
+            for (const ID wallID : selectedWalls) {
+                const auto it = level.wallIDToIndex.find(wallID);
+                if (it == level.wallIDToIndex.end()) continue;
+
+                add(level.walls[it->second].start);
+                add(level.walls[it->second].end);
+            }
+
+            return points;
+        }
+
+        bool MultiSelectModifierHeld() {
+            return InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+        }
+
+        bool RangeSelectModifierHeld() {
+            return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+        }
+
+        // Geometry Mode's whole pointer story: hover, select, drag, release.
+        // Sectors are never touched here - the moved walls are handed back
+        // to the topology pass on release, and it re-derives whatever
+        // sectors those walls bounded.
+        void HandleGeometryModeMouse(const Vector2& mouseWorld) {
+            const Level& level = LevelManager::CurrentLevel();
+
+            ID endpointWallID = INVALID_ID;
+            bool endpointIsStart = false;
+            const bool overEndpoint = PickSelectedWallEndpointAt(mouseWorld, &endpointWallID, &endpointIsStart);
+
+            const ID wallUnderCursor = PickWallAt(mouseWorld);
+
+            if (!draggingWallGeometry) hoveredWallID = wallUnderCursor;
+
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+                // Endpoint handles win over the wall body whenever the
+                // cursor is near both, so grabbing the corner of a short
+                // wall is never a coin flip.
+                if (overEndpoint) {
+                    const auto it = level.wallIDToIndex.find(endpointWallID);
+
+                    if (it != level.wallIDToIndex.end()) {
+                        const Wall& wall = level.walls[it->second];
+                        const Vector2 endpoint = endpointIsStart ? wall.start : wall.end;
+
+                        BeginWallDrag(mouseWorld, {endpoint}, endpoint, false);
+                        return;
+                    }
+                }
+
+                // Empty space clears the selection, and with it the wall
+                // inspector.
+                if (wallUnderCursor == INVALID_ID) {
+                    ClearWallSelection();
+                    return;
+                }
+
+                // Modifier clicks build a selection; they never start a
+                // drag, so multi-selecting can't nudge geometry by accident.
+                if (MultiSelectModifierHeld()) {
+                    ToggleWallSelection(wallUnderCursor);
+                    return;
+                }
+
+                if (RangeSelectModifierHeld()) {
+                    ExtendWallSelectionTo(wallUnderCursor);
+                    return;
+                }
+
+                const bool alreadyInSelection =
+                    std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
+
+                // Clicking a wall that is already part of a multi-selection
+                // keeps that selection and drags all of it; clicking
+                // anything else selects just that wall.
+                if (!alreadyInSelection || selectedWalls.size() <= 1) SelectWall(wallUnderCursor);
+                else {
+                    selectedWallID = wallUnderCursor;
+                    editingWall = true;
+                }
+
+                const auto it = level.wallIDToIndex.find(wallUnderCursor);
+                if (it == level.wallIDToIndex.end()) return;
+
+                BeginWallDrag(mouseWorld, UniqueEndpointsOfSelection(), level.walls[it->second].start, true);
+                return;
+            }
+
+            if (!draggingWallGeometry) return;
+
+            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) UpdateWallDrag(mouseWorld);
+            else EndWallDrag();
         }
     }
 
@@ -108,6 +356,17 @@ namespace MapEditorInternal {
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
+        // Geometry editing is gated entirely on Geometry Mode being active
+        // and ImGui not having the mouse: a click that lands on a panel
+        // must never move or deselect a wall behind it. A drag that is
+        // interrupted (by a mode switch, or by the pointer crossing onto a
+        // panel) is committed rather than abandoned - the walls have
+        // already moved on screen by then.
+        if (currentMode != MODE_GEOMETRY || mouseBlockedByImGui) {
+            hoveredWallID = INVALID_ID;
+            EndWallDrag();
+        }
+
         if (!mouseBlockedByImGui) {
             if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) {
                 const Vector2 mouseDelta = InputManager::GetMouseDelta();
@@ -115,6 +374,7 @@ namespace MapEditorInternal {
                 cameraPos.x -= mouseDelta.x / editorZoom;
                 cameraPos.y += mouseDelta.y / editorZoom;
             }
+            else if (currentMode == MODE_GEOMETRY) HandleGeometryModeMouse(mouseWorld);
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 if (currentMode == MODE_SECTOR) {
                     // Dispatches to whichever drawing tool is active
@@ -123,15 +383,6 @@ namespace MapEditorInternal {
                     // (via Resolve*Point, mirroring what ResolveSnapPoint
                     // used to do here directly for the freehand-only path).
                     HandleSectorDrawClick(mouseWorld);
-                }
-                else if (currentMode == MODE_DOT) {
-                    const bool snapToGridHeld =
-                        InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
-                        InputManager::GetKey(SDL_SCANCODE_RSHIFT);
-
-                    const Vector2 placePoint = snapToGridHeld ? SnapToGrid(mouseWorld) : mouseWorld;
-
-                    AddDot(placePoint);
                 }
                 else if (currentMode == MODE_ENTITY) {
                     Entity *en = EntityAt(mouseWorld);
@@ -175,7 +426,6 @@ namespace MapEditorInternal {
             }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
                 if (currentMode == MODE_ENTITY) HandleEntityModeRightClick(mouseWorld);
-                else if (currentMode == MODE_DOT) HandleDotModeRightClick(mouseWorld);
             }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
@@ -282,18 +532,10 @@ namespace MapEditorInternal {
 
                 for (const ID id : sectorsToDelete) DeleteSector(id);
             }
-            if (!selectedWalls.empty()) {
-                const std::vector<ID> wallsToDelete = selectedWalls;
-                selectedWalls.clear();
+            // One undoable operation with a single topology rebuild for
+            // the whole wall selection, rather than one of each per wall.
+            DeleteSelectedWalls();
 
-                for (const ID id : wallsToDelete) DeleteWall(id);
-            }
-            if (!selectedDots.empty()) {
-                const std::vector<ID> dotsToDelete = selectedDots;
-                selectedDots.clear();
-
-                for (const ID id : dotsToDelete) DeleteDot(id);
-            }
             editingEntity = false;
         }
     }

@@ -263,6 +263,13 @@ namespace {
     // Unsaved-changes flag — set on any edit, cleared on Save / new level
     bool hasUnsavedChanges = false;
 
+    // Set when the wall inspector moves an endpoint, cleared once the
+    // topology rebuild it needs has run. Drag-style widgets report a
+    // change every frame they're held, and that rebuild re-derives every
+    // sector in the level, so it waits for the widget to be released
+    // rather than running per frame.
+    bool wallGeometryDirtyFromInspector = false;
+
 
 
     // =========================================================================
@@ -301,7 +308,8 @@ namespace {
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
-        selectedDotID = INVALID_ID;
+
+        ClearWallSelection();
 
         editingSector = false;
         selectedSectorID = INVALID_ID;
@@ -1078,31 +1086,33 @@ namespace {
 
                     const bool selected = selectedIt != selectedWalls.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        const ID lastSelectedWallID = selectedWallID;
                         const bool hadSelectedWall = editingWall;
 
-                        selectedWallID = wall.id;
-                        editingWall = true;
-                        currentMode = MODE_DOT;
+                        // Clicking a wall in the hierarchy is the same
+                        // gesture as clicking it on the canvas: switch to
+                        // Geometry Mode and open the wall inspector.
+                        if (currentMode != MODE_GEOMETRY) {
+                            const Mode previousMode = currentMode;
+                            currentMode = MODE_GEOMETRY;
 
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedWall) {
-                            selectedWalls.clear();
-                            const ID firstID = std::min(wall.id, lastSelectedWallID);
-                            const ID lastID = std::max(wall.id, lastSelectedWallID);
+                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
+                        }
 
-                            for (const Wall &rangeWall: level.walls) {
-                                if (rangeWall.id >= firstID && rangeWall.id <= lastID)
-                                    selectedWalls.push_back(rangeWall.id);
-                            }
-                        }
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
-                            if (selectedIt == selectedWalls.end()) selectedWalls.push_back(wall.id);
-                            else selectedWalls.erase(selectedIt);
-                        }
-                        else {
-                            selectedWalls.clear();
-                            selectedWalls.push_back(wall.id);
-                        }
+                        // Routed through the same selection helpers the
+                        // canvas uses (rather than assigning the three
+                        // pieces of selection state by hand, the way the
+                        // sector and entity lists still do) so the
+                        // hierarchy can't leave the selection in a shape
+                        // the canvas considers impossible - a primary wall
+                        // that isn't in selectedWalls would show handles
+                        // for a wall the inspector isn't editing.
+                        // Behaviour is unchanged: Shift still takes the ID
+                        // range from the previous primary, Ctrl still
+                        // toggles, a plain click still replaces.
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedWall)
+                            ExtendWallSelectionTo(wall.id);
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) ToggleWallSelection(wall.id);
+                        else SelectWall(wall.id);
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1213,78 +1223,9 @@ namespace {
             }
         }
 
-        // ---- Dots ---------------------------------------------------------
-        {
-            const bool open = ImGui::CollapsingHeader(
-                Get("editor.hierarchy.dots").c_str(),
-                ImGuiTreeNodeFlags_DefaultOpen
-            );
-            DrawCountBadge(static_cast<int>(dots.size()));
-
-            if (open) {
-                ImGui::Indent();
-
-                ID dotPendingDelete = INVALID_ID;
-
-                for (const Dot &dot: dots) {
-                    const std::string label =
-                            Get("editor.hierarchy.dot") + " #" + std::to_string(dot.id) +
-                            "  (" + std::to_string(static_cast<int>(dot.position.x)) +
-                            ", " + std::to_string(static_cast<int>(dot.position.y)) + ")";
-                    if (!matches(label)) continue;
-
-                    ImGui::PushID(static_cast<int>(dot.id));
-
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.90f, 0.50f, 1.00f));
-                    ImGui::TextUnformatted("[D]");
-                    ImGui::PopStyleColor();
-
-                    ImGui::SameLine(0.0f, 6.0f);
-
-                    const auto selectedIt = std::find(selectedDots.begin(), selectedDots.end(), dot.id);
-
-                    const bool selected = selectedIt != selectedDots.end();
-                    if (ImGui::Selectable(label.c_str(), selected)) {
-                        const ID lastSelectedDotID = selectedDotID;
-                        const bool hadSelectedDot = selectedDotID != INVALID_ID;
-
-                        selectedDotID = dot.id;
-                        currentMode = MODE_DOT;
-
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedDot) {
-                            selectedDots.clear();
-                            const ID firstID = std::min(dot.id, lastSelectedDotID);
-                            const ID lastID = std::max(dot.id, lastSelectedDotID);
-
-                            for (const Dot &rangeDot: dots) {
-                                if (rangeDot.id >= firstID && rangeDot.id <= lastID)
-                                    selectedDots.push_back(rangeDot.id);
-                            }
-                        }
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
-                            if (selectedIt == selectedDots.end()) selectedDots.push_back(dot.id);
-                            else selectedDots.erase(selectedIt);
-                        }
-                        else {
-                            selectedDots.clear();
-                            selectedDots.push_back(dot.id);
-                        }
-                    }
-
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem(Get("editor.delete").c_str()))
-                            dotPendingDelete = dot.id;
-                        ImGui::EndPopup();
-                    }
-
-                    ImGui::PopID();
-                }
-
-                ImGui::Unindent();
-
-                if (dotPendingDelete != INVALID_ID) DeleteDot(dotPendingDelete);
-            }
-        }
+        // Dots deliberately have no hierarchy section: they are internal
+        // snap anchors, not user-facing objects (see EditorInternal.hpp).
+        // Walls, above, are what Geometry Mode edits.
 
         ImGui::PopStyleVar();
         ImGui::End();
@@ -1297,9 +1238,9 @@ namespace {
     void DrawMode() {
         const float buttonWidth = (ImGui::GetContentRegionAvail().x - 8.0f) / 3.0f;
 
-        // Dot Mode button
+        // Geometry / Wall Edit Mode button (replaced the Dot Mode button)
         {
-            const bool active = (currentMode == MODE_DOT);
+            const bool active = (currentMode == MODE_GEOMETRY);
 
             if (active) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
@@ -1312,10 +1253,10 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
             }
 
-            if (ImGui::Button(Get("mode.dot").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                if (currentMode != MODE_DOT) {
+            if (ImGui::Button(Get("mode.geometry").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                if (currentMode != MODE_GEOMETRY) {
                     const Mode previousMode = currentMode;
-                    currentMode = MODE_DOT;
+                    currentMode = MODE_GEOMETRY;
 
                     if (previousMode == MODE_SECTOR) CancelActiveDrawing();
                 }
@@ -1416,8 +1357,12 @@ namespace {
         }
     }
 
+    // Geometry Mode's inspector. This is the same
+    // ImGuiDrawFunctions::DrawWallEditor panel Dot Mode used to open, just
+    // reached from the new mode's selection - there is deliberately no
+    // second wall editor.
     void DrawSelectedWallInspector(Level &level) {
-        if (!editingWall || currentMode != MODE_DOT) return;
+        if (!editingWall || currentMode != MODE_GEOMETRY) return;
 
         const auto it = level.wallIDToIndex.find(selectedWallID);
         if (it == level.wallIDToIndex.end()) {
@@ -1428,9 +1373,54 @@ namespace {
 
         Wall &wall = level.walls[it->second];
 
-        if (ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE)) {
+        // Typing a coordinate here is a geometry edit exactly like
+        // dragging the wall on the canvas, so it has to go through the
+        // same shared-endpoint move - otherwise editing a coordinate
+        // silently tears the corner away from every other wall attached
+        // to it - and trigger the same topology rebuild.
+        const Vector2 startBeforeEdit = wall.start;
+        const Vector2 endBeforeEdit = wall.end;
+
+        const bool deleteRequested =
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE);
+
+        if (deleteRequested) {
             DeleteWall(selectedWallID);
             hasUnsavedChanges = true;
+            return;
+        }
+
+        const Vector2 startAfterEdit = wall.start;
+        const Vector2 endAfterEdit = wall.end;
+
+        const bool startMoved = !SamePoint(startBeforeEdit, startAfterEdit);
+        const bool endMoved = !SamePoint(endBeforeEdit, endAfterEdit);
+
+        if (startMoved || endMoved) {
+            // Put the edited endpoints back first, so the undo snapshot
+            // records the pre-edit geometry and MoveSharedEndpoint sees
+            // this wall in the same state as everything else joined to
+            // that corner. Then move them all together.
+            wall.start = startBeforeEdit;
+            wall.end = endBeforeEdit;
+
+            if (!wallGeometryDirtyFromInspector)
+                PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot());
+
+            if (startMoved) MoveSharedEndpoint(startBeforeEdit, startAfterEdit);
+            if (endMoved) MoveSharedEndpoint(endBeforeEdit, endAfterEdit);
+
+            wallGeometryDirtyFromInspector = true;
+            hasUnsavedChanges = true;
+        }
+
+        if (wallGeometryDirtyFromInspector && !ImGui::IsAnyItemActive()) {
+            wallGeometryDirtyFromInspector = false;
+
+            // A coordinate edit moves points, it doesn't change which
+            // faces exist - so the sectors MoveSharedEndpoint already
+            // moved are kept as they are rather than re-derived.
+            RebuildGeometryAfterMove();
         }
     }
 
@@ -1788,7 +1778,8 @@ namespace MapEditorInternal {
         dots.clear();
         dotIDToIndex.clear();
         nextDotID = 0;
-        selectedDotID = INVALID_ID;
+
+        ClearWallSelection();
 
         hasUnsavedChanges = false;
 
@@ -1834,6 +1825,35 @@ namespace MapEditorInternal {
 
         ImGui::Checkbox(Get("editor.grid.snap_to_points").c_str(), &vertexSnapEnabled);
         HoverTooltip(Get("editor.tooltip.grid.snap_to_points").c_str());
+    }
+
+    // Geometry / Wall Edit Mode's panel. Deliberately only hints and a
+    // selection count: the wall's actual properties live in the existing
+    // wall inspector (DrawSelectedWallInspector), which this mode opens on
+    // selection.
+    void DrawGeometryModePanel() {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        SectionHeader(Get("editor.geometry.title").c_str());
+        ImGui::Spacing();
+
+        const int selectedCount = static_cast<int>(selectedWalls.size());
+
+        if (selectedCount > 0) {
+            const std::string selectedText = (selectedCount == 1)
+                                                 ? Get("editor.geometry.selected_singular")
+                                                 : Get("editor.geometry.selected_plural");
+
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.86f, 1.00f, 1.00f));
+            ImGui::Text(selectedText.c_str(), selectedCount);
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::TextDisabled("%s", Get("editor.geometry.hint.select").c_str());
+        ImGui::TextDisabled("%s", Get("editor.geometry.hint.drag").c_str());
+        ImGui::TextDisabled("%s", Get("editor.geometry.hint.delete").c_str());
     }
 
     void DrawToolButton(const char* label, const DrawTool tool, const float width) {
@@ -2017,10 +2037,13 @@ namespace MapEditorInternal {
         ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
         HoverTooltip(Get("editor.tooltip.texture_view_mode").c_str());
 
-        // ---- Grid & snapping (visible in every mode - Dot Mode's
-        // shift-to-snap placement and every Sector drawing tool both
+        // ---- Grid & snapping (visible in every mode - Geometry Mode's
+        // wall/endpoint dragging and every Sector drawing tool both
         // read GRID_SIZE/gridSnapEnabled/vertexSnapEnabled) -----------------
         DrawGridSnappingSection();
+
+        // ---- Geometry Mode hints (only visible in Geometry mode) ---------
+        if (currentMode == MODE_GEOMETRY) DrawGeometryModePanel();
 
         // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {

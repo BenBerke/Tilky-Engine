@@ -37,8 +37,14 @@ namespace MapEditorInternal {
     // preview's valid/invalid tint always matches what a click would do.
     constexpr float MIN_DRAW_SHAPE_DIMENSION = 0.25f;
 
+    // MODE_GEOMETRY took over the slot (and the default) MODE_DOT used
+    // to hold: dots are no longer a user-facing object type, and editing
+    // the wall graph replaced placing them. Sector selection, editing and
+    // creation stay entirely in MODE_SECTOR - MODE_GEOMETRY never edits a
+    // sector directly, it edits walls and lets the existing topology pass
+    // re-derive the sectors around them.
     enum Mode {
-        MODE_DOT,
+        MODE_GEOMETRY,
         MODE_SECTOR,
         MODE_ENTITY,
 
@@ -48,7 +54,7 @@ namespace MapEditorInternal {
     enum Action {
         ACTION_CREATE_SECTOR,
         ACTION_CREATE_WALL,
-        ACTION_CREATE_CORNER, // historical name - now fires for Dot placement/undo.
+        ACTION_CREATE_CORNER, // historical name - Dot lifecycle only (see AddDot; dots are internal snap anchors now, not user-facing objects).
         ACTION_CREATE_OBJECT,
         ACTION_APPLY_GEOMETRY, // one MapEditorInternal::ApplyDrawnGeometry call, however many walls/sectors it touched internally.
     };
@@ -85,9 +91,19 @@ namespace MapEditorInternal {
         CURVE_STAGE_CONTROL,
     };
 
-    // A Dot is a free-floating, off-grid-capable editor
-    // reference point with a stable ID. It is editor-session data (kept in
-    // MapEditorInternal, NOT in Level/LevelSerialization used as a visual aid and as a snap target for sector chains.
+    // A Dot is a free-floating, off-grid-capable editor reference point
+    // with a stable ID. It is editor-session data (kept in
+    // MapEditorInternal, NOT in Level/LevelSerialization), used as a snap
+    // target for sector chains.
+    //
+    // Dots are INTERNAL ONLY now that Dot Mode has become MODE_GEOMETRY:
+    // nothing creates, selects, deletes or lists them from the UI any
+    // more. The container and its lifecycle are kept because three live
+    // readers still consult it - ResolveSnapPoint (snap candidates),
+    // IsPointOnExistingGeometry (did a chain click land on existing
+    // geometry) and FindExistingCorner (manual-sector corner picking) -
+    // so removing it is a deliberate, separate change to those three,
+    // not part of dropping the mode.
     struct Dot {
         ID id = INVALID_ID;
         Vector2 position{};
@@ -123,7 +139,7 @@ namespace MapEditorInternal {
 
         ID selectedSectorID = INVALID_ID;
         ID selectedWallID = INVALID_ID;
-        ID selectedDotID = INVALID_ID;
+        std::vector<ID> selectedWalls;
         bool editingSector = false;
         bool editingWall = false;
     };
@@ -151,10 +167,11 @@ namespace MapEditorInternal {
 
     extern Vector2 cameraPos;
 
+    // Internal snap anchors - see the Dot struct above for why these
+    // outlived Dot Mode. Nothing user-facing reads or writes them.
     extern std::vector<Dot> dots;
     extern ID nextDotID;
     extern std::unordered_map<ID, int> dotIDToIndex;
-    extern ID selectedDotID;
 
     // Sector creation chain
     extern std::vector<Vector2> sectorBeingCreated;
@@ -240,9 +257,31 @@ namespace MapEditorInternal {
     extern Vector2 curveEnd;
     extern int curveSubdivisions; // >= 1
 
-    // Dot Mode — Wall inspector (right-click select)
+    // =========================================================================
+    //  Geometry / Wall Edit Mode — selection state
+    // =========================================================================
+    // Invariants, maintained by SelectWall/ToggleWallSelection/
+    // ExtendWallSelectionTo/ClearWallSelection (and by DeleteWall, which
+    // drops deleted IDs out of them). Anything that selects a wall should
+    // go through those rather than assigning here, so the three stay
+    // consistent:
+    //
+    //   selectedWalls  - the whole selection, possibly empty.
+    //   selectedWallID - the "primary" wall, the one the inspector shows.
+    //                    Either INVALID_ID or a member of selectedWalls.
+    //   editingWall    - whether the wall inspector is open. True exactly
+    //                    when selectedWallID != INVALID_ID.
     extern bool editingWall;
     extern ID selectedWallID;
+
+    // Recomputed every frame by HandleEditorInput() while in
+    // MODE_GEOMETRY; INVALID_ID in every other mode and whenever ImGui
+    // has the mouse. Read-only elsewhere, for the hover highlight.
+    extern ID hoveredWallID;
+
+    // True from the mouse-down that starts a wall body/endpoint drag
+    // until that drag is committed.
+    extern bool draggingWallGeometry;
 
     // Shared Asset Browser instance, rooted at the project's Assets folder.
     // Defined in MapEditorUI.cpp so both it and ImGuiDrawFunctions.cpp (via
@@ -256,7 +295,7 @@ namespace MapEditorInternal {
     // =========================================================================
     // Added alongside the UIEditorUI.cpp / UIEditorDraw.cpp / UIEditorInput.cpp
     // implementation. Mirrors the existing conventions above: selection is a
-    // bare stable ID (like selectedSectorID/selectedDotID/selectedWallID, NOT
+    // bare stable ID (like selectedSectorID/selectedWallID, NOT
     // a cached Entity copy — resolve via LevelManager::CurrentLevel().GetEntity()
     // right before use), and view/overlay state is plain extern data owned by
     // EditorState.cpp.
@@ -289,7 +328,6 @@ namespace MapEditorInternal {
 
     extern std::vector<ID> selectedEntities;
     extern std::vector<ID> selectedSectors;
-    extern std::vector<ID> selectedDots;
     extern std::vector<ID> selectedWalls;
 
     // Canvas-space (0,0 = top-left of the current screen, matching how
@@ -434,6 +472,16 @@ namespace MapEditorInternal {
     // radius, else grid snap.
     Vector2 ResolveSnapPoint(const Vector2& mouseWorld);
 
+    // ResolveSnapPoint, minus whatever is currently being dragged:
+    // `ignoredPoints` drops those exact endpoints/dots from the point
+    // candidates, `ignoredWallIDs` drops those walls from the "closest
+    // point along a wall's interior" fallback. Without both, a dragged
+    // endpoint snaps onto its own old position (or onto the wall it
+    // belongs to) and can never actually move.
+    [[nodiscard]] Vector2 ResolveSnapPointExcluding(const Vector2& mouseWorld,
+                                                    const std::vector<Vector2>& ignoredPoints,
+                                                    const std::vector<ID>& ignoredWallIDs);
+
     [[nodiscard]] bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point);
 
     // Render-only: the grid-dot spacing DrawGridDots() should iterate
@@ -451,8 +499,17 @@ namespace MapEditorInternal {
     void DrawSectorPreview();
     void DrawSnapIndicator();
     void DrawExistingSectors();
-    void DrawDots();
     void DrawWalls();
+
+    // Geometry Mode's canvas overlay: hover highlight, selection
+    // highlight, and the draggable endpoint handles of the selected
+    // wall(s). Draws nothing in any other mode.
+    //
+    // This REPLACED DrawDots() in the editor's render loop: swap that
+    // call for this one. It must run AFTER DrawWalls(), so the hover /
+    // selection highlights and the handles sit on top of the walls
+    // rather than under them.
+    void DrawGeometryEditOverlay();
     void DrawEntities();
     void DrawGridDots();
 
@@ -471,19 +528,120 @@ namespace MapEditorInternal {
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b);
     int GetWallAtPoint(const Vector2& worldPoint);
 
-    // Dot lifecycle.
+    // Dot lifecycle. Internal only - nothing user-facing creates or
+    // deletes dots any more (see the Dot struct above).
     void AddDot(const Vector2& position);
     void DeleteDot(ID dotID);
 
     // Sector deletion with full ID-safety cleanup.
     void DeleteSector(ID sectorID);
 
+    // Also drops `wallID` out of the Geometry Mode selection, and runs
+    // the post-edit topology rebuild rather than a bare relink.
     void DeleteWall(ID wallID);
 
     void HandleEntityModeLeftClick(const Vector2& point);
     void HandleEntityModeRightClick(const Vector2& point);
     void HandleSectorModeRightClick(const Vector2& point);
-    void HandleDotModeRightClick(const Vector2& point);
+
+    // =========================================================================
+    //  Geometry / Wall Edit Mode
+    // =========================================================================
+    // Wall picking, selection and editing for MODE_GEOMETRY. Everything
+    // here works on walls (and, through shared endpoints, on the wall
+    // graph); sectors are never edited directly. RebuildGeometryAfterEdit()
+    // hands the changed wall graph back to MapTopology and lets it
+    // re-derive them, which is what keeps sector loops/holes/triangles
+    // correct after a wall is moved, reshaped or deleted.
+
+    // Both radii are in *pixels* and are converted using the current
+    // editorZoom at pick time, so picking is exactly as easy zoomed all
+    // the way in as it is zoomed out. The endpoint radius is the larger
+    // of the two: when the cursor is near both a handle and the wall
+    // body, the handle wins.
+    constexpr float WALL_PICK_RADIUS_PIXELS = 10.0f;
+    constexpr float WALL_ENDPOINT_PICK_RADIUS_PIXELS = 12.0f;
+
+    // Wall under `mouseWorld` within the screen-space tolerance, or
+    // INVALID_ID. Nearest wall wins when several are in range.
+    [[nodiscard]] ID PickWallAt(const Vector2& mouseWorld);
+
+    // Endpoint handle under `mouseWorld`, searching *only* the currently
+    // selected walls - handles are drawn for those and nothing else, so
+    // an unselected wall must never have an invisible grab zone.
+    // `outIsStart` distinguishes wall.start from wall.end.
+    [[nodiscard]] bool PickSelectedWallEndpointAt(const Vector2& mouseWorld, ID* outWallID, bool* outIsStart);
+
+    // The supported ways to change the wall selection (see the invariants
+    // next to selectedWalls above). SelectWall replaces the selection and
+    // opens the inspector; ExtendWallSelectionTo mirrors the hierarchy's
+    // Shift behaviour, taking every wall whose ID lies between the
+    // primary and `wallID`.
+    void SelectWall(ID wallID);
+    void ToggleWallSelection(ID wallID);
+    void ExtendWallSelectionTo(ID wallID);
+    void ClearWallSelection();
+
+    // Moves every wall endpoint - and every sector boundary vertex -
+    // sitting exactly on `from` to `to`. Moving the walls alone is not
+    // enough: a sector's `vertices`/`innerLoops` are its own copy of that
+    // boundary, so leaving them behind would strand the floor where the
+    // wall used to be. Exact coordinate comparison is deliberate and
+    // matches the rest of the editor (see IsPointOnExistingGeometry):
+    // walls and the sectors built from them store the identical value,
+    // they are never two independently computed floats.
+    //
+    // Sectors touched this way keep their ID, floors, textures, light,
+    // colours and entity list - only the moved points and the triangles
+    // derived from them change.
+    void MoveSharedEndpoint(const Vector2& from, const Vector2& to);
+
+    // One frame of an in-progress drag. `originalWalls`/`originalSectors`
+    // are the lists captured when the drag started, and `movingPoints` the
+    // endpoint positions (from that same capture) that follow the cursor.
+    // Everything is rewritten from the capture each frame rather than
+    // nudged by a per-frame delta, so a long drag can't accumulate float
+    // drift and a shared corner can't half-follow the cursor.
+    //
+    // Sectors are edited in place, for the same reason MoveSharedEndpoint
+    // does: re-deriving them from the moved walls would hand back
+    // brand-new Sector objects and lose everything that isn't geometry.
+    void ApplyGeometryDragOffset(const std::vector<Wall>& originalWalls,
+                                 const std::vector<Sector>& originalSectors,
+                                 const std::vector<Vector2>& movingPoints,
+                                 const Vector2& delta);
+
+    // The two post-edit rebuilds. Which one an edit needs depends on
+    // whether it changed the *shape* of the level or its *topology*:
+    //
+    //  - RebuildGeometryAfterMove: for edits that only moved existing
+    //    points. The sector layer is still correct, so it is kept exactly
+    //    as it is (IDs, floors, textures, light, entities all intact) -
+    //    this only re-triangulates and relinks. Use it for wall and
+    //    endpoint drags and for coordinate edits in the inspector.
+    //
+    //  - RebuildGeometryAfterEdit: for edits that changed which faces
+    //    exist - a deleted wall can open a sector's boundary, and no
+    //    amount of moving points fixes that. Hands the wall graph back to
+    //    MapTopology to re-derive the sector layer, falling back to a
+    //    plain relink if it can't reconcile the level (the same contract
+    //    DeleteSector relies on). This one CAN lose per-sector properties,
+    //    because the sectors it produces are newly built.
+    //
+    // Both are once-per-completed-edit calls, never per frame of a drag.
+    void RebuildGeometryAfterMove();
+    void RebuildGeometryAfterEdit();
+
+    // Undo support for geometry edits. Wall moves and deletions reuse the
+    // existing whole-operation ACTION_APPLY_GEOMETRY entry rather than
+    // introducing a second undo kind: capture before touching anything,
+    // push only once the edit has actually changed something.
+    [[nodiscard]] GeometrySnapshot CaptureGeometryUndoSnapshot();
+    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot);
+
+    // Deletes every wall in the current selection as one undoable
+    // operation, with a single topology rebuild at the end.
+    void DeleteSelectedWalls();
 
     // Texture preview / Texture View Mode access point. Textures are
     // identified by name (relative to the Textures folder), not by index.
