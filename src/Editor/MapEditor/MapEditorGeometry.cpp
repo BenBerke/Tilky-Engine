@@ -986,9 +986,7 @@ namespace MapEditorInternal {
     std::string GetActiveDrawToolName() {
         switch (currentDrawTool) {
             case DRAWTOOL_FREEHAND:
-                return Localisation::Get(manualSectorMode
-                                             ? "editor.draw.tool.freehand_manual"
-                                             : "editor.draw.tool.freehand");
+                return Localisation::Get(manualSectorMode ? "editor.draw.tool.freehand_manual" : "editor.draw.tool.freehand");
             case DRAWTOOL_RECTANGLE: return Localisation::Get("editor.draw.tool.rectangle");
             case DRAWTOOL_POLYGON:   return Localisation::Get("editor.draw.tool.polygon");
             case DRAWTOOL_CIRCLE:    return Localisation::Get("editor.draw.tool.circle");
@@ -1034,11 +1032,11 @@ namespace MapEditorInternal {
                 const Vector2 next = ResolveFreehandPoint(mouseWorld);
                 const float edgeLength = std::sqrt(Vector2Math::DistanceSquared(sectorBeingCreated.back(), next));
 
-                // std::snprintf(buffer, sizeof(buffer), "%d %s   %s: %.1f",
-                //               static_cast<int>(sectorBeingCreated.size()),
-                //               Localisation::Get("editor.draw.measure.points").c_str(),
-                //               Localisation::Get("editor.draw.measure.next_edge").c_str(),
-                //               edgeLength);
+                std::snprintf(buffer, sizeof(buffer), "%d %s   %s: %.1f",
+                              static_cast<int>(sectorBeingCreated.size()),
+                              Localisation::Get("editor.draw.measure.points").c_str(),
+                              Localisation::Get("editor.draw.measure.next_edge").c_str(),
+                              edgeLength);
 
                 return buffer;
             }
