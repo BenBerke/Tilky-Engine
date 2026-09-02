@@ -1879,7 +1879,7 @@ namespace MapEditorInternal {
         //ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.polygon").c_str(), DRAWTOOL_POLYGON, toolButtonWidth);
 
-        //DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
+        DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
         ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.curve").c_str(), DRAWTOOL_CURVE, toolButtonWidth);
 

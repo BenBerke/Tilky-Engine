@@ -22,9 +22,8 @@ namespace MapEditorInternal {
         const float dy = end.y - start.y;
 
         const float length = std::sqrt(dx * dx + dy * dy);
-        if (length <= 0.0001f) {
-            return;
-        }
+        if (length <= 0.0001f) return;
+
 
         const float normalX = -dy / length;
         const float normalY = dx / length;
@@ -187,7 +186,7 @@ namespace MapEditorInternal {
             std::snprintf(buffer, sizeof(buffer), "%.1f", length);
 
             const Vector2 midpoint = {(worldA.x + worldB.x) * 0.5f, (worldA.y + worldB.y) * 0.5f};
-          s  DrawWorldLabel(buffer, midpoint, ThemeTextColor());
+            DrawWorldLabel(buffer, midpoint, ThemeTextColor());
         }
 
         void DrawPreviewOutline(const std::vector<Vector2>& points, const bool closeLoop, const bool valid) {
