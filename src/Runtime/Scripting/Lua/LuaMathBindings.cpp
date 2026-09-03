@@ -115,7 +115,7 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
         math = existing.as<sol::table>();
     }
     else {
-        if (existing.get_type() != sol::type::nil) 
+        if (existing.get_type() != sol::type::nil)
             spdlog::warn("Replacing Lua global 'Tmath' because it is not a table");
 
         math = lua.create_named_table("Tmath");
