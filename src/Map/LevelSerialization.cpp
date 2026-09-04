@@ -345,10 +345,10 @@ namespace {
         }
     }
 
-    void SaveSounds(json& levelData, const Level& level) {
+    void SaveSounds(json &levelData, const Level &level) {
         levelData["sounds"] = json::array();
 
-        for (const Sound& sound : level.sounds) {
+        for (const Sound &sound: level.sounds) {
             if (sound.fileName.empty()) continue;
 
             levelData["sounds"].push_back({{"fileName", sound.fileName}});
@@ -358,13 +358,15 @@ namespace {
     void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
-        if (!levelData.contains("walls")) return;
+        if (!levelData.contains("walls") || !levelData.at("walls").is_array()) return;
 
         ID highestWallID = 0;
         std::unordered_set<ID> seenWallIDs;
 
-        for (int i = 0; i < static_cast<int>(levelData["walls"].size()); ++i) {
-            const json &wallJson = levelData["walls"][i];
+        const json &wallsJson = levelData.at("walls");
+
+        for (int i = 0; i < static_cast<int>(wallsJson.size()); ++i) {
+            const json &wallJson = wallsJson.at(i);
 
             const Vector2 start = {
                 wallJson.at("start").at(0).get<float>(),
@@ -376,9 +378,40 @@ namespace {
                 wallJson.at("end").at(1).get<float>()
             };
 
-            const uint_fast32_t color = static_cast<uint_fast32_t>(
-                wallJson.value("color", std::uint32_t{0xFFFFFFFFu})
-            );
+            Vector4 color = {1.0f, 1.0f, 1.0f,1.0f};
+
+            if (wallJson.contains("color")) {
+                const json &colorJson = wallJson.at("color");
+
+                if (colorJson.is_array() && colorJson.size() >= 4) {
+                    color = {
+                        colorJson.at(0).get<float>(),
+                        colorJson.at(1).get<float>(),
+                        colorJson.at(2).get<float>(),
+                        colorJson.at(3).get<float>()
+                    };
+                }
+                // Backward compatibility with old packed RGBA colors.
+                else if (colorJson.is_number_unsigned() || colorJson.is_number_integer()) {
+                    const std::uint32_t packedColor = colorJson.get<std::uint32_t>();
+
+                    constexpr float BYTE_TO_FLOAT = 1.0f / 255.0f;
+
+                    color = {
+                        static_cast<float>(packedColor & 0xFFu) *
+                        BYTE_TO_FLOAT,
+
+                        static_cast<float>((packedColor >> 8u) & 0xFFu) *
+                        BYTE_TO_FLOAT,
+
+                        static_cast<float>((packedColor >> 16u) & 0xFFu) *
+                        BYTE_TO_FLOAT,
+
+                        static_cast<float>((packedColor >> 24u) & 0xFFu) *
+                        BYTE_TO_FLOAT
+                    };
+                }
+            }
 
             Wall wall(
                 start,
@@ -389,26 +422,27 @@ namespace {
                 wallJson.value("textureFileName", std::string{})
             );
 
-            if (wallJson.contains("textureOffset")) {
+            if (wallJson.contains("textureOffset") &&
+                wallJson.at("textureOffset").is_array() && wallJson.at("textureOffset").size() >= 2) {
                 wall.textureOffset = {
                     wallJson.at("textureOffset").at(0).get<float>(),
                     wallJson.at("textureOffset").at(1).get<float>()
                 };
-            } else wall.textureOffset = {0.0f, 0.0f};
+            }
+            else wall.textureOffset = {0.0f,0.0f};
 
-            wall.id = LoadIDField(
-                wallJson,
-                "id",
-                static_cast<ID>(i)
-            );
+
+            wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
             if (wall.id == INVALID_ID) wall.id = static_cast<ID>(i);
+
 
             if (seenWallIDs.contains(wall.id)) {
                 const ID reassigned = highestWallID + 1;
 
                 spdlog::warn(
-                    "LoadWalls: duplicate wall id {} at array index {} - reassigning to {}",
+                    "LoadWalls: duplicate wall id {} at array index {} - "
+                    "reassigning to {}",
                     wall.id,
                     i,
                     reassigned
@@ -423,10 +457,7 @@ namespace {
             level.walls.push_back(std::move(wall));
         }
 
-        level.nextWallID = std::max(
-            level.nextWallID,
-            highestWallID + 1
-        );
+        level.nextWallID = std::max(level.nextWallID,highestWallID + 1);
     }
 
     void SaveWalls(json &levelData, const Level &level) {
@@ -447,7 +478,14 @@ namespace {
                         wall.end.y
                     }
                 },
-                {"color", static_cast<std::uint32_t>(wall.color)},
+                {
+                    "color", {
+                        wall.color.x,
+                        wall.color.y,
+                        wall.color.z,
+                        wall.color.w
+                    }
+                },
                 {"textureFileName", wall.textureFileName},
                 {
                     "textureOffset", {
@@ -456,7 +494,7 @@ namespace {
                     }
                 },
                 {"frontSector", wall.frontSector},
-                {"backSector", wall.backSector},
+                {"backSector", wall.backSector}
             });
         }
     }
@@ -479,9 +517,8 @@ namespace {
 
             const json &vectorJson = parentJson.at(field);
 
-            if (!vectorJson.is_array() || vectorJson.size() != 3) {
+            if (!vectorJson.is_array() || vectorJson.size() != 3)
                 return defaultValue;
-            }
 
             return {
                 vectorJson[0].get<float>(),

@@ -656,14 +656,17 @@ namespace ImGuiDrawFunctions {
         Tooltip(Get("editor.tooltip.wall.texture").c_str());
 
         FieldWidth(220.0f);
-        ImVec4 wallColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(wall.color));
+
         if (ImGui::ColorEdit4(
             Get("wall.color").c_str(),
-            &wallColor.x,
+            &wall.color.x,
             ImGuiColorEditFlags_AlphaBar |
             ImGuiColorEditFlags_AlphaPreviewHalf |
-            ImGuiColorEditFlags_Uint8
-        )) wall.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(wallColor));
+            ImGuiColorEditFlags_HDR |
+            ImGuiColorEditFlags_Float
+        )) {
+            //UploadGpuWallsFromMap();
+        }
 
         Tooltip(Get("editor.tooltip.wall.color").c_str());
 

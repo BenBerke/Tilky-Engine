@@ -19,7 +19,7 @@ struct Wall {
     ID id = INVALID_ID;
 
     Vector2 start, end;
-    uint_fast32_t color;
+    Vector4 color;
     Vector2 textureOffset;
 
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
@@ -55,7 +55,7 @@ struct Wall {
     Wall(
     const Vector2& start,
     const Vector2& end,
-    const uint_fast32_t color,
+    const Vector4 color,
     const ID fs = INVALID_ID,
     const ID bs = INVALID_ID,
     std::string textureFileName = {},

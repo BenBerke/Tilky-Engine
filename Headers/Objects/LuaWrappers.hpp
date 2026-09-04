@@ -1292,13 +1292,13 @@ struct ScriptWall {
         return wall->end;
     }
 
-    [[nodiscard]] uint_fast32_t GetColor() const {
+    [[nodiscard]] Vector4 GetColor() const {
         const Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid WallRef");
         return wall->color;
     }
 
-    void SetColor(const uint_fast32_t& value) const {
+    void SetColor(const Vector4& value) const {
         Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid WallRef");
         wall->color = value;

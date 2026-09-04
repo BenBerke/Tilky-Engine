@@ -643,7 +643,7 @@ void renderWall() {
     vTextureIndex = int(wall.data.x);
     vFlatTextureIndex = -1;
     vSpriteTextureIndex = -1;
-    vColor = wall.color / 255.0;
+    vColor = wall.color;
 
     vWorldPos = worldPos;
     vSurfaceCoord = surfaceCoords[gl_VertexID];

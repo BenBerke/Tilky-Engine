@@ -58,12 +58,7 @@ namespace {
         );
     }
 
-    void PushOrMergeWallSpan(
-        std::vector<WallSpan> &spans,
-        const float bottom,
-        const float top,
-        const WallSpanSide side
-    ) {
+    void PushOrMergeWallSpan(std::vector<WallSpan> &spans, const float bottom, const float top, const WallSpanSide side) {
         if (top - bottom <= MIN_WALL_HEIGHT) return;
 
         if (!spans.empty()) {
@@ -79,10 +74,7 @@ namespace {
         spans.push_back({bottom, top, side});
     }
 
-    std::vector<WallSpan> BuildWallSpans(
-        const Sector *frontSector,
-        const Sector *backSector
-    ) {
+    std::vector<WallSpan> BuildWallSpans(const Sector *frontSector, const Sector *backSector) {
         std::vector<float> heights;
 
         if (frontSector != nullptr) AddSectorHeights(*frontSector, heights);
@@ -100,13 +92,9 @@ namespace {
 
             const float sampleHeight = (bottom + top) * 0.5f;
 
-            const bool frontOpen =
-                    frontSector != nullptr &&
-                    IsSectorOpenAtHeight(*frontSector, sampleHeight);
+            const bool frontOpen = frontSector != nullptr && IsSectorOpenAtHeight(*frontSector, sampleHeight);
 
-            const bool backOpen =
-                    backSector != nullptr &&
-                    IsSectorOpenAtHeight(*backSector, sampleHeight);
+            const bool backOpen = backSector != nullptr && IsSectorOpenAtHeight(*backSector, sampleHeight);
 
             if (frontOpen == backOpen) continue;
 
@@ -124,17 +112,15 @@ namespace {
     void PushGpuWallPiece(
     std::vector<GpuWall>& gpuWalls,
     const Wall& wall,
-    const float bottomHeight,
-    const float topHeight,
-    const uint_fast32_t packedColor,
-    const float textureAnchorHeight,
-    const float textureDirection,
-    const float textureRegionIndex,
-    const WallSpanSide side
+    float bottomHeight,
+    float topHeight,
+    const Vector4& color,
+    float textureAnchorHeight,
+    float textureDirection,
+    float textureRegionIndex,
+    WallSpanSide side
 ) {
         if (topHeight - bottomHeight <= MIN_WALL_HEIGHT) return;
-
-        const uint32_t color = static_cast<uint32_t>(packedColor);
 
         GpuWall gpuWall{};
 
@@ -152,12 +138,7 @@ namespace {
             wall.end.y
         };
 
-        gpuWall.color = {
-            static_cast<float>(color & 0xFFu),
-            static_cast<float>((color >> 8u) & 0xFFu),
-            static_cast<float>((color >> 16u) & 0xFFu),
-            static_cast<float>((color >> 24u) & 0xFFu)
-        };
+        gpuWall.color = color;
 
         gpuWall.heights = {
             bottomHeight,
