@@ -34,7 +34,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Engine/InputManager.hpp"
-#include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+// #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Internal helpers (anonymous namespace)
@@ -467,40 +467,33 @@ namespace ImGuiDrawFunctions {
 
             // ── Colors ───────────────────────────────────────────────────────────
 
-            ImVec4 floorColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(sectorFloor.floor.color));
-
             FieldWidth(220.0f);
 
             if (ImGui::ColorEdit4(
                 Get("sector.floor_color").c_str(),
-                &floorColor.x,
+                &sectorFloor.floor.color.x,
                 ImGuiColorEditFlags_AlphaBar |
                 ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_Uint8
-            )) {
-                sectorFloor.floor.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(floorColor));
-            }
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float
+            )) {}
 
-            if (ImGui::SmallButton("Reset##floor_color")) {
-                sectorFloor.floor.color = static_cast<uint_fast32_t>(IM_COL32(255, 255, 255, 255));
-            }
-
-            ImVec4 ceilingColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(sectorFloor.ceiling.color));
+            if (ImGui::SmallButton("Reset##floor_color"))
+                sectorFloor.floor.color = {1.0f, 1.0f, 1.0f, 1.0f};
 
             FieldWidth(220.0f);
 
             if (ImGui::ColorEdit4(
                 Get("sector.ceil_color").c_str(),
-                &ceilingColor.x,
+                &sectorFloor.ceiling.color.x,
                 ImGuiColorEditFlags_AlphaBar |
                 ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_Uint8
-            )) {
-                sectorFloor.ceiling.color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(ceilingColor));
-            }
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float
+            )) {}
 
             if (ImGui::SmallButton("Reset##ceiling_color"))
-                sectorFloor.ceiling.color = static_cast<uint_fast32_t>(IM_COL32(255, 255, 255, 255));
+                sectorFloor.ceiling.color = {1.0f, 1.0f, 1.0f, 1.0f};
 
             ImGui::Spacing();
 
@@ -521,10 +514,7 @@ namespace ImGuiDrawFunctions {
         ImGui::Spacing();
 
         if (ImGui::Button(Get("sector.add_floor").c_str())) {
-            const float floorHeight =
-                    sector.floors.empty()
-                        ? 0.0f
-                        : sector.floors.back().ceiling.height + 10.0f;
+            const float floorHeight = sector.floors.empty() ? 0.0f : sector.floors.back().ceiling.height + 10.0f;
 
             sector.floors.push_back({
                 {
@@ -665,7 +655,6 @@ namespace ImGuiDrawFunctions {
             ImGuiColorEditFlags_HDR |
             ImGuiColorEditFlags_Float
         )) {
-            //UploadGpuWallsFromMap();
         }
 
         Tooltip(Get("editor.tooltip.wall.color").c_str());
@@ -1103,19 +1092,18 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Spacing();
 
-                ImVec4 spriteColor = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(c->color));
-
                 ImGui::Text("%s", Get("component.sprite.color").c_str());
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(160.0f);
 
                 if (ImGui::ColorEdit4(
-                    "##sprite_color",
-                    &spriteColor.x,
+                    Get("wall.color").c_str(),
+                    &c->color.x,
                     ImGuiColorEditFlags_AlphaBar |
                     ImGuiColorEditFlags_AlphaPreviewHalf |
-                    ImGuiColorEditFlags_Uint8
-                )) c->color = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(spriteColor));
+                    ImGuiColorEditFlags_HDR |
+                    ImGuiColorEditFlags_Float
+                )) {}
 
                 ImGui::Spacing();
 

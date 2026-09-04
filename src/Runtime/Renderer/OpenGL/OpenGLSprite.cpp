@@ -9,17 +9,6 @@ void OpenGL::BuildGpuSprites() {
 
     Level& level = LevelManager::CurrentLevel();
 
-    const auto UnpackColor = [](const uint_fast32_t packedColor) -> Vector4 {
-        const uint32_t color = static_cast<uint32_t>(packedColor);
-
-        return {
-            static_cast<float>(color & 0xFFu),
-            static_cast<float>((color >> 8u) & 0xFFu),
-            static_cast<float>((color >> 16u) & 0xFFu),
-            static_cast<float>((color >> 24u) & 0xFFu)
-        };
-    };
-
     for (ComponentSprite& spriteComponent : level.sprites.components) {
         ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
@@ -35,18 +24,17 @@ void OpenGL::BuildGpuSprites() {
             transform->scale.z
         };
 
-        const Vector4 spriteColor = UnpackColor(spriteComponent.color);
 
-        gpuSprite.color = spriteColor;
+        gpuSprite.color = spriteComponent.color;
 
         if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size())) {
             const Sector& sector = level.sectors[transform->sectorIndex];
 
             gpuSprite.color = {
-                spriteColor.x - (255.0f - sector.light.x),
-                spriteColor.y - (255.0f - sector.light.y),
-                spriteColor.z - (255.0f - sector.light.z),
-                spriteColor.w
+                spriteComponent.color.x - (255.0f - sector.light.x),
+                spriteComponent.color.y - (255.0f - sector.light.y),
+                spriteComponent.color.z - (255.0f - sector.light.z),
+                spriteComponent.color.w
             };
         }
 

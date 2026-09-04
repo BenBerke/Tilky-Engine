@@ -69,7 +69,7 @@ namespace MapTopology {
         };
 
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
-        uint_fast32_t wallColor = std::numeric_limits<uint32_t>::max();
+        Vector4 wallColor = {1.0f, 1.0f, 1.0f, 1.0f};
     };
 
     struct ApplyResult {

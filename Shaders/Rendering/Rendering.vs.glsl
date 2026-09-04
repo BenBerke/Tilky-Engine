@@ -402,7 +402,7 @@ void renderSprite() {
 
     vSpriteUV = uv;
     vSpriteTextureIndex = textureIndex;
-    vColor = sprite.color / 255.0;
+    vColor = sprite.color;
 
     vWallUV = vec2(0.0);
     vFlatUV = vec2(0.0);
@@ -510,7 +510,7 @@ void renderFlat() {
         slopeDirection = int(sectorFloor.slopeData.z);
         slopeStrength = sectorFloor.slopeData.w;
 
-        vColor = sectorFloor.ceilingColor / 255.0;
+        vColor = sectorFloor.ceilingColor;
         vFlatTextureIndex = int(sectorFloor.textureData.y);
     }
     else {
@@ -518,7 +518,7 @@ void renderFlat() {
         slopeDirection = int(sectorFloor.slopeData.x);
         slopeStrength = sectorFloor.slopeData.y;
 
-        vColor = sectorFloor.floorColor / 255.0;
+        vColor = sectorFloor.floorColor;
         vFlatTextureIndex = int(sectorFloor.textureData.x);
     }
 

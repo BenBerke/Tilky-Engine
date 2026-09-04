@@ -5,17 +5,6 @@
 void OpenGL::BuildGpuSectors() {
     const Level& level = LevelManager::CurrentLevel();
 
-    const auto UnpackColor = [](const uint_fast32_t packedColor) -> Vector4 {
-        const uint32_t color = static_cast<uint32_t>(packedColor);
-
-        return {
-            static_cast<float>(color & 0xFFu),
-            static_cast<float>((color >> 8u) & 0xFFu),
-            static_cast<float>((color >> 16u) & 0xFFu),
-            static_cast<float>((color >> 24u) & 0xFFu)
-        };
-    };
-
     gpuSectors.clear();
     gpuSectorFloors.clear();
 
@@ -39,8 +28,8 @@ void OpenGL::BuildGpuSectors() {
         for (const SectorFloor& floor : sector.floors) {
             GpuSectorFloor gpuFloor;
 
-            const Vector4 floorColor = UnpackColor(floor.floor.color);
-            const Vector4 ceilingColor = UnpackColor(floor.ceiling.color);
+            const Vector4 floorColor = floor.floor.color;
+            const Vector4 ceilingColor = floor.ceiling.color;
 
             gpuFloor.heights = {
                 floor.floor.height,

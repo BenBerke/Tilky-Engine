@@ -358,15 +358,15 @@ struct ScriptSprite {
         return sideCount == SIDECOUNT_SINGLE || sideCount == SIDECOUNT_90 || sideCount == SIDECOUNT_45;
     }
 
-    [[nodiscard]] uint_fast32_t GetColor() const {
+    [[nodiscard]] Vector4 GetColor() const {
         const ComponentSprite* sprite = GetComponent();
 
-        if (sprite == nullptr) return std::numeric_limits<uint_fast32_t>::max();
+        if (sprite == nullptr) return {1.0f, 1.0f, 1.0f, 1.0f};
 
         return sprite->color;
     }
 
-    void SetColor(const uint_fast32_t& color) const {
+    void SetColor(const Vector4& color) const {
         ComponentSprite* sprite = GetComponent();
 
         if (sprite == nullptr) return;
@@ -1456,25 +1456,25 @@ struct ScriptSectorFloor {
         floor->ceiling.height = value;
     }
 
-    [[nodiscard]] uint_fast32_t GetFloorColor() const {
+    [[nodiscard]] Vector4 GetFloorColor() const {
         const SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
         return floor->floor.color;
     }
 
-    void SetFloorColor(const uint_fast32_t& value) const {
+    void SetFloorColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
         floor->floor.color = value;
     }
 
-    [[nodiscard]] uint_fast32_t GetCeilingColor() const {
+    [[nodiscard]] Vector4 GetCeilingColor() const {
         const SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
         return floor->ceiling.color;
     }
 
-    void SetCeilingColor(const uint_fast32_t& value) const {
+    void SetCeilingColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
         floor->ceiling.color = value;

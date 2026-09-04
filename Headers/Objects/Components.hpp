@@ -366,7 +366,7 @@ struct ComponentSprite {
 
     SideCount sideCount = SIDECOUNT_SINGLE;
 
-    uint_fast32_t color = std::numeric_limits<uint_fast32_t>::max();
+    Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
     bool isStatic;
 };

@@ -26,7 +26,7 @@ enum SlopeDirection {
 
 struct SectorSurface {
     float height = 0.0f;
-    uint_fast32_t color = std::numeric_limits<uint_fast32_t>::max();
+    Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
     std::string texture;
 
     SlopeDirection slopeDirection = PLUS_X;
@@ -41,8 +41,8 @@ struct SectorFloor {
 struct Sector {
     std::vector<SectorFloor> floors = {
         {
-            {0.0f, std::numeric_limits<uint_fast32_t>::max(), {}},
-            {40.0f, std::numeric_limits<uint_fast32_t>::max(), {}}
+            {0.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}},
+            {40.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}}
         }
     };
 

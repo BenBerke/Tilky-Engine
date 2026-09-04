@@ -269,16 +269,10 @@ namespace {
     // left as INVALID_ID on a fresh wall; AssignAllWallSides fills in
     // every wall's sides afterward from the traced faces, so nothing
     // here needs to guess a side.
-    void CreateOrReuseWall(
-        std::vector<Wall>& walls,
-        const Vector2& a,
-        const Vector2& b,
-        const NewSectorParams& params,
-        ID& nextWallID
-    ) {
+    void CreateOrReuseWall(std::vector<Wall>& walls, const Vector2& a, const Vector2& b, const NewSectorParams& params,ID& nextWallID) {
         if (FindMatchingWall(walls, a, b) >= 0) return;
 
-        const uint_fast32_t color = params.wallColor;
+        const Vector4 color = params.wallColor;
         Wall wall(a, b, color, INVALID_ID, INVALID_ID, params.wallTexture);
         wall.id = nextWallID++;
 

@@ -391,26 +391,6 @@ namespace {
                         colorJson.at(3).get<float>()
                     };
                 }
-                // Backward compatibility with old packed RGBA colors.
-                else if (colorJson.is_number_unsigned() || colorJson.is_number_integer()) {
-                    const std::uint32_t packedColor = colorJson.get<std::uint32_t>();
-
-                    constexpr float BYTE_TO_FLOAT = 1.0f / 255.0f;
-
-                    color = {
-                        static_cast<float>(packedColor & 0xFFu) *
-                        BYTE_TO_FLOAT,
-
-                        static_cast<float>((packedColor >> 8u) & 0xFFu) *
-                        BYTE_TO_FLOAT,
-
-                        static_cast<float>((packedColor >> 16u) & 0xFFu) *
-                        BYTE_TO_FLOAT,
-
-                        static_cast<float>((packedColor >> 24u) & 0xFFu) *
-                        BYTE_TO_FLOAT
-                    };
-                }
             }
 
             Wall wall(
@@ -532,9 +512,12 @@ namespace {
             SectorSurface surface;
 
             surface.height = surfaceJson.value("height", defaultHeight);
-            surface.color = static_cast<uint_fast32_t>(
-                surfaceJson.value("color", std::uint32_t{0xFFFFFFFFu})
-            );
+            surface.color = {
+                surfaceJson["color"][0].get<float>(),
+                surfaceJson["color"][1].get<float>(),
+                surfaceJson["color"][2].get<float>(),
+                surfaceJson["color"][3].get<float>(),
+            };
             surface.texture = surfaceJson.value("texture", std::string{});
 
             const int slopeDirection = surfaceJson.value(
@@ -590,21 +573,14 @@ namespace {
             sector.triangles.clear();
             sector.floors.clear();
 
-            sector.id = LoadIDField(
-                sectorJson,
-                "id",
-                static_cast<ID>(sectorIndex)
-            );
+            sector.id = LoadIDField(sectorJson, "id", static_cast<ID>(sectorIndex));
 
-            if (sector.id == INVALID_ID) {
-                sector.id = static_cast<ID>(sectorIndex);
-            }
+            if (sector.id == INVALID_ID) sector.id = static_cast<ID>(sectorIndex);
 
             if (seenSectorIDs.contains(sector.id)) {
                 ID reassignedID = highestSectorID + 1;
 
-                while (seenSectorIDs.contains(reassignedID) || reassignedID == INVALID_ID)
-                    ++reassignedID;
+                while (seenSectorIDs.contains(reassignedID) || reassignedID == INVALID_ID) ++reassignedID;
 
                 spdlog::warn(
                     "LoadSectors: duplicate sector id {} at array index {} "
@@ -621,13 +597,10 @@ namespace {
             highestSectorID = std::max(highestSectorID, sector.id);
 
             // Outer boundary
-            if (sectorJson.contains("corners")) {
-                sector.vertices = loadLoop(sectorJson.at("corners"));
-            }
+            if (sectorJson.contains("corners")) sector.vertices = loadLoop(sectorJson.at("corners"));
 
             // Hole boundaries
-            if (sectorJson.contains("innerLoops") &&
-                sectorJson.at("innerLoops").is_array()) {
+            if (sectorJson.contains("innerLoops") && sectorJson.at("innerLoops").is_array()) {
                 const json &innerLoopArray = sectorJson.at("innerLoops");
                 sector.innerLoops.reserve(innerLoopArray.size());
 
@@ -656,9 +629,7 @@ namespace {
                 const json &floorArray = sectorJson.at("floors");
                 sector.floors.reserve(floorArray.size());
 
-                for (int floorIndex = 0;
-                     floorIndex < static_cast<int>(floorArray.size());
-                     ++floorIndex) {
+                for (int floorIndex = 0; floorIndex < static_cast<int>(floorArray.size()); ++floorIndex) {
                     const json &floorJson = floorArray[floorIndex];
 
                     if (!floorJson.is_object() ||
@@ -676,13 +647,10 @@ namespace {
                     }
 
                     SectorFloor sectorFloor;
-                    sectorFloor.floor =
-                            loadSurface(floorJson.at("floor"), 0.0f);
-                    sectorFloor.ceiling =
-                            loadSurface(floorJson.at("ceiling"), 40.0f);
+                    sectorFloor.floor = loadSurface(floorJson.at("floor"), 0.0f);
+                    sectorFloor.ceiling = loadSurface(floorJson.at("ceiling"), 40.0f);
 
-                    if (sectorFloor.floor.height >=
-                        sectorFloor.ceiling.height) {
+                    if (sectorFloor.floor.height >= sectorFloor.ceiling.height) {
                         spdlog::warn(
                             "LoadSectors: sector {} floor {} has invalid "
                             "heights [{}, {}] - skipping",
@@ -706,13 +674,9 @@ namespace {
                 }
             );
 
-            for (int floorIndex = 1;
-                 floorIndex < static_cast<int>(sector.floors.size());
-                 ++floorIndex) {
-                const SectorFloor &previous =
-                        sector.floors[floorIndex - 1];
-                const SectorFloor &current =
-                        sector.floors[floorIndex];
+            for (int floorIndex = 1; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+                const SectorFloor &previous = sector.floors[floorIndex - 1];
+                const SectorFloor &current = sector.floors[floorIndex];
 
                 if (previous.ceiling.height > current.floor.height) {
                     spdlog::warn(
@@ -785,7 +749,7 @@ namespace {
                 {"height", surface.height},
                 {
                     "color",
-                    static_cast<std::uint32_t>(surface.color)
+                    {surface.color.x, surface.color.y, surface.color.z, surface.color.w},
                 },
                 {"texture", surface.texture},
                 {
@@ -894,8 +858,7 @@ namespace {
                 Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                const auto textureFileNames =
-                    spriteJson.at("textureFileNames").get<std::array<std::string, 8>>();
+                const auto textureFileNames = spriteJson.at("textureFileNames").get<std::array<std::string, 8>>();
 
                 const int sideCountValue = spriteJson.at("sideCount").get<int>();
 
@@ -907,9 +870,12 @@ namespace {
 
                 c.textureFileNames = textureFileNames;
                 c.sideCount = static_cast<SideCount>(sideCountValue);
-                c.color = static_cast<uint_fast32_t>(
-                    spriteJson.value("color", std::uint32_t{0xFFFFFFFFu})
-                );
+                c.color = {
+                    spriteJson["color"][0].get<float>(),
+                    spriteJson["color"][1].get<float>(),
+                    spriteJson["color"][2].get<float>(),
+                    spriteJson["color"][3].get<float>()
+                };
                 c.isStatic = spriteJson.value("isStatic", false);
 
                 entity->componentsMask.set(CMP_SPRITE);
@@ -1244,7 +1210,7 @@ namespace {
                 {"ownerID", c.ownerID},
                 {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)},
-                {"color", static_cast<std::uint32_t>(c.color)},
+                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
                 {"isStatic", c.isStatic}
             });
         }

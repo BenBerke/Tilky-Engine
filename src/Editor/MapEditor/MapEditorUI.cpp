@@ -2151,22 +2151,36 @@ namespace MapEditorInternal {
 
             ImGui::Spacing();
 
-            ImVec4 wallColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(wallColor));
-            ImVec4 ceilColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(ceilColor));
-            ImVec4 floorColorEdit = ImGui::ColorConvertU32ToFloat4(static_cast<ImU32>(floorColor));
-
-            if (ImGui::ColorEdit4((Get("wall.color") + "##NewSectorWallColor").c_str(), &wallColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
-                wallColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(wallColorEdit));
+            if (ImGui::ColorEdit4(
+                Get("wall.color").c_str(),
+                &wallColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float
+            )) {
                 hasUnsavedChanges = true;
             }
 
-            if (ImGui::ColorEdit4((Get("sector.ceil_color") + "##NewSectorCeilColor").c_str(), &ceilColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
-                ceilColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(ceilColorEdit));
+            if (ImGui::ColorEdit4(
+                Get("sector.ceil_color").c_str(),
+                &ceilColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float
+            )) {
                 hasUnsavedChanges = true;
             }
 
-            if (ImGui::ColorEdit4((Get("sector.floor_color") + "##NewSectorFloorColor").c_str(), &floorColorEdit.x, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Uint8)) {
-                floorColor = static_cast<uint_fast32_t>(ImGui::ColorConvertFloat4ToU32(floorColorEdit));
+            if (ImGui::ColorEdit4(
+                Get("sector.floor_colo").c_str(),
+                &floorColor.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float
+            )) {
                 hasUnsavedChanges = true;
             }
 
