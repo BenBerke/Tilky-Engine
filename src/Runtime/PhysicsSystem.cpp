@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <unordered_map>
 #include <vector>
 
 #include <tracy/Tracy.hpp>
@@ -58,39 +59,223 @@ namespace {
 
     const __m128 XZ_MASK = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
 
-    struct WallSpan {
-        float bottom;
-        float top;
+    // Slope strength is authored in degrees. BuildGpuSectors() converts it
+    // with DegToRad before upload and the shader uses the result as a plain
+    // rise-per-unit gradient, so anything that wants to agree with what is
+    // on screen has to convert the same way.
+    float SlopeGradient(const float slopeStrength) {
+        return slopeStrength * Constants::DegToRad;
+    }
+
+    // Axis aligned bounds of the sector in map XY. Slope offsets are measured
+    // from an edge of this rectangle, so it has to match GetSectorBounds() in
+    // Rendering_vs.glsl - that one is built from the sector's triangles.
+    struct SectorBounds {
+        Vector2 minimum = {0.0f, 0.0f};
+        Vector2 maximum = {0.0f, 0.0f};
+        bool valid = false;
     };
 
-    bool IsSectorOpenAtHeight(const Sector& sector, const float height) {
-        for (const SectorFloor& floor : sector.floors)
-            if (height > floor.floor.height && height < floor.ceiling.height) return true;
+    SectorBounds ComputeSectorBounds(const Sector& sector) {
+        SectorBounds bounds;
+
+        __m128 minimumReg;
+        __m128 maximumReg;
+
+        if (!sector.triangles.empty()) {
+            minimumReg = sector.triangles.front().a.reg;
+            maximumReg = minimumReg;
+
+            for (const Triangle& triangle : sector.triangles) {
+                minimumReg = _mm_min_ps(minimumReg, triangle.a.reg);
+                minimumReg = _mm_min_ps(minimumReg, triangle.b.reg);
+                minimumReg = _mm_min_ps(minimumReg, triangle.c.reg);
+
+                maximumReg = _mm_max_ps(maximumReg, triangle.a.reg);
+                maximumReg = _mm_max_ps(maximumReg, triangle.b.reg);
+                maximumReg = _mm_max_ps(maximumReg, triangle.c.reg);
+            }
+        }
+        else if (!sector.vertices.empty()) {
+            minimumReg = sector.vertices.front().reg;
+            maximumReg = minimumReg;
+
+            for (const Vector2& vertex : sector.vertices) {
+                minimumReg = _mm_min_ps(minimumReg, vertex.reg);
+                maximumReg = _mm_max_ps(maximumReg, vertex.reg);
+            }
+        }
+        else return bounds;
+
+        bounds.minimum.reg = minimumReg;
+        bounds.maximum.reg = maximumReg;
+        bounds.valid = true;
+
+        return bounds;
+    }
+
+    // Every wall is visited from both of its sectors, so bounds get asked for
+    // far more often than they change.
+    class SectorBoundsCache {
+    public:
+        const SectorBounds& Get(const Sector* sector) {
+            if (sector == nullptr) return emptyBounds;
+
+            const auto existing = cache.find(sector);
+
+            if (existing != cache.end()) return existing->second;
+
+            return cache.emplace(sector, ComputeSectorBounds(*sector)).first->second;
+        }
+
+    private:
+        std::unordered_map<const Sector*, SectorBounds> cache;
+        SectorBounds emptyBounds;
+    };
+
+    // Mirrors GetSlopeOffset() in Rendering_vs.glsl.
+    float GetSlopeOffset(
+        const Vector2& point,
+        const SectorBounds& bounds,
+        const SlopeDirection slopeDirection,
+        const float slopeStrength
+    ) {
+        if (!bounds.valid || slopeStrength == 0.0f) return 0.0f;
+
+        const float gradient = SlopeGradient(slopeStrength);
+
+        switch (slopeDirection) {
+            case PLUS_X:  return (point.x - bounds.minimum.x) * gradient;
+            case MINUS_X: return (bounds.maximum.x - point.x) * gradient;
+            case PLUS_Z:  return (point.y - bounds.minimum.y) * gradient;
+            case MINUS_Z: return (bounds.maximum.y - point.y) * gradient;
+        }
+
+        return 0.0f;
+    }
+
+    float GetSurfaceHeight(
+        const SectorSurface& surface,
+        const SectorBounds& bounds,
+        const Vector2& point
+    ) {
+        return surface.height +
+               GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
+    }
+
+    struct SectorSample {
+        const Sector* sector = nullptr;
+        SectorBounds bounds;
+    };
+
+    // Start and end give the geometry, middle decides the topology.
+    struct WallSamplePoints {
+        Vector2 start;
+        Vector2 middle;
+        Vector2 end;
+    };
+
+    // One floor or ceiling plane, sampled at those three points.
+    struct HeightSample {
+        float start = 0.0f;
+        float middle = 0.0f;
+        float end = 0.0f;
+    };
+
+    // Bottom and top at each end of the wall, so a span can follow a sloped
+    // floor or ceiling instead of being a flat box.
+    struct WallSpan {
+        float bottomStart = 0.0f;
+        float bottomEnd = 0.0f;
+        float topStart = 0.0f;
+        float topEnd = 0.0f;
+    };
+
+    bool IsSectorOpenAtHeight(
+        const SectorSample& sample,
+        const Vector2& point,
+        const float height
+    ) {
+        if (sample.sector == nullptr) return false;
+
+        for (const SectorFloor& floor : sample.sector->floors) {
+            if (height > GetSurfaceHeight(floor.floor, sample.bounds, point) &&
+                height < GetSurfaceHeight(floor.ceiling, sample.bounds, point)) return true;
+        }
 
         return false;
     }
 
-    void AddSectorHeights(const Sector& sector, std::vector<float>& heights) {
-        for (const SectorFloor& floor : sector.floors) {
-            heights.push_back(floor.floor.height);
-            heights.push_back(floor.ceiling.height);
+    void AddSectorHeights(
+        const SectorSample& sample,
+        const WallSamplePoints& points,
+        std::vector<HeightSample>& heights
+    ) {
+        if (sample.sector == nullptr) return;
+
+        for (const SectorFloor& floor : sample.sector->floors) {
+            for (const SectorSurface* surface : {&floor.floor, &floor.ceiling}) {
+                heights.push_back({
+                    GetSurfaceHeight(*surface, sample.bounds, points.start),
+                    GetSurfaceHeight(*surface, sample.bounds, points.middle),
+                    GetSurfaceHeight(*surface, sample.bounds, points.end)
+                });
+            }
         }
     }
 
-    std::vector<WallSpan> BuildWallSpans(const Sector* frontSector, const Sector* backSector) {
-        std::vector<float> heights;
+    struct SpanProbe {
+        Vector2 point;
+        float bottom = 0.0f;
+        float top = 0.0f;
+    };
 
-        if (frontSector != nullptr) AddSectorHeights(*frontSector, heights);
-        if (backSector != nullptr) AddSectorHeights(*backSector, heights);
+    // A sloped slab can pinch shut at one end and still be open at the other,
+    // so test openness where it is thickest rather than always at the middle.
+    SpanProbe PickThickestProbe(
+        const HeightSample& bottom,
+        const HeightSample& top,
+        const WallSamplePoints& points
+    ) {
+        const SpanProbe probes[3] = {
+            {points.start, bottom.start, top.start},
+            {points.middle, bottom.middle, top.middle},
+            {points.end, bottom.end, top.end}
+        };
 
-        std::ranges::sort(heights);
+        SpanProbe best = probes[0];
 
+        for (int i = 1; i < 3; ++i)
+            if (probes[i].top - probes[i].bottom > best.top - best.bottom) best = probes[i];
+
+        return best;
+    }
+
+    std::vector<WallSpan> BuildWallSpans(
+        const SectorSample& frontSector,
+        const SectorSample& backSector,
+        const WallSamplePoints& points
+    ) {
+        std::vector<HeightSample> heights;
+
+        AddSectorHeights(frontSector, points, heights);
+        AddSectorHeights(backSector, points, heights);
+
+        std::ranges::sort(
+            heights,
+            [](const HeightSample& a, const HeightSample& b) { return a.middle < b.middle; }
+        );
+
+        // Two planes are only the same plane if they agree along the whole
+        // wall - equal in the middle but diverging at the ends is a real gap.
         heights.erase(
             std::unique(
                 heights.begin(),
                 heights.end(),
-                [](const float a, const float b) {
-                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
+                [](const HeightSample& a, const HeightSample& b) {
+                    return std::abs(a.start - b.start) <= MIN_WALL_HEIGHT &&
+                           std::abs(a.middle - b.middle) <= MIN_WALL_HEIGHT &&
+                           std::abs(a.end - b.end) <= MIN_WALL_HEIGHT;
                 }
             ),
             heights.end()
@@ -99,19 +284,27 @@ namespace {
         std::vector<WallSpan> spans;
 
         for (size_t i = 0; i + 1 < heights.size(); ++i) {
-            const float bottom = heights[i];
-            const float top = heights[i + 1];
+            const HeightSample& bottom = heights[i];
+            const HeightSample& top = heights[i + 1];
 
-            if (top - bottom <= MIN_WALL_HEIGHT) continue;
+            const SpanProbe probe = PickThickestProbe(bottom, top, points);
 
-            const float sampleHeight = (bottom + top) * 0.5f;
-            const bool frontOpen = frontSector != nullptr && IsSectorOpenAtHeight(*frontSector, sampleHeight);
-            const bool backOpen = backSector != nullptr && IsSectorOpenAtHeight(*backSector, sampleHeight);
+            if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
+
+            const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
+
+            const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
+            const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
 
             if (frontOpen == backOpen) continue;
 
-            if (!spans.empty() && std::abs(spans.back().top - bottom) <= MIN_WALL_HEIGHT) spans.back().top = top;
-            else spans.push_back({bottom, top});
+            if (!spans.empty() &&
+                std::abs(spans.back().topStart - bottom.start) <= MIN_WALL_HEIGHT &&
+                std::abs(spans.back().topEnd - bottom.end) <= MIN_WALL_HEIGHT) {
+                spans.back().topStart = top.start;
+                spans.back().topEnd = top.end;
+            }
+            else spans.push_back({bottom.start, bottom.end, top.start, top.end});
         }
 
         return spans;
@@ -119,6 +312,8 @@ namespace {
 
     int FindBestSectorFloor(
         const Sector& sector,
+        const SectorBounds& bounds,
+        const Vector2& point,
         const float feetHeight,
         const float headHeight
     ) {
@@ -128,11 +323,13 @@ namespace {
         int bestFloorIndex = -1;
         float bestOverlap = -1.0f;
         float bestCorrection = std::numeric_limits<float>::max();
+        bool bestCentreInside = false;
 
         for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
             const SectorFloor& floor = sector.floors[floorIndex];
-            const float floorHeight = floor.floor.height;
-            const float ceilingHeight = floor.ceiling.height;
+
+            const float floorHeight = GetSurfaceHeight(floor.floor, bounds, point);
+            const float ceilingHeight = GetSurfaceHeight(floor.ceiling, bounds, point);
 
             if (ceilingHeight - floorHeight + Constants::Epsilon < bodyHeight) continue;
 
@@ -146,10 +343,6 @@ namespace {
 
             const float correctionMagnitude = std::abs(correction);
             const bool centreInside = centreHeight >= floorHeight && centreHeight <= ceilingHeight;
-            const bool bestCentreInside =
-                bestFloorIndex >= 0 &&
-                centreHeight >= sector.floors[bestFloorIndex].floor.height &&
-                centreHeight <= sector.floors[bestFloorIndex].ceiling.height;
 
             if ((centreInside && !bestCentreInside) ||
                 (centreInside == bestCentreInside && overlap > bestOverlap + Constants::Epsilon) ||
@@ -159,6 +352,7 @@ namespace {
                 bestFloorIndex = floorIndex;
                 bestOverlap = overlap;
                 bestCorrection = correctionMagnitude;
+                bestCentreInside = centreInside;
             }
         }
 
@@ -174,10 +368,15 @@ namespace {
         ComponentTransform &transform,
         ComponentRigidbody &rigidbody
     ) {
+        // Conservative vertical extent: the span is a trapezoid now, so the
+        // broadphase box has to cover the taller of the two ends.
+        const float spanMinHeight = std::min(span.bottomStart, span.bottomEnd);
+        const float spanMaxHeight = std::max(span.topStart, span.topEnd);
+
         const float minX = std::min(wall.start.x, wall.end.x) - radius;
         const float maxX = std::max(wall.start.x, wall.end.x) + radius;
-        const float minY = span.bottom - radius;
-        const float maxY = span.top + radius;
+        const float minY = spanMinHeight - radius;
+        const float maxY = spanMaxHeight + radius;
         const float minZ = std::min(wall.start.y, wall.end.y) - radius;
         const float maxZ = std::max(wall.start.y, wall.end.y) + radius;
 
@@ -200,8 +399,15 @@ namespace {
             1.0f
         );
 
+        // The span's real extent at the closest point. Crossing slopes could
+        // invert it, so keep the top pinned at or above the bottom - clamp()
+        // with a reversed range is undefined.
+        const float spanBottom = span.bottomStart + (span.bottomEnd - span.bottomStart) * t;
+        const float spanTop =
+            std::max(span.topStart + (span.topEnd - span.topStart) * t, spanBottom);
+
         const float closestX = wall.start.x + wall.vector.x * t;
-        const float closestY = std::clamp(sphereCentre.y, span.bottom, span.top);
+        const float closestY = std::clamp(sphereCentre.y, spanBottom, spanTop);
         const float closestZ = wall.start.y + wall.vector.y * t;
 
         const __m128 closestPoint = _mm_set_ps(0.0f, closestZ, closestY, closestX);
@@ -265,9 +471,9 @@ namespace {
         const float velocityIntoWall = _mm_cvtss_f32(dot3_ss(rigidbody.velocity.reg, collisionNormal));
 
         const float feetHeight = transform.position.y;
-        const float stepHeight = span.top - feetHeight;
+        const float stepHeight = spanTop - feetHeight;
 
-        const bool wallStartsAtFeet = span.bottom <= feetHeight + GROUND_CONTACT_SLOP;
+        const bool wallStartsAtFeet = spanBottom <= feetHeight + GROUND_CONTACT_SLOP;
 
         const bool canStep =
                 stepSize > 0.0f &&
@@ -317,6 +523,8 @@ namespace PhysicsSystem {
 
         ColliderStorage& colliders = level.colliders;
 
+        SectorBoundsCache boundsCache;
+
         std::vector<std::vector<WallSpan>> wallSpans(level.walls.size());
 
         {
@@ -325,17 +533,29 @@ namespace PhysicsSystem {
             for (size_t wallIndex = 0; wallIndex < level.walls.size(); ++wallIndex) {
                 const Wall& wall = level.walls[wallIndex];
 
-                const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
-                const Sector* backSector = MapQueries::GetSectorByID(level, wall.backSector);
+                const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
+                const Sector* backSectorPtr = MapQueries::GetSectorByID(level, wall.backSector);
 
-                if (frontSector == backSector) backSector = nullptr;
+                if (frontSectorPtr == backSectorPtr) backSectorPtr = nullptr;
 
-                wallSpans[wallIndex] = BuildWallSpans(frontSector, backSector);
+                const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
+                const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
+
+                const WallSamplePoints points{
+                    wall.start,
+                    Vector2{
+                        (wall.start.x + wall.end.x) * 0.5f,
+                        (wall.start.y + wall.end.y) * 0.5f
+                    },
+                    wall.end
+                };
+
+                wallSpans[wallIndex] = BuildWallSpans(frontSector, backSector, points);
 
                 if (wallSpans[wallIndex].empty() &&
-                    frontSector == nullptr &&
-                    backSector == nullptr) {
-                    wallSpans[wallIndex].push_back({0.0f, 32.0f});
+                    frontSectorPtr == nullptr &&
+                    backSectorPtr == nullptr) {
+                    wallSpans[wallIndex].push_back({0.0f, 0.0f, 32.0f, 32.0f});
                 }
             }
         }
@@ -515,19 +735,7 @@ namespace PhysicsSystem {
 
                 if (sector.vertices.empty() || !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) continue;
 
-                __m128 sectorMinReg = sector.vertices.front().reg;
-                __m128 sectorMaxReg = sector.vertices.front().reg;
-
-                for (const Vector2 &vertex: sector.vertices) {
-                    sectorMinReg = _mm_min_ps(sectorMinReg, vertex.reg);
-                    sectorMaxReg = _mm_max_ps(sectorMaxReg, vertex.reg);
-                }
-
-                Vector2 sectorMin;
-                Vector2 sectorMax;
-
-                sectorMin.reg = sectorMinReg;
-                sectorMax.reg = sectorMaxReg;
+                const SectorBounds& sectorBounds = boundsCache.Get(&sector);
 
                 const auto getSlopeAxis = [](const SlopeDirection direction) -> Vector2 {
                     switch (direction) {
@@ -539,89 +747,44 @@ namespace PhysicsSystem {
                     return {1.0f, 0.0f};
                 };
 
-                const auto getSlopeOrigin = [&](const SlopeDirection direction) -> Vector2 {
-                    switch (direction) {
-                        case PLUS_X: return {sectorMin.x, feetPoint.y};
-                        case MINUS_X: return {sectorMax.x, feetPoint.y};
-                        case PLUS_Z:  return {feetPoint.x, sectorMin.y};
-                        case MINUS_Z: return {feetPoint.x, sectorMax.y};
-                    }
-
-                    return feetPoint;
-                };
-
                 const auto getSurfaceHeight = [&](const SectorSurface &surface) -> float {
-                    if (surface.slopeStrength == 0.0f) return surface.height;
-
-                    const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
-                    const Vector2 slopeOrigin = getSlopeOrigin(surface.slopeDirection);
-
-                    const float distanceFromOrigin = Vector2Math::Dot(feetPoint - slopeOrigin, slopeAxis);
-
-                    return surface.height + distanceFromOrigin * surface.slopeStrength;
+                    return GetSurfaceHeight(surface, sectorBounds, feetPoint);
                 };
 
                 const auto getFloorNormal = [&](const SectorSurface &surface) -> Vector3 {
                     const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
+                    const float gradient = SlopeGradient(surface.slopeStrength);
 
                     return Vector3Math::Normalized({
-                        -slopeAxis.x * surface.slopeStrength,
+                        -slopeAxis.x * gradient,
                         1.0f,
-                        -slopeAxis.y * surface.slopeStrength
+                        -slopeAxis.y * gradient
                     });
                 };
 
                 const auto getCeilingNormal = [&](const SectorSurface &surface) -> Vector3 {
                     const Vector2 slopeAxis = getSlopeAxis(surface.slopeDirection);
-                    return Vector3Math::Normalized(
-                        {slopeAxis.x * surface.slopeStrength, -1.0f, slopeAxis.y * surface.slopeStrength});
+                    const float gradient = SlopeGradient(surface.slopeStrength);
+
+                    return Vector3Math::Normalized({
+                        slopeAxis.x * gradient,
+                        -1.0f,
+                        slopeAxis.y * gradient
+                    });
                 };
 
                 const float bodyHeight = std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
 
                 const float feetHeight = selfTransform->position.y;
                 const float headHeight = feetHeight + bodyHeight;
-                const float centreHeight = (feetHeight + headHeight) * 0.5f;
 
-                int floorIndex = -1;
-                float bestOverlap = -1.0f;
-                float bestCorrection = std::numeric_limits<float>::max();
-                bool bestCentreInside = false;
-
-                for (int candidateIndex = 0; candidateIndex < static_cast<int>(sector.floors.size()); ++candidateIndex) {
-                    const SectorFloor &candidate = sector.floors[candidateIndex];
-                    const float candidateFloorHeight =getSurfaceHeight(candidate.floor);
-                    const float candidateCeilingHeight = getSurfaceHeight(candidate.ceiling);
-
-                    if (candidateCeilingHeight - candidateFloorHeight + Constants::Epsilon < bodyHeight) continue;
-
-                    const float overlap = std::max(
-                        0.0f,
-                        std::min(headHeight, candidateCeilingHeight) -
-                        std::max(feetHeight, candidateFloorHeight)
-                    );
-
-                    float correction = 0.0f;
-
-                    if (feetHeight < candidateFloorHeight) correction = candidateFloorHeight - feetHeight;
-                    else if (headHeight > candidateCeilingHeight) correction = candidateCeilingHeight - headHeight;
-
-
-                    const float correctionMagnitude = std::abs(correction);
-                    const bool centreInside = centreHeight >= candidateFloorHeight && centreHeight <= candidateCeilingHeight;
-
-                    if ((centreInside && !bestCentreInside) ||
-                        (centreInside == bestCentreInside &&
-                         overlap > bestOverlap + Constants::Epsilon) ||
-                        (centreInside == bestCentreInside &&
-                         std::abs(overlap - bestOverlap) <= Constants::Epsilon &&
-                         correctionMagnitude < bestCorrection)) {
-                        floorIndex = candidateIndex;
-                        bestOverlap = overlap;
-                        bestCorrection = correctionMagnitude;
-                        bestCentreInside = centreInside;
-                    }
-                }
+                const int floorIndex = FindBestSectorFloor(
+                    sector,
+                    sectorBounds,
+                    feetPoint,
+                    feetHeight,
+                    headHeight
+                );
 
                 if (floorIndex < 0) {
                     selfTransform->relativeHeight = selfTransform->position.y;
@@ -710,6 +873,47 @@ namespace PhysicsSystem {
             if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
 
             Sector& sector = level.sectors[sectorIndex];
+
+            {
+                ZoneScopedN("Candidate gather");
+
+                allEntities.clear();
+                allWalls.clear();
+
+                allEntities.insert(
+                    allEntities.end(),
+                    sector.entitiesInside.begin(),
+                    sector.entitiesInside.end()
+                );
+
+                allWalls.insert(
+                    allWalls.end(),
+                    sector.walls.begin(),
+                    sector.walls.end()
+                );
+
+                for (const Sector* neighbour : sector.neighbors) {
+                    if (neighbour == nullptr) [[unlikely]] continue;
+
+                    allEntities.insert(
+                        allEntities.end(),
+                        neighbour->entitiesInside.begin(),
+                        neighbour->entitiesInside.end()
+                    );
+
+                    allWalls.insert(
+                        allWalls.end(),
+                        neighbour->walls.begin(),
+                        neighbour->walls.end()
+                    );
+                }
+
+                std::ranges::sort(allEntities);
+                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
+
+                std::ranges::sort(allWalls, std::less<const Wall*>{});
+                allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
+            }
         }
     }
 }

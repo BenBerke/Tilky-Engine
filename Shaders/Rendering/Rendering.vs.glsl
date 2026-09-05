@@ -548,31 +548,40 @@ void renderFlat() {
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
+float GetWallV(float height, float anchorHeight, float direction) {
+    if (direction < 0.0) {
+        return (anchorHeight - height) / tileSize;
+    }
+
+    return (height - anchorHeight) / tileSize;
+}
+
 void renderWall() {
     Wall wall = walls[gl_InstanceID];
 
     vec2 wallStart2D = wall.startEnd.xy;
     vec2 wallEnd2D = wall.startEnd.zw;
 
-    float bottomHeight = wall.heights.x;
-    float topHeight = wall.heights.y;
+    // Heights are stored per end of the wall so a piece can follow a
+    // sloped floor or ceiling instead of being a flat-topped quad.
+    // heights.xy = bottom/top at the start point
+    // heights.zw = bottom/top at the end point
+    float bottomStartHeight = wall.heights.x;
+    float topStartHeight = wall.heights.y;
+    float bottomEndHeight = wall.heights.z;
+    float topEndHeight = wall.heights.w;
 
     float wallLength = length(wallEnd2D - wallStart2D);
 
     float textureAnchorHeight = wall.data.z;
     float textureDirection = wall.data.w;
 
-    float bottomV;
-    float topV;
-
-    if (textureDirection < 0.0) {
-        bottomV = (textureAnchorHeight - bottomHeight) / tileSize;
-        topV = (textureAnchorHeight - topHeight) / tileSize;
-    }
-    else {
-        bottomV = (bottomHeight - textureAnchorHeight) / tileSize;
-        topV = (topHeight - textureAnchorHeight) / tileSize;
-    }
+    // The anchor stays a single world height, so the texture keeps a
+    // constant vertical alignment and the sloped edges just cut it.
+    float bottomStartV = GetWallV(bottomStartHeight, textureAnchorHeight, textureDirection);
+    float topStartV = GetWallV(topStartHeight, textureAnchorHeight, textureDirection);
+    float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight, textureDirection);
+    float topEndV = GetWallV(topEndHeight, textureAnchorHeight, textureDirection);
 
     float rightU = wallLength / tileSize;
 
@@ -580,25 +589,25 @@ void renderWall() {
 
     vec3 bottomLeft = vec3(
     wallStart2D.x,
-    bottomHeight,
+    bottomStartHeight,
     wallStart2D.y
     );
 
     vec3 topLeft = vec3(
     wallStart2D.x,
-    topHeight,
+    topStartHeight,
     wallStart2D.y
     );
 
     vec3 bottomRight = vec3(
     wallEnd2D.x,
-    bottomHeight,
+    bottomEndHeight,
     wallEnd2D.y
     );
 
     vec3 topRight = vec3(
     wallEnd2D.x,
-    topHeight,
+    topEndHeight,
     wallEnd2D.y
     );
 
@@ -613,25 +622,28 @@ void renderWall() {
     );
 
     vec2 uvs[6] = vec2[6](
-    vec2(0.0, bottomV) + uvOffset,
-    vec2(0.0, topV) + uvOffset,
-    vec2(rightU, bottomV) + uvOffset,
+    vec2(0.0, bottomStartV) + uvOffset,
+    vec2(0.0, topStartV) + uvOffset,
+    vec2(rightU, bottomEndV) + uvOffset,
 
-    vec2(rightU, bottomV) + uvOffset,
-    vec2(0.0, topV) + uvOffset,
-    vec2(rightU, topV) + uvOffset
+    vec2(rightU, bottomEndV) + uvOffset,
+    vec2(0.0, topStartV) + uvOffset,
+    vec2(rightU, topEndV) + uvOffset
     );
 
-    float wallHeight = max(abs(topHeight - bottomHeight), 0.0001);
+    float startHeight = max(topStartHeight - bottomStartHeight, 0.0);
+    float endHeight = max(topEndHeight - bottomEndHeight, 0.0);
+
+    float wallHeight = max(max(startHeight, endHeight), 0.0001);
 
     vec2 surfaceCoords[6] = vec2[6](
     vec2(0.0, 0.0),
-    vec2(0.0, wallHeight),
+    vec2(0.0, startHeight),
     vec2(wallLength, 0.0),
 
     vec2(wallLength, 0.0),
-    vec2(0.0, wallHeight),
-    vec2(wallLength, wallHeight)
+    vec2(0.0, startHeight),
+    vec2(wallLength, endHeight)
     );
 
     vec3 worldPos = positions[gl_VertexID];
