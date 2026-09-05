@@ -498,13 +498,25 @@ namespace {
     void LoadSectors(const json &levelData, Level &level) {
         level.sectors.clear();
 
-        if (!levelData.contains("sectors") ||
-            !levelData.at("sectors").is_array()) {
-            return;
-        }
+        if (!levelData.contains("sectors") || !levelData.at("sectors").is_array()) return;
 
         ID highestSectorID = 0;
         std::unordered_set<ID> seenSectorIDs;
+
+        const auto loadVector2 = [](const json &parentJson,
+                                    const char *field,
+                                    const Vector2 &defaultValue) -> Vector2 {
+            if (!parentJson.contains(field)) return defaultValue;
+
+            const json &vectorJson = parentJson.at(field);
+
+            if (!vectorJson.is_array() || vectorJson.size() != 2 ||
+                !vectorJson[0].is_number() || !vectorJson[1].is_number()) {
+                return defaultValue;
+            }
+
+            return {vectorJson[0].get<float>(),vectorJson[1].get<float>()};
+        };
 
         const auto loadVector3 = [](const json &parentJson,
                                     const char *field,
@@ -513,8 +525,7 @@ namespace {
 
             const json &vectorJson = parentJson.at(field);
 
-            if (!vectorJson.is_array() || vectorJson.size() != 3)
-                return defaultValue;
+            if (!vectorJson.is_array() || vectorJson.size() != 3) return defaultValue;
 
             return {
                 vectorJson[0].get<float>(),
@@ -523,8 +534,8 @@ namespace {
             };
         };
 
-        const auto loadSurface = [](const json &surfaceJson,
-                                    const float defaultHeight) -> SectorSurface {
+        const auto loadSurface = [&loadVector2](const json &surfaceJson,
+                                                const float defaultHeight) -> SectorSurface {
             SectorSurface surface;
 
             surface.height = surfaceJson.value("height", defaultHeight);
@@ -545,6 +556,21 @@ namespace {
                 surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
 
             surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
+
+            surface.textureOffset = loadVector2(
+                surfaceJson,
+                "textureOffset",
+                {0.0f, 0.0f}
+            );
+
+            surface.textureScale = loadVector2(
+                surfaceJson,
+                "textureScale",
+                {1.0f, 1.0f}
+            );
+
+            surface.flipTextureX = surfaceJson.value("flipTextureX", false);
+            surface.flipTextureY = surfaceJson.value("flipTextureY", false);
 
             return surface;
         };
@@ -714,12 +740,12 @@ namespace {
                 sector.floors.push_back({
                     {
                         0.0f,
-                        std::numeric_limits<uint_fast32_t>::max(),
+                        {1.0f, 1.0f, 1.0f, 1.0f},
                         {}
                     },
                     {
                         40.0f,
-                        std::numeric_limits<uint_fast32_t>::max(),
+                        {1.0f, 1.0f, 1.0f, 1.0f},
                         {}
                     }
                 });
@@ -772,7 +798,17 @@ namespace {
                     "slopeDirection",
                     static_cast<int>(surface.slopeDirection)
                 },
-                {"slopeStrength", surface.slopeStrength}
+                {"slopeStrength", surface.slopeStrength},
+                {
+                    "textureOffset",
+                    {surface.textureOffset.x, surface.textureOffset.y}
+                },
+                {
+                    "textureScale",
+                    {surface.textureScale.x, surface.textureScale.y}
+                },
+                {"flipTextureX", surface.flipTextureX},
+                {"flipTextureY", surface.flipTextureY}
             };
         };
 
