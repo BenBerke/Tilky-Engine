@@ -643,6 +643,21 @@ namespace MapEditorInternal {
     // Returns nullptr safely if the file is missing or unavailable - never
     // crashes on a missing texture.
     SDL_Texture* GetEditorTexture(const std::string& textureFileName);
+
+    // Backend bridge for every thumbnail the shared inspector widgets draw.
+    // ImTextureID means different things per ImGui backend - an SDL_Texture*
+    // under imgui_impl_sdlrenderer3, a GLuint texture name under
+    // imgui_impl_opengl3 - so nothing below may build one itself.
+    //
+    // The Map Editor leaves previewTextureProvider null and gets the
+    // SDL_Renderer path above. The Runtime Editor points it at the live
+    // IRenderer in RuntimeEditor::Start() (and clears it in Shutdown()), so
+    // the exact same DrawAssetField call produces GL-valid IDs there.
+    //
+    // Both defined in MapEditorUI.cpp.
+    extern ImTextureID (*previewTextureProvider)(const std::string& textureFileName);
+    [[nodiscard]] ImTextureID GetPreviewTextureID(const std::string& textureFileName);
+
     void DrawTextureThumbnailBox(const std::string& textureFileName, float size);
     void DrawTextureThumbnailRow(const std::string& textureFileName);
 

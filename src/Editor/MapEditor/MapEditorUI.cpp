@@ -1498,10 +1498,7 @@ namespace {
 
         ImGui::Spacing();
 
-        assetBrowser.Draw([](const std::string& textureFileName) -> ImTextureID {
-            SDL_Texture* texture = GetEditorTexture(textureFileName);
-            return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
-        });
+        assetBrowser.Draw(&GetPreviewTextureID);
 
         ImGui::End();
 
@@ -1530,14 +1527,28 @@ namespace MapEditorInternal {
         return EditorTextureCache::Get(renderer, textureFileName);
     }
 
-    void DrawTextureThumbnailBox(const std::string& textureFileName, const float size) {
+    // Null in this (SDL) editor; set by RuntimeEditor::Start() when the same
+    // inspector code runs on top of the OpenGL backend. See EditorInternal.hpp.
+    ImTextureID (*previewTextureProvider)(const std::string& textureFileName) = nullptr;
+
+    // The ONLY place a texture name becomes an ImTextureID. Everything that
+    // draws a thumbnail goes through here rather than casting an SDL_Texture*
+    // itself, because that cast is only valid under imgui_impl_sdlrenderer3.
+    ImTextureID GetPreviewTextureID(const std::string& textureFileName) {
+        if (textureFileName.empty()) return ImTextureID{};
+
+        if (previewTextureProvider != nullptr) return previewTextureProvider(textureFileName);
+
         SDL_Texture* texture = GetEditorTexture(textureFileName);
 
-        if (texture != nullptr) {
-            ImGui::Image(
-                reinterpret_cast<ImTextureID>(texture),
-                ImVec2(size, size)
-            );
+        return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
+    }
+
+    void DrawTextureThumbnailBox(const std::string& textureFileName, const float size) {
+        const ImTextureID texture = GetPreviewTextureID(textureFileName);
+
+        if (texture != ImTextureID{}) {
+            ImGui::Image(texture, ImVec2(size, size));
             return;
         }
 
@@ -1620,11 +1631,11 @@ namespace MapEditorInternal {
         ImGui::BeginGroup();
 
         if (previewSize > 0.0f && kind == AssetKind::Texture) {
-            SDL_Texture* preview = value.empty() ? nullptr : GetEditorTexture(value);
+            const ImTextureID preview = GetPreviewTextureID(value);
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            if (preview != nullptr)
-                ImGui::Image(reinterpret_cast<ImTextureID>(preview), ImVec2(previewSize, previewSize));
+            if (preview != ImTextureID{})
+                ImGui::Image(preview, ImVec2(previewSize, previewSize));
             else {
                 ImGui::Dummy(ImVec2(previewSize, previewSize));
                 ImDrawList* dl = ImGui::GetWindowDrawList();

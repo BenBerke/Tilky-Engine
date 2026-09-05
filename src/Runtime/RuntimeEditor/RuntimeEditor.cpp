@@ -222,10 +222,11 @@ namespace RuntimeEditorUi {
 
             ImGui::Spacing();
 
-            MapEditorInternal::assetBrowser.Draw([](const std::string& fileName) {
-                if (runtimeRenderer == nullptr) return ImTextureID{};
-                return runtimeRenderer->GetImGuiTextureID(fileName);
-            });
+            // Same resolver DrawAssetField uses, so the browser thumbnails and
+            // the inspector previews can never disagree about what a texture
+            // name maps to. Routes back through previewTextureProvider, which
+            // Start() pointed at this renderer.
+            MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID);
 
             ImGui::End();
         }
@@ -279,6 +280,16 @@ namespace RuntimeEditor {
             MapEditorInternal::assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
             MapEditorInternal::assetBrowserInitialized = true;
         }
+
+        // The shared inspector widgets (DrawAssetField and the thumbnail
+        // helpers, all defined in MapEditorUI.cpp) resolve previews through the
+        // Map Editor's SDL_Renderer, which does not exist in this process - so
+        // every asset field would draw an empty box. Point them at the live
+        // renderer instead, which hands back IDs the active ImGui backend can
+        // actually bind. Cleared again in Shutdown().
+        MapEditorInternal::previewTextureProvider = [](const std::string& fileName) -> ImTextureID {
+            return runtimeRenderer != nullptr ? runtimeRenderer->GetImGuiTextureID(fileName) : ImTextureID{};
+        };
     }
 
     void Update(Level& level,
@@ -549,6 +560,10 @@ namespace RuntimeEditor {
         level.runtimeCamRot.x = camera->pitch;
         level.runtimeCamRot.y = camera->yaw;
 #endif
+        // Must be cleared before control can return to the Map Editor: leaving
+        // it set would feed that editor's SDL backend renderer-specific IDs.
+        MapEditorInternal::previewTextureProvider = nullptr;
+
         runtimeRenderer = nullptr;
         camera = nullptr;
         transform = nullptr;
