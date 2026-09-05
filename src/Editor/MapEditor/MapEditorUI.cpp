@@ -1623,9 +1623,9 @@ namespace MapEditorInternal {
             SDL_Texture* preview = value.empty() ? nullptr : GetEditorTexture(value);
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            if (preview != nullptr) {
+            if (preview != nullptr)
                 ImGui::Image(reinterpret_cast<ImTextureID>(preview), ImVec2(previewSize, previewSize));
-            } else {
+            else {
                 ImGui::Dummy(ImVec2(previewSize, previewSize));
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 dl->AddRectFilled(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(35, 35, 40, 255));

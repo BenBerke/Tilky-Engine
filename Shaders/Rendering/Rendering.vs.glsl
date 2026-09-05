@@ -90,6 +90,18 @@ struct SectorFloor {
     vec4 textureData;
 // textureData.x = floor texture region index
 // textureData.y = ceiling texture region index
+
+    vec4 textureOffsets;
+// textureOffsets.xy = floor texture offset in map units
+// textureOffsets.zw = ceiling texture offset in map units
+
+    vec4 textureFlip;
+// textureFlip.xy = floor flip X/Y (0.0 or 1.0)
+// textureFlip.zw = ceiling flip X/Y (0.0 or 1.0)
+
+    vec4 textureScales;
+// textureScales.xy = floor X/Y UV scale (1.0 = normal)
+// textureScales.zw = ceiling X/Y UV scale (1.0 = normal)
 };
 
 struct Collider {
@@ -541,7 +553,27 @@ void renderFlat() {
     vTextureIndex = -1;
     vSpriteTextureIndex = -1;
 
-    vFlatUV = point.xy / tileSize;
+    vec2 textureOffset = isCeiling
+    ? sectorFloor.textureOffsets.zw
+    : sectorFloor.textureOffsets.xy;
+
+    vec2 textureScale = isCeiling
+    ? sectorFloor.textureScales.zw
+    : sectorFloor.textureScales.xy;
+
+    vec2 textureFlip = isCeiling
+    ? sectorFloor.textureFlip.zw
+    : sectorFloor.textureFlip.xy;
+
+    // Match wall UV behaviour: scale, then flip, then offset.
+    // Map X/Y correspond to world X/Z. A scale of 2.0 doubles repeats.
+    vec2 uv = (point.xy / tileSize) * textureScale;
+
+    if (textureFlip.x > 0.5) uv.x = -uv.x;
+    if (textureFlip.y > 0.5) uv.y = -uv.y;
+
+    // Keep UVs unwrapped; the fragment shader repeats the atlas texture.
+    vFlatUV = uv + textureOffset / tileSize;
 
     vWallUV = vec2(0.0);
     vSpriteUV = vec2(0.0);

@@ -110,11 +110,21 @@ namespace OpenGLRendererInternal {
     };
 
     struct GpuSectorFloor {
-        Vector4 heights;      // x = floor height, y = ceiling height
-        Vector4 slopeData;    // x = floor direction, y = floor strength, // z = ceiling direction, w = ceiling strength
+        Vector4 heights;
+        Vector4 slopeData;
         Vector4 floorColor;
         Vector4 ceilingColor;
-        Vector4 textureData;  // x = floor texture, y = ceiling texture
+        Vector4 textureData;
+
+        // xy = floor offset, zw = ceiling offset
+        Vector4 textureOffsets;
+
+        // xy = floor flip X/Y, zw = ceiling flip X/Y
+        Vector4 textureFlip;
+        //todo TILKYTODO bitpacking
+
+        // xy = floor scale X/Y, zw = ceiling scale X/Y
+        Vector4 textureScales = {1.0f, 1.0f, 1.0f, 1.0f};
     };
 
     struct GpuCollider {

@@ -31,6 +31,11 @@ struct SectorSurface {
 
     SlopeDirection slopeDirection = PLUS_X;
     float slopeStrength = 0.0f;
+
+    Vector2 textureOffset = {0.0f, 0.0f};
+    Vector2 textureScale = {1.0f, 1.0f};
+    bool flipTextureX = false;
+    bool flipTextureY = false;
 };
 
 struct SectorFloor {

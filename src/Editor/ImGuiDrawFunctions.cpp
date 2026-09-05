@@ -289,18 +289,11 @@ namespace ImGuiDrawFunctions {
             FieldWidth(160.0f);
 
             if (InputOrDrag(Get("sector.floor_height").c_str(), &floorHeight, draggable)) {
-                const float minimumHeight =
-                        floorIndex > 0
-                            ? sector.floors[floorIndex - 1].ceiling.height
-                            : std::numeric_limits<float>::lowest();
+                const float minimumHeight = floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
 
-                const float maximumHeight =
-                        sectorFloor.ceiling.height - MIN_ROOM_HEIGHT;
+                const float maximumHeight = sectorFloor.ceiling.height - MIN_ROOM_HEIGHT;
 
-                if (minimumHeight <= maximumHeight) {
-                    sectorFloor.floor.height =
-                            std::clamp(floorHeight, minimumHeight, maximumHeight);
-                }
+                if (minimumHeight <= maximumHeight) sectorFloor.floor.height = std::clamp(floorHeight, minimumHeight, maximumHeight);
             }
 
             Tooltip(Get("editor.tooltip.sector.floor_height").c_str());
@@ -310,44 +303,25 @@ namespace ImGuiDrawFunctions {
             FieldWidth(160.0f);
 
             if (InputOrDrag(Get("sector.ceil_height").c_str(), &ceilingHeight, draggable)) {
-                const float minimumHeight =
-                        sectorFloor.floor.height + MIN_ROOM_HEIGHT;
+                const float minimumHeight = sectorFloor.floor.height + MIN_ROOM_HEIGHT;
 
-                const float maximumHeight =
-                        floorIndex + 1 < sector.floors.size()
-                            ? sector.floors[floorIndex + 1].floor.height
-                            : std::numeric_limits<float>::max();
+                const float maximumHeight = floorIndex + 1 < sector.floors.size() ? sector.floors[floorIndex + 1].floor.height : std::numeric_limits<float>::max();
 
-                if (minimumHeight <= maximumHeight) {
-                    sectorFloor.ceiling.height =
-                            std::clamp(ceilingHeight, minimumHeight, maximumHeight);
-                }
+                if (minimumHeight <= maximumHeight) sectorFloor.ceiling.height = std::clamp(ceilingHeight, minimumHeight, maximumHeight);
             }
 
             Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
 
-            const bool invalidRoom =
-                    sectorFloor.floor.height >= sectorFloor.ceiling.height;
+            const bool invalidRoom = sectorFloor.floor.height >= sectorFloor.ceiling.height;
 
-            const bool overlapsPrevious =
-                    floorIndex > 0 &&
-                    sectorFloor.floor.height <
-                    sector.floors[floorIndex - 1].ceiling.height;
+            const bool overlapsPrevious = floorIndex > 0 && sectorFloor.floor.height < sector.floors[floorIndex - 1].ceiling.height;
 
-            const bool overlapsNext =
-                    floorIndex + 1 < sector.floors.size() &&
-                    sectorFloor.ceiling.height >
-                    sector.floors[floorIndex + 1].floor.height;
+            const bool overlapsNext = floorIndex + 1 < sector.floors.size() && sectorFloor.ceiling.height > sector.floors[floorIndex + 1].floor.height;
 
             if (invalidRoom || overlapsPrevious || overlapsNext) {
-                ImGui::PushStyleColor(
-                    ImGuiCol_Text,
-                    ImVec4(1.0f, 0.6f, 0.1f, 1.0f)
-                );
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
 
-                ImGui::TextWrapped(
-                    Get("editor.tooltip.sector.invalid_floor_heights").c_str()
-                );
+                ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
 
                 ImGui::PopStyleColor();
             }
@@ -358,12 +332,7 @@ namespace ImGuiDrawFunctions {
 
             // ── Slopes ───────────────────────────────────────────────────────────────
 
-            const char *slopeDirections[] = {
-                "+X",
-                "-X",
-                "+Z",
-                "-Z"
-            };
+            const char *slopeDirections[] = {"+X", "-X", "+Z", "-Z"};
 
             // Floor slope
 
@@ -375,14 +344,8 @@ namespace ImGuiDrawFunctions {
 
             const std::string floorDirectionLabel = Get("sector.slope_direction") + "##floor_slope_direction";
 
-            if (ImGui::Combo(
-                floorDirectionLabel.c_str(),
-                &floorSlopeDirection,
-                slopeDirections,
-                IM_ARRAYSIZE(slopeDirections))) {
-                sectorFloor.floor.slopeDirection =
-                        static_cast<SlopeDirection>(floorSlopeDirection);
-            }
+            if (ImGui::Combo(floorDirectionLabel.c_str(),&floorSlopeDirection, slopeDirections,IM_ARRAYSIZE(slopeDirections)))
+                sectorFloor.floor.slopeDirection = static_cast<SlopeDirection>(floorSlopeDirection);
 
             FieldWidth(160.0f);
 
@@ -443,14 +406,48 @@ namespace ImGuiDrawFunctions {
 
             // ── Textures ─────────────────────────────────────────────────────────
 
+            ImGui::PushID(&sectorFloor);
+
+            BeginSection(Get("sector.textures").c_str());
+
+            // Floor texture
+            ImGui::PushID("floor_texture");
+
             MapEditorInternal::DrawAssetField(
                 Get("sector.floor_texture").c_str(),
                 sectorFloor.floor.texture,
                 AssetKind::Texture,
                 48.0f
             );
-
             Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
+
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_offset").c_str(),
+                &sectorFloor.floor.textureOffset.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
+
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_scale").c_str(),
+                &sectorFloor.floor.textureScale.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
+
+            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(), &sectorFloor.floor.flipTextureX);
+            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(), &sectorFloor.floor.flipTextureY);
+
+            ImGui::PopID();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Ceiling texture
+            ImGui::PushID("ceiling_texture");
 
             MapEditorInternal::DrawAssetField(
                 Get("sector.ceil_texture").c_str(),
@@ -458,12 +455,33 @@ namespace ImGuiDrawFunctions {
                 AssetKind::Texture,
                 48.0f
             );
-
             Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
 
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_offset").c_str(),
+                &sectorFloor.ceiling.textureOffset.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
+
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_scale").c_str(),
+                &sectorFloor.ceiling.textureScale.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
+
+            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(),&sectorFloor.ceiling.flipTextureX);
+
+            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(),&sectorFloor.ceiling.flipTextureY);
+
+            ImGui::PopID();
+
+            EndSection();
+
+            ImGui::PopID();
 
             // ── Colors ───────────────────────────────────────────────────────────
 

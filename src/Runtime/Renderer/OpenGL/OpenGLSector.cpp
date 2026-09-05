@@ -16,7 +16,7 @@ void OpenGL::BuildGpuSectors() {
     gpuSectorFloors.reserve(totalFloorCount);
 
     for (const Sector& sector : level.sectors) {
-        GpuSector gpuSector;
+        GpuSector gpuSector{};
 
         gpuSector.floorData = {
             static_cast<float>(gpuSectorFloors.size()),
@@ -26,7 +26,7 @@ void OpenGL::BuildGpuSectors() {
         };
 
         for (const SectorFloor& floor : sector.floors) {
-            GpuSectorFloor gpuFloor;
+            GpuSectorFloor gpuFloor{};
 
             const Vector4 floorColor = floor.floor.color;
             const Vector4 ceilingColor = floor.ceiling.color;
@@ -64,6 +64,27 @@ void OpenGL::BuildGpuSectors() {
                 static_cast<float>(GetTextureRegionIndex(floor.ceiling.texture)),
                 0.0f,
                 0.0f
+            };
+
+            gpuFloor.textureOffsets = {
+                floor.floor.textureOffset.x,
+                floor.floor.textureOffset.y,
+                floor.ceiling.textureOffset.x,
+                floor.ceiling.textureOffset.y
+            };
+
+            gpuFloor.textureFlip = {
+                floor.floor.flipTextureX ? 1.0f : 0.0f,
+                floor.floor.flipTextureY ? 1.0f : 0.0f,
+                floor.ceiling.flipTextureX ? 1.0f : 0.0f,
+                floor.ceiling.flipTextureY ? 1.0f : 0.0f
+            };
+
+            gpuFloor.textureScales = {
+                floor.floor.textureScale.x,
+                floor.floor.textureScale.y,
+                floor.ceiling.textureScale.x,
+                floor.ceiling.textureScale.y
             };
 
             gpuSectorFloors.push_back(gpuFloor);
