@@ -82,14 +82,8 @@ namespace {
 
     // Mirrors GetSlopeOffset() in Rendering_vs.glsl. slopeStrength is used
     // as a direct height-per-unit gradient here because that is what the
-    // shader does; if it should be read as an angle instead, wrap it in
-    // std::tan() here and tan() there in the same commit.
-    float GetSlopeOffset(
-        const Vector2& point,
-        const SectorBounds& bounds,
-        const SlopeDirection slopeDirection,
-        const float slopeStrength
-    ) {
+    // shader does
+    float GetSlopeOffset(const Vector2& point, const SectorBounds& bounds, const SlopeDirection slopeDirection, const float slopeStrength) {
         if (!bounds.valid || slopeStrength == 0.0f) return 0.0f;
 
         const float gradient = slopeStrength * Constants::DegToRad;
@@ -104,13 +98,8 @@ namespace {
         return 0.0f;
     }
 
-    float GetSurfaceHeight(
-        const SectorSurface& surface,
-        const SectorBounds& bounds,
-        const Vector2& point
-    ) {
-        return surface.height +
-               GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
+    float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point) {
+        return surface.height + GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
     }
 
     struct SectorSample {
@@ -350,9 +339,18 @@ namespace {
             topEnd
         };
 
-        gpuWall.textureOffset_padding = {
+        // data2.xy = texture offset; data2.zw = independent X/Y scale.
+        gpuWall.data2 = {
             wall.textureOffset.x,
             wall.textureOffset.y,
+            wall.textureScale.x,
+            wall.textureScale.y
+        };
+
+        // Store flip flags as floats to match the GPU vec4 layout.
+        gpuWall.data3 = {
+            wall.flipTextureX ? 1.0f : 0.0f,
+            wall.flipTextureY ? 1.0f : 0.0f,
             0.0f,
             0.0f
         };
@@ -370,8 +368,7 @@ void OpenGL::BuildGpuWallsFromMap() {
     SectorBoundsCache boundsCache;
 
     for (const Wall& wall : level.walls) {
-        const float textureRegionIndex =
-            static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
+        const float textureRegionIndex = static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
 
         const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
 
@@ -392,8 +389,7 @@ void OpenGL::BuildGpuWallsFromMap() {
             wall.end
         };
 
-        const std::vector<WallSpan> spans =
-            BuildWallSpans(frontSector, backSector, points);
+        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, points);
 
         if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr) {
             PushGpuWallPiece(

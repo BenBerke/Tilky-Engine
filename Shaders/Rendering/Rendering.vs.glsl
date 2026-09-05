@@ -49,7 +49,14 @@ struct Wall {
 //data.y = unused;
 //data.z = texture anchor height;
 //data.w = texture direction;
-    vec4 textureOffset_padding;
+    vec4 data2;
+// data2.xy = texture offset in map units
+// data2.zw = independent X/Y UV scale (1.0 = normal)
+
+    vec4 data3;
+// data3.x = flip texture X (0.0 or 1.0)
+// data3.y = flip texture Y (0.0 or 1.0)
+// data3.zw = unused
 };
 
 struct FlatTriangle {
@@ -585,7 +592,7 @@ void renderWall() {
 
     float rightU = wallLength / tileSize;
 
-    vec2 uvOffset = wall.textureOffset_padding.xy / tileSize;
+    vec2 uvOffset = wall.data2.xy / tileSize;
 
     vec3 bottomLeft = vec3(
     wallStart2D.x,
@@ -622,13 +629,13 @@ void renderWall() {
     );
 
     vec2 uvs[6] = vec2[6](
-    vec2(0.0, bottomStartV) + uvOffset,
-    vec2(0.0, topStartV) + uvOffset,
-    vec2(rightU, bottomEndV) + uvOffset,
+    vec2(0.0, bottomStartV),
+    vec2(0.0, topStartV),
+    vec2(rightU, bottomEndV),
 
-    vec2(rightU, bottomEndV) + uvOffset,
-    vec2(0.0, topStartV) + uvOffset,
-    vec2(rightU, topEndV) + uvOffset
+    vec2(rightU, bottomEndV),
+    vec2(0.0, topStartV),
+    vec2(rightU, topEndV)
     );
 
     float startHeight = max(topStartHeight - bottomStartHeight, 0.0);
@@ -648,7 +655,15 @@ void renderWall() {
 
     vec3 worldPos = positions[gl_VertexID];
 
-    vWallUV = uvs[gl_VertexID];
+    // Scale the repeat rate independently on each axis.
+    // A scale of 2.0 gives twice as many repeats on that axis.
+    vec2 uv = uvs[gl_VertexID] * wall.data2.zw;
+
+    if (wall.data3.x > 0.5) uv.x = -uv.x;
+    if (wall.data3.y > 0.5) uv.y = -uv.y;
+
+    // Apply the offset last so scaling/flipping does not change it.
+    vWallUV = uv + uvOffset;
     vFlatUV = vec2(0.0);
     vSpriteUV = vec2(0.0);
 

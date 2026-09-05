@@ -64,7 +64,16 @@ namespace OpenGLRendererInternal {
         //data.y = unused;
         //data.z = texture anchor height;
         //data.w = texture direction;
-        Vector4 textureOffset_padding;
+        Vector4 data2;
+        //x = textureOffset.x
+        //y = textureOffset.y
+        //z = textureScale.x
+        //w = textureScale.y
+        Vector4 data3;
+        //x = flipX
+        //y = flipY
+        //z = unused
+        //w = unused
     };
 
     struct alignas(16) IntVector4 {

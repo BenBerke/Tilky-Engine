@@ -654,19 +654,24 @@ namespace ImGuiDrawFunctions {
             ImGuiColorEditFlags_AlphaPreviewHalf |
             ImGuiColorEditFlags_HDR |
             ImGuiColorEditFlags_Float
-        )) {
-        }
+        )) {}
 
         Tooltip(Get("editor.tooltip.wall.color").c_str());
 
         EndSection();
 
-        // ── Texture Offset ───────────────────────────────────────────────────
-        BeginSection("Texture Offset");
+        // ── Texture ───────────────────────────────────────────────────
+        BeginSection("Texture");
 
         FieldWidth(200.0f);
         InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
         Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
+
+        InputOrDrag2(Get("wall.texture_scale").c_str(), &wall.textureScale.x, draggable);
+        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
+
+        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &wall.flipTextureX);
+        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &wall.flipTextureY);
 
         EndSection();
 

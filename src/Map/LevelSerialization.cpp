@@ -411,11 +411,24 @@ namespace {
             }
             else wall.textureOffset = {0.0f,0.0f};
 
+            if (wallJson.contains("textureScale") &&
+                wallJson.at("textureScale").is_array() && wallJson.at("textureScale").size() >= 2) {
+                wall.textureScale = {
+                    wallJson.at("textureScale").at(0).get<float>(),
+                    wallJson.at("textureScale").at(1).get<float>()
+                };
+            }
+            else wall.textureScale = {1.0f,1.0f};
+
+            if(wallJson.contains("flipX")) wall.flipTextureX = wallJson["flipX"].get<bool>();
+            else wall.flipTextureX = false;
+
+            if (wallJson.contains("flipY")) wall.flipTextureY = wallJson["flipY"].get<bool>();
+            else wall.flipTextureY = false;
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
             if (wall.id == INVALID_ID) wall.id = static_cast<ID>(i);
-
 
             if (seenWallIDs.contains(wall.id)) {
                 const ID reassigned = highestWallID + 1;
@@ -474,7 +487,10 @@ namespace {
                     }
                 },
                 {"frontSector", wall.frontSector},
-                {"backSector", wall.backSector}
+                {"backSector", wall.backSector},
+                {"textureScale", {wall.textureScale.x, wall.textureScale.y}},
+                    {"flipX", wall.flipTextureX},
+                {"flipY", wall.flipTextureY}
             });
         }
     }

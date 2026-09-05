@@ -22,6 +22,10 @@ struct Wall {
     Vector4 color;
     Vector2 textureOffset;
 
+    Vector2 textureScale = {1.0f, 1.0f};
+    bool flipTextureX = false;
+    bool flipTextureY = false;
+
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
     // Should be -1 if there is no sector
     ID frontSector  = INVALID_ID;
