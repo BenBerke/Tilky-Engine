@@ -550,7 +550,7 @@ namespace MapEditorInternal {
                 const Vector2 mouseDelta = InputManager::GetMouseDelta();
 
                 cameraPos.x -= mouseDelta.x / editorZoom;
-                cameraPos.y += mouseDelta.y / editorZoom;
+                cameraPos.y -= mouseDelta.y / editorZoom;
             }
             else if (currentMode == MODE_GEOMETRY) HandleGeometryModeMouse(mouseWorld);
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {

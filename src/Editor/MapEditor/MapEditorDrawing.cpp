@@ -221,11 +221,10 @@ namespace MapEditorInternal {
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
         }
 
-        void DrawSnapTargetRing(const Vector2& worldPos, const bool closesLoop) {
+        void DrawSnapTargetRing(const Vector2& worldPos) {
             const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
-            const PreviewColor color = closesLoop ? kValidLineColor : kAnchorColor;
 
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+            SDL_SetRenderDrawColor(renderer, kValidLineColor.r, kValidLineColor.g, kValidLineColor.b, kValidLineColor.a);
 
             constexpr float half = 8.0f;
             const SDL_FRect ring = {screenPos.x - half, screenPos.y - half, half * 2.0f, half * 2.0f};
@@ -292,7 +291,7 @@ namespace MapEditorInternal {
 
             for (const Vector2& point : sectorBeingCreated) DrawAnchorPoint(point);
 
-            if (snappedToChain) DrawSnapTargetRing(snapTarget, wouldCloseLoop);
+            if (wouldCloseLoop) DrawSnapTargetRing(snapTarget);
         }
 
         void DrawRectanglePreview() {

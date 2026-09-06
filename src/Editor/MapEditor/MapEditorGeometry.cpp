@@ -161,14 +161,14 @@ namespace MapEditorInternal {
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos) {
         return {
             (worldPos.x - cameraPos.x) * editorZoom + screenWidth * 0.5f,
-            screenHeight * 0.5f - (worldPos.y - cameraPos.y) * editorZoom
+            (worldPos.y - cameraPos.y) * editorZoom + screenHeight * 0.5f
         };
     }
 
     Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos) {
         return {
             (screenPos.x - screenWidth * 0.5f) / editorZoom + cameraPos.x,
-            (screenHeight * 0.5f - screenPos.y) / editorZoom + cameraPos.y
+            (screenPos.y - screenHeight * 0.5f) / editorZoom + cameraPos.y
         };
     }
 
