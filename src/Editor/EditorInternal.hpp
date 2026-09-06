@@ -419,6 +419,7 @@ namespace MapEditorInternal {
     // held. Live preview rendering (MapEditorDrawing.cpp) and the click
     // handlers (MapEditorGeometry.cpp) both call these so committed
     // geometry always matches what was last shown on screen.
+    [[nodiscard]] bool SnapToPendingChainPoint(const Vector2& mouseWorld, Vector2* outPoint);
     [[nodiscard]] Vector2 ResolveFreehandPoint(const Vector2& mouseWorld);
     [[nodiscard]] Vector2 ResolveRectangleCorner(const Vector2& mouseWorld); // valid once rectangleHasFirstCorner
     [[nodiscard]] Vector2 ResolvePolygonHandle(const Vector2& mouseWorld);  // valid once polygonHasCenter
@@ -577,6 +578,36 @@ namespace MapEditorInternal {
     void ExtendWallSelectionTo(ID wallID);
     void ClearWallSelection();
 
+    // The same four operations for the other two object types, defined in
+    // MapEditorInput.cpp next to the wall ones. Before these existed only
+    // walls had them, and the sector/entity hierarchy rows assigned
+    // selectedSectorID / selectedEntity / selectedSectors / selectedEntities
+    // by hand while the canvas never touched the plural lists at all - so
+    // the same gesture produced different selection state depending on where
+    // you clicked. Everything that selects a sector or an entity now goes
+    // through these.
+    //
+    // Invariants match the wall block above:
+    //   selectedSectors / selectedEntities - the whole selection.
+    //   selectedSectorID / selectedEntity  - the primary: the object the
+    //     inspector shows, and the one every multi-edit is diffed from.
+    //     Either unset or a member of the corresponding list.
+    //
+    // Unlike SelectWall these deliberately do NOT open the inspector.
+    // Whether editingSector/editingEntity gets set is the caller's call: the
+    // hierarchy opens it on click, a canvas left-click does not. That rule
+    // already existed for entities ("left click only selects/places/moves -
+    // it must never open the inspector"); sectors now match it.
+    void SelectSector(ID sectorID);
+    void ToggleSectorSelection(ID sectorID);
+    void ExtendSectorSelectionTo(ID sectorID);
+    void ClearSectorSelection();
+
+    void SelectEntity(ID entityID);
+    void ToggleEntitySelection(ID entityID);
+    void ExtendEntitySelectionTo(ID entityID);
+    void ClearEntitySelection();
+
     // Moves every wall endpoint - and every sector boundary vertex -
     // sitting exactly on `from` to `to`. Moving the walls alone is not
     // enough: a sector's `vertices`/`innerLoops` are its own copy of that
@@ -669,15 +700,7 @@ namespace MapEditorInternal {
     // double-clicking a matching asset there. Returns true the frame
     // `value` changes.
     bool DrawAssetField(const char* label, std::string& value, AssetKind kind, float previewSize = 0.0f);
-
-    // Call this from SDL event loop whenever it receives
-    // SDL_EVENT_DROP_FILE while the Map Editor window is active, e.g.:
-    //
-    //   case SDL_EVENT_DROP_FILE:
-    //       MapEditorInternal::HandleAssetBrowserFileDrop(
-    //           event.drop.windowID, event.drop.x, event.drop.y, event.drop.data);
-    //       break;
-    //
+    
     // Safe to call unconditionally - it no-ops if the drop didn't land on
     // the Asset Browser panel, or if the Map Editor window isn't the one
     // the drop occurred over.

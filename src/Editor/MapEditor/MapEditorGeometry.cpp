@@ -783,7 +783,32 @@ namespace MapEditorInternal {
         return false;
     }
 
+    bool SnapToPendingChainPoint(const Vector2& mouseWorld, Vector2* outPoint) {
+        if (outPoint == nullptr) return false;
+        if (!vertexSnapEnabled) return false; // same toggle every other vertex snap obeys
+        if (manualSectorMode) return false;   // manual mode only ever picks *existing* corners
+        if (sectorBeingCreated.size() < 3) return false;
+
+        constexpr float snapRadiusPixels = 12.0f; // matches ResolveSnapPointExcluding / FindExistingCorner
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float snapRadiusWorld = snapRadiusPixels / safeZoom;
+
+        const Vector2& start = sectorBeingCreated.front();
+        if (Vector2Math::DistanceSquared(mouseWorld, start) > snapRadiusWorld * snapRadiusWorld) return false;
+
+        *outPoint = start;
+        return true;
+    }
+
     Vector2 ResolveFreehandPoint(const Vector2& mouseWorld) {
+        // A vertex of the chain in progress outranks everything else: it
+        // beats grid/wall snapping because it's the more specific target,
+        // and it beats the angle constraint because constraining on top of
+        // it would immediately rotate the point back off the vertex it just
+        // snapped to - making a loop impossible to close while Shift is held.
+        Vector2 pendingPoint{};
+        if (SnapToPendingChainPoint(mouseWorld, &pendingPoint)) return pendingPoint;
+
         Vector2 point = ResolveSnapPoint(mouseWorld);
 
         if (!manualSectorMode && !sectorBeingCreated.empty() && IsConstrainModifierHeld())
@@ -1243,7 +1268,13 @@ namespace MapEditorInternal {
         actions.push_back(ACTION_APPLY_GEOMETRY);
 
         if (!applyResult.affectedSectorIDs.empty()) {
-            selectedSectorID = applyResult.affectedSectorIDs.front();
+            // Through the shared helper rather than assigning
+            // selectedSectorID on its own: a primary that isn't in
+            // selectedSectors is exactly the inconsistent shape the
+            // hierarchy highlight and the inspector's multi-edit fan-out
+            // both read, so a freshly drawn sector has to land in the
+            // plural selection too.
+            SelectSector(applyResult.affectedSectorIDs.front());
             editingSector = true;
         }
 
@@ -1265,6 +1296,14 @@ namespace MapEditorInternal {
         selectedWalls = snapshot.selectedWalls;
         editingSector = snapshot.editingSector;
         editingWall = snapshot.editingWall;
+
+        // GeometrySnapshot predates the plural sector selection and never
+        // captured it, so rather than leaving behind a selection that can
+        // name sectors this undo just removed, collapse to the primary the
+        // snapshot did capture. That primary is guaranteed to exist: it
+        // came out of the same snapshot as level.sectors above.
+        selectedSectors.clear();
+        if (selectedSectorID != INVALID_ID) selectedSectors.push_back(selectedSectorID);
 
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
@@ -1323,9 +1362,18 @@ namespace MapEditorInternal {
 
         level.sectors.erase(level.sectors.begin() + index);
 
+        // Drop the deleted sector out of the multi-selection, and hand the
+        // primary to whatever is left rather than closing the inspector on
+        // a multi-select - the same rule DeleteWall follows below. The
+        // editingSector guard keeps this from *opening* an inspector that
+        // wasn't open: unlike walls, selecting a sector on the canvas
+        // deliberately doesn't imply editing it.
+        const auto selectedIt = std::find(selectedSectors.begin(), selectedSectors.end(), sectorID);
+        if (selectedIt != selectedSectors.end()) selectedSectors.erase(selectedIt);
+
         if (selectedSectorID == sectorID) {
-            selectedSectorID = INVALID_ID;
-            editingSector = false;
+            selectedSectorID = selectedSectors.empty() ? INVALID_ID : selectedSectors.front();
+            editingSector = editingSector && selectedSectorID != INVALID_ID;
         }
 
         if (enclosingSectorID != INVALID_ID) {
@@ -1380,15 +1428,23 @@ namespace MapEditorInternal {
     void HandleEntityModeLeftClick(const Vector2& point) {
         Entity* entity = EntityAt(point);
         if (entity == nullptr) return;
-        selectedEntity = *entity; // editingEntity intentionally left untouched
+
+        // editingEntity intentionally left untouched - SelectEntity only
+        // moves the selection, it never opens the inspector.
+        SelectEntity(entity->id);
     }
 
     // Entity Mode — right click selects AND opens the inspector.
     void HandleEntityModeRightClick(const Vector2& point) {
         Entity* entity = EntityAt(point);
         if (entity == nullptr) return;
-        selectedEntity = *entity;
-        editingEntity  = true;
+
+        // Routed through the shared helper so selectedEntities follows the
+        // primary. Assigning selectedEntity on its own used to leave the
+        // plural selection pointing at whatever was picked before, which
+        // the inspector's multi-edit fan-out would then write to.
+        SelectEntity(entity->id);
+        editingEntity = true;
     }
 
     // Sector Mode — right click selects a sector and opens its inspector.
@@ -1396,8 +1452,9 @@ namespace MapEditorInternal {
         Level& level = LevelManager::CurrentLevel();
         const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
         if (index < 0) return;
-        selectedSectorID = level.sectors[index].id;
-        editingSector    = true;
+
+        SelectSector(level.sectors[index].id);
+        editingSector = true;
     }
 
     void DeleteWall(const ID wallID) {

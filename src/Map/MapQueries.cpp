@@ -167,4 +167,8 @@ namespace MapQueries {
         AssignWallsToSectors(level);
         AssignNeighborsToSectors(level);
     }
+
+    void BuildPvs(Level& level) {
+        //todo TILKYTODO
+    }
 }

@@ -28,6 +28,8 @@ namespace MapQueries {
     void AssignNeighborsToSectors(Level& level);
     void RebuildSectorRuntimeLinks(Level& level);
 
+    void BuildPvs(Level& level);
+
     inline std::array<Vector3, 4> CalculateWallQuad3D(
         const Wall& wall,
         const float bottomHeight,

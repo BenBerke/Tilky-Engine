@@ -96,7 +96,10 @@ namespace MapEditorInternal {
     void DrawSnapIndicator() {
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-        const Vector2 snapped = ResolveSnapPoint(mouseWorld);
+
+        const bool freehandDrawing = currentMode == MODE_SECTOR && currentDrawTool == DRAWTOOL_FREEHAND && !manualSectorMode;
+
+        const Vector2 snapped = freehandDrawing ? ResolveFreehandPoint(mouseWorld) : ResolveSnapPoint(mouseWorld);
         const Vector2 screenPos = WorldToScreen(snapped, cameraPos);
 
         SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
@@ -218,6 +221,17 @@ namespace MapEditorInternal {
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
         }
 
+        void DrawSnapTargetRing(const Vector2& worldPos, const bool closesLoop) {
+            const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
+            const PreviewColor color = closesLoop ? kValidLineColor : kAnchorColor;
+
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+
+            constexpr float half = 8.0f;
+            const SDL_FRect ring = {screenPos.x - half, screenPos.y - half, half * 2.0f, half * 2.0f};
+            SDL_RenderRect(renderer, &ring);
+        }
+
         void DrawAnchorPoint(const Vector2& worldPos) {
             const Vector2 screenPos = WorldToScreen(worldPos, cameraPos);
             SDL_SetRenderDrawColor(renderer, kAnchorColor.r, kAnchorColor.g, kAnchorColor.b, kAnchorColor.a);
@@ -250,7 +264,14 @@ namespace MapEditorInternal {
             const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
             const Vector2 previewPoint = ResolveFreehandPoint(mouseWorld);
 
-            DrawPreviewOutline(sectorBeingCreated, false, true);
+            Vector2 snapTarget{};
+            const bool snappedToChain = SnapToPendingChainPoint(mouseWorld, &snapTarget);
+
+            const bool wouldCloseLoop = snappedToChain &&
+                                        sectorBeingCreated.size() >= 3 &&
+                                        SamePoint(snapTarget, sectorBeingCreated.front());
+
+            DrawPreviewOutline(sectorBeingCreated, wouldCloseLoop, true);
 
             for (std::size_t i = 0; i + 1 < sectorBeingCreated.size(); ++i)
                 DrawEdgeLengthLabel(sectorBeingCreated[i], sectorBeingCreated[i + 1]);
@@ -270,6 +291,8 @@ namespace MapEditorInternal {
             DrawPreviewFill(committedLoop, wouldCloseCleanly);
 
             for (const Vector2& point : sectorBeingCreated) DrawAnchorPoint(point);
+
+            if (snappedToChain) DrawSnapTargetRing(snapTarget, wouldCloseLoop);
         }
 
         void DrawRectanglePreview() {

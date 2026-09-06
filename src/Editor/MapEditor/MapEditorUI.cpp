@@ -23,6 +23,7 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
@@ -310,11 +311,9 @@ namespace {
         nextDotID = 0;
 
         ClearWallSelection();
+        ClearSectorSelection();
+        ClearEntitySelection();
 
-        editingSector = false;
-        selectedSectorID = INVALID_ID;
-
-        editingEntity = false;
         ResetInspectorState();
 
         actions.clear();
@@ -981,6 +980,31 @@ namespace {
             return lower.find(searchLower) != std::string::npos;
         };
 
+        // Multi-selection notice. The highlighted rows already show *what*
+        // is selected; this says what editing does with it, because an
+        // inspector field silently writing to five sectors is the kind of
+        // thing that needs saying once rather than being discovered.
+        {
+            const size_t sectorCount = selectedSectors.size();
+            const size_t wallCount = selectedWalls.size();
+            const size_t entityCount = selectedEntities.size();
+
+            const char *plural = nullptr;
+            size_t count = 0;
+
+            if (currentMode == MODE_SECTOR && sectorCount > 1) { plural = "sectors"; count = sectorCount; }
+            else if (currentMode == MODE_GEOMETRY && wallCount > 1) { plural = "walls"; count = wallCount; }
+            else if (currentMode == MODE_ENTITY && entityCount > 1) { plural = "entities"; count = entityCount; }
+
+            if (plural != nullptr) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.85f, 0.55f, 1.00f));
+                ImGui::TextWrapped("%d %s selected - inspector edits apply to all of them.",
+                                   static_cast<int>(count), plural);
+                ImGui::PopStyleColor();
+                ImGui::Spacing();
+            }
+        }
+
         ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 12.0f);
 
         // ---- Sectors ------------------------------------------------------
@@ -1012,31 +1036,29 @@ namespace {
 
                     const bool selected = selectedIt != selectedSectors.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        const ID lastSelectedSectorID = selectedSectorID;
-                        const bool hadSelectedSector = editingSector;
-
-                        selectedSectorID = sector.id;
-                        editingSector = true;
                         currentMode = MODE_SECTOR;
 
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedSector) {
-                            selectedSectors.clear();
-                            const ID firstID = std::min(sector.id, lastSelectedSectorID);
-                            const ID lastID = std::max(sector.id, lastSelectedSectorID);
+                        // Routed through the shared selection helpers, the
+                        // same way the wall list below already is, rather
+                        // than assigning selectedSectorID/selectedSectors by
+                        // hand - so a hierarchy click and a canvas click
+                        // leave identical state.
+                        //
+                        // One behaviour change falls out of this: Shift no
+                        // longer needs the inspector to already be open to
+                        // range-select, only a previous primary, which is
+                        // what you'd expect after a Ctrl-click.
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
+                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
+                            ExtendSectorSelectionTo(sector.id);
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
+                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                            ToggleSectorSelection(sector.id);
+                        else SelectSector(sector.id);
 
-                            for (const Sector &rangeSector: level.sectors) {
-                                if (rangeSector.id >= firstID && rangeSector.id <= lastID)
-                                    selectedSectors.push_back(rangeSector.id);
-                            }
-                        }
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
-                            if (selectedIt == selectedSectors.end()) selectedSectors.push_back(sector.id);
-                            else selectedSectors.erase(selectedIt);
-                        }
-                        else {
-                            selectedSectors.clear();
-                            selectedSectors.push_back(sector.id);
-                        }
+                        // The hierarchy is the one place that opens the
+                        // inspector on a plain click; the canvas does not.
+                        editingSector = selectedSectorID != INVALID_ID;
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1086,8 +1108,6 @@ namespace {
 
                     const bool selected = selectedIt != selectedWalls.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        const bool hadSelectedWall = editingWall;
-
                         // Clicking a wall in the hierarchy is the same
                         // gesture as clicking it on the canvas: switch to
                         // Geometry Mode and open the wall inspector.
@@ -1100,18 +1120,21 @@ namespace {
 
                         // Routed through the same selection helpers the
                         // canvas uses (rather than assigning the three
-                        // pieces of selection state by hand, the way the
-                        // sector and entity lists still do) so the
+                        // pieces of selection state by hand, which is what
+                        // the sector and entity lists used to do) so the
                         // hierarchy can't leave the selection in a shape
                         // the canvas considers impossible - a primary wall
                         // that isn't in selectedWalls would show handles
                         // for a wall the inspector isn't editing.
-                        // Behaviour is unchanged: Shift still takes the ID
-                        // range from the previous primary, Ctrl still
-                        // toggles, a plain click still replaces.
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedWall)
+                        // Shift takes the ID range from the previous
+                        // primary, Ctrl toggles, a plain click replaces -
+                        // and both modifier keys count, matching the canvas.
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
+                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
                             ExtendWallSelectionTo(wall.id);
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) ToggleWallSelection(wall.id);
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
+                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                            ToggleWallSelection(wall.id);
                         else SelectWall(wall.id);
                     }
 
@@ -1162,32 +1185,18 @@ namespace {
 
                     const bool selected = selectedIt != selectedEntities.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        const ID lastSelectedID = selectedEntity.id;
-                        const bool hadSelectedEntity = editingEntity;
-
-                        selectedEntity = entity;
-                        editingEntity = true;
                         currentMode = MODE_ENTITY;
 
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) && hadSelectedEntity) {
-                            selectedEntities.clear();
+                        // Same routing as the sector and wall lists above.
+                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
+                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
+                            ExtendEntitySelectionTo(entity.id);
+                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
+                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                            ToggleEntitySelection(entity.id);
+                        else SelectEntity(entity.id);
 
-                            const ID firstID = std::min(entity.id, lastSelectedID);
-                            const ID lastID = std::max(entity.id, lastSelectedID);
-
-                            for (const Entity &rangeEntity: level.entities) {
-                                if (rangeEntity.id >= firstID && rangeEntity.id <= lastID)
-                                    selectedEntities.push_back(rangeEntity.id);
-                            }
-                        }
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) {
-                            if (selectedIt == selectedEntities.end()) selectedEntities.push_back(entity.id);
-                            else selectedEntities.erase(selectedIt);
-                        }
-                        else {
-                            selectedEntities.clear();
-                            selectedEntities.push_back(entity.id);
-                        }
+                        editingEntity = !selectedEntities.empty();
                     }
 
                     if (ImGui::BeginPopupContextItem()) {
@@ -1336,6 +1345,335 @@ namespace {
 }
 
     // =========================================================================
+    //  Multi-edit — fanning one inspector edit out across a selection
+    // =========================================================================
+    //
+    // The inspectors below still edit exactly one object: the primary. What
+    // changes with a multi-selection is what happens either side of the
+    // draw call - the primary's editable fields are snapshotted before,
+    // diffed after, and only the fields that *actually changed* are copied
+    // onto the rest of the selection. Fields the user didn't touch keep
+    // their per-object values, so selecting five sectors and typing a
+    // ceiling height doesn't also flatten their textures to match.
+    //
+    // Doing it here rather than inside ImGuiDrawFunctions keeps those
+    // inspectors completely unaware of multi-selection, which matters
+    // because the Runtime Editor shares them.
+    //
+    // Deliberately NOT propagated, and why:
+    //   - Sector vertices/innerLoops and wall start/end. Copying one wall's
+    //     coordinates onto four others would stack them. Wall coordinate
+    //     edits already go through MoveSharedEndpoint below, which is the
+    //     correct shared-corner move.
+    //   - Wall frontSector/backSector: per-wall topology links. Writing one
+    //     wall's links onto its neighbours corrupts the map.
+    //   - Sector floor count (Add/Remove Floor). Per-floor *fields* fan out,
+    //     but resizing another sector's floor stack silently discards its
+    //     heights and textures.
+    //   - Entity name, and component add/remove.
+
+    // Matches the constant DrawSectorEditor enforces on the sector being
+    // edited - a height copied onto a sector with a different stack has to
+    // respect the same minimum room height, or fanning one out can leave the
+    // others inverted.
+    constexpr float MULTI_EDIT_MIN_ROOM_HEIGHT = 0.01f;
+
+    // Componentwise, because the vector types don't promise an operator==.
+    // Exact inequality is deliberate rather than an epsilon compare: these
+    // compare a value against the same value one frame later, and the only
+    // thing that can have written it in between is an ImGui widget storing
+    // an exact float.
+    [[nodiscard]] bool ValueChanged(const Vector2 &a, const Vector2 &b) {
+        return a.x != b.x || a.y != b.y;
+    }
+
+    [[nodiscard]] bool ValueChanged(const Vector3 &a, const Vector3 &b) {
+        return a.x != b.x || a.y != b.y || a.z != b.z;
+    }
+
+    [[nodiscard]] bool ValueChanged(const Vector4 &a, const Vector4 &b) {
+        return a.x != b.x || a.y != b.y || a.z != b.z || a.w != b.w;
+    }
+
+    struct SectorEditSnapshot {
+        decltype(Sector::floors) floors;
+        Vector3 light{};
+    };
+
+    struct WallEditSnapshot {
+        std::string textureFileName;
+        Vector4 color{};
+        Vector2 textureOffset{};
+        Vector2 textureScale{};
+        bool flipTextureX = false;
+        bool flipTextureY = false;
+    };
+
+    struct EntityTransformSnapshot {
+        bool valid = false;
+        Vector3 position{};
+        Quaternion rotation{};
+        Vector3 scale{};
+    };
+
+    [[nodiscard]] SectorEditSnapshot CaptureSectorEditSnapshot(const Sector &sector) {
+        SectorEditSnapshot snapshot;
+        snapshot.floors = sector.floors;
+        snapshot.light = sector.light;
+        return snapshot;
+    }
+
+    bool PropagateSectorEdits(Level &level,
+                              const SectorEditSnapshot &before,
+                              const Sector &primary,
+                              const std::vector<ID> &selection,
+                              const ID primaryID) {
+        if (selection.size() <= 1) return false;
+
+        // Add/Remove Floor on the primary: per-floor fields stop fanning out
+        // for this frame rather than trying to line up two different floor
+        // stacks against each other. Lighting below still applies.
+        const bool floorCountMatches = before.floors.size() == primary.floors.size();
+
+        // Generic over the floor/ceiling surface type so this file never has
+        // to name it - both sides are the same type, whatever Sector.hpp
+        // calls it.
+        const auto applySurface = [](const auto &surfaceBefore,
+                                     const auto &surfaceAfter,
+                                     auto &target,
+                                     bool &heightWritten) {
+            bool wrote = false;
+
+            if (surfaceAfter.height != surfaceBefore.height) {
+                target.height = surfaceAfter.height;
+                heightWritten = true;
+                wrote = true;
+            }
+
+            if (surfaceAfter.slopeDirection != surfaceBefore.slopeDirection) {
+                target.slopeDirection = surfaceAfter.slopeDirection;
+                wrote = true;
+            }
+
+            if (surfaceAfter.slopeStrength != surfaceBefore.slopeStrength) {
+                target.slopeStrength = surfaceAfter.slopeStrength;
+                wrote = true;
+            }
+
+            if (surfaceAfter.texture != surfaceBefore.texture) {
+                target.texture = surfaceAfter.texture;
+                wrote = true;
+            }
+
+            if (ValueChanged(surfaceBefore.textureOffset, surfaceAfter.textureOffset)) {
+                target.textureOffset = surfaceAfter.textureOffset;
+                wrote = true;
+            }
+
+            if (ValueChanged(surfaceBefore.textureScale, surfaceAfter.textureScale)) {
+                target.textureScale = surfaceAfter.textureScale;
+                wrote = true;
+            }
+
+            if (surfaceAfter.flipTextureX != surfaceBefore.flipTextureX) {
+                target.flipTextureX = surfaceAfter.flipTextureX;
+                wrote = true;
+            }
+
+            if (surfaceAfter.flipTextureY != surfaceBefore.flipTextureY) {
+                target.flipTextureY = surfaceAfter.flipTextureY;
+                wrote = true;
+            }
+
+            if (ValueChanged(surfaceBefore.color, surfaceAfter.color)) {
+                target.color = surfaceAfter.color;
+                wrote = true;
+            }
+
+            return wrote;
+        };
+
+        const bool lightChanged = ValueChanged(before.light, primary.light);
+
+        bool changedAnything = false;
+
+        for (const ID sectorID: selection) {
+            if (sectorID == primaryID) continue;
+
+            const auto it = level.sectorIDToIndex.find(sectorID);
+            if (it == level.sectorIDToIndex.end()) continue;
+
+            Sector &target = level.sectors[it->second];
+
+            if (lightChanged) {
+                target.light = primary.light;
+                changedAnything = true;
+            }
+
+            if (!floorCountMatches) continue;
+
+            // Floor N of the primary maps to floor N of the target. A sector
+            // with fewer floors than the primary simply doesn't receive the
+            // edits for the floors it doesn't have.
+            const size_t floorCount = std::min(primary.floors.size(), target.floors.size());
+
+            for (size_t floorIndex = 0; floorIndex < floorCount; ++floorIndex) {
+                const auto &floorBefore = before.floors[floorIndex];
+                const auto &floorAfter = primary.floors[floorIndex];
+                auto &floorTarget = target.floors[floorIndex];
+
+                bool heightWritten = false;
+
+                const bool wroteFloor =
+                        applySurface(floorBefore.floor, floorAfter.floor, floorTarget.floor, heightWritten);
+
+                const bool wroteCeiling =
+                        applySurface(floorBefore.ceiling, floorAfter.ceiling, floorTarget.ceiling, heightWritten);
+
+                if (wroteFloor || wroteCeiling) changedAnything = true;
+
+                // A height copied from a sector with a different stack can
+                // land inverted (floor above its own ceiling). Push the
+                // ceiling up rather than refusing the edit - refusing would
+                // leave the selection half-updated with nothing on screen
+                // explaining why.
+                if (heightWritten && floorTarget.floor.height >= floorTarget.ceiling.height)
+                    floorTarget.ceiling.height = floorTarget.floor.height + MULTI_EDIT_MIN_ROOM_HEIGHT;
+            }
+        }
+
+        return changedAnything;
+    }
+
+    [[nodiscard]] WallEditSnapshot CaptureWallEditSnapshot(const Wall &wall) {
+        WallEditSnapshot snapshot;
+        snapshot.textureFileName = wall.textureFileName;
+        snapshot.color = wall.color;
+        snapshot.textureOffset = wall.textureOffset;
+        snapshot.textureScale = wall.textureScale;
+        snapshot.flipTextureX = wall.flipTextureX;
+        snapshot.flipTextureY = wall.flipTextureY;
+        return snapshot;
+    }
+
+    bool PropagateWallEdits(Level &level,
+                            const WallEditSnapshot &before,
+                            const Wall &primary,
+                            const std::vector<ID> &selection,
+                            const ID primaryID) {
+        if (selection.size() <= 1) return false;
+
+        const bool textureChanged = primary.textureFileName != before.textureFileName;
+        const bool colorChanged = ValueChanged(before.color, primary.color);
+        const bool offsetChanged = ValueChanged(before.textureOffset, primary.textureOffset);
+        const bool scaleChanged = ValueChanged(before.textureScale, primary.textureScale);
+        const bool flipXChanged = primary.flipTextureX != before.flipTextureX;
+        const bool flipYChanged = primary.flipTextureY != before.flipTextureY;
+
+        if (!textureChanged && !colorChanged && !offsetChanged &&
+            !scaleChanged && !flipXChanged && !flipYChanged)
+            return false;
+
+        for (const ID wallID: selection) {
+            if (wallID == primaryID) continue;
+
+            const auto it = level.wallIDToIndex.find(wallID);
+            if (it == level.wallIDToIndex.end()) continue;
+
+            Wall &target = level.walls[it->second];
+
+            if (textureChanged) target.textureFileName = primary.textureFileName;
+            if (colorChanged) target.color = primary.color;
+            if (offsetChanged) target.textureOffset = primary.textureOffset;
+            if (scaleChanged) target.textureScale = primary.textureScale;
+            if (flipXChanged) target.flipTextureX = primary.flipTextureX;
+            if (flipYChanged) target.flipTextureY = primary.flipTextureY;
+        }
+
+        return true;
+    }
+
+    // Entities: ComponentTransform only for now. Every other component's
+    // inspector is hand-written per type, so fanning those out means either a
+    // switch that has to grow with each new component or a generic field
+    // walk - and the centralised per-component field metadata added for the
+    // Lua/JSON refactor is exactly the table that walk should use, which
+    // would cover every component at once including ones that don't exist
+    // yet.
+    //
+    // Position fans out as a DELTA, not an absolute: copying the primary's
+    // position onto the selection would stack every selected entity on one
+    // point. Rotation and scale fan out absolutely, which is what "make them
+    // all face the same way / all this big" means.
+
+    [[nodiscard]] EntityTransformSnapshot CaptureEntityTransformSnapshot(Level &level, const ID entityID) {
+        EntityTransformSnapshot snapshot;
+
+        const ComponentTransform *transform = level.transforms.Get(entityID);
+        if (transform == nullptr) return snapshot;
+
+        snapshot.valid = true;
+        snapshot.position = transform->position;
+        snapshot.rotation = transform->rotation;
+        snapshot.scale = transform->scale;
+        return snapshot;
+    }
+
+    bool PropagateEntityTransformEdits(Level &level,
+                                       const EntityTransformSnapshot &before,
+                                       const std::vector<ID> &selection,
+                                       const ID primaryID) {
+        if (!before.valid || selection.size() <= 1) return false;
+
+        const ComponentTransform *primary = level.transforms.Get(primaryID);
+        if (primary == nullptr) return false;
+
+        const Vector3 positionDelta = {
+            primary->position.x - before.position.x,
+            primary->position.y - before.position.y,
+            primary->position.z - before.position.z
+        };
+
+        const bool moved = positionDelta.x != 0.0f || positionDelta.y != 0.0f || positionDelta.z != 0.0f;
+
+        // Rotation compared through Euler degrees rather than raw quaternion
+        // components: the inspector round-trips it through ToEulerDegrees/
+        // FromEulerDegrees anyway, so this compares the values the user
+        // actually sees and typed.
+        const bool rotated = ValueChanged(before.rotation.ToEulerDegrees(), primary->rotation.ToEulerDegrees());
+
+        const bool scaled = ValueChanged(before.scale, primary->scale);
+
+        if (!moved && !rotated && !scaled) return false;
+
+        // Cached before the loop, because writing through level.transforms
+        // below could otherwise invalidate the pointer mid-iteration.
+        const Quaternion primaryRotation = primary->rotation;
+        const Vector3 primaryScale = primary->scale;
+
+        for (const ID entityID: selection) {
+            if (entityID == primaryID) continue;
+
+            ComponentTransform *target = level.transforms.Get(entityID);
+            if (target == nullptr) continue;
+
+            if (moved)
+                target->SetPosition({
+                    target->position.x + positionDelta.x,
+                    target->position.y + positionDelta.y,
+                    target->position.z + positionDelta.z
+                });
+
+            if (rotated) target->rotation = primaryRotation;
+            if (scaled) target->scale = primaryScale;
+
+            target->isDirty = true;
+        }
+
+        return true;
+    }
+
+    // =========================================================================
     //  Selection inspectors
     // =========================================================================
 
@@ -1351,10 +1689,28 @@ namespace {
 
         Sector &sector = level.sectors[it->second];
 
+        // Snapshot before / propagate after - see the multi-edit block above.
+        const bool multiEdit = selectedSectors.size() > 1;
+
+        const SectorEditSnapshot beforeEdit =
+                multiEdit ? CaptureSectorEditSnapshot(sector) : SectorEditSnapshot{};
+
         if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, it->second, DRAGGABLE)) {
-            DeleteSector(selectedSectorID);
+            // Delete acts on the whole selection, the way the Delete key
+            // already does.
+            const std::vector<ID> sectorsToDelete =
+                    selectedSectors.empty() ? std::vector<ID>{selectedSectorID} : selectedSectors;
+
+            ClearSectorSelection();
+
+            for (const ID sectorID: sectorsToDelete) DeleteSector(sectorID);
+
             hasUnsavedChanges = true;
+            return;
         }
+
+        if (multiEdit && PropagateSectorEdits(level, beforeEdit, sector, selectedSectors, selectedSectorID))
+            hasUnsavedChanges = true;
     }
 
     // Geometry Mode's inspector. This is the same
@@ -1381,14 +1737,30 @@ namespace {
         const Vector2 startBeforeEdit = wall.start;
         const Vector2 endBeforeEdit = wall.end;
 
+        // Appearance/texture fields fan out across the selection; the
+        // coordinates just above do not, because they go through the
+        // shared-endpoint move below instead.
+        const bool multiEdit = selectedWalls.size() > 1;
+
+        const WallEditSnapshot appearanceBeforeEdit =
+                multiEdit ? CaptureWallEditSnapshot(wall) : WallEditSnapshot{};
+
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE);
 
         if (deleteRequested) {
-            DeleteWall(selectedWallID);
+            // DeleteSelectedWalls already handles the whole selection as one
+            // undoable operation with a single topology rebuild, which is
+            // exactly what a multi-selection wants - and it falls back to
+            // the single primary when only one wall is selected.
+            DeleteSelectedWalls();
             hasUnsavedChanges = true;
             return;
         }
+
+        if (multiEdit &&
+            PropagateWallEdits(level, appearanceBeforeEdit, wall, selectedWalls, selectedWallID))
+            hasUnsavedChanges = true;
 
         const Vector2 startAfterEdit = wall.start;
         const Vector2 endAfterEdit = wall.end;
@@ -1436,16 +1808,29 @@ namespace {
 
         Entity &entity = *entityPtr;
 
+        // Transform edits fan out across the selection: position as a delta,
+        // rotation and scale absolutely. Captured here and propagated after
+        // the component editor below, because that is where the transform
+        // fields actually live.
+        const bool multiEdit = selectedEntities.size() > 1;
+
+        const EntityTransformSnapshot transformBeforeEdit =
+                multiEdit ? CaptureEntityTransformSnapshot(level, entity.id) : EntityTransformSnapshot{};
+
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
         editingComponent = entityInspectorState.editingComponent;
 
         if (deleteRequested) {
-            const ID idToDelete = entity.id;
-            editingEntity = false;
+            const std::vector<ID> entitiesToDelete =
+                    selectedEntities.empty() ? std::vector<ID>{entity.id} : selectedEntities;
+
+            ClearEntitySelection();
             ResetInspectorState();
-            level.DestroyEntity(idToDelete);
+
+            for (const ID entityID: entitiesToDelete) level.DestroyEntity(entityID);
+
             hasUnsavedChanges = true;
             return;
         }
@@ -1463,6 +1848,10 @@ namespace {
             );
             editingComponent = entityInspectorState.editingComponent;
         }
+
+        if (multiEdit &&
+            PropagateEntityTransformEdits(level, transformBeforeEdit, selectedEntities, entity.id))
+            hasUnsavedChanges = true;
     }
 
     void DrawSelectionInspectors(Level &level) {
@@ -1791,6 +2180,8 @@ namespace MapEditorInternal {
         nextDotID = 0;
 
         ClearWallSelection();
+        ClearSectorSelection();
+        ClearEntitySelection();
 
         hasUnsavedChanges = false;
 

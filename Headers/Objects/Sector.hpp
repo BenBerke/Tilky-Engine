@@ -70,6 +70,7 @@ struct Sector {
     std::vector<ID> entitiesInside;
     std::vector<Sector*> neighbors;
     std::vector<Wall*> walls;
+    std::vector<Sector*> pvs;
 };
 
 #endif

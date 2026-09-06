@@ -41,15 +41,169 @@ namespace MapEditorInternal {
         }
     }
 
+    // =========================================================================
+    //  Sector and entity selection
+    // =========================================================================
+    //
+    // Declared in EditorInternal.hpp, where the invariants are written out.
+    // These sit alongside SelectWall/ToggleWallSelection/ExtendWallSelectionTo/
+    // ClearWallSelection and behave identically, with one deliberate
+    // difference: they never touch editingSector/editingEntity, because on
+    // this canvas a left-click selects without opening the inspector.
+
+    void SelectSector(const ID sectorID) {
+        const Level& level = LevelManager::CurrentLevel();
+        if (level.sectorIDToIndex.find(sectorID) == level.sectorIDToIndex.end()) return;
+
+        selectedSectors.assign(1, sectorID);
+        selectedSectorID = sectorID;
+    }
+
+    void ToggleSectorSelection(const ID sectorID) {
+        const Level& level = LevelManager::CurrentLevel();
+        if (level.sectorIDToIndex.find(sectorID) == level.sectorIDToIndex.end()) return;
+
+        const auto it = std::find(selectedSectors.begin(), selectedSectors.end(), sectorID);
+
+        if (it == selectedSectors.end()) {
+            selectedSectors.push_back(sectorID);
+            selectedSectorID = sectorID;
+            return;
+        }
+
+        selectedSectors.erase(it);
+
+        // Ctrl-clicking the primary out of the selection has to hand the
+        // primary role to something still selected, or the inspector goes on
+        // editing a sector the user just deselected.
+        if (selectedSectorID == sectorID) {
+            selectedSectorID = selectedSectors.empty() ? INVALID_ID : selectedSectors.back();
+            if (selectedSectorID == INVALID_ID) editingSector = false;
+        }
+    }
+
+    void ExtendSectorSelectionTo(const ID sectorID) {
+        const Level& level = LevelManager::CurrentLevel();
+        if (level.sectorIDToIndex.find(sectorID) == level.sectorIDToIndex.end()) return;
+
+        // Shift with nothing selected yet is just a plain click.
+        if (selectedSectorID == INVALID_ID) {
+            SelectSector(sectorID);
+            return;
+        }
+
+        const ID firstID = std::min(sectorID, selectedSectorID);
+        const ID lastID = std::max(sectorID, selectedSectorID);
+
+        selectedSectors.clear();
+
+        for (const Sector& sector : level.sectors)
+            if (sector.id >= firstID && sector.id <= lastID) selectedSectors.push_back(sector.id);
+
+        // The clicked sector anchors the next Shift-click, so it becomes the
+        // primary even though the range was measured from the previous one.
+        selectedSectorID = sectorID;
+    }
+
+    void ClearSectorSelection() {
+        selectedSectors.clear();
+        selectedSectorID = INVALID_ID;
+        editingSector = false;
+    }
+
+    // selectedEntity stays a copy of the primary rather than a bare ID
+    // because the rest of the entity path already expects that (the
+    // holdingEntity drag, the clipboard, FocusCameraOnSelection). The plural
+    // list holds IDs, like the sector and wall ones.
+
+    void SelectEntity(const ID entityID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        Entity* entity = level.GetEntity(entityID);
+        if (entity == nullptr) return;
+
+        selectedEntity = *entity;
+        selectedEntities.assign(1, entityID);
+    }
+
+    void ToggleEntitySelection(const ID entityID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        Entity* entity = level.GetEntity(entityID);
+        if (entity == nullptr) return;
+
+        const auto it = std::find(selectedEntities.begin(), selectedEntities.end(), entityID);
+
+        if (it == selectedEntities.end()) {
+            selectedEntities.push_back(entityID);
+            selectedEntity = *entity;
+            return;
+        }
+
+        selectedEntities.erase(it);
+
+        if (selectedEntity.id != entityID) return;
+
+        if (selectedEntities.empty()) {
+            editingEntity = false;
+            return;
+        }
+
+        if (Entity* newPrimary = level.GetEntity(selectedEntities.back())) selectedEntity = *newPrimary;
+    }
+
+    void ExtendEntitySelectionTo(const ID entityID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        Entity* entity = level.GetEntity(entityID);
+        if (entity == nullptr) return;
+
+        if (selectedEntities.empty()) {
+            SelectEntity(entityID);
+            return;
+        }
+
+        const ID firstID = std::min(entityID, selectedEntity.id);
+        const ID lastID = std::max(entityID, selectedEntity.id);
+
+        selectedEntities.clear();
+
+        for (const Entity& rangeEntity : level.entities)
+            if (rangeEntity.id >= firstID && rangeEntity.id <= lastID)
+                selectedEntities.push_back(rangeEntity.id);
+
+        selectedEntity = *entity;
+    }
+
+    void ClearEntitySelection() {
+        selectedEntities.clear();
+        editingEntity = false;
+    }
+
     namespace {
         //  defensively drops any selection that no longer
         // resolves through its ID map (e.g. a sector deleted from outside
         // the normal DeleteSector() path, or any other desync).
         void ValidateSelections(Level& level) {
+            // Sectors and entities get the same defensive pruning the wall
+            // selection gets below: the plural lists can go stale from an
+            // undo, a level load or a topology rebuild without anything
+            // calling DeleteSector/DestroyEntity.
+            for (int i = static_cast<int>(selectedSectors.size()) - 1; i >= 0; --i)
+                if (level.sectorIDToIndex.find(selectedSectors[i]) == level.sectorIDToIndex.end())
+                    selectedSectors.erase(selectedSectors.begin() + i);
+
+            for (int i = static_cast<int>(selectedEntities.size()) - 1; i >= 0; --i)
+                if (level.GetEntity(selectedEntities[i]) == nullptr)
+                    selectedEntities.erase(selectedEntities.begin() + i);
+
             if (selectedSectorID != INVALID_ID &&
                 level.sectorIDToIndex.find(selectedSectorID) == level.sectorIDToIndex.end()) {
-                selectedSectorID = INVALID_ID;
-                editingSector = false;
+                // Hand the primary to something still selected rather than
+                // dropping the rest of the selection with it - same reseat
+                // the wall block does.
+                selectedSectorID = selectedSectors.empty() ? INVALID_ID : selectedSectors.front();
+                editingSector = editingSector && selectedSectorID != INVALID_ID;
             }
 
             // Walls can disappear from under the Geometry Mode selection
@@ -272,6 +426,30 @@ namespace MapEditorInternal {
             return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
         }
 
+        // Offsets every selected entity except the primary. The primary has
+        // already been snapped to the cursor by the drag path below, so the
+        // rest just needs the same delta - copying the primary's position
+        // onto them would stack the whole selection on one point.
+        void MoveSelectedEntitiesBy(Level& level, const Vector3& delta, const ID primaryID) {
+            if (selectedEntities.size() <= 1) return;
+            if (delta.x == 0.0f && delta.y == 0.0f && delta.z == 0.0f) return;
+
+            for (const ID entityID : selectedEntities) {
+                if (entityID == primaryID) continue;
+
+                ComponentTransform* transform = level.transforms.Get(entityID);
+                if (transform == nullptr) continue;
+
+                transform->SetPosition({
+                    transform->position.x + delta.x,
+                    transform->position.y + delta.y,
+                    transform->position.z + delta.z
+                });
+
+                transform->isDirty = true;
+            }
+        }
+
         // Geometry Mode's whole pointer story: hover, select, drag, release.
         // Sectors are never touched here - the moved walls are handed back
         // to the topology pass on release, and it re-derives whatever
@@ -388,13 +566,40 @@ namespace MapEditorInternal {
                     Entity *en = EntityAt(mouseWorld);
 
                     if (en != nullptr) {
-                        selectedEntity = *en;
-                        holdingEntity = true;
+                        // The same modifier grammar Geometry Mode already
+                        // uses for walls: Ctrl toggles one entity in or out,
+                        // Shift takes the ID range from the current primary,
+                        // a plain click replaces. Modifier clicks never start
+                        // a drag, so building a selection can't nudge an
+                        // entity by accident.
+                        if (MultiSelectModifierHeld()) ToggleEntitySelection(en->id);
+                        else if (RangeSelectModifierHeld()) ExtendEntitySelectionTo(en->id);
+                        else {
+                            const bool alreadyInSelection =
+                                std::find(selectedEntities.begin(), selectedEntities.end(), en->id)
+                                    != selectedEntities.end();
+
+                            // Clicking an entity that is already part of a
+                            // multi-selection keeps that selection and drags
+                            // all of it; clicking anything else selects just
+                            // that entity. Mirrors the wall rule exactly.
+                            if (!alreadyInSelection || selectedEntities.size() <= 1) SelectEntity(en->id);
+                            else selectedEntity = *en;
+
+                            holdingEntity = true;
+                        }
+                    }
+                    else if (MultiSelectModifierHeld() || RangeSelectModifierHeld()) {
+                        // Modifier + empty space is a deselect gesture, not
+                        // "spawn an entity here" - otherwise a slightly
+                        // missed Shift-click silently creates one.
+                        ClearEntitySelection();
                     }
                     else {
                         static constexpr bool isUIEntity = false;
                         const ID id = level.CreateEntity(isUIEntity);
-                        selectedEntity = *level.GetEntity(id);
+
+                        SelectEntity(id);
 
                         auto *t = selectedEntity.GetComponent<ComponentTransform>();
                         if (t != nullptr) t->SetPosition({mouseWorld.x, 0.0f, mouseWorld.y});
@@ -408,29 +613,33 @@ namespace MapEditorInternal {
 
             //right click cancels/stops sector chain creation.
             if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                // BUG FIX: this used to call CancelSectorChain() here
-                // unconditionally and *then*, in the block below, gate
-                // select/inspect on sectorBeingCreated.empty() - but by
-                // that point the chain had already just been cleared, so
-                // that check was always vacuously true and a right-click
-                // mid-chain both cancelled the chain *and* immediately
-                // selected/inspected whatever was under the cursor in the
-                // same click. Capturing whether a drawing was actually in
-                // progress *before* cancelling restores the originally
-                // intended behaviour: right-click during an in-progress
-                // drawing only cancels it.
-                const bool wasDrawingInProgress = IsDrawingInProgress();
-                CancelActiveDrawing();
+                const bool freehandHasPlacedPoints =
+                    currentDrawTool == DRAWTOOL_FREEHAND &&
+                    (manualSectorMode ? !manualSectorDots.empty() : !sectorBeingCreated.empty());
 
-                if (!wasDrawingInProgress) HandleSectorModeRightClick(mouseWorld);
+                if (freehandHasPlacedPoints) UndoLastDrawPoint();
+                else if (IsDrawingInProgress()) CancelActiveDrawing();
+                else HandleSectorModeRightClick(mouseWorld);
             }
-            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT))
                 if (currentMode == MODE_ENTITY) HandleEntityModeRightClick(mouseWorld);
-            }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
-                if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]]
+                if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]] {
+                    // The primary snaps to the cursor exactly as before;
+                    // everything else in the selection moves by the same
+                    // offset, so a multi-selection keeps its shape instead
+                    // of collapsing onto the cursor.
+                    const Vector3 positionBeforeDrag = t->position;
+
                     t->SetPosition({mouseWorld.x, t->position.y, mouseWorld.y});
+
+                    MoveSelectedEntitiesBy(level, {
+                        t->position.x - positionBeforeDrag.x,
+                        t->position.y - positionBeforeDrag.y,
+                        t->position.z - positionBeforeDrag.z
+                    }, selectedEntity.id);
+                }
                 else [[unlikely]] spdlog::error("Entity does not have transform component");
             }
 
