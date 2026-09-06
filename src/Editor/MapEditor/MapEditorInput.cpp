@@ -454,8 +454,8 @@ namespace MapEditorInternal {
         // Sectors are never touched here - the moved walls are handed back
         // to the topology pass on release, and it re-derives whatever
         // sectors those walls bounded.
-        void HandleGeometryModeMouse(const Vector2& mouseWorld) {
-            const Level& level = LevelManager::CurrentLevel();
+        void HandleGeometryModeMouse(const Vector2 &mouseWorld) {
+            const Level &level = LevelManager::CurrentLevel();
 
             ID endpointWallID = INVALID_ID;
             bool endpointIsStart = false;
@@ -465,6 +465,25 @@ namespace MapEditorInternal {
 
             if (!draggingWallGeometry) hoveredWallID = wallUnderCursor;
 
+            // Right click opens the wall for editing. It never starts a drag,
+            // so the inspector can't be opened and the geometry nudged by the
+            // same click.
+            if (!draggingWallGeometry && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+                if (wallUnderCursor == INVALID_ID) {
+                    editingWall = false;
+                    return;
+                }
+
+                const bool alreadyInSelection =
+                        std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
+
+                if (!alreadyInSelection) SelectWall(wallUnderCursor);
+
+                selectedWallID = wallUnderCursor;
+                editingWall = true;
+                return;
+            }
+
             if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 // Endpoint handles win over the wall body whenever the
                 // cursor is near both, so grabbing the corner of a short
@@ -473,7 +492,7 @@ namespace MapEditorInternal {
                     const auto it = level.wallIDToIndex.find(endpointWallID);
 
                     if (it != level.wallIDToIndex.end()) {
-                        const Wall& wall = level.walls[it->second];
+                        const Wall &wall = level.walls[it->second];
                         const Vector2 endpoint = endpointIsStart ? wall.start : wall.end;
 
                         BeginWallDrag(mouseWorld, {endpoint}, endpoint, false);
@@ -501,16 +520,17 @@ namespace MapEditorInternal {
                 }
 
                 const bool alreadyInSelection =
-                    std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
+                        std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
 
                 // Clicking a wall that is already part of a multi-selection
                 // keeps that selection and drags all of it; clicking
                 // anything else selects just that wall.
                 if (!alreadyInSelection || selectedWalls.size() <= 1) SelectWall(wallUnderCursor);
-                else {
-                    selectedWallID = wallUnderCursor;
-                    editingWall = true;
-                }
+                else selectedWallID = wallUnderCursor;
+
+                // Left click is move-only: selection changes, the inspector
+                // stays closed until the wall is right clicked.
+                editingWall = false;
 
                 const auto it = level.wallIDToIndex.find(wallUnderCursor);
                 if (it == level.wallIDToIndex.end()) return;
