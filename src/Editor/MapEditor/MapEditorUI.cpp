@@ -2023,8 +2023,7 @@ namespace MapEditorInternal {
             const ImTextureID preview = GetPreviewTextureID(value);
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-            if (preview != ImTextureID{})
-                ImGui::Image(preview, ImVec2(previewSize, previewSize));
+            if (preview != ImTextureID{}) ImGui::Image(preview, ImVec2(previewSize, previewSize));
             else {
                 ImGui::Dummy(ImVec2(previewSize, previewSize));
                 ImDrawList* dl = ImGui::GetWindowDrawList();

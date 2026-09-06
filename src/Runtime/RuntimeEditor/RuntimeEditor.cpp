@@ -20,9 +20,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
 #include <imgui.h>
 #include <numbers>
 #include <limits>
+#include <string>
 
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
@@ -85,6 +88,24 @@ namespace {
 
     RayHitType selectedSectorSurface = RayHitType::None;
     int selectedSectorFloor = -1;
+
+    // Update() sees the relative-mouse flag, Draw() does not, so cache it.
+    // "Unlocked" means the OS cursor is visible and usable for ImGui.
+    bool cursorUnlocked = false;
+
+    // Set true to print the live payload next to the cursor while dragging.
+    constexpr bool DEBUG_DRAG_DROP = false;
+
+    // Indices, not pointers: the cache outlives the RayHit by a frame and the
+    // level vectors can reallocate in between.
+    struct SurfaceRef {
+        RayHitType type = RayHitType::None;
+        int wallIndex = -1;
+        int sectorIndex = -1;
+        int floorIndex = -1;
+    };
+
+    SurfaceRef hoveredSurface;
 }
 
 namespace {
@@ -112,6 +133,126 @@ namespace {
         for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) if (&level.sectors[i] == sector) return i;
 
         return -1;
+    }
+
+    // The browser sends an absolute path; the level stores an asset reference
+    // (assets-root-relative, generic separators). ToAssetReference is the one
+    // function that performs that conversion, and it is what DrawAssetField
+    // already calls on drop - so going through it here guarantees the runtime
+    // editor and the inspector can never write two different strings for the
+    // same file. A bare filename does not resolve, which is why a hand-rolled
+    // conversion rendered black.
+    std::string PayloadToTextureReference(const ImGuiPayload* payload) {
+        if (payload == nullptr || payload->Data == nullptr || payload->DataSize <= 0) return {};
+
+        const char* raw = static_cast<const char*>(payload->Data);
+        const std::string text(raw, strnlen(raw, static_cast<size_t>(payload->DataSize)));
+
+        if (text.empty()) return {};
+
+        return AssetBrowser::ToAssetReference(std::filesystem::path(text), AssetKind::Texture);
+    }
+
+    std::string DescribeHoveredSurface() {
+        switch (hoveredSurface.type) {
+            case RayHitType::Wall:
+                return "wall #" + std::to_string(hoveredSurface.wallIndex);
+
+            case RayHitType::SectorFloor:
+                return "floor of sector #" + std::to_string(hoveredSurface.sectorIndex);
+
+            case RayHitType::SectorCeiling:
+                return "ceiling of sector #" + std::to_string(hoveredSurface.sectorIndex);
+
+            default:
+                return {};
+        }
+    }
+
+    // What the surface is showing right now. A texture that already renders
+    // correctly is the ground truth for the string format the engine expects.
+    std::string CurrentTextureOfHoveredSurface(Level& level) {
+        switch (hoveredSurface.type) {
+            case RayHitType::Wall: {
+                if (hoveredSurface.wallIndex < 0 ||
+                    hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return {};
+
+                return level.walls[hoveredSurface.wallIndex].textureFileName;
+            }
+
+            case RayHitType::SectorFloor:
+            case RayHitType::SectorCeiling: {
+                if (hoveredSurface.sectorIndex < 0 ||
+                    hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return {};
+
+                Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+
+                if (hoveredSurface.floorIndex < 0 ||
+                    hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) return {};
+
+                const SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
+
+                return hoveredSurface.type == RayHitType::SectorFloor
+                    ? sectorFloor.floor.texture
+                    : sectorFloor.ceiling.texture;
+            }
+
+            default:
+                return {};
+        }
+    }
+
+    bool ApplyTextureToHoveredSurface(Level& level, const std::string& textureFileName) {        switch (hoveredSurface.type) {
+            case RayHitType::Wall: {
+                if (hoveredSurface.wallIndex < 0 ||
+                    hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
+
+                level.walls[hoveredSurface.wallIndex].textureFileName = textureFileName;
+                return true;
+            }
+
+            case RayHitType::SectorFloor:
+            case RayHitType::SectorCeiling: {
+                if (hoveredSurface.sectorIndex < 0 ||
+                    hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return false;
+
+                Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+
+                if (hoveredSurface.floorIndex < 0 ||
+                    hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) return false;
+
+                SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
+
+                // Walls name this field textureFileName; SectorSurface calls it
+                // texture. Same contents - a bare asset file name.
+                if (hoveredSurface.type == RayHitType::SectorFloor)
+                    sectorFloor.floor.texture = textureFileName;
+                else
+                    sectorFloor.ceiling.texture = textureFileName;
+
+                return true;
+            }
+
+            default:
+                return false;
+        }
+    }
+
+    void DrawDropHint(const std::string& text) {
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+
+        const ImVec2 mousePosition = ImGui::GetMousePos();
+        const ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
+        const ImVec2 origin = {mousePosition.x + 24.0f, mousePosition.y + 24.0f};
+
+        drawList->AddRectFilled(
+            {origin.x - 6.0f, origin.y - 4.0f},
+            {origin.x + textSize.x + 6.0f, origin.y + textSize.y + 4.0f},
+            IM_COL32(20, 20, 20, 200),
+            4.0f
+        );
+
+        drawList->AddText(origin, IM_COL32(255, 255, 255, 255), text.c_str());
     }
 }
 
@@ -215,7 +356,7 @@ namespace RuntimeEditorUi {
             }
         }
 
-        if (editingEntity || editingSector || editingWall) {
+        if (cursorUnlocked || editingEntity || editingSector || editingWall) {
             ImGui::Begin("Asset Browser##RuntimeEditor");
 
             if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
@@ -229,6 +370,49 @@ namespace RuntimeEditorUi {
             MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID);
 
             ImGui::End();
+        }
+
+        // ── Drop textures straight onto geometry ─────────────────────────────
+        // The 3D view is not an ImGui window, so there is no item to hang a
+        // BeginDragDropTarget() off. Watch the live payload instead and apply it
+        // on release outside every ImGui window. ImGui keeps the payload alive
+        // for the frame the button goes up, so this fires exactly once.
+        if (const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+            payload != nullptr &&
+            payload->IsDataType(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Texture))) {
+            // AllowWhenBlockedByActiveItem is required: the drag source owns the
+            // active id, so a plain AnyWindow query always answers false.
+            constexpr ImGuiHoveredFlags hoverFlags =
+                ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+
+            const bool overViewport = !ImGui::IsWindowHovered(hoverFlags);
+            const std::string textureReference = PayloadToTextureReference(payload);
+            const std::string surfaceName = DescribeHoveredSurface();
+
+            if (DEBUG_DRAG_DROP) {
+                DrawDropHint(
+                    "would write=" + (textureReference.empty() ? std::string("<none>") : textureReference) +
+                    "\ncurrently   =" + [&] {
+                        const std::string current = CurrentTextureOfHoveredSurface(level);
+                        return current.empty() ? std::string("<empty>") : current;
+                    }() +
+                    "\nsurface=" + (surfaceName.empty() ? "<none>" : surfaceName) +
+                    "  viewport=" + (overViewport ? "yes" : "no")
+                );
+            }
+            else if (overViewport && !textureReference.empty() && !surfaceName.empty()) {
+                DrawDropHint(textureReference + "  ->  " + surfaceName);
+            }
+
+            if (overViewport &&
+                !textureReference.empty() &&
+                !surfaceName.empty() &&
+                ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+                ApplyTextureToHoveredSurface(level, textureReference)) {
+                if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesFromLevel();
+
+                EditorFunctions::Print("Applied " + textureReference + " to " + surfaceName);
+            }
         }
 
         // Crosshair, useless because mouse position is used for selection
@@ -299,6 +483,8 @@ namespace RuntimeEditor {
         const bool keyboardBlockedByImGui,
         const float screenWidth,
         const float screenHeight) {
+        cursorUnlocked = !relativeMouseMod;
+
         if (!renderer.IsUsingEditorCamera()) renderer.SetUseEditorCamera(true);
 
         if (camera == nullptr || transform == nullptr) {
@@ -325,7 +511,7 @@ namespace RuntimeEditor {
 
         Vector3 movement = {0.0f, 0.0f, 0.0f};
 
-        if (!keyboardBlockedByImGui) {
+        //if (!keyboardBlockedByImGui) {
             const Vector3 forward = camera->forward;
             const Vector3 left = GetCameraLeft(*camera);
 
@@ -348,7 +534,7 @@ namespace RuntimeEditor {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
                 transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
             }
-        }
+        //}
 
         //endregion
 
@@ -375,6 +561,23 @@ namespace RuntimeEditor {
             camera->ownerID,
             false
         );
+
+        // Cached for Draw(), which needs a drop target but has no viewport size
+        // to build a ray from. Recomputed every frame whether or not anything is
+        // being dragged, so the drop path stays a pure lookup.
+        hoveredSurface = {};
+
+        if (hit.has_value()) {
+            hoveredSurface.type = hit->type;
+
+            if (hit->type == RayHitType::Wall) {
+                hoveredSurface.wallIndex = FindWallIndex(level, hit->wall);
+            }
+            else if (hit->type == RayHitType::SectorFloor || hit->type == RayHitType::SectorCeiling) {
+                hoveredSurface.sectorIndex = FindSectorIndex(level, hit->sector);
+                hoveredSurface.floorIndex = hit->sectorFloorIndex;
+            }
+        }
 
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
             if (!hit.has_value()) {
@@ -490,9 +693,7 @@ namespace RuntimeEditor {
                 }
 
                 case RayHitType::None:
-                default:
-                    spdlog::warn("Runtime editor ray hit had invalid hit type");
-                    break;
+                default: spdlog::warn("Runtime editor ray hit had invalid hit type"); break;
             }
         }
 
@@ -576,6 +777,9 @@ namespace RuntimeEditor {
         selectedSector = -1;
         selectedSectorSurface = RayHitType::None;
         selectedSectorFloor = -1;
+
+        cursorUnlocked = false;
+        hoveredSurface = {};
 
         spdlog::info("Runtime editor shut down");
     }
