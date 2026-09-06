@@ -25,6 +25,8 @@
 #include <imgui.h>
 #include <numbers>
 #include <limits>
+#include <optional>
+#include <SDL3/SDL.h>
 #include <string>
 
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
@@ -34,9 +36,20 @@ namespace {
     ComponentCamera* camera = nullptr;
     ComponentTransform* transform = nullptr;
 
+    // InputManager::SetRelativeMouseMode needs the window, and Shutdown() has
+    // to release the cursor while the renderer reference is already being torn
+    // down - so cache it in Start() rather than reaching through the renderer
+    // at each call site.
+    SDL_Window* editorWindow = nullptr;
+
     constexpr float MOUSE_SENSITIVITY = 0.5f;
     constexpr float BASE_MOVE_SPEED = 50.0f;
     constexpr float RAY_LENGTH = 10000.0f;
+
+    // Texture units per pixel of left-drag. Walls and sector surfaces share it
+    // so a drag feels the same on either.
+    constexpr float UV_DRAG_SENSITIVITY = 0.08f;
+
     float moveSpeed = 50.0f;
 
     Vector3 GetCameraForward(const ComponentCamera& camera) {
@@ -89,9 +102,15 @@ namespace {
     RayHitType selectedSectorSurface = RayHitType::None;
     int selectedSectorFloor = -1;
 
-    // Update() sees the relative-mouse flag, Draw() does not, so cache it.
-    // "Unlocked" means the OS cursor is visible and usable for ImGui.
-    bool cursorUnlocked = false;
+    // The camera only rotates while the middle mouse button is held, and that
+    // is also the only time the OS cursor is hidden and relative. Everything
+    // else in the editor is cursor-driven, so there is no lock toggle left to
+    // get out of sync with. Update() owns this; Draw() only reads it.
+    bool cameraLooking = false;
+
+    bool cursorLocked = false;
+    Vector2 cursorBeforeLook = {};
+    std::optional<SDL_Rect> mouseRectBeforeLook;
 
     // Set true to print the live payload next to the cursor while dragging.
     constexpr bool DEBUG_DRAG_DROP = false;
@@ -106,11 +125,64 @@ namespace {
     };
 
     SurfaceRef hoveredSurface;
+
+    // Captured on button-down so a drag that slides off the surface keeps
+    // editing the one it started on.
+    SurfaceRef uvDragSurface;
+    bool draggingUv = false;
 }
 
 namespace {
     void ResetEntityInspectorState() {
         entityInspectorState = {};
+    }
+
+    // Relative mode supplies camera motion; a one-pixel rectangle also keeps
+    // the cursor position fixed. Restore the position before leaving relative
+    // mode so the cursor reappears where the middle-button drag started.
+    void SetCursorLocked(const bool locked) {
+        if (editorWindow == nullptr) return;
+
+        if (locked) {
+            if (cursorLocked) return;
+
+            SDL_GetMouseState(&cursorBeforeLook.x, &cursorBeforeLook.y);
+
+            const SDL_Rect* previousRect = SDL_GetWindowMouseRect(editorWindow);
+            mouseRectBeforeLook = previousRect != nullptr
+                ? std::optional<SDL_Rect>{*previousRect}
+                : std::nullopt;
+
+            InputManager::SetRelativeMouseMode(editorWindow, true);
+
+            const SDL_Rect lockRect = {
+                static_cast<int>(cursorBeforeLook.x),
+                static_cast<int>(cursorBeforeLook.y),
+                1, 1
+            };
+
+            if (!SDL_SetWindowMouseRect(editorWindow, &lockRect))
+                spdlog::warn("Runtime editor could not fix the cursor position: {}", SDL_GetError());
+
+            cursorLocked = true;
+            return;
+        }
+
+        if (cursorLocked) {
+            if (!SDL_SetWindowMouseRect(
+                    editorWindow,
+                    mouseRectBeforeLook.has_value() ? &*mouseRectBeforeLook : nullptr))
+                spdlog::warn("Runtime editor could not restore the mouse rectangle: {}", SDL_GetError());
+
+            // Do not move the pointer over another application after focus loss.
+            if (SDL_GetMouseFocus() == editorWindow)
+                SDL_WarpMouseInWindow(editorWindow, cursorBeforeLook.x, cursorBeforeLook.y);
+
+            cursorLocked = false;
+            mouseRectBeforeLook.reset();
+        }
+
+        InputManager::SetRelativeMouseMode(editorWindow, false);
     }
 
     Entity* FindEntityById(Level& level, const ID entityId) {
@@ -202,7 +274,8 @@ namespace {
         }
     }
 
-    bool ApplyTextureToHoveredSurface(Level& level, const std::string& textureFileName) {        switch (hoveredSurface.type) {
+    bool ApplyTextureToHoveredSurface(Level& level, const std::string& textureFileName) {
+        switch (hoveredSurface.type) {
             case RayHitType::Wall: {
                 if (hoveredSurface.wallIndex < 0 ||
                     hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
@@ -236,6 +309,56 @@ namespace {
             default:
                 return false;
         }
+    }
+
+    // Wall::textureOffset and SectorSurface::textureOffset are the same idea
+    // living in two structs, so the bounds checks happen here once instead of
+    // at the call site. Returns false for entities and for stale indices.
+    bool AddUvOffset(Level& level, const SurfaceRef& surface, const Vector2 delta) {
+        switch (surface.type) {
+            case RayHitType::Wall: {
+                if (surface.wallIndex < 0 ||
+                    surface.wallIndex >= static_cast<int>(level.walls.size())) return false;
+
+                Wall& wall = level.walls[surface.wallIndex];
+
+                wall.textureOffset.x += delta.x;
+                wall.textureOffset.y += delta.y;
+
+                return true;
+            }
+
+            case RayHitType::SectorFloor:
+            case RayHitType::SectorCeiling: {
+                if (surface.sectorIndex < 0 ||
+                    surface.sectorIndex >= static_cast<int>(level.sectors.size())) return false;
+
+                Sector& sector = level.sectors[surface.sectorIndex];
+
+                if (surface.floorIndex < 0 ||
+                    surface.floorIndex >= static_cast<int>(sector.floors.size())) return false;
+
+                SectorFloor& sectorFloor = sector.floors[surface.floorIndex];
+
+                SectorSurface& target = surface.type == RayHitType::SectorFloor
+                    ? sectorFloor.floor
+                    : sectorFloor.ceiling;
+
+                target.textureOffset.x += delta.x;
+                target.textureOffset.y += delta.y;
+
+                return true;
+            }
+
+            default:
+                return false;
+        }
+    }
+
+    bool IsUvEditableSurface(const RayHitType type) {
+        return type == RayHitType::Wall ||
+               type == RayHitType::SectorFloor ||
+               type == RayHitType::SectorCeiling;
     }
 
     void DrawDropHint(const std::string& text) {
@@ -356,7 +479,9 @@ namespace RuntimeEditorUi {
             }
         }
 
-        if (cursorUnlocked || editingEntity || editingSector || editingWall) {
+        // The cursor is free unless the middle button is down, so the browser
+        // is up whenever it could actually be clicked.
+        if (!cameraLooking) {
             ImGui::Begin("Asset Browser##RuntimeEditor");
 
             if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
@@ -458,6 +583,17 @@ namespace RuntimeEditor {
 #endif
         camera->forward = GetCameraForward(*camera);
 
+        editorWindow = renderer.GetWindow();
+
+        if (editorWindow == nullptr) spdlog::error("Runtime editor could not get the window; cursor lock is disabled");
+
+        // Unlocked by default. The only thing that hides the cursor is holding
+        // the middle button, and that is decided fresh every Update().
+        cameraLooking = false;
+        draggingUv = false;
+        uvDragSurface = {};
+        SetCursorLocked(false);
+
         spdlog::info("Runtime editor is using renderer editor-only camera");
 
         if (!MapEditorInternal::assetBrowserInitialized) {
@@ -483,7 +619,9 @@ namespace RuntimeEditor {
         const bool keyboardBlockedByImGui,
         const float screenWidth,
         const float screenHeight) {
-        cursorUnlocked = !relativeMouseMod;
+        // Still in the signature so the call site does not have to change, but
+        // the runtime editor owns its cursor state now.
+        (void)relativeMouseMod;
 
         if (!renderer.IsUsingEditorCamera()) renderer.SetUseEditorCamera(true);
 
@@ -494,10 +632,27 @@ namespace RuntimeEditor {
 
         if (camera == nullptr || transform == nullptr) return;
 
-        if (relativeMouseMod && !mouseBlockedByImGui) {
+        //region look
+
+        const bool middleHeld = InputManager::GetMouseButton(SDL_BUTTON_MIDDLE);
+
+        // The ImGui test gates only the *start* of a look. Once the cursor is
+        // hidden ImGui keeps reporting the position it froze at, so re-testing
+        // every frame would drop the drag the moment you swing past a panel.
+        const bool windowFocused = editorWindow != nullptr && SDL_GetKeyboardFocus() == editorWindow;
+        const bool wantLook = windowFocused && middleHeld && (cameraLooking || !mouseBlockedByImGui);
+
+        if (wantLook != cameraLooking) {
+            cameraLooking = wantLook;
+            SetCursorLocked(cameraLooking);
+        }
+
+        if (cameraLooking) {
             camera->yaw -= InputManager::GetMouseDelta().x * MOUSE_SENSITIVITY;
             camera->pitch -= InputManager::GetMouseDelta().y * MOUSE_SENSITIVITY;
         }
+
+        //endregion
 
         camera->pitch = std::clamp(camera->pitch, -89.0f, 89.0f);
         camera->yaw = std::fmod(camera->yaw, 360.0f);
@@ -534,22 +689,26 @@ namespace RuntimeEditor {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
                 transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
             }
-        //}
+       // }
 
         //endregion
 
         const Vector3 rayOrigin = transform->position;
-
-        const Vector2 mousePosition = InputManager::GetMousePosition();
 
         const Vector2 viewportSize = {
             static_cast<float>(screenWidth),
             static_cast<float>(screenHeight)
         };
 
+        // In relative mode the reported cursor position is frozen wherever it
+        // was when the button went down, so aim down the middle instead.
+        const Vector2 rayScreenPosition = cameraLooking
+            ? Vector2{viewportSize.x * 0.5f, viewportSize.y * 0.5f}
+            : InputManager::GetMousePosition();
+
         const Vector3 rayDirection = GetMouseRayDirection(
             *camera,
-            mousePosition,
+            rayScreenPosition,
             viewportSize
         );
 
@@ -578,6 +737,42 @@ namespace RuntimeEditor {
                 hoveredSurface.floorIndex = hit->sectorFloorIndex;
             }
         }
+
+        //region uv drag
+
+        // The asset browser's drop path also rides the left button, so stay out
+        // of the way while a payload is live - otherwise dragging a texture in
+        // smears the UVs on the way to the surface.
+        const bool dragDropActive = ImGui::GetDragDropPayload() != nullptr;
+
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
+            !mouseBlockedByImGui &&
+            !dragDropActive &&
+            !cameraLooking &&
+            IsUvEditableSurface(hoveredSurface.type)) {
+            uvDragSurface = hoveredSurface;
+            draggingUv = true;
+        }
+
+        if (draggingUv && !InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
+            draggingUv = false;
+            uvDragSurface = {};
+        }
+
+        if (draggingUv) {
+            const Vector2 mouseDelta = InputManager::GetMouseDelta();
+
+            if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
+                // Negated so the texture tracks the cursor rather than running
+                // from it. Flip the signs if the sampler wants the opposite.
+                AddUvOffset(level, uvDragSurface, {
+                    mouseDelta.x * UV_DRAG_SENSITIVITY,
+                    -mouseDelta.y * UV_DRAG_SENSITIVITY
+                });
+            }
+        }
+
+        //endregion
 
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
             if (!hit.has_value()) {
@@ -745,7 +940,7 @@ namespace RuntimeEditor {
             }
         }
 
-        ImGuiDrawFunctions::SetImGuiFocus(!relativeMouseMod);
+        ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking);
 
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesFromLevel();
     } // Update
@@ -778,7 +973,13 @@ namespace RuntimeEditor {
         selectedSectorSurface = RayHitType::None;
         selectedSectorFloor = -1;
 
-        cursorUnlocked = false;
+        // Release both relative mode and our cursor rectangle before switching editors.
+        SetCursorLocked(false);
+
+        editorWindow = nullptr;
+        cameraLooking = false;
+        draggingUv = false;
+        uvDragSurface = {};
         hoveredSurface = {};
 
         spdlog::info("Runtime editor shut down");
