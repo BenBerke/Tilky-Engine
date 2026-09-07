@@ -303,6 +303,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/PhysicsSystem.cpp
 
         src/Runtime/Scripting/Lua/LuaSystem.cpp
+        src/Runtime/Scripting/Lua/LuaBindingMetadata.cpp
         src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
         src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
         src/Runtime/Scripting/Lua/LuaEntityBindings.cpp

@@ -5,12 +5,15 @@
 #ifndef TILKY_ENGINE_WRAPPERS_HPP
 #define TILKY_ENGINE_WRAPPERS_HPP
 
+#include <filesystem>
+
 #include <sol/error.hpp>
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 
 // ---------------------------------------------------------
 // Audio Source
@@ -938,48 +941,6 @@ struct ScriptCamera {
 };
 
 // ---------------------------------------------------------
-// Script Component
-// ---------------------------------------------------------
-
-struct ScriptScript {
-    Level* level = nullptr;
-    ID ownerID = static_cast<ID>(-1);
-
-    [[nodiscard]] ComponentScript* GetComponent() const {
-        if (level == nullptr) return nullptr;
-        return level->scripts.Get(ownerID);
-    }
-
-    [[nodiscard]] bool IsValid() const {
-        return GetComponent() != nullptr;
-    }
-
-    [[nodiscard]] std::string GetFileName() const {
-        const ComponentScript* script = GetComponent();
-        if (script == nullptr) return {};
-        return script->fileName;
-    }
-
-    void SetFileName(const std::string& fileName) const {
-        ComponentScript* script = GetComponent();
-        if (script == nullptr) return;
-        script->fileName = fileName;
-    }
-
-    [[nodiscard]] bool GetEnabled() const {
-        const ComponentScript* script = GetComponent();
-        if (script == nullptr) return false;
-        return script->enabled;
-    }
-
-    void SetEnabled(const bool enabled) const {
-        ComponentScript* script = GetComponent();
-        if (script == nullptr) return;
-        script->enabled = enabled;
-    }
-};
-
-// ---------------------------------------------------------
 // UI Transform
 // ---------------------------------------------------------
 
@@ -1142,18 +1103,87 @@ struct ScriptUIText {
 };
 
 // ---------------------------------------------------------
-// Entity
+// Behaviour reference (another script instance, anywhere in the level)
 // ---------------------------------------------------------
 
+// Forward declaration: ScriptBehaviourRef::GetGameObject() returns a
+// ScriptEntity by value and ScriptEntity::GetScript() returns a
+// ScriptBehaviourRef by value, so the two are defined with only forward
+// declarations of each other's methods here; the actual bodies of the
+// cross-referencing methods are inline definitions placed after both structs
+// are complete (see "Behaviour <-> GameObject cross-reference definitions"
+// below ScriptEntity's closing brace).
+struct ScriptEntity;
+
+// A safe handle to one specific script (Behaviour) instance, identified by
+// its globally-unique ScriptInstanceID rather than by filename - so it stays
+// unambiguous even when the target GameObject has several scripts attached,
+// including duplicates of the same script. Field and function access
+// (ref.someField, ref:SomeMethod()) is forwarded straight into the target
+// instance's own Lua environment via LuaScriptRuntime, so calling a public
+// function on a referenced Behaviour needs no owner-ID or filename lookup on
+// the Lua side - see the "Behaviour" usertype registration in LuaSystem.cpp
+// (sol::meta_function::index / new_index bound to LuaGet/LuaSet).
+struct ScriptBehaviourRef {
+    Level* level = nullptr;
+    ID ownerID = INVALID_ENTITY_ID;
+    ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
+
+    [[nodiscard]] bool IsValid() const {
+        return LuaScriptRuntime::IsInstanceValid(ownerID, instanceID);
+    }
+
+    [[nodiscard]] ScriptEntity GetGameObject() const;
+
+    // The referenced script's own enabled flag - independent of the
+    // GameObject's enabled flag (Entity::enabled).
+    [[nodiscard]] bool GetEnabled() const {
+        if (level == nullptr) return false;
+        return LuaScriptRuntime::GetInstanceEnabled(*level, ownerID, instanceID);
+    }
+
+    void SetEnabled(const bool value) const {
+        if (level == nullptr) return;
+        LuaScriptRuntime::SetInstanceEnabled(*level, ownerID, instanceID, value);
+    }
+
+    // Dynamic field/function access into the target instance's environment -
+    // bound as sol::meta_function::index / new_index, not called directly
+    // from C++.
+    //
+    // A custom __index/__newindex on a sol2 usertype fully replaces its
+    // default property dispatch, so "isValid"/"gameObject"/"enabled" are
+    // handled here by name rather than also being registered as ordinary
+    // usertype properties (which sol2 would then never see) - see the
+    // "Behaviour" usertype registration in LuaSystem.cpp, which binds only
+    // these two functions and nothing else.
+    //
+    // Declared only here (like GetGameObject() above) and defined out-of-line
+    // after ScriptEntity is a complete type - LuaGet constructs a
+    // sol::object from a ScriptEntity returned by value, which needs
+    // ScriptEntity's full definition, not just the forward declaration
+    // visible at this point in the file.
+    [[nodiscard]] sol::object LuaGet(const std::string& key, sol::this_state state) const;
+    void LuaSet(const std::string& key, sol::object value) const;
+};
+
+// ---------------------------------------------------------
+// Entity (GameObject)
+// ---------------------------------------------------------
+
+// Tilky's GameObject facade. Lua never sees the raw ECS entity or its
+// component storages - every field here is either a plain value or another
+// safe {Level*, ID} handle, and every accessor null-checks before touching
+// the level. Registered to Lua as "GameObject" (see LuaEntityBindings.cpp);
+// the C++ type name stays ScriptEntity to minimize churn across the engine
+// side of the codebase.
 struct ScriptEntity {
     Level* level = nullptr;
     ID ownerID = INVALID_ENTITY_ID;
 
-    [[nodiscard]] ScriptComponentRef GetScriptRef(const std::string& fileName) const {
-        return {
-            .ownerID = ownerID,
-            .scriptFile = std::filesystem::path(fileName).stem().string()
-        };
+    [[nodiscard]] Entity* GetEntity() const {
+        if (level == nullptr || ownerID == INVALID_ENTITY_ID) return nullptr;
+        return level->GetEntity(ownerID);
     }
 
     [[nodiscard]] ID GetID() const {
@@ -1161,7 +1191,44 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] bool IsValid() const {
-        return level != nullptr && ownerID != INVALID_ENTITY_ID;
+        return GetEntity() != nullptr;
+    }
+
+    [[nodiscard]] std::string GetName() const {
+        const Entity* entity = GetEntity();
+        return entity == nullptr ? std::string{} : entity->name;
+    }
+
+    void SetName(const std::string& name) const {
+        Entity* entity = GetEntity();
+        if (entity == nullptr) return;
+        entity->name = name;
+    }
+
+    // GameObject-level active state. Disabling a GameObject effectively
+    // disables every attached script's ticking (Update/FixedUpdate skipped,
+    // OnDisable/OnEnable fired) without touching each script's own `enabled`
+    // flag - see Entity::enabled and ScriptBehaviourRef::GetEnabled/SetEnabled
+    // for the per-script flag.
+    [[nodiscard]] bool GetEnabled() const {
+        const Entity* entity = GetEntity();
+        return entity != nullptr && entity->enabled;
+    }
+
+    void SetEnabled(const bool value) const {
+        Entity* entity = GetEntity();
+        if (entity == nullptr) return;
+        entity->enabled = value;
+    }
+
+    // Queues this GameObject for destruction. Safe to call from anywhere in
+    // a script's lifecycle (Start/Update/FixedUpdate/etc.) - the actual
+    // removal (component teardown, OnDestroy on every attached script, then
+    // erasing the entity) happens once, after every script has finished
+    // running this frame. See LuaScriptRuntime::QueueEntityDestroy.
+    void Destroy() const {
+        if (ownerID == INVALID_ENTITY_ID) return;
+        LuaScriptRuntime::QueueEntityDestroy(ownerID);
     }
 
     [[nodiscard]] bool HasTransform() const {
@@ -1178,6 +1245,24 @@ struct ScriptEntity {
 
     [[nodiscard]] bool HasScript() const {
         return level != nullptr && level->scripts.HasAny(ownerID);
+    }
+
+    // True if this GameObject has an attached script whose asset id
+    // (ComponentScript::fileName, a project-relative path without extension -
+    // see LuaScriptSystem's script identity notes) ends in `scriptName`.
+    // Matching on the final path segment means both "Health" and
+    // "Player/Health" find a script stored at "Scripts/Player/Health.lua".
+    // Use GetScriptById for an unambiguous lookup when several same-named
+    // scripts might be attached.
+    [[nodiscard]] bool HasScriptNamed(const std::string& scriptName) const {
+        if (level == nullptr) return false;
+
+        const std::string wanted = std::filesystem::path(scriptName).filename().string();
+
+        for (const ComponentScript* script : level->scripts.GetAll(ownerID))
+            if (std::filesystem::path(script->fileName).filename().string() == wanted) return true;
+
+        return false;
     }
 
     [[nodiscard]] bool HasPlayerController() const {
@@ -1220,8 +1305,42 @@ struct ScriptEntity {
         return {level, ownerID};
     }
 
-    [[nodiscard]] ScriptScript GetScript() const {
-        return {level, ownerID};
+    // Looks up an attached script (Behaviour) by asset id, matching only the
+    // final path segment - see HasScriptNamed. Returns an invalid
+    // ScriptBehaviourRef (IsValid() == false) if no match is attached. When
+    // several same-named scripts are attached, this returns the first one
+    // found; use GetScriptById for an unambiguous lookup, or GetScripts() to
+    // enumerate every instance.
+    [[nodiscard]] ScriptBehaviourRef GetScript(const std::string& scriptName) const {
+        if (level == nullptr) return {level, ownerID, INVALID_SCRIPT_INSTANCE_ID};
+
+        const std::string wanted = std::filesystem::path(scriptName).filename().string();
+
+        for (const ComponentScript* script : level->scripts.GetAll(ownerID)) {
+            if (std::filesystem::path(script->fileName).filename().string() == wanted)
+                return {level, ownerID, script->instanceID};
+        }
+
+        return {level, ownerID, INVALID_SCRIPT_INSTANCE_ID};
+    }
+
+    // Looks up an attached script (Behaviour) by its exact, globally-unique
+    // ScriptInstanceID - the unambiguous form of GetScript(name), and what a
+    // serialized Behaviour-reference field resolves through.
+    [[nodiscard]] ScriptBehaviourRef GetScriptById(const ScriptInstanceID instanceId) const {
+        return {level, ownerID, instanceId};
+    }
+
+    // Every script attached to this GameObject, as Behaviour references.
+    [[nodiscard]] std::vector<ScriptBehaviourRef> GetScripts() const {
+        std::vector<ScriptBehaviourRef> result;
+
+        if (level == nullptr) return result;
+
+        for (const ComponentScript* script : level->scripts.GetAll(ownerID))
+            result.push_back({level, ownerID, script->instanceID});
+
+        return result;
     }
 
     [[nodiscard]] ScriptPlayerController GetPlayerController() const {
@@ -1252,6 +1371,42 @@ struct ScriptEntity {
         return {level, ownerID};
     }
 };
+
+// ---------------------------------------------------------
+// Behaviour <-> GameObject cross-reference definitions
+//
+// ScriptBehaviourRef and ScriptEntity refer to each other by value, so this
+// one method has to be defined out-of-line, here, after both types are
+// complete.
+// ---------------------------------------------------------
+
+inline ScriptEntity ScriptBehaviourRef::GetGameObject() const {
+    return {level, ownerID};
+}
+
+inline sol::object ScriptBehaviourRef::LuaGet(const std::string& key, const sol::this_state state) const {
+    const sol::state_view luaView(state);
+
+    if (key == "isValid") return sol::make_object(luaView, IsValid());
+    if (key == "gameObject") return sol::make_object(luaView, GetGameObject());
+    if (key == "enabled") return sol::make_object(luaView, GetEnabled());
+
+    return LuaScriptRuntime::GetInstanceField(ownerID, instanceID, key, state);
+}
+
+inline void ScriptBehaviourRef::LuaSet(const std::string& key, sol::object value) const {
+    if (key == "enabled") {
+        SetEnabled(value.as<bool>());
+        return;
+    }
+
+    // isValid/gameObject are read-only; a stray write to them is ignored
+    // rather than silently poking a same-named field into the target
+    // script's environment.
+    if (key == "isValid" || key == "gameObject") return;
+
+    LuaScriptRuntime::SetInstanceField(ownerID, instanceID, key, std::move(value));
+}
 
 // ---------------------------------------------------------
 // Wall

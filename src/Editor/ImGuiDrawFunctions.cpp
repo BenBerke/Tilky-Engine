@@ -24,6 +24,7 @@
 #include <array>
 #include <string>
 #include <algorithm>
+#include <filesystem>
 #include <Headers/Runtime/LevelSystem.hpp>
 
 #include "EditorInternal.hpp"
@@ -75,13 +76,17 @@ namespace {
                 cam->isActive = true;
             }
         } else if constexpr (std::is_same_v<T, ComponentScript>) {
-            if (!entity.HasComponent<ComponentScript>()) {
-                auto *script = entity.AddComponent<ComponentScript>();
-                script->enabled    = true;
-                script->fileName.clear();
-                script->publicValues.clear();
-                script->schemaHash = 0;
-            }
+            // Deliberately unconditional: ScriptComponentStorage already
+            // supports several scripts per GameObject (each AddScript() call
+            // gets its own fresh instance ID), so "Add Component -> Script"
+            // always appends a new instance rather than being a no-op after
+            // the first one - see the per-instance row list in
+            // DrawEntityEditor.
+            ComponentScript &script = entity.AddScript();
+            script.enabled = true;
+            script.fileName.clear();
+            script.publicValues.clear();
+            script.schemaHash = 0;
         } else {
             if (!entity.HasComponent<T>()) entity.AddComponent<T>();
         }
@@ -139,7 +144,163 @@ namespace {
         return pressed;
     }
 
-    // Script public-field editor (unchanged logic)
+    // ── Reference-field pickers (GameObject / Component / Behaviour) ────────
+    //
+    // These are combo-box selectors rather than drag-and-drop: the editor
+    // has no hierarchy/outliner panel to drag a GameObject *from* yet, so
+    // full Unity-style drag-and-drop for these three kinds is left as a
+    // documented follow-up rather than built as a side effect here. Asset
+    // fields (textures, etc.) already get real drag-and-drop for free by
+    // reusing MapEditorInternal::DrawAssetField below, same as every other
+    // texture/sound/script field in the inspector.
+
+    bool EntityHasComponentByType(Entity &entity, const int componentType) {
+        switch (componentType) {
+#define HAS_COMPONENT_CASE(Type, Bit, Storage, LabelKey) case Bit: return entity.HasComponent<Type>();
+            TILKY_NORMAL_COMPONENTS(HAS_COMPONENT_CASE)
+#undef HAS_COMPONENT_CASE
+            default: return false;
+        }
+    }
+
+    std::string DescribeEntity(const Entity &entity) {
+        char buf[160];
+        snprintf(buf, sizeof(buf), "%s (#%u)", entity.name.empty() ? "unnamed" : entity.name.c_str(), entity.id);
+        return buf;
+    }
+
+    bool DrawGameObjectField(const char *label, GameObjectRefValue &ref) {
+        Level &level = LevelManager::CurrentLevel();
+
+        const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
+        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+
+        bool changed = false;
+
+        ImGui::PushID(label);
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200.0f);
+
+        if (ImGui::BeginCombo("##gameObjectPicker", preview.c_str())) {
+            if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
+                ref.entityId = INVALID_ID;
+                changed = true;
+            }
+
+            for (Entity &candidate : level.entities) {
+                const bool isSelected = candidate.id == ref.entityId;
+
+                if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
+                    ref.entityId = candidate.id;
+                    changed = true;
+                }
+
+                if (isSelected) ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool DrawComponentField(const char *label, ComponentRefValue &ref, const int componentType) {
+        Level &level = LevelManager::CurrentLevel();
+        ref.componentType = componentType;
+
+        const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
+        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+
+        bool changed = false;
+
+        ImGui::PushID(label);
+        ImGui::TextUnformatted(label);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(200.0f);
+
+        if (ImGui::BeginCombo("##componentPicker", preview.c_str())) {
+            if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
+                ref.entityId = INVALID_ID;
+                changed = true;
+            }
+
+            for (Entity &candidate : level.entities) {
+                if (!EntityHasComponentByType(candidate, componentType)) continue;
+
+                const bool isSelected = candidate.id == ref.entityId;
+
+                if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
+                    ref.entityId = candidate.id;
+                    changed = true;
+                }
+
+                if (isSelected) ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool DrawBehaviourField(const char *label, BehaviourRefValue &ref) {
+        Level &level = LevelManager::CurrentLevel();
+
+        const Entity *currentEntity = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
+        const ComponentScript *currentScript = currentEntity == nullptr ? nullptr : level.scripts.GetByID(ref.instanceId);
+
+        std::string preview = "(None)";
+        if (currentEntity != nullptr && currentScript != nullptr) {
+            const std::string scriptName = currentScript->fileName.empty()
+                ? std::string("(unassigned)")
+                : std::filesystem::path(currentScript->fileName).filename().string();
+            preview = DescribeEntity(*currentEntity) + " / " + scriptName;
+        }
+
+        bool changed = false;
+
+        ImGui::PushID(label);
+        ImGui::TextUnformatted(label);
+        ImGui::SetNextItemWidth(240.0f);
+
+        if (ImGui::BeginCombo("##behaviourPicker", preview.c_str())) {
+            if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
+                ref = BehaviourRefValue{};
+                changed = true;
+            }
+
+            for (Entity &candidate : level.entities) {
+                for (ComponentScript *script : candidate.GetScripts()) {
+                    const std::string scriptName = script->fileName.empty()
+                        ? std::string("(unassigned)")
+                        : std::filesystem::path(script->fileName).filename().string();
+                    const std::string entry = DescribeEntity(candidate) + " / " + scriptName;
+
+                    const bool isSelected = candidate.id == ref.entityId && script->instanceID == ref.instanceId;
+
+                    if (ImGui::Selectable(entry.c_str(), isSelected)) {
+                        ref.entityId = candidate.id;
+                        ref.instanceId = script->instanceID;
+                        changed = true;
+                    }
+
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::PopID();
+        return changed;
+    }
+
+    // Script public-field editor. Dispatches on the field's schema type
+    // (parsed from the script's ---@field annotations - see
+    // LuaScriptSystem::ExtractSchema) to the matching typed control.
     void DrawScriptValueEditor(const ScriptPublicField &field, ScriptValue &value) {
         switch (field.type) {
             case ScriptValueType::Int: {
@@ -164,6 +325,71 @@ namespace {
                 std::string *sv = std::get_if<std::string>(&value);
                 if (!sv) return;
                 ImGui::InputText(field.displayName.c_str(), sv);
+                break;
+            }
+            case ScriptValueType::Vector2: {
+                Vector2 *vv = std::get_if<Vector2>(&value);
+                if (!vv) return;
+                ImGui::DragFloat2(field.displayName.c_str(), &vv->x, 0.1f);
+                break;
+            }
+            case ScriptValueType::Vector3: {
+                Vector3 *vv = std::get_if<Vector3>(&value);
+                if (!vv) return;
+                ImGui::DragFloat3(field.displayName.c_str(), &vv->x, 0.1f);
+                break;
+            }
+            case ScriptValueType::Vector4: {
+                Vector4 *vv = std::get_if<Vector4>(&value);
+                if (!vv) return;
+                ImGui::DragFloat4(field.displayName.c_str(), &vv->x, 0.1f);
+                break;
+            }
+            case ScriptValueType::Enum: {
+                int *iv = std::get_if<int>(&value);
+                if (!iv || field.enumOptions.empty()) return;
+
+                std::size_t currentIndex = 0;
+                for (std::size_t i = 0; i < field.enumOptions.size(); ++i)
+                    if (field.enumOptions[i].value == *iv) { currentIndex = i; break; }
+
+                if (ImGui::BeginCombo(field.displayName.c_str(), field.enumOptions[currentIndex].name.c_str())) {
+                    for (std::size_t i = 0; i < field.enumOptions.size(); ++i) {
+                        const bool isSelected = i == currentIndex;
+
+                        if (ImGui::Selectable(field.enumOptions[i].name.c_str(), isSelected))
+                            *iv = field.enumOptions[i].value;
+
+                        if (isSelected) ImGui::SetItemDefaultFocus();
+                    }
+
+                    ImGui::EndCombo();
+                }
+
+                break;
+            }
+            case ScriptValueType::GameObject: {
+                GameObjectRefValue *gv = std::get_if<GameObjectRefValue>(&value);
+                if (!gv) return;
+                DrawGameObjectField(field.displayName.c_str(), *gv);
+                break;
+            }
+            case ScriptValueType::Component: {
+                ComponentRefValue *cv = std::get_if<ComponentRefValue>(&value);
+                if (!cv) return;
+                DrawComponentField(field.displayName.c_str(), *cv, field.componentType);
+                break;
+            }
+            case ScriptValueType::Behaviour: {
+                BehaviourRefValue *bv = std::get_if<BehaviourRefValue>(&value);
+                if (!bv) return;
+                DrawBehaviourField(field.displayName.c_str(), *bv);
+                break;
+            }
+            case ScriptValueType::Asset: {
+                AssetRefValue *av = std::get_if<AssetRefValue>(&value);
+                if (!av) return;
+                MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
                 break;
             }
         }
@@ -744,14 +970,34 @@ namespace ImGuiDrawFunctions {
         SmallMetaText("ID: %u", entity.id);
         FieldWidth(220.0f);
         ImGui::InputText(Get("entity.name").c_str(), &entity.name);
+
+        // GameObject-level active state (Lua: gameObject.enabled). Disabling
+        // a GameObject pauses every attached script's ticking without
+        // touching each script's own enabled flag - see Entity::enabled.
+        ImGui::Checkbox("Enabled", &entity.enabled);
+        Tooltip("Disables every attached script on this GameObject (OnDisable fires) without changing each script's own Enabled checkbox.");
         EndSection();
 
         // ── Components list ──────────────────────────────────────────────────
         BeginSection("Components");
 
-        // Each component rendered as a card-like row: [name]  [Edit ▶]
-        auto DrawComponentCard = [&](const char *label, const int componentType) {
+        // Each component rendered as a card-like row: [name]  [Edit ▶]. For
+        // CMP_SCRIPT, `pushScriptInstanceID` additionally selects which
+        // attached ComponentScript instance the row's Edit button opens -
+        // ScriptComponentStorage already supports several scripts per
+        // GameObject, so this list draws one row per instance rather than
+        // one row per component *type* (see the script-instance loop below,
+        // which replaces CMP_SCRIPT's entry in the TILKY_NORMAL_COMPONENTS
+        // macro pass).
+        auto DrawComponentCard = [&](
+            const char *label,
+            const int componentType,
+            const ScriptInstanceID pushScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID
+        ) {
             ImGui::PushID(componentType);
+            // std::to_string, not a truncating cast to int - instance IDs are
+            // 64-bit and must stay unique across every row in this list.
+            ImGui::PushID(std::to_string(pushScriptInstanceID).c_str());
 
             // Subtle background for the row
             ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -770,20 +1016,34 @@ namespace ImGuiDrawFunctions {
             if (ImGui::SmallButton("Edit")) {
                 state.selectedComponent  = componentType;
                 state.editingComponent   = true;
+                state.selectedScriptInstanceID = pushScriptInstanceID;
             }
 
             ImGui::Unindent(6.0f);
             ImGui::Spacing();
             ImGui::PopID();
+            ImGui::PopID();
         };
 
 #define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
-        if (entity.HasComponent<Type>()) \
+        if (Bit != CMP_SCRIPT && entity.HasComponent<Type>()) \
             DrawComponentCard(Get(LabelKey).c_str(), Bit);
 
         TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
 
 #undef DRAW_ENTITY_COMPONENT_ROW
+
+        // One row per attached script instance, not per component type -
+        // see DrawComponentCard's comment above.
+        for (ComponentScript *script : entity.GetScripts()) {
+            const std::string displayName = script->fileName.empty()
+                ? std::string("Script (unassigned)")
+                : std::filesystem::path(script->fileName).filename().string();
+
+            const std::string label = script->enabled ? displayName : displayName + " (disabled)";
+
+            DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID);
+        }
 
         EndSection();
 
@@ -1197,7 +1457,11 @@ namespace ImGuiDrawFunctions {
         //  Script
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SCRIPT) {
-            auto *c = entity.GetComponent<ComponentScript>();
+            // Looks up the specific instance the row list's Edit button
+            // selected (see DrawEntityEditor's per-script row loop) rather
+            // than always the first-by-owner script - a GameObject may have
+            // several scripts attached.
+            auto *c = entity.GetScript(state.selectedScriptInstanceID);
 
             if (c) {
                 BeginSection("Script File");
@@ -1286,7 +1550,8 @@ namespace ImGuiDrawFunctions {
                 ImGui::Spacing();
 
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentScript>();
+                    entity.RemoveScript(state.selectedScriptInstanceID);
+                    state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
                     CloseEditor();
                 }
             }

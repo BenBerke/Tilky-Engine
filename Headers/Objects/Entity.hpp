@@ -15,6 +15,13 @@ struct Entity {
     ID id = static_cast<ID>(-1);
     ID attachedLevelId = static_cast<ID>(-1);
 
+    // GameObject-level active state (Lua: GameObject.enabled / GameObject:SetEnabled()).
+    // Distinct from any single component's own enabled flag (e.g. ComponentScript::enabled):
+    // disabling the entity disables every attached script's effective enabled state
+    // without touching each script's own flag, so re-enabling the entity restores
+    // each script's individual state exactly as it was. See LevelSystem::Update.
+    bool enabled = true;
+
     ComponentMask componentsMask;
 
     void Start();

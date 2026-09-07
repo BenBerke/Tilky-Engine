@@ -436,19 +436,47 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                R"lua(
--- Called once when the script starts
+                R"lua(-- Fields declared like this show up (and become editable) in the Inspector.
+-- The comment above each field is what gives it a type - see the Tilky
+-- scripting docs for the full list (number, string, bool, Vector2/3/4,
+-- GameObject, Behaviour, an engine component name like Rigidbody, ...).
+
+---@field speed number
+speed = 200
+
+---@field target GameObject
+target = nil
+
+-- Called once, the first time this script becomes active.
 function Start()
 
 end
 
--- Called once every frame
+-- Called every frame.
 function Update()
+    -- gameObject is this script's own GameObject - every script gets one
+    -- automatically, no lookup required.
+    -- gameObject.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
+
+    -- Reading a GameObject-reference field gives you a real GameObject back,
+    -- or nil if nothing is assigned in the Inspector.
+    -- if target ~= nil then
+    --     print(gameObject.name .. " is looking at " .. target.name)
+    -- end
+end
+
+-- Called on a fixed timestep, independent of the frame rate - use this for
+-- movement/physics-flavoured logic instead of Update().
+function FixedUpdate()
 
 end
 
--- Called once when the script stops
-function Stop()
+-- Called when this script's GameObject becomes active/inactive.
+-- function OnEnable() end
+-- function OnDisable() end
+
+-- Called once when this script or its GameObject is destroyed.
+function OnDestroy()
 
 end
 )lua";

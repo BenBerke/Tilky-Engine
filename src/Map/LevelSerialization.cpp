@@ -28,6 +28,14 @@ namespace {
             case ScriptValueType::Float: return "Float";
             case ScriptValueType::Bool: return "Bool";
             case ScriptValueType::String: return "String";
+            case ScriptValueType::Vector2: return "Vector2";
+            case ScriptValueType::Vector3: return "Vector3";
+            case ScriptValueType::Vector4: return "Vector4";
+            case ScriptValueType::Enum: return "Enum";
+            case ScriptValueType::GameObject: return "GameObject";
+            case ScriptValueType::Component: return "Component";
+            case ScriptValueType::Behaviour: return "Behaviour";
+            case ScriptValueType::Asset: return "Asset";
         }
 
         return "Unknown";
@@ -38,10 +46,23 @@ namespace {
         if (type == "Float") return ScriptValueType::Float;
         if (type == "Bool") return ScriptValueType::Bool;
         if (type == "String") return ScriptValueType::String;
+        if (type == "Vector2") return ScriptValueType::Vector2;
+        if (type == "Vector3") return ScriptValueType::Vector3;
+        if (type == "Vector4") return ScriptValueType::Vector4;
+        if (type == "Enum") return ScriptValueType::Enum;
+        if (type == "GameObject") return ScriptValueType::GameObject;
+        if (type == "Component") return ScriptValueType::Component;
+        if (type == "Behaviour") return ScriptValueType::Behaviour;
+        if (type == "Asset") return ScriptValueType::Asset;
 
         return ScriptValueType::String;
     }
 
+    // Serializes one field's runtime ScriptValue. Reference kinds
+    // (GameObject/Component/Behaviour) store only stable IDs - never a name,
+    // never a pointer - so they resolve correctly even after the target
+    // entity/script is renamed, and safely fail to resolve (nil in Lua, "None"
+    // in the inspector) once the target no longer exists.
     json ScriptValueToJson(const ScriptValue &value) {
         json valueJson;
 
@@ -61,12 +82,44 @@ namespace {
                 } else if constexpr (std::is_same_v<T, std::string>) {
                     valueJson["type"] = "String";
                     valueJson["value"] = typedValue;
+                } else if constexpr (std::is_same_v<T, Vector2>) {
+                    valueJson["type"] = "Vector2";
+                    valueJson["value"] = {typedValue.x, typedValue.y};
+                } else if constexpr (std::is_same_v<T, Vector3>) {
+                    valueJson["type"] = "Vector3";
+                    valueJson["value"] = {typedValue.x, typedValue.y, typedValue.z};
+                } else if constexpr (std::is_same_v<T, Vector4>) {
+                    valueJson["type"] = "Vector4";
+                    valueJson["value"] = {typedValue.x, typedValue.y, typedValue.z, typedValue.w};
+                } else if constexpr (std::is_same_v<T, GameObjectRefValue>) {
+                    valueJson["type"] = "GameObject";
+                    valueJson["entityId"] = typedValue.entityId;
+                } else if constexpr (std::is_same_v<T, ComponentRefValue>) {
+                    valueJson["type"] = "Component";
+                    valueJson["entityId"] = typedValue.entityId;
+                    valueJson["componentType"] = typedValue.componentType;
+                } else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
+                    valueJson["type"] = "Behaviour";
+                    valueJson["entityId"] = typedValue.entityId;
+                    valueJson["instanceId"] = typedValue.instanceId;
+                } else if constexpr (std::is_same_v<T, AssetRefValue>) {
+                    valueJson["type"] = "Asset";
+                    valueJson["path"] = typedValue.path;
                 }
             },
             value
         );
 
         return valueJson;
+    }
+
+    // nlohmann::json's value(key, default) overload is for object keys, not
+    // array indices, so Vector2/3/4 fields (stored as plain JSON arrays, same
+    // convention as ComponentTransform::position elsewhere in this file) are
+    // read back through this small bounds-checked helper instead.
+    float JsonArrayFloat(const json &array, const std::size_t index) {
+        if (!array.is_array() || index >= array.size()) return 0.0f;
+        return array[index].get<float>();
     }
 
     ScriptValue ScriptValueFromJson(const json &valueJson) {
@@ -85,6 +138,45 @@ namespace {
 
             case ScriptValueType::String:
                 return valueJson.value("value", std::string{});
+
+            // Enum fields are always stored as a plain int - the option
+            // name<->value table lives in the script's schema, not in
+            // serialized data.
+            case ScriptValueType::Enum:
+                return valueJson.value("value", 0);
+
+            case ScriptValueType::Vector2: {
+                const json &v = valueJson["value"];
+                return Vector2{JsonArrayFloat(v, 0), JsonArrayFloat(v, 1)};
+            }
+
+            case ScriptValueType::Vector3: {
+                const json &v = valueJson["value"];
+                return Vector3{JsonArrayFloat(v, 0), JsonArrayFloat(v, 1), JsonArrayFloat(v, 2)};
+            }
+
+            case ScriptValueType::Vector4: {
+                const json &v = valueJson["value"];
+                return Vector4{JsonArrayFloat(v, 0), JsonArrayFloat(v, 1), JsonArrayFloat(v, 2), JsonArrayFloat(v, 3)};
+            }
+
+            case ScriptValueType::GameObject:
+                return GameObjectRefValue{valueJson.value("entityId", INVALID_ID)};
+
+            case ScriptValueType::Component:
+                return ComponentRefValue{
+                    valueJson.value("entityId", INVALID_ID),
+                    valueJson.value("componentType", -1)
+                };
+
+            case ScriptValueType::Behaviour:
+                return BehaviourRefValue{
+                    valueJson.value("entityId", INVALID_ID),
+                    valueJson.value("instanceId", INVALID_SCRIPT_INSTANCE_ID)
+                };
+
+            case ScriptValueType::Asset:
+                return AssetRefValue{valueJson.value("path", std::string{})};
         }
 
         return std::string{};
@@ -269,6 +361,7 @@ namespace {
 
             entity.id = entityJson.at("id").get<ID>();
             entity.name = entityJson.value("name", "Entity");
+            entity.enabled = entityJson.value("enabled", true);
             entity.attachedLevelId = level.id;
 
             highestEntityID = std::max(highestEntityID, entity.id);
@@ -284,7 +377,8 @@ namespace {
         for (const Entity& entity : level.entities) {
             levelData["entities"].push_back({
                 {"id", entity.id},
-                {"name", entity.name}
+                {"name", entity.name},
+                {"enabled", entity.enabled}
             });
         }
     }

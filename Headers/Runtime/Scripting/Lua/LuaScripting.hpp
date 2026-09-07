@@ -36,6 +36,18 @@ public:
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
     bool ReconcileScriptPublicValues(ComponentScript& script);
     void RefreshScriptAssets(Level& level);
+
+    // Actually removes every GameObject queued this frame via
+    // GameObject:Destroy() (or whose ComponentScript disappeared out from
+    // under a running instance), firing OnDestroy on their scripts first.
+    // Deliberately NOT called from Update() itself - LevelSystem::Update()
+    // calls this once, after physics/transform-sync has finished for the
+    // frame, so pointers those systems cached earlier in the same frame
+    // (e.g. the active player controller) can't be invalidated mid-frame by
+    // a script destroying their owning entity. A destroyed GameObject
+    // therefore keeps behaving normally for the rest of the frame it was
+    // destroyed on, exactly like Unity's Destroy().
+    void FlushPendingDestroys(Level& level);
 };
 
 #endif // TILKY_ENGINE_SCRIPTSYSTEM_HPP

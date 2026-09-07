@@ -255,22 +255,6 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             "target", sol::property(&ScriptCamera::GetTarget)
         );
 
-        lua.new_usertype<ScriptScript>(
-            "Script",
-
-            "isValid", sol::property(&ScriptScript::IsValid),
-
-            "fileName", sol::property(
-                &ScriptScript::GetFileName,
-                &ScriptScript::SetFileName
-            ),
-
-            "enabled", sol::property(
-                &ScriptScript::GetEnabled,
-                &ScriptScript::SetEnabled
-            )
-    );
-
     lua.new_usertype<ScriptUITransform>(
         "UITransform",
 

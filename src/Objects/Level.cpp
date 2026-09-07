@@ -43,6 +43,7 @@ ID Level::CreateEntity(Entity& copy) {
     Entity entity;
     entity.id = nextEntityID++;
     entity.name = copy.name + "Copy";
+    entity.enabled = copy.enabled;
 
     if (copy.HasComponent<ComponentTransform>()) {
         auto *s = entity.AddComponent<ComponentTransform>();
@@ -84,12 +85,21 @@ ID Level::CreateEntity(Entity& copy) {
         s->outerGain = ca->outerGain;
     }
 
-    if (copy.HasComponent<ComponentScript>()) {
-        auto *s = entity.AddComponent<ComponentScript>();
-        const ComponentScript *cs = copy.GetComponent<ComponentScript>();
+    // Copies every attached script (not just the first), each getting its
+    // own new instance ID via AddScript()/ScriptComponentStorage::Add - see
+    // the class-level comment on GameObject-to-script duplication. Public
+    // field values are copied as-is; a GameObject/Behaviour reference field
+    // that pointed at `copy` itself still points at the original entity
+    // after duplication rather than being remapped to the new copy - the
+    // same "self-reference doesn't retarget" caveat most engines have for
+    // duplicate/copy-paste.
+    for (const ComponentScript* originalScript : copy.GetScripts()) {
+        ComponentScript& s = entity.AddScript();
 
-        s->fileName = cs->fileName;
-        s->enabled = cs->enabled;
+        s.fileName = originalScript->fileName;
+        s.enabled = originalScript->enabled;
+        s.publicValues = originalScript->publicValues;
+        s.schemaHash = originalScript->schemaHash;
     }
 
     if (copy.HasComponent<ComponentPlayerController>()) {
