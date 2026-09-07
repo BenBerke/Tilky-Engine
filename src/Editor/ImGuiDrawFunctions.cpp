@@ -577,12 +577,7 @@ namespace ImGuiDrawFunctions {
 
             const std::string floorStrengthLabel = Get("sector.slope_strength") + "##floor_slope_strength";
 
-            InputOrDrag(
-                floorStrengthLabel.c_str(),
-                &sectorFloor.floor.slopeStrength,
-                draggable,
-                .001f
-            );
+            InputOrDrag(floorStrengthLabel.c_str(), &sectorFloor.floor.slopeStrength, draggable, .1f);
 
             if (ImGui::SmallButton("Reset##floor_slope")) {
                 sectorFloor.floor.slopeDirection = PLUS_X;
@@ -614,12 +609,7 @@ namespace ImGuiDrawFunctions {
 
             const std::string ceilingStrengthLabel = Get("sector.slope_strength") + "##ceiling_slope_strength";
 
-            InputOrDrag(
-                ceilingStrengthLabel.c_str(),
-                &sectorFloor.ceiling.slopeStrength,
-                draggable,
-                .001f
-            );
+            InputOrDrag(ceilingStrengthLabel.c_str(), &sectorFloor.ceiling.slopeStrength, draggable, .1f);
 
             if (ImGui::SmallButton("Reset##ceiling_slope")) {
                 sectorFloor.ceiling.slopeDirection = PLUS_X;

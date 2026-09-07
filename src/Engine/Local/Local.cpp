@@ -40,23 +40,15 @@ namespace {
     }
 
     fs::path BuildLanguagePath(const std::string& languageCode) {
-        return ProjectManager::FindAssetPath(
-            fs::path("EngineAssets") / "Local" / (languageCode + ".json")
-        );
+        return ProjectManager::FindAssetPath(fs::path("EngineAssets") / "Local" / (languageCode + ".json"));
     }
 
-    bool LoadLanguageFile(
-        const std::string& languageCode,
-        std::unordered_map<std::string, std::string>& destination
-    ) {
+    bool LoadLanguageFile(const std::string& languageCode, std::unordered_map<std::string, std::string>& destination) {
         const fs::path path = BuildLanguagePath(languageCode);
         std::ifstream file(path);
 
         if (!file.is_open()) {
-            SDL_Log(
-                "Failed to open localisation file: %s",
-                path.string().c_str()
-            );
+            spdlog::critical("Failed to open localisation file: %s", path.string().c_str());
             return false;
         }
 
@@ -66,21 +58,13 @@ namespace {
             file >> data;
         }
         catch (const std::exception& e) {
-            SDL_Log(
-                "Failed to parse localisation file %s: %s",
-                path.string().c_str(),
-                e.what()
-            );
+            spdlog::critical("Failed to parse localisation file %s: %s",path.string().c_str(), e.what());
             return false;
         }
 
         std::unordered_map<std::string, std::string> loadedStrings;
 
-        for (const auto& [key, value] : data.items()) {
-            if (value.is_string()) {
-                loadedStrings[key] = value.get<std::string>();
-            }
-        }
+        for (const auto& [key, value] : data.items()) if (value.is_string()) loadedStrings[key] = value.get<std::string>();
 
         destination = std::move(loadedStrings);
         return true;
@@ -117,15 +101,13 @@ namespace Localisation {
         if (translatedIt != strings.end()) return translatedIt->second;
 
 
-        spdlog::error("Localisation key '%s' is missing from language '%s'. Using English.",key.c_str(),currentLanguage.c_str());
-
+        spdlog::error("Localisation key '{}' is missing from language '{}'. Using English.", key,currentLanguage);
         const auto englishIt = englishStrings.find(key);
 
         if (englishIt != englishStrings.end()) return englishIt->second;
 
-
         // Critical because missing localization key means the ImGUI button will not function
-        spdlog::critical("Localisation key '%s' is also missing from English.",key.c_str());
+        spdlog::critical("Localisation key '{}' is also missing from English.",key);
 
         return missingString;
     }

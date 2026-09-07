@@ -69,7 +69,6 @@ namespace MapEditorInternal {
     void DrawFilledTriangleTextured(const Triangle& triangle, SDL_Texture* texture, const SDL_FColor tint) {
         if (texture == nullptr) return;
 
-
         constexpr float uvScale = 1.0f / 64.0f;
 
         const Vector2 a = WorldToScreen(triangle.a, cameraPos);
@@ -478,12 +477,11 @@ namespace MapEditorInternal {
         // doesn't occupy that inner space, so hovering there has to fall
         // through to the sector that does rather than highlighting the
         // parent (the plain polygon test can't tell the two apart).
-        for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
+        for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i)
             if (Geometry::IsPointInPolygon(level.sectors[i].vertices, level.sectors[i].innerLoops, mouseWorld)) {
                 hoveredSectorIndex = i;
                 break;
             }
-        }
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -541,30 +539,16 @@ namespace MapEditorInternal {
         for (int sectorIndex = 0; sectorIndex < totalSectors; ++sectorIndex) {
             const Sector &sector = level.sectors[sectorIndex];
 
-            // BUG FIX: hue used to be derived from `sectorIndex` (this
-            // sector's position in level.sectors), which shifts for
-            // every sector after the one that changed whenever an
-            // *unrelated* sector is created, deleted, or reordered
-            // (level.sectors.erase(...) shifts everything after it) -
-            // so previews would visibly recolour themselves any time
-            // the sector list changed at all. `sector.id` is stable for
-            // the sector's whole lifetime (IDs are never reused - see
-            // Editor::AddSector/DeleteSector), so hashing that instead
-            // keeps each sector's colour fixed regardless of what
-            // happens to any other sector. The golden-ratio-conjugate
-            // multiply is unchanged - it's what gives evenly spread,
-            // visually distinct hues across sequential IDs.
-            const float hue = std::fmod(
-                static_cast<float>(sector.id) * 0.618033988749895f,
-                1.0f
-            );
+            const float hue = std::fmod(static_cast<float>(sector.id) * 0.618033988749895f, 1.0f);
 
             const SDL_FColor normalSectorColor = HSVtoRGB(hue, 0.7f, 0.9f);
 
-            const SDL_FColor sectorColor =
-                    sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR
-                        ? hoveredSectorColor
-                        : normalSectorColor;
+            //todo TILKYTODO make these editable by the user
+            SDL_FColor sectorColor = {255, 255, 255, 255};
+            if (!selectedSectors.empty() &&
+                std::find(selectedSectors.begin(), selectedSectors.end(), sector.id) != selectedSectors.end() &&
+                editingSector && currentMode == MODE_SECTOR) sectorColor = {0, 0, 255, 255};
+            else sectorColor = sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR ? hoveredSectorColor : normalSectorColor;
 
             SDL_Texture *floorTexture = nullptr;
 
@@ -749,11 +733,15 @@ namespace MapEditorInternal {
     void DrawWalls() {
         const Level& level = LevelManager::CurrentLevel();
 
-        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
-
         for (const Wall& wall : level.walls) {
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
+
+            //todo TILKYTODO make this a user editable sector
+            if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
+                editingWall && currentMode == MODE_GEOMETRY)
+                SDL_SetRenderDrawColor(renderer, 60, 60, 255, 255);
+            else SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
 
             DrawThickLine(renderer, startScreen, endScreen, 5.0f);
         }
@@ -778,6 +766,8 @@ namespace MapEditorInternal {
                 screenEntitySize
             };
 
+            Vector3 entityColor = {180, 180, 180};
+
             // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the
             // sprite has no texture assigned or the texture isn't available.
@@ -789,9 +779,10 @@ namespace MapEditorInternal {
 
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {
-                if (sprite != nullptr) SDL_SetRenderDrawColor(renderer, 120, 255, 120, 255);
-                else SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                if (sprite != nullptr) entityColor = {120, 255, 120};
+                if (entity.id == selectedEntity.id && editingEntity && currentMode == MODE_ENTITY) entityColor = {0, 0 ,255};
 
+                SDL_SetRenderDrawColor(renderer, entityColor.x, entityColor.y, entityColor.z, 255);
                 SDL_RenderFillRect(renderer, &rect);
             }
 
