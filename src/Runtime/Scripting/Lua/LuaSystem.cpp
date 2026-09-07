@@ -10,11 +10,13 @@
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <cctype>
@@ -177,6 +179,20 @@ namespace {
         return value.as<sol::protected_function>();
     }
 
+    // Red used for script errors in the in-game console (see ReportScriptError
+    // below) - the same 0-255 scale EditorFunctions::Print's other callers
+    // already use (see DEFAULT_COLOR in EditorFunctions.cpp).
+    const Vector3 kScriptErrorColor {255.0f, 60.0f, 60.0f};
+
+    // Every Lua script error goes through here: logged via spdlog (for the
+    // engine's own logs/console window) AND pushed to the in-game console
+    // in red (EditorFunctions::Print), so a broken script is visible to
+    // whoever is playtesting, not just whoever is watching the log file.
+    void ReportScriptError(const std::string& message) {
+        spdlog::error("{}", message);
+        EditorFunctions::Print(message, kScriptErrorColor);
+    }
+
     void CallLifecycle(const ScriptInstance& instance, const sol::protected_function& fn, const char* stageName) {
         if (!fn.valid()) return;
 
@@ -185,14 +201,14 @@ namespace {
         if (!result.valid()) {
             const sol::error error = result;
 
-            spdlog::error(
+            ReportScriptError(fmt::format(
                 "Lua {} error in script '{}' on entity {} (instance {}): {}",
                 stageName,
                 instance.scriptId,
                 instance.ownerID,
                 instance.instanceID,
                 error.what()
-            );
+            ));
         }
     }
 
@@ -752,7 +768,7 @@ namespace {
 
         if (!loadedScript.valid()) {
             const sol::error error = loadedScript;
-            spdlog::error("Failed to load Lua script '{}': {}", path.string(), error.what());
+            ReportScriptError(fmt::format("Failed to load Lua script '{}': {}", path.string(), error.what()));
             return false;
         }
 
@@ -771,7 +787,7 @@ namespace {
 
         if (!result.valid()) {
             const sol::error error = result;
-            spdlog::error("Failed to run Lua script '{}': {}", path.string(), error.what());
+            ReportScriptError(fmt::format("Failed to run Lua script '{}': {}", path.string(), error.what()));
             return false;
         }
 
