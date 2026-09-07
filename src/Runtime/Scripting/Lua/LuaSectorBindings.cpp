@@ -4,9 +4,49 @@
 
 #include <Headers/Objects/LuaWrappers.hpp>
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
 
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterSectorMetadata() {
+        RegisterType(Type("SectorFloorRef", "One floor/ceiling height interval within a Sector.", {
+            Prop("index", "integer", true, "1-based."),
+            Prop("isValid", "boolean", true),
+            Prop("floorHeight", "number"),
+            Prop("ceilingHeight", "number"),
+            Prop("floorColor", "Vector4"),
+            Prop("ceilingColor", "Vector4"),
+            Prop("floorTexture", "string"),
+            Prop("ceilingTexture", "string"),
+        }, {
+            Method("clearFloorTexture"),
+            Method("clearCeilingTexture"),
+        }));
+
+        RegisterType(Type("SectorRef", "A safe reference to one map sector.", {
+            Prop("id", "integer", true),
+            Prop("isValid", "boolean", true),
+            Prop("light", "Vector3"),
+            Prop("floorCount", "integer", true),
+            Prop("vertexCount", "integer", true),
+            Prop("wallCount", "integer", true),
+            Prop("entityCount", "integer", true),
+            Prop("neighborCount", "integer", true),
+        }, {
+            Method("GetFloor", {Param("index", "integer")}, "SectorFloorRef", "1-based."),
+            Method("GetVertex", {Param("index", "integer")}, "Vector2", "1-based."),
+            Method("GetWall", {Param("index", "integer")}, "WallRef", "1-based."),
+            Method("GetEntity", {Param("index", "integer")}, "GameObject", "1-based."),
+            Method("GetNeighbor", {Param("index", "integer")}, "SectorRef", "1-based."),
+        }));
+    }
+}
+
 void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
+    RegisterSectorMetadata();
+
     lua.new_usertype<ScriptSectorFloor>(
         "SectorFloorRef",
 

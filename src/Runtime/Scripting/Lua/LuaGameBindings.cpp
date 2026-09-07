@@ -8,11 +8,32 @@
 
 #include "Headers/Editor/Editor.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 #include <optional>
 #include <string>
 
 #include <spdlog/spdlog.h>
+
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterGameMetadata() {
+        RegisterType(Type("Game", "Global game/level table.", {}, {
+            Method("LoadLevel", {Param("levelName", "string")}),
+            Method(
+                "Raycast",
+                {
+                    Param("origin", "Vector3"), Param("direction", "Vector3"), Param("length", "number"),
+                    Param("ignoredEntityID", "integer"), Param("requireCollider", "boolean"),
+                },
+                "table",
+                "Returns nil on miss, else a table with type/typeID/position/distance/"
+                "entityID/wallID/sectorID and (whichever applies) entity/wall/sector."
+            ),
+        }));
+    }
+}
 
 static const char *RayHitTypeToString(const RayHitType type) {
     switch (type) {
@@ -25,6 +46,8 @@ static const char *RayHitTypeToString(const RayHitType type) {
 }
 
 void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
+    RegisterGameMetadata();
+
     const sol::object existing = lua["Game"];
     sol::table game;
 

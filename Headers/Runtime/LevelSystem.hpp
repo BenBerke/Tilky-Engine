@@ -15,6 +15,14 @@ namespace LevelSystem {
     void Update(Level& level);
     void Shutdown(Level& level);
 
+    // Boots the Lua scripting subsystem (opens the sol::state, registers
+    // every binding, populates LuaBindingMetadata) if it hasn't already run.
+    // Safe to call outside Play mode - it does not load or run any script -
+    // so editor-side tooling (e.g. the script editor's autocomplete list in
+    // AssetBrowser.cpp) can call this to guarantee binding metadata is
+    // available without needing a loaded/playing level.
+    bool EnsureScriptingInitialized();
+
     void RefreshScriptAssets(Level& level);
     ComponentCamera* GetActiveCamera(Level& level);
 

@@ -399,6 +399,26 @@ private:
     bool scriptEditorOpen = false;
     bool scriptEditorDirty = false;
 
+    // Autocomplete for the script editor - see DrawTextEditorWindow() in
+    // AssetBrowser.cpp. Suggestions come from Lua keywords/lifecycle
+    // function names plus every type/property/method name
+    // LuaBindingMetadata knows about (see LuaBindingMetadata.hpp), so the
+    // same registry that will eventually drive generated LuaLS stubs also
+    // drives this in-editor list - one source of truth.
+    void UpdateAutocomplete();
+    void DrawAutocompletePopup();
+    void AcceptAutocomplete(int index);
+
+    std::vector<std::string> autocompleteMatches;
+    std::string autocompleteWordStart;
+    int autocompleteSelectedIndex = 0;
+    bool autocompleteActive = false;
+
+    // IDE QoL commands - see DrawTextEditorWindow() in AssetBrowser.cpp for
+    // the keybindings that trigger these (Ctrl+/, Ctrl+D, ...).
+    void ToggleLineComment();
+    void DuplicateCurrentLine();
+
     void NavigateTo(const std::filesystem::path& absoluteDirectory);
     void NavigateToParent();
     [[nodiscard]] bool IsPathWithinRoot(const std::filesystem::path& absolutePath) const;

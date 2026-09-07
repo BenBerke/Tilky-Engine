@@ -7,8 +7,146 @@
 
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterComponentMetadata() {
+        RegisterType(Type("ColliderType", "Enum: Sphere or Box - see Collider.type.", {
+            Prop("Sphere", "integer", true),
+            Prop("Box", "integer", true),
+        }));
+
+        RegisterType(Type("AudioSource", "OpenAL audio source component.", {
+            Prop("isValid", "boolean", true),
+            Prop("name", "string", true, "OpenAL source name."),
+            Prop("soundFileName", "string"),
+            Prop("pitch", "number"),
+            Prop("gain", "number"),
+            Prop("looping", "boolean"),
+            Prop("playOnStart", "boolean"),
+            Prop("referenceDistance", "number"),
+            Prop("maxDistance", "number"),
+            Prop("rollOffFactor", "number"),
+            Prop("innerConeAngle", "number"),
+            Prop("outerConeAngle", "number"),
+            Prop("outerGain", "number"),
+        }, {
+            Method("clearSoundFileName"),
+            Method("play"),
+            Method("setSourcePosition", {Param("position", "Vector3")}),
+        }));
+
+        RegisterType(Type("Rigidbody", "Physics component - velocity/mass/gravity.", {
+            Prop("isValid", "boolean", true),
+            Prop("isGrounded", "boolean"),
+            Prop("isStatic", "boolean"),
+            Prop("mass", "number"),
+            Prop("gravityScale", "number"),
+            Prop("friction", "number"),
+            Prop("velocity", "Vector3"),
+        }, {
+            Method("addVelocity", {Param("velocity", "Vector3")}),
+        }));
+
+        RegisterType(Type("Collider", "Sphere or box collision volume.", {
+            Prop("isValid", "boolean", true),
+            Prop("type", "ColliderType"),
+            Prop("isActive", "boolean"),
+            Prop("isTrigger", "boolean"),
+            Prop("scale", "Vector3", false, "Box: full extents. Sphere: scale.x is the radius."),
+            Prop("stepSize", "number"),
+        }));
+
+        RegisterType(Type("PlayerController", "First-person player movement/look component.", {
+            Prop("isValid", "boolean", true),
+            Prop("isActive", "boolean"),
+            Prop("speed", "number"),
+            Prop("runningSpeed", "number"),
+            Prop("jumpPower", "number"),
+            Prop("eyeHeight", "number"),
+            Prop("friction", "number"),
+            Prop("sensitivityX", "number"),
+            Prop("sensitivityY", "number"),
+            Prop("noClip", "boolean"),
+            Prop("velocity", "Vector3", true),
+            Prop("currentSpeed", "number", true),
+            Prop("currentEyeHeight", "number", true),
+        }));
+
+        RegisterType(Type("Camera", "Perspective camera component.", {
+            Prop("isValid", "boolean", true),
+            Prop("isActive", "boolean"),
+            Prop("yaw", "number"),
+            Prop("pitch", "number"),
+            Prop("fov", "number"),
+            Prop("aspectRatio", "number"),
+            Prop("nearPlane", "number"),
+            Prop("farPlane", "number"),
+            Prop("forward", "Vector3", true),
+            Prop("target", "Vector3", true),
+        }));
+
+        RegisterType(Type("UITransform", "Anchor/pivot-based transform for UI elements.", {
+            Prop("isValid", "boolean", true),
+            Prop("anchorMin", "Vector2"),
+            Prop("anchorMax", "Vector2"),
+            Prop("pivot", "Vector2"),
+            Prop("position", "Vector2"),
+            Prop("scale", "Vector2"),
+            Prop("rotation", "number"),
+            Prop("resolvedPosition", "Vector2", true, "Final on-screen position after anchor/pivot resolution."),
+            Prop("resolvedSize", "Vector2", true),
+        }));
+
+        RegisterType(Type("UISprite", "A UI element's texture.", {
+            Prop("isValid", "boolean", true),
+            Prop("textureIndex", "string"),
+        }));
+
+        RegisterType(Type("UIText", "A UI element's text label.", {
+            Prop("isValid", "boolean", true),
+            Prop("text", "string"),
+        }));
+
+        RegisterType(Type("Transform", "Position/rotation/scale in world space.", {
+            Prop("isValid", "boolean", true),
+            Prop("position", "Vector3"),
+            Prop("rotation", "Vector4", false, "Quaternion, stored as (x, y, z, w)."),
+            Prop("scale", "Vector3"),
+            Prop("relativeHeight", "number", false, "Height above the current sector floor."),
+            Prop("forward", "Vector2"),
+            Prop("sectorIndex", "integer", true),
+            Prop("isDirty", "boolean"),
+        }, {
+            Method("addPosition", {Param("position", "Vector3")}),
+        }));
+
+        RegisterType(Type("Sprite", "Billboard/multi-directional sprite component.", {
+            Prop("isValid", "boolean", true),
+            Prop("sideCount", "integer", false, "1 (single), 4 (90 deg steps) or 8 (45 deg steps)."),
+            Prop("color", "Vector4"),
+            Prop("northTextureFileName", "string"),
+            Prop("northEastTextureFileName", "string"),
+            Prop("eastTextureFileName", "string"),
+            Prop("southEastTextureFileName", "string"),
+            Prop("southTextureFileName", "string"),
+            Prop("southWestTextureFileName", "string"),
+            Prop("westTextureFileName", "string"),
+            Prop("northWestTextureFileName", "string"),
+        }, {
+            Method("getTextureFileName", {Param("slot", "integer")}, "string"),
+            Method("setTextureFileName", {Param("slot", "integer"), Param("fileName", "string")}),
+            Method("clearTextureFileName", {Param("slot", "integer")}),
+            Method("clearAllTextureFileNames"),
+        }));
+    }
+}
 
 void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
+    RegisterComponentMetadata();
+
     lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX);
 
     lua.new_usertype<ScriptAudioSource>(

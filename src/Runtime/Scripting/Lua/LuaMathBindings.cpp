@@ -3,6 +3,7 @@
 //
 #include "Headers/Engine/GameTime.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
 
 #include <algorithm>
@@ -11,6 +12,29 @@
 #include <iterator>
 
 #include <spdlog/spdlog.h>
+
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterMathMetadata() {
+        RegisterType(Type("Tmath", "Global math helper table (degrees/radians, clamp, lerp, vector math, random).", {}, {
+            Method("DegToRad", {Param("value", "number")}, "number"),
+            Method("RadToDeg", {Param("value", "number")}, "number"),
+            Method("Clamp", {Param("value", "number"), Param("minValue", "number"), Param("maxValue", "number")}, "number"),
+            Method("Lerp", {Param("a", "number"), Param("b", "number"), Param("t", "number")}, "number"),
+            Method("Vector2Distance", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
+            Method("Vector2DistanceSquared", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
+            Method("Vector2Dot", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
+            Method("Vector3Dot", {Param("a", "Vector3"), Param("b", "Vector3")}, "number"),
+            Method("Vector3Distance", {Param("a", "Vector3"), Param("b", "Vector3")}, "number"),
+            Method("Vector3DistanceSquared", {Param("a", "Vector3"), Param("b", "Vector3")}, "number"),
+            Method("Vector3Cross", {Param("a", "Vector3"), Param("b", "Vector3")}, "Vector3"),
+            Method("Random", {Param("min", "integer"), Param("max", "integer")}, "integer", "1 arg: [0,max). 2 args: [min,max]."),
+            Method("RandomF", {Param("min", "number"), Param("max", "number")}, "number", "0 args: [0,1). 1 arg: [0,max). 2 args: [min,max]."),
+            Method("RandomFast", {}, "number", "Cheaper, lower-quality [0,1) random - precomputed table lookup."),
+        }));
+    }
+}
 
 namespace {
     //todo make this an engine setting
@@ -108,6 +132,8 @@ namespace {
 }
 
 void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
+    RegisterMathMetadata();
+
     const sol::object existing = lua["Tmath"];
     sol::table math;
 

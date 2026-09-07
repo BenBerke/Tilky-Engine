@@ -4,10 +4,37 @@
 
 #include "Headers/Engine/InputManager.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
 
 #include <string>
 #include <unordered_map>
+
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterInputMetadata() {
+        RegisterType(Type("Input", "Global keyboard/mouse input table. Key names: letters, digits, "
+            "Space/Escape/Enter/Tab/Backspace, Left/Right/Up/Down, LShift/RShift/LCtrl/RCtrl/LAlt/RAlt.", {
+            Prop("MouseLeft", "integer", true),
+            Prop("MouseMiddle", "integer", true),
+            Prop("MouseRight", "integer", true),
+        }, {
+            Method("GetKeyDown", {Param("key", "string")}, "boolean", "True on the frame the key was pressed."),
+            Method("GetKey", {Param("key", "string")}, "boolean", "True while the key is held."),
+            Method("GetKeyUp", {Param("key", "string")}, "boolean", "True on the frame the key was released."),
+            Method("GetAnyKey", {}, "string"),
+            Method("GetAnyKeyDown", {}, "string"),
+            Method("GetAnyKeyUp", {}, "string"),
+            Method("GetDoubleKeyDown", {Param("key", "string"), Param("keyTwo", "string")}, "boolean"),
+            Method("GetDoubleKey", {Param("key", "string"), Param("keyTwo", "string")}, "boolean"),
+            Method("GetMouseButtonDown", {Param("button", "integer")}, "boolean"),
+            Method("GetMouseButton", {Param("button", "integer")}, "boolean"),
+            Method("GetMouseButtonUp", {Param("button", "integer")}, "boolean"),
+            Method("GetMousePosition", {}, "Vector2"),
+        }));
+    }
+}
 
 namespace {
     const std::unordered_map<std::string, SDL_Scancode> keys = {
@@ -79,6 +106,8 @@ namespace {
 
 
 void LuaScriptSystem::RegisterInputBindings(sol::state& lua) {
+    RegisterInputMetadata();
+
     sol::table inputManager = lua.create_table();
 
     inputManager.set_function("GetKeyDown", [](const std::string& key) -> bool {

@@ -824,7 +824,16 @@ namespace {
         }
     }
 
+    void RegisterGameTimeMetadata() {
+        LuaBindingMetadata::RegisterType(LuaBindingMetadata::Type("GameTime", "Global frame-timing table.", {
+            LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
+            LuaBindingMetadata::Prop("fixedDeltaTime", "number", true, "The fixed step FixedUpdate() runs on."),
+        }));
+    }
+
     void RegisterGameTimeBindings(sol::state& luaState) {
+        RegisterGameTimeMetadata();
+
         luaState.new_usertype<ScriptGameTime>(
             "ScriptGameTime",
             sol::no_constructor,

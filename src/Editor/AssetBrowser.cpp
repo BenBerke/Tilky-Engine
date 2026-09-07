@@ -8,6 +8,7 @@
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <spdlog/spdlog.h>
 
@@ -17,10 +18,49 @@
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 namespace fs = std::filesystem;
 
 namespace {
+    // Every identifier the script editor's autocomplete can suggest: Lua
+    // keywords, the lifecycle function names a Behaviour can define, a
+    // handful of always-available globals, and - the main point - every
+    // type/property/method name registered with LuaBindingMetadata (see
+    // that header), so autocomplete and the future generated LuaLS stubs
+    // are driven by the same data instead of two hand-maintained lists.
+    // Built once, lazily, on first use.
+    const std::vector<std::string>& AutocompleteCandidates() {
+        LevelSystem::EnsureScriptingInitialized();
+
+        static const std::vector<std::string> candidates = [] {
+            std::vector<std::string> list = {
+                "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+                "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
+                "true", "until", "while",
+
+                "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
+
+                "gameObject", "GameTime", "Input", "Game", "Debug", "Scripts",
+            };
+
+            for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
+                list.push_back(type.name);
+
+                for (const LuaBindingMetadata::PropertyDoc& prop : type.properties) list.push_back(prop.name);
+                for (const LuaBindingMetadata::MethodDoc& method : type.methods) list.push_back(method.name);
+            }
+
+            std::ranges::sort(list);
+            list.erase(std::ranges::unique(list).begin(), list.end());
+
+            return list;
+        }();
+
+        return candidates;
+    }
+
     std::string LowerCopy(std::string text) {
         std::ranges::transform(text, text.begin(), [](const unsigned char c) {
             return static_cast<char>(std::tolower(c));
@@ -606,6 +646,7 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
     openScriptPath = absolutePath;
     scriptEditorOpen = true;
     scriptEditorDirty = false;
+    autocompleteActive = false;
     lastOperationError.clear();
 }
 
@@ -655,21 +696,319 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
             ImGui::EndMenu();
         }
 
+        if (ImGui::BeginMenu("Edit")) {
+            if (ImGui::MenuItem("Toggle Line Comment", "Ctrl+/")) ToggleLineComment();
+            if (ImGui::MenuItem("Duplicate Line", "Ctrl+D")) DuplicateCurrentLine();
+
+            ImGui::EndMenu();
+        }
+
         ImGui::EndMenuBar();
     }
 
+    const bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    ImGuiIO& io = ImGui::GetIO();
+
+    // While the autocomplete popup is up, Tab/Enter/Up/Down/Escape are
+    // reserved for accepting/navigating/dismissing the suggestion list
+    // instead of their usual editor meaning (indent/newline/move cursor).
+    // Disabling the editor's own keyboard handling for just this frame,
+    // only when one of those keys is actually pressed, keeps every other
+    // key (typed characters, Backspace, Ctrl+Z, ...) flowing through to
+    // the editor as normal while the popup is open.
+    bool autocompleteAccept = false;
+    bool autocompleteDismiss = false;
+    int autocompleteNavDelta = 0;
+
+    if (autocompleteActive) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) autocompleteDismiss = true;
+        else if (ImGui::IsKeyPressed(ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_Enter)) autocompleteAccept = true;
+        else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) autocompleteNavDelta = 1;
+        else if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) autocompleteNavDelta = -1;
+
+        if (autocompleteAccept || autocompleteDismiss || autocompleteNavDelta != 0)
+            scriptEditor.SetHandleKeyboardInputs(false);
+    }
+
+    // Auto-close bracket/quote pairs, part 1: "type over" an existing
+    // matching closer instead of inserting a duplicate one right next to
+    // it. Checked (and, if it applies, swallowed) BEFORE Render() sees the
+    // keystroke, since fixing it up afterward would leave a real duplicate
+    // character sitting in the undo history for a moment.
+    // `typedChars` is a copy of this frame's raw input, taken before
+    // Render() consumes and clears the real queue - part 2 (auto-inserting
+    // a closer for a freshly-typed opener) reads it again after Render().
+    const std::vector<ImWchar> typedChars(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end());
+    bool autoCloseHandled = false;
+
+    if (windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly() && !scriptEditor.HasSelection()) {
+        static const std::unordered_set<ImWchar> kClosers = {')', ']', '}', '"', '\''};
+
+        if (kClosers.contains(typedChars[0])) {
+            const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
+            const std::string line = scriptEditor.GetCurrentLineText();
+            const int col = std::clamp(cursor.mColumn, 0, static_cast<int>(line.size()));
+
+            if (col < static_cast<int>(line.size()) && line[col] == static_cast<char>(typedChars[0])) {
+                io.InputQueueCharacters.resize(0); // don't let Render() also insert this keystroke
+                scriptEditor.MoveRight(1, false, false);
+                autoCloseHandled = true;
+            }
+        }
+    }
+
+    // Ctrl+Backspace / Ctrl+Delete: delete a whole word instead of one
+    // character. The editor's own keyboard handling only fires Backspace/
+    // Delete when Ctrl is NOT held, so this can't double up with it.
+    // MoveLeft/MoveRight's word-boundary mode is the same logic Ctrl+Left/
+    // Ctrl+Right already use to jump by word.
+    bool deleteWordLeft = false;
+    bool deleteWordRight = false;
+
+    if (windowFocused && !scriptEditor.IsReadOnly() && io.KeyCtrl && !io.KeyShift && !io.KeyAlt) {
+        deleteWordLeft = ImGui::IsKeyPressed(ImGuiKey_Backspace);
+        deleteWordRight = ImGui::IsKeyPressed(ImGuiKey_Delete);
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Slash)) ToggleLineComment();
+        else if (ImGui::IsKeyPressed(ImGuiKey_D)) DuplicateCurrentLine();
+    }
+
     if (scriptEditorFont != nullptr) [[likely]] ImGui::PushFont(scriptEditorFont);
-    scriptEditor.Render("##LuaCodeEditor", ImGui::GetContentRegionAvail(),false);
+
+    const float statusBarHeight = ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+    const ImVec2 editorSize(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - statusBarHeight);
+
+    scriptEditor.Render("##LuaCodeEditor", editorSize, false);
     if (scriptEditorFont != nullptr) [[likely]] ImGui::PopFont();
+
+    scriptEditor.SetHandleKeyboardInputs(true);
 
     if (scriptEditor.IsTextChanged()) scriptEditorDirty = true;
 
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-        && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) saveRequested = true;
+    // Auto-close bracket/quote pairs, part 2: a freshly-typed opener gets
+    // its closer inserted right after it, with the cursor left sitting
+    // between the pair - unless part 1 above already fully handled this
+    // exact keystroke as a type-over (relevant for quotes, which are their
+    // own opener AND closer).
+    if (!autoCloseHandled && windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly()) {
+        static const std::unordered_map<ImWchar, char> kOpenToClose = {
+            {'(', ')'}, {'[', ']'}, {'{', '}'}, {'"', '"'}, {'\'', '\''},
+        };
+
+        if (const auto it = kOpenToClose.find(typedChars[0]); it != kOpenToClose.end()) {
+            const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
+            const std::string line = scriptEditor.GetCurrentLineText();
+            const int col = std::clamp(cursor.mColumn, 0, static_cast<int>(line.size()));
+            const char nextChar = col < static_cast<int>(line.size()) ? line[col] : '\0';
+
+            // Don't auto-close a quote immediately before an identifier
+            // character - most likely an apostrophe/quote inside existing
+            // text rather than the start of a new string literal.
+            const bool isQuote = typedChars[0] == '"' || typedChars[0] == '\'';
+            const bool nextIsWordChar = std::isalnum(static_cast<unsigned char>(nextChar)) != 0 || nextChar == '_';
+
+            if (!(isQuote && nextIsWordChar)) {
+                scriptEditor.InsertText(std::string(1, it->second));
+                scriptEditor.MoveLeft(1, false, false);
+                scriptEditorDirty = true;
+            }
+        }
+    }
+
+    if (deleteWordLeft) {
+        // Backspace() is private on TextEditor; Delete() is public and,
+        // like Backspace(), just removes whatever's currently selected -
+        // equivalent once MoveLeft has already made the word the selection.
+        if (!scriptEditor.HasSelection()) scriptEditor.MoveLeft(1, true, true);
+        scriptEditor.Delete();
+        scriptEditorDirty = true;
+    } else if (deleteWordRight) {
+        if (!scriptEditor.HasSelection()) scriptEditor.MoveRight(1, true, true);
+        scriptEditor.Delete();
+        scriptEditorDirty = true;
+    }
+
+    if (autocompleteNavDelta != 0 && !autocompleteMatches.empty()) {
+        const int count = static_cast<int>(autocompleteMatches.size());
+        autocompleteSelectedIndex = (autocompleteSelectedIndex + autocompleteNavDelta + count) % count;
+    }
+
+    if (autocompleteDismiss) {
+        autocompleteActive = false;
+    } else if (autocompleteAccept && !autocompleteMatches.empty()) {
+        AcceptAutocomplete(autocompleteSelectedIndex);
+    } else {
+        UpdateAutocomplete();
+    }
+
+    if (autocompleteActive) DrawAutocompletePopup();
+
+    if (windowFocused && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) saveRequested = true;
 
     if (saveRequested) SaveOpenScript();
 
+    ImGui::Separator();
+
+    const TextEditor::Coordinates statusCursor = scriptEditor.GetCursorPosition();
+    ImGui::TextDisabled(
+        "Ln %d, Col %d  |  %d lines  |  %s",
+        statusCursor.mLine + 1,
+        statusCursor.mColumn + 1,
+        scriptEditor.GetTotalLines(),
+        scriptEditorDirty ? "unsaved changes" : "saved"
+    );
+
     ImGui::End();
+}
+
+void AssetBrowser::UpdateAutocomplete() {
+    if (!scriptEditorOpen || scriptEditor.IsReadOnly() ||
+        !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        autocompleteActive = false;
+        return;
+    }
+
+    const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
+    const std::string line = scriptEditor.GetCurrentLineText();
+
+    // Coordinates::mColumn is a tab-expanded "visual" column; treating it as
+    // a raw byte index into `line` is only exact for tab-free lines, which
+    // is the common case for Lua scripts (space indentation). A tab-indented
+    // line can shift the detected word slightly - a cosmetic edge case, not
+    // a crash risk, since this is clamped either way.
+    const int col = std::clamp(cursor.mColumn, 0, static_cast<int>(line.size()));
+
+    int start = col;
+    while (start > 0 && (std::isalnum(static_cast<unsigned char>(line[start - 1])) != 0 || line[start - 1] == '_'))
+        --start;
+
+    const std::string word = line.substr(start, col - start);
+
+    // Require at least two characters before suggesting anything - a
+    // single letter matches too much of the candidate list to be useful.
+    if (word.size() < 2) {
+        autocompleteActive = false;
+        return;
+    }
+
+    autocompleteMatches.clear();
+
+    for (const std::string& candidate : AutocompleteCandidates()) {
+        if (candidate.size() <= word.size() || candidate.compare(0, word.size(), word) != 0) continue;
+
+        autocompleteMatches.push_back(candidate);
+        if (autocompleteMatches.size() >= 12) break; // keep the popup short
+    }
+
+    autocompleteWordStart = word;
+    autocompleteSelectedIndex = 0;
+    autocompleteActive = !autocompleteMatches.empty();
+}
+
+void AssetBrowser::DrawAutocompletePopup() {
+    ImGui::SetNextWindowPos(scriptEditor.GetCursorScreenPos());
+    ImGui::SetNextWindowSize(ImVec2(240.0f, 0.0f));
+
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+    // Keeps keyboard focus on the code editor (so typing keeps flowing into
+    // it) - Up/Down/Tab/Enter/Escape for THIS popup are already handled
+    // above, before scriptEditor.Render() ran this frame.
+    ImGui::Begin("##ScriptAutocomplete", nullptr, flags);
+
+    for (int i = 0; i < static_cast<int>(autocompleteMatches.size()); ++i) {
+        const bool isSelected = i == autocompleteSelectedIndex;
+
+        if (ImGui::Selectable(autocompleteMatches[i].c_str(), isSelected)) AcceptAutocomplete(i);
+        if (isSelected) ImGui::SetItemDefaultFocus();
+    }
+
+    ImGui::End();
+}
+
+void AssetBrowser::AcceptAutocomplete(const int index) {
+    if (index < 0 || index >= static_cast<int>(autocompleteMatches.size())) return;
+
+    const std::string& full = autocompleteMatches[index];
+    scriptEditor.InsertText(full.substr(autocompleteWordStart.size()));
+
+    scriptEditorDirty = true;
+    autocompleteActive = false;
+}
+
+void AssetBrowser::ToggleLineComment() {
+    if (scriptEditor.IsReadOnly()) return;
+
+    const bool hadSelection = scriptEditor.HasSelection();
+    const TextEditor::Coordinates rangeStart = hadSelection ? scriptEditor.GetSelectionStart() : scriptEditor.GetCursorPosition();
+    const TextEditor::Coordinates rangeEnd = hadSelection ? scriptEditor.GetSelectionEnd() : scriptEditor.GetCursorPosition();
+
+    const int firstLine = rangeStart.mLine;
+    int lastLine = rangeEnd.mLine;
+
+    // A selection ending exactly at column 0 of a line doesn't really
+    // "include" that line - matches the usual Ctrl+/ behavior in other
+    // editors for a selection that ends right at a line start.
+    if (hadSelection && rangeEnd.mColumn == 0 && lastLine > firstLine) --lastLine;
+
+    // Uncomment only if EVERY non-blank line in range is already commented;
+    // otherwise comment every line (including already-commented ones,
+    // which just end up double-commented - consistent with most editors).
+    bool allCommented = true;
+
+    for (int lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex) {
+        scriptEditor.SetCursorPosition({lineIndex, 0});
+        const std::string text = scriptEditor.GetCurrentLineText();
+        const std::size_t firstNonSpace = text.find_first_not_of(" \t");
+
+        if (firstNonSpace != std::string::npos && text.compare(firstNonSpace, 2, "--") != 0) {
+            allCommented = false;
+            break;
+        }
+    }
+
+    for (int lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex) {
+        scriptEditor.SetCursorPosition({lineIndex, 0});
+
+        const std::string line = scriptEditor.GetCurrentLineText();
+        if (line.empty()) continue;
+
+        if (allCommented) {
+            const std::size_t dashPos = line.find("--");
+            if (dashPos == std::string::npos) continue;
+
+            std::size_t removeLen = 2;
+            if (dashPos + 2 < line.size() && line[dashPos + 2] == ' ') removeLen = 3;
+
+            scriptEditor.SetSelection({lineIndex, static_cast<int>(dashPos)}, {lineIndex, static_cast<int>(dashPos + removeLen)});
+            scriptEditor.Delete();
+        } else {
+            std::size_t firstNonSpace = line.find_first_not_of(" \t");
+            if (firstNonSpace == std::string::npos) firstNonSpace = 0;
+
+            scriptEditor.SetCursorPosition({lineIndex, static_cast<int>(firstNonSpace)});
+            scriptEditor.InsertText("-- ");
+        }
+    }
+
+    scriptEditor.SetCursorPosition({firstLine, 0});
+    scriptEditorDirty = true;
+}
+
+void AssetBrowser::DuplicateCurrentLine() {
+    if (scriptEditor.IsReadOnly()) return;
+
+    const TextEditor::Coordinates original = scriptEditor.GetCursorPosition();
+    const std::string line = scriptEditor.GetCurrentLineText();
+
+    scriptEditor.SetCursorPosition({original.mLine, 0});
+    scriptEditor.MoveEnd(false);
+    scriptEditor.InsertText("\n" + line);
+    scriptEditor.SetCursorPosition({original.mLine + 1, original.mColumn});
+
+    scriptEditorDirty = true;
 }
 
 // ============================================================================

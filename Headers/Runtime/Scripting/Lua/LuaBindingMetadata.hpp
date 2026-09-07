@@ -11,14 +11,10 @@
 // source of truth instead of hand-maintaining separate autocomplete
 // definitions - see GenerateLuaLSStub below.
 //
-// Scope note: this pass wires metadata registration into the newly-added
-// GameObject and Behaviour bindings only (see RegisterEntityBindings in
-// LuaEntityBindings.cpp and RegisterBehaviourRefBindings in LuaSystem.cpp)
-// as a working example of the pattern. Retrofitting every other existing
-// binding (Transform, Rigidbody, Camera, Sprite, ...) with matching
-// RegisterType() calls is intentionally left as follow-up work - it is
-// mechanical but high-volume, and out of scope for "ensure the architecture
-// can support LuaLS metadata" (see the scripting redesign notes).
+// Every binding file (LuaEntityBindings.cpp, LuaComponentBindings.cpp,
+// LuaVectorBindings.cpp, ...) registers its usertypes' documentation here
+// right alongside the matching sol::new_usertype<>()/set_function() calls,
+// so the two never drift apart silently.
 namespace LuaBindingMetadata {
     struct ParamDoc {
         std::string name;
@@ -45,6 +41,26 @@ namespace LuaBindingMetadata {
         std::vector<PropertyDoc> properties;
         std::vector<MethodDoc> methods;
     };
+
+    // Terse, positional constructors for RegisterType() call sites - a
+    // binding file documenting a few dozen properties/methods gets
+    // unwieldy fast with `.name = ..., .luaType = ..., ...` on every single
+    // entry, so these are the normal way to build one.
+    inline ParamDoc Param(std::string name, std::string luaType) {
+        return {std::move(name), std::move(luaType)};
+    }
+
+    inline PropertyDoc Prop(std::string name, std::string luaType, bool readOnly = false, std::string doc = {}) {
+        return {std::move(name), std::move(luaType), readOnly, std::move(doc)};
+    }
+
+    inline MethodDoc Method(std::string name, std::vector<ParamDoc> params = {}, std::string returnType = {}, std::string doc = {}) {
+        return {std::move(name), std::move(params), std::move(returnType), std::move(doc)};
+    }
+
+    inline TypeDoc Type(std::string name, std::string doc, std::vector<PropertyDoc> properties = {}, std::vector<MethodDoc> methods = {}) {
+        return {std::move(name), std::move(doc), std::move(properties), std::move(methods)};
+    }
 
     // Registers one type's documentation. Call once per usertype, right
     // alongside its sol::new_usertype<>() registration.

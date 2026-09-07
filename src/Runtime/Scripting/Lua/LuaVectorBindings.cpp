@@ -3,9 +3,42 @@
 //
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
 
+namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterVectorMetadata() {
+        RegisterType(Type("Vector2", "A 2D vector. Callable as Vector2(x, y) or Vector2().", {
+            Prop("x", "number"),
+            Prop("y", "number"),
+            Prop("length", "number", true),
+            Prop("lengthSquared", "number", true),
+            Prop("normalized", "Vector2", true),
+        }));
+
+        RegisterType(Type("Vector3", "A 3D vector. Callable as Vector3(x, y, z) or Vector3().", {
+            Prop("x", "number"),
+            Prop("y", "number"),
+            Prop("z", "number"),
+            Prop("length", "number", true),
+            Prop("lengthSquared", "number", true),
+            Prop("normalized", "Vector3", true),
+        }));
+
+        RegisterType(Type("Vector4", "A 4D vector, commonly used for RGBA colors. Callable as Vector4(x, y, z, w) or Vector4().", {
+            Prop("x", "number"),
+            Prop("y", "number"),
+            Prop("z", "number"),
+            Prop("w", "number"),
+        }));
+    }
+}
+
 void LuaScriptSystem::RegisterVectorBindings(sol::state& lua) {
+    RegisterVectorMetadata();
+
     lua.new_usertype<Vector2>(
         "Vector2",
         sol::call_constructor,

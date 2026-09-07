@@ -5,6 +5,7 @@
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "sol/sol.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 #include <sstream>
 #include <string>
@@ -12,6 +13,19 @@
 #include <spdlog/spdlog.h>
 
 namespace {
+    using namespace LuaBindingMetadata;
+
+    void RegisterDebugMetadata() {
+        RegisterType(Type("Debug", "Global logging table. Every function accepts any number of arguments, "
+            "space-joined via tostring() (like Lua's print).", {}, {
+            Method("Print", {}, "", "Shows the message in the in-editor console."),
+            Method("LogInfo"),
+            Method("LogError"),
+            Method("LogCritical"),
+            Method("LogWarning"),
+        }));
+    }
+
     sol::table GetOrCreateTable(sol::state& lua, const char* name) {
         const sol::object existing = lua[name];
 
@@ -57,6 +71,8 @@ namespace {
 }
 
 void LuaScriptSystem::RegisterEditorFunctionBindings(sol::state& lua) {
+    RegisterDebugMetadata();
+
     sol::table debug = GetOrCreateTable(lua, "Debug");
 
     debug.set_function("Print", [](const sol::this_state state, const sol::variadic_args args) {
