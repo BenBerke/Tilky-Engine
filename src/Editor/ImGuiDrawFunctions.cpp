@@ -1289,9 +1289,8 @@ namespace ImGuiDrawFunctions {
                     entity.RemoveComponent<ComponentScript>();
                     CloseEditor();
                 }
-            } else {
-                ImGui::TextDisabled("Script component missing");
             }
+            else ImGui::TextDisabled("Script component missing");
         }
 
         // ════════════════════════════════════════════════════════════════════

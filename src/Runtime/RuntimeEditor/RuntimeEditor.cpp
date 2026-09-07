@@ -102,15 +102,14 @@ namespace {
     RayHitType selectedSectorSurface = RayHitType::None;
     int selectedSectorFloor = -1;
 
-    // The camera only rotates while the middle mouse button is held, and that
-    // is also the only time the OS cursor is hidden and relative. Everything
-    // else in the editor is cursor-driven, so there is no lock toggle left to
-    // get out of sync with. Update() owns this; Draw() only reads it.
+    // Camera look and UV-offset dragging both consume relative mouse motion.
+    // Keep the cursor locked while either interaction is active and release it
+    // only after both have ended. Update() owns this; Draw() only reads it.
     bool cameraLooking = false;
 
     bool cursorLocked = false;
-    Vector2 cursorBeforeLook = {};
-    std::optional<SDL_Rect> mouseRectBeforeLook;
+    Vector2 cursorBeforeLock = {};
+    std::optional<SDL_Rect> mouseRectBeforeLock;
 
     // Set true to print the live payload next to the cursor while dragging.
     constexpr bool DEBUG_DRAG_DROP = false;
@@ -137,27 +136,28 @@ namespace {
         entityInspectorState = {};
     }
 
-    // Relative mode supplies camera motion; a one-pixel rectangle also keeps
-    // the cursor position fixed. Restore the position before leaving relative
-    // mode so the cursor reappears where the middle-button drag started.
+    // Relative mode supplies motion without moving the OS pointer. The
+    // one-pixel rectangle fixes its absolute position as well. Restore that
+    // position before leaving relative mode so the cursor reappears exactly
+    // where the interaction started.
     void SetCursorLocked(const bool locked) {
         if (editorWindow == nullptr) return;
 
         if (locked) {
             if (cursorLocked) return;
 
-            SDL_GetMouseState(&cursorBeforeLook.x, &cursorBeforeLook.y);
+            SDL_GetMouseState(&cursorBeforeLock.x, &cursorBeforeLock.y);
 
             const SDL_Rect* previousRect = SDL_GetWindowMouseRect(editorWindow);
-            mouseRectBeforeLook = previousRect != nullptr
+            mouseRectBeforeLock = previousRect != nullptr
                 ? std::optional<SDL_Rect>{*previousRect}
                 : std::nullopt;
 
             InputManager::SetRelativeMouseMode(editorWindow, true);
 
             const SDL_Rect lockRect = {
-                static_cast<int>(cursorBeforeLook.x),
-                static_cast<int>(cursorBeforeLook.y),
+                static_cast<int>(cursorBeforeLock.x),
+                static_cast<int>(cursorBeforeLock.y),
                 1, 1
             };
 
@@ -171,15 +171,15 @@ namespace {
         if (cursorLocked) {
             if (!SDL_SetWindowMouseRect(
                     editorWindow,
-                    mouseRectBeforeLook.has_value() ? &*mouseRectBeforeLook : nullptr))
+                    mouseRectBeforeLock.has_value() ? &*mouseRectBeforeLock : nullptr))
                 spdlog::warn("Runtime editor could not restore the mouse rectangle: {}", SDL_GetError());
 
             // Do not move the pointer over another application after focus loss.
             if (SDL_GetMouseFocus() == editorWindow)
-                SDL_WarpMouseInWindow(editorWindow, cursorBeforeLook.x, cursorBeforeLook.y);
+                SDL_WarpMouseInWindow(editorWindow, cursorBeforeLock.x, cursorBeforeLock.y);
 
             cursorLocked = false;
-            mouseRectBeforeLook.reset();
+            mouseRectBeforeLock.reset();
         }
 
         InputManager::SetRelativeMouseMode(editorWindow, false);
@@ -587,8 +587,8 @@ namespace RuntimeEditor {
 
         if (editorWindow == nullptr) spdlog::error("Runtime editor could not get the window; cursor lock is disabled");
 
-        // Unlocked by default. The only thing that hides the cursor is holding
-        // the middle button, and that is decided fresh every Update().
+        // Unlocked by default. Middle-button camera look and left-button UV
+        // dragging decide the lock state fresh every Update().
         cameraLooking = false;
         draggingUv = false;
         uvDragSurface = {};
@@ -640,11 +640,15 @@ namespace RuntimeEditor {
         // hidden ImGui keeps reporting the position it froze at, so re-testing
         // every frame would drop the drag the moment you swing past a panel.
         const bool windowFocused = editorWindow != nullptr && SDL_GetKeyboardFocus() == editorWindow;
-        const bool wantLook = windowFocused && middleHeld && (cameraLooking || !mouseBlockedByImGui);
+        const bool wantLook =
+            windowFocused &&
+            middleHeld &&
+            !draggingUv &&
+            (cameraLooking || !mouseBlockedByImGui);
 
         if (wantLook != cameraLooking) {
             cameraLooking = wantLook;
-            SetCursorLocked(cameraLooking);
+            SetCursorLocked(cameraLooking || draggingUv);
         }
 
         if (cameraLooking) {
@@ -700,11 +704,14 @@ namespace RuntimeEditor {
             static_cast<float>(screenHeight)
         };
 
-        // In relative mode the reported cursor position is frozen wherever it
-        // was when the button went down, so aim down the middle instead.
+        // Camera look aims through the centre. A UV drag keeps using the point
+        // at which its cursor was locked, so hidden relative input cannot move
+        // the ray's absolute screen position.
         const Vector2 rayScreenPosition = cameraLooking
             ? Vector2{viewportSize.x * 0.5f, viewportSize.y * 0.5f}
-            : InputManager::GetMousePosition();
+            : draggingUv
+                ? cursorBeforeLock
+                : InputManager::GetMousePosition();
 
         const Vector3 rayDirection = GetMouseRayDirection(
             *camera,
@@ -746,17 +753,21 @@ namespace RuntimeEditor {
         const bool dragDropActive = ImGui::GetDragDropPayload() != nullptr;
 
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
+            windowFocused &&
             !mouseBlockedByImGui &&
             !dragDropActive &&
             !cameraLooking &&
             IsUvEditableSurface(hoveredSurface.type)) {
             uvDragSurface = hoveredSurface;
             draggingUv = true;
+            SetCursorLocked(cameraLooking || draggingUv);
         }
 
-        if (draggingUv && !InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
+        if (draggingUv &&
+            (!InputManager::GetMouseButton(SDL_BUTTON_LEFT) || !windowFocused)) {
             draggingUv = false;
             uvDragSurface = {};
+            SetCursorLocked(cameraLooking || draggingUv);
         }
 
         if (draggingUv) {
@@ -894,58 +905,66 @@ namespace RuntimeEditor {
 
         const float wheel = InputManager::GetMouseWheelScroll();
 
-        if (wheel != 0.0f &&
-            !mouseBlockedByImGui &&
-            hit.has_value() &&
-            hit->sector != nullptr &&
-            hit->sectorFloorIndex >= 0 &&
-            hit->sectorFloorIndex < static_cast<int>(hit->sector->floors.size())) {
+        if (wheel != 0.0f && !mouseBlockedByImGui && hit.has_value()) {
             constexpr float HEIGHT_STEP = 1.0f;
+            constexpr float UV_SCALE_STEP = 0.01f;
             constexpr float MIN_ROOM_HEIGHT = 1.0f;
-
-            Sector& sector = *hit->sector;
-            const int floorIndex = hit->sectorFloorIndex;
-            SectorFloor& floor = sector.floors[floorIndex];
             const float heightDelta = wheel * HEIGHT_STEP;
+            const float uvScaleDelta = wheel * UV_SCALE_STEP;
 
-            if (hit->type == RayHitType::SectorFloor) {
-                const float minimumHeight =
-                    floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
-
-                const float maximumHeight = floor.ceiling.height - MIN_ROOM_HEIGHT;
-
-                if (minimumHeight <= maximumHeight) {
-                    floor.floor.height = std::clamp(
-                        floor.floor.height + heightDelta,
-                        minimumHeight,
-                        maximumHeight
-                    );
-                }
+            if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
+                Wall& wall = *hit->wall;
+                wall.textureScale.x += uvScaleDelta;
+                wall.textureScale.y += uvScaleDelta;
             }
-            else if (hit->type == RayHitType::SectorCeiling) {
-                const float minimumHeight = floor.floor.height + MIN_ROOM_HEIGHT;
+            else if ((hit->type == RayHitType::SectorFloor ||
+                      hit->type == RayHitType::SectorCeiling) &&
+                     hit->sector != nullptr &&
+                     hit->sectorFloorIndex >= 0 &&
+                     hit->sectorFloorIndex < static_cast<int>(hit->sector->floors.size())) {
+                Sector& sector = *hit->sector;
+                const int floorIndex = hit->sectorFloorIndex;
+                SectorFloor& floor = sector.floors[floorIndex];
 
-                const float maximumHeight =
-                    floorIndex + 1 < static_cast<int>(sector.floors.size())
-                        ? sector.floors[floorIndex + 1].floor.height
-                        : std::numeric_limits<float>::max();
+                if (hit->type == RayHitType::SectorFloor) {
+                    const float minimumHeight =
+                        floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
 
-                if (minimumHeight <= maximumHeight) {
-                    floor.ceiling.height = std::clamp(
-                        floor.ceiling.height + heightDelta,
-                        minimumHeight,
-                        maximumHeight
-                    );
+                    const float maximumHeight = floor.ceiling.height - MIN_ROOM_HEIGHT;
+
+                    if (minimumHeight <= maximumHeight) {
+                        floor.floor.height = std::clamp(
+                            floor.floor.height + heightDelta,
+                            minimumHeight,
+                            maximumHeight
+                        );
+                    }
+                }
+                else if (hit->type == RayHitType::SectorCeiling) {
+                    const float minimumHeight = floor.floor.height + MIN_ROOM_HEIGHT;
+
+                    const float maximumHeight =
+                        floorIndex + 1 < static_cast<int>(sector.floors.size())
+                            ? sector.floors[floorIndex + 1].floor.height
+                            : std::numeric_limits<float>::max();
+
+                    if (minimumHeight <= maximumHeight) {
+                        floor.ceiling.height = std::clamp(
+                            floor.ceiling.height + heightDelta,
+                            minimumHeight,
+                            maximumHeight
+                        );
+                    }
                 }
             }
         }
 
-        ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking);
+        ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking && !draggingUv);
 
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesFromLevel();
     } // Update
 
-    void Draw(Level& level) {
+    void Draw(Level &level) {
         RuntimeEditorUi::Draw(level);
     }
 
