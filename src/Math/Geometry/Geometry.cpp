@@ -75,6 +75,59 @@ namespace Geometry {
             return ((d1 > 0.0f) != (d2 > 0.0f)) && ((d3 > 0.0f) != (d4 > 0.0f));
         }
 
+        // Perpendicular distance from `p` to the infinite line through
+        // a and b. Comparing this against an epsilon is scale-independent
+        // in a way that comparing a raw cross product is not.
+        float DistanceToLine(const Vector2 a, const Vector2 b, const Vector2 p) {
+            const Vector2 direction = b - a;
+            const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+
+            if (length <= Constants::Epsilon) {
+                const Vector2 delta = p - a;
+                return std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            }
+
+            return std::abs(CrossAtPoint(a, b, p)) / length;
+        }
+
+        // `p` sitting on segment (a,b) without being one of its ends.
+        bool PointOnSegmentInterior(const Vector2 a, const Vector2 b, const Vector2 p) {
+            if (SamePoint(p, a) || SamePoint(p, b)) return false;
+            if (DistanceToLine(a, b, p) > Constants::Epsilon) return false;
+
+            const Vector2 direction = b - a;
+            const float lengthSq = direction.x * direction.x + direction.y * direction.y;
+
+            if (lengthSq <= Constants::Epsilon) return false;
+
+            const Vector2 delta = p - a;
+            const float t = (delta.x * direction.x + delta.y * direction.y) / lengthSq;
+
+            return t > 0.0f && t < 1.0f;
+        }
+
+        // Two segments running along the same line and sharing more than
+        // a single point. SegmentsCross only reports transversal
+        // crossings, so this overlap slips past it even though a bridge
+        // laid along an existing edge doubles that edge back on itself.
+        bool SegmentsOverlapCollinear(const Vector2 a, const Vector2 b, const Vector2 c, const Vector2 d) {
+            if (DistanceToLine(a, b, c) > Constants::Epsilon) return false;
+            if (DistanceToLine(a, b, d) > Constants::Epsilon) return false;
+
+            const Vector2 direction = b - a;
+            const bool useX = std::abs(direction.x) >= std::abs(direction.y);
+
+            const float a1 = useX ? a.x : a.y;
+            const float b1 = useX ? b.x : b.y;
+            const float c1 = useX ? c.x : c.y;
+            const float d1 = useX ? d.x : d.y;
+
+            const float overlap = std::min(std::max(a1, b1), std::max(c1, d1)) -
+                                  std::max(std::min(a1, b1), std::min(c1, d1));
+
+            return overlap > Constants::Epsilon;
+        }
+
         // Whether the segment (a,b) stays clear of every edge of `loop`,
         // aside from edges already touching a or b - touching there is
         // the point of a bridge, not a crossing.
@@ -85,11 +138,19 @@ namespace Geometry {
                 const Vector2 c = loop[i];
                 const Vector2 d = loop[(i + 1) % n];
 
+                if (PointOnSegmentInterior(a, b, c)) return false;
+                if (SegmentsOverlapCollinear(a, b, c, d)) return false;
                 if (SamePoint(c, a) || SamePoint(c, b) || SamePoint(d, a) || SamePoint(d, b)) continue;
                 if (SegmentsCross(a, b, c, d)) return false;
             }
 
             return true;
+        }
+
+        float LoopMaxX(const std::vector<Vector2>& loop) {
+            float best = -std::numeric_limits<float>::max();
+            for (const Vector2& v : loop) best = std::max(best, v.x);
+            return best;
         }
 
         int RightmostVertexIndex(const std::vector<Vector2>& loop) {
@@ -102,21 +163,52 @@ namespace Geometry {
             return best;
         }
 
+        // Whether a segment leaving loop[index] toward `target` heads
+        // into the polygon's interior, judged from that vertex's own two
+        // edges. `loop` is counter-clockwise, so the interior sweeps
+        // counter-clockwise from the outgoing edge round to the incoming
+        // one.
+        bool PointsIntoInterior(const std::vector<Vector2>& loop, const int index, const Vector2 target) {
+            const int n = static_cast<int>(loop.size());
+            const Vector2 v = loop[index];
+            const Vector2 toNext = loop[(index + 1) % n] - v;
+            const Vector2 toPrev = loop[(index + n - 1) % n] - v;
+            const Vector2 toTarget = target - v;
+
+            if (Vector2Math::Cross(toNext, toPrev) > 0.0f) // convex corner, wedge under 180 degrees
+                return Vector2Math::Cross(toNext, toTarget) > 0.0f && Vector2Math::Cross(toTarget, toPrev) > 0.0f;
+
+            return Vector2Math::Cross(toNext, toTarget) > 0.0f || Vector2Math::Cross(toTarget, toPrev) > 0.0f;
+        }
+
         // Finds the index of an `outer` vertex reachable from `from` by a
-        // straight bridge that crosses neither `outer` nor `hole`,
-        // preferring the nearest such vertex so bridges stay short. A
-        // hole fully enclosed by a simple outer polygon always has at
-        // least one outer vertex visible from any of its own vertices,
-        // so this only returns -1 on malformed input.
-        int FindBridgeTarget(const Vector2 from, const std::vector<Vector2>& outer, const std::vector<Vector2>& hole) {
+        // straight bridge that clears `outer`, `hole` and every hole not
+        // stitched in yet, preferring the nearest such vertex so bridges
+        // stay short. `outer` may already carry the slits of previously
+        // bridged holes, which means the same coordinate can appear at
+        // several indices with a different interior wedge at each - only
+        // the index whose wedge actually faces `from` is a legal splice
+        // point, hence the PointsIntoInterior test. A hole fully enclosed
+        // by a simple outer polygon, bridged in right-to-left order,
+        // always has at least one such vertex, so this only returns -1 on
+        // malformed input.
+        int FindBridgeTarget(const Vector2 from, const std::vector<Vector2>& outer, const std::vector<Vector2>& hole,
+                             const std::vector<const std::vector<Vector2>*>& pendingHoles) {
             int best = -1;
             float bestDistSq = std::numeric_limits<float>::max();
 
             for (int i = 0; i < static_cast<int>(outer.size()); ++i) {
                 const Vector2 candidate = outer[i];
 
+                if (!PointsIntoInterior(outer, i, from)) continue;
                 if (!SegmentClearOfLoop(from, candidate, outer)) continue;
                 if (!SegmentClearOfLoop(from, candidate, hole)) continue;
+
+                bool blocked = false;
+                for (const std::vector<Vector2>* pending : pendingHoles) {
+                    if (!SegmentClearOfLoop(from, candidate, *pending)) { blocked = true; break; }
+                }
+                if (blocked) continue;
 
                 const Vector2 delta = candidate - from;
                 const float distSq = delta.x * delta.x + delta.y * delta.y;
@@ -138,14 +230,15 @@ namespace Geometry {
         // the bridge point (regardless of the winding it came in with -
         // PolygonAreaSigned normalizes that first), so its interior ends
         // up outside the merged polygon rather than inside it.
-        std::vector<Vector2> BridgeHoleIntoOuter(const std::vector<Vector2>& outer, std::vector<Vector2> hole) {
+        std::vector<Vector2> BridgeHoleIntoOuter(const std::vector<Vector2>& outer, std::vector<Vector2> hole,
+                                                 const std::vector<const std::vector<Vector2>*>& pendingHoles) {
             if (hole.size() < 3) return outer;
 
             if (PolygonAreaSigned(hole) < 0.0f) std::ranges::reverse(hole);
 
             const int holeCount = static_cast<int>(hole.size());
             const int holeStart = RightmostVertexIndex(hole);
-            const int outerIndex = FindBridgeTarget(hole[holeStart], outer, hole);
+            const int outerIndex = FindBridgeTarget(hole[holeStart], outer, hole, pendingHoles);
 
             // Malformed input (hole not actually enclosed by outer) - the
             // topology layer guarantees this doesn't happen, so this is
@@ -261,7 +354,21 @@ namespace Geometry {
     std::vector<Triangle> Triangulate(std::vector<Vector2> vertices, std::vector<std::vector<Vector2>> holes) {
         if (vertices.size() < 3) return {};
         if (PolygonAreaSigned(vertices) < 0.0f) std::ranges::reverse(vertices);
-        for (const std::vector<Vector2>& hole : holes) vertices = BridgeHoleIntoOuter(vertices, hole);
+        // Bridge the holes right-to-left. A bridge is anchored at its
+        // hole's rightmost vertex, so in that order anything a bridge
+        // might need to reach around is already part of `vertices` by
+        // the time it's needed: a hole still waiting its turn is always
+        // further left, where it can only ever be an obstacle, never
+        // the thing the bridge has to attach to.
+        std::ranges::sort(holes, [](const std::vector<Vector2>& lhs, const std::vector<Vector2>& rhs) {
+            return LoopMaxX(lhs) > LoopMaxX(rhs);
+        });
+
+        for (std::size_t h = 0; h < holes.size(); ++h) {
+            std::vector<const std::vector<Vector2>*> pending;
+            for (std::size_t o = h + 1; o < holes.size(); ++o) pending.push_back(&holes[o]);
+            vertices = BridgeHoleIntoOuter(vertices, holes[h], pending);
+        }
         return Triangulate(std::move(vertices));
     }
 }
