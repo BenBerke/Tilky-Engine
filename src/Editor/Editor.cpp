@@ -200,6 +200,8 @@ namespace Editor {
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
+        io.ConfigNavCaptureKeyboard = false;
+
         io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(),18.0f);
         ApplyEditorTheme(currentTheme);
 
