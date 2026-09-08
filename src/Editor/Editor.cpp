@@ -28,7 +28,7 @@ namespace {
             spdlog::error("Can't find engine version, unable to load engine data");
             return false;
         }
-        const fs::path settingsPath = ProjectManager::GetEngineVersionDirectory(version) / "UserSettings.bson";
+        const fs::path settingsPath = ProjectManager::GetUserSettingsPath();
         if (!fs::exists(settingsPath)) {
             spdlog::error("User settings file doesn't exist: {}. Using defaults.", settingsPath.string());
             return false;

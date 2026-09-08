@@ -280,6 +280,7 @@ namespace ProjectManager {
 
     std::filesystem::path FindAssetPath(const std::filesystem::path& relativePath);
 
+    const fs::path GetUserSettingsPath();
 }
 
 #endif //TILKY_ENGINE_PROJECTMANAGER_H

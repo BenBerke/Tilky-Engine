@@ -576,4 +576,6 @@ namespace ProjectManager {
     std::string GetProjectName() { return currentProjectName;}
 
     std::string GetProjectEngineVersion() { return currentEngineVersion;}
+
+    const fs::path GetUserSettingsPath() {return GetEngineVersionDirectory(GetProjectEngineVersion()) / "UserSettings.bson";}
 }
