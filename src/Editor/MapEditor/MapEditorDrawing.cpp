@@ -16,6 +16,17 @@
 
 #include "Headers/Math/Geometry/Geometry.hpp"
 
+namespace {
+    // UTILITY
+    static SDL_FColor ToFColor(const Vector3 &color,const float alpha = 1.0f) {
+        return {color.r / 255.0f,color.g / 255.0f,color.b / 255.0f,alpha};
+    }
+
+    static SDL_FColor ToFColor(const Vector4 &color) {
+        return {color.r / 255.0f,color.g / 255.0f,color.b / 255.0f,color.a / 255.0f};
+    }
+}
+
 namespace MapEditorInternal {
     void DrawThickLine(SDL_Renderer* renderer, const Vector2 start, const Vector2 end, const float thickness) {
         const float dx = end.x - start.x;
@@ -31,10 +42,12 @@ namespace MapEditorInternal {
         const int halfThickness = static_cast<int>(thickness * 0.5f);
 
         // walls should the be the opposite of the theme
-        if (currentTheme == THEME_DARK)
-        SDL_SetRenderDrawColor(renderer, 205, 205, 205, 255);
-        else if (currentTheme == THEME_LIGHT)
-            SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
+        // if (currentTheme == THEME_DARK)
+        // SDL_SetRenderDrawColor(renderer, 205, 205, 205, 255);
+        // else if (currentTheme == THEME_LIGHT)
+        //     SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
+
+        SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, 255);
 
         for (int i = -halfThickness; i <= halfThickness; ++i) {
             const float offsetX = normalX * static_cast<float>(i);
@@ -101,7 +114,7 @@ namespace MapEditorInternal {
         const Vector2 snapped = freehandDrawing ? ResolveFreehandPoint(mouseWorld) : ResolveSnapPoint(mouseWorld);
         const Vector2 screenPos = WorldToScreen(snapped, cameraPos);
 
-        SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 80, snapIndicatorColor.r, snapIndicatorColor.g, snapIndicatorColor.b);
 
         constexpr float radius = 5.0f;
 
@@ -127,21 +140,14 @@ namespace MapEditorInternal {
     // for on-canvas labels so the floating label next to the shape and
     // the status-overlay text always agree.
     namespace {
-        struct PreviewColor { Uint8 r, g, b, a; };
-
         // Gold = "this would be accepted if you clicked/confirmed now",
         // red = "this would be rejected". Reused everywhere a shape is
         // being previewed, replacing the old freehand-only, always-red
         // fill, so every tool gives the same at-a-glance feedback.
-        constexpr PreviewColor kValidLineColor = {255, 220, 80, 255};
-        constexpr PreviewColor kInvalidLineColor = {230, 70, 70, 255};
-        constexpr PreviewColor kAnchorColor = {80, 220, 255, 255}; // matches DrawSnapIndicator/selection cyan
-        constexpr SDL_FColor kValidFillColor = {1.0f, 0.863f, 0.314f, 0.28f};
-        constexpr SDL_FColor kInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
 
         SDL_FColor ThemeTextColor() {
-            if (currentTheme == THEME_LIGHT) return {0.0f, 0.0f, 0.0f, 1.0f};
-            return {1.0f, 1.0f, 1.0f, 1.0f};
+            const SDL_FColor r = {themeTextColor.r / 255.0f, themeTextColor.g / 255.0f, themeTextColor.b / 255.0f};
+            return r;
         }
 
         // Renders `text` in world space, anchored just above `worldPos`
@@ -194,7 +200,7 @@ namespace MapEditorInternal {
         void DrawPreviewOutline(const std::vector<Vector2>& points, const bool closeLoop, const bool valid) {
             if (points.size() < 2) return;
 
-            const PreviewColor color = valid ? kValidLineColor : kInvalidLineColor;
+            const Vector3 color = valid ? kValidLineColor : kInvalidLineColor;
             SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
 
             const std::size_t segmentCount = closeLoop ? points.size() : points.size() - 1;
@@ -215,8 +221,13 @@ namespace MapEditorInternal {
             const std::vector<Triangle> triangles = Geometry::Triangulate(closedLoopPoints);
 
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            const SDL_FColor fillColor = valid ? kValidFillColor : kInvalidFillColor;
-            for (const Triangle& triangle : triangles) DrawFilledTriangle(triangle, fillColor);
+
+            const Vector4 fillColor = valid ? kValidFillColor : kInvalidFillColor;
+            const SDL_FColor fc = ToFColor(fillColor);
+
+            for (const Triangle& triangle : triangles) DrawFilledTriangle(triangle, fc);
+
+            for (const Triangle& triangle : triangles) DrawFilledTriangle(triangle, fc);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
         }
 
@@ -274,7 +285,7 @@ namespace MapEditorInternal {
             for (std::size_t i = 0; i + 1 < sectorBeingCreated.size(); ++i)
                 DrawEdgeLengthLabel(sectorBeingCreated[i], sectorBeingCreated[i + 1]);
 
-            const PreviewColor rubberBand = kValidLineColor;
+            const Vector3 rubberBand = kValidLineColor;
             SDL_SetRenderDrawColor(renderer, rubberBand.r, rubberBand.g, rubberBand.b, 160);
 
             const Vector2 lastScreen = WorldToScreen(sectorBeingCreated.back(), cameraPos);
@@ -485,13 +496,6 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        constexpr SDL_FColor hoveredSectorColor = {
-            1.0f,
-            0.75f,
-            0.0f,
-            0.45f
-        };
-
         const auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
             float r = 0.0f;
             float g = 0.0f;
@@ -543,12 +547,17 @@ namespace MapEditorInternal {
 
             const SDL_FColor normalSectorColor = HSVtoRGB(hue, 0.7f, 0.9f);
 
-            //todo TILKYTODO make these editable by the user
-            SDL_FColor sectorColor = {255, 255, 255, 255};
-            if (!selectedSectors.empty() &&
-                std::find(selectedSectors.begin(), selectedSectors.end(), sector.id) != selectedSectors.end() &&
-                editingSector && currentMode == MODE_SECTOR) sectorColor = {0, 0, 255, 255};
-            else sectorColor = sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR ? hoveredSectorColor : normalSectorColor;
+            SDL_FColor sectorColor = normalSectorColor;
+
+            const bool selected = !selectedSectors.empty() &&
+                std::find(selectedSectors.begin(),selectedSectors.end(),sector.id) != selectedSectors.end() &&
+                editingSector &&
+                currentMode == MODE_SECTOR;
+
+            const bool hovered = sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR;
+
+            if (selected) sectorColor = ToFColor(highlightedSectorColor, 0.75f);
+            else if (hovered) sectorColor = ToFColor(hoveredSectorColor, 0.65f);
 
             SDL_Texture *floorTexture = nullptr;
 
@@ -558,14 +567,9 @@ namespace MapEditorInternal {
                 if (!textureFileName.empty()) floorTexture = GetEditorTexture(textureFileName);
             }
 
-            for (const Triangle &triangle: sector.triangles) {
-                if (floorTexture != nullptr) {
-                    DrawFilledTriangleTextured(
-                        triangle,
-                        floorTexture,
-                        {1.0f, 1.0f, 1.0f, 1.0f}
-                    );
-                }
+            for (const Triangle& triangle : sector.triangles) {
+                if (floorTexture != nullptr)
+                    DrawFilledTriangleTextured(triangle,floorTexture,{1.0f, 1.0f, 1.0f, 1.0f});
                 else DrawFilledTriangle(triangle, sectorColor);
             }
         }
@@ -578,7 +582,7 @@ namespace MapEditorInternal {
 
         if (selectedSector == nullptr || selectedSector->vertices.empty()) return;
 
-        SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+        SDL_SetRenderDrawColor(renderer, kAnchorColor.r, kAnchorColor.g, kAnchorColor.b, 255);
 
         const auto outlineLoop = [](const std::vector<Vector2>& loop) {
             const int vertexCount = static_cast<int>(loop.size());
@@ -650,12 +654,12 @@ namespace MapEditorInternal {
                 halfSize * 2.0f
             };
 
-            if (hovered) SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            else SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+            if (hovered) SDL_SetRenderDrawColor(renderer, highlightedHandleColor.r, highlightedHandleColor.g, highlightedHandleColor.b, 255);
+            else SDL_SetRenderDrawColor(renderer, normalHandleColor.r, normalHandleColor.g, normalHandleColor.b, 255);
 
             SDL_RenderFillRect(renderer, &handle);
 
-            SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255);
+            SDL_SetRenderDrawColor(renderer, handleOutlineColor.r, handleOutlineColor.g, handleOutlineColor.b, 255);
             SDL_RenderRect(renderer, &handle);
         }
     }
@@ -697,7 +701,7 @@ namespace MapEditorInternal {
             const Wall* wall = findWall(wallID);
             if (wall == nullptr) continue;
 
-            SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+            SDL_SetRenderDrawColor(renderer, kAnchorColor.r, kAnchorColor.g, kAnchorColor.b, 255);
 
             DrawColoredThickLine(
                 WorldToScreen(wall->start, cameraPos),
@@ -740,8 +744,8 @@ namespace MapEditorInternal {
             //todo TILKYTODO make this a user editable sector
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
                 editingWall && currentMode == MODE_GEOMETRY)
-                SDL_SetRenderDrawColor(renderer, 60, 60, 255, 255);
-            else SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+                SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, 255);
+            else SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, 255);
 
             DrawThickLine(renderer, startScreen, endScreen, 5.0f);
         }
@@ -766,7 +770,7 @@ namespace MapEditorInternal {
                 screenEntitySize
             };
 
-            Vector3 entityColor = {180, 180, 180};
+            Vector3 entityColor = normalEntityColor;
 
             // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the
@@ -779,8 +783,8 @@ namespace MapEditorInternal {
 
             if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
             else {
-                if (sprite != nullptr) entityColor = {120, 255, 120};
-                if (entity.id == selectedEntity.id && editingEntity && currentMode == MODE_ENTITY) entityColor = {0, 0 ,255};
+                if (sprite != nullptr) entityColor = spriteEntityColor;
+                if (entity.id == selectedEntity.id && editingEntity && currentMode == MODE_ENTITY) entityColor = highlightedEntityColor;
 
                 SDL_SetRenderDrawColor(renderer, entityColor.x, entityColor.y, entityColor.z, 255);
                 SDL_RenderFillRect(renderer, &rect);
@@ -816,9 +820,6 @@ namespace MapEditorInternal {
         constexpr float minorDotSize = 3.0f;
         constexpr float majorDotSize = 5.0f;
 
-        Uint8 baseR = 225, baseG = 225, baseB = 225;
-        if (currentTheme == THEME_LIGHT) { baseR = 25; baseG = 25; baseB = 25; }
-
         const float activeGridSize = GetActiveGridSize();
 
         // Once zoom has forced the render stride coarser than the true
@@ -852,7 +853,7 @@ namespace MapEditorInternal {
                 const float dotSize = major ? majorDotSize : minorDotSize;
                 const Uint8 alpha = major ? 255 : minorAlpha;
 
-                SDL_SetRenderDrawColor(renderer, baseR, baseG, baseB, alpha);
+                SDL_SetRenderDrawColor(renderer, gridColor.r, gridColor.g, gridColor.b, alpha);
 
                 const Vector2 screenPos = WorldToScreen({worldX, worldY}, cameraPos);
 

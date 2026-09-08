@@ -330,6 +330,34 @@ namespace MapEditorInternal {
     extern std::vector<ID> selectedSectors;
     extern std::vector<ID> selectedWalls;
 
+    // User settings colors (0-255)
+    extern Vector3 normalEntityColor;
+    extern Vector3 highlightedEntityColor;
+    extern Vector3 spriteEntityColor;
+
+    extern Vector3 normalWallColor;
+    extern Vector3 highlightedWallColor;
+
+    extern Vector3 hoveredSectorColor;
+    extern Vector3 highlightedSectorColor;
+
+    extern Vector3 snapIndicatorColor;
+
+    extern Vector3 kValidLineColor;
+    extern Vector3 kInvalidLineColor;
+    extern Vector3 kAnchorColor;
+    extern Vector4 kValidFillColor;
+    extern Vector4 kInvalidFillColor;
+
+    extern Vector3 normalHandleColor;
+    extern Vector3 highlightedHandleColor;
+    extern Vector3 handleOutlineColor;
+
+    extern Vector3 themeTextColor;
+    extern Vector3 gridColor;
+
+    extern Vector3 backgroundColor;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is
@@ -713,4 +741,6 @@ namespace MapEditorInternal {
 
     void ClearManualSectorSelection();
     void CreateManualSector();
+
+    bool SaveUserSettings();
 }

@@ -125,4 +125,32 @@ namespace MapEditorInternal {
     std::vector<ID> selectedEntities = {};
     std::vector<ID> selectedSectors = {};
     std::vector<ID> selectedWalls = {};
+
+    // User Settings
+    Vector3 normalEntityColor = {190, 190, 190};
+    Vector3 highlightedEntityColor = {20, 20, 220};
+    Vector3 spriteEntityColor = {100, 200, 100};
+
+    Vector3 normalWallColor = {205, 205, 205};
+    Vector3 highlightedWallColor = {15, 15, 200};
+
+    Vector3 hoveredSectorColor = {250, 250, 100};
+    Vector3 highlightedSectorColor = {40, 40, 220};
+
+    Vector3 snapIndicatorColor = {220, 255, 255};
+
+    Vector3 kValidLineColor = {255, 220, 80};
+    Vector3 kInvalidLineColor = {230, 70, 70};
+    Vector3 kAnchorColor = {80, 220, 255};
+    Vector4 kValidFillColor = {1.0f, 0.863f, 0.314f, 0.28f};
+    Vector4 kInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
+
+    Vector3 themeTextColor = {255, 255, 255};
+    Vector3 gridColor = {255, 255, 255};
+
+    Vector3 backgroundColor = {45, 45, 45};
+
+    Vector3 normalHandleColor = {80, 220, 255};
+    Vector3 highlightedHandleColor = {255, 255, 255};
+    Vector3 handleOutlineColor = {20, 20, 20};
 }

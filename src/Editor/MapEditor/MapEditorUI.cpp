@@ -144,6 +144,33 @@ namespace {
 
         ImGui::End();
     }
+
+    constexpr Vector3 defaultWallColor = {205, 205, 205};
+    constexpr Vector3 defaultSnapIndicator = {220, 255, 255};
+    constexpr Vector3 defaultNormalEntityColor = {190, 190, 190};
+    constexpr Vector3 defaultHighlightedEntityColor = {20, 20, 220};
+    constexpr Vector3 defaultSpriteEntityColor = {100, 200, 100};
+
+    constexpr Vector3 defaultNormalWallColor = {205, 205, 205};
+    constexpr Vector3 defaultHighlightedWallColor = {15, 15, 200};
+
+    constexpr Vector3 defaultHoveredSectorColor = {250, 250, 100};
+    constexpr Vector3 defaultHighlightedSectorColor = {40, 40, 220};
+
+    constexpr Vector3 defaultKValidLineColor = {255, 220, 80};
+    constexpr Vector3 defaultKInvalidLineColor = {230, 70, 70};
+    constexpr Vector3 defaultKAnchorColor = {80, 220, 255};
+    constexpr Vector4 defaultKValidFillColor = {1.0f, 0.863f, 0.314f, 0.28f};
+    constexpr Vector4 defaultKInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
+
+    constexpr Vector3 defaultThemeTextColor = {255, 255, 255};
+    constexpr Vector3 defaultGridColor = {255, 255, 255};
+
+    constexpr Vector3 defaultBackgroundColor = {45, 45, 45};
+
+    constexpr Vector3 defaultNormalHandleColor = {80, 220, 255};
+    constexpr Vector3 defaultHighlightedHandleColor = {255, 255, 255};
+    constexpr Vector3 defaultHandleOutlineColor = {20, 20, 20};
 } // namespace
 
 // =============================================================================
@@ -171,14 +198,18 @@ static bool RunExporter() {
     };
 
     if (!fs::exists(exporterExe))
-        return fail("Export failed: exporter not found.", Localisation::Get("editor.notification.export_failed_exporter_not_found").c_str());
+        return fail("Export failed: exporter not found.",
+                    Localisation::Get("editor.notification.export_failed_exporter_not_found").c_str());
     if (!fs::exists(standaloneExe))
-        return fail("Export failed: Standalone not found.", Localisation::Get("editor.notification.export_failed_standalone_not_found").c_str());
+        return fail("Export failed: Standalone not found.",
+                    Localisation::Get("editor.notification.export_failed_standalone_not_found").c_str());
     if (!fs::exists(projectMetadata))
-        return fail("Export failed: project metadata missing.", Localisation::Get("editor.notification.export_failed_project_metadata_missing").c_str());
+        return fail("Export failed: project metadata missing.",
+                    Localisation::Get("editor.notification.export_failed_project_metadata_missing").c_str());
 
     try { fs::create_directories(exportFolder); } catch (const std::exception &e) {
-        return fail("Export failed: can't create output folder.", Localisation::Get("editor.notification.export_failed_create_output_folder").c_str(), e.what());
+        return fail("Export failed: can't create output folder.",
+                    Localisation::Get("editor.notification.export_failed_create_output_folder").c_str(), e.what());
     }
 
 #ifdef _WIN32
@@ -198,7 +229,8 @@ static bool RunExporter() {
                         nullptr, nullptr, FALSE, 0, nullptr,
                         engineBasePath.wstring().c_str(),
                         &startupInfo, &processInfo))
-        return fail("Export failed: could not launch process.", Localisation::Get("editor.notification.export_failed_launch_process").c_str());
+        return fail("Export failed: could not launch process.",
+                    Localisation::Get("editor.notification.export_failed_launch_process").c_str());
 
     WaitForSingleObject(processInfo.hProcess, INFINITE);
 
@@ -207,13 +239,15 @@ static bool RunExporter() {
     CloseHandle(processInfo.hProcess);
     CloseHandle(processInfo.hThread);
 
-    if (exitCode != 0) return fail("Export failed. Check logs.", Localisation::Get("editor.notification.export_failed_check_logs").c_str());
+    if (exitCode != 0) return fail("Export failed. Check logs.",
+                                   Localisation::Get("editor.notification.export_failed_check_logs").c_str());
 
 #else
     spdlog::info("Running exporter to {}", exportFolder.string());
 
     const pid_t pid = fork();
-    if (pid < 0) return fail("Export failed: fork error.", Localisation::Get("editor.notification.export_failed_fork_error").c_str());
+    if (pid < 0) return fail("Export failed: fork error.",
+                             Localisation::Get("editor.notification.export_failed_fork_error").c_str());
 
     if (pid == 0) {
         execl(exporterExe.c_str(), exporterExe.c_str(),
@@ -223,11 +257,15 @@ static bool RunExporter() {
     }
 
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.", Localisation::Get("editor.notification.export_failed_wait_error").c_str());
-    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.", Localisation::Get("editor.notification.export_failed_abnormal_exit").c_str());
+    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.",
+                                                  Localisation::Get("editor.notification.export_failed_wait_error").
+                                                  c_str());
+    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.",
+                                        Localisation::Get("editor.notification.export_failed_abnormal_exit").c_str());
 
     const int exitCode = WEXITSTATUS(status);
-    if (exitCode != 0) return fail("Export failed. Check logs.", Localisation::Get("editor.notification.export_failed_check_logs").c_str());
+    if (exitCode != 0) return fail("Export failed. Check logs.",
+                                   Localisation::Get("editor.notification.export_failed_check_logs").c_str());
 #endif
 
     spdlog::info("Export completed successfully to {}", exportFolder.string());
@@ -250,6 +288,7 @@ namespace {
     std::optional<std::string> pendingLevelToLoad;
 
     bool projectSettingsOpen = false;
+    bool userSettingsOpen = false;
 
     bool createLevelModalRequested = false;
 
@@ -270,8 +309,6 @@ namespace {
     // sector in the level, so it waits for the widget to be released
     // rather than running per frame.
     bool wallGeometryDirtyFromInspector = false;
-
-
 
     // =========================================================================
     //  Utility
@@ -501,7 +538,8 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
-        DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture, 32.0f);
+        DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture,
+                       32.0f);
         HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
 
         ImGui::Spacing();
@@ -673,7 +711,8 @@ namespace {
                         ShowNotification(Get("levels.notification.deleted").c_str());
                     } else {
                         spdlog::error("File not found: {}", path.string());
-                        ShowNotification(Get("levels.notification.delete_failed_file_not_found").c_str(), /*isError=*/true);
+                        ShowNotification(Get("levels.notification.delete_failed_file_not_found").c_str(), /*isError=*/
+                                         true);
                     }
                 } catch (const std::filesystem::filesystem_error &e) {
                     spdlog::error("Failed to delete level: {}", e.what());
@@ -749,14 +788,290 @@ namespace {
     }
 
     // =========================================================================
+    //  User Settings window
+    // =========================================================================
+
+    void DrawUserSettingsWindow() {
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 560.0f), ImGuiCond_FirstUseEver);
+
+        const bool windowVisible = ImGui::Begin(
+            Get("editor.user_settings").c_str(),
+            &userSettingsOpen
+        );
+
+        if (windowVisible) {
+            SectionHeader(Get("editor.user_settings.colors").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            constexpr ImGuiColorEditFlags color3Flags =
+                    ImGuiColorEditFlags_Uint8 |
+                    ImGuiColorEditFlags_NoInputs |
+                    ImGuiColorEditFlags_NoLabel |
+                    ImGuiColorEditFlags_PickerHueBar;
+
+            constexpr ImGuiColorEditFlags color4Flags =
+                    color3Flags |
+                    ImGuiColorEditFlags_AlphaBar |
+                    ImGuiColorEditFlags_AlphaPreviewHalf;
+
+            const std::string &defaultLabel = Get("editor.user_settings.default");
+
+            const float resetColumnWidth =
+                    ImGui::CalcTextSize(defaultLabel.c_str()).x +
+                    ImGui::GetStyle().FramePadding.x * 2.0f + 6.0f;
+
+            constexpr float colorColumnWidth = 36.0f;
+
+            const ImGuiTableFlags tableFlags =
+                    ImGuiTableFlags_RowBg |
+                    ImGuiTableFlags_BordersInnerH |
+                    ImGuiTableFlags_SizingStretchProp |
+                    ImGuiTableFlags_PadOuterX |
+                    ImGuiTableFlags_NoSavedSettings;
+
+            const auto DrawColor3Setting = [&](const char *key,Vector3 &color,const Vector3 &defaultColor) {
+                ImGui::PushID(key);
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Get(key).c_str());
+
+                ImGui::TableSetColumnIndex(1);
+
+                float normalizedColor[3] = {
+                    color.x / 255.0f,
+                    color.y / 255.0f,
+                    color.z / 255.0f
+                };
+
+                ImGui::SetNextItemWidth(colorColumnWidth);
+
+                if (ImGui::ColorEdit3("##Color",normalizedColor,color3Flags)) {
+                    color = {
+                        normalizedColor[0] * 255.0f,
+                        normalizedColor[1] * 255.0f,
+                        normalizedColor[2] * 255.0f
+                    };
+                }
+
+                ImGui::TableSetColumnIndex(2);
+
+                if (ImGui::SmallButton(defaultLabel.c_str()))
+                    color = defaultColor;
+
+                ImGui::PopID();
+            };
+
+            const auto DrawColor4Setting = [&](const char *key,Vector4 &color,const Vector4 &defaultColor) {
+                ImGui::PushID(key);
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Get(key).c_str());
+
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(colorColumnWidth);
+
+                ImGui::ColorEdit4("##Color",&color.x,color4Flags);
+
+                ImGui::TableSetColumnIndex(2);
+
+                if (ImGui::SmallButton(defaultLabel.c_str()))
+                    color = defaultColor;
+
+                ImGui::PopID();
+            };
+
+            const auto DrawGroup = [&](const char *titleKey,const char *tableID,const auto &drawRows) {
+                if (!ImGui::CollapsingHeader(Get(titleKey).c_str(),ImGuiTreeNodeFlags_DefaultOpen)) return;
+
+                if (ImGui::BeginTable(tableID, 3, tableFlags)) {
+                    ImGui::TableSetupColumn(
+                        "##Setting",
+                        ImGuiTableColumnFlags_WidthStretch
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "##Color",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        colorColumnWidth
+                    );
+
+                    ImGui::TableSetupColumn(
+                        "##Default",
+                        ImGuiTableColumnFlags_WidthFixed,
+                        resetColumnWidth
+                    );
+
+                    drawRows();
+                    ImGui::EndTable();
+                }
+
+                ImGui::Spacing();
+            };
+
+            DrawGroup(
+                "editor.user_settings.group.entities",
+                "##EntityColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.normal_entity_color",
+                        normalEntityColor,
+                        defaultNormalEntityColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.highlighted_entity_color",
+                        highlightedEntityColor,
+                        defaultHighlightedEntityColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.sprite_entity_color",
+                        spriteEntityColor,
+                        defaultSpriteEntityColor
+                    );
+                }
+            );
+
+            DrawGroup(
+                "editor.user_settings.group.walls",
+                "##WallColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.normal_wall_color",
+                        normalWallColor,
+                        defaultNormalWallColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.highlighted_wall_color",
+                        highlightedWallColor,
+                        defaultHighlightedWallColor
+                    );
+                }
+            );
+
+            DrawGroup(
+                "editor.user_settings.group.sectors",
+                "##SectorColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.hovered_sector_color",
+                        hoveredSectorColor,
+                        defaultHoveredSectorColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.highlighted_sector_color",
+                        highlightedSectorColor,
+                        defaultHighlightedSectorColor
+                    );
+                }
+            );
+
+            DrawGroup(
+                "editor.user_settings.group.geometry",
+                "##GeometryColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.snap_indicator_color",
+                        snapIndicatorColor,
+                        defaultSnapIndicator
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.valid_line_color",
+                        kValidLineColor,
+                        defaultKValidLineColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.invalid_line_color",
+                        kInvalidLineColor,
+                        defaultKInvalidLineColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.anchor_color",
+                        kAnchorColor,
+                        defaultKAnchorColor
+                    );
+
+                    DrawColor4Setting(
+                        "editor.user_settings.valid_fill_color",
+                        kValidFillColor,
+                        defaultKValidFillColor
+                    );
+
+                    DrawColor4Setting(
+                        "editor.user_settings.invalid_fill_color",
+                        kInvalidFillColor,
+                        defaultKInvalidFillColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.handle_color",
+                        normalHandleColor,
+                        defaultNormalHandleColor);
+
+                    DrawColor3Setting(
+                        "editor.user_settings.highlighted_handle_color",
+                        highlightedHandleColor,
+                        defaultHighlightedHandleColor);
+
+                    DrawColor3Setting(
+                        "editor.user_settings.handle_outline_color",
+                        handleOutlineColor,
+                        defaultHandleOutlineColor);
+
+                }
+            );
+
+            DrawGroup(
+                "editor.user_settings.group.theme",
+                "##ThemeColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.theme_text_color",
+                        themeTextColor,
+                        defaultThemeTextColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.grid_color",
+                        gridColor,
+                        defaultGridColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.background_color",
+                        backgroundColor,
+                        defaultBackgroundColor
+                    );
+                }
+            );
+
+            PushSuccessStyle();
+            if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
+
+            PopSuccessStyle();
+        }
+
+        ImGui::End();
+    }
+
+    // =========================================================================
     //  Project Settings window
     // =========================================================================
 
     void DrawProjectSettingsWindow() {
         ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
 
-        const bool windowVisible =
-                ImGui::Begin(Get("editor.project_settings").c_str(), &projectSettingsOpen);
+        const bool windowVisible = ImGui::Begin(Get("editor.project_settings").c_str(), &projectSettingsOpen);
 
         if (windowVisible) {
             // ---- Current level name -------------------------------------------
@@ -775,11 +1090,7 @@ namespace {
 
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
 
-            if (ImGui::InputText(
-                ("##" + Get("editor.level_name")).c_str(),
-                levelNameBuf,
-                IM_ARRAYSIZE(levelNameBuf)
-            )) {
+            if (ImGui::InputText(("##" + Get("editor.level_name")).c_str(), levelNameBuf, IM_ARRAYSIZE(levelNameBuf))) {
                 Editor::currentMap = levelNameBuf;
                 lastSyncedMap = Editor::currentMap;
                 hasUnsavedChanges = true;
@@ -815,9 +1126,7 @@ namespace {
 
             PushSuccessStyle();
 
-            if (FullWidthButton(Get("editor.export").c_str())) {
-                RunExporter();
-            }
+            if (FullWidthButton(Get("editor.export").c_str())) RunExporter();
 
             PopSuccessStyle();
 
@@ -836,19 +1145,19 @@ namespace {
 
             if (FullWidthButton(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
 
-
             PopDangerStyle();
 
             HoverTooltip(Get("editor.tooltip.shutdown").c_str());
 
             ImGui::Spacing();
 
-            //todo make an editor settings menu
-            bool lightModeActive = (currentTheme == THEME_LIGHT);
-            if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
-                currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
-                ApplyEditorTheme(currentTheme);
-            }
+            //todo TILKYTODO make an editor settings menu
+
+            // bool lightModeActive = (currentTheme == THEME_LIGHT);
+            // if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
+            //     currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
+            //     ApplyEditorTheme(currentTheme);
+            // }
         }
 
         ImGui::End();
@@ -859,19 +1168,12 @@ namespace {
             shutdownConfirmOpen = false;
         }
 
-        if (ImGui::BeginPopupModal(
-            "##ShutdownConfirm",
-            nullptr,
-            ImGuiWindowFlags_AlwaysAutoResize
-        )) {
+        if (ImGui::BeginPopupModal("##ShutdownConfirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("%s", Get("editor.shutdown_confirm").c_str());
 
             if (hasUnsavedChanges) {
                 ImGui::Spacing();
-                ImGui::PushStyleColor(
-                    ImGuiCol_Text,
-                    ImVec4(1.00f, 0.65f, 0.30f, 1.00f)
-                );
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
                 ImGui::Text("%s", Get("editor.unsaved_changes_warning").c_str());
                 ImGui::PopStyleColor();
             }
@@ -881,7 +1183,7 @@ namespace {
             PushDangerStyle();
 
             if (ImGui::Button(Get("common.exit").c_str(), ImVec2(80.0f, 0.0f))) {
-                MapEditorInternal::shutdown = true;
+                shutdown = true;
                 quit = true;
                 ImGui::CloseCurrentPopup();
             }
@@ -898,6 +1200,41 @@ namespace {
         }
 
         DrawCreateLevelModal();
+    }
+
+    // =========================================================================
+    //  User Settings floating button (top-left anchor)
+    // =========================================================================
+
+    void DrawUserSettingsButton() {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        constexpr float margin = 12.0f;
+
+        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + margin, viewport->WorkPos.y + margin), ImGuiCond_Always,
+                                ImVec2(0.0f, 0.0f));
+
+        ImGui::SetNextWindowBgAlpha(0.0f);
+
+        constexpr ImGuiWindowFlags overlayFlags =
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::Begin("##UserSettingsButtonOverlay", nullptr, overlayFlags);
+
+        const bool wasOpen = userSettingsOpen;
+        if (wasOpen) PushAccentStyle();
+
+        const std::string buttonLabel = wasOpen ? Get("editor.user_settings_active") : Get("editor.user_settings");
+        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) userSettingsOpen = !userSettingsOpen;
+
+        if (wasOpen) PopAccentStyle();
+
+        ImGui::End();
+
+        if (userSettingsOpen) DrawUserSettingsWindow();
     }
 
     // =========================================================================
@@ -929,9 +1266,8 @@ namespace {
         const bool wasOpen = projectSettingsOpen;
         if (wasOpen) PushAccentStyle();
 
-        const std::string buttonLabel = wasOpen ?
-        Get("editor.project_settings_active")
-        : Get("editor.project_settings");
+        const std::string buttonLabel =
+                wasOpen ? Get("editor.project_settings_active") : Get("editor.project_settings");
 
         if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) projectSettingsOpen = !projectSettingsOpen;
 
@@ -992,9 +1328,16 @@ namespace {
             const char *plural = nullptr;
             size_t count = 0;
 
-            if (currentMode == MODE_SECTOR && sectorCount > 1) { plural = "sectors"; count = sectorCount; }
-            else if (currentMode == MODE_GEOMETRY && wallCount > 1) { plural = "walls"; count = wallCount; }
-            else if (currentMode == MODE_ENTITY && entityCount > 1) { plural = "entities"; count = entityCount; }
+            if (currentMode == MODE_SECTOR && sectorCount > 1) {
+                plural = "sectors";
+                count = sectorCount;
+            } else if (currentMode == MODE_GEOMETRY && wallCount > 1) {
+                plural = "walls";
+                count = wallCount;
+            } else if (currentMode == MODE_ENTITY && entityCount > 1) {
+                plural = "entities";
+                count = entityCount;
+            }
 
             if (plural != nullptr) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.85f, 0.55f, 1.00f));
@@ -1255,8 +1598,7 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            }
-            else {
+            } else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
@@ -1284,17 +1626,14 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            }
-            else {
+            } else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
             }
 
-            if (ImGui::Button(Get("mode.sector").c_str(), ImVec2(buttonWidth, 0.0f))) {
+            if (ImGui::Button(Get("mode.sector").c_str(), ImVec2(buttonWidth, 0.0f)))
                 if (currentMode != MODE_SECTOR) currentMode = MODE_SECTOR;
-
-            }
 
             ImGui::PopStyleColor(3);
         }
@@ -1309,8 +1648,7 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            }
-            else {
+            } else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
@@ -1342,7 +1680,7 @@ namespace {
             ImGui::TextDisabled("%s", Get("editor.sector_chain_hint").c_str());
             ImGui::PopStyleColor();
         }
-}
+    }
 
     // =========================================================================
     //  Multi-edit — fanning one inspector edit out across a selection
@@ -1908,7 +2246,7 @@ namespace MapEditorInternal {
     AssetBrowser assetBrowser;
     bool assetBrowserInitialized = false;
 
-    SDL_Texture* GetEditorTexture(const std::string& textureFileName) {
+    SDL_Texture *GetEditorTexture(const std::string &textureFileName) {
         if (textureFileName.empty()) {
             return nullptr;
         }
@@ -1918,22 +2256,22 @@ namespace MapEditorInternal {
 
     // Null in this (SDL) editor; set by RuntimeEditor::Start() when the same
     // inspector code runs on top of the OpenGL backend. See EditorInternal.hpp.
-    ImTextureID (*previewTextureProvider)(const std::string& textureFileName) = nullptr;
+    ImTextureID (*previewTextureProvider)(const std::string &textureFileName) = nullptr;
 
     // The ONLY place a texture name becomes an ImTextureID. Everything that
     // draws a thumbnail goes through here rather than casting an SDL_Texture*
     // itself, because that cast is only valid under imgui_impl_sdlrenderer3.
-    ImTextureID GetPreviewTextureID(const std::string& textureFileName) {
+    ImTextureID GetPreviewTextureID(const std::string &textureFileName) {
         if (textureFileName.empty()) return ImTextureID{};
 
         if (previewTextureProvider != nullptr) return previewTextureProvider(textureFileName);
 
-        SDL_Texture* texture = GetEditorTexture(textureFileName);
+        SDL_Texture *texture = GetEditorTexture(textureFileName);
 
         return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
     }
 
-    void DrawTextureThumbnailBox(const std::string& textureFileName, const float size) {
+    void DrawTextureThumbnailBox(const std::string &textureFileName, const float size) {
         const ImTextureID texture = GetPreviewTextureID(textureFileName);
 
         if (texture != ImTextureID{}) {
@@ -1944,7 +2282,7 @@ namespace MapEditorInternal {
         const ImVec2 cursor = ImGui::GetCursorScreenPos();
         ImGui::Dummy(ImVec2(size, size));
 
-        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImDrawList *dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(
             cursor,
             ImVec2(cursor.x + size, cursor.y + size),
@@ -1956,7 +2294,7 @@ namespace MapEditorInternal {
             IM_COL32(150, 150, 150, 255)
         );
 
-        const char* text = textureFileName.empty() ? "-" : "?";
+        const char *text = textureFileName.empty() ? "-" : "?";
         const ImVec2 textSize = ImGui::CalcTextSize(text);
         dl->AddText(
             ImVec2(
@@ -1968,7 +2306,7 @@ namespace MapEditorInternal {
         );
     }
 
-    void DrawTextureThumbnailRow(const std::string& textureFileName) {
+    void DrawTextureThumbnailRow(const std::string &textureFileName) {
         constexpr float thumb = 32.0f;
 
         DrawTextureThumbnailBox(textureFileName, thumb);
@@ -1990,12 +2328,13 @@ namespace MapEditorInternal {
     // Attaches a drag-drop target AND a click-to-assign consumer (for the
     // Asset Browser's double-click-then-click workflow) to the item drawn
     // IMMEDIATELY before this call. Returns true if `value` was assigned.
-    static bool AcceptAssetDropOrClick(std::string& value, const AssetKind kind) {
+    static bool AcceptAssetDropOrClick(std::string &value, const AssetKind kind) {
         bool changed = false;
 
         if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(kind))) {
-                const std::string droppedAbsolutePath(static_cast<const char*>(payload->Data));
+            if (const ImGuiPayload *payload =
+                    ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(kind))) {
+                const std::string droppedAbsolutePath(static_cast<const char *>(payload->Data));
                 value = AssetBrowser::ToAssetReference(droppedAbsolutePath, kind);
                 changed = true;
             }
@@ -2013,7 +2352,7 @@ namespace MapEditorInternal {
         return changed;
     }
 
-    bool DrawAssetField(const char* label, std::string& value, const AssetKind kind, const float previewSize) {
+    bool DrawAssetField(const char *label, std::string &value, const AssetKind kind, const float previewSize) {
         bool changed = false;
 
         ImGui::PushID(label);
@@ -2026,8 +2365,9 @@ namespace MapEditorInternal {
             if (preview != ImTextureID{}) ImGui::Image(preview, ImVec2(previewSize, previewSize));
             else {
                 ImGui::Dummy(ImVec2(previewSize, previewSize));
-                ImDrawList* dl = ImGui::GetWindowDrawList();
-                dl->AddRectFilled(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(35, 35, 40, 255));
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                dl->AddRectFilled(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize),
+                                  IM_COL32(35, 35, 40, 255));
                 dl->AddRect(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(90, 90, 100, 255));
             }
 
@@ -2044,8 +2384,7 @@ namespace MapEditorInternal {
                 value.clear();
                 changed = true;
             }
-        }
-        else {
+        } else {
             if (label != nullptr && label[0] != '\0') {
                 ImGui::TextUnformatted(label);
                 ImGui::SameLine();
@@ -2074,7 +2413,7 @@ namespace MapEditorInternal {
         return changed;
     }
 
-    void HandleAssetBrowserFileDrop(const SDL_WindowID windowID, const float x, const float y, const char* filePath) {
+    void HandleAssetBrowserFileDrop(const SDL_WindowID windowID, const float x, const float y, const char *filePath) {
         if (filePath == nullptr || window == nullptr) return;
         if (windowID != SDL_GetWindowID(window)) return;
         if (!assetBrowser.IsScreenPointInside(x, y)) return;
@@ -2257,15 +2596,14 @@ namespace MapEditorInternal {
         ImGui::TextDisabled("%s", Get("editor.geometry.hint.delete").c_str());
     }
 
-    void DrawToolButton(const char* label, const DrawTool tool, const float width) {
+    void DrawToolButton(const char *label, const DrawTool tool, const float width) {
         const bool active = (currentDrawTool == tool);
 
         if (active) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-        }
-        else {
+        } else {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
@@ -2332,8 +2670,7 @@ namespace MapEditorInternal {
                     if (ImGui::Button(Get("editor.manual_sector.clear_selected_dots").c_str()))
                         ClearManualSectorSelection();
                     ImGui::EndDisabled();
-                }
-                else ImGui::TextDisabled("%s", Get("editor.draw.hint.freehand").c_str());
+                } else ImGui::TextDisabled("%s", Get("editor.draw.hint.freehand").c_str());
 
                 break;
             }
@@ -2513,7 +2850,8 @@ namespace MapEditorInternal {
                 1.0f,
                 10.0f,
                 "%.2f"
-            )) hasUnsavedChanges = true;
+            ))
+                hasUnsavedChanges = true;
 
 
             HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
@@ -2575,15 +2913,13 @@ namespace MapEditorInternal {
             }
 
             if (ImGui::ColorEdit4(
-                Get("sector.floor_colo").c_str(),
+                Get("sector.floor_color").c_str(),
                 &floorColor.x,
                 ImGuiColorEditFlags_AlphaBar |
                 ImGuiColorEditFlags_AlphaPreviewHalf |
                 ImGuiColorEditFlags_HDR |
                 ImGuiColorEditFlags_Float
-            )) {
-                hasUnsavedChanges = true;
-            }
+            )) { hasUnsavedChanges = true; }
 
             ImGui::Spacing();
 
@@ -2633,8 +2969,7 @@ namespace MapEditorInternal {
             if (Save(Editor::currentMap)) {
                 hasUnsavedChanges = false;
                 ShowNotification(Get("levels.notification.saved").c_str());
-            }
-            else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
+            } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
         }
         PopAccentStyle();
         HoverTooltip(Get("editor.tooltip.save").c_str());
@@ -2693,6 +3028,7 @@ namespace MapEditorInternal {
         DrawWorldSettings();
         DrawHierarchyPanel(level);
         DrawProjectSettingsButton();
+        DrawUserSettingsButton();
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         DrawAssetBrowserPanel();

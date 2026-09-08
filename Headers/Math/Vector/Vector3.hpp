@@ -8,9 +8,10 @@ struct alignas(16) Vector3 {
     union {
         __m128 reg;
         struct {float x, y, z, w;};
+        struct {float r, g, b, a;};
     };
 
-    Vector3(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f) : x(x), y(y), z(z), w(0.0f) {}
+    constexpr Vector3(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f) : x(x), y(y), z(z), w(0.0f) {}
     Vector3(__m128 primitiveReg) : reg(primitiveReg) {}
 
     Vector3 operator=(const Vector3& other) {
@@ -115,9 +116,12 @@ struct alignas(16) Vector3 {
 #else
 
 struct Vector3 {
-    float x, y, z;
+    union {
+        struct {float x, y, z;};
+        struct {float r, g, b;};
+    };
 
-    Vector3(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f) : x(x), y(y), z(z) {}
+    constexpr Vector3(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f) : x(x), y(y), z(z) {}
 
     Vector3 operator=(const Vector3& other) {
         x = other.x;

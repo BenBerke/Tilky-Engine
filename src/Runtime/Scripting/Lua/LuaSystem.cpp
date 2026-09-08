@@ -179,18 +179,14 @@ namespace {
         return value.as<sol::protected_function>();
     }
 
-    // Red used for script errors in the in-game console (see ReportScriptError
-    // below) - the same 0-255 scale EditorFunctions::Print's other callers
-    // already use (see DEFAULT_COLOR in EditorFunctions.cpp).
-    const Vector3 kScriptErrorColor {255.0f, 60.0f, 60.0f};
-
     // Every Lua script error goes through here: logged via spdlog (for the
     // engine's own logs/console window) AND pushed to the in-game console
     // in red (EditorFunctions::Print), so a broken script is visible to
     // whoever is playtesting, not just whoever is watching the log file.
     void ReportScriptError(const std::string& message) {
+        const Vector3 kScriptErrorColor = {200.0f, 60.0f, 60.0f};
         spdlog::error("{}", message);
-        EditorFunctions::Print(message, kScriptErrorColor);
+        EditorFunctions::Print(message, kScriptErrorColor, 15.0f);
     }
 
     void CallLifecycle(const ScriptInstance& instance, const sol::protected_function& fn, const char* stageName) {
@@ -767,8 +763,12 @@ namespace {
         const sol::load_result loadedScript = lua.load_file(path.string());
 
         if (!loadedScript.valid()) {
+            // Strip the project path otherwise its too long and may not fit to the screen
+            const fs::path assetsPath = ProjectManager::GetProjectFolder() / "Assets";
+            const fs::path relativePath = fs::relative(path, assetsPath);
+
             const sol::error error = loadedScript;
-            ReportScriptError(fmt::format("Failed to load Lua script '{}': {}", path.string(), error.what()));
+            ReportScriptError(fmt::format("Failed to load Lua script '{}': {}", relativePath.generic_string(), error.what()));
             return false;
         }
 

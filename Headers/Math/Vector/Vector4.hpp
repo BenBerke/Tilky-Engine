@@ -10,12 +10,13 @@
 #ifndef NOSIMD
 struct alignas(16) Vector4 {
     union {
-        __m128 reg;
+        __m128 reg{};
         struct { float x, y, z, w; };
+        struct {float r, g, b, a; };
     };
 
     // --- Constructors ---
-    Vector4(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f, const float w = 0.0f)
+   constexpr Vector4(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f, const float w = 0.0f)
         : x(x), y(y), z(z), w(w) {}
 
     Vector4(__m128 primitiveReg) : reg(primitiveReg) {}
@@ -80,10 +81,12 @@ struct alignas(16) Vector4 {
 #else
 
 struct Vector4 {
-    float x, y, z, w;
-
+    union {
+        struct {float x, y, z, w;};
+        struct {float r, g, b, a; };
+    }
     // --- Constructors ---
-    Vector4(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f, const float w = 0.0f)
+    constexpr Vector4(const float x = 0.0f, const float y = 0.0f, const float z = 0.0f, const float w = 0.0f)
         : x(x), y(y), z(z), w(w) {}
 
     Vector4& NormalizeColors() {

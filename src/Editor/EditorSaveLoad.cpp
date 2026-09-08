@@ -7,6 +7,10 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cstdint>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -23,6 +27,33 @@ namespace {
         }
 
         return LevelManager::CurrentLevel();
+    }
+
+    nlohmann::json SerializeColor(const Vector3& color) {
+        return nlohmann::json::array({
+            color.x,
+            color.y,
+            color.z
+        });
+    }
+
+    nlohmann::json SerializeColor(const Vector4& color) {
+        return nlohmann::json::array({
+            color.x,
+            color.y,
+            color.z,
+            color.w
+        });
+    }
+
+    fs::path GetUserSettingsPath() {
+        // This works because the launcher runs the engine version pinned
+        // by the current project.
+        const std::string version = ProjectManager::GetProjectEngineVersion();
+
+        if (version.empty()) return {};
+
+        return ProjectManager::GetEngineVersionDirectory(version) / "UserSettings.bson";
     }
 }
 
@@ -51,34 +82,107 @@ namespace MapEditorInternal {
         }
     }
 
-    bool Save(const std::string& saveTo) {
-        Level& level = GetOrCreateCurrentLevel();
+    bool SaveUserSettings() {
+        const fs::path settingsPath = GetUserSettingsPath();
 
-        const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
-
-        if (cleanName.empty()) {
-            spdlog::warn("Can not save with an empty name");
+        if (settingsPath.empty()) {
+            spdlog::error("Cannot save user settings because the current engine version is empty");
             return false;
         }
 
-        level.name = cleanName;
+        try {
+            const nlohmann::json settings = {
+                {"formatVersion", 1},
 
-        LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
+                {"colors", {
+                    {"normalEntityColor",
+                     SerializeColor(normalEntityColor)},
 
-        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
-        std::string errorMessage;
+                    {"highlightedEntityColor",
+                     SerializeColor(highlightedEntityColor)},
 
-        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
-            spdlog::critical("{}", errorMessage);
+                    {"spriteEntityColor",
+                     SerializeColor(spriteEntityColor)},
+
+                    {"normalWallColor",
+                     SerializeColor(normalWallColor)},
+
+                    {"highlightedWallColor",
+                     SerializeColor(highlightedWallColor)},
+
+                    {"hoveredSectorColor",
+                     SerializeColor(hoveredSectorColor)},
+
+                    {"highlightedSectorColor",
+                     SerializeColor(highlightedSectorColor)},
+
+                    {"snapIndicatorColor",
+                     SerializeColor(snapIndicatorColor)},
+
+                    {"validLineColor",
+                     SerializeColor(kValidLineColor)},
+
+                    {"invalidLineColor",
+                     SerializeColor(kInvalidLineColor)},
+
+                    {"anchorColor",
+                     SerializeColor(kAnchorColor)},
+
+                    {"validFillColor",
+                     SerializeColor(kValidFillColor)},
+
+                    {"invalidFillColor",
+                     SerializeColor(kInvalidFillColor)},
+
+                    {"normalHandleColor",
+                     SerializeColor(normalHandleColor)},
+
+                    {"highlightedHandleColor",
+                     SerializeColor(highlightedHandleColor)},
+
+                    {"handleOutlineColor",
+                     SerializeColor(handleOutlineColor)},
+
+                    {"themeTextColor",
+                     SerializeColor(themeTextColor)},
+
+                    {"gridColor",
+                     SerializeColor(gridColor)},
+
+                    {"backgroundColor",
+                     SerializeColor(backgroundColor)}
+                }}
+            };
+
+            fs::create_directories(settingsPath.parent_path());
+
+            const std::vector<std::uint8_t> bson = nlohmann::json::to_bson(settings);
+
+            std::ofstream output(settingsPath, std::ios::binary | std::ios::trunc);
+
+            if (!output) {
+                spdlog::error("Could not open user settings file for writing: {}", settingsPath.string());
+                return false;
+            }
+
+            output.write(reinterpret_cast<const char*>(bson.data()), static_cast<std::streamsize>(bson.size()));
+
+            if (!output) {
+                spdlog::error("Failed while writing user settings: {}",settingsPath.string());
+                return false;
+            }
+
+            spdlog::info("User settings saved successfully: {}",settingsPath.string());
+
+            return true;
+        }
+        catch (const std::exception& error) {
+            spdlog::error(
+                "Failed to save user settings: {}",
+                error.what()
+            );
             return false;
         }
-
-        spdlog::info("Level saved successfully {}", path.string());
-
-        UpdateLevels();
-
-        return true;
     }
 }
 

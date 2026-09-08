@@ -1008,7 +1008,7 @@ set_target_properties(Launcher_Only PROPERTIES
 
 add_executable(Tilky_Standalone
         src/Standalone/StandaloneMain.cpp
-        ${TILKY_ENGINE_SOURCES}
+        ${TILKY_RUNTIME_SOURCES}
         ${TILKY_ICON_OBJECTS}
 )
 

@@ -601,8 +601,7 @@ namespace ImGuiDrawFunctions {
                 &ceilingSlopeDirection,
                 slopeDirections,
                 IM_ARRAYSIZE(slopeDirections))) {
-                sectorFloor.ceiling.slopeDirection =
-                        static_cast<SlopeDirection>(ceilingSlopeDirection);
+                sectorFloor.ceiling.slopeDirection = static_cast<SlopeDirection>(ceilingSlopeDirection);
             }
 
             FieldWidth(160.0f);

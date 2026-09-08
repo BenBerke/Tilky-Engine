@@ -150,10 +150,7 @@ namespace Editor {
             LevelManager::currentLevelIndex = 0;
         }
 
-        if (currentTheme == THEME_DARK)
-            SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
-        else if (currentTheme == THEME_LIGHT)
-            SDL_SetRenderDrawColor(renderer, 215, 215, 215, 255);
+        SDL_SetRenderDrawColor(renderer, backgroundColor.r, backgroundColor.g, backgroundColor.b, 255);
         SDL_RenderClear(renderer);
 
         ImGui_ImplSDLRenderer3_NewFrame();
