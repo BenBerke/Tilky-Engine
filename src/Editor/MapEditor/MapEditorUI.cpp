@@ -794,16 +794,9 @@ namespace {
     void DrawUserSettingsWindow() {
         ImGui::SetNextWindowSize(ImVec2(420.0f, 560.0f), ImGuiCond_FirstUseEver);
 
-        const bool windowVisible = ImGui::Begin(
-            Get("editor.user_settings").c_str(),
-            &userSettingsOpen
-        );
+        const bool windowVisible = ImGui::Begin(Get("editor.user_settings").c_str(),&userSettingsOpen);
 
         if (windowVisible) {
-            SectionHeader(Get("editor.user_settings.colors").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
             constexpr ImGuiColorEditFlags color3Flags =
                     ImGuiColorEditFlags_Uint8 |
                     ImGuiColorEditFlags_NoInputs |
@@ -858,8 +851,7 @@ namespace {
 
                 ImGui::TableSetColumnIndex(2);
 
-                if (ImGui::SmallButton(defaultLabel.c_str()))
-                    color = defaultColor;
+                if (ImGui::SmallButton(defaultLabel.c_str())) color = defaultColor;
 
                 ImGui::PopID();
             };
@@ -912,6 +904,10 @@ namespace {
 
                 ImGui::Spacing();
             };
+
+            SectionHeader(Get("editor.user_settings.colors").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
 
             DrawGroup(
                 "editor.user_settings.group.entities",
@@ -1054,6 +1050,13 @@ namespace {
                     );
                 }
             );
+
+            SectionHeader(Get("editor.user_settings.editor_settings").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::SliderFloat(Get("editor.user_settings.camera_speed").c_str(), &cameraSpeed, MIN_CAM_SPEED, MAX_CAM_SPEED);
+            ImGui::SliderFloat(Get("editor.user_settings.camera_step_size").c_str(), &cameraStepSize, MIN_STEP_SIZE, MAX_STEP_SIZE);
 
             PushSuccessStyle();
             if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
@@ -1598,7 +1601,8 @@ namespace {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
+            }
+            else {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));

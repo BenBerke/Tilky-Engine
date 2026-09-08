@@ -90,6 +90,9 @@ namespace {
             themeTextColor = LoadColor3("themeTextColor");
             gridColor = LoadColor3("gridColor");
             backgroundColor = LoadColor3("backgroundColor");
+
+            cameraSpeed = settings.value("cameraSpeed", 1.0f);
+            cameraStepSize = settings.value("cameraStepSize", 50.0f);
         }
         catch (std::exception& e) {
             spdlog::error("Error while loading user settings {}", e.what());

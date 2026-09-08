@@ -45,16 +45,6 @@ namespace {
             color.w
         });
     }
-
-    fs::path GetUserSettingsPath() {
-        // This works because the launcher runs the engine version pinned
-        // by the current project.
-        const std::string version = ProjectManager::GetProjectEngineVersion();
-
-        if (version.empty()) return {};
-
-        return ProjectManager::GetEngineVersionDirectory(version) / "UserSettings.bson";
-    }
 }
 
 namespace MapEditorInternal {
@@ -113,7 +103,7 @@ namespace MapEditorInternal {
     }
 
     bool SaveUserSettings() {
-        const fs::path settingsPath = GetUserSettingsPath();
+        const fs::path settingsPath = ProjectManager::GetUserSettingsPath();
 
         if (settingsPath.empty()) {
             spdlog::error("Cannot save user settings because the current engine version is empty");
@@ -124,7 +114,6 @@ namespace MapEditorInternal {
             const nlohmann::json settings = {
                 // When changing this, dont forget to change it in Editor.cpp LoadUserSettings() as well
                 {"formatVersion", 1},
-
                 {"colors", {
                     {"normalEntityColor",
                      SerializeColor(normalEntityColor)},
@@ -182,7 +171,9 @@ namespace MapEditorInternal {
 
                     {"backgroundColor",
                      SerializeColor(backgroundColor)}
-                }}
+                }},
+                   {"cameraSpeed", cameraSpeed},
+                {"cameraStepSize", cameraStepSize}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

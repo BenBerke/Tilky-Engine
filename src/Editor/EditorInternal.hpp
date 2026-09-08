@@ -311,6 +311,11 @@ namespace MapEditorInternal {
     constexpr float MIN_UI_CANVAS_ZOOM = 0.10f;
     constexpr float MAX_UI_CANVAS_ZOOM = 8.00f;
 
+    constexpr float MIN_CAM_SPEED = 0.001f;
+    constexpr float MAX_CAM_SPEED = 5.0f;
+    constexpr float MIN_STEP_SIZE = 1.0f;
+    constexpr float MAX_STEP_SIZE = 750.0f;
+
     // Selection within the UI Editor. Independent of selectedEntity/editingEntity
     // above, which belong to the Map Editor's MODE_ENTITY and are left untouched.
     extern ID selectedUIEntityID;
@@ -357,6 +362,9 @@ namespace MapEditorInternal {
     extern Vector3 gridColor;
 
     extern Vector3 backgroundColor;
+
+    extern float cameraSpeed;
+    extern float cameraStepSize;
 
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no

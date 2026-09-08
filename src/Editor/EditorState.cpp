@@ -153,4 +153,7 @@ namespace MapEditorInternal {
     Vector3 normalHandleColor = {80, 220, 255};
     Vector3 highlightedHandleColor = {255, 255, 255};
     Vector3 handleOutlineColor = {20, 20, 20};
+
+    float cameraSpeed = 1.0f;
+    float cameraStepSize = 50.0f;
 }

@@ -669,6 +669,21 @@ namespace MapEditorInternal {
         }
 
         if (!keyboardBlockedByImgui) {
+            Vector2 movement = {.0f, .0f};
+
+            if (InputManager::GetKey(SDL_SCANCODE_W)) movement.y = cameraSpeed;
+            if (InputManager::GetKey(SDL_SCANCODE_S)) movement.y = -cameraSpeed;
+            if (InputManager::GetKey(SDL_SCANCODE_A)) movement.x = cameraSpeed;
+            if (InputManager::GetKey(SDL_SCANCODE_D)) movement.x = -cameraSpeed;
+
+            if (InputManager::GetKeyDown(SDL_SCANCODE_UP)) movement.y = cameraStepSize;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_DOWN)) movement.y = -cameraStepSize;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_LEFT)) movement.x = cameraStepSize;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_RIGHT)) movement.x = -cameraStepSize;
+
+            cameraPos.x -= movement.x / editorZoom;
+            cameraPos.y -= movement.y / editorZoom;
+
             if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelActiveDrawing();
             if (InputManager::GetKeyDown(SDL_SCANCODE_F)) FocusCameraOnSelection();
 
