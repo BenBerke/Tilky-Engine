@@ -41,7 +41,7 @@ namespace {
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
                 "gameObject",
-                "GameTime", "Input", "Game", "Debug", "Scripts", "TMath"
+                "GameTime", "Input", "Game", "Debug", "Scripts", "Tmath"
             };
 
             for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
@@ -72,6 +72,164 @@ namespace {
             return static_cast<char>(std::toupper(c));
         });
         return text;
+    }
+
+    // Case-insensitive: does `candidate` start with `prefixLower` (already
+    // lowercased)? Shared by both of UpdateAutocomplete()'s suggestion
+    // sources - the flat keyword/global list, and a resolved type's
+    // property/method names in its member-access branch.
+    bool StartsWithCaseInsensitive(const std::string& candidate, const std::string& prefixLower) {
+        if (candidate.size() < prefixLower.size()) return false;
+
+        return std::equal(
+            prefixLower.begin(), prefixLower.end(), candidate.begin(),
+            [](const char a, const char b) { return a == static_cast<char>(std::tolower(static_cast<unsigned char>(b))); }
+        );
+    }
+
+    // Every registered type, indexed by the LOWERCASED form of its
+    // Lua-visible name (e.g.
+    // "Tmath", "GameObject", "Transform") - what member-access completion
+    // (see ResolveMemberChainType()) resolves a dotted chain through.
+    // Pointers into LuaBindingMetadata::AllTypes()'s backing vector are
+    // safe to cache here because every RegisterType() call happens inside
+    // LuaScriptSystem::Initialize(), which EnsureScriptingInitialized()
+    // runs at most once (guarded by scriptingInitialized in
+    // LevelSystem.cpp) - by the time this function's own one-time
+    // initializer runs, that vector has permanently stopped growing, so it
+    // never reallocates out from under these pointers.
+    const std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*>& TypeDocsByName() {
+        LevelSystem::EnsureScriptingInitialized();
+
+        static const std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*> byName = [] {
+            std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*> map;
+            for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) map[LowerCopy(type.name)] = &type;
+            return map;
+        }();
+
+        return byName;
+    }
+
+    // The handful of global identifiers whose spelling doesn't match their
+    // registered TypeDoc name outright (everything else - "Tmath",
+    // "Input", "Game", "Debug", "GameTime" - already matches its TypeDoc
+    // name 1:1, so only genuine mismatches need an entry here). Keyed by
+    // the lowercased global name, same as TypeDocsByName() - the whole
+    // chain resolution is case-insensitive (see ResolveMemberChainType()),
+    // so this lookup has to be too.
+    const std::unordered_map<std::string, std::string>& GlobalAliasToTypeName() {
+        static const std::unordered_map<std::string, std::string> aliases = {
+            {"gameobject", "GameObject"},
+        };
+
+        return aliases;
+    }
+
+    // Strips the LuaLS-style nullable ("Transform?") and array ("Behaviour[]")
+    // suffixes LuaBindingMetadata's luaType/returnType strings sometimes
+    // carry, down to a bare type name that can be looked up in
+    // TypeDocsByName(). Primitive types ("number", "string", "boolean",
+    // "integer") pass through unchanged and simply won't be found there -
+    // that's the correct outcome (nothing further to suggest).
+    std::string StripLuaTypeAnnotations(std::string type) {
+        if (!type.empty() && type.back() == '?') type.pop_back();
+        if (type.size() >= 2 && type.compare(type.size() - 2, 2, "[]") == 0) type.resize(type.size() - 2);
+        return type;
+    }
+
+    // Splits the plain identifier-dot chain immediately before `dotIndex`
+    // (the index of the "." right before the word currently being typed)
+    // into its dot-separated segments, outermost first - e.g. for
+    // "gameObject.transform." with `dotIndex` pointing at the last ".",
+    // returns {"gameObject", "transform"}. Returns an empty vector if the
+    // text before the dot isn't a plain identifier chain (a call, an index
+    // expression, a numeric literal, or the very start of the line) -
+    // deliberately conservative, since this hand-rolled resolver only
+    // understands plain member access, not arbitrary expressions.
+    std::vector<std::string> SplitMemberChain(const std::string& line, int dotIndex) {
+        std::vector<std::string> segments;
+        int dot = dotIndex;
+
+        while (dot >= 0 && line[dot] == '.') {
+            const int segEnd = dot;
+            int segStart = segEnd;
+
+            while (segStart > 0 && (std::isalnum(static_cast<unsigned char>(line[segStart - 1])) != 0 || line[segStart - 1] == '_'))
+                --segStart;
+
+            if (segStart == segEnd) return {}; // "." with nothing identifier-like before it
+
+            const std::string segment = line.substr(segStart, segEnd - segStart);
+            if (std::isdigit(static_cast<unsigned char>(segment.front())) != 0) return {}; // e.g. "3."
+
+            segments.push_back(segment);
+
+            dot = segStart - 1; // the character right before this segment, if any
+            if (dot < 0 || line[dot] != '.') break; // chain ends here
+        }
+
+        std::ranges::reverse(segments);
+        return segments;
+    }
+
+    // Resolves a chain from SplitMemberChain() (e.g. {"gameObject",
+    // "transform"}) to the TypeDoc whose properties/methods should be
+    // suggested - walking each hop via the previous type's matching
+    // property's luaType or method's returnType. Returns nullptr if the
+    // base identifier isn't a known global/type, an intermediate member
+    // doesn't exist, or an intermediate member's type isn't itself
+    // registered (a primitive, or a type LuaBindingMetadata doesn't cover
+    // yet) - any of which means this resolver has nothing useful to offer.
+    // Every name comparison here is case-insensitive (matching
+    // UpdateAutocomplete()'s own case-insensitive prefix matching) -
+    // without that, e.g. typing "TMath." would fail to resolve at all
+    // against the registered type name "Tmath", since the base lookup
+    // used to be an exact-case match.
+    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(const std::vector<std::string>& chain) {
+        if (chain.empty()) return nullptr;
+
+        const auto& typesByName = TypeDocsByName();
+        const auto& aliases = GlobalAliasToTypeName();
+
+        const std::string baseLower = LowerCopy(chain.front());
+        const auto aliasIt = aliases.find(baseLower);
+        const std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
+
+        const auto baseIt = typesByName.find(LowerCopy(baseTypeName));
+        if (baseIt == typesByName.end()) return nullptr;
+
+        const LuaBindingMetadata::TypeDoc* current = baseIt->second;
+
+        for (std::size_t i = 1; i < chain.size(); ++i) {
+            const std::string memberLower = LowerCopy(chain[i]);
+            std::string nextTypeName;
+            bool found = false;
+
+            for (const LuaBindingMetadata::PropertyDoc& prop : current->properties) {
+                if (LowerCopy(prop.name) != memberLower) continue;
+                nextTypeName = StripLuaTypeAnnotations(prop.luaType);
+                found = true;
+                break;
+            }
+
+            if (!found) {
+                for (const LuaBindingMetadata::MethodDoc& method : current->methods) {
+                    if (LowerCopy(method.name) != memberLower) continue;
+                    nextTypeName = StripLuaTypeAnnotations(method.returnType);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found || nextTypeName.empty()) return nullptr;
+
+            const auto nextIt = typesByName.find(LowerCopy(nextTypeName));
+            if (nextIt == typesByName.end()) return nullptr;
+
+            current = nextIt->second;
+        }
+
+        return current;
     }
 
     bool IsHidden(const fs::path& path) {
@@ -677,7 +835,14 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
 
     if (scriptEditorDirty) title += " *";
 
-    title += "##TilkyScriptEditor";
+    // "###" (not "##") pins the window's ID to the fixed suffix alone.
+    // With plain "##", ImGui still hashes the text before it into the ID -
+    // so toggling the " *" dirty marker (on the very first edit, and again
+    // on every save) made this look like a BRAND NEW window each time,
+    // resetting it to its ImGuiCond_FirstUseEver size/position and
+    // stealing focus. That's what made the editor appear to randomly
+    // resize itself and lose focus while typing/saving.
+    title += "###TilkyScriptEditor";
 
     ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f),ImGuiCond_FirstUseEver);
 
@@ -721,12 +886,36 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
 
     if (autocompleteActive) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) autocompleteDismiss = true;
-        else if (ImGui::IsKeyPressed(ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_Enter)) autocompleteAccept = true;
+        else if (ImGui::IsKeyPressed(ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                 ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) autocompleteAccept = true;
         else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) autocompleteNavDelta = 1;
         else if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) autocompleteNavDelta = -1;
 
         if (autocompleteAccept || autocompleteDismiss || autocompleteNavDelta != 0)
             scriptEditor.SetHandleKeyboardInputs(false);
+    }
+
+    // Same idea for the mouse: a click landing inside where the popup was
+    // last drawn (see DrawAutocompletePopup(), which sets
+    // autocompletePopupMin/Max) must not ALSO be treated by the editor as
+    // "click to move the cursor here" - TextEditor::HandleMouseInputs() has
+    // no awareness of the popup at all (it's drawn on the foreground draw
+    // list, not a window, precisely so it can't fight the editor for
+    // keyboard focus/Z-order - see DrawAutocompletePopup()'s comment), so
+    // without this it would reposition the cursor to wherever the popup
+    // visually sits and then AcceptAutocomplete() would insert the
+    // suggestion at that wrong location instead of the word being typed.
+    // Using LAST frame's rect is a one-frame-stale approximation (the
+    // popup's exact position for THIS frame isn't known until after
+    // Render(), since it follows the caret) - close enough in practice,
+    // since the popup barely moves between two consecutive frames.
+    if (autocompleteActive) {
+        const ImVec2 mousePos = io.MousePos;
+        const bool mouseInsidePopup =
+            mousePos.x >= autocompletePopupMin.x && mousePos.x <= autocompletePopupMax.x &&
+            mousePos.y >= autocompletePopupMin.y && mousePos.y <= autocompletePopupMax.y;
+
+        if (mouseInsidePopup) scriptEditor.SetHandleMouseInputs(false);
     }
 
     // Auto-close bracket/quote pairs, part 1: "type over" an existing
@@ -781,6 +970,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     if (scriptEditorFont != nullptr) [[likely]] ImGui::PopFont();
 
     scriptEditor.SetHandleKeyboardInputs(true);
+    scriptEditor.SetHandleMouseInputs(true);
 
     if (scriptEditor.IsTextChanged()) scriptEditorDirty = true;
 
@@ -836,7 +1026,14 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         autocompleteActive = false;
     } else if (autocompleteAccept && !autocompleteMatches.empty()) {
         AcceptAutocomplete(autocompleteSelectedIndex);
-    } else {
+    } else if (autocompleteNavDelta == 0) {
+        // Only re-derive suggestions from the buffer when this frame wasn't
+        // purely a list-navigation keypress. UpdateAutocomplete() always
+        // resets autocompleteSelectedIndex back to 0 (it has no idea a nav
+        // key was just pressed) - calling it here unconditionally undid the
+        // selection change applied two lines above on every single Up/Down
+        // press, which is why arrow-key navigation looked like it did
+        // nothing.
         UpdateAutocomplete();
     }
 
@@ -883,6 +1080,47 @@ void AssetBrowser::UpdateAutocomplete() {
 
     const std::string word = line.substr(start, col - start);
 
+    // Member-access completion: if the partial word is directly preceded
+    // by a "." (e.g. "TMath." or "gameObject.transform."), resolve the
+    // dotted chain before it through LuaBindingMetadata instead of
+    // matching against the flat keyword/global list - suggesting a random
+    // global right after "." wouldn't make sense, and the chain tells us
+    // exactly which type's members belong there. See SplitMemberChain()/
+    // ResolveMemberChainType() above for what this chain-walk does and
+    // doesn't understand (plain identifier chains only - no calls,
+    // indexing, or local-variable type inference).
+    if (start > 0 && line[start - 1] == '.') {
+        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1));
+
+        autocompleteMatches.clear();
+
+        if (type != nullptr) {
+            std::vector<std::string> memberNames;
+            memberNames.reserve(type->properties.size() + type->methods.size());
+            for (const LuaBindingMetadata::PropertyDoc& prop : type->properties) memberNames.push_back(prop.name);
+            for (const LuaBindingMetadata::MethodDoc& method : type->methods) memberNames.push_back(method.name);
+            std::ranges::sort(memberNames);
+
+            const std::string wordLower = LowerCopy(word);
+
+            for (const std::string& candidate : memberNames) {
+                if (!StartsWithCaseInsensitive(candidate, wordLower)) continue;
+
+                autocompleteMatches.push_back(candidate);
+                if (autocompleteMatches.size() >= 12) break; // keep the popup short
+            }
+        }
+
+        // No minimum length here (unlike the flat list below): right after
+        // "." the candidate set is already small and scoped to one type,
+        // so showing it immediately - even with zero characters typed - is
+        // the behavior a normal IDE gives you.
+        autocompleteWordStart = word;
+        autocompleteSelectedIndex = 0;
+        autocompleteActive = !autocompleteMatches.empty();
+        return;
+    }
+
     // Require at least two characters before suggesting anything - a
     // single letter matches too much of the candidate list to be useful.
     if (word.size() < 2) {
@@ -892,8 +1130,18 @@ void AssetBrowser::UpdateAutocomplete() {
 
     autocompleteMatches.clear();
 
+    // Case-insensitive prefix match: most of the candidate list is
+    // PascalCase (Lua binding types/methods like "Update", "GameTime"),
+    // so a case-sensitive match missed the common case of typing a
+    // lowercase prefix ("upd") and expecting the PascalCase name
+    // ("Update") to show up - the main cause of suggestions silently not
+    // appearing. AcceptAutocomplete() replaces the whole typed word with
+    // the candidate's real casing rather than only appending a tail, so a
+    // case-mismatched accept still inserts correctly-cased text.
+    const std::string wordLower = LowerCopy(word);
+
     for (const std::string& candidate : AutocompleteCandidates()) {
-        if (candidate.size() <= word.size() || candidate.compare(0, word.size(), word) != 0) continue;
+        if (candidate.size() <= word.size() || !StartsWithCaseInsensitive(candidate, wordLower)) continue;
 
         autocompleteMatches.push_back(candidate);
         if (autocompleteMatches.size() >= 12) break; // keep the popup short
@@ -905,33 +1153,128 @@ void AssetBrowser::UpdateAutocomplete() {
 }
 
 void AssetBrowser::DrawAutocompletePopup() {
-    ImGui::SetNextWindowPos(scriptEditor.GetCursorScreenPos());
-    ImGui::SetNextWindowSize(ImVec2(240.0f, 0.0f));
+    constexpr float popupWidth = 240.0f;
+    const float itemHeight = ImGui::GetTextLineHeightWithSpacing();
+    const ImVec2 padding = ImGui::GetStyle().WindowPadding;
+    const float popupHeight = itemHeight * static_cast<float>(autocompleteMatches.size()) + padding.y * 2.0f;
 
-    constexpr ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    // Clamp against the host editor window AND the main viewport, so the
+    // popup can never render below/right of the IDE window or spill off
+    // the screen - previously it was placed purely off the caret with no
+    // bounds check at all, so a caret near the bottom/right of the editor
+    // sent the suggestion list past both. Called from within the editor
+    // window's Begin()/End() (see DrawTextEditorWindow()), so
+    // GetWindowPos()/GetWindowSize() here still refer to that host window.
+    const ImVec2 hostWindowMin = ImGui::GetWindowPos();
+    const ImVec2 hostWindowSize = ImGui::GetWindowSize();
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    // Keeps keyboard focus on the code editor (so typing keeps flowing into
-    // it) - Up/Down/Tab/Enter/Escape for THIS popup are already handled
-    // above, before scriptEditor.Render() ran this frame.
-    ImGui::Begin("##ScriptAutocomplete", nullptr, flags);
+    const ImVec2 clampMin = viewport->WorkPos;
+    const ImVec2 clampMax(
+        std::min(hostWindowMin.x + hostWindowSize.x, viewport->WorkPos.x + viewport->WorkSize.x),
+        std::min(hostWindowMin.y + hostWindowSize.y, viewport->WorkPos.y + viewport->WorkSize.y)
+    );
+
+    // GetCursorScreenPos() already returns a point just below the caret's
+    // line; flip to just above it instead when there isn't enough room
+    // below, mirroring how a normal IDE's suggestion list behaves near the
+    // bottom of the window.
+    ImVec2 anchor = scriptEditor.GetCursorScreenPos();
+
+    if (anchor.y + popupHeight > clampMax.y && anchor.y - itemHeight - popupHeight >= clampMin.y)
+        anchor.y -= itemHeight + popupHeight;
+
+    const ImVec2 pos(
+        std::clamp(anchor.x, clampMin.x, std::max(clampMin.x, clampMax.x - popupWidth)),
+        std::clamp(anchor.y, clampMin.y, std::max(clampMin.y, clampMax.y - popupHeight))
+    );
+
+    autocompletePopupMin = pos;
+    autocompletePopupMax = ImVec2(pos.x + popupWidth, pos.y + popupHeight);
+
+    // Drawn on the foreground draw list rather than as a separate ImGui
+    // window - deliberately. A real window here (what this used to be)
+    // competes with the editor for Dear ImGui's keyboard focus and
+    // Z-order the moment it's clicked: ImGui::Selectable()'s click
+    // handling calls FocusWindow() unconditionally with no way to opt
+    // out, which silently stole keyboard focus from the editor's own
+    // child window (breaking all further typing) and, depending on
+    // Z-order, could leave the popup rendered behind the editor (making
+    // it invisible despite being drawn correctly). The foreground draw
+    // list belongs to no window, always composites last on top of
+    // everything, and is immune to both problems by construction. Clicks
+    // are hit-tested manually below instead of through ImGui::Selectable();
+    // DrawTextEditorWindow() uses autocompletePopupMin/Max (set just above)
+    // to stop the editor's own click-to-move-cursor handling from also
+    // firing when a click lands in this rect.
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    drawList->AddRectFilled(autocompletePopupMin, autocompletePopupMax, ImGui::GetColorU32(ImGuiCol_PopupBg), style.PopupRounding);
+    drawList->AddRect(autocompletePopupMin, autocompletePopupMax, ImGui::GetColorU32(ImGuiCol_Border), style.PopupRounding);
+
+    const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 highlightColor = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+    const ImVec2 mousePos = ImGui::GetIO().MousePos;
+    const bool mouseClickedThisFrame = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+    drawList->PushClipRect(autocompletePopupMin, autocompletePopupMax, true);
+
+    int clickedIndex = -1;
 
     for (int i = 0; i < static_cast<int>(autocompleteMatches.size()); ++i) {
-        const bool isSelected = i == autocompleteSelectedIndex;
+        const ImVec2 itemMin(autocompletePopupMin.x, autocompletePopupMin.y + padding.y + itemHeight * static_cast<float>(i));
+        const ImVec2 itemMax(autocompletePopupMax.x, itemMin.y + itemHeight);
 
-        if (ImGui::Selectable(autocompleteMatches[i].c_str(), isSelected)) AcceptAutocomplete(i);
-        if (isSelected) ImGui::SetItemDefaultFocus();
+        const bool hovered = mousePos.x >= itemMin.x && mousePos.x < itemMax.x &&
+                              mousePos.y >= itemMin.y && mousePos.y < itemMax.y;
+
+        // Hovering also moves the selection (as any dropdown does) - the
+        // keyboard-driven highlight from autocompleteSelectedIndex just
+        // stays put wherever the mouse last left it.
+        if (hovered) {
+            autocompleteSelectedIndex = i;
+            if (mouseClickedThisFrame) clickedIndex = i;
+        }
+
+        if (i == autocompleteSelectedIndex) drawList->AddRectFilled(itemMin, itemMax, highlightColor);
+
+        drawList->AddText(
+            ImVec2(itemMin.x + padding.x, itemMin.y + (itemHeight - ImGui::GetTextLineHeight()) * 0.5f),
+            textColor, autocompleteMatches[i].c_str()
+        );
     }
 
-    ImGui::End();
+    drawList->PopClipRect();
+
+    // Deferred until after the loop finishes drawing, matching the same
+    // reasoning as the keyboard accept path: AcceptAutocomplete() mutates
+    // the script buffer, and doing that mid-loop while still reading
+    // autocompleteMatches for later items would be needlessly fragile.
+    if (clickedIndex >= 0) AcceptAutocomplete(clickedIndex);
 }
 
 void AssetBrowser::AcceptAutocomplete(const int index) {
     if (index < 0 || index >= static_cast<int>(autocompleteMatches.size())) return;
 
     const std::string& full = autocompleteMatches[index];
-    scriptEditor.InsertText(full.substr(autocompleteWordStart.size()));
+
+    // Matching is case-insensitive (see UpdateAutocomplete()), so the
+    // characters already typed may not share the candidate's actual
+    // casing (e.g. typing "upd" to reach "Update") - replace the whole
+    // typed word instead of only appending a tail, so what lands in the
+    // script always has the binding's real casing. Guarded on a non-empty
+    // word: member completion (see UpdateAutocomplete()'s "." branch) can
+    // accept with nothing typed yet, and TextEditor::HasSelection() treats
+    // a zero-length MoveLeft(0, true, ...) selection as "no selection" -
+    // Delete() would then fall through to its no-selection path and eat
+    // the character AFTER the cursor instead of doing nothing.
+    if (!autocompleteWordStart.empty()) {
+        scriptEditor.MoveLeft(static_cast<int>(autocompleteWordStart.size()), true, false);
+        scriptEditor.Delete();
+    }
+
+    scriptEditor.InsertText(full);
 
     scriptEditorDirty = true;
     autocompleteActive = false;

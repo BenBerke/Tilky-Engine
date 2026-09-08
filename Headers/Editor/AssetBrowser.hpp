@@ -414,6 +414,16 @@ private:
     int autocompleteSelectedIndex = 0;
     bool autocompleteActive = false;
 
+    // Screen rect the popup last drew itself into (see DrawAutocompletePopup()).
+    // Cached because DrawTextEditorWindow() needs to know whether THIS
+    // frame's mouse click lands inside it BEFORE calling scriptEditor.
+    // Render() - the popup itself is only (re)drawn AFTER Render(), since
+    // its position depends on the caret's THIS-frame screen position, so
+    // last frame's rect is the best information available at that point;
+    // in practice it barely moves between two consecutive frames of typing.
+    ImVec2 autocompletePopupMin{};
+    ImVec2 autocompletePopupMax{};
+
     // IDE QoL commands - see DrawTextEditorWindow() in AssetBrowser.cpp for
     // the keybindings that trigger these (Ctrl+/, Ctrl+D, ...).
     void ToggleLineComment();
