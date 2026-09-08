@@ -82,6 +82,36 @@ namespace MapEditorInternal {
         }
     }
 
+    bool Save(const std::string& saveTo) {
+        Level& level = GetOrCreateCurrentLevel();
+
+        const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
+
+        if (cleanName.empty()) {
+            spdlog::warn("Can not save with an empty name");
+            return false;
+        }
+
+        level.name = cleanName;
+
+        LevelSerialization::LevelExtraData extraData;
+        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
+
+        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
+        std::string errorMessage;
+
+        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
+            spdlog::critical("{}", errorMessage);
+            return false;
+        }
+
+        spdlog::info("Level saved successfully {}", path.string());
+
+        UpdateLevels();
+
+        return true;
+    }
+
     bool SaveUserSettings() {
         const fs::path settingsPath = GetUserSettingsPath();
 
@@ -92,6 +122,7 @@ namespace MapEditorInternal {
 
         try {
             const nlohmann::json settings = {
+                // When changing this, dont forget to change it in Editor.cpp LoadUserSettings() as well
                 {"formatVersion", 1},
 
                 {"colors", {
@@ -153,6 +184,9 @@ namespace MapEditorInternal {
                      SerializeColor(backgroundColor)}
                 }}
             };
+
+            spdlog::info("Saving user settings to: '{}'", settingsPath.string());
+            spdlog::info("Absolute settings path: '{}'", fs::absolute(settingsPath).string());
 
             fs::create_directories(settingsPath.parent_path());
 

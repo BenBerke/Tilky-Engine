@@ -489,6 +489,12 @@ int main(const int argc, char** argv) {
 # Editor source list
 # ============================================================
 
+set(TILKY_SHARED_SUPPORT_SOURCES
+        src/Editor/EditorState.cpp
+        src/Editor/EditorSaveLoad.cpp
+        src/Runtime/RuntimeEditor/EditorFunctions.cpp
+)
+
 set(TILKY_EDITOR_SOURCES
         src/Editor/MapEditor/MapEditorDrawing.cpp
         src/Editor/MapEditor/MapEditorGeometry.cpp
@@ -498,15 +504,12 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/ImGuiDrawFunctions.cpp
 
         src/Editor/Editor.cpp
-        src/Editor/EditorState.cpp
         src/Editor/EditorTextureCache.cpp
-        src/Editor/EditorSaveLoad.cpp
         src/Editor/AssetBrowser.cpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp
 
-        src/Runtime/RuntimeEditor/EditorFunctions.cpp
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
 
         src/Editor/UIEditor/UIEditorUI.cpp
@@ -536,6 +539,7 @@ set(TILKY_EDITOR_SOURCES
 
 set(TILKY_ENGINE_SOURCES
         ${TILKY_RUNTIME_SOURCES}
+        ${TILKY_SHARED_SUPPORT_SOURCES}
         ${TILKY_EDITOR_SOURCES}
 )
 
@@ -1009,6 +1013,7 @@ set_target_properties(Launcher_Only PROPERTIES
 add_executable(Tilky_Standalone
         src/Standalone/StandaloneMain.cpp
         ${TILKY_RUNTIME_SOURCES}
+        ${TILKY_SHARED_SUPPORT_SOURCES}
         ${TILKY_ICON_OBJECTS}
 )
 

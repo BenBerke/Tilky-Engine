@@ -21,6 +21,85 @@ namespace MapEditorInternal {
     int screenHeight = 960;
 }
 
+namespace {
+    bool LoadUserSettings() {
+        const std::string version = ProjectManager::GetProjectEngineVersion();
+        if (version.empty()) {
+            spdlog::error("Can't find engine version, unable to load engine data");
+            return false;
+        }
+        const fs::path settingsPath = ProjectManager::GetEngineVersionDirectory(version) / "UserSettings.bson";
+        if (!fs::exists(settingsPath)) {
+            spdlog::error("User settings file doesn't exist: {}. Using defaults.", settingsPath.string());
+            return false;
+        }
+        try {
+            std::ifstream input(settingsPath, std::ios::binary);
+
+            if (!input) spdlog::error("Could not open user settings file {}", settingsPath.string());
+
+            const nlohmann::json settings = nlohmann::json::from_bson(input);
+
+            if (!settings.is_object()) {
+                spdlog::error("User settings root is not an object");
+                return false;
+            }
+
+            const int formatVersion = settings.value("formatVersion", 0);
+
+            if (formatVersion != 1) {
+                spdlog::error("Unsupported user settings format version: {}", formatVersion);
+                return false;
+            }
+            const nlohmann::json &colors = settings.at("colors");
+
+            auto LoadColor3 = [&](const char *key) -> Vector3 {
+                return {
+                    colors.at(key).at(0).get<float>(),
+                    colors.at(key).at(1).get<float>(),
+                    colors.at(key).at(2).get<float>()
+                };
+            };
+
+            auto LoadColor4 = [&](const char *key) -> Vector4 {
+                return {
+                    colors.at(key).at(0).get<float>(),
+                    colors.at(key).at(1).get<float>(),
+                    colors.at(key).at(2).get<float>(),
+                    colors.at(key).at(3).get<float>()
+                };
+            };
+
+            using namespace MapEditorInternal;
+            normalEntityColor = LoadColor3("normalEntityColor");
+            highlightedEntityColor = LoadColor3("highlightedEntityColor");
+            spriteEntityColor = LoadColor3("spriteEntityColor");
+            normalWallColor = LoadColor3("normalWallColor");
+            highlightedWallColor = LoadColor3("highlightedWallColor");
+            hoveredSectorColor = LoadColor3("hoveredSectorColor");
+            highlightedSectorColor = LoadColor3("highlightedSectorColor");
+            snapIndicatorColor = LoadColor3("snapIndicatorColor");
+            kValidLineColor = LoadColor3("validLineColor");
+            kInvalidLineColor = LoadColor3("invalidLineColor");
+            kAnchorColor = LoadColor3("anchorColor");
+            kValidFillColor = LoadColor4("validFillColor");
+            kInvalidFillColor = LoadColor4("invalidFillColor");
+            normalHandleColor = LoadColor3("normalHandleColor");
+            highlightedHandleColor = LoadColor3("highlightedHandleColor");
+            handleOutlineColor = LoadColor3("handleOutlineColor");
+            themeTextColor = LoadColor3("themeTextColor");
+            gridColor = LoadColor3("gridColor");
+            backgroundColor = LoadColor3("backgroundColor");
+        }
+        catch (std::exception& e) {
+            spdlog::error("Error while loading user settings {}", e.what());
+            return false;
+        }
+
+        return true;
+    }
+}
+
 namespace Editor {
     std::vector<Level> levels;
     ID currentLevels = 0;
@@ -130,6 +209,8 @@ namespace Editor {
             LevelManager::loadedLevels.emplace_back();
             LevelManager::currentLevelIndex = 0;
         }
+
+        if (!LoadUserSettings()) spdlog::error("Unable to load user settings");
     }
 
     void Update() {
