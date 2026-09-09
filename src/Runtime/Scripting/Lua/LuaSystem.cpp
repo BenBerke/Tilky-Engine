@@ -271,37 +271,42 @@ namespace {
             [&seed](const auto& typedValue) {
                 using T = std::decay_t<decltype(typedValue)>;
 
-                if constexpr (std::is_same_v<T, int>) {
+                if constexpr (std::is_same_v<T, int>)
                     HashCombine(seed, std::hash<int>{}(typedValue));
-                } else if constexpr (std::is_same_v<T, float>) {
+                else if constexpr (std::is_same_v<T, float>)
                     HashCombine(seed, std::hash<float>{}(typedValue));
-                } else if constexpr (std::is_same_v<T, bool>) {
+                else if constexpr (std::is_same_v<T, bool>)
                     HashCombine(seed, std::hash<bool>{}(typedValue));
-                } else if constexpr (std::is_same_v<T, std::string>) {
+                else if constexpr (std::is_same_v<T, std::string>)
                     HashCombine(seed, std::hash<std::string>{}(typedValue));
-                } else if constexpr (std::is_same_v<T, Vector2>) {
+                else if constexpr (std::is_same_v<T, Vector2>) {
                     HashCombine(seed, std::hash<float>{}(typedValue.x));
                     HashCombine(seed, std::hash<float>{}(typedValue.y));
-                } else if constexpr (std::is_same_v<T, Vector3>) {
+                }
+                else if constexpr (std::is_same_v<T, Vector3>) {
                     HashCombine(seed, std::hash<float>{}(typedValue.x));
                     HashCombine(seed, std::hash<float>{}(typedValue.y));
                     HashCombine(seed, std::hash<float>{}(typedValue.z));
-                } else if constexpr (std::is_same_v<T, Vector4>) {
+                }
+                else if constexpr (std::is_same_v<T, Vector4>) {
                     HashCombine(seed, std::hash<float>{}(typedValue.x));
                     HashCombine(seed, std::hash<float>{}(typedValue.y));
                     HashCombine(seed, std::hash<float>{}(typedValue.z));
                     HashCombine(seed, std::hash<float>{}(typedValue.w));
-                } else if constexpr (std::is_same_v<T, GameObjectRefValue>) {
+                }
+                else if constexpr (std::is_same_v<T, GameObjectRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
-                } else if constexpr (std::is_same_v<T, ComponentRefValue>) {
+                }
+                else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
                     HashCombine(seed, std::hash<int>{}(typedValue.componentType));
-                } else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
+                }
+                else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
                     HashCombine(seed, std::hash<std::uint64_t>{}(typedValue.instanceId));
-                } else if constexpr (std::is_same_v<T, AssetRefValue>) {
-                    HashCombine(seed, std::hash<std::string>{}(typedValue.path));
                 }
+                else if constexpr (std::is_same_v<T, AssetRefValue>)
+                    HashCombine(seed, std::hash<std::string>{}(typedValue.path));
             },
             value
         );
@@ -351,9 +356,7 @@ namespace {
             if (c == ',') {
                 parts.push_back(TrimCopy(current));
                 current.clear();
-            } else {
-                current += c;
-            }
+            } else current += c;
         }
 
         if (!current.empty() || !parts.empty()) parts.push_back(TrimCopy(current));
@@ -712,9 +715,7 @@ namespace {
 
                     return sol::make_object(luaView, ScriptEntity{&level, typedValue.entityId});
                 }
-                else if constexpr (std::is_same_v<T, ComponentRefValue>) {
-                    return ResolveComponentRef(luaView, level, typedValue);
-                }
+                else if constexpr (std::is_same_v<T, ComponentRefValue>) return ResolveComponentRef(luaView, level, typedValue);
                 else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     if (typedValue.entityId == INVALID_ID || typedValue.instanceId == INVALID_SCRIPT_INSTANCE_ID)
                         return sol::make_object(luaView, sol::nil);
@@ -724,12 +725,8 @@ namespace {
 
                     return sol::make_object(luaView, ScriptBehaviourRef{&level, typedValue.entityId, typedValue.instanceId});
                 }
-                else if constexpr (std::is_same_v<T, AssetRefValue>) {
-                    return sol::make_object(luaView, typedValue.path);
-                }
-                else {
-                    return sol::make_object(luaView, typedValue);
-                }
+                else if constexpr (std::is_same_v<T, AssetRefValue>) return sol::make_object(luaView, typedValue.path);
+                else return sol::make_object(luaView, typedValue);
             },
             value
         );
@@ -1082,9 +1079,8 @@ void LuaScriptSystem::Update(Level& level) {
                     CallLifecycle(instance, instance.startFunction, "Start");
                     instance.started = true;
                 }
-            } else {
-                CallLifecycle(instance, instance.onDisableFunction, "OnDisable");
             }
+            else CallLifecycle(instance, instance.onDisableFunction, "OnDisable");
         }
 
         if (!instance.enabled) continue;

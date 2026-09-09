@@ -883,6 +883,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     bool autocompleteAccept = false;
     bool autocompleteDismiss = false;
     int autocompleteNavDelta = 0;
+    bool autocompleteClickPending = false;
 
     if (autocompleteActive) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) autocompleteDismiss = true;
@@ -915,7 +916,20 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
             mousePos.x >= autocompletePopupMin.x && mousePos.x <= autocompletePopupMax.x &&
             mousePos.y >= autocompletePopupMin.y && mousePos.y <= autocompletePopupMax.y;
 
-        if (mouseInsidePopup) scriptEditor.SetHandleMouseInputs(false);
+        if (mouseInsidePopup) {
+            scriptEditor.SetHandleMouseInputs(false);
+
+            // Also keep this frame from re-deriving the suggestion list
+            // below (see the UpdateAutocomplete() call further down): the
+            // swallow above is only a one-frame-stale approximation, so a
+            // click can still slip through and let the editor move the
+            // text cursor to wherever the popup happens to be drawn over.
+            // Re-deriving from that unexpectedly-moved cursor could
+            // deactivate the popup before DrawAutocompletePopup() ever
+            // gets a chance to hit-test the click itself, silently
+            // swallowing it instead of accepting the clicked suggestion.
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) autocompleteClickPending = true;
+        }
     }
 
     // Auto-close bracket/quote pairs, part 1: "type over" an existing
@@ -1026,14 +1040,20 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         autocompleteActive = false;
     } else if (autocompleteAccept && !autocompleteMatches.empty()) {
         AcceptAutocomplete(autocompleteSelectedIndex);
-    } else if (autocompleteNavDelta == 0) {
-        // Only re-derive suggestions from the buffer when this frame wasn't
-        // purely a list-navigation keypress. UpdateAutocomplete() always
-        // resets autocompleteSelectedIndex back to 0 (it has no idea a nav
-        // key was just pressed) - calling it here unconditionally undid the
-        // selection change applied two lines above on every single Up/Down
-        // press, which is why arrow-key navigation looked like it did
-        // nothing.
+    } else if (autocompleteNavDelta == 0 && !autocompleteClickPending &&
+               (!autocompleteActive || scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged())) {
+        // Only re-derive suggestions from the buffer when something that
+        // should actually invalidate the current list happened: the text
+        // changed, the cursor moved for a reason other than interacting
+        // with the popup (see autocompleteClickPending above), or the
+        // popup isn't showing yet. UpdateAutocomplete() always resets
+        // autocompleteSelectedIndex back to 0 and rebuilds
+        // autocompleteMatches from scratch - calling it on every frame
+        // that merely wasn't itself a nav keypress (which is most frames:
+        // holding an arrow key between OS key-repeat pulses, the mouse
+        // sitting still over a suggestion, ...) undid the selection change
+        // applied two lines above almost as soon as it happened, which is
+        // why arrow-key navigation looked like it did nothing.
         UpdateAutocomplete();
     }
 
