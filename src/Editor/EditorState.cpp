@@ -98,6 +98,18 @@ namespace MapEditorInternal {
     Vector2 curveEnd = {0.0f, 0.0f};
     int curveSubdivisions = 12;
 
+    bool staircaseHasFirstCorner = false;
+    Vector2 staircaseFirstCorner = {0.0f, 0.0f};
+
+    StaircaseCalculationMode staircaseCalcMode = STAIRCASE_CALC_STEP_HEIGHT;
+    StaircaseDirection staircaseDirection = STAIRCASE_DIR_HORIZONTAL;
+    bool staircaseRaiseCeiling = true;
+
+    float staircaseStepHeight = 8.0f;
+    float staircaseStepLength = 32.0f;
+    float staircaseTargetFloorHeight = 40.0f;
+    int staircaseStepCount = 4;
+
     // Geometry / Wall Edit Mode — selection, hover and drag state
     bool editingWall = false;
     ID selectedWallID = INVALID_ID;

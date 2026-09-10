@@ -711,6 +711,7 @@ namespace MapEditorInternal {
                 if (InputManager::GetKeyDown(SDL_SCANCODE_3)) SetActiveDrawTool(DRAWTOOL_POLYGON);
                 if (InputManager::GetKeyDown(SDL_SCANCODE_4)) SetActiveDrawTool(DRAWTOOL_CIRCLE);
                 if (InputManager::GetKeyDown(SDL_SCANCODE_5)) SetActiveDrawTool(DRAWTOOL_CURVE);
+                if (InputManager::GetKeyDown(SDL_SCANCODE_6)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
             }
         }
 

@@ -15,7 +15,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 namespace MapEditorInternal {
-    inline constexpr float UI_FONT_SIZE = 48.0f;
+    inline constexpr float UI_FONT_SIZE = 34.0f;
     inline constexpr float UI_TEXT_PADDING = 8.0f;
 
     extern int screenWidth;
@@ -36,6 +36,13 @@ namespace MapEditorInternal {
     // and the live-preview colouring (MapEditorDrawing.cpp) so the
     // preview's valid/invalid tint always matches what a click would do.
     constexpr float MIN_DRAW_SHAPE_DIMENSION = 0.25f;
+
+    // Hard ceiling on how many step sectors the Staircase tool will ever
+    // generate in one commit - guards against a tiny Step Length (or a
+    // directly-typed huge Step Count) turning one rectangle drag into
+    // thousands of sliver sectors. BuildStaircasePlan rejects with a
+    // localised error instead of generating past this.
+    constexpr int MAX_STAIRCASE_STEPS = 500;
 
     // MODE_GEOMETRY took over the slot (and the default) MODE_DOT used
     // to hold: dots are no longer a user-facing object type, and editing
@@ -80,8 +87,30 @@ namespace MapEditorInternal {
         DRAWTOOL_POLYGON,
         DRAWTOOL_CIRCLE,
         DRAWTOOL_CURVE,
+        DRAWTOOL_STAIRCASE,
 
         DRAWTOOL_COUNT
+    };
+
+    // Staircase tool: which inputs determine the step count/height. See
+    // BuildStaircasePlan (MapEditorGeometry.cpp) for the exact formulas.
+    enum StaircaseCalculationMode {
+        STAIRCASE_CALC_STEP_HEIGHT,   // step height + step length -> step count from the rectangle
+        STAIRCASE_CALC_TARGET_HEIGHT, // target floor height + step length -> step count, then back-solve step height
+        STAIRCASE_CALC_STEP_COUNT,    // step count + step height -> step length from the rectangle
+
+        STAIRCASE_CALC_COUNT
+    };
+
+    // Which world axis the staircase progresses along. Horizontal uses the
+    // drawn rectangle's width (world X); Vertical uses its height, which is
+    // world Z (see the Vector2 world-space convention noted on
+    // StaircaseStepSpan below).
+    enum StaircaseDirection {
+        STAIRCASE_DIR_HORIZONTAL,
+        STAIRCASE_DIR_VERTICAL,
+
+        STAIRCASE_DIR_COUNT
     };
 
     // Which point the Curve tool is currently waiting for.
@@ -142,6 +171,43 @@ namespace MapEditorInternal {
         std::vector<ID> selectedWalls;
         bool editingSector = false;
         bool editingWall = false;
+    };
+
+    // One generated step of an in-progress or committed staircase. Corners
+    // are a closed quad in the same a/b/c/d winding the Rectangle tool
+    // uses (see HandleRectangleClick) - the Vector2 world-space
+    // convention throughout the Map Editor is (world X, world Z), matching
+    // how DrawEntities()/HandleEditorInput() feed transform.x/transform.z
+    // into WorldToScreen, so this needs no separate axis mapping.
+    struct StaircaseStepSpan {
+        Vector2 corners[4];
+        float floorHeight = 0.0f;
+        float ceilHeight = 0.0f;
+        int index = 0; // 0 = bottom/starting step, increasing toward the top
+    };
+
+    // Everything BuildStaircasePlan derives from two corners and the
+    // current Staircase panel settings: validated, divided into steps,
+    // ready either to preview or to commit. The live preview
+    // (MapEditorDrawing.cpp), the settings-panel readout
+    // (MapEditorUI.cpp) and the commit path (HandleStaircaseClick) all
+    // consume the exact same plan, so none of them can disagree about
+    // what a given rectangle produces.
+    struct StaircasePlan {
+        bool valid = false;
+        std::string error; // localised; meaningful only when !valid
+
+        // Non-blocking notices - the plan is still valid/creatable.
+        bool headroomWarning = false;      // Raise Ceiling is off and >=1 step has <= 0 headroom
+        bool targetSingleSectorNote = false; // Target Height mode collapsed to one step (no rise possible)
+
+        std::vector<StaircaseStepSpan> steps;
+
+        int stepCount = 0;
+        float effectiveStepHeight = 0.0f;
+        float effectiveStepLength = 0.0f;
+        float startingFloorHeight = 0.0f;
+        float finalFloorHeight = 0.0f;
     };
 
     // Internal variables do not touch
@@ -256,6 +322,24 @@ namespace MapEditorInternal {
     extern Vector2 curveStart;
     extern Vector2 curveEnd;
     extern int curveSubdivisions; // >= 1
+
+    // Staircase tool: two opposite corners (same click interaction as
+    // Rectangle), plus the settings panel's persistent state. All of the
+    // settings below deliberately survive SetActiveDrawTool/
+    // CancelActiveDrawing switching away and back - only
+    // staircaseHasFirstCorner/staircaseFirstCorner (the in-progress
+    // rectangle) are tool-in-progress state that gets reset.
+    extern bool staircaseHasFirstCorner;
+    extern Vector2 staircaseFirstCorner;
+
+    extern StaircaseCalculationMode staircaseCalcMode;
+    extern StaircaseDirection staircaseDirection;
+    extern bool staircaseRaiseCeiling;
+
+    extern float staircaseStepHeight;        // Step Height & Step Count modes
+    extern float staircaseStepLength;        // Step Height & Target Height modes
+    extern float staircaseTargetFloorHeight; // Target Height mode
+    extern int staircaseStepCount;           // Step Count mode, >= 1
 
     // =========================================================================
     //  Geometry / Wall Edit Mode — selection state
@@ -461,6 +545,20 @@ namespace MapEditorInternal {
     [[nodiscard]] Vector2 ResolvePolygonHandle(const Vector2& mouseWorld);  // valid once polygonHasCenter
     [[nodiscard]] Vector2 ResolveCircleHandle(const Vector2& mouseWorld);   // valid once circleHasCenter
     [[nodiscard]] Vector2 ResolveCurveEnd(const Vector2& mouseWorld);       // valid during CURVE_STAGE_END
+    [[nodiscard]] Vector2 ResolveStaircaseCorner(const Vector2& mouseWorld); // valid once staircaseHasFirstCorner
+
+    // True while the Staircase tool's rising-direction modifier (Alt) is
+    // held - temporarily flips which end of the drawn rectangle is the
+    // bottom of the stairs, without needing to redraw it. Read by
+    // BuildStaircasePlan.
+    [[nodiscard]] bool IsReverseRiseModifierHeld();
+
+    // True for the two calculation modes that take a user-specified Step
+    // Length (Step Height and Target Height) - Step Count mode derives its
+    // step length from the rectangle instead. Shared between the panel
+    // (which field to show), ResolveStaircaseCorner (whether Shift's
+    // whole-step constraint applies) and BuildStaircasePlan.
+    [[nodiscard]] bool StaircaseModeUsesStepLength(StaircaseCalculationMode mode);
 
     // Point generators for the three parametric tools. Never snapped
     // vertex-by-vertex (only the control points that define them are) -
@@ -471,6 +569,27 @@ namespace MapEditorInternal {
     [[nodiscard]] std::vector<Vector2> BuildRegularPolygon(const Vector2& center, const Vector2& handle, int sideCount);
     [[nodiscard]] std::vector<Vector2> BuildEllipse(const Vector2& center, float radiusX, float radiusY, int segments);
     [[nodiscard]] std::vector<Vector2> BuildQuadraticCurve(const Vector2& start, const Vector2& control, const Vector2& end, int subdivisions);
+
+    // Derives the full staircase layout (validated, divided into steps,
+    // with per-step floor/ceiling heights) from two rectangle corners and
+    // the current Staircase panel settings. Pure - touches no editor
+    // state, so it's safe to call every frame for the live preview and
+    // the settings-panel readout as well as at commit time. `plan.valid`
+    // is false (with `plan.error` set to a localised message) whenever
+    // the rectangle or the current settings can't produce geometry.
+    [[nodiscard]] StaircasePlan BuildStaircasePlan(const Vector2& firstCorner, const Vector2& secondCorner);
+
+    // Commits an already-`valid` StaircasePlan as one undoable operation:
+    // one MapTopology::ApplyDrawnGeometry call per step (so adjacent steps
+    // reuse/split each other's shared boundary wall the same way any two
+    // adjacently-drawn sectors would), captured under a single
+    // GeometrySnapshot/ACTION_APPLY_GEOMETRY entry rather than one per
+    // step. If any step is rejected partway through, every step already
+    // applied this call is rolled back and the level is left exactly as
+    // it was before the call. Selects every newly created sector on
+    // success. Returns false (and sets lastGeometryError) on rejection or
+    // if `plan` isn't valid.
+    bool CommitStaircasePlan(const StaircasePlan& plan);
 
     // Lightweight geometry validation shared between the drawing-tool
     // commit path and live-preview colouring. DedupeConsecutivePoints

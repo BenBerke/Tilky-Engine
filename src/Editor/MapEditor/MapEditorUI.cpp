@@ -2618,6 +2618,126 @@ namespace MapEditorInternal {
         ImGui::PopStyleColor(3);
     }
 
+    // Staircase tool's settings: calculation mode, only the fields that
+    // mode actually uses, direction, Raise Ceiling, and - while a
+    // rectangle is in progress - the same calculated values the preview
+    // shows (BuildStaircasePlan is the single source of truth for both).
+    void DrawStaircaseSettingsPanel() {
+        constexpr float INPUT_WIDTH = 110.0f;
+
+        // ---- Calculation Mode -----------------------------------------
+        ImGui::TextUnformatted(Get("editor.staircase.calc_mode").c_str());
+
+        int calcModeInt = static_cast<int>(staircaseCalcMode);
+
+        if (ImGui::RadioButton((Get("editor.staircase.calc_mode.step_height") + "##StaircaseCalcStepHeight").c_str(), &calcModeInt, STAIRCASE_CALC_STEP_HEIGHT))
+            staircaseCalcMode = STAIRCASE_CALC_STEP_HEIGHT;
+        HoverTooltip(Get("editor.tooltip.staircase.calc_mode.step_height").c_str());
+
+        if (ImGui::RadioButton((Get("editor.staircase.calc_mode.target_height") + "##StaircaseCalcTargetHeight").c_str(), &calcModeInt, STAIRCASE_CALC_TARGET_HEIGHT))
+            staircaseCalcMode = STAIRCASE_CALC_TARGET_HEIGHT;
+        HoverTooltip(Get("editor.tooltip.staircase.calc_mode.target_height").c_str());
+
+        if (ImGui::RadioButton((Get("editor.staircase.calc_mode.step_count") + "##StaircaseCalcStepCount").c_str(), &calcModeInt, STAIRCASE_CALC_STEP_COUNT))
+            staircaseCalcMode = STAIRCASE_CALC_STEP_COUNT;
+        HoverTooltip(Get("editor.tooltip.staircase.calc_mode.step_count").c_str());
+
+        ImGui::Spacing();
+
+        // ---- Mode-specific fields - only what the selected mode uses --
+        if (staircaseCalcMode == STAIRCASE_CALC_STEP_HEIGHT || staircaseCalcMode == STAIRCASE_CALC_STEP_COUNT) {
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+            ImGui::InputFloat((Get("editor.staircase.step_height") + "##StaircaseStepHeight").c_str(), &staircaseStepHeight, 1.0f, 10.0f, "%.2f");
+            HoverTooltip(Get("editor.tooltip.staircase.step_height").c_str());
+        }
+
+        if (StaircaseModeUsesStepLength(staircaseCalcMode)) {
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+            ImGui::InputFloat((Get("editor.staircase.step_length") + "##StaircaseStepLength").c_str(), &staircaseStepLength, 1.0f, 10.0f, "%.2f");
+            staircaseStepLength = std::max(staircaseStepLength, 0.0f);
+            HoverTooltip(Get("editor.tooltip.staircase.step_length").c_str());
+        }
+
+        if (staircaseCalcMode == STAIRCASE_CALC_TARGET_HEIGHT) {
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+            ImGui::InputFloat((Get("editor.staircase.target_floor_height") + "##StaircaseTargetFloorHeight").c_str(), &staircaseTargetFloorHeight, 1.0f, 10.0f, "%.2f");
+            HoverTooltip(Get("editor.tooltip.staircase.target_floor_height").c_str());
+        }
+
+        if (staircaseCalcMode == STAIRCASE_CALC_STEP_COUNT) {
+            ImGui::SetNextItemWidth(INPUT_WIDTH);
+            ImGui::InputInt((Get("editor.staircase.step_count") + "##StaircaseStepCount").c_str(), &staircaseStepCount, 1, 10);
+            staircaseStepCount = std::max(staircaseStepCount, 1);
+            HoverTooltip(Get("editor.tooltip.staircase.step_count").c_str());
+        }
+
+        ImGui::Spacing();
+
+        // ---- Direction ---------------------------------------------------
+        ImGui::TextUnformatted(Get("editor.staircase.direction").c_str());
+
+        int dirInt = static_cast<int>(staircaseDirection);
+
+        if (ImGui::RadioButton((Get("editor.staircase.direction.horizontal") + "##StaircaseDirHorizontal").c_str(), &dirInt, STAIRCASE_DIR_HORIZONTAL))
+            staircaseDirection = STAIRCASE_DIR_HORIZONTAL;
+        HoverTooltip(Get("editor.tooltip.staircase.direction.horizontal").c_str());
+
+        ImGui::SameLine();
+
+        if (ImGui::RadioButton((Get("editor.staircase.direction.vertical") + "##StaircaseDirVertical").c_str(), &dirInt, STAIRCASE_DIR_VERTICAL))
+            staircaseDirection = STAIRCASE_DIR_VERTICAL;
+        HoverTooltip(Get("editor.tooltip.staircase.direction.vertical").c_str());
+
+        ImGui::Spacing();
+
+        ImGui::Checkbox(Get("editor.staircase.raise_ceiling").c_str(), &staircaseRaiseCeiling);
+        HoverTooltip(Get("editor.tooltip.staircase.raise_ceiling").c_str());
+
+        ImGui::Spacing();
+        ImGui::TextDisabled("%s", Get("editor.draw.hint.staircase").c_str());
+
+        // ---- Live calculated values - same plan the preview draws ------
+        if (!staircaseHasFirstCorner) return;
+
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+        const Vector2 opposite = ResolveStaircaseCorner(mouseWorld);
+
+        const StaircasePlan plan = BuildStaircasePlan(staircaseFirstCorner, opposite);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        SectionHeader(Get("editor.staircase.results.title").c_str());
+        ImGui::Spacing();
+
+        if (!plan.valid) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.35f, 0.35f, 1.00f));
+            ImGui::TextWrapped("%s", plan.error.c_str());
+            ImGui::PopStyleColor();
+            return;
+        }
+
+        ImGui::Text("%s: %d", Get("editor.staircase.results.step_count").c_str(), plan.stepCount);
+        ImGui::Text("%s: %.2f", Get("editor.staircase.results.effective_step_height").c_str(), plan.effectiveStepHeight);
+        ImGui::Text("%s: %.2f", Get("editor.staircase.results.effective_step_length").c_str(), plan.effectiveStepLength);
+        ImGui::Text("%s: %.2f", Get("editor.staircase.results.starting_floor").c_str(), plan.startingFloorHeight);
+        ImGui::Text("%s: %.2f", Get("editor.staircase.results.final_floor").c_str(), plan.finalFloorHeight);
+
+        if (plan.targetSingleSectorNote) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.2f, 1.0f));
+            ImGui::TextWrapped("%s", Get("editor.staircase.notice.target_single_step").c_str());
+            ImGui::PopStyleColor();
+        }
+
+        if (plan.headroomWarning) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.65f, 0.15f, 1.0f));
+            ImGui::TextWrapped("%s", Get("editor.staircase.warning.headroom").c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+
     // Tool-select buttons plus whichever settings/hint text apply to
     // the active tool. Sector Mode only, placed right above the existing
     // "New sector properties" section, since every tool here ultimately
@@ -2641,10 +2761,13 @@ namespace MapEditorInternal {
 
         //ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.polygon").c_str(), DRAWTOOL_POLYGON, toolButtonWidth);
+        ImGui::SameLine(0.0f, 4.0f);
+        DrawToolButton(Get("editor.draw.tool.staircase").c_str(), DRAWTOOL_STAIRCASE, toolButtonWidth);
 
         DrawToolButton(Get("editor.draw.tool.circle").c_str(), DRAWTOOL_CIRCLE, toolButtonWidth);
         ImGui::SameLine(0.0f, 4.0f);
         DrawToolButton(Get("editor.draw.tool.curve").c_str(), DRAWTOOL_CURVE, toolButtonWidth);
+
 
         ImGui::Spacing();
 
@@ -2731,13 +2854,27 @@ namespace MapEditorInternal {
                 ImGui::TextDisabled("%s", Get("editor.draw.hint.curve").c_str());
                 break;
 
+            case DRAWTOOL_STAIRCASE:
+                DrawStaircaseSettingsPanel();
+                break;
+
             default: break;
         }
 
         ImGui::Spacing();
 
         ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.general").c_str());
-        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.constrain").c_str());
+
+        // Ctrl's meaning is the same for every tool (temporarily ignore
+        // the grid - see ResolveSnapPointExcluding), so it's shown
+        // unconditionally; Shift's meaning is tool-specific.
+        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.no_snap").c_str());
+
+        if (currentDrawTool == DRAWTOOL_STAIRCASE) {
+            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.staircase_constrain").c_str());
+            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.staircase_reverse").c_str());
+        }
+        else ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.constrain").c_str());
 
         if (currentDrawTool == DRAWTOOL_POLYGON)
             ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.sides").c_str());

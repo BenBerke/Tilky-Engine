@@ -273,7 +273,15 @@ namespace MapEditorInternal {
             if (MapTopology::ClosestPointOnAnyWall(snapCandidateWalls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
         }
 
-        if (gridSnapEnabled) return SnapToGrid(mouseWorld);
+        // Ctrl is the universal "just this once, ignore the grid" override -
+        // centralised here (rather than in each tool's Resolve* function)
+        // so every drawing/dragging path that ends up here gets it for
+        // free, staying consistent with vertex snapping and grid snapping
+        // never getting a separate override of their own.
+        const bool snapOverrideHeld =
+            InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
+        if (gridSnapEnabled && !snapOverrideHeld) return SnapToGrid(mouseWorld);
 
         return mouseWorld;
     }
@@ -661,6 +669,24 @@ namespace MapEditorInternal {
             if (CommitClosedShape({a, b, c, d})) rectangleHasFirstCorner = false;
         }
 
+        void HandleStaircaseClick(const Vector2& rawMouseWorld) {
+            if (!staircaseHasFirstCorner) {
+                staircaseFirstCorner = ResolveSnapPoint(rawMouseWorld);
+                staircaseHasFirstCorner = true;
+                return;
+            }
+
+            const Vector2 opposite = ResolveStaircaseCorner(rawMouseWorld);
+            const StaircasePlan plan = BuildStaircasePlan(staircaseFirstCorner, opposite);
+
+            if (!plan.valid) {
+                lastGeometryError = plan.error;
+                return; // stay in progress, same convention as the other shape tools
+            }
+
+            if (CommitStaircasePlan(plan)) staircaseHasFirstCorner = false;
+        }
+
         void HandlePolygonClick(const Vector2& rawMouseWorld) {
             if (!polygonHasCenter) {
                 polygonCenter = ResolveSnapPoint(rawMouseWorld);
@@ -835,6 +861,42 @@ namespace MapEditorInternal {
         return corner;
     }
 
+    bool IsReverseRiseModifierHeld() {
+        return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT);
+    }
+
+    bool StaircaseModeUsesStepLength(const StaircaseCalculationMode mode) {
+        return mode == STAIRCASE_CALC_STEP_HEIGHT || mode == STAIRCASE_CALC_TARGET_HEIGHT;
+    }
+
+    // Shift here means "snap the staircase's length to a whole number of
+    // steps", not the Rectangle tool's "force a square" - so this can't
+    // reuse ResolveRectangleCorner despite the identical click shape.
+    // Only the coordinate along the progression axis is touched; the
+    // perpendicular dimension of the rectangle is left exactly where the
+    // cursor put it.
+    Vector2 ResolveStaircaseCorner(const Vector2& mouseWorld) {
+        Vector2 corner = ResolveSnapPoint(mouseWorld);
+        if (!staircaseHasFirstCorner) return corner;
+
+        if (IsConstrainModifierHeld() && StaircaseModeUsesStepLength(staircaseCalcMode) && staircaseStepLength > 0.0f) {
+            const bool horizontal = staircaseDirection == STAIRCASE_DIR_HORIZONTAL;
+
+            const float axisStart = horizontal ? staircaseFirstCorner.x : staircaseFirstCorner.y;
+            const float axisValue = horizontal ? corner.x : corner.y;
+
+            const float delta = axisValue - axisStart;
+            const float sign = delta < 0.0f ? -1.0f : 1.0f;
+            const float steps = std::max(1.0f, std::round(std::fabs(delta) / staircaseStepLength));
+            const float constrained = axisStart + sign * steps * staircaseStepLength;
+
+            if (horizontal) corner.x = constrained;
+            else corner.y = constrained;
+        }
+
+        return corner;
+    }
+
     Vector2 ResolvePolygonHandle(const Vector2& mouseWorld) {
         Vector2 handle = ResolveSnapPoint(mouseWorld);
         if (!polygonHasCenter) return handle;
@@ -925,12 +987,220 @@ namespace MapEditorInternal {
         return points;
     }
 
+    StaircasePlan BuildStaircasePlan(const Vector2& firstCorner, const Vector2& secondCorner) {
+        StaircasePlan plan;
+
+        if (!std::isfinite(firstCorner.x) || !std::isfinite(firstCorner.y) ||
+            !std::isfinite(secondCorner.x) || !std::isfinite(secondCorner.y)) {
+            plan.error = Localisation::Get("editor.staircase.error.rectangle_invalid");
+            return plan;
+        }
+
+        const float width = std::fabs(secondCorner.x - firstCorner.x);
+        const float height = std::fabs(secondCorner.y - firstCorner.y);
+
+        if (!std::isfinite(width) || !std::isfinite(height) ||
+            width < MIN_DRAW_SHAPE_DIMENSION || height < MIN_DRAW_SHAPE_DIMENSION) {
+            plan.error = Localisation::Get("editor.draw.error.rectangle_zero_size");
+            return plan;
+        }
+
+        const bool horizontal = staircaseDirection == STAIRCASE_DIR_HORIZONTAL;
+        const float relevantLength = horizontal ? width : height;
+
+        const float startingFloorHeight = floorHeight;
+        const float startingCeilHeight = ceilHeight;
+
+        // Guards a ceil(length / stepLength) step count against landing
+        // one too high purely from float error on an exact multiple.
+        constexpr float kLengthEpsilon = 0.001f;
+
+        int rawStepCount = 0;
+        float lengthPerFullStep = 0.0f;
+        bool mergeTinyTailStep = false;
+
+        switch (staircaseCalcMode) {
+            case STAIRCASE_CALC_STEP_HEIGHT:
+            case STAIRCASE_CALC_TARGET_HEIGHT: {
+                if (!std::isfinite(staircaseStepLength) || staircaseStepLength <= 0.0f) {
+                    plan.error = Localisation::Get("editor.staircase.error.step_length_invalid");
+                    return plan;
+                }
+
+                if (staircaseCalcMode == STAIRCASE_CALC_STEP_HEIGHT) {
+                    if (!std::isfinite(staircaseStepHeight)) {
+                        plan.error = Localisation::Get("editor.staircase.error.step_height_invalid");
+                        return plan;
+                    }
+                } else if (!std::isfinite(staircaseTargetFloorHeight)) {
+                    plan.error = Localisation::Get("editor.staircase.error.target_height_invalid");
+                    return plan;
+                }
+
+                rawStepCount = std::max(1, static_cast<int>(std::ceil(relevantLength / staircaseStepLength - kLengthEpsilon)));
+                lengthPerFullStep = staircaseStepLength;
+                mergeTinyTailStep = true;
+                break;
+            }
+
+            case STAIRCASE_CALC_STEP_COUNT: {
+                if (staircaseStepCount < 1) {
+                    plan.error = Localisation::Get("editor.staircase.error.step_count_invalid");
+                    return plan;
+                }
+                if (!std::isfinite(staircaseStepHeight)) {
+                    plan.error = Localisation::Get("editor.staircase.error.step_height_invalid");
+                    return plan;
+                }
+
+                rawStepCount = staircaseStepCount;
+                lengthPerFullStep = relevantLength / static_cast<float>(rawStepCount);
+                mergeTinyTailStep = false;
+                break;
+            }
+
+            default:
+                plan.error = Localisation::Get("bug.unknown");
+                return plan;
+        }
+
+        if (!std::isfinite(lengthPerFullStep) || lengthPerFullStep <= 0.0f) {
+            plan.error = Localisation::Get("editor.staircase.error.calculation_invalid");
+            return plan;
+        }
+
+        if (rawStepCount > MAX_STAIRCASE_STEPS) {
+            char buffer[192];
+            std::snprintf(
+                buffer, sizeof(buffer),
+                Localisation::Get("editor.staircase.error.too_many_steps").c_str(),
+                rawStepCount, MAX_STAIRCASE_STEPS
+            );
+            plan.error = buffer;
+            return plan;
+        }
+
+        // ---- Division boundaries along the progression axis ---------------
+        // Each boundary is computed from the original rectangle corner and
+        // the step index (never by accumulating the previous boundary), so
+        // float error can't compound across steps; the final boundary is
+        // always the rectangle's exact endpoint.
+        const float axisStart = horizontal ? firstCorner.x : firstCorner.y;
+        const float axisEnd = horizontal ? secondCorner.x : secondCorner.y;
+        const float sign = axisEnd >= axisStart ? 1.0f : -1.0f;
+
+        std::vector<float> boundaries;
+        boundaries.reserve(rawStepCount + 1);
+
+        for (int k = 0; k < rawStepCount; ++k) {
+            const float clampedLength = std::min(static_cast<float>(k) * lengthPerFullStep, relevantLength);
+            boundaries.push_back(axisStart + sign * clampedLength);
+        }
+        boundaries.push_back(axisEnd);
+
+        // Step-length modes only: a near-exact-multiple rectangle can leave
+        // an essentially-zero final sliver from float error alone - fold
+        // it into the previous step rather than emit a degenerate sector.
+        // Step Count mode never merges: it must produce exactly the
+        // requested number of sectors.
+        constexpr float kMinStepSpan = 0.05f;
+
+        if (mergeTinyTailStep && boundaries.size() >= 3) {
+            const std::size_t last = boundaries.size() - 1;
+            if (std::fabs(boundaries[last] - boundaries[last - 1]) < kMinStepSpan)
+                boundaries.erase(boundaries.begin() + static_cast<long>(last) - 1);
+        }
+
+        const int stepCount = static_cast<int>(boundaries.size()) - 1;
+
+        if (stepCount < 1) {
+            plan.error = Localisation::Get("editor.draw.error.rectangle_zero_size");
+            return plan;
+        }
+
+        // ---- Effective height/length, now that the step count is settled --
+        float effectiveStepHeight;
+
+        if (staircaseCalcMode == STAIRCASE_CALC_TARGET_HEIGHT) {
+            effectiveStepHeight = stepCount > 1
+                ? (staircaseTargetFloorHeight - startingFloorHeight) / static_cast<float>(stepCount - 1)
+                : 0.0f;
+
+            if (stepCount == 1) plan.targetSingleSectorNote = true;
+        } else {
+            effectiveStepHeight = staircaseStepHeight;
+        }
+
+        const float effectiveStepLength = (staircaseCalcMode == STAIRCASE_CALC_STEP_COUNT)
+            ? relevantLength / static_cast<float>(stepCount)
+            : staircaseStepLength;
+
+        if (!std::isfinite(effectiveStepHeight) || !std::isfinite(effectiveStepLength)) {
+            plan.error = Localisation::Get("editor.staircase.error.calculation_invalid");
+            return plan;
+        }
+
+        // ---- Build the steps ------------------------------------------------
+        const bool reversed = IsReverseRiseModifierHeld();
+
+        plan.steps.reserve(stepCount);
+
+        for (int slot = 0; slot < stepCount; ++slot) {
+            const float b0 = boundaries[slot];
+            const float b1 = boundaries[slot + 1];
+
+            const int heightIndex = reversed ? (stepCount - 1 - slot) : slot;
+
+            const float stepFloor = startingFloorHeight + static_cast<float>(heightIndex) * effectiveStepHeight;
+            const float stepCeil = staircaseRaiseCeiling
+                ? startingCeilHeight + static_cast<float>(heightIndex) * effectiveStepHeight
+                : startingCeilHeight;
+
+            if (!std::isfinite(b0) || !std::isfinite(b1) || !std::isfinite(stepFloor) || !std::isfinite(stepCeil)) {
+                plan.error = Localisation::Get("editor.staircase.error.calculation_invalid");
+                plan.steps.clear();
+                return plan;
+            }
+
+            if (!staircaseRaiseCeiling && stepCeil <= stepFloor) plan.headroomWarning = true;
+
+            StaircaseStepSpan step;
+            step.index = heightIndex;
+            step.floorHeight = stepFloor;
+            step.ceilHeight = stepCeil;
+
+            if (horizontal) {
+                step.corners[0] = {b0, firstCorner.y};
+                step.corners[1] = {b1, firstCorner.y};
+                step.corners[2] = {b1, secondCorner.y};
+                step.corners[3] = {b0, secondCorner.y};
+            } else {
+                step.corners[0] = {firstCorner.x, b0};
+                step.corners[1] = {secondCorner.x, b0};
+                step.corners[2] = {secondCorner.x, b1};
+                step.corners[3] = {firstCorner.x, b1};
+            }
+
+            plan.steps.push_back(step);
+        }
+
+        plan.valid = true;
+        plan.stepCount = stepCount;
+        plan.effectiveStepHeight = effectiveStepHeight;
+        plan.effectiveStepLength = effectiveStepLength;
+        plan.startingFloorHeight = startingFloorHeight;
+        plan.finalFloorHeight = startingFloorHeight + static_cast<float>(stepCount - 1) * effectiveStepHeight;
+
+        return plan;
+    }
+
     bool IsDrawingInProgress() {
         if (!sectorBeingCreated.empty() || manualSectorMode) return true;
         if (rectangleHasFirstCorner) return true;
         if (polygonHasCenter) return true;
         if (circleHasCenter) return true;
         if (curveStage != CURVE_STAGE_START) return true;
+        if (staircaseHasFirstCorner) return true;
 
         return false;
     }
@@ -943,6 +1213,7 @@ namespace MapEditorInternal {
         polygonHasCenter = false;
         circleHasCenter = false;
         curveStage = CURVE_STAGE_START;
+        staircaseHasFirstCorner = false;
     }
 
     void SetActiveDrawTool(const DrawTool tool) {
@@ -972,6 +1243,10 @@ namespace MapEditorInternal {
 
             case DRAWTOOL_CURVE:
                 HandleCurveClick(rawMouseWorld);
+                break;
+
+            case DRAWTOOL_STAIRCASE:
+                HandleStaircaseClick(rawMouseWorld);
                 break;
 
             default: break;
@@ -1004,6 +1279,10 @@ namespace MapEditorInternal {
             case DRAWTOOL_CURVE:
                 if (curveStage == CURVE_STAGE_CONTROL) curveStage = CURVE_STAGE_END;
                 else if (curveStage == CURVE_STAGE_END) curveStage = CURVE_STAGE_START;
+                break;
+
+            case DRAWTOOL_STAIRCASE:
+                staircaseHasFirstCorner = false;
                 break;
 
             default: break;
@@ -1059,6 +1338,7 @@ namespace MapEditorInternal {
             case DRAWTOOL_POLYGON:   return Localisation::Get("editor.draw.tool.polygon");
             case DRAWTOOL_CIRCLE:    return Localisation::Get("editor.draw.tool.circle");
             case DRAWTOOL_CURVE:     return Localisation::Get("editor.draw.tool.curve");
+            case DRAWTOOL_STAIRCASE: return Localisation::Get("editor.draw.tool.staircase");
             default:                 return Localisation::Get("bug.unknown");
         }
     }
@@ -1188,6 +1468,22 @@ namespace MapEditorInternal {
                 return buffer;
             }
 
+            case DRAWTOOL_STAIRCASE: {
+                if (!staircaseHasFirstCorner) return Localisation::Get("editor.draw.prompt.first_corner");
+
+                const Vector2 opposite = ResolveStaircaseCorner(mouseWorld);
+                const StaircasePlan plan = BuildStaircasePlan(staircaseFirstCorner, opposite);
+
+                if (!plan.valid) return plan.error;
+
+                std::snprintf(buffer, sizeof(buffer), "%d %s   %s: %.1f -> %.1f",
+                              plan.stepCount,
+                              Localisation::Get("editor.staircase.measure.steps").c_str(),
+                              Localisation::Get("editor.staircase.measure.floor_range").c_str(),
+                              plan.startingFloorHeight, plan.finalFloorHeight);
+                return buffer;
+            }
+
             default: return "";
         }
     }
@@ -1275,6 +1571,98 @@ namespace MapEditorInternal {
             // both read, so a freshly drawn sector has to land in the
             // plural selection too.
             SelectSector(applyResult.affectedSectorIDs.front());
+            editingSector = true;
+        }
+
+        lastGeometryError.clear();
+
+        return true;
+    }
+
+    namespace {
+        // Same base values every other new sector gets (BuildPendingSectorParams
+        // reads the current wallTexture/floorTexture/ceilTexture/colors/
+        // light globals), with just this one step's floor/ceiling heights
+        // substituted in - preserves every applicable pending sector and
+        // wall setting per step, as the Rectangle tool would for a single
+        // sector.
+        MapTopology::NewSectorParams BuildStaircaseStepTopologyParams(const float stepFloorHeight, const float stepCeilHeight) {
+            const PendingSectorParams base = BuildPendingSectorParams();
+
+            MapTopology::NewSectorParams params;
+            params.wallTexture = base.wallTexture;
+            params.floors = base.floors;
+
+            if (params.floors.empty()) params.floors.resize(1);
+
+            params.floors.front().floor.height = stepFloorHeight;
+            params.floors.front().ceiling.height = stepCeilHeight;
+
+            params.lightValue = base.lightValue;
+            params.wallColor = base.wallColor;
+            return params;
+        }
+    }
+
+    bool CommitStaircasePlan(const StaircasePlan& plan) {
+        if (!plan.valid || plan.steps.empty()) {
+            lastGeometryError = plan.error.empty()
+                ? Localisation::Get("editor.draw.error.rectangle_zero_size")
+                : plan.error;
+            return false;
+        }
+
+        Level& level = LevelManager::CurrentLevel();
+
+        // One snapshot for the WHOLE staircase, taken before any step is
+        // applied - every step below goes straight through
+        // MapTopology::ApplyDrawnGeometry (bypassing the single-sector
+        // ApplyDrawnGeometry above, which would push its own undo entry
+        // per step) so the entire multi-sector staircase becomes exactly
+        // one ACTION_APPLY_GEOMETRY entry.
+        const GeometrySnapshot snapshot = CaptureGeometrySnapshot(level);
+
+        std::vector<ID> affectedSectorIDs;
+
+        for (const StaircaseStepSpan& step : plan.steps) {
+            const MapTopology::NewSectorParams stepParams =
+                BuildStaircaseStepTopologyParams(step.floorHeight, step.ceilHeight);
+
+            const std::vector<Vector2> loop = {
+                step.corners[0], step.corners[1], step.corners[2], step.corners[3], step.corners[0]
+            };
+
+            const MapTopology::ApplyResult result = MapTopology::ApplyDrawnGeometry(level, loop, stepParams);
+
+            if (!result.success) {
+                // Roll back every step already applied this call - a
+                // partially-built staircase is worse than none, and the
+                // caller expects "left exactly as it was" on rejection,
+                // same contract the single-sector ApplyDrawnGeometry has.
+                level.walls = snapshot.walls;
+                level.sectors = snapshot.sectors;
+                level.nextWallID = snapshot.nextWallID;
+                level.nextSectorID = snapshot.nextSectorID;
+                MapQueries::RebuildSectorRuntimeLinks(level);
+
+                spdlog::warn("Staircase geometry rejected on step {}: {}", step.index, result.message);
+                lastGeometryError = result.message;
+                return false;
+            }
+
+            for (const ID sectorID : result.affectedSectorIDs)
+                if (std::find(affectedSectorIDs.begin(), affectedSectorIDs.end(), sectorID) == affectedSectorIDs.end())
+                    affectedSectorIDs.push_back(sectorID);
+        }
+
+        geometrySnapshots.push_back(snapshot);
+        actions.push_back(ACTION_APPLY_GEOMETRY);
+
+        if (!affectedSectorIDs.empty()) {
+            // Every newly created step sector, not just the primary - see
+            // the header comment on CommitStaircasePlan.
+            selectedSectors = affectedSectorIDs;
+            selectedSectorID = affectedSectorIDs.front();
             editingSector = true;
         }
 

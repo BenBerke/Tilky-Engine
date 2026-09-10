@@ -397,6 +397,106 @@ namespace MapEditorInternal {
             DrawWorldLabel(GetActiveDrawToolMeasurementText(), control, ThemeTextColor());
         }
 
+        // Simple two-stroke arrowhead from `fromWorld` to `toWorld`, used
+        // to show the staircase's rising direction. Deliberately its own
+        // tiny primitive rather than a reuse of DrawThickLine (which
+        // forces the theme wall colour) or DrawColoredThickLine (defined
+        // further down this file, after this point uses it).
+        void DrawArrow(const Vector2& fromWorld, const Vector2& toWorld, const Vector3& color) {
+            const Vector2 from = WorldToScreen(fromWorld, cameraPos);
+            const Vector2 to = WorldToScreen(toWorld, cameraPos);
+
+            const float dx = to.x - from.x;
+            const float dy = to.y - from.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length < 0.5f) return;
+
+            SDL_SetRenderDrawColor(renderer, static_cast<Uint8>(color.r), static_cast<Uint8>(color.g), static_cast<Uint8>(color.b), 255);
+            SDL_RenderLine(renderer, from.x, from.y, to.x, to.y);
+
+            const float dirX = dx / length;
+            const float dirY = dy / length;
+
+            constexpr float headLength = 14.0f;
+            constexpr float headAngle = 0.5f; // radians
+
+            const auto rotate = [](const float x, const float y, const float angle) {
+                return Vector2{x * std::cos(angle) - y * std::sin(angle), x * std::sin(angle) + y * std::cos(angle)};
+            };
+
+            const Vector2 left = rotate(-dirX, -dirY, headAngle);
+            const Vector2 right = rotate(-dirX, -dirY, -headAngle);
+
+            SDL_RenderLine(renderer, to.x, to.y, to.x + left.x * headLength, to.y + left.y * headLength);
+            SDL_RenderLine(renderer, to.x, to.y, to.x + right.x * headLength, to.y + right.y * headLength);
+        }
+
+        Vector2 StepCentroid(const StaircaseStepSpan& step) {
+            return {
+                (step.corners[0].x + step.corners[1].x + step.corners[2].x + step.corners[3].x) * 0.25f,
+                (step.corners[0].y + step.corners[1].y + step.corners[2].y + step.corners[3].y) * 0.25f
+            };
+        }
+
+        void DrawStaircasePreview() {
+            if (!staircaseHasFirstCorner) return;
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+            const Vector2 opposite = ResolveStaircaseCorner(mouseWorld);
+
+            // The exact same plan a click would commit right now - the
+            // preview can never disagree with what confirming produces.
+            const StaircasePlan plan = BuildStaircasePlan(staircaseFirstCorner, opposite);
+
+            const std::vector<Vector2> outerCorners = {
+                staircaseFirstCorner,
+                {opposite.x, staircaseFirstCorner.y},
+                opposite,
+                {staircaseFirstCorner.x, opposite.y}
+            };
+
+            DrawPreviewOutline(outerCorners, true, plan.valid);
+            DrawAnchorPoint(staircaseFirstCorner);
+
+            if (!plan.valid) {
+                DrawWorldLabel(plan.error, opposite, {0.95f, 0.35f, 0.35f, 1.0f});
+                return;
+            }
+
+            for (const StaircaseStepSpan& step : plan.steps) {
+                const std::vector<Vector2> quad = {step.corners[0], step.corners[1], step.corners[2], step.corners[3]};
+
+                DrawPreviewOutline(quad, true, true);
+                DrawPreviewFill(quad, true);
+
+                char label[64];
+                std::snprintf(label, sizeof(label), "#%d  h:%.1f", step.index, step.floorHeight);
+                DrawWorldLabel(label, StepCentroid(step), ThemeTextColor());
+            }
+
+            // Rising-direction arrow: bottom step's centre -> top step's.
+            if (plan.steps.size() >= 2) {
+                const StaircaseStepSpan* bottom = &plan.steps.front();
+                const StaircaseStepSpan* top = &plan.steps.front();
+
+                for (const StaircaseStepSpan& step : plan.steps) {
+                    if (step.index == 0) bottom = &step;
+                    if (step.index == plan.stepCount - 1) top = &step;
+                }
+
+                DrawArrow(StepCentroid(*bottom), StepCentroid(*top), kAnchorColor);
+            }
+
+            DrawWorldLabel(GetActiveDrawToolMeasurementText(), opposite, ThemeTextColor());
+
+            if (plan.headroomWarning)
+                DrawWorldLabel(Localisation::Get("editor.staircase.warning.headroom"), staircaseFirstCorner, {1.0f, 0.65f, 0.15f, 1.0f});
+
+            if (plan.targetSingleSectorNote)
+                DrawWorldLabel(Localisation::Get("editor.staircase.notice.target_single_step"), staircaseFirstCorner, {1.0f, 0.8f, 0.2f, 1.0f});
+        }
+
         // Small always-on-top HUD: active tool, grid size/snap state, and
         // that tool's live measurement text - so none of the above is
         // only discoverable by already knowing it's there.
@@ -465,6 +565,7 @@ namespace MapEditorInternal {
                     case DRAWTOOL_POLYGON:   DrawPolygonPreview(); break;
                     case DRAWTOOL_CIRCLE:    DrawCirclePreview(); break;
                     case DRAWTOOL_CURVE:     DrawCurvePreview(); break;
+                    case DRAWTOOL_STAIRCASE: DrawStaircasePreview(); break;
                     default: break;
                 }
             }
