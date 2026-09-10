@@ -2693,6 +2693,12 @@ namespace MapEditorInternal {
         ImGui::Checkbox(Get("editor.staircase.raise_ceiling").c_str(), &staircaseRaiseCeiling);
         HoverTooltip(Get("editor.tooltip.staircase.raise_ceiling").c_str());
 
+        // Same flag a single LALT/RALT press toggles (MapEditorInput.cpp) -
+        // this checkbox is just another way to flip it, not a separate
+        // input path.
+        ImGui::Checkbox(Get("editor.staircase.reverse_rise").c_str(), &staircaseReverseRise);
+        HoverTooltip(Get("editor.tooltip.staircase.reverse_rise").c_str());
+
         ImGui::Spacing();
         ImGui::TextDisabled("%s", Get("editor.draw.hint.staircase").c_str());
 

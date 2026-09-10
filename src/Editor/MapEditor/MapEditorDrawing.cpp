@@ -571,7 +571,7 @@ namespace MapEditorInternal {
             }
 
             // this looks bad
-            // DrawStatusOverlay();
+            //DrawStatusOverlay();
         }
 
         DrawSnapIndicator();
@@ -722,7 +722,7 @@ namespace MapEditorInternal {
             const float dy = endScreen.y - startScreen.y;
 
             const float length = std::sqrt(dx * dx + dy * dy);
-            if (length <= 0.0001f) return;
+            if (length <= Constants::Epsilon) return;
 
             const float normalX = -dy / length;
             const float normalY = dx / length;

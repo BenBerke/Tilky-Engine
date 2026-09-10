@@ -104,6 +104,7 @@ namespace MapEditorInternal {
     StaircaseCalculationMode staircaseCalcMode = STAIRCASE_CALC_STEP_HEIGHT;
     StaircaseDirection staircaseDirection = STAIRCASE_DIR_HORIZONTAL;
     bool staircaseRaiseCeiling = true;
+    bool staircaseReverseRise = false;
 
     float staircaseStepHeight = 8.0f;
     float staircaseStepLength = 32.0f;

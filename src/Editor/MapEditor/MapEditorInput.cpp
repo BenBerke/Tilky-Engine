@@ -706,6 +706,14 @@ namespace MapEditorInternal {
                 if (InputManager::GetKeyDown(SDL_SCANCODE_RIGHTBRACKET))
                     polygonSideCount = std::min(MAX_POLYGON_SIDES, polygonSideCount + 1);
 
+                // Alt flips which end of the Staircase tool's rectangle is
+                // the bottom of the stairs. A single press toggles it (not
+                // a held modifier), same as the checkbox in the settings
+                // panel - BuildStaircasePlan (MapEditorGeometry.cpp) just
+                // reads staircaseReverseRise, it never touches input state.
+                if (InputManager::GetKeyDown(SDL_SCANCODE_LALT) || InputManager::GetKeyDown(SDL_SCANCODE_RALT))
+                    staircaseReverseRise = !staircaseReverseRise;
+
                 if (InputManager::GetKeyDown(SDL_SCANCODE_1)) SetActiveDrawTool(DRAWTOOL_FREEHAND);
                 if (InputManager::GetKeyDown(SDL_SCANCODE_2)) SetActiveDrawTool(DRAWTOOL_RECTANGLE);
                 if (InputManager::GetKeyDown(SDL_SCANCODE_3)) SetActiveDrawTool(DRAWTOOL_POLYGON);

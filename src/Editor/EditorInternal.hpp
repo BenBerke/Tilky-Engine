@@ -336,6 +336,14 @@ namespace MapEditorInternal {
     extern StaircaseDirection staircaseDirection;
     extern bool staircaseRaiseCeiling;
 
+    // Which end of the drawn rectangle is the bottom of the stairs -
+    // false keeps the drag-direction default (see BuildStaircasePlan),
+    // true flips it. Toggled by a single LALT/RALT press (edge-triggered
+    // in HandleEditorInput, MapEditorInput.cpp - all key state reads live
+    // there, never in the geometry/preview/UI code that just reads this
+    // flag) or directly via the settings panel checkbox.
+    extern bool staircaseReverseRise;
+
     extern float staircaseStepHeight;        // Step Height & Step Count modes
     extern float staircaseStepLength;        // Step Height & Target Height modes
     extern float staircaseTargetFloorHeight; // Target Height mode
@@ -546,12 +554,6 @@ namespace MapEditorInternal {
     [[nodiscard]] Vector2 ResolveCircleHandle(const Vector2& mouseWorld);   // valid once circleHasCenter
     [[nodiscard]] Vector2 ResolveCurveEnd(const Vector2& mouseWorld);       // valid during CURVE_STAGE_END
     [[nodiscard]] Vector2 ResolveStaircaseCorner(const Vector2& mouseWorld); // valid once staircaseHasFirstCorner
-
-    // True while the Staircase tool's rising-direction modifier (Alt) is
-    // held - temporarily flips which end of the drawn rectangle is the
-    // bottom of the stairs, without needing to redraw it. Read by
-    // BuildStaircasePlan.
-    [[nodiscard]] bool IsReverseRiseModifierHeld();
 
     // True for the two calculation modes that take a user-specified Step
     // Length (Step Height and Target Height) - Step Count mode derives its

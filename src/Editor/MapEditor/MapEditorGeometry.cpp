@@ -530,8 +530,6 @@ namespace MapEditorInternal {
     // undo snapshotting, and rejection reporting for free.
 
     namespace {
-        constexpr float kPi = 3.14159265358979323846f;
-
         bool NearlyEqualPoints(const Vector2& a, const Vector2& b) {
             constexpr float epsilon = 0.01f;
             return Vector2Math::DistanceSquared(a, b) < epsilon * epsilon;
@@ -838,7 +836,7 @@ namespace MapEditorInternal {
         Vector2 point = ResolveSnapPoint(mouseWorld);
 
         if (!manualSectorMode && !sectorBeingCreated.empty() && IsConstrainModifierHeld())
-            point = ConstrainToAngleStep(sectorBeingCreated.back(), point, kPi / 4.0f);
+            point = ConstrainToAngleStep(sectorBeingCreated.back(), point, Constants::QuarterPi);
 
         return point;
     }
@@ -859,10 +857,6 @@ namespace MapEditorInternal {
         }
 
         return corner;
-    }
-
-    bool IsReverseRiseModifierHeld() {
-        return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT);
     }
 
     bool StaircaseModeUsesStepLength(const StaircaseCalculationMode mode) {
@@ -902,7 +896,7 @@ namespace MapEditorInternal {
         if (!polygonHasCenter) return handle;
 
         if (IsConstrainModifierHeld()) {
-            constexpr float rotationStep = kPi / 12.0f; // 15 degrees
+            constexpr float rotationStep = Constants::Pi; // 15 degrees
             handle = ConstrainToAngleStep(polygonCenter, handle, rotationStep);
         }
 
@@ -930,7 +924,7 @@ namespace MapEditorInternal {
     Vector2 ResolveCurveEnd(const Vector2& mouseWorld) {
         Vector2 end = ResolveSnapPoint(mouseWorld);
 
-        if (IsConstrainModifierHeld()) end = ConstrainToAngleStep(curveStart, end, kPi / 4.0f);
+        if (IsConstrainModifierHeld()) end = ConstrainToAngleStep(curveStart, end, Constants::QuarterPi);
 
         return end;
     }
@@ -947,7 +941,7 @@ namespace MapEditorInternal {
         points.reserve(sideCount);
 
         for (int i = 0; i < sideCount; ++i) {
-            const float angle = startAngle + (2.0f * kPi * static_cast<float>(i)) / static_cast<float>(sideCount);
+            const float angle = startAngle + (Constants::TwoPi * static_cast<float>(i)) / static_cast<float>(sideCount);
             points.push_back({center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)});
         }
 
@@ -961,7 +955,7 @@ namespace MapEditorInternal {
         points.reserve(segments);
 
         for (int i = 0; i < segments; ++i) {
-            const float angle = (2.0f * kPi * static_cast<float>(i)) / static_cast<float>(segments);
+            const float angle = (Constants::TwoPi * static_cast<float>(i)) / static_cast<float>(segments);
             points.push_back({center.x + radiusX * std::cos(angle), center.y + radiusY * std::sin(angle)});
         }
 
@@ -1141,7 +1135,10 @@ namespace MapEditorInternal {
         }
 
         // ---- Build the steps ------------------------------------------------
-        const bool reversed = IsReverseRiseModifierHeld();
+        // staircaseReverseRise is a plain persistent toggle now (flipped by
+        // a single LALT/RALT press in HandleEditorInput, MapEditorInput.cpp)
+        // rather than a held modifier - this file only reads it.
+        const bool reversed = staircaseReverseRise;
 
         plan.steps.reserve(stepCount);
 
@@ -1409,7 +1406,7 @@ namespace MapEditorInternal {
                 const Vector2 handle = ResolvePolygonHandle(mouseWorld);
                 const float radius = std::sqrt(Vector2Math::DistanceSquared(polygonCenter, handle));
                 const int sides = std::max(polygonSideCount, 3);
-                const float sideLength = 2.0f * radius * std::sin(kPi / static_cast<float>(sides));
+                const float sideLength = 2.0f * radius * std::sin(Constants::Pi / static_cast<float>(sides));
 
                 std::snprintf(buffer, sizeof(buffer), "%s %.1f   %s %.1f   %d %s",
                               Localisation::Get("editor.draw.measure.radius").c_str(), radius,
