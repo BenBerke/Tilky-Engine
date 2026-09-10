@@ -17,7 +17,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterMathMetadata() {
-        RegisterType(Type("Tmath", "Global math helper table (degrees/radians, clamp, lerp, vector math, random).", {}, {
+        RegisterType(Type("mathT", "Global math helper table (degrees/radians, clamp, lerp, vector math, random).", {}, {
             Method("DegToRad", {Param("value", "number")}, "number"),
             Method("RadToDeg", {Param("value", "number")}, "number"),
             Method("Clamp", {Param("value", "number"), Param("minValue", "number"), Param("maxValue", "number")}, "number"),
@@ -37,8 +37,8 @@ namespace {
 }
 
 namespace {
-    //todo make this an engine setting
-    uint32_t engineSeedState = 123456789;
+    //todo TILKYTODO make this an engine setting
+    uint32_t engineSeedState = 1919;
 
     constexpr int RANDOM_NUMBER_SIZE = 512;
 
@@ -134,17 +134,14 @@ namespace {
 void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     RegisterMathMetadata();
 
-    const sol::object existing = lua["Tmath"];
+    const sol::object existing = lua["mathT"];
     sol::table math;
 
-    if (existing.get_type() == sol::type::table) {
-        math = existing.as<sol::table>();
-    }
+    if (existing.get_type() == sol::type::table) math = existing.as<sol::table>();
     else {
-        if (existing.get_type() != sol::type::nil)
-            spdlog::warn("Replacing Lua global 'Tmath' because it is not a table");
+        if (existing.get_type() != sol::type::nil) spdlog::warn("Replacing Lua global 'mathT' because it is not a table");
 
-        math = lua.create_named_table("Tmath");
+        math = lua.create_named_table("mathT");
     }
 
     math.set_function("DegToRad", [](const float value) -> float {

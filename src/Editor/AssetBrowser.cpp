@@ -41,7 +41,7 @@ namespace {
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
                 "gameObject",
-                "GameTime", "Input", "Game", "Debug", "Scripts", "Tmath"
+                "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
             };
 
             for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
@@ -89,7 +89,7 @@ namespace {
 
     // Every registered type, indexed by the LOWERCASED form of its
     // Lua-visible name (e.g.
-    // "Tmath", "GameObject", "Transform") - what member-access completion
+    // "mathT", "GameObject", "Transform") - what member-access completion
     // (see ResolveMemberChainType()) resolves a dotted chain through.
     // Pointers into LuaBindingMetadata::AllTypes()'s backing vector are
     // safe to cache here because every RegisterType() call happens inside
@@ -182,8 +182,8 @@ namespace {
     // yet) - any of which means this resolver has nothing useful to offer.
     // Every name comparison here is case-insensitive (matching
     // UpdateAutocomplete()'s own case-insensitive prefix matching) -
-    // without that, e.g. typing "TMath." would fail to resolve at all
-    // against the registered type name "Tmath", since the base lookup
+    // without that, e.g. typing "mathT." would fail to resolve at all
+    // against the registered type name "mathT", since the base lookup
     // used to be an exact-case match.
     const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(const std::vector<std::string>& chain) {
         if (chain.empty()) return nullptr;
@@ -1101,7 +1101,7 @@ void AssetBrowser::UpdateAutocomplete() {
     const std::string word = line.substr(start, col - start);
 
     // Member-access completion: if the partial word is directly preceded
-    // by a "." (e.g. "TMath." or "gameObject.transform."), resolve the
+    // by a "." (e.g. "mathT." or "gameObject.transform."), resolve the
     // dotted chain before it through LuaBindingMetadata instead of
     // matching against the flat keyword/global list - suggesting a random
     // global right after "." wouldn't make sense, and the chain tells us
