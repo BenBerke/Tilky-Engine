@@ -541,6 +541,7 @@ set(TILKY_ENGINE_SOURCES
         ${TILKY_RUNTIME_SOURCES}
         ${TILKY_SHARED_SUPPORT_SOURCES}
         ${TILKY_EDITOR_SOURCES}
+        Headers/Math/MathHelpers.hpp
 )
 
 # ============================================================

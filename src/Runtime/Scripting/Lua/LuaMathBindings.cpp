@@ -2,6 +2,7 @@
 // Created by berke on 6/20/2026.
 //
 #include "Headers/Engine/GameTime.hpp"
+#include "Headers/Math/MathHelpers.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
@@ -17,11 +18,12 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterMathMetadata() {
-        RegisterType(Type("mathT", "Global math helper table (degrees/radians, clamp, lerp, vector math, random).", {}, {
+        RegisterType(Type("mathT", "Global math helper table (degrees/radians, clamp, lerp, inverselerp, vector math, random).", {}, {
             Method("DegToRad", {Param("value", "number")}, "number"),
             Method("RadToDeg", {Param("value", "number")}, "number"),
             Method("Clamp", {Param("value", "number"), Param("minValue", "number"), Param("maxValue", "number")}, "number"),
             Method("Lerp", {Param("a", "number"), Param("b", "number"), Param("t", "number")}, "number"),
+            Method("InverseLerp", {Param("a", "number"), Param("b", "number"), Param("t", "number")}, "number"),
             Method("Vector2Distance", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
             Method("Vector2DistanceSquared", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
             Method("Vector2Dot", {Param("a", "Vector2"), Param("b", "Vector2")}, "number"),
@@ -158,6 +160,10 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
 
     math.set_function("Lerp", [](const float a, const float b, const float t) -> float {
         return std::lerp(a, b, t);
+    });
+
+    math.set_function("InverseLerp", [](const float a, const float b, const float t) -> float {
+        return MathHelpers::InverseLerp(a, b, t);
     });
 
     math.set_function("Vector2Distance", [](const Vector2& a, const Vector2& b) -> float {

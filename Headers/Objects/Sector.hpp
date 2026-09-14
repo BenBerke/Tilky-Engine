@@ -44,6 +44,8 @@ struct SectorFloor {
 };
 
 struct Sector {
+    std::string name;
+
     std::vector<SectorFloor> floors = {
         {
             {0.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}},

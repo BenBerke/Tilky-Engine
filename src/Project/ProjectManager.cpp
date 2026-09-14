@@ -116,11 +116,6 @@ namespace ProjectManager {
         return true;
 
 #else
-        // NOTE: this was already a typo'd "TIlky_Engine" (capital I) before this
-        // change, which meant it never actually matched the real CMake target output
-        // name ("Tilky_Engine") on Linux/macOS - fixed here since EngineVersionManager
-        // needs this exact name to match on every platform it validates installs on
-        // (see ProjectManager::GetEngineVersionExecutablePath).
         const fs::path engineExe = resolvedEngineDir / "Tilky_Engine";
 
         const std::string command =
@@ -142,12 +137,9 @@ namespace ProjectManager {
     bool OpenProject(const fs::path& path) {
         fs::path projectFile;
 
-        if (path.extension() == ".tilky") {
-            projectFile = path;
-        }
-        else {
-            projectFile = path / "project.tilky";
-        }
+        if (path.extension() == ".tilky") projectFile = path;
+        else projectFile = path / "project.tilky";
+
 
         std::error_code existsEc;
         if (!fs::exists(projectFile, existsEc)) {
@@ -242,9 +234,7 @@ namespace ProjectManager {
                     spdlog::info("Created project folder: {}", path.string());
                     CreateProject(path, projectName);
                 }
-                else {
-                    spdlog::error("Failed to create project folder: {}", path.string());
-                }
+                else spdlog::error("Failed to create project folder: {}", path.string());
             }
             else {
                 spdlog::warn("Project folder already exists. Opening existing project: {}", path.string());

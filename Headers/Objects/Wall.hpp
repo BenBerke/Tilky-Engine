@@ -18,6 +18,8 @@
 struct Wall {
     ID id = INVALID_ID;
 
+    std::string name;
+
     Vector2 start, end;
     Vector4 color;
     Vector2 textureOffset;
@@ -86,7 +88,7 @@ struct Wall {
         lengthSq = Vector2Math::Dot(vector, vector);
         length = std::sqrt(lengthSq);
 
-        if (length > 0.00001f) {
+        if (length > Constants::Epsilon) {
             dir = vector / length;
             normal = {-dir.y, dir.x};
         }

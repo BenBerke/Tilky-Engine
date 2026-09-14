@@ -302,8 +302,6 @@ namespace {
     }
 }
 
-#include <SDL3/SDL_main.h>
-
 int main(const int argc, char** argv) {
     if (!InitEngineLogger()) return 1;
 

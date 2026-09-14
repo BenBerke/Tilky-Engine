@@ -1494,6 +1494,13 @@ namespace {
         levelData["metadata"] = metadatajson;
     }
 #endif
+
+    void SaveProjectWideInformation() {
+
+    }
+
+    void LoadProjectWideInformation() {
+    }
 }
 
 namespace LevelSerialization {
