@@ -35,6 +35,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/TagRegistry.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -802,6 +803,88 @@ namespace ImGuiDrawFunctions {
             ImGui::Spacing();
             SmallMetaText("ID: %d", sector.id);
         }
+
+        // ── Tags ─────────────────────────────────────────────────────────────────
+        // Assignment only - names/IDs are resolved through TagRegistry, never
+        // generated here. Creating/renaming/deleting a project tag happens in
+        // the Project Settings Tags section, not from a sector. Placed
+        // immediately above the Delete button per the section ordering below.
+
+        BeginSection(Get("sector.tags").c_str());
+        ImGui::PushID("SectorTags");
+
+        // Per-sector "add a tag" buffer, keyed by sector ID so switching the
+        // selected sector doesn't leak leftover text from the previous one.
+        static ID lastTagEditSectorId = INVALID_ID;
+        static char newSectorTagBuf[128] = "";
+        static std::string sectorTagError;
+
+        if (lastTagEditSectorId != sector.id) {
+            lastTagEditSectorId = sector.id;
+            newSectorTagBuf[0] = '\0';
+            sectorTagError.clear();
+        }
+
+        const size_t assignedTagCount = std::min(sector.tags.size(), sector.tagIds.size());
+        int tagIndexToRemove = -1;
+
+        for (size_t tagIndex = 0; tagIndex < assignedTagCount; ++tagIndex) {
+            ImGui::PushID(static_cast<int>(tagIndex));
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(sector.tags[tagIndex].c_str());
+
+            ImGui::SameLine();
+            ImGui::TextDisabled("#%u", sector.tagIds[tagIndex]);
+
+            ImGui::SameLine();
+            if (DangerButton(Get("common.delete").c_str())) tagIndexToRemove = static_cast<int>(tagIndex);
+            Tooltip(Get("editor.tooltip.sector.tag_delete").c_str());
+
+            ImGui::PopID();
+        }
+
+        if (tagIndexToRemove >= 0) {
+            sector.tags.erase(sector.tags.begin() + tagIndexToRemove);
+            sector.tagIds.erase(sector.tagIds.begin() + tagIndexToRemove);
+            sectorTagError.clear();
+        }
+
+        // Always-available empty row for assigning another tag.
+        FieldWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##NewSectorTag", Get("sector.tag_add_placeholder").c_str(),
+                                 newSectorTagBuf, sizeof(newSectorTagBuf));
+
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            const std::string enteredName = newSectorTagBuf;
+
+            if (!enteredName.empty()) {
+                if (const auto tagId = TagRegistry::Find(enteredName)) {
+                    const bool alreadyAssigned =
+                            std::find(sector.tags.begin(), sector.tags.end(), enteredName) != sector.tags.end();
+
+                    if (alreadyAssigned) {
+                        sectorTagError = Get("sector.tag_duplicate_error");
+                    } else {
+                        sector.tags.push_back(enteredName);
+                        sector.tagIds.push_back(*tagId);
+                        sectorTagError.clear();
+                        newSectorTagBuf[0] = '\0';
+                    }
+                } else {
+                    sectorTagError = Get("sector.tag_unknown_error");
+                }
+            }
+        }
+
+        if (!sectorTagError.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.45f, 0.45f, 1.00f));
+            ImGui::TextWrapped("%s", sectorTagError.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::PopID();
+        EndSection();
 
         // ── Actions ──────────────────────────────────────────────────────────────
 

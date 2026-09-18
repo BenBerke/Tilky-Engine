@@ -740,11 +740,8 @@ namespace {
                 const json &innerLoopArray = sectorJson.at("innerLoops");
                 sector.innerLoops.reserve(innerLoopArray.size());
 
-                for (int loopIndex = 0;
-                     loopIndex < static_cast<int>(innerLoopArray.size());
-                     ++loopIndex) {
-                    std::vector<Vector2> loop =
-                            loadLoop(innerLoopArray[loopIndex]);
+                for (int loopIndex = 0; loopIndex < static_cast<int>(innerLoopArray.size()); ++loopIndex) {
+                    std::vector<Vector2> loop = loadLoop(innerLoopArray[loopIndex]);
 
                     if (loop.size() < 3) {
                         spdlog::warn(
@@ -760,8 +757,7 @@ namespace {
                 }
             }
 
-            if (sectorJson.contains("floors") &&
-                sectorJson.at("floors").is_array()) {
+            if (sectorJson.contains("floors") && sectorJson.at("floors").is_array()) {
                 const json &floorArray = sectorJson.at("floors");
                 sector.floors.reserve(floorArray.size());
 
@@ -857,6 +853,73 @@ namespace {
                 sector.innerLoops
             );
 
+            sector.name = sectorJson.at("name");
+
+            sector.tags.clear();
+            sector.tagIds.clear();
+
+            if (sectorJson.contains("tags") || sectorJson.contains("tagIds")) {
+                // Current format: parallel arrays.
+                std::vector<std::string> loadedTags;
+                std::vector<uint16_t> loadedTagIds;
+                bool malformedEntry = false;
+
+                if (sectorJson.contains("tags")) {
+                    if (sectorJson.at("tags").is_array()) {
+                        for (const json &tagJson: sectorJson.at("tags")) {
+                            if (tagJson.is_string()) loadedTags.push_back(tagJson.get<std::string>());
+                            else malformedEntry = true;
+                        }
+                    } else malformedEntry = true;
+                }
+
+                if (sectorJson.contains("tagIds")) {
+                    if (sectorJson.at("tagIds").is_array()) {
+                        for (const json &tagIdJson: sectorJson.at("tagIds")) {
+                            if (tagIdJson.is_number_unsigned() || tagIdJson.is_number_integer())
+                                loadedTagIds.push_back(tagIdJson.get<uint16_t>());
+                            else malformedEntry = true;
+                        }
+                    } else malformedEntry = true;
+                }
+
+                if (loadedTags.size() != loadedTagIds.size()) {
+                    spdlog::warn(
+                        "LoadSectors: sector {} has mismatched tag name/id array "
+                        "lengths ({} vs {}) - tags discarded",
+                        sector.id,
+                        loadedTags.size(),
+                        loadedTagIds.size()
+                    );
+                } else {
+                    if (malformedEntry)
+                        spdlog::warn(
+                            "LoadSectors: sector {} has malformed tag data - "
+                            "invalid entries were skipped",
+                            sector.id
+                        );
+
+                    sector.tags = std::move(loadedTags);
+                    sector.tagIds = std::move(loadedTagIds);
+                }
+            } else if (sectorJson.contains("tag") && sectorJson.contains("tagId")) {
+                // Legacy single-tag format - load as a one-element vector.
+                const json &legacyTag = sectorJson.at("tag");
+                const json &legacyTagId = sectorJson.at("tagId");
+
+                if (legacyTag.is_string() &&
+                    (legacyTagId.is_number_unsigned() || legacyTagId.is_number_integer())) {
+                    sector.tags.push_back(legacyTag.get<std::string>());
+                    sector.tagIds.push_back(legacyTagId.get<uint16_t>());
+                } else {
+                    spdlog::warn(
+                        "LoadSectors: sector {} has malformed legacy tag data - skipping",
+                        sector.id
+                    );
+                }
+            }
+            // Missing entirely: sector.tags/tagIds stay empty (cleared above).
+
             level.sectors.push_back(std::move(sector));
         }
 
@@ -937,7 +1000,10 @@ namespace {
                         sector.light.y,
                         sector.light.z
                     }
-                }
+                },
+                {"name", sector.name},
+                {"tags", sector.tags},
+                {"tagIds", sector.tagIds}
             });
         }
 

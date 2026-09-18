@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <spdlog/spdlog.h>
@@ -26,6 +28,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/TagRegistry.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -736,6 +739,174 @@ namespace {
     }
 
     // =========================================================================
+    //  Project Tags — Project Settings child panel
+    // =========================================================================
+    // TagRegistry is the authoritative owner of project tags (name <-> stable
+    // ID); this panel only drives it through its public API (Create / Rename /
+    // Delete / Find) - it never mutates a tag's ID or touches the underlying
+    // map directly. Deleting a project tag here also strips the matching
+    // name/ID pair from every sector of every loaded level, so a sector's
+    // tags/tagIds vectors never reference a tag the registry no longer knows
+    // about.
+
+    // Removes every (tagName, tagId) assignment from every sector of every
+    // loaded level. Called once a project tag is actually deleted, so no
+    // sector is left pointing at an ID the registry no longer has.
+    void RemoveTagFromAllLoadedSectors(const std::string &tagName, const TagRegistry::TagId tagId) {
+        for (Level &level: LevelManager::loadedLevels) {
+            for (Sector &sector: level.sectors) {
+                const size_t pairCount = std::min(sector.tags.size(), sector.tagIds.size());
+
+                for (size_t i = 0; i < pairCount;) {
+                    if (sector.tags[i] == tagName && sector.tagIds[i] == tagId) {
+                        sector.tags.erase(sector.tags.begin() + static_cast<long>(i));
+                        sector.tagIds.erase(sector.tagIds.begin() + static_cast<long>(i));
+                        break; // a sector can't have the same tag twice - see the sector editor's duplicate guard
+                    }
+
+                    ++i;
+                }
+            }
+        }
+    }
+
+    void DrawTagsSection() {
+        using TagRegistry::TagId;
+
+        // Per-tag rename buffers, persisted across frames (like
+        // levelNameBuf below) so an in-progress edit survives frame
+        // boundaries. Keyed by TagId rather than name since renaming must
+        // not change which row a buffer belongs to.
+        static std::unordered_map<TagId, std::array<char, 128> > tagNameBuffers;
+        static char newTagNameBuf[128] = "";
+
+        const TagRegistry::TagMap &tags = TagRegistry::GetAll();
+
+        // Stable, ID-ordered snapshot for this frame - GetAll() is an
+        // unordered_map, and iterating it directly would let rows jump
+        // around as tags are added/removed.
+        std::vector<std::pair<std::string, TagId> > sortedTags(tags.begin(), tags.end());
+        std::ranges::sort(sortedTags, {}, [](const auto &entry) { return entry.second; });
+
+        // Seed a buffer for any tag we haven't seen yet; never overwrite an
+        // existing one, or an in-progress edit would be stomped every frame.
+        for (const auto &[name, id]: sortedTags) {
+            if (tagNameBuffers.contains(id)) continue;
+
+            auto &buffer = tagNameBuffers[id];
+            std::strncpy(buffer.data(), name.c_str(), buffer.size() - 1);
+            buffer[buffer.size() - 1] = '\0';
+        }
+
+        // Drop buffers for tags that no longer exist (deleted elsewhere, or
+        // a different project got loaded).
+        for (auto it = tagNameBuffers.begin(); it != tagNameBuffers.end();) {
+            const bool stillExists = std::ranges::any_of(
+                sortedTags, [&](const auto &entry) { return entry.second == it->first; });
+
+            if (stillExists) ++it;
+            else it = tagNameBuffers.erase(it);
+        }
+
+        // Deferred so Delete() doesn't invalidate `sortedTags`/`tags` while
+        // the row loop below is still iterating over them.
+        std::optional<std::pair<std::string, TagId> > tagPendingDeletion;
+
+        const float childHeight = std::min(
+            static_cast<float>(sortedTags.size()) * 28.0f + 8.0f,
+            180.0f
+        );
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.14f, 1.00f));
+        ImGui::BeginChild("##TagsList", ImVec2(0.0f, std::max(childHeight, 32.0f)), /*border=*/true);
+
+        if (sortedTags.empty())
+            ImGui::TextDisabled("%s", Get("tags.none_found").c_str());
+
+        for (const auto &[name, id]: sortedTags) {
+            ImGui::PushID(static_cast<int>(id));
+
+            auto &buffer = tagNameBuffers[id];
+
+            constexpr float idWidth = 56.0f;
+            constexpr float deleteWidth = 56.0f;
+            const float available = ImGui::GetContentRegionAvail().x;
+
+            ImGui::SetNextItemWidth(std::max(40.0f, available - idWidth - deleteWidth - 12.0f));
+            ImGui::InputText("##TagName", buffer.data(), buffer.size());
+
+            // Commits on Enter or on losing focus after an edit - never on
+            // every keystroke, so typing a name doesn't spam the registry
+            // with partial tags.
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                const std::string newName = buffer.data();
+
+                if (newName.empty()) {
+                    std::strncpy(buffer.data(), name.c_str(), buffer.size() - 1);
+                    buffer[buffer.size() - 1] = '\0';
+                    ShowNotification(Get("tags.notification.empty_name").c_str(), /*isError=*/true);
+                } else if (newName != name) {
+                    if (TagRegistry::Rename(name, newName)) {
+                        hasUnsavedChanges = true;
+                        if (!SaveProjectSettings())
+                            ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
+                    } else {
+                        std::strncpy(buffer.data(), name.c_str(), buffer.size() - 1);
+                        buffer[buffer.size() - 1] = '\0';
+                        ShowNotification(Get("tags.notification.duplicate_name").c_str(), /*isError=*/true);
+                    }
+                }
+            }
+
+            ImGui::SameLine();
+            ImGui::TextDisabled("#%u", id);
+
+            ImGui::SameLine();
+            PushDangerStyle();
+            if (ImGui::SmallButton(Get("common.delete").c_str())) tagPendingDeletion = {name, id};
+            PopDangerStyle();
+            HoverTooltip(Get("tags.tooltip.delete").c_str());
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+
+        // Always-available empty row for creating another tag.
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##NewTagName", Get("tags.new_placeholder").c_str(),
+                                 newTagNameBuf, sizeof(newTagNameBuf));
+
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            const std::string enteredName = newTagNameBuf;
+
+            if (!enteredName.empty()) {
+                if (TagRegistry::Create(enteredName)) {
+                    newTagNameBuf[0] = '\0';
+                    hasUnsavedChanges = true;
+                    if (!SaveProjectSettings())
+                        ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
+                } else {
+                    ShowNotification(Get("tags.notification.duplicate_name").c_str(), /*isError=*/true);
+                }
+            }
+        }
+
+        if (tagPendingDeletion) {
+            const auto &[deletedName, deletedId] = *tagPendingDeletion;
+
+            TagRegistry::Delete(deletedName);
+            RemoveTagFromAllLoadedSectors(deletedName, deletedId);
+            tagNameBuffers.erase(deletedId);
+
+            hasUnsavedChanges = true;
+            if (!SaveProjectSettings())
+                ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
+        }
+    }
+
+    // =========================================================================
     //  Create Level modal
     // =========================================================================
 
@@ -1117,6 +1288,17 @@ namespace {
             ImGui::Spacing();
 
             DrawLevelsChildPanel();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Tags -----------------------------------------------------------
+            SectionHeader(Get("editor.project.tags").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            DrawTagsSection();
 
             ImGui::Spacing();
             ImGui::Separator();

@@ -872,4 +872,8 @@ namespace MapEditorInternal {
     void CreateManualSector();
 
     bool SaveUserSettings();
+    bool LoadUserSettings();
+
+    bool SaveProjectSettings();
+    bool LoadProjectSettings();
 }

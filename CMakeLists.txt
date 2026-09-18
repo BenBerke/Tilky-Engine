@@ -355,6 +355,8 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/PhysicsSystem.hpp
         Headers/UISystem.hpp
         Headers/Math/Quaternion/Quaternion.hpp
+        Headers/TagRegistry.hpp
+        src/TagRegistry.cpp
 )
 
 # ============================================================
@@ -531,6 +533,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/Math/SIMD/SSECompat.hpp
         Headers/Objects/ComponentRegistry.hpp
         Headers/Objects/ScriptPublicType.hpp
+        Headers/TagRegistry.hpp
+        src/TagRegistry.cpp
 )
 
 # ============================================================

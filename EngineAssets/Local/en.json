@@ -741,5 +741,17 @@
   "editor.geometry.hint.drag": "Drag a wall to move it, or drag a square handle to move that endpoint. Connected walls follow shared corners.",
   "editor.geometry.hint.delete": "Ctrl/Shift click to multi-select. Delete removes the selected walls.",
   "editor.geometry.selected_singular": "%d wall selected",
-  "editor.geometry.selected_plural": "%d walls selected"
+  "editor.geometry.selected_plural": "%d walls selected",
+  "editor.project.tags": "Tags",
+  "tags.none_found": "No tags yet.",
+  "tags.new_placeholder": "New tag name",
+  "tags.tooltip.delete": "Delete this tag from the project. Removes it from every sector that has it.",
+  "tags.notification.duplicate_name": "A tag with that name already exists.",
+  "tags.notification.empty_name": "Tag name can't be empty.",
+  "tags.notification.save_failed": "Failed to save project settings. Check logs.",
+  "sector.tags": "Tags",
+  "sector.tag_add_placeholder": "Add tag by name",
+  "editor.tooltip.sector.tag_delete": "Remove this tag from the sector. The tag itself is not deleted from the project.",
+  "sector.tag_unknown_error": "No tag with that name exists. Create it in Project Settings first.",
+  "sector.tag_duplicate_error": "This sector already has that tag."
 }

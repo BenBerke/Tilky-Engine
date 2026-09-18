@@ -11,6 +11,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "Headers/TagRegistry.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -48,56 +49,164 @@ namespace {
 }
 
 namespace MapEditorInternal {
-    void UpdateLevels() {
-        const fs::path levelsPath = ProjectManager::GetLevelsPath();
+    bool LoadProjectSettings()
+    {
+        const fs::path settingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json";
 
         try {
-            Editor::maps.clear();
-
-            if (!fs::exists(levelsPath) ||
-                !fs::is_directory(levelsPath)) {
-                fs::create_directories(levelsPath);
-                return;
+            if (!fs::exists(settingsPath)) {
+                TagRegistry::Clear();
+                return true;
             }
 
-            for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
-                if (!entry.is_regular_file()) continue;
-                if (entry.path().extension() != ".bson") continue;
+            std::ifstream file(settingsPath);
 
-                Editor::maps.push_back(entry.path().stem().string());
+            if (!file.is_open()) {
+                spdlog::error("Failed to open project settings: {}",settingsPath.string());
+                return false;
             }
+
+            nlohmann::json settings;
+            file >> settings;
+
+            const int formatVersion = settings.at("formatVersion").get<int>();
+
+            if (formatVersion != 1) {
+                spdlog::error("Unsupported project settings version: {}",formatVersion);
+                return false;
+            }
+
+            auto tags = settings.at("tagToId").get<TagRegistry::TagMap>();
+
+            // Calculate the minimum safe next ID. This prevents ID collisions
+            // if nextTagId is missing or contains an incorrect lower value.
+            uint32_t minimumNextId = 0;
+
+            for (const auto& [name, id] : tags)
+                minimumNextId = std::max(minimumNextId,static_cast<uint32_t>(id) + 1u);
+
+            const uint32_t savedNextId = settings.value("nextTagId", minimumNextId);
+
+            const uint32_t nextId = std::max(savedNextId, minimumNextId);
+
+            TagRegistry::Load(std::move(tags), nextId);
+
+            return true;
         }
-        catch (const fs::filesystem_error& e) {
-            spdlog::critical("Error loading levels {}", e.what());
+        catch (const std::exception& error) {
+            spdlog::error("Failed to load project settings: {}",error.what());
+            return false;
         }
     }
 
-    bool Save(const std::string& saveTo) {
-        Level& level = GetOrCreateCurrentLevel();
+    bool SaveProjectSettings() {
+        const fs::path settingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json";
 
-        const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
+        try {
+            const nlohmann::json settings = {
+                {"formatVersion", 1},
+                {"tagToId", TagRegistry::GetAll()},
+                {"nextTagId", TagRegistry::GetNextId()}
+            };
 
-        if (cleanName.empty()) {
-            spdlog::warn("Can not save with an empty name");
+            std::ofstream file(settingsPath, std::ios::trunc);
+
+            if (!file.is_open()) {
+                spdlog::error("Failed to open project settings for writing: {}",settingsPath.string());
+                return false;
+            }
+
+            file << settings.dump(4);
+
+            if (!file.good()) {
+                spdlog::error("Failed while writing project settings: {}",settingsPath.string());
+                return false;
+            }
+
+            return true;
+        }
+        catch (const std::exception& error) {
+            spdlog::error("Failed to save project settings: {}",error.what());
             return false;
         }
+    }
 
-        level.name = cleanName;
-
-        LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
-
-        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
-        std::string errorMessage;
-
-        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
-            spdlog::critical("{}", errorMessage);
+    bool LoadUserSettings() {
+        const std::string version = ProjectManager::GetProjectEngineVersion();
+        if (version.empty()) {
+            spdlog::error("Can't find engine version, unable to load engine data");
             return false;
         }
+        const fs::path settingsPath = ProjectManager::GetUserSettingsPath();
+        if (!fs::exists(settingsPath)) {
+            spdlog::error("User settings file doesn't exist: {}. Using defaults.", settingsPath.string());
+            return false;
+        }
+        try {
+            std::ifstream input(settingsPath, std::ios::binary);
 
-        spdlog::info("Level saved successfully {}", path.string());
+            if (!input) spdlog::error("Could not open user settings file {}", settingsPath.string());
 
-        UpdateLevels();
+            const nlohmann::json settings = nlohmann::json::from_bson(input);
+
+            if (!settings.is_object()) {
+                spdlog::error("User settings root is not an object");
+                return false;
+            }
+
+            const int formatVersion = settings.value("formatVersion", 0);
+
+            if (formatVersion != 1) {
+                spdlog::error("Unsupported user settings format version: {}", formatVersion);
+                return false;
+            }
+            const nlohmann::json &colors = settings.at("colors");
+
+            auto LoadColor3 = [&](const char *key) -> Vector3 {
+                return {
+                    colors.at(key).at(0).get<float>(),
+                    colors.at(key).at(1).get<float>(),
+                    colors.at(key).at(2).get<float>()
+                };
+            };
+
+            auto LoadColor4 = [&](const char *key) -> Vector4 {
+                return {
+                    colors.at(key).at(0).get<float>(),
+                    colors.at(key).at(1).get<float>(),
+                    colors.at(key).at(2).get<float>(),
+                    colors.at(key).at(3).get<float>()
+                };
+            };
+
+            using namespace MapEditorInternal;
+            normalEntityColor = LoadColor3("normalEntityColor");
+            highlightedEntityColor = LoadColor3("highlightedEntityColor");
+            spriteEntityColor = LoadColor3("spriteEntityColor");
+            normalWallColor = LoadColor3("normalWallColor");
+            highlightedWallColor = LoadColor3("highlightedWallColor");
+            hoveredSectorColor = LoadColor3("hoveredSectorColor");
+            highlightedSectorColor = LoadColor3("highlightedSectorColor");
+            snapIndicatorColor = LoadColor3("snapIndicatorColor");
+            kValidLineColor = LoadColor3("validLineColor");
+            kInvalidLineColor = LoadColor3("invalidLineColor");
+            kAnchorColor = LoadColor3("anchorColor");
+            kValidFillColor = LoadColor4("validFillColor");
+            kInvalidFillColor = LoadColor4("invalidFillColor");
+            normalHandleColor = LoadColor3("normalHandleColor");
+            highlightedHandleColor = LoadColor3("highlightedHandleColor");
+            handleOutlineColor = LoadColor3("handleOutlineColor");
+            themeTextColor = LoadColor3("themeTextColor");
+            gridColor = LoadColor3("gridColor");
+            backgroundColor = LoadColor3("backgroundColor");
+
+            cameraSpeed = settings.value("cameraSpeed", 1.0f);
+            cameraStepSize = settings.value("cameraStepSize", 50.0f);
+        }
+        catch (std::exception& e) {
+            spdlog::error("Error while loading user settings {}", e.what());
+            return false;
+        }
 
         return true;
     }
@@ -209,6 +318,66 @@ namespace MapEditorInternal {
             return false;
         }
     }
+
+    void UpdateLevels() {
+        const fs::path levelsPath = ProjectManager::GetLevelsPath();
+
+        try {
+            Editor::maps.clear();
+
+            if (!fs::exists(levelsPath) ||
+                !fs::is_directory(levelsPath)) {
+                fs::create_directories(levelsPath);
+                return;
+            }
+
+            for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
+                if (!entry.is_regular_file()) continue;
+                if (entry.path().extension() != ".bson") continue;
+
+                Editor::maps.push_back(entry.path().stem().string());
+            }
+        }
+        catch (const fs::filesystem_error& e) {
+            spdlog::critical("Error loading levels {}", e.what());
+        }
+    }
+
+    bool Save(const std::string& saveTo) {
+        Level& level = GetOrCreateCurrentLevel();
+
+        const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
+
+        if (cleanName.empty()) {
+            spdlog::warn("Can not save with an empty name");
+            return false;
+        }
+
+        level.name = cleanName;
+
+        LevelSerialization::LevelExtraData extraData;
+        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
+
+        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
+        std::string errorMessage;
+
+        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
+            spdlog::critical("Failed to save level to file {}", errorMessage);
+            return false;
+        }
+
+        if (!SaveProjectSettings()) {
+            spdlog::critical("Failed to save project settings {}", errorMessage);
+            return false;
+        }
+
+        spdlog::info("Level saved successfully {}", path.string());
+
+        UpdateLevels();
+
+        return true;
+    }
+
 }
 
 namespace Editor {
@@ -255,7 +424,7 @@ namespace Editor {
         }
         else LevelManager::loadedLevels[LevelManager::currentLevelIndex] = std::move(loadedLevel);
 
-        //todo check if works in actual game
+        //todo TILKYTODO check if works in actual game
         LevelSystem::RefreshScriptAssets(LevelManager::CurrentLevel());
 
         spdlog::info("Level loaded successfully {}", path.string());
