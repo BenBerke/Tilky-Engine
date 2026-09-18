@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -124,6 +125,27 @@ struct ScriptPublicField {
     // rejects `Type[]` annotations with a warning instead of misinterpreting
     // them as a single value of an unknown type.
     bool isArray = false;
+};
+
+// The owner-agnostic, serialized half of one attached script: which script
+// file, whether it is enabled, and its inspector-edited public values. Both
+// kinds of script owner build on it - ComponentScript (Components.hpp) adds
+// an entity ownerID, and Sector::scripts (Sector.hpp) stores it as-is, keyed
+// by the owning sector's stable ID. Sharing the struct is what lets the
+// runtime (LuaSystem.cpp), the serializer and the inspector treat entity
+// and sector scripts through one implementation.
+struct ScriptAttachmentData {
+    // Unique among the scripts of one owner (globally unique for entities,
+    // see ScriptComponentStorage; unique per sector for sector scripts).
+    ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
+
+    std::string fileName;
+    bool enabled = true;
+
+    // Serialized separately for each attached script.
+    std::unordered_map<std::string, ScriptValue> publicValues;
+
+    std::uint64_t schemaHash = 0;
 };
 
 #endif //TILKY_ENGINE_SCRIPTPUBLICTYPE_HPP

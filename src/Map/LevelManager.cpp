@@ -135,5 +135,9 @@ namespace LevelManager {
 
         for (ComponentScript& script : level.scripts.components)
             if (script.fileName == oldReference) script.fileName = newReference;
+
+        for (Sector& sector : level.sectors)
+            for (SectorScript& script : sector.scripts)
+                if (script.fileName == oldReference) script.fileName = newReference;
     }
 }

@@ -28,6 +28,8 @@ namespace {
         RegisterType(Type("SectorRef", "A safe reference to one map sector.", {
             Prop("id", "integer", true),
             Prop("isValid", "boolean", true),
+            Prop("name", "string", false, "The sector's name (empty if none was set)."),
+            Prop("floorHeight", "number", false, "Floor height of the first floor - same as GetFloor(1).floorHeight."),
             Prop("light", "Vector3"),
             Prop("floorCount", "integer", true),
             Prop("vertexCount", "integer", true),
@@ -107,6 +109,17 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
 
         "isValid", sol::readonly_property(
             &ScriptSector::IsValid
+        ),
+
+        "name", sol::property(
+            &ScriptSector::GetName,
+            &ScriptSector::SetName
+        ),
+
+        // First floor interval's floor height; see ScriptSector::GetFloorHeight.
+        "floorHeight", sol::property(
+            &ScriptSector::GetFloorHeight,
+            &ScriptSector::SetFloorHeight
         ),
 
         "light", sol::property(

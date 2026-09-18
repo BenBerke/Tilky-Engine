@@ -179,17 +179,10 @@ struct ComponentCamera {
     Matrix4 projection = Matrix4::Identity();
 };
 
-struct ComponentScript {
-    ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
+// A script attached to an entity. Everything except the owner lives in
+// ScriptAttachmentData (ScriptPublicType.hpp), shared with sector scripts.
+struct ComponentScript : ScriptAttachmentData {
     ID ownerID = static_cast<ID>(-1);
-
-    std::string fileName;
-    bool enabled = true;
-
-    // Serialized separately for each attached script.
-    std::unordered_map<std::string, ScriptValue> publicValues;
-
-    std::uint64_t schemaHash = 0;
 };
 
 class ScriptComponentStorage {

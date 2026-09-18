@@ -1764,6 +1764,33 @@ struct ScriptSector {
         return GetSector() != nullptr;
     }
 
+    // Sector::name itself - no separate Lua-side copy.
+    [[nodiscard]] std::string GetName() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return sector->name;
+    }
+
+    void SetName(const std::string& value) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        sector->name = value;
+    }
+
+    // Shortcut for GetFloor(1).floorHeight: the first floor interval's floor,
+    // which is also the one the rest of the engine treats as "the" sector
+    // floor (floors[0]). Goes through ScriptSectorFloor so it shares that
+    // type's validation (must stay below its ceiling / not overlap the
+    // previous interval) instead of duplicating it. Sectors with several
+    // floors reach the others through GetFloor(n).
+    [[nodiscard]] float GetFloorHeight() const {
+        return GetFloor(1).GetFloorHeight();
+    }
+
+    void SetFloorHeight(const float value) const {
+        GetFloor(1).SetFloorHeight(value);
+    }
+
     [[nodiscard]] Vector3 GetLight() const {
         const Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid SectorRef");

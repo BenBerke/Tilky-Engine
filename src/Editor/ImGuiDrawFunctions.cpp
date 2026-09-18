@@ -548,6 +548,108 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Script attachment body — shared by the entity Script panel and the
+    //  sector inspector's Scripts section
+    // ─────────────────────────────────────────────────────────────────────────
+    // Everything about one attached script except removing it (each caller
+    // owns that): file picker, enabled flag, compile error, public
+    // variables and orphaned values. Takes the owner-agnostic
+    // ScriptAttachmentData so entity and sector scripts get the exact same
+    // controls. `ownerLabel` ("entity 4", "sector 2") only shows up in log
+    // messages. Callers must have pushed an ID unique to this attachment.
+    static void DrawScriptAttachmentFields(ScriptAttachmentData &script, const std::string &ownerLabel) {
+        BeginSection("Script File");
+
+        if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), script.fileName, AssetKind::Script)) {
+            LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+        }
+        Tooltip(Get("editor.tooltip.component.script.file").c_str());
+
+        ImGui::Checkbox(Get("component.script.enabled").c_str(), &script.enabled);
+
+        ImGui::SameLine();
+
+        if (ImGui::SmallButton("Refresh Fields")) {
+            LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+        }
+
+        EndSection();
+
+        // Syntax/compile error in the file itself (never runs the script).
+        // Runtime errors still go to the in-game console.
+        if (const std::string *loadError = LevelSystem::GetScriptLoadError(script.fileName)) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+            ImGui::TextWrapped("Script error: %s", loadError->c_str());
+            ImGui::PopStyleColor();
+        }
+
+        const std::vector<ScriptPublicField> *fields =
+                LevelSystem::GetPublicFieldsForScript(script.fileName);
+
+        if (fields == nullptr) {
+            if (!script.fileName.empty()) {
+                ImGui::TextDisabled("Script not found or has no public fields.");
+            }
+            return;
+        }
+
+        BeginSection("Public Variables");
+
+        for (const ScriptPublicField &field: *fields) {
+            auto valueIt = script.publicValues.find(field.name);
+
+            if (valueIt == script.publicValues.end()) {
+                script.publicValues[field.name] = field.defaultValue;
+                valueIt = script.publicValues.find(field.name);
+            }
+
+            DrawScriptValueEditor(field, valueIt->second);
+        }
+
+        EndSection();
+
+        BeginSection("Orphaned Variables");
+
+        bool hasOrphans = false;
+
+        for (auto valueIt = script.publicValues.begin(); valueIt != script.publicValues.end();) {
+            const std::string &valueName = valueIt->first;
+
+            const bool existsInSchema = std::ranges::any_of(
+                *fields,
+                [&valueName](const ScriptPublicField &field) {
+                    return field.name == valueName;
+                }
+            );
+
+            if (existsInSchema) {
+                ++valueIt;
+                continue;
+            }
+
+            hasOrphans = true;
+
+            SmallMetaText("%s", valueName.c_str());
+
+            ImGui::SameLine();
+
+            const std::string delLabel = "Remove##orphan_" + valueName;
+
+            if (ImGui::SmallButton(delLabel.c_str())) {
+                valueIt = script.publicValues.erase(valueIt);
+            } else {
+                ++valueIt;
+            }
+        }
+
+        if (!hasOrphans) {
+            ImGui::TextDisabled("None");
+        }
+
+        EndSection();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawSectorEditor(Sector &sector, bool *open, const int sectorId, const bool draggable) {
@@ -899,6 +1001,56 @@ namespace ImGuiDrawFunctions {
         }
 
         DrawTagsEditor(sector.tags, sector.tagIds, newSectorTagBuf, sizeof(newSectorTagBuf), sectorTagError);
+
+        ImGui::PopID();
+        EndSection();
+
+        // ── Scripts ──────────────────────────────────────────────────────────────
+        // Sector scripts (Sector::scripts). Same per-script controls as an
+        // entity's Script component (DrawScriptAttachmentFields), drawn
+        // inline - one collapsible block per attached script - instead of
+        // behind an Edit button. Sits last, right above Delete.
+
+        BeginSection(Get("sector.scripts").c_str());
+        ImGui::PushID("SectorScripts");
+
+        const std::string scriptOwnerLabel = "sector " + std::to_string(sector.id);
+        ScriptInstanceID scriptToRemove = INVALID_SCRIPT_INSTANCE_ID;
+
+        for (SectorScript &script: sector.scripts) {
+            // std::to_string, not a truncating cast - instance IDs are 64-bit.
+            ImGui::PushID(std::to_string(script.instanceID).c_str());
+
+            const std::string displayName = script.fileName.empty()
+                ? std::string("Script (unassigned)")
+                : std::filesystem::path(script.fileName).filename().string();
+
+            // "###script" keeps the header's ID (and open/closed state)
+            // stable while the visible text changes with the file name.
+            const std::string headerLabel = (script.enabled ? displayName : displayName + " (disabled)") + "###script";
+
+            if (ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                DrawScriptAttachmentFields(script, scriptOwnerLabel);
+
+                ImGui::Spacing();
+
+                if (DangerButton(Get("sector.remove_script").c_str())) scriptToRemove = script.instanceID;
+
+                Tooltip(Get("editor.tooltip.sector.remove_script").c_str());
+            }
+
+            ImGui::PopID();
+        }
+
+        if (scriptToRemove != INVALID_SCRIPT_INSTANCE_ID) sector.RemoveScript(scriptToRemove);
+
+        if (sector.scripts.empty()) ImGui::TextDisabled("%s", Get("sector.no_scripts").c_str());
+
+        // Same as entities: adds an unassigned script; the file is picked
+        // from the row it creates.
+        if (ImGui::Button(Get("sector.add_script").c_str())) sector.AddScript();
+
+        Tooltip(Get("editor.tooltip.sector.add_script").c_str());
 
         ImGui::PopID();
         EndSection();
@@ -1595,86 +1747,7 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetScript(state.selectedScriptInstanceID);
 
             if (c) {
-                BeginSection("Script File");
-
-                if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), c->fileName, AssetKind::Script)) {
-                    LevelSystem::ReconcileScriptPublicValues(*c);
-                }
-                Tooltip(Get("editor.tooltip.component.script.file").c_str());
-
-                ImGui::Checkbox(Get("component.script.enabled").c_str(), &c->enabled);
-
-                ImGui::SameLine();
-
-                if (ImGui::SmallButton("Refresh Fields")) {
-                    LevelSystem::ReconcileScriptPublicValues(*c);
-                }
-
-                EndSection();
-
-                const std::vector<ScriptPublicField> *fields =
-                        LevelSystem::GetPublicFieldsForScript(c->fileName);
-
-                if (fields == nullptr) {
-                    if (!c->fileName.empty()) {
-                        ImGui::TextDisabled("Script not found or has no public fields.");
-                    }
-                } else {
-                    BeginSection("Public Variables");
-
-                    for (const ScriptPublicField &field: *fields) {
-                        auto valueIt = c->publicValues.find(field.name);
-
-                        if (valueIt == c->publicValues.end()) {
-                            c->publicValues[field.name] = field.defaultValue;
-                            valueIt = c->publicValues.find(field.name);
-                        }
-
-                        DrawScriptValueEditor(field, valueIt->second);
-                    }
-
-                    EndSection();
-
-                    BeginSection("Orphaned Variables");
-
-                    bool hasOrphans = false;
-
-                    for (auto valueIt = c->publicValues.begin(); valueIt != c->publicValues.end();) {
-                        const std::string &valueName = valueIt->first;
-
-                        const bool existsInSchema = std::ranges::any_of(
-                            *fields,
-                            [&valueName](const ScriptPublicField &field) {
-                                return field.name == valueName;
-                            }
-                        );
-
-                        if (existsInSchema) {
-                            ++valueIt;
-                            continue;
-                        }
-
-                        hasOrphans = true;
-
-                        SmallMetaText("%s", valueName.c_str());
-
-                        ImGui::SameLine();
-
-                        const std::string delLabel = "Remove##orphan_" + valueName;
-
-                        if (ImGui::SmallButton(delLabel.c_str())) {
-                            valueIt = c->publicValues.erase(valueIt);
-                        } else {
-                            ++valueIt;
-                        }
-                    }
-
-                    if (!hasOrphans) {
-                        ImGui::TextDisabled("None");
-                    }
-
-                    EndSection();
-                }
+                DrawScriptAttachmentFields(*c, "entity " + std::to_string(entity.id));
 
                 ImGui::Spacing();
                 ImGui::Separator();

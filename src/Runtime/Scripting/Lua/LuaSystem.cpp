@@ -37,8 +37,13 @@
 // ============================================================================
 // Tilky Lua scripting runtime
 //
-// Every Lua script attached to a GameObject (ComponentScript) runs in its own
-// sol::environment - a Behaviour instance - sharing one sol::state. A script
+// Every Lua script attached to a GameObject (ComponentScript) OR to a sector
+// (Sector::scripts) runs in its own sol::environment - a Behaviour instance -
+// sharing one sol::state. Entity and sector scripts go through the very same
+// load / reconcile / lifecycle code; the only differences are the owner
+// context (ScriptOwnerKind) and the owner globals injected into the
+// environment (`gameObject` for entities, `sector` + an unbound `gameObject`
+// for sectors - see InjectOwnerGlobals). A script
 // file's PUBLIC FIELDS are no longer declared through Public.Float/Int/Bool/
 // String(...) calls: they are plain top-level Lua variables, and their
 // schema (name/type/default/display name) is parsed directly out of the
@@ -74,9 +79,25 @@ namespace {
 
         fs::file_time_type lastWriteTime {};
         std::uint64_t schemaHash = 0;
+
+        // Result of compiling (not running) the script file, computed lazily
+        // for the inspector - see GetScriptLoadError. Reset whenever the
+        // asset is refreshed from disk.
+        bool loadErrorChecked = false;
+        std::string loadError;
+    };
+
+    enum class ScriptOwnerKind : std::uint8_t {
+        Entity,
+        Sector
     };
 
     struct ScriptInstance {
+        ScriptOwnerKind ownerKind = ScriptOwnerKind::Entity;
+
+        // Entity ID or sector ID depending on ownerKind. Always a stable ID,
+        // never an index or pointer - the owner is re-resolved from the
+        // Level every time this instance is touched.
         ID ownerID = INVALID_ENTITY_ID;
         ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
         std::string scriptId; // for diagnostics only - identity is instanceID
@@ -101,6 +122,12 @@ namespace {
 
     std::vector<ScriptInstance> scriptInstances;
     std::unordered_map<std::string, ScriptAsset> scriptAssets; // keyed by assetId
+
+    // Entity instances only. An entity script's ScriptInstanceID is unique
+    // across the whole level and is what Behaviour references resolve
+    // through; sector script IDs are only unique within their sector, so
+    // sector instances are deliberately kept out of this index (and thus
+    // out of reach of Behaviour references).
     std::unordered_map<ScriptInstanceID, std::size_t> instanceIndexById;
 
     // GameObject:Destroy() queues here; flushed once per Update() after every
@@ -154,7 +181,31 @@ namespace {
     void RebuildInstanceIndex() {
         instanceIndexById.clear();
         for (std::size_t i = 0; i < scriptInstances.size(); ++i)
-            instanceIndexById[scriptInstances[i].instanceID] = i;
+            if (scriptInstances[i].ownerKind == ScriptOwnerKind::Entity)
+                instanceIndexById[scriptInstances[i].instanceID] = i;
+    }
+
+    // "entity 5" / "sector 2" - for logs and error messages.
+    std::string DescribeOwner(const ScriptOwnerKind kind, const ID ownerID) {
+        return fmt::format("{} {}", kind == ScriptOwnerKind::Sector ? "sector" : "entity", ownerID);
+    }
+
+    // The serialized attachment an instance was created from, or nullptr if
+    // it (or its owner) no longer exists - e.g. the script was removed, the
+    // entity was destroyed, or the sector was deleted.
+    ScriptAttachmentData* ResolveAttachment(Level& level, const ScriptInstance& instance) {
+        switch (instance.ownerKind) {
+            case ScriptOwnerKind::Entity:
+                return level.scripts.GetByID(instance.instanceID);
+
+            case ScriptOwnerKind::Sector: {
+                // Same ID -> sector lookup every SectorRef uses.
+                Sector* sector = ScriptSector{&level, instance.ownerID}.GetSector();
+                return sector == nullptr ? nullptr : sector->GetScript(instance.instanceID);
+            }
+        }
+
+        return nullptr;
     }
 
     sol::protected_function GetOptionalScriptFunction(
@@ -198,10 +249,10 @@ namespace {
             const sol::error error = result;
 
             ReportScriptError(fmt::format(
-                "Lua {} error in script '{}' on entity {} (instance {}): {}",
+                "Lua {} error in script '{}' on {} (instance {}): {}",
                 stageName,
                 instance.scriptId,
-                instance.ownerID,
+                DescribeOwner(instance.ownerKind, instance.ownerID),
                 instance.instanceID,
                 error.what()
             ));
@@ -627,13 +678,14 @@ namespace {
         asset.lastWriteTime = lastWriteTime;
         asset.publicFields = ExtractSchema(assetId, path);
         asset.schemaHash = HashPublicFields(asset.publicFields);
+        // loadErrorChecked/loadError stay at their defaults - see GetScriptLoadError.
 
         scriptAssets[assetId] = std::move(asset);
 
         return scriptAssets[assetId];
     }
 
-    void ReconcilePublicValues(ComponentScript& script, const ScriptAsset& asset) {
+    void ReconcilePublicValues(ScriptAttachmentData& script, const ScriptAsset& asset, const std::string& ownerLabel) {
         for (const ScriptPublicField& field : asset.publicFields) {
             const auto valueIt = script.publicValues.find(field.name);
 
@@ -644,10 +696,10 @@ namespace {
 
             if (!IsScriptValueTypeValid(valueIt->second, field.type)) {
                 spdlog::warn(
-                    "Public field '{}.{}' on entity {} had wrong type. Expected {}. Resetting to default.",
+                    "Public field '{}.{}' on {} had wrong type. Expected {}. Resetting to default.",
                     script.fileName,
                     field.name,
-                    script.ownerID,
+                    ownerLabel,
                     ScriptValueTypeToString(field.type)
                 );
 
@@ -736,14 +788,43 @@ namespace {
     // Instance load / lifecycle
     // ------------------------------------------------------------------
 
+    bool IsSectorOwnerGlobal(const std::string& name) {
+        return name == "sector" || name == "gameObject";
+    }
+
+    // Injects the globals that identify what a script is attached to. Done
+    // before the script body runs so top-level code can already use them.
+    void InjectOwnerGlobals(Level& level, ScriptInstance& instance) {
+        switch (instance.ownerKind) {
+            case ScriptOwnerKind::Entity:
+                instance.environment["gameObject"] = ScriptEntity{&level, instance.ownerID};
+                break;
+
+            case ScriptOwnerKind::Sector:
+                // The one SectorRef type used everywhere else, bound to the
+                // sector that owns THIS instance (by ID).
+                instance.environment["sector"] = ScriptSector{&level, instance.ownerID};
+
+                // Same environment shape as an entity script, but bound to
+                // nothing: an invalid GameObject (isValid == false) that can
+                // never resolve to any entity. It goes through ScriptEntity's
+                // ordinary invalid-reference handling - see LuaEntityBindings.cpp.
+                instance.environment["gameObject"] = ScriptEntity{&level, INVALID_ENTITY_ID};
+                break;
+        }
+    }
+
     bool LoadScriptIntoInstance(
         Level& level,
-        ComponentScript& script,
+        const ScriptOwnerKind ownerKind,
+        const ID ownerID,
+        ScriptAttachmentData& script,
         const std::string& assetId,
         const fs::path& path,
         ScriptInstance& instance
     ) {
-        instance.ownerID = script.ownerID;
+        instance.ownerKind = ownerKind;
+        instance.ownerID = ownerID;
         instance.instanceID = script.instanceID;
         instance.scriptId = assetId;
         instance.started = false;
@@ -752,9 +833,7 @@ namespace {
 
         instance.environment = sol::environment(lua, sol::create, lua.globals());
 
-        const ScriptEntity ownerGameObject {&level, script.ownerID};
-
-        instance.environment["gameObject"] = ownerGameObject;
+        InjectOwnerGlobals(level, instance);
         instance.environment["Scripts"] = lua["Scripts"];
 
         const sol::load_result loadedScript = lua.load_file(path.string());
@@ -795,6 +874,15 @@ namespace {
                 const auto valueIt = script.publicValues.find(field.name);
                 if (valueIt == script.publicValues.end()) continue;
 
+                // Would overwrite the sector/gameObject binding injected above.
+                if (ownerKind == ScriptOwnerKind::Sector && IsSectorOwnerGlobal(field.name)) {
+                    spdlog::warn(
+                        "Lua script '{}' declares public field '{}', which is reserved on sector scripts - ignoring its value",
+                        assetId, field.name
+                    );
+                    continue;
+                }
+
                 instance.environment[field.name] = ResolveScriptValueImpl(lua, level, valueIt->second);
             }
         }
@@ -809,10 +897,53 @@ namespace {
         return true;
     }
 
-    bool EffectiveEnabled(Level& level, const ScriptInstance& instance, const ComponentScript* script) {
-        if (script == nullptr) return false;
-        const Entity* owner = level.GetEntity(instance.ownerID);
-        return script->enabled && owner != nullptr && owner->enabled;
+    // `script` is what ResolveAttachment returned for `instance`.
+    bool EffectiveEnabled(Level& level, const ScriptInstance& instance, const ScriptAttachmentData* script) {
+        if (script == nullptr || !script->enabled) return false;
+
+        switch (instance.ownerKind) {
+            case ScriptOwnerKind::Entity: {
+                const Entity* owner = level.GetEntity(instance.ownerID);
+                return owner != nullptr && owner->enabled;
+            }
+
+            // A sector has no enabled flag of its own, and a resolved
+            // attachment already proves the sector still exists.
+            case ScriptOwnerKind::Sector:
+                return true;
+        }
+
+        return false;
+    }
+
+    // Creates (loads + runs the body of) one script instance for `script`,
+    // owned by the entity/sector `ownerID`, and registers it. Everything
+    // that can go wrong is logged and simply skips this one script.
+    void InstantiateScript(Level& level, const ScriptOwnerKind ownerKind, const ID ownerID, ScriptAttachmentData& script) {
+        const std::string ownerLabel = DescribeOwner(ownerKind, ownerID);
+        const std::string assetId = NormalizeScriptId(script.fileName);
+
+        if (assetId.empty()) {
+            spdlog::warn("Skipping script component with empty file name on {}", ownerLabel);
+            return;
+        }
+
+        const fs::path path = GetScriptPathFromId(assetId);
+
+        if (!fs::exists(path)) {
+            spdlog::error("Lua script does not exist: {}", path.string());
+            return;
+        }
+
+        ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
+        ReconcilePublicValues(script, asset, ownerLabel);
+
+        ScriptInstance instance;
+
+        if (!LoadScriptIntoInstance(level, ownerKind, ownerID, script, assetId, path, instance)) return;
+
+        if (ownerKind == ScriptOwnerKind::Entity) instanceIndexById[instance.instanceID] = scriptInstances.size();
+        scriptInstances.push_back(std::move(instance));
     }
 
     // Flushes GameObject:Destroy() requests queued this frame, AND drops any
@@ -822,7 +953,9 @@ namespace {
     void ProcessPendingDestroys(Level& level) {
         for (const ID entityId : pendingDestroys) {
             for (ScriptInstance& instance : scriptInstances) {
-                if (instance.ownerID != entityId) continue;
+                // ownerID is a sector ID for sector scripts - it must never
+                // be mistaken for an entity ID here.
+                if (instance.ownerKind != ScriptOwnerKind::Entity || instance.ownerID != entityId) continue;
                 CallDestroy(instance);
             }
 
@@ -1013,37 +1146,18 @@ void LuaScriptSystem::Start(Level& level) {
     // Shared table for cross-script utilities/state.
     lua["Scripts"] = lua.create_table();
 
-    for (ComponentScript& script : level.scripts.components) {
-        const std::string assetId = NormalizeScriptId(script.fileName);
+    for (ComponentScript& script : level.scripts.components)
+        InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);
 
-        if (assetId.empty()) {
-            spdlog::warn("Skipping script component with empty file name on entity {}", script.ownerID);
-            continue;
-        }
-
-        const fs::path path = GetScriptPathFromId(assetId);
-
-        if (!fs::exists(path)) {
-            spdlog::error("Lua script does not exist: {}", path.string());
-            continue;
-        }
-
-        ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
-        ReconcilePublicValues(script, asset);
-
-        ScriptInstance instance;
-
-        if (!LoadScriptIntoInstance(level, script, assetId, path, instance)) continue;
-
-        const std::size_t index = scriptInstances.size();
-        instanceIndexById[instance.instanceID] = index;
-        scriptInstances.push_back(std::move(instance));
-    }
+    // Sector scripts come after every entity script, in sector order.
+    for (Sector& sector : level.sectors)
+        for (SectorScript& script : sector.scripts)
+            InstantiateScript(level, ScriptOwnerKind::Sector, sector.id, script);
 
     // First activation: OnEnable before Start, matching Unity's ordering on
     // an object's first activation.
     for (ScriptInstance& instance : scriptInstances) {
-        const ComponentScript* script = level.scripts.GetByID(instance.instanceID);
+        const ScriptAttachmentData* script = ResolveAttachment(level, instance);
         if (!EffectiveEnabled(level, instance, script)) continue;
 
         instance.enabled = true;
@@ -1057,11 +1171,14 @@ void LuaScriptSystem::Update(Level& level) {
     for (ScriptInstance& instance : scriptInstances) {
         if (instance.destroyed) continue;
 
-        const ComponentScript* script = level.scripts.GetByID(instance.instanceID);
+        const ScriptAttachmentData* script = ResolveAttachment(level, instance);
 
-        // The ComponentScript disappeared out from under this instance
-        // (removed directly rather than through GameObject:Destroy()) - tear
-        // it down the same way a queued destroy would.
+        // The attachment disappeared out from under this instance (a
+        // ComponentScript removed directly rather than through
+        // GameObject:Destroy(), or a sector script whose script or whole
+        // sector was deleted) - tear it down the same way a queued destroy
+        // would. destroyed instances are skipped from here on and dropped at
+        // the end of the frame by ProcessPendingDestroys.
         if (script == nullptr) {
             CallDestroy(instance);
             continue;
@@ -1138,6 +1255,10 @@ const std::vector<ScriptPublicField>* LuaScriptSystem::GetPublicFieldsForScript(
 }
 
 bool LuaScriptSystem::ReconcileScriptPublicValues(ComponentScript& script) {
+    return ReconcileScriptPublicValues(script, DescribeOwner(ScriptOwnerKind::Entity, script.ownerID));
+}
+
+bool LuaScriptSystem::ReconcileScriptPublicValues(ScriptAttachmentData& script, const std::string& ownerLabel) {
     const std::string assetId = NormalizeScriptId(script.fileName);
     if (assetId.empty()) return false;
 
@@ -1145,7 +1266,7 @@ bool LuaScriptSystem::ReconcileScriptPublicValues(ComponentScript& script) {
     if (!fs::exists(path)) return false;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
-    ReconcilePublicValues(script, asset);
+    ReconcilePublicValues(script, asset, ownerLabel);
 
     return true;
 }
@@ -1154,4 +1275,42 @@ void LuaScriptSystem::RefreshScriptAssets(Level& level) {
     scriptAssets.clear();
 
     for (ComponentScript& script : level.scripts.components) ReconcileScriptPublicValues(script);
+
+    for (Sector& sector : level.sectors)
+        for (SectorScript& script : sector.scripts)
+            ReconcileScriptPublicValues(script, DescribeOwner(ScriptOwnerKind::Sector, sector.id));
+}
+
+const std::string* LuaScriptSystem::GetScriptLoadError(const std::string& fileName) {
+    const std::string assetId = NormalizeScriptId(fileName);
+    if (assetId.empty()) return nullptr;
+
+    const fs::path path = GetScriptPathFromId(assetId);
+    if (!fs::exists(path)) return nullptr;
+
+    ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
+
+    // Compile only - load_file never runs the chunk - and only once per
+    // on-disk revision, so polling this from the inspector every frame is
+    // cheap.
+    if (!asset.loadErrorChecked) {
+        asset.loadErrorChecked = true;
+
+        const sol::load_result loaded = lua.load_file(path.string());
+
+        if (!loaded.valid()) {
+            const sol::error error = loaded;
+            asset.loadError = error.what();
+
+            // Same shortening the runtime error path applies: the absolute
+            // project path is too long to show in the inspector.
+            const std::string fullPath = path.string();
+            const std::string shortPath = assetId + ".lua";
+
+            if (const std::size_t pos = asset.loadError.find(fullPath); pos != std::string::npos)
+                asset.loadError.replace(pos, fullPath.size(), shortPath);
+        }
+    }
+
+    return asset.loadError.empty() ? nullptr : &asset.loadError;
 }

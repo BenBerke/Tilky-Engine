@@ -28,6 +28,9 @@ namespace LevelSystem {
 
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
     bool ReconcileScriptPublicValues(ComponentScript& script);
+    // Same for a script owned by something other than an entity (a sector).
+    bool ReconcileScriptPublicValues(ScriptAttachmentData& script, const std::string& ownerLabel);
+    const std::string* GetScriptLoadError(const std::string& fileName);
     void RefreshScriptAssets(Level& level);
 }
 

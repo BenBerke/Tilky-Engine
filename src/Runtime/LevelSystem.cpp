@@ -137,6 +137,18 @@ namespace LevelSystem {
         return scriptingSystem.ReconcileScriptPublicValues(script);
     }
 
+    bool ReconcileScriptPublicValues(ScriptAttachmentData& script, const std::string& ownerLabel) {
+        if (!EnsureScriptingInitialized()) return false;
+
+        return scriptingSystem.ReconcileScriptPublicValues(script, ownerLabel);
+    }
+
+    const std::string* GetScriptLoadError(const std::string& fileName) {
+        if (!EnsureScriptingInitialized()) return nullptr;
+
+        return scriptingSystem.GetScriptLoadError(fileName);
+    }
+
     ComponentCamera *GetActiveCamera(Level &level) {
         for (ComponentCamera &camera: level.cameras.components)
             if (camera.isActive) return &camera;

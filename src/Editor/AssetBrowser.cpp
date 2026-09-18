@@ -40,7 +40,7 @@ namespace {
                 "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-                "gameObject",
+                "gameObject", "sector",
                 "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
             };
 
@@ -120,6 +120,8 @@ namespace {
     const std::unordered_map<std::string, std::string>& GlobalAliasToTypeName() {
         static const std::unordered_map<std::string, std::string> aliases = {
             {"gameobject", "GameObject"},
+            // The global a sector script gets - a SectorRef.
+            {"sector", "SectorRef"},
         };
 
         return aliases;

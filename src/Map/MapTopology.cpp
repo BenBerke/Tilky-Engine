@@ -770,6 +770,8 @@ namespace {
         ID id = INVALID_ID;
         std::vector<SectorFloor> floors;
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
+        std::vector<SectorScript> scripts;
+        ScriptInstanceID nextScriptInstanceID = 1;
         std::vector<Vector2> vertices;
         std::vector<std::vector<Vector2>> innerLoops;
         Vector2 samplePoint{};
@@ -785,6 +787,8 @@ namespace {
             info.id = sector.id;
             info.floors = sector.floors;
             info.lightValue = sector.light;
+            info.scripts = sector.scripts;
+            info.nextScriptInstanceID = sector.nextScriptInstanceID;
             info.vertices = sector.vertices;
             info.innerLoops = sector.innerLoops;
             info.samplePoint = InteriorSamplePoint(sector.vertices, sector.triangles);
@@ -915,6 +919,16 @@ namespace {
             if (reconciledFace.source != nullptr) {
                 sector.floors = reconciledFace.source->floors;
                 sector.light = reconciledFace.source->lightValue;
+
+                // Scripts belong to the sector's identity, not to a piece of
+                // its area: only the face that keeps the old sector's ID
+                // (the "keeper", see ReconcileFaces) inherits them. Siblings
+                // split off with a fresh ID start with none, so a split
+                // never runs one script twice.
+                if (reconciledFace.sectorID == reconciledFace.source->id) {
+                    sector.scripts = reconciledFace.source->scripts;
+                    sector.nextScriptInstanceID = reconciledFace.source->nextScriptInstanceID;
+                }
             }
             else {
                 sector.floors = params.floors;

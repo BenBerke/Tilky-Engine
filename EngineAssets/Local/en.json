@@ -754,6 +754,12 @@
   "tags.duplicate_error": "This already has that tag.",
   "editor.tooltip.tag_delete": "Remove this tag from here. The tag itself is not deleted from the project.",
   "sector.tags": "Tags",
+  "sector.scripts": "Scripts",
+  "sector.add_script": "Add Script",
+  "sector.remove_script": "Remove Script",
+  "sector.no_scripts": "No scripts attached.",
+  "editor.tooltip.sector.add_script": "Attach a Lua script to this sector. The script gets a `sector` global that refers to this sector.",
+  "editor.tooltip.sector.remove_script": "Detach this script from the sector.",
   "wall.tags": "Tags",
   "entity.tags": "Tags"
 }

@@ -201,6 +201,30 @@ namespace {
 
         return publicValues;
     }
+
+    // The owner-agnostic part of one attached script. Shared by entity
+    // scripts ("components"/"scripts", which add "ownerID") and sector
+    // scripts ("sectors"[i]/"scripts", owned by the enclosing sector object).
+    json ScriptAttachmentToJson(const ScriptAttachmentData &script) {
+        return json{
+            {"instanceID", script.instanceID},
+            {"fileName", script.fileName},
+            {"enabled", script.enabled},
+            {"schemaHash", script.schemaHash},
+            {"publicValues", ScriptPublicValuesToJson(script.publicValues)}
+        };
+    }
+
+    // Loads everything ScriptAttachmentToJson writes except instanceID and
+    // fileName, which the two callers treat differently.
+    void ScriptAttachmentSettingsFromJson(const json &scriptJson, ScriptAttachmentData &script) {
+        script.enabled = scriptJson.value("enabled", true);
+        script.schemaHash = scriptJson.value("schemaHash", std::uint64_t{0});
+
+        if (scriptJson.contains("publicValues"))
+            script.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
+        else script.publicValues.clear();
+    }
 }
 
 namespace {
@@ -648,6 +672,61 @@ namespace {
         }
     }
 
+    // Loads a sector's optional "scripts" array. Levels saved before sector
+    // scripts existed simply have no such key and load with none attached.
+    // Unlike entity scripts, the file name is kept exactly as saved (a
+    // project-relative path, no extension) rather than reduced to its stem.
+    void LoadSectorScripts(const json &sectorJson, Sector &sector) {
+        sector.scripts.clear();
+        sector.nextScriptInstanceID = 1;
+
+        if (!sectorJson.contains("scripts")) return;
+
+        const json &scriptArray = sectorJson.at("scripts");
+
+        if (!scriptArray.is_array()) {
+            spdlog::warn("LoadSectors: sector {} 'scripts' is not an array - ignoring", sector.id);
+            return;
+        }
+
+        std::unordered_set<ScriptInstanceID> usedInstanceIDs;
+
+        for (const json &scriptJson: scriptArray) {
+            if (!scriptJson.is_object()) {
+                spdlog::warn("LoadSectors: sector {} has a script entry that is not an object - skipping", sector.id);
+                continue;
+            }
+
+            SectorScript script;
+
+            if (scriptJson.contains("fileName") && scriptJson.at("fileName").is_string())
+                script.fileName = scriptJson.at("fileName").get<std::string>();
+
+            // is_number_integer(), not is_number_unsigned(): BSON has no
+            // unsigned types, so a saved (unsigned) ID comes back from
+            // from_bson() as a plain signed integer.
+            if (scriptJson.contains("instanceID") && scriptJson.at("instanceID").is_number_integer()) {
+                const std::int64_t savedID = scriptJson.at("instanceID").get<std::int64_t>();
+                if (savedID > 0) script.instanceID = static_cast<ScriptInstanceID>(savedID);
+            }
+
+            ScriptAttachmentSettingsFromJson(scriptJson, script);
+
+            // Instance IDs must be unique within the sector; a missing or
+            // duplicated one is replaced below, once every valid ID is known.
+            if (script.instanceID != INVALID_SCRIPT_INSTANCE_ID && !usedInstanceIDs.insert(script.instanceID).second)
+                script.instanceID = INVALID_SCRIPT_INSTANCE_ID;
+
+            sector.scripts.push_back(std::move(script));
+        }
+
+        for (const SectorScript &script: sector.scripts)
+            sector.nextScriptInstanceID = std::max(sector.nextScriptInstanceID, script.instanceID + 1);
+
+        for (SectorScript &script: sector.scripts)
+            if (script.instanceID == INVALID_SCRIPT_INSTANCE_ID) script.instanceID = sector.nextScriptInstanceID++;
+    }
+
     void LoadSectors(const json &levelData, Level &level) {
         level.sectors.clear();
 
@@ -937,6 +1016,8 @@ namespace {
                 sector.tagIds.clear();
             }
 
+            LoadSectorScripts(sectorJson, sector);
+
             level.sectors.push_back(std::move(sector));
         }
 
@@ -1005,7 +1086,7 @@ namespace {
                 });
             }
 
-            sectorArray.push_back({
+            json sectorJson = {
                 {"id", sector.id},
                 {"corners", saveLoop(sector.vertices)},
                 {"innerLoops", std::move(innerLoopArray)},
@@ -1021,7 +1102,20 @@ namespace {
                 {"name", sector.name},
                 {"tags", sector.tags},
                 {"tagIds", sector.tagIds}
-            });
+            };
+
+            // Only written when there is something to write, so levels
+            // without sector scripts save exactly as they did before.
+            if (!sector.scripts.empty()) {
+                json scriptArray = json::array();
+
+                for (const SectorScript &script: sector.scripts)
+                    scriptArray.push_back(ScriptAttachmentToJson(script));
+
+                sectorJson["scripts"] = std::move(scriptArray);
+            }
+
+            sectorArray.push_back(std::move(sectorJson));
         }
 
         levelData["sectors"] = std::move(sectorArray);
@@ -1158,13 +1252,8 @@ namespace {
 
                 const std::string loadedName = scriptJson.value("fileName", std::string{});
 
-                c.enabled = scriptJson.value("enabled", true);
+                ScriptAttachmentSettingsFromJson(scriptJson, c);
                 c.fileName = fs::path(loadedName).stem().string();
-                c.schemaHash = scriptJson.value("schemaHash", std::uint64_t{0});
-
-                if (scriptJson.contains("publicValues"))
-                    c.publicValues = ScriptPublicValuesFromJson(scriptJson["publicValues"]);
-                else c.publicValues.clear();
 
                 entity->componentsMask.set(CMP_SCRIPT);
             }
@@ -1407,14 +1496,10 @@ namespace {
         }
 
         for (const ComponentScript& c : level.scripts.components) {
-            componentsJson["scripts"].push_back({
-                {"instanceID", c.instanceID},
-                {"ownerID", c.ownerID},
-                {"fileName", c.fileName},
-                {"enabled", c.enabled},
-                {"schemaHash", c.schemaHash},
-                {"publicValues", ScriptPublicValuesToJson(c.publicValues)}
-            });
+            json scriptJson = ScriptAttachmentToJson(c);
+            scriptJson["ownerID"] = c.ownerID;
+
+            componentsJson["scripts"].push_back(std::move(scriptJson));
         }
 
         for (const ComponentAudioSource& c : level.audioSources.components) {

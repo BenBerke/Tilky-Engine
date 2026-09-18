@@ -30,11 +30,25 @@ public:
     static void RegisterMathBindings(sol::state& lua);
     void RegisterEditorFunctionBindings(sol::state& lua);
     void RegisterGameBindings(sol::state& lua);
-    void RegisterWallBindings(sol::state& lua);
+
+    static void RegisterWallBindings(sol::state& lua);
     void RegisterSectorBindings(sol::state& lua);
 
     const std::vector<ScriptPublicField>* GetPublicFieldsForScript(const std::string& fileName);
+    // Entity scripts: the owner label for log messages is derived from the
+    // ComponentScript itself.
     bool ReconcileScriptPublicValues(ComponentScript& script);
+    // Any script owner (e.g. a sector script). ownerLabel only appears in
+    // log messages, e.g. "sector 3".
+    bool ReconcileScriptPublicValues(ScriptAttachmentData& script, const std::string& ownerLabel);
+
+    // Compile error of the script file, or nullptr if it compiles / doesn't
+    // exist / has no file name. Compiles without running it; cached per
+    // on-disk revision. For the inspector - runtime load errors are reported
+    // through the console when the instance is created.
+    const std::string* GetScriptLoadError(const std::string& fileName);
+
+    // Re-reconciles every entity AND sector script's public values.
     void RefreshScriptAssets(Level& level);
 
     // Actually removes every GameObject queued this frame via

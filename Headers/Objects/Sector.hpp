@@ -8,6 +8,7 @@
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/ScriptPublicType.hpp"
 #include "Wall.hpp"
 
 using ID = uint32_t;
@@ -43,11 +44,50 @@ struct SectorFloor {
     SectorSurface ceiling;
 };
 
+// A Lua script attached to a sector. Deliberately NOT a ComponentScript and
+// not part of Level::scripts: sectors are not entities.
+using SectorScript = ScriptAttachmentData;
+
 struct Sector {
     std::string name;
 
     std::vector<std::string> tags;
     std::vector<uint16_t> tagIds;
+
+    // Scripts attached to this sector (zero or more). They live on the
+    // sector itself, so deleting a sector, snapshotting/restoring geometry
+    // for undo, and copying a sector all carry or drop them with it. The
+    // runtime never holds a pointer to this vector - it finds the sector by
+    // `id` (Level::sectorIDToIndex) and the script by instanceID every time
+    // it ticks, so vector reallocation can't leave it dangling.
+    std::vector<SectorScript> scripts;
+
+    // Next instanceID AddScript() hands out. Only ever increases, so an ID
+    // freed by RemoveScript() is never reused while a live instance might
+    // still be bound to it. Not serialized - rebuilt from `scripts` on load.
+    ScriptInstanceID nextScriptInstanceID = 1;
+
+    SectorScript& AddScript() {
+        SectorScript& script = scripts.emplace_back();
+        script.instanceID = nextScriptInstanceID++;
+        return script;
+    }
+
+    SectorScript* GetScript(const ScriptInstanceID instanceID) {
+        for (SectorScript& script : scripts) if (script.instanceID == instanceID) return &script;
+        return nullptr;
+    }
+
+    [[nodiscard]] const SectorScript* GetScript(const ScriptInstanceID instanceID) const {
+        for (const SectorScript& script : scripts) if (script.instanceID == instanceID) return &script;
+        return nullptr;
+    }
+
+    bool RemoveScript(const ScriptInstanceID instanceID) {
+        return std::erase_if(scripts, [instanceID](const SectorScript& script) {
+            return script.instanceID == instanceID;
+        }) != 0;
+    }
 
     std::vector<SectorFloor> floors = {
         {
