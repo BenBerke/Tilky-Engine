@@ -27,12 +27,15 @@ namespace {
                 {.name = "enabled", .luaType = "boolean", .doc = "Active state - disables every attached script's ticking when false."},
                 {.name = "transform", .luaType = "Transform?", .readOnly = true, .doc = "nil if this GameObject has no Transform."},
                 {.name = "hasScript", .luaType = "boolean", .readOnly = true, .doc = "True if any script is attached."},
+                {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "Tags are assigned from the editor only - there is no SetTag."},
             },
             .methods = {
                 {.name = "Destroy", .params = {}, .returnType = "", .doc = "Queues this GameObject for destruction at the end of the current frame."},
                 {.name = "GetScript", .params = {{"name", "string"}}, .returnType = "Behaviour", .doc = "Looks up an attached script by name."},
                 {.name = "GetScripts", .params = {}, .returnType = "Behaviour[]", .doc = "Every script attached to this GameObject."},
                 {.name = "HasScriptNamed", .params = {{"name", "string"}}, .returnType = "boolean", .doc = "True if a script matching `name` is attached."},
+                {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this GameObject has the given tag."},
+                {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
             }
         });
     }
@@ -247,6 +250,21 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
                 return sol::make_object(luaState, entity.GetUIText());
             }
-        )
+        ),
+
+        // Tags are assigned only from the editor (Project Settings + the
+        // Sector/Wall/Entity inspectors) - read-only here, no SetTag.
+        "tagCount",
+        sol::property(&ScriptEntity::GetTagCount),
+
+        "HasTag",
+        &ScriptEntity::HasTag,
+        "hasTag",
+        &ScriptEntity::HasTag,
+
+        "GetTag",
+        &ScriptEntity::GetTag,
+        "getTag",
+        &ScriptEntity::GetTag
     );
 }

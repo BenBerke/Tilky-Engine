@@ -22,7 +22,7 @@ std::optional<TagRegistry::TagId> TagRegistry::Find(const std::string& name) {
     return iterator->second;
 }
 
-TagRegistry::TagId  TagRegistry::GetOrCreate(const std::string& name) {
+TagRegistry::TagId TagRegistry::GetOrCreate(const std::string& name) {
     if (const auto id = Find(name)) return *id;
 
     if (nextTagId > std::numeric_limits<TagId>::max()) throw std::runtime_error("Maximum number of tags reached");

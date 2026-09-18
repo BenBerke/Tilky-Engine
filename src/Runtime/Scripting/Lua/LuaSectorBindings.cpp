@@ -34,12 +34,15 @@ namespace {
             Prop("wallCount", "integer", true),
             Prop("entityCount", "integer", true),
             Prop("neighborCount", "integer", true),
+            Prop("tagCount", "integer", true),
         }, {
             Method("GetFloor", {Param("index", "integer")}, "SectorFloorRef", "1-based."),
             Method("GetVertex", {Param("index", "integer")}, "Vector2", "1-based."),
             Method("GetWall", {Param("index", "integer")}, "WallRef", "1-based."),
             Method("GetEntity", {Param("index", "integer")}, "GameObject", "1-based."),
             Method("GetNeighbor", {Param("index", "integer")}, "SectorRef", "1-based."),
+            Method("HasTag", {Param("tag", "string")}, "boolean", "True if this sector has the given tag."),
+            Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
         }));
     }
 }
@@ -131,10 +134,17 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
             &ScriptSector::GetNeighborCount
         ),
 
+        // Read-only: tags are assigned from the editor only - no SetTag.
+        "tagCount", sol::readonly_property(
+            &ScriptSector::GetTagCount
+        ),
+
         "GetFloor", &ScriptSector::GetFloor,
         "GetVertex", &ScriptSector::GetVertex,
         "GetWall", &ScriptSector::GetWall,
         "GetEntity", &ScriptSector::GetEntity,
-        "GetNeighbor", &ScriptSector::GetNeighbor
+        "GetNeighbor", &ScriptSector::GetNeighbor,
+        "HasTag", &ScriptSector::HasTag,
+        "GetTag", &ScriptSector::GetTag
     );
 }

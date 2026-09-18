@@ -24,8 +24,11 @@ namespace {
             Prop("color", "Vector4"),
             Prop("textureOffset", "Vector2"),
             Prop("textureFileName", "string"),
+            Prop("tagCount", "integer", true),
         }, {
             Method("clearTextureFileName"),
+            Method("HasTag", {Param("tag", "string")}, "boolean", "True if this wall has the given tag."),
+            Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
         }));
     }
 }
@@ -88,6 +91,17 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
         ),
 
         "clearTextureFileName",
-        &ScriptWall::ClearTextureFileName
+        &ScriptWall::ClearTextureFileName,
+
+        // Read-only: tags are assigned from the editor only - no SetTag.
+        "tagCount", sol::readonly_property(
+            &ScriptWall::GetTagCount
+        ),
+
+        "HasTag",
+        &ScriptWall::HasTag,
+
+        "GetTag",
+        &ScriptWall::GetTag
     );
 }

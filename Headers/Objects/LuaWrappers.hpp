@@ -9,6 +9,7 @@
 
 #include <sol/error.hpp>
 
+#include "Headers/TagRegistry.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
@@ -1265,6 +1266,38 @@ struct ScriptEntity {
         return false;
     }
 
+    // Tags are assigned only from the editor (Project Settings + the
+    // Sector/Wall/Entity inspectors) - scripts can query them (HasTag,
+    // tagCount, GetTag) but never add/remove/rename one, so gameplay code
+    // can't drift a GameObject's tags out of sync with what a level
+    // designer set.
+    [[nodiscard]] bool HasTag(const std::string& tag) const {
+        const Entity* entity = GetEntity();
+        if (entity == nullptr) return false;
+
+        const auto tagId = TagRegistry::Find(tag);
+        if (!tagId.has_value()) return false;
+
+        return std::ranges::find(entity->tagIds, *tagId) != entity->tagIds.end();
+    }
+
+    [[nodiscard]] int GetTagCount() const {
+        const Entity* entity = GetEntity();
+        return entity == nullptr ? 0 : static_cast<int>(entity->tags.size());
+    }
+
+    [[nodiscard]] std::string GetTag(const int luaIndex) const {
+        const Entity* entity = GetEntity();
+        if (entity == nullptr) throw sol::error("Invalid GameObject");
+
+        const int index = luaIndex - 1;
+
+        if (index < 0 || index >= static_cast<int>(entity->tags.size()))
+            throw sol::error("GameObject tag index out of range");
+
+        return entity->tags[index];
+    }
+
     [[nodiscard]] bool HasPlayerController() const {
         return level != nullptr && level->playerControllers.Has(ownerID);
     }
@@ -1485,6 +1518,41 @@ struct ScriptWall {
 
     void ClearTextureFileName() const {
         SetTextureFileName("");
+    }
+
+    [[nodiscard]] bool HasTag(const std::string& tag) const
+    {
+        const Wall* wall = GetWall();
+
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+
+        const auto tagId = TagRegistry::Find(tag);
+
+        if (!tagId.has_value()) return false;
+
+        return std::ranges::find(wall->tagIds, *tagId) != wall->tagIds.end();
+    }
+
+    // Tags are assigned only from the editor (Project Settings + the
+    // Sector/Wall/Entity inspectors) - scripts can query them (HasTag,
+    // tagCount, GetTag) but never add/remove/rename one, so gameplay code
+    // can't drift a wall's tags out of sync with what a level designer set.
+    [[nodiscard]] int GetTagCount() const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        return static_cast<int>(wall->tags.size());
+    }
+
+    [[nodiscard]] std::string GetTag(const int luaIndex) const {
+        const Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid WallRef");
+
+        const int index = luaIndex - 1;
+
+        if (index < 0 || index >= static_cast<int>(wall->tags.size()))
+            throw sol::error("Wall tag index out of range");
+
+        return wall->tags[index];
     }
 
     [[nodiscard]] ID GetFrontSector() const {
@@ -1832,6 +1900,38 @@ struct ScriptSector {
             .level = level,
             .sectorID = neighbor->id
         };
+    }
+
+    // Tags are assigned only from the editor (Project Settings + the
+    // Sector/Wall/Entity inspectors) - scripts can query them (HasTag,
+    // tagCount, GetTag) but never add/remove/rename one, so gameplay code
+    // can't drift a sector's tags out of sync with what a level designer set.
+    [[nodiscard]] bool HasTag(const std::string& tag) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const auto tagId = TagRegistry::Find(tag);
+        if (!tagId.has_value()) return false;
+
+        return std::ranges::find(sector->tagIds, *tagId) != sector->tagIds.end();
+    }
+
+    [[nodiscard]] int GetTagCount() const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        return static_cast<int>(sector->tags.size());
+    }
+
+    [[nodiscard]] std::string GetTag(const int luaIndex) const {
+        const Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+
+        const int index = luaIndex - 1;
+
+        if (index < 0 || index >= static_cast<int>(sector->tags.size()))
+            throw sol::error("Sector tag index out of range");
+
+        return sector->tags[index];
     }
 };
 
