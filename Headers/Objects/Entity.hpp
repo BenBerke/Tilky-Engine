@@ -2,7 +2,9 @@
 #define TILKY_ENGINE_ENTITY_H
 
 #include <bitset>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "Components.hpp"
 #include "EntityTypes.hpp"
@@ -14,6 +16,9 @@ struct Entity {
     std::string name;
     ID id = static_cast<ID>(-1);
     ID attachedLevelId = static_cast<ID>(-1);
+
+    std::vector<std::string> tags;
+    std::vector<uint16_t> tagIds;
 
     // GameObject-level active state (Lua: GameObject.enabled / GameObject:SetEnabled()).
     // Distinct from any single component's own enabled flag (e.g. ComponentScript::enabled):

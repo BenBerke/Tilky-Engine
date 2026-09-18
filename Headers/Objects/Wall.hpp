@@ -8,6 +8,9 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 #include "EntityTypes.hpp"
 #include "../Math/Vector/Vector2.hpp"
@@ -19,6 +22,9 @@ struct Wall {
     ID id = INVALID_ID;
 
     std::string name;
+
+    std::vector<std::string> tags;
+    std::vector<uint16_t> tagIds;
 
     Vector2 start, end;
     Vector4 color;

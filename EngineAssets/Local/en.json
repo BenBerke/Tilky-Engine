@@ -745,13 +745,15 @@
   "editor.project.tags": "Tags",
   "tags.none_found": "No tags yet.",
   "tags.new_placeholder": "New tag name",
-  "tags.tooltip.delete": "Delete this tag from the project. Removes it from every sector that has it.",
+  "tags.add_placeholder": "Add tag by name",
+  "tags.tooltip.delete": "Delete this tag from the project. Removes it from every sector, wall and entity that has it.",
   "tags.notification.duplicate_name": "A tag with that name already exists.",
   "tags.notification.empty_name": "Tag name can't be empty.",
   "tags.notification.save_failed": "Failed to save project settings. Check logs.",
+  "tags.unknown_error": "No tag with that name exists. Create it in Project Settings first.",
+  "tags.duplicate_error": "This already has that tag.",
+  "editor.tooltip.tag_delete": "Remove this tag from here. The tag itself is not deleted from the project.",
   "sector.tags": "Tags",
-  "sector.tag_add_placeholder": "Add tag by name",
-  "editor.tooltip.sector.tag_delete": "Remove this tag from the sector. The tag itself is not deleted from the project.",
-  "sector.tag_unknown_error": "No tag with that name exists. Create it in Project Settings first.",
-  "sector.tag_duplicate_error": "This sector already has that tag."
+  "wall.tags": "Tags",
+  "entity.tags": "Tags"
 }

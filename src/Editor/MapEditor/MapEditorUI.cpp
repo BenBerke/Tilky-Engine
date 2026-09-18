@@ -745,28 +745,35 @@ namespace {
     // ID); this panel only drives it through its public API (Create / Rename /
     // Delete / Find) - it never mutates a tag's ID or touches the underlying
     // map directly. Deleting a project tag here also strips the matching
-    // name/ID pair from every sector of every loaded level, so a sector's
-    // tags/tagIds vectors never reference a tag the registry no longer knows
-    // about.
+    // name/ID pair from every sector, wall and entity of every loaded level,
+    // so none of their tags/tagIds vectors are left referencing a tag the
+    // registry no longer knows about.
 
-    // Removes every (tagName, tagId) assignment from every sector of every
-    // loaded level. Called once a project tag is actually deleted, so no
-    // sector is left pointing at an ID the registry no longer has.
-    void RemoveTagFromAllLoadedSectors(const std::string &tagName, const TagRegistry::TagId tagId) {
-        for (Level &level: LevelManager::loadedLevels) {
-            for (Sector &sector: level.sectors) {
-                const size_t pairCount = std::min(sector.tags.size(), sector.tagIds.size());
+    // Erases the (tagName, tagId) pair from `tags`/`tagIds` if present. A
+    // single object can't have the same tag twice (see each inspector's
+    // duplicate guard), so at most one pair is ever removed.
+    void RemoveTagAssignment(std::vector<std::string> &tags, std::vector<uint16_t> &tagIds,
+                             const std::string &tagName, const TagRegistry::TagId tagId) {
+        const size_t pairCount = std::min(tags.size(), tagIds.size());
 
-                for (size_t i = 0; i < pairCount;) {
-                    if (sector.tags[i] == tagName && sector.tagIds[i] == tagId) {
-                        sector.tags.erase(sector.tags.begin() + static_cast<long>(i));
-                        sector.tagIds.erase(sector.tagIds.begin() + static_cast<long>(i));
-                        break; // a sector can't have the same tag twice - see the sector editor's duplicate guard
-                    }
-
-                    ++i;
-                }
+        for (size_t i = 0; i < pairCount; ++i) {
+            if (tags[i] == tagName && tagIds[i] == tagId) {
+                tags.erase(tags.begin() + static_cast<long>(i));
+                tagIds.erase(tagIds.begin() + static_cast<long>(i));
+                return;
             }
+        }
+    }
+
+    // Removes every (tagName, tagId) assignment from every sector, wall and
+    // entity of every loaded level. Called once a project tag is actually
+    // deleted, so nothing is left pointing at an ID the registry no longer
+    // has.
+    void RemoveTagFromAllLoadedObjects(const std::string &tagName, const TagRegistry::TagId tagId) {
+        for (Level &level: LevelManager::loadedLevels) {
+            for (Sector &sector: level.sectors) RemoveTagAssignment(sector.tags, sector.tagIds, tagName, tagId);
+            for (Wall &wall: level.walls) RemoveTagAssignment(wall.tags, wall.tagIds, tagName, tagId);
+            for (Entity &entity: level.entities) RemoveTagAssignment(entity.tags, entity.tagIds, tagName, tagId);
         }
     }
 
@@ -897,7 +904,7 @@ namespace {
             const auto &[deletedName, deletedId] = *tagPendingDeletion;
 
             TagRegistry::Delete(deletedName);
-            RemoveTagFromAllLoadedSectors(deletedName, deletedId);
+            RemoveTagFromAllLoadedObjects(deletedName, deletedId);
             tagNameBuffers.erase(deletedId);
 
             hasUnsavedChanges = true;

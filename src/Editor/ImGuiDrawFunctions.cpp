@@ -474,6 +474,80 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Tags — shared assignment editor for Sector / Wall / Entity inspectors
+    // ─────────────────────────────────────────────────────────────────────────
+    // Assignment only: names/IDs are resolved through TagRegistry::Find and
+    // never generated here - creating, renaming or deleting a project tag
+    // happens in the Project Settings Tags panel, not from an inspector.
+    // Draws every currently-assigned (name, ID) pair with a compact red
+    // per-row Delete (removes only this object's assignment, not the tag
+    // itself) plus a persistent "add another" row at the bottom.
+    //
+    // `newTagBuf`/`tagBufSize`/`tagError` are owned by the caller as
+    // function-local statics scoped to that one inspector kind, so a
+    // numeric ID collision between e.g. sector #5 and wall #5 can never
+    // leak one's half-typed input into the other's row - see each call
+    // site's own owner-change reset.
+    static void DrawTagsEditor(std::vector<std::string> &tags, std::vector<uint16_t> &tagIds,
+                                char *newTagBuf, const size_t tagBufSize, std::string &tagError) {
+        const size_t assignedTagCount = std::min(tags.size(), tagIds.size());
+        int tagIndexToRemove = -1;
+
+        for (size_t tagIndex = 0; tagIndex < assignedTagCount; ++tagIndex) {
+            ImGui::PushID(static_cast<int>(tagIndex));
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(tags[tagIndex].c_str());
+
+            ImGui::SameLine();
+            ImGui::TextDisabled("#%u", tagIds[tagIndex]);
+
+            ImGui::SameLine();
+            if (DangerButton(Get("common.delete").c_str())) tagIndexToRemove = static_cast<int>(tagIndex);
+            Tooltip(Get("editor.tooltip.tag_delete").c_str());
+
+            ImGui::PopID();
+        }
+
+        if (tagIndexToRemove >= 0) {
+            tags.erase(tags.begin() + tagIndexToRemove);
+            tagIds.erase(tagIds.begin() + tagIndexToRemove);
+            tagError.clear();
+        }
+
+        // Always-available empty row for assigning another tag.
+        FieldWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##NewTag", Get("tags.add_placeholder").c_str(), newTagBuf, tagBufSize);
+
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            const std::string enteredName = newTagBuf;
+
+            if (!enteredName.empty()) {
+                if (const auto tagId = TagRegistry::Find(enteredName)) {
+                    const bool alreadyAssigned = std::find(tags.begin(), tags.end(), enteredName) != tags.end();
+
+                    if (alreadyAssigned) {
+                        tagError = Get("tags.duplicate_error");
+                    } else {
+                        tags.push_back(enteredName);
+                        tagIds.push_back(*tagId);
+                        tagError.clear();
+                        newTagBuf[0] = '\0';
+                    }
+                } else {
+                    tagError = Get("tags.unknown_error");
+                }
+            }
+        }
+
+        if (!tagError.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.45f, 0.45f, 1.00f));
+            ImGui::TextWrapped("%s", tagError.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawSectorEditor(Sector &sector, bool *open, const int sectorId, const bool draggable) {
@@ -805,16 +879,15 @@ namespace ImGuiDrawFunctions {
         }
 
         // ── Tags ─────────────────────────────────────────────────────────────────
-        // Assignment only - names/IDs are resolved through TagRegistry, never
-        // generated here. Creating/renaming/deleting a project tag happens in
-        // the Project Settings Tags section, not from a sector. Placed
-        // immediately above the Delete button per the section ordering below.
+        // Placed immediately above the Delete button per the section
+        // ordering below. See DrawTagsEditor for the shared row/assignment
+        // logic reused by the Wall and Entity inspectors.
 
         BeginSection(Get("sector.tags").c_str());
         ImGui::PushID("SectorTags");
 
-        // Per-sector "add a tag" buffer, keyed by sector ID so switching the
-        // selected sector doesn't leak leftover text from the previous one.
+        // Keyed by sector ID so switching the selected sector doesn't leak
+        // leftover text from the previous one.
         static ID lastTagEditSectorId = INVALID_ID;
         static char newSectorTagBuf[128] = "";
         static std::string sectorTagError;
@@ -825,63 +898,7 @@ namespace ImGuiDrawFunctions {
             sectorTagError.clear();
         }
 
-        const size_t assignedTagCount = std::min(sector.tags.size(), sector.tagIds.size());
-        int tagIndexToRemove = -1;
-
-        for (size_t tagIndex = 0; tagIndex < assignedTagCount; ++tagIndex) {
-            ImGui::PushID(static_cast<int>(tagIndex));
-
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(sector.tags[tagIndex].c_str());
-
-            ImGui::SameLine();
-            ImGui::TextDisabled("#%u", sector.tagIds[tagIndex]);
-
-            ImGui::SameLine();
-            if (DangerButton(Get("common.delete").c_str())) tagIndexToRemove = static_cast<int>(tagIndex);
-            Tooltip(Get("editor.tooltip.sector.tag_delete").c_str());
-
-            ImGui::PopID();
-        }
-
-        if (tagIndexToRemove >= 0) {
-            sector.tags.erase(sector.tags.begin() + tagIndexToRemove);
-            sector.tagIds.erase(sector.tagIds.begin() + tagIndexToRemove);
-            sectorTagError.clear();
-        }
-
-        // Always-available empty row for assigning another tag.
-        FieldWidth(ImGui::GetContentRegionAvail().x);
-        ImGui::InputTextWithHint("##NewSectorTag", Get("sector.tag_add_placeholder").c_str(),
-                                 newSectorTagBuf, sizeof(newSectorTagBuf));
-
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            const std::string enteredName = newSectorTagBuf;
-
-            if (!enteredName.empty()) {
-                if (const auto tagId = TagRegistry::Find(enteredName)) {
-                    const bool alreadyAssigned =
-                            std::find(sector.tags.begin(), sector.tags.end(), enteredName) != sector.tags.end();
-
-                    if (alreadyAssigned) {
-                        sectorTagError = Get("sector.tag_duplicate_error");
-                    } else {
-                        sector.tags.push_back(enteredName);
-                        sector.tagIds.push_back(*tagId);
-                        sectorTagError.clear();
-                        newSectorTagBuf[0] = '\0';
-                    }
-                } else {
-                    sectorTagError = Get("sector.tag_unknown_error");
-                }
-            }
-        }
-
-        if (!sectorTagError.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.45f, 0.45f, 1.00f));
-            ImGui::TextWrapped("%s", sectorTagError.c_str());
-            ImGui::PopStyleColor();
-        }
+        DrawTagsEditor(sector.tags, sector.tagIds, newSectorTagBuf, sizeof(newSectorTagBuf), sectorTagError);
 
         ImGui::PopID();
         EndSection();
@@ -996,6 +1013,27 @@ namespace ImGuiDrawFunctions {
             ImGui::Spacing();
             SmallMetaText("ID: %d   internal id: %d", wallId, wall.id);
         }
+
+        // ── Tags ─────────────────────────────────────────────────────────────
+        BeginSection(Get("wall.tags").c_str());
+        ImGui::PushID("WallTags");
+
+        // Keyed by wall ID so switching the selected wall doesn't leak
+        // leftover text from the previous one.
+        static ID lastTagEditWallId = INVALID_ID;
+        static char newWallTagBuf[128] = "";
+        static std::string wallTagError;
+
+        if (lastTagEditWallId != wall.id) {
+            lastTagEditWallId = wall.id;
+            newWallTagBuf[0] = '\0';
+            wallTagError.clear();
+        }
+
+        DrawTagsEditor(wall.tags, wall.tagIds, newWallTagBuf, sizeof(newWallTagBuf), wallTagError);
+
+        ImGui::PopID();
+        EndSection();
 
         // ── Actions ──────────────────────────────────────────────────────────
         ImGui::Spacing();
@@ -1160,6 +1198,27 @@ namespace ImGuiDrawFunctions {
             ImGui::PopID();
         }
 
+        EndSection();
+
+        // ── Tags ─────────────────────────────────────────────────────────────
+        BeginSection(Get("entity.tags").c_str());
+        ImGui::PushID("EntityTags");
+
+        // Keyed by entity ID so switching the selected entity doesn't leak
+        // leftover text from the previous one.
+        static ID lastTagEditEntityId = INVALID_ID;
+        static char newEntityTagBuf[128] = "";
+        static std::string entityTagError;
+
+        if (lastTagEditEntityId != entity.id) {
+            lastTagEditEntityId = entity.id;
+            newEntityTagBuf[0] = '\0';
+            entityTagError.clear();
+        }
+
+        DrawTagsEditor(entity.tags, entity.tagIds, newEntityTagBuf, sizeof(newEntityTagBuf), entityTagError);
+
+        ImGui::PopID();
         EndSection();
 
         // ── Actions ──────────────────────────────────────────────────────────

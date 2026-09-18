@@ -230,6 +230,57 @@ namespace {
         return fallback;
     }
 
+    // Loads the "tags"/"tagIds" parallel-array format shared by sectors,
+    // walls and entities into outTags/outTagIds. Missing fields produce
+    // empty vectors. A length mismatch discards both sides (logged) rather
+    // than risk an index existing in one vector but not the other;
+    // malformed individual entries (wrong JSON type) are skipped and
+    // logged too, keeping whatever parsed cleanly.
+    void LoadTagArrays(const json& objectJson, const char* kind, const ID objectId,
+                        std::vector<std::string>& outTags, std::vector<uint16_t>& outTagIds) {
+        outTags.clear();
+        outTagIds.clear();
+
+        if (!objectJson.contains("tags") && !objectJson.contains("tagIds")) return;
+
+        std::vector<std::string> loadedTags;
+        std::vector<uint16_t> loadedTagIds;
+        bool malformedEntry = false;
+
+        if (objectJson.contains("tags")) {
+            if (objectJson.at("tags").is_array()) {
+                for (const json& tagJson : objectJson.at("tags")) {
+                    if (tagJson.is_string()) loadedTags.push_back(tagJson.get<std::string>());
+                    else malformedEntry = true;
+                }
+            } else malformedEntry = true;
+        }
+
+        if (objectJson.contains("tagIds")) {
+            if (objectJson.at("tagIds").is_array()) {
+                for (const json& tagIdJson : objectJson.at("tagIds")) {
+                    if (tagIdJson.is_number_unsigned() || tagIdJson.is_number_integer())
+                        loadedTagIds.push_back(tagIdJson.get<uint16_t>());
+                    else malformedEntry = true;
+                }
+            } else malformedEntry = true;
+        }
+
+        if (loadedTags.size() != loadedTagIds.size()) {
+            spdlog::warn(
+                "{} {}: tag name/id array length mismatch ({} vs {}) - tags discarded",
+                kind, objectId, loadedTags.size(), loadedTagIds.size()
+            );
+            return;
+        }
+
+        if (malformedEntry)
+            spdlog::warn("{} {}: malformed tag data - invalid entries were skipped", kind, objectId);
+
+        outTags = std::move(loadedTags);
+        outTagIds = std::move(loadedTagIds);
+    }
+
     void SetError(std::string* errorMessage, const std::string& message) {
         if (errorMessage != nullptr) {
             *errorMessage = message;
@@ -364,6 +415,8 @@ namespace {
             entity.enabled = entityJson.value("enabled", true);
             entity.attachedLevelId = level.id;
 
+            LoadTagArrays(entityJson, "Entity", entity.id, entity.tags, entity.tagIds);
+
             highestEntityID = std::max(highestEntityID, entity.id);
             level.entities.push_back(entity);
         }
@@ -378,7 +431,9 @@ namespace {
             levelData["entities"].push_back({
                 {"id", entity.id},
                 {"name", entity.name},
-                {"enabled", entity.enabled}
+                {"enabled", entity.enabled},
+                {"tags", entity.tags},
+                {"tagIds", entity.tagIds}
             });
         }
     }
@@ -541,6 +596,8 @@ namespace {
             seenWallIDs.insert(wall.id);
             highestWallID = std::max(highestWallID, wall.id);
 
+            LoadTagArrays(wallJson, "Wall", wall.id, wall.tags, wall.tagIds);
+
             level.walls.push_back(std::move(wall));
         }
 
@@ -584,7 +641,9 @@ namespace {
                 {"backSector", wall.backSector},
                 {"textureScale", {wall.textureScale.x, wall.textureScale.y}},
                     {"flipX", wall.flipTextureX},
-                {"flipY", wall.flipTextureY}
+                {"flipY", wall.flipTextureY},
+                {"tags", wall.tags},
+                {"tagIds", wall.tagIds}
             });
         }
     }
@@ -855,55 +914,14 @@ namespace {
 
             sector.name = sectorJson.at("name");
 
-            sector.tags.clear();
-            sector.tagIds.clear();
-
             if (sectorJson.contains("tags") || sectorJson.contains("tagIds")) {
-                // Current format: parallel arrays.
-                std::vector<std::string> loadedTags;
-                std::vector<uint16_t> loadedTagIds;
-                bool malformedEntry = false;
-
-                if (sectorJson.contains("tags")) {
-                    if (sectorJson.at("tags").is_array()) {
-                        for (const json &tagJson: sectorJson.at("tags")) {
-                            if (tagJson.is_string()) loadedTags.push_back(tagJson.get<std::string>());
-                            else malformedEntry = true;
-                        }
-                    } else malformedEntry = true;
-                }
-
-                if (sectorJson.contains("tagIds")) {
-                    if (sectorJson.at("tagIds").is_array()) {
-                        for (const json &tagIdJson: sectorJson.at("tagIds")) {
-                            if (tagIdJson.is_number_unsigned() || tagIdJson.is_number_integer())
-                                loadedTagIds.push_back(tagIdJson.get<uint16_t>());
-                            else malformedEntry = true;
-                        }
-                    } else malformedEntry = true;
-                }
-
-                if (loadedTags.size() != loadedTagIds.size()) {
-                    spdlog::warn(
-                        "LoadSectors: sector {} has mismatched tag name/id array "
-                        "lengths ({} vs {}) - tags discarded",
-                        sector.id,
-                        loadedTags.size(),
-                        loadedTagIds.size()
-                    );
-                } else {
-                    if (malformedEntry)
-                        spdlog::warn(
-                            "LoadSectors: sector {} has malformed tag data - "
-                            "invalid entries were skipped",
-                            sector.id
-                        );
-
-                    sector.tags = std::move(loadedTags);
-                    sector.tagIds = std::move(loadedTagIds);
-                }
+                LoadTagArrays(sectorJson, "Sector", sector.id, sector.tags, sector.tagIds);
             } else if (sectorJson.contains("tag") && sectorJson.contains("tagId")) {
-                // Legacy single-tag format - load as a one-element vector.
+                // Legacy single-tag format (pre-multi-tag) - load as a
+                // one-element vector rather than dropping the tag.
+                sector.tags.clear();
+                sector.tagIds.clear();
+
                 const json &legacyTag = sectorJson.at("tag");
                 const json &legacyTagId = sectorJson.at("tagId");
 
@@ -912,13 +930,12 @@ namespace {
                     sector.tags.push_back(legacyTag.get<std::string>());
                     sector.tagIds.push_back(legacyTagId.get<uint16_t>());
                 } else {
-                    spdlog::warn(
-                        "LoadSectors: sector {} has malformed legacy tag data - skipping",
-                        sector.id
-                    );
+                    spdlog::warn("Sector {}: malformed legacy tag data - skipping", sector.id);
                 }
+            } else {
+                sector.tags.clear();
+                sector.tagIds.clear();
             }
-            // Missing entirely: sector.tags/tagIds stay empty (cleared above).
 
             level.sectors.push_back(std::move(sector));
         }
