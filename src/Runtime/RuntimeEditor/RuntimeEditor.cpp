@@ -129,6 +129,15 @@ namespace {
     // editing the one it started on.
     SurfaceRef uvDragSurface;
     bool draggingUv = false;
+
+    // +1 or -1, decided once on button-down and applied to the horizontal
+    // delta of the whole drag. Re-deriving it per frame would let it flip
+    // mid-drag as the camera or the ray moves.
+    float uvDragHorizontalSign = 1.0f;
+
+    // Most recent sign a wall drag actually resolved. Reused when the camera is
+    // edge-on to a wall and the viewed face cannot be told apart.
+    float lastWallDragHorizontalSign = 1.0f;
 }
 
 namespace {
@@ -359,6 +368,71 @@ namespace {
         return type == RayHitType::Wall ||
                type == RayHitType::SectorFloor ||
                type == RayHitType::SectorCeiling;
+    }
+
+    // Multiplier for the horizontal drag delta so the wall texture follows the
+    // cursor on whichever face the camera is looking at.
+    //
+    // Conventions (Rendering.vs.glsl renderWall, OpenGLMapBuild.cpp):
+    //  - wall.start/end are map (x, y), which the renderer places at world
+    //    (x, z).
+    //  - U grows from start toward end on BOTH faces (no culling, no
+    //    gl_FrontFacing handling), and the offset is added after scale/flip:
+    //        u = (+/-)s * scale.x / tileSize + offset.x / tileSize
+    //    so with no flip a larger offset.x slides the texture toward start,
+    //    i.e. against the wall direction. flipTextureX (or a negative
+    //    scale.x) reverses that.
+    //  - The view's right vector is cross(forward, up) =
+    //    (-cos yaw, 0, sin yaw), the same basis GetMouseRayDirection uses.
+    //
+    // The face is picked by where the camera stands relative to the wall line;
+    // the ray's hit point stands in for "a point on the wall".
+    float ComputeWallHorizontalDragSign(
+        const Wall& wall,
+        const Vector3 hitPosition,
+        const Vector3 cameraPosition,
+        const ComponentCamera& camera,
+        const float fallback) {
+        // Below this the wall is edge-on (or the camera sits on its plane):
+        // which face is showing is not stable, so do not guess.
+        constexpr float AMBIGUITY_EPSILON = 1e-4f;
+
+        const float wallX = wall.end.x - wall.start.x;
+        const float wallY = wall.end.y - wall.start.y;
+        const float wallLength = std::sqrt(wallX * wallX + wallY * wallY);
+
+        const float viewX = hitPosition.x - cameraPosition.x;
+        const float viewY = hitPosition.z - cameraPosition.z;
+        const float viewLength = std::sqrt(viewX * viewX + viewY * viewY);
+
+        if (wallLength <= AMBIGUITY_EPSILON || viewLength <= AMBIGUITY_EPSILON) return fallback;
+
+        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+        const float rightX = -std::cos(yawRadians);
+        const float rightY = std::sin(yawRadians);
+        const float forwardX = std::sin(yawRadians);
+        const float forwardY = std::cos(yawRadians);
+
+        const float dirX = wallX / wallLength;
+        const float dirY = wallY / wallLength;
+        const float toWallX = viewX / viewLength;
+        const float toWallY = viewY / viewLength;
+
+        // Screen x of a point is right/forward, so the derivative along the
+        // wall has the sign of this cross product (forward > 0 for anything
+        // the mouse ray can hit). Positive: start -> end runs left to right.
+        const float screenSlide =
+            (dirX * rightX + dirY * rightY) * (toWallX * forwardX + toWallY * forwardY) -
+            (toWallX * rightX + toWallY * rightY) * (dirX * forwardX + dirY * forwardY);
+
+        if (std::abs(screenSlide) < AMBIGUITY_EPSILON) return fallback;
+
+        // Which way along start -> end the texture slides when offset.x grows.
+        float textureSlide = -1.0f;
+        if (wall.flipTextureX) textureSlide = -textureSlide;
+        if (wall.textureScale.x < 0.0f) textureSlide = -textureSlide;
+
+        return (screenSlide > 0.0f ? 1.0f : -1.0f) * textureSlide;
     }
 
     void DrawDropHint(const std::string& text) {
@@ -760,6 +834,26 @@ namespace RuntimeEditor {
             IsUvEditableSurface(hoveredSurface.type)) {
             uvDragSurface = hoveredSurface;
             draggingUv = true;
+
+            // Decided once here and held for the whole drag. Floors and
+            // ceilings keep the raw delta.
+            uvDragHorizontalSign = 1.0f;
+
+            if (uvDragSurface.type == RayHitType::Wall &&
+                hit.has_value() &&
+                uvDragSurface.wallIndex >= 0 &&
+                uvDragSurface.wallIndex < static_cast<int>(level.walls.size())) {
+                lastWallDragHorizontalSign = ComputeWallHorizontalDragSign(
+                    level.walls[uvDragSurface.wallIndex],
+                    hit->position,
+                    rayOrigin,
+                    *camera,
+                    lastWallDragHorizontalSign
+                );
+
+                uvDragHorizontalSign = lastWallDragHorizontalSign;
+            }
+
             SetCursorLocked(cameraLooking || draggingUv);
         }
 
@@ -777,7 +871,7 @@ namespace RuntimeEditor {
                 // Negated so the texture tracks the cursor rather than running
                 // from it. Flip the signs if the sampler wants the opposite.
                 AddUvOffset(level, uvDragSurface, {
-                    mouseDelta.x * UV_DRAG_SENSITIVITY,
+                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
                     -mouseDelta.y * UV_DRAG_SENSITIVITY
                 });
             }
