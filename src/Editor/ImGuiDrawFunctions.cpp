@@ -660,8 +660,8 @@ namespace ImGuiDrawFunctions {
 
         if (sector.floors.empty()) {
             sector.floors.push_back({
-                {0.0f, std::numeric_limits<uint_fast32_t>::max(), {}},
-                {40.0f, std::numeric_limits<uint_fast32_t>::max(), {}}
+                {0.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}},
+                {40.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}}
             });
         }
 
@@ -929,12 +929,12 @@ namespace ImGuiDrawFunctions {
             sector.floors.push_back({
                 {
                     floorHeight,
-                    std::numeric_limits<uint_fast32_t>::max(),
+                    {1.0f, 1.0f, 1.0f, 1.0f},
                     {}
                 },
                 {
                     floorHeight + 40.0f,
-                     std::numeric_limits<uint_fast32_t>::max(),
+                    {1.0f, 1.0f, 1.0f, 1.0f},
                     {}
                 }
             });

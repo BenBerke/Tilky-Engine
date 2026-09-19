@@ -63,8 +63,8 @@ namespace MapTopology {
 
         std::vector<SectorFloor> floors = {
             {
-                {0.0f, std::numeric_limits<uint32_t>::max(), {}},
-                {40.0f, std::numeric_limits<uint32_t>::max(), {}}
+                {0.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}},
+                {40.0f, {1.0f, 1.0f, 1.0f, 1.0f}, {}}
             }
         };
 

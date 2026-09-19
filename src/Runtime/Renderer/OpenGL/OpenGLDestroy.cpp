@@ -92,6 +92,7 @@ void OpenGL::Shutdown() {
 
     gpuWallCount = 0;
     flatTriangleCount = 0;
+    flatLayoutSignature = 0;
     spriteCount = 0;
 
     if (ImGui::GetCurrentContext() != nullptr) {

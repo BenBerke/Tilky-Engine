@@ -192,6 +192,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         //glFrontFace(GL_CCW);
 
         BuildGpuSectors();
+        RefreshFlatTrianglesIfLayoutChanged();
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);

@@ -15,6 +15,21 @@ namespace {
 
     constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
+    // Everything that decides how many flat triangle instances exist and which
+    // (sector, floor) each one points at. Cheap enough to compare every frame.
+    size_t ComputeFlatLayoutSignature(const Level& level) {
+        constexpr size_t PRIME = 1000003u;
+
+        size_t signature = level.sectors.size();
+
+        for (const Sector& sector : level.sectors) {
+            signature = signature * PRIME + sector.floors.size();
+            signature = signature * PRIME + sector.triangles.size();
+        }
+
+        return signature;
+    }
+
     enum class WallSpanSide {
         Front,
         Back
@@ -488,6 +503,27 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
     }
 
     flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
+    flatLayoutSignature = ComputeFlatLayoutSignature(level);
+}
+
+// BuildGpuSectors() re-uploads floor data every frame, but the triangle
+// instances that draw each floor and ceiling are only baked here. Without this
+// a floor added at runtime has GPU data and no triangles, so it never renders.
+void OpenGL::RefreshFlatTrianglesIfLayoutChanged() {
+    if (flatSSBO == 0) return;
+
+    if (ComputeFlatLayoutSignature(LevelManager::CurrentLevel()) == flatLayoutSignature) return;
+
+    BuildFlatTrianglesFromSectors();
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, flatSSBO);
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        flatTriangles.size() * sizeof(GpuFlatTriangle),
+        flatTriangles.empty() ? nullptr : flatTriangles.data(),
+        GL_DYNAMIC_DRAW
+    );
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
 }
 
 bool OpenGL::CreateMap() {

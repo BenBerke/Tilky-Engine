@@ -269,6 +269,11 @@ private:
 
     std::vector<GpuFlatTriangle> flatTriangles;
 
+    // Fingerprint of the sector/floor/triangle layout flatTriangles was built
+    // from. Floors can be added or removed while the level is live, so the
+    // instance list has to follow them.
+    size_t flatLayoutSignature = 0;
+
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
 
@@ -299,6 +304,7 @@ private:
     void UploadGpuWallsFromMap();
 
     void BuildFlatTrianglesFromSectors();
+    void RefreshFlatTrianglesIfLayoutChanged();
 
     void DrawBackground(float pitch, float yaw, float horizontalFov, float parallaxStrength, float backgroundScroll);
     int GetOrCreateTextureIndex(const std::string& fileName);
