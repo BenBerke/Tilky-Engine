@@ -680,10 +680,32 @@ namespace ImGuiDrawFunctions {
             ImGui::PushID(static_cast<int>(floorIndex));
 
             SectorFloor &sectorFloor = sector.floors[floorIndex];
-            const std::string sectionTitle =
-                    Get("sector.floor") + " " + std::to_string(floorIndex + 1);
 
-            BeginSection(sectionTitle.c_str());
+            const bool invalidRoom = sectorFloor.floor.height >= sectorFloor.ceiling.height;
+
+            const bool overlapsPrevious = floorIndex > 0 && sectorFloor.floor.height < sector.floors[floorIndex - 1].ceiling.height;
+
+            const bool overlapsNext = floorIndex + 1 < sector.floors.size() && sectorFloor.ceiling.height > sector.floors[floorIndex + 1].floor.height;
+
+            const bool hasInvalidHeights = invalidRoom || overlapsPrevious || overlapsNext;
+
+            // Everything after "###" is the ID, so the warning marker can come
+            // and go without resetting the header's open/closed state.
+            const std::string sectionTitle =
+                    Get("sector.floor") + " " + std::to_string(floorIndex + 1) +
+                    (hasInvalidHeights ? "  (!)" : "") + "###floor_header";
+
+            // DefaultOpen only applies the first time ImGui sees this ID, so a
+            // floor the user collapses stays collapsed.
+            const bool floorOpen = ImGui::CollapsingHeader(sectionTitle.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+
+            // The warning is inside the body, which is hidden while collapsed.
+            if (hasInvalidHeights) Tooltip(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
+
+            if (!floorOpen) {
+                ImGui::PopID();
+                continue;
+            }
 
             // ── Heights ──────────────────────────────────────────────────────────
 
@@ -715,13 +737,7 @@ namespace ImGuiDrawFunctions {
 
             Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
 
-            const bool invalidRoom = sectorFloor.floor.height >= sectorFloor.ceiling.height;
-
-            const bool overlapsPrevious = floorIndex > 0 && sectorFloor.floor.height < sector.floors[floorIndex - 1].ceiling.height;
-
-            const bool overlapsNext = floorIndex + 1 < sector.floors.size() && sectorFloor.ceiling.height > sector.floors[floorIndex + 1].floor.height;
-
-            if (invalidRoom || overlapsPrevious || overlapsNext) {
+            if (hasInvalidHeights) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
 
                 ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
