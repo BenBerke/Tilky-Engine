@@ -1905,7 +1905,12 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     // always has instead of the move type, so existing field widgets
     // elsewhere are unaffected; DrawMoveDropTarget() already knows to
     // accept that same payload as a move too, so nothing is lost.
-    if (ImGui::BeginDragDropSource()) {
+    // SourceNoHoldToOpenOthers: by default ImGui opens any collapsed tree node
+    // or CollapsingHeader the cursor rests on for ~0.7s while a payload is
+    // live. Dragging a texture across an inspector would then expand sections
+    // under the cursor and shove the target field out from under it. Nothing
+    // in this editor wants that behavior, so opt out for every payload we make.
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoHoldToOpenOthers)) {
         selectedFile = entry.GetPath(); // dragging an item selects it too
 
         const std::string payloadPath = entry.GetPath().string();
