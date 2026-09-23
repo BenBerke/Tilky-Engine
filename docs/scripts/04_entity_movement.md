@@ -17,14 +17,14 @@ Two ways to move something:
 
 ## Patrol between two points
 
-**Attach to:** the moving GameObject. Create two empty GameObjects as waypoints and assign them.
+**Attach to:** the moving Entity. Create two empty Entities as waypoints and assign them.
 
 ```lua
 -- Scripts/Movement/Patrol.lua (entity script)
----@field pointA GameObject @ Point A
+---@field pointA Entity @ Point A
 pointA = nil
 
----@field pointB GameObject @ Point B
+---@field pointB Entity @ Point B
 pointB = nil
 
 ---@field speed number @ Speed
@@ -38,7 +38,7 @@ local goingToB = true
 local waiting = 0.0
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
 end
 
 function Update()
@@ -82,11 +82,11 @@ end
 
 ## Orbit
 
-**Attach to:** the orbiting GameObject.
+**Attach to:** the orbiting Entity.
 
 ```lua
 -- Scripts/Movement/Orbit.lua (entity script)
----@field center GameObject @ Center (optional)
+---@field center Entity @ Center (optional)
 center = nil
 
 ---@field radius number @ Radius
@@ -100,11 +100,19 @@ local angle = 0.0
 local cx, cz = 0.0, 0.0
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
 
-    -- Orbit the assigned GameObject, or the spot where this entity starts.
-    local c = (center ~= nil) and center.transform.position or transform.position
-    cx, cz = c.x, c.z
+    local p = transform.position
+
+    if center ~= nil then
+        -- Orbit the assigned Entity, starting at the angle we are already at around it.
+        local c = center.transform.position
+        cx, cz = c.x, c.z
+        angle = math.atan(p.z - cz, p.x - cx)
+    else
+        -- No center: put it `radius` behind the start position so the entity starts on its orbit.
+        cx, cz = p.x - radius, p.z
+    end
 end
 
 function Update()
@@ -117,8 +125,9 @@ end
 
 **Notes**
 
-- With no `center` assigned, the orbit is centered on the starting position, so the entity jumps
-  `radius` units on the first frame. Place it where you want the *center* to be.
+- With a `center` assigned, the entity picks up the orbit at whatever angle it starts at (its
+  distance from the center is replaced by `radius`). With no `center`, the orbit circle is placed
+  so the entity's starting position is on it, and it doesn't jump on the first frame.
 
 ---
 
@@ -144,7 +153,7 @@ local phase = 0.0
 local yaw = 0.0
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
     baseY = transform.position.y
     phase = mathT.RandomF(0, 6.28)   -- so a row of pickups doesn't bob in lockstep
 end
@@ -179,7 +188,7 @@ any frame rate.
 
 ```lua
 -- Scripts/Movement/Follow.lua (entity script)
----@field target GameObject @ Target
+---@field target Entity @ Target
 target = nil
 
 ---@field followSpeed number @ Follow Speed (higher = snappier)
@@ -191,7 +200,7 @@ offset = Vector3(0, 0, 0)
 local transform
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
 end
 
 function Update()
@@ -225,7 +234,7 @@ speed = 40
 local transform
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
 end
 
 function Update()

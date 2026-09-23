@@ -222,7 +222,7 @@ Press a key while standing in the sector to toggle its lights.
 
 ```lua
 -- Scripts/Lighting/LightSwitch.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field toggleKey string @ Toggle Key

@@ -29,7 +29,7 @@ its public fields.
 
 ## How scripts work
 
-A script is attached either to a **GameObject** (entity script) or to a **sector** (sector script).
+A script is attached either to an **Entity** (entity script) or to a **sector** (sector script).
 Each attachment gets its own private environment, so two copies of the same script never share
 variables.
 
@@ -39,7 +39,7 @@ variables.
 | `Start()` | Once, the first time the script is active. All scripts already exist by now |
 | `Update()` | Every frame. Use `GameTime.deltaTime` (seconds) for anything time-based |
 | `FixedUpdate()` | On a fixed 60 Hz step. `GameTime.fixedDeltaTime` is the step length |
-| `OnDisable()` | When the script or its GameObject is disabled |
+| `OnDisable()` | When the script or its Entity is disabled |
 | `OnDestroy()` | When the script is torn down (level stop, `Destroy()`) |
 
 Every function is optional. A runtime error inside any of them is printed in red to the in-game
@@ -49,7 +49,7 @@ console and logged, and the script keeps running.
 
 | Name | What it is |
 |------|------------|
-| `gameObject` | The GameObject this script is on. On a sector script it is an invalid placeholder (`gameObject.isValid == false`) |
+| `entity` | The Entity this script is on. On a sector script it is an invalid placeholder (`entity.isValid == false`) |
 | `sector` | Sector scripts only: the sector the script is on |
 | `GameTime` | `deltaTime`, `fixedDeltaTime` |
 | `Input` | Keyboard and mouse: `GetKey`, `GetKeyDown`, `GetKeyUp`, `GetMouseButton*`, `GetMousePosition` |
@@ -86,9 +86,9 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
   `position.y + eyeHeight`.
 - **Facing:** a camera with yaw `a` (degrees) looks along `x = sin(a)`, `z = cos(a)`.
 - **Player and camera:** the player scripts assume the `Camera` component is on the same
-  GameObject as the `PlayerController` (the usual setup), and log an error if it isn't. If your
-  camera lives on a separate GameObject, add a public field such as
-  `---@field playerCamera Camera` to the script and use that instead of `gameObject.camera`.
+  Entity as the `PlayerController` (the usual setup), and log an error if it isn't. If your
+  camera lives on a separate Entity, add a public field such as
+  `---@field playerCamera Camera` to the script and use that instead of `entity.camera`.
 - **Lists are 1-based:** `sector:GetWall(1)` is the first wall.
 - **Colors:** wall, floor, ceiling, and sprite colors are `Vector4` in `0..1`. `sector.light` is a
   `Vector3` in `0..255`.
@@ -121,10 +121,10 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
 7. **Setters can throw.** For example a sector's ceiling must stay above its floor. Wrap risky
    writes in `pcall` (see [05_doors.md](05_doors.md)) so one bad value doesn't spam the console
    every frame.
-8. **There is no `Find` and no `Instantiate`.** Get at other objects through a `GameObject`
+8. **There is no `Find` and no `Instantiate`.** Get at other objects through an `Entity`
    public field, `Game.Raycast`, `sector:GetEntity(i)`, or the `Scripts` table.
 9. **Tags are read-only from Lua.** Assign them in the editor, then test with `HasTag("Name")`.
-10. **`GameObject:Destroy()` is deferred** to the end of the frame, so the object is still valid for
+10. **`Entity:Destroy()` is deferred** to the end of the frame, so the object is still valid for
     the rest of the current frame.
 11. **`Game.LoadLevel` from a script is experimental.** The engine's own code carries a TODO about
     checking it in a running game. See [17_level_flow.md](17_level_flow.md).

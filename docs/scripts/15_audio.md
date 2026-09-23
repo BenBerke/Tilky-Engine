@@ -1,6 +1,6 @@
 # 15 - Audio
 
-Sound comes from an `AudioSource` component (`gameObject.audioSource`, `nil` if there isn't one).
+Sound comes from an `AudioSource` component (`entity.audioSource`, `nil` if there isn't one).
 
 | Member | Notes |
 |--------|-------|
@@ -47,11 +47,11 @@ local travelled = 0.0
 local useA = true
 
 function Start()
-    audio = gameObject.audioSource
-    rb = gameObject.rigidbody
+    audio = entity.audioSource
+    rb = entity.rigidbody
 
     if audio == nil or rb == nil then
-        Debug.LogError("Footsteps: " .. gameObject.name .. " needs an AudioSource and a Rigidbody")
+        Debug.LogError("Footsteps: " .. entity.name .. " needs an AudioSource and a Rigidbody")
     end
 end
 
@@ -90,7 +90,7 @@ up and presses a key.
 
 ```lua
 -- Scripts/Audio/Radio.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field useKey string @ Toggle Key
@@ -106,10 +106,10 @@ local audio
 local isOn = false
 
 function Start()
-    audio = gameObject.audioSource
+    audio = entity.audioSource
 
     if audio == nil then
-        Debug.LogError("Radio: " .. gameObject.name .. " has no AudioSource")
+        Debug.LogError("Radio: " .. entity.name .. " has no AudioSource")
         return
     end
 
@@ -121,7 +121,7 @@ function Update()
     if not Input.GetKeyDown(useKey) then return end
 
     local p = player.transform.position
-    local me = gameObject.transform.position
+    local me = entity.transform.position
     local dx, dz = p.x - me.x, p.z - me.z
 
     if math.sqrt(dx * dx + dz * dz) <= useDistance then
@@ -137,11 +137,11 @@ end
 ## Playing sounds from a sector script
 
 Sectors have no `AudioSource`, but a sector script can borrow one: give it a public
-`GameObject` field that points at any object with an `AudioSource`, and play that. These are the
+`Entity` field that points at any object with an `AudioSource`, and play that. These are the
 lines to add to a door or lift script:
 
 ```lua
----@field soundSource GameObject @ Sound Source (an object with an AudioSource)
+---@field soundSource Entity @ Sound Source (an object with an AudioSource)
 soundSource = nil
 
 local function PlaySound()

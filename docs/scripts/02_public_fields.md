@@ -24,8 +24,8 @@ Public fields are top-level variables that show up in the inspector. You declare
 | `string` | string | `"hello"` |
 | `Vector2` / `Vector3` / `Vector4` | vector | `Vector3(0, 1, 0)` |
 | `enum(A,B,C)` | integer, the option's position starting at `0` | the option's number, e.g. `1` |
-| `GameObject` | `GameObject` (or `nil` if unassigned) | `nil` |
-| `Behaviour` | another script on some GameObject (or `nil`) | `nil` |
+| `Entity` | `Entity` (or `nil` if unassigned) | `nil` |
+| `Behaviour` | another script on some Entity (or `nil`) | `nil` |
 | `Transform`, `Sprite`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
 | `Asset` / `Texture` | the asset's path as a string | `nil` |
 
@@ -33,7 +33,7 @@ Array types (`number[]`) are not supported yet.
 
 ## Example: every type in one script
 
-**Attach to:** any GameObject.
+**Attach to:** any Entity.
 
 ```lua
 -- Scripts/Examples/AllFieldTypes.lua (entity script)
@@ -58,7 +58,7 @@ tint = Vector4(1, 0.5, 0.5, 1)
 ---@field mode enum(Idle,Patrol,Chase) @ Mode
 mode = 1
 
----@field target GameObject @ Target
+---@field target Entity @ Target
 target = nil
 
 ---@field targetTransform Transform @ Target Transform
@@ -92,7 +92,7 @@ function Start()
     end
 
     if partner ~= nil and partner.isValid then
-        Debug.Print("partner lives on", partner.gameObject.name)
+        Debug.Print("partner lives on", partner.entity.name)
     end
 
     if icon ~= nil then
@@ -110,7 +110,7 @@ end
   Always check before using them.
 - To make a field a *script-to-script* API, just read it through a `Behaviour`:
   `partner.speed = 10` writes into that script's own `speed`.
-- Sector scripts can't declare fields named `sector` or `gameObject`. Those names are reserved
+- Sector scripts can't declare fields named `sector` or `entity`. Those names are reserved
   for the built-in globals.
 - Enum defaults are written as a number (`mode = 1`), and the option's position in the annotation
   decides its number, so keep that order stable once levels use it.

@@ -12,7 +12,7 @@ end
 ```
 
 - `GetScript("Health")` matches the script by **file name**, ignoring folders.
-- A Behaviour reference has three built-in members: `isValid`, `gameObject`, `enabled`. Any other
+- A Behaviour reference has three built-in members: `isValid`, `entity`, `enabled`. Any other
   name is looked up in the target script's own variables and functions.
 - Functions you want others to call take `self` first, because the call uses a colon.
 
@@ -44,17 +44,17 @@ local invulnerable = 0.0
 
 local function Die()
     dead = true
-    Debug.Print(gameObject.name .. " died")
+    Debug.Print(entity.name .. " died")
 
     -- Tell the listener script about it, if it has an OnDeath function.
     if deathListener ~= nil and deathListener.isValid and type(deathListener.OnDeath) == "function" then
-        deathListener:OnDeath(gameObject)
+        deathListener:OnDeath(entity)
     end
 
     if destroyOnDeath then
-        gameObject:Destroy()
+        entity:Destroy()
     else
-        gameObject.enabled = false
+        entity.enabled = false
     end
 end
 
@@ -78,7 +78,7 @@ function IsDead(self)
     return dead
 end
 
--- Brings a dead (disabled) GameObject back to full health. See the respawner in 13_utilities.md.
+-- Brings a dead (disabled) Entity back to full health. See the respawner in 13_utilities.md.
 function Revive(self)
     dead = false
     invulnerable = 0.0
@@ -102,9 +102,9 @@ end
 
 **Notes**
 
-- `gameObject:Destroy()` is queued and happens at the end of the frame, so it's safe to call in the
+- `entity:Destroy()` is queued and happens at the end of the frame, so it's safe to call in the
   middle of an `Update`.
-- With `destroyOnDeath` off, the GameObject is disabled instead. That's a good choice for the
+- With `destroyOnDeath` off, the Entity is disabled instead. That's a good choice for the
   player, so you can still read `IsDead()` afterwards from another script.
 - `currentHealth` is a public field, so it can be set per-instance in the inspector, and other
   scripts can read it directly (`health.currentHealth`).
@@ -162,7 +162,7 @@ end
 
 ## Health regeneration
 
-**Attach to:** the same GameObject as `Health`. It is a separate script that talks to it.
+**Attach to:** the same Entity as `Health`. It is a separate script that talks to it.
 
 Heals a little each second, but only after not having been hurt for a while.
 
@@ -179,10 +179,10 @@ local lastHealth = 0.0
 local sinceHit = 0.0
 
 function Start()
-    health = gameObject:GetScript("Health")
+    health = entity:GetScript("Health")
 
     if not health.isValid then
-        Debug.LogError("HealthRegen needs a Health script on " .. gameObject.name)
+        Debug.LogError("HealthRegen needs a Health script on " .. entity.name)
         return
     end
 

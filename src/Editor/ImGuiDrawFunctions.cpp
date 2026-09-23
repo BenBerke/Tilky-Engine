@@ -78,7 +78,7 @@ namespace {
             }
         } else if constexpr (std::is_same_v<T, ComponentScript>) {
             // Deliberately unconditional: ScriptComponentStorage already
-            // supports several scripts per GameObject (each AddScript() call
+            // supports several scripts per Entity (each AddScript() call
             // gets its own fresh instance ID), so "Add Component -> Script"
             // always appends a new instance rather than being a no-op after
             // the first one - see the per-instance row list in
@@ -145,10 +145,10 @@ namespace {
         return pressed;
     }
 
-    // ── Reference-field pickers (GameObject / Component / Behaviour) ────────
+    // ── Reference-field pickers (Entity / Component / Behaviour) ────────
     //
     // These are combo-box selectors rather than drag-and-drop: the editor
-    // has no hierarchy/outliner panel to drag a GameObject *from* yet, so
+    // has no hierarchy/outliner panel to drag an Entity *from* yet, so
     // full Unity-style drag-and-drop for these three kinds is left as a
     // documented follow-up rather than built as a side effect here. Asset
     // fields (textures, etc.) already get real drag-and-drop for free by
@@ -170,7 +170,7 @@ namespace {
         return buf;
     }
 
-    bool DrawGameObjectField(const char *label, GameObjectRefValue &ref) {
+    bool DrawEntityField(const char *label, EntityRefValue &ref) {
         Level &level = LevelManager::CurrentLevel();
 
         const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
@@ -183,7 +183,7 @@ namespace {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(200.0f);
 
-        if (ImGui::BeginCombo("##gameObjectPicker", preview.c_str())) {
+        if (ImGui::BeginCombo("##entityPicker", preview.c_str())) {
             if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
                 ref.entityId = INVALID_ID;
                 changed = true;
@@ -369,10 +369,10 @@ namespace {
 
                 break;
             }
-            case ScriptValueType::GameObject: {
-                GameObjectRefValue *gv = std::get_if<GameObjectRefValue>(&value);
-                if (!gv) return;
-                DrawGameObjectField(field.displayName.c_str(), *gv);
+            case ScriptValueType::Entity: {
+                EntityRefValue *ev = std::get_if<EntityRefValue>(&value);
+                if (!ev) return;
+                DrawEntityField(field.displayName.c_str(), *ev);
                 break;
             }
             case ScriptValueType::Component: {
@@ -1249,11 +1249,11 @@ namespace ImGuiDrawFunctions {
         FieldWidth(220.0f);
         ImGui::InputText(Get("entity.name").c_str(), &entity.name);
 
-        // GameObject-level active state (Lua: gameObject.enabled). Disabling
-        // a GameObject pauses every attached script's ticking without
+        // Entity-level active state (Lua: entity.enabled). Disabling
+        // an Entity pauses every attached script's ticking without
         // touching each script's own enabled flag - see Entity::enabled.
         ImGui::Checkbox("Enabled", &entity.enabled);
-        Tooltip("Disables every attached script on this GameObject (OnDisable fires) without changing each script's own Enabled checkbox.");
+        Tooltip("Disables every attached script on this Entity (OnDisable fires) without changing each script's own Enabled checkbox.");
         EndSection();
 
         // ── Components list ──────────────────────────────────────────────────
@@ -1263,7 +1263,7 @@ namespace ImGuiDrawFunctions {
         // CMP_SCRIPT, `pushScriptInstanceID` additionally selects which
         // attached ComponentScript instance the row's Edit button opens -
         // ScriptComponentStorage already supports several scripts per
-        // GameObject, so this list draws one row per instance rather than
+        // Entity, so this list draws one row per instance rather than
         // one row per component *type* (see the script-instance loop below,
         // which replaces CMP_SCRIPT's entry in the TILKY_NORMAL_COMPONENTS
         // macro pass).
@@ -1758,7 +1758,7 @@ namespace ImGuiDrawFunctions {
         else if (state.selectedComponent == CMP_SCRIPT) {
             // Looks up the specific instance the row list's Edit button
             // selected (see DrawEntityEditor's per-script row loop) rather
-            // than always the first-by-owner script - a GameObject may have
+            // than always the first-by-owner script - an Entity may have
             // several scripts attached.
             auto *c = entity.GetScript(state.selectedScriptInstanceID);
 

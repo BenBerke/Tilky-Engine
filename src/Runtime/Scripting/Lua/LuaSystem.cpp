@@ -37,12 +37,12 @@
 // ============================================================================
 // Tilky Lua scripting runtime
 //
-// Every Lua script attached to a GameObject (ComponentScript) OR to a sector
+// Every Lua script attached to an Entity (ComponentScript) OR to a sector
 // (Sector::scripts) runs in its own sol::environment - a Behaviour instance -
 // sharing one sol::state. Entity and sector scripts go through the very same
 // load / reconcile / lifecycle code; the only differences are the owner
 // context (ScriptOwnerKind) and the owner globals injected into the
-// environment (`gameObject` for entities, `sector` + an unbound `gameObject`
+// environment (`entity` for entities, `sector` + an unbound `entity`
 // for sectors - see InjectOwnerGlobals). A script
 // file's PUBLIC FIELDS are no longer declared through Public.Float/Int/Bool/
 // String(...) calls: they are plain top-level Lua variables, and their
@@ -58,11 +58,11 @@
 //   ---@field maxHealth number
 //   maxHealth = 100
 //
-//   ---@field target GameObject
+//   ---@field target Entity
 //   target = nil
 //
 //   function Start()
-//       print(gameObject.name .. " has " .. maxHealth .. " HP")
+//       print(entity.name .. " has " .. maxHealth .. " HP")
 //   end
 //
 // Lifecycle: Start, Update, FixedUpdate, OnEnable, OnDisable, OnDestroy.
@@ -130,7 +130,7 @@ namespace {
     // out of reach of Behaviour references).
     std::unordered_map<ScriptInstanceID, std::size_t> instanceIndexById;
 
-    // GameObject:Destroy() queues here; flushed once per Update() after every
+    // Entity:Destroy() queues here; flushed once per Update() after every
     // instance has ticked. See LuaScriptRuntime::QueueEntityDestroy and
     // ProcessPendingDestroys.
     std::vector<ID> pendingDestroys;
@@ -199,7 +199,7 @@ namespace {
                 return level.scripts.GetByID(instance.instanceID);
 
             case ScriptOwnerKind::Sector: {
-                // Same ID -> sector lookup every SectorRef uses.
+                // Same ID -> sector lookup every Sector uses.
                 Sector* sector = ScriptSector{&level, instance.ownerID}.GetSector();
                 return sector == nullptr ? nullptr : sector->GetScript(instance.instanceID);
             }
@@ -264,7 +264,7 @@ namespace {
         instance.destroyed = true;
 
         // Never activated (e.g. the script errored during load, or the
-        // GameObject/script was disabled for its entire lifetime) - nothing
+        // Entity/script was disabled for its entire lifetime) - nothing
         // to tear down.
         if (!instance.started) return;
 
@@ -285,7 +285,7 @@ namespace {
             case ScriptValueType::Vector3:    return "Vector3";
             case ScriptValueType::Vector4:    return "Vector4";
             case ScriptValueType::Enum:       return "Enum";
-            case ScriptValueType::GameObject: return "GameObject";
+            case ScriptValueType::Entity: return "Entity";
             case ScriptValueType::Component:  return "Component";
             case ScriptValueType::Behaviour:  return "Behaviour";
             case ScriptValueType::Asset:      return "Asset";
@@ -304,7 +304,7 @@ namespace {
             case ScriptValueType::Vector3:    return std::holds_alternative<Vector3>(value);
             case ScriptValueType::Vector4:    return std::holds_alternative<Vector4>(value);
             case ScriptValueType::Enum:       return std::holds_alternative<int>(value);
-            case ScriptValueType::GameObject: return std::holds_alternative<GameObjectRefValue>(value);
+            case ScriptValueType::Entity: return std::holds_alternative<EntityRefValue>(value);
             case ScriptValueType::Component:  return std::holds_alternative<ComponentRefValue>(value);
             case ScriptValueType::Behaviour:  return std::holds_alternative<BehaviourRefValue>(value);
             case ScriptValueType::Asset:      return std::holds_alternative<AssetRefValue>(value);
@@ -345,7 +345,7 @@ namespace {
                     HashCombine(seed, std::hash<float>{}(typedValue.z));
                     HashCombine(seed, std::hash<float>{}(typedValue.w));
                 }
-                else if constexpr (std::is_same_v<T, GameObjectRefValue>) {
+                else if constexpr (std::is_same_v<T, EntityRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
                 }
                 else if constexpr (std::is_same_v<T, ComponentRefValue>) {
@@ -435,7 +435,7 @@ namespace {
     bool IsReservedFieldName(const std::string& name) {
         static const std::unordered_set<std::string> reserved = {
             "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-            "gameObject", "Scripts", "GameTime", "Input", "Game", "Debug"
+            "entity", "sector", "Scripts", "GameTime", "Input", "Game", "Debug"
         };
 
         return reserved.contains(name);
@@ -514,7 +514,7 @@ namespace {
                 return ScriptValue{0};
             }
 
-            case ScriptValueType::GameObject: return ScriptValue{GameObjectRefValue{}};
+            case ScriptValueType::Entity: return ScriptValue{EntityRefValue{}};
             case ScriptValueType::Component:  return ScriptValue{ComponentRefValue{}};
             case ScriptValueType::Behaviour:  return ScriptValue{BehaviourRefValue{}};
             case ScriptValueType::Asset:      return ScriptValue{AssetRefValue{}};
@@ -567,7 +567,7 @@ namespace {
         else if (typeName == "Vector2") result.type = ScriptValueType::Vector2;
         else if (typeName == "Vector3") result.type = ScriptValueType::Vector3;
         else if (typeName == "Vector4") result.type = ScriptValueType::Vector4;
-        else if (typeName == "GameObject") result.type = ScriptValueType::GameObject;
+        else if (typeName == "Entity") result.type = ScriptValueType::Entity;
         else if (typeName == "Behaviour" || typeName == "Script") result.type = ScriptValueType::Behaviour;
         else if (typeName == "Asset" || typeName == "Texture") result.type = ScriptValueType::Asset;
         else if (typeName == "enum") {
@@ -761,7 +761,7 @@ namespace {
             [&](const auto& typedValue) -> sol::object {
                 using T = std::decay_t<decltype(typedValue)>;
 
-                if constexpr (std::is_same_v<T, GameObjectRefValue>) {
+                if constexpr (std::is_same_v<T, EntityRefValue>) {
                     if (typedValue.entityId == INVALID_ID || level.GetEntity(typedValue.entityId) == nullptr)
                         return sol::make_object(luaView, sol::nil);
 
@@ -789,7 +789,7 @@ namespace {
     // ------------------------------------------------------------------
 
     bool IsSectorOwnerGlobal(const std::string& name) {
-        return name == "sector" || name == "gameObject";
+        return name == "sector" || name == "entity";
     }
 
     // Injects the globals that identify what a script is attached to. Done
@@ -797,19 +797,19 @@ namespace {
     void InjectOwnerGlobals(Level& level, ScriptInstance& instance) {
         switch (instance.ownerKind) {
             case ScriptOwnerKind::Entity:
-                instance.environment["gameObject"] = ScriptEntity{&level, instance.ownerID};
+                instance.environment["entity"] = ScriptEntity{&level, instance.ownerID};
                 break;
 
             case ScriptOwnerKind::Sector:
-                // The one SectorRef type used everywhere else, bound to the
+                // The one Sector type used everywhere else, bound to the
                 // sector that owns THIS instance (by ID).
                 instance.environment["sector"] = ScriptSector{&level, instance.ownerID};
 
                 // Same environment shape as an entity script, but bound to
-                // nothing: an invalid GameObject (isValid == false) that can
+                // nothing: an invalid Entity (isValid == false) that can
                 // never resolve to any entity. It goes through ScriptEntity's
                 // ordinary invalid-reference handling - see LuaEntityBindings.cpp.
-                instance.environment["gameObject"] = ScriptEntity{&level, INVALID_ENTITY_ID};
+                instance.environment["entity"] = ScriptEntity{&level, INVALID_ENTITY_ID};
                 break;
         }
     }
@@ -874,7 +874,7 @@ namespace {
                 const auto valueIt = script.publicValues.find(field.name);
                 if (valueIt == script.publicValues.end()) continue;
 
-                // Would overwrite the sector/gameObject binding injected above.
+                // Would overwrite the sector/entity binding injected above.
                 if (ownerKind == ScriptOwnerKind::Sector && IsSectorOwnerGlobal(field.name)) {
                     spdlog::warn(
                         "Lua script '{}' declares public field '{}', which is reserved on sector scripts - ignoring its value",
@@ -946,9 +946,9 @@ namespace {
         scriptInstances.push_back(std::move(instance));
     }
 
-    // Flushes GameObject:Destroy() requests queued this frame, AND drops any
+    // Flushes Entity:Destroy() requests queued this frame, AND drops any
     // instance already marked destroyed (e.g. Update() found its
-    // ComponentScript had been removed directly, outside GameObject:Destroy)
+    // ComponentScript had been removed directly, outside Entity:Destroy)
     // from the registry. Always safe to call even with nothing queued.
     void ProcessPendingDestroys(Level& level) {
         for (const ID entityId : pendingDestroys) {
@@ -1000,7 +1000,7 @@ namespace {
     // Registers the "Behaviour" usertype (ScriptBehaviourRef). Only
     // __index/__newindex are bound - see the comment on
     // ScriptBehaviourRef::LuaGet/LuaSet in LuaWrappers.hpp for why isValid/
-    // gameObject/enabled are handled inside those two functions instead of
+    // entity/enabled are handled inside those two functions instead of
     // being registered as ordinary usertype properties.
     void RegisterBehaviourRefBindings(sol::state& luaState) {
         luaState.new_usertype<ScriptBehaviourRef>(
@@ -1022,8 +1022,8 @@ namespace {
                    "Indexing it (behaviour.someField, behaviour:SomeFunction()) forwards "
                    "into that script's own fields/functions.",
             .properties = {
-                {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once the target script/GameObject no longer exists."},
-                {.name = "gameObject", .luaType = "GameObject", .readOnly = true, .doc = "The GameObject this script is attached to."},
+                {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once the target script/Entity no longer exists."},
+                {.name = "entity", .luaType = "Entity", .readOnly = true, .doc = "The Entity this script is attached to."},
                 {.name = "enabled", .luaType = "boolean", .doc = "This script instance's own enabled flag."},
             }
         });
@@ -1117,7 +1117,7 @@ bool LuaScriptSystem::Initialize() {
 
         // Best-effort: regenerate the LuaLS stub file every time scripting
         // initializes, so it never drifts from the metadata registered
-        // above. Only covers GameObject/Behaviour today - see
+        // above. Only covers Entity/Behaviour today - see
         // LuaBindingMetadata.hpp's scope note. Failure here (e.g. no project
         // loaded yet) is non-fatal - it only affects editor autocomplete.
         if (ProjectManager::HasProject()) {
@@ -1175,7 +1175,7 @@ void LuaScriptSystem::Update(Level& level) {
 
         // The attachment disappeared out from under this instance (a
         // ComponentScript removed directly rather than through
-        // GameObject:Destroy(), or a sector script whose script or whole
+        // Entity:Destroy(), or a sector script whose script or whole
         // sector was deleted) - tear it down the same way a queued destroy
         // would. destroyed instances are skipped from here on and dropped at
         // the end of the frame by ProcessPendingDestroys.

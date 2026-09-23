@@ -4,14 +4,14 @@ A sector script can reach every wall of its sector:
 
 ```lua
 for i = 1, sector.wallCount do
-    local wall = sector:GetWall(i)   -- a WallRef
+    local wall = sector:GetWall(i)   -- a Wall
     if wall.isValid then             -- always check, some slots can be empty
         Debug.Print("wall", wall.id, "is", wall.length, "units long")
     end
 end
 ```
 
-Useful `WallRef` members:
+Useful `Wall` members:
 
 | Member | Type | Notes |
 |--------|------|-------|
@@ -81,7 +81,7 @@ Looks at the wall and presses a key to flip it between an "off" and an "on" text
 
 ```lua
 -- Scripts/Walls/TextureSwitch.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field switchTag string @ Wall Tag

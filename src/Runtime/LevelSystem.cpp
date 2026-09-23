@@ -387,7 +387,7 @@ namespace LevelSystem {
 
         // Runs last, after every system above has finished reading this
         // frame's entities/components - see FlushPendingDestroys's
-        // declaration comment for why GameObject:Destroy() is deferred this
+        // declaration comment for why Entity:Destroy() is deferred this
         // far rather than applied inside scriptingSystem.Update() itself.
         scriptingSystem.FlushPendingDestroys(level);
     }

@@ -14,6 +14,8 @@ door.ceilingHeight = current + 1        -- move it (throws if it would go below 
 
 Things to know:
 
+- The scripts always treat "closed" as floor + `MIN_GAP`, so the door starts closing itself
+  in play mode even if the sector was drawn with a tall ceiling. Keep `openHeight` above that.
 - A ceiling must stay **above** the floor, so a closed door rests `MIN_GAP` (0.01) above the
   floor. It can't be exactly zero.
 - With several floor intervals in one sector, the ceiling also must not rise past the next
@@ -34,7 +36,7 @@ Opens when the player comes near, closes when they leave.
 
 ```lua
 -- Scripts/Doors/AutoDoor.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field openHeight number @ Open Height (above the floor)
@@ -108,7 +110,9 @@ function Start()
     end
 
     door = sector:GetFloor(1)
-    closedCeiling = math.max(door.ceilingHeight, door.floorHeight + MIN_GAP)
+    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
+    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
+    closedCeiling = door.floorHeight + MIN_GAP
     openCeiling = door.floorHeight + openHeight
 end
 
@@ -144,7 +148,7 @@ give it a name like `red` to lock it until a matching key pickup
 
 ```lua
 -- Scripts/Doors/UseDoor.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field openHeight number @ Open Height (above the floor)
@@ -227,7 +231,9 @@ end
 
 function Start()
     door = sector:GetFloor(1)
-    closedCeiling = math.max(door.ceilingHeight, door.floorHeight + MIN_GAP)
+    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
+    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
+    closedCeiling = door.floorHeight + MIN_GAP
     openCeiling = door.floorHeight + openHeight
 end
 
@@ -273,11 +279,11 @@ and one switch can drive them all.
 
 ### The switch
 
-**Attach to:** a GameObject near a wall (a lever sprite, a button).
+**Attach to:** an Entity near a wall (a lever sprite, a button).
 
 ```lua
 -- Scripts/Doors/Switch.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field channel string @ Channel
@@ -298,7 +304,7 @@ function Update()
     if not Input.GetKeyDown(useKey) then return end
 
     local p = player.transform.position
-    local s = gameObject.transform.position
+    local s = entity.transform.position
     local dx, dz = p.x - s.x, p.z - s.z
 
     if math.sqrt(dx * dx + dz * dz) <= useDistance then
@@ -337,7 +343,9 @@ end
 
 function Start()
     door = sector:GetFloor(1)
-    closedCeiling = math.max(door.ceilingHeight, door.floorHeight + MIN_GAP)
+    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
+    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
+    closedCeiling = door.floorHeight + MIN_GAP
     openCeiling = door.floorHeight + openHeight
 end
 

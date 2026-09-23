@@ -20,7 +20,7 @@ struct Entity {
     std::vector<std::string> tags;
     std::vector<uint16_t> tagIds;
 
-    // GameObject-level active state (Lua: GameObject.enabled / GameObject:SetEnabled()).
+    // Entity-level active state (Lua: Entity.enabled / Entity:SetEnabled()).
     // Distinct from any single component's own enabled flag (e.g. ComponentScript::enabled):
     // disabling the entity disables every attached script's effective enabled state
     // without touching each script's own flag, so re-enabling the entity restores

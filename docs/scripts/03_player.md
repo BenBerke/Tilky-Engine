@@ -4,9 +4,9 @@ The built-in `PlayerController` already handles walking, mouse look, jumping, sp
 (`LShift` + `W`) and no-clip (`V`). These scripts tweak it by reading and writing its properties, or
 by nudging the player's `Rigidbody`.
 
-In the usual setup the player GameObject carries the `PlayerController`, `Rigidbody`, and
+In the usual setup the player Entity carries the `PlayerController`, `Rigidbody`, and
 `Camera` components, so an entity script on it can reach them through
-`gameObject.playerController`, `gameObject.rigidbody`, and `gameObject.camera`. Each of these is
+`entity.playerController`, `entity.rigidbody`, and `entity.camera`. Each of these is
 `nil` if the component is missing.
 
 ---
@@ -32,10 +32,10 @@ local pc
 local standingSpeed, standingRunSpeed, standingEye
 
 function Start()
-    pc = gameObject.playerController
+    pc = entity.playerController
 
     if pc == nil then
-        Debug.LogError("Crouch: " .. gameObject.name .. " has no PlayerController")
+        Debug.LogError("Crouch: " .. entity.name .. " has no PlayerController")
         return
     end
 
@@ -88,8 +88,8 @@ local rb, pc
 local jumpsLeft = 0
 
 function Start()
-    rb = gameObject.rigidbody
-    pc = gameObject.playerController
+    rb = entity.rigidbody
+    pc = entity.playerController
     jumpsLeft = extraJumps
 end
 
@@ -124,7 +124,7 @@ they leave.
 
 ```lua
 -- Scripts/Player/SpeedZone.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field multiplier number @ Speed Multiplier
@@ -198,7 +198,7 @@ Launches the player upward when they stand on the sector.
 
 ```lua
 -- Scripts/Player/JumpPad.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field launchSpeed number @ Launch Speed

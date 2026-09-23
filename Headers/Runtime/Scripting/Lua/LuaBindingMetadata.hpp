@@ -18,7 +18,7 @@
 namespace LuaBindingMetadata {
     struct ParamDoc {
         std::string name;
-        std::string luaType; // e.g. "number", "string", "GameObject"
+        std::string luaType; // e.g. "number", "string", "Entity"
     };
 
     struct MethodDoc {
@@ -36,7 +36,7 @@ namespace LuaBindingMetadata {
     };
 
     struct TypeDoc {
-        std::string name; // the Lua-visible type name, e.g. "GameObject"
+        std::string name; // the Lua-visible type name, e.g. "Entity"
         std::string doc;
         std::vector<PropertyDoc> properties;
         std::vector<MethodDoc> methods;

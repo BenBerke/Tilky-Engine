@@ -87,8 +87,8 @@ ID Level::CreateEntity(Entity& copy) {
 
     // Copies every attached script (not just the first), each getting its
     // own new instance ID via AddScript()/ScriptComponentStorage::Add - see
-    // the class-level comment on GameObject-to-script duplication. Public
-    // field values are copied as-is; a GameObject/Behaviour reference field
+    // the class-level comment on Entity-to-script duplication. Public
+    // field values are copied as-is; an Entity/Behaviour reference field
     // that pointed at `copy` itself still points at the original entity
     // after duplication rather than being remapped to the new copy - the
     // same "self-reference doesn't retarget" caveat most engines have for

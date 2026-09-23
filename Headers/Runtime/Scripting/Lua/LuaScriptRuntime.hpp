@@ -2,11 +2,11 @@
 #define TILKY_ENGINE_LUASCRIPTRUNTIME_HPP
 
 // Thin accessor API into the live script-instance registry owned by
-// LuaSystem.cpp. LuaWrappers.hpp's GameObject/Behaviour wrapper structs are
+// LuaSystem.cpp. LuaWrappers.hpp's Entity/Behaviour wrapper structs are
 // plain header-only data ({Level*, ID, ...}), same as every other ScriptXxx
 // wrapper - they must stay that way so they remain cheap, copyable Lua
 // userdata. But a Behaviour reference needs to read/write another script
-// instance's *live* sol::environment, and GameObject::Destroy() needs to
+// instance's *live* sol::environment, and Entity::Destroy() needs to
 // queue against the running Update() loop - both of those are runtime state
 // that only LuaSystem.cpp actually owns. This header is the seam between the
 // two: wrapper structs call these free functions instead of reaching into
@@ -26,7 +26,7 @@ namespace LuaScriptRuntime {
     bool IsInstanceValid(ID entityId, ScriptInstanceID instanceId);
 
     // Reads/writes ComponentScript::enabled for the instance's *own* enabled
-    // flag - independent from the owning GameObject's enabled flag (see
+    // flag - independent from the owning Entity's enabled flag (see
     // Entity::enabled). Returns false / no-ops if the instance or its
     // ComponentScript no longer exists.
     bool GetInstanceEnabled(Level& level, ID entityId, ScriptInstanceID instanceId);
@@ -40,7 +40,7 @@ namespace LuaScriptRuntime {
     sol::object GetInstanceField(ID entityId, ScriptInstanceID instanceId, const std::string& key, sol::this_state state);
     void SetInstanceField(ID entityId, ScriptInstanceID instanceId, const std::string& key, sol::object value);
 
-    // GameObject:Destroy() queues here instead of mutating Level mid-Update()
+    // Entity:Destroy() queues here instead of mutating Level mid-Update()
     // (component storages use swap-and-pop; erasing under an active iterator
     // elsewhere in the same Update() would corrupt indices other systems
     // still hold this frame). LuaScriptSystem::Update() flushes this queue
@@ -51,8 +51,8 @@ namespace LuaScriptRuntime {
 
     // Converts one serialized field value into the live Lua object a script
     // actually sees when the field is seeded at instance-load time:
-    // primitives/math types pass through as themselves; GameObjectRefValue /
-    // ComponentRefValue / BehaviourRefValue resolve into a real GameObject /
+    // primitives/math types pass through as themselves; EntityRefValue /
+    // ComponentRefValue / BehaviourRefValue resolve into a real Entity /
     // component wrapper / Behaviour proxy (or nil if the target no longer
     // exists); AssetRefValue resolves to the plain reference string (the same
     // format every other asset-path field in the engine already uses).

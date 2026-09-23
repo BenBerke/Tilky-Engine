@@ -1,7 +1,7 @@
 # 16 - Camera Effects
 
-These scripts go on the GameObject that holds the `Camera` component, which is normally the
-**player**. A `Camera` component is reached with `gameObject.camera` and has:
+These scripts go on the Entity that holds the `Camera` component, which is normally the
+**player**. A `Camera` component is reached with `entity.camera` and has:
 
 | Member | Notes |
 |--------|-------|
@@ -33,10 +33,10 @@ local cam
 local baseFov = 60.0
 
 function Start()
-    cam = gameObject.camera
+    cam = entity.camera
 
     if cam == nil then
-        Debug.LogError("FovEffects: " .. gameObject.name .. " has no Camera")
+        Debug.LogError("FovEffects: " .. entity.name .. " has no Camera")
         return
     end
 
@@ -83,11 +83,11 @@ local phase = 0.0
 local amount = 0.0
 
 function Start()
-    pc = gameObject.playerController
-    rb = gameObject.rigidbody
+    pc = entity.playerController
+    rb = entity.rigidbody
 
     if pc == nil or rb == nil then
-        Debug.LogError("HeadBob: " .. gameObject.name .. " needs a PlayerController and a Rigidbody")
+        Debug.LogError("HeadBob: " .. entity.name .. " needs a PlayerController and a Rigidbody")
         return
     end
 
@@ -145,10 +145,10 @@ function Shake(self, degrees, seconds)
 end
 
 function Start()
-    cam = gameObject.camera
+    cam = entity.camera
 
     if cam == nil then
-        Debug.LogError("ScreenShake: " .. gameObject.name .. " has no Camera")
+        Debug.LogError("ScreenShake: " .. entity.name .. " has no Camera")
     end
 end
 

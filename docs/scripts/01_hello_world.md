@@ -2,10 +2,10 @@
 
 ## Lifecycle logger
 
-**Attach to:** any GameObject.
+**Attach to:** any Entity.
 
 Prints when each lifecycle function runs, plus a heartbeat message every few seconds. Attach it,
-press play, and then try disabling the GameObject or the script to watch `OnDisable` / `OnEnable`
+press play, and then try disabling the Entity or the script to watch `OnDisable` / `OnEnable`
 fire.
 
 ```lua
@@ -13,25 +13,22 @@ fire.
 ---@field greeting string @ Greeting
 greeting = "Hello from Tilky!"
 
----@field printEvery number @ Heartbeat Interval (s)
-printEvery = 2.0
-
-local timer = 0.0
-
 function OnEnable()
-    Debug.Print("[" .. gameObject.name .. "] OnEnable")
+    Debug.Print("[" .. entity.name .. "] OnEnable")
 end
 
 function Start()
-    Debug.Print(greeting, "- I am", gameObject.name, "(id " .. gameObject.id .. ")")
+    Debug.Print(greeting, "- I am", entity.name, "(id " .. entity.id .. ")")
 end
 
-function Update()
-    timer = timer + GameTime.deltaTime
+local heartbeat = 0.0
 
-    if timer >= printEvery then
-        timer = timer - printEvery
-        Debug.Print(gameObject.name .. " is still alive")
+function Update()
+    heartbeat = heartbeat + GameTime.deltaTime
+
+    if heartbeat >= 3.0 then
+        heartbeat = heartbeat - 3.0
+        Debug.Print(entity.name .. " is still alive")
     end
 end
 
@@ -40,11 +37,11 @@ function FixedUpdate()
 end
 
 function OnDisable()
-    Debug.Print("[" .. gameObject.name .. "] OnDisable")
+    Debug.Print("[" .. entity.name .. "] OnDisable")
 end
 
 function OnDestroy()
-    Debug.Print("[" .. gameObject.name .. "] OnDestroy")
+    Debug.Print("[" .. entity.name .. "] OnDestroy")
 end
 ```
 
@@ -61,7 +58,7 @@ end
 
 **Attach to:** a sector (sector inspector, Scripts section).
 
-Sector scripts have the same lifecycle, but `sector` replaces `gameObject`.
+Sector scripts have the same lifecycle, but `sector` replaces `entity`.
 
 ```lua
 -- Scripts/Examples/SectorInfo.lua (sector script)

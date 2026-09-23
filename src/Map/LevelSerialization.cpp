@@ -32,7 +32,7 @@ namespace {
             case ScriptValueType::Vector3: return "Vector3";
             case ScriptValueType::Vector4: return "Vector4";
             case ScriptValueType::Enum: return "Enum";
-            case ScriptValueType::GameObject: return "GameObject";
+            case ScriptValueType::Entity: return "Entity";
             case ScriptValueType::Component: return "Component";
             case ScriptValueType::Behaviour: return "Behaviour";
             case ScriptValueType::Asset: return "Asset";
@@ -50,7 +50,7 @@ namespace {
         if (type == "Vector3") return ScriptValueType::Vector3;
         if (type == "Vector4") return ScriptValueType::Vector4;
         if (type == "Enum") return ScriptValueType::Enum;
-        if (type == "GameObject") return ScriptValueType::GameObject;
+        if (type == "Entity") return ScriptValueType::Entity;
         if (type == "Component") return ScriptValueType::Component;
         if (type == "Behaviour") return ScriptValueType::Behaviour;
         if (type == "Asset") return ScriptValueType::Asset;
@@ -59,7 +59,7 @@ namespace {
     }
 
     // Serializes one field's runtime ScriptValue. Reference kinds
-    // (GameObject/Component/Behaviour) store only stable IDs - never a name,
+    // (Entity/Component/Behaviour) store only stable IDs - never a name,
     // never a pointer - so they resolve correctly even after the target
     // entity/script is renamed, and safely fail to resolve (nil in Lua, "None"
     // in the inspector) once the target no longer exists.
@@ -91,8 +91,8 @@ namespace {
                 } else if constexpr (std::is_same_v<T, Vector4>) {
                     valueJson["type"] = "Vector4";
                     valueJson["value"] = {typedValue.x, typedValue.y, typedValue.z, typedValue.w};
-                } else if constexpr (std::is_same_v<T, GameObjectRefValue>) {
-                    valueJson["type"] = "GameObject";
+                } else if constexpr (std::is_same_v<T, EntityRefValue>) {
+                    valueJson["type"] = "Entity";
                     valueJson["entityId"] = typedValue.entityId;
                 } else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     valueJson["type"] = "Component";
@@ -160,8 +160,8 @@ namespace {
                 return Vector4{JsonArrayFloat(v, 0), JsonArrayFloat(v, 1), JsonArrayFloat(v, 2), JsonArrayFloat(v, 3)};
             }
 
-            case ScriptValueType::GameObject:
-                return GameObjectRefValue{valueJson.value("entityId", INVALID_ID)};
+            case ScriptValueType::Entity:
+                return EntityRefValue{valueJson.value("entityId", INVALID_ID)};
 
             case ScriptValueType::Component:
                 return ComponentRefValue{
@@ -1253,7 +1253,16 @@ namespace {
                 const std::string loadedName = scriptJson.value("fileName", std::string{});
 
                 ScriptAttachmentSettingsFromJson(scriptJson, c);
-                c.fileName = fs::path(loadedName).stem().string();
+
+                // Keep the full saved path (project-relative, no extension) -
+                // NOT just its stem. Reducing to the stem here used to drop
+                // any subfolder ("Scripts/Doors/Switch" -> "Switch"), so on
+                // the next load LuaScriptSystem would look for "Switch.lua"
+                // directly under Assets/Scripts and silently fail to find
+                // every script organized into a subfolder. Sector scripts
+                // (LoadSectorScripts below) never had this bug - they always
+                // kept the full path.
+                c.fileName = loadedName;
 
                 entity->componentsMask.set(CMP_SCRIPT);
             }

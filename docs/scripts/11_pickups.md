@@ -1,7 +1,7 @@
 # 11 - Pickups
 
 Pickups are plain entity scripts that compare distances every frame. For a nicer look, add
-[BobAndSpin](04_entity_movement.md#bob-and-spin) to the same GameObject.
+[BobAndSpin](04_entity_movement.md#bob-and-spin) to the same Entity.
 
 Collected items are recorded in the shared `Scripts` table so any other script (a door, the HUD,
 an exit) can react:
@@ -15,11 +15,11 @@ an exit) can react:
 
 ## Pickup (health, coin, or key)
 
-**Attach to:** the item GameObject.
+**Attach to:** the item Entity.
 
 ```lua
 -- Scripts/Pickups/Pickup.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field kind enum(Health,Coin,Key) @ Kind
@@ -65,10 +65,10 @@ local function Apply()
 end
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
 
     if player == nil then
-        Debug.LogWarning("Pickup " .. gameObject.name .. " has no player assigned")
+        Debug.LogWarning("Pickup " .. entity.name .. " has no player assigned")
     end
 end
 
@@ -83,10 +83,10 @@ function Update()
     if math.sqrt(dx * dx + dz * dz) > pickupRadius then return end
 
     if Apply() then
-        local sound = gameObject.audioSource
+        local sound = entity.audioSource
         if sound ~= nil then sound:play() end
 
-        gameObject:Destroy()
+        entity:Destroy()
     end
 end
 ```
@@ -96,7 +96,7 @@ end
 - Health pickups are only consumed if the player actually needs the health.
 - `Scripts.coins = (Scripts.coins or 0) + amount` works even before anything has created the
   counter, since a missing value is `nil` and `nil or 0` is `0`.
-- Destroying the GameObject also removes its `AudioSource`, so the sound may be cut off. If that
+- Destroying the Entity also removes its `AudioSource`, so the sound may be cut off. If that
   happens, play the pickup sound from an `AudioSource` on the player instead.
 - Enum options are numbered from `0` in the order they appear in the annotation, which is why the
   `KIND_...` constants match `enum(Health,Coin,Key)`.
@@ -105,7 +105,7 @@ end
 
 ## Coin counter (HUD)
 
-**Attach to:** a UI GameObject with a `UIText` component.
+**Attach to:** a UI Entity with a `UIText` component.
 
 ```lua
 -- Scripts/Pickups/CoinCounter.lua (entity script)
@@ -113,10 +113,10 @@ local label
 local shown = -1
 
 function Start()
-    label = gameObject.uiText
+    label = entity.uiText
 
     if label == nil then
-        Debug.LogError("CoinCounter: " .. gameObject.name .. " has no UIText")
+        Debug.LogError("CoinCounter: " .. entity.name .. " has no UIText")
         return
     end
 

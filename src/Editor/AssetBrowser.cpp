@@ -40,7 +40,7 @@ namespace {
                 "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-                "gameObject", "sector",
+                "entity", "sector",
                 "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
             };
 
@@ -89,7 +89,7 @@ namespace {
 
     // Every registered type, indexed by the LOWERCASED form of its
     // Lua-visible name (e.g.
-    // "mathT", "GameObject", "Transform") - what member-access completion
+    // "mathT", "Entity", "Transform") - what member-access completion
     // (see ResolveMemberChainType()) resolves a dotted chain through.
     // Pointers into LuaBindingMetadata::AllTypes()'s backing vector are
     // safe to cache here because every RegisterType() call happens inside
@@ -112,18 +112,14 @@ namespace {
 
     // The handful of global identifiers whose spelling doesn't match their
     // registered TypeDoc name outright (everything else - "Tmath",
-    // "Input", "Game", "Debug", "GameTime" - already matches its TypeDoc
-    // name 1:1, so only genuine mismatches need an entry here). Keyed by
-    // the lowercased global name, same as TypeDocsByName() - the whole
-    // chain resolution is case-insensitive (see ResolveMemberChainType()),
-    // so this lookup has to be too.
+    // "Input", "Game", "Debug", "GameTime", "entity"/"Entity",
+    // "sector"/"Sector" - already matches its TypeDoc name case-insensitively,
+    // so only genuine mismatches need an entry here). Keyed by the lowercased
+    // global name, same as TypeDocsByName() - the whole chain resolution is
+    // case-insensitive (see ResolveMemberChainType()), so this lookup has to
+    // be too. Empty today - kept so a future mismatch has somewhere to go.
     const std::unordered_map<std::string, std::string>& GlobalAliasToTypeName() {
-        static const std::unordered_map<std::string, std::string> aliases = {
-            {"gameobject", "GameObject"},
-            // The global a sector script gets - a SectorRef.
-            {"sector", "SectorRef"},
-        };
-
+        static const std::unordered_map<std::string, std::string> aliases = {};
         return aliases;
     }
 
@@ -142,8 +138,8 @@ namespace {
     // Splits the plain identifier-dot chain immediately before `dotIndex`
     // (the index of the "." right before the word currently being typed)
     // into its dot-separated segments, outermost first - e.g. for
-    // "gameObject.transform." with `dotIndex` pointing at the last ".",
-    // returns {"gameObject", "transform"}. Returns an empty vector if the
+    // "entity.transform." with `dotIndex` pointing at the last ".",
+    // returns {"entity", "transform"}. Returns an empty vector if the
     // text before the dot isn't a plain identifier chain (a call, an index
     // expression, a numeric literal, or the very start of the line) -
     // deliberately conservative, since this hand-rolled resolver only
@@ -174,7 +170,7 @@ namespace {
         return segments;
     }
 
-    // Resolves a chain from SplitMemberChain() (e.g. {"gameObject",
+    // Resolves a chain from SplitMemberChain() (e.g. {"entity",
     // "transform"}) to the TypeDoc whose properties/methods should be
     // suggested - walking each hop via the previous type's matching
     // property's luaType or method's returnType. Returns nullptr if the
@@ -638,12 +634,12 @@ namespace {
                 R"lua(-- Fields declared like this show up (and become editable) in the Inspector.
 -- The comment above each field is what gives it a type - see the Tilky
 -- scripting docs for the full list (number, string, bool, Vector2/3/4,
--- GameObject, Behaviour, an engine component name like Rigidbody, ...).
+-- Entity, Behaviour, an engine component name like Rigidbody, ...).
 
 ---@field speed number
 speed = 200
 
----@field target GameObject
+---@field target Entity
 target = nil
 
 -- Called once, the first time this script becomes active.
@@ -653,14 +649,14 @@ end
 
 -- Called every frame.
 function Update()
-    -- gameObject is this script's own GameObject - every script gets one
+    -- entity is this script's own Entity - every script gets one
     -- automatically, no lookup required.
-    -- gameObject.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
+    -- entity.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
 
-    -- Reading a GameObject-reference field gives you a real GameObject back,
+    -- Reading an Entity-reference field gives you a real Entity back,
     -- or nil if nothing is assigned in the Inspector.
     -- if target ~= nil then
-    --     print(gameObject.name .. " is looking at " .. target.name)
+    --     print(entity.name .. " is looking at " .. target.name)
     -- end
 end
 
@@ -670,11 +666,11 @@ function FixedUpdate()
 
 end
 
--- Called when this script's GameObject becomes active/inactive.
+-- Called when this script's Entity becomes active/inactive.
 -- function OnEnable() end
 -- function OnDisable() end
 
--- Called once when this script or its GameObject is destroyed.
+-- Called once when this script or its Entity is destroyed.
 function OnDestroy()
 
 end
@@ -1103,7 +1099,7 @@ void AssetBrowser::UpdateAutocomplete() {
     const std::string word = line.substr(start, col - start);
 
     // Member-access completion: if the partial word is directly preceded
-    // by a "." (e.g. "mathT." or "gameObject.transform."), resolve the
+    // by a "." (e.g. "mathT." or "entity.transform."), resolve the
     // dotted chain before it through LuaBindingMetadata instead of
     // matching against the flat keyword/global list - suggesting a random
     // global right after "." wouldn't make sense, and the chain tells us

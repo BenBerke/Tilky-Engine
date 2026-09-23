@@ -8,7 +8,7 @@ again and again.
 
 ## Timers: run something later, or repeatedly
 
-**Attach to:** any GameObject (this one is a self-contained demo; copy the timer functions into
+**Attach to:** any Entity (this one is a self-contained demo; copy the timer functions into
 whichever script needs them).
 
 `After(delay, fn)` runs `fn` once, `Every(interval, fn)` runs it forever, and `Cancel(id)` stops
@@ -147,7 +147,7 @@ local start
 local clock = 0.0
 
 function Start()
-    transform = gameObject.transform
+    transform = entity.transform
     start = transform.position
 end
 
@@ -177,7 +177,7 @@ end
 
 ## Event bus
 
-**Attach to:** any GameObject that always exists (a "Managers" object). One is enough. A second
+**Attach to:** any Entity that always exists (a "Managers" object). One is enough. A second
 copy quietly reuses the first one's bus.
 
 Lets scripts talk **without knowing about each other**: one side calls `Emit("coinCollected", 5)`,
@@ -238,7 +238,7 @@ function Start()
         Debug.Print("Heard a greeting from " .. who)
     end)
 
-    bus.Emit("greeting", gameObject.name)
+    bus.Emit("greeting", entity.name)
 end
 
 function OnDestroy()
@@ -269,22 +269,22 @@ Scripts.Events.Emit("coinCollected", 5)
 **Notes**
 
 - Unsubscribe in `OnDestroy`. A listener left behind keeps its script's variables alive and still
-  gets called after that script's GameObject is gone.
+  gets called after that script's Entity is gone.
 - Each listener is wrapped in `pcall`, so one broken listener can't stop the others from running.
 
 ---
 
 ## Respawner
 
-**Attach to:** a *separate* manager GameObject. A disabled GameObject stops running its own
+**Attach to:** a *separate* manager Entity. A disabled Entity stops running its own
 scripts, so the script that revives something can't be on the thing itself.
 
-Watches a GameObject that was disabled (for example `Health` with **Destroy On Death** off) and
+Watches an Entity that was disabled (for example `Health` with **Destroy On Death** off) and
 brings it back after a delay at its original spot.
 
 ```lua
 -- Scripts/Utils/Respawner.lua (entity script)
----@field target GameObject @ Target
+---@field target Entity @ Target
 target = nil
 
 ---@field respawnDelay number @ Respawn Delay (s)
@@ -388,7 +388,7 @@ function Start()
     Debug.Print("MoveToward(0, 10, 3) =", MoveToward(0, 10, 3))
     Debug.Print("WrapAngle(270) =", WrapAngle(270))
     Debug.Print("Round(3.14159, 2) =", Round(3.14159, 2))
-    Debug.Print("Distance to self =", DistanceXZ(gameObject, gameObject))
+    Debug.Print("Distance to self =", DistanceXZ(entity, entity))
     Debug.Print("Dice roll (1-6) =", mathT.Random(1, 6))
     Debug.Print("Loot drop =", WeightedPick({ common = 70, rare = 25, legendary = 5 }))
 end

@@ -11,7 +11,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterWallMetadata() {
-        RegisterType(Type("WallRef", "A safe reference to one map wall.", {
+        RegisterType(Type("Wall", "A safe reference to one map wall.", {
             Prop("id", "integer", true),
             Prop("isValid", "boolean", true),
             Prop("start", "Vector2", true),
@@ -37,7 +37,7 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
     RegisterWallMetadata();
 
     lua.new_usertype<ScriptWall>(
-        "WallRef",
+        "Wall",
 
         "id", sol::readonly_property(
             &ScriptWall::GetID

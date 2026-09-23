@@ -128,8 +128,15 @@ namespace {
 
     float GetRandomFast() {
         static std::size_t currentIndex = 0;
-        if (currentIndex >= RANDOM_NUMBER_SIZE) currentIndex = 0;
-        return randomNumbers[++currentIndex];
+
+        // Post-increment-then-wrap, not pre-increment: the old
+        // `randomNumbers[++currentIndex]` skipped index 0 entirely and, once
+        // currentIndex reached RANDOM_NUMBER_SIZE - 1 (511, still < 512 so the
+        // reset check above it never fired), read randomNumbers[512] - one
+        // past the end of a 512-element array.
+        const float value = randomNumbers[currentIndex];
+        currentIndex = (currentIndex + 1) % RANDOM_NUMBER_SIZE;
+        return value;
     }
 }
 

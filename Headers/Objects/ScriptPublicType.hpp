@@ -19,8 +19,8 @@
 // Every type a serialized script field can have. Primitive/math types store
 // their value directly in ScriptValue below; the four reference kinds store
 // only a stable ID (never a name, never a pointer) so they survive entity
-// renames and (for GameObject/Component/Behaviour) resolve safely to nil once
-// their target no longer exists. See GameObjectRefValue/ComponentRefValue/
+// renames and (for Entity/Component/Behaviour) resolve safely to nil once
+// their target no longer exists. See EntityRefValue/ComponentRefValue/
 // BehaviourRefValue/AssetRefValue.
 enum class ScriptValueType : std::uint8_t {
     Int,
@@ -31,18 +31,18 @@ enum class ScriptValueType : std::uint8_t {
     Vector3,
     Vector4,
     Enum,       // stored as int; see ScriptPublicField::enumOptions for the name<->value table
-    GameObject, // -> GameObjectRefValue
+    Entity, // -> EntityRefValue
     Component,  // -> ComponentRefValue
     Behaviour,  // -> BehaviourRefValue (another script attached somewhere in the level)
     Asset       // -> AssetRefValue (a path-based asset reference, e.g. a texture)
 };
 
-// A serialized reference to a GameObject (Entity), by stable ID only.
-// Resolves to a GameObject in Lua, or nil if entityId no longer exists.
-struct GameObjectRefValue {
+// A serialized reference to an Entity, by stable ID only.
+// Resolves to an Entity in Lua, or nil if entityId no longer exists.
+struct EntityRefValue {
     ID entityId = INVALID_ID;
 
-    friend bool operator==(const GameObjectRefValue&, const GameObjectRefValue&) = default;
+    friend bool operator==(const EntityRefValue&, const EntityRefValue&) = default;
 };
 
 // A serialized reference to one engine component on one entity. componentType
@@ -87,7 +87,7 @@ using ScriptValue = std::variant<
     Vector2,
     Vector3,
     Vector4,
-    GameObjectRefValue,
+    EntityRefValue,
     ComponentRefValue,
     BehaviourRefValue,
     AssetRefValue

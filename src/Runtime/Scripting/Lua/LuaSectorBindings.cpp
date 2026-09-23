@@ -11,7 +11,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterSectorMetadata() {
-        RegisterType(Type("SectorFloorRef", "One floor/ceiling height interval within a Sector.", {
+        RegisterType(Type("SectorFloor", "One floor/ceiling height interval within a Sector.", {
             Prop("index", "integer", true, "1-based."),
             Prop("isValid", "boolean", true),
             Prop("floorHeight", "number"),
@@ -25,7 +25,7 @@ namespace {
             Method("clearCeilingTexture"),
         }));
 
-        RegisterType(Type("SectorRef", "A safe reference to one map sector.", {
+        RegisterType(Type("Sector", "A safe reference to one map sector.", {
             Prop("id", "integer", true),
             Prop("isValid", "boolean", true),
             Prop("name", "string", false, "The sector's name (empty if none was set)."),
@@ -38,11 +38,11 @@ namespace {
             Prop("neighborCount", "integer", true),
             Prop("tagCount", "integer", true),
         }, {
-            Method("GetFloor", {Param("index", "integer")}, "SectorFloorRef", "1-based."),
+            Method("GetFloor", {Param("index", "integer")}, "SectorFloor", "1-based."),
             Method("GetVertex", {Param("index", "integer")}, "Vector2", "1-based."),
-            Method("GetWall", {Param("index", "integer")}, "WallRef", "1-based."),
-            Method("GetEntity", {Param("index", "integer")}, "GameObject", "1-based."),
-            Method("GetNeighbor", {Param("index", "integer")}, "SectorRef", "1-based."),
+            Method("GetWall", {Param("index", "integer")}, "Wall", "1-based."),
+            Method("GetEntity", {Param("index", "integer")}, "Entity", "1-based."),
+            Method("GetNeighbor", {Param("index", "integer")}, "Sector", "1-based."),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this sector has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
         }));
@@ -53,7 +53,7 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
     RegisterSectorMetadata();
 
     lua.new_usertype<ScriptSectorFloor>(
-        "SectorFloorRef",
+        "SectorFloor",
 
         "index", sol::readonly_property(
             &ScriptSectorFloor::GetIndex
@@ -101,7 +101,7 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
     );
 
     lua.new_usertype<ScriptSector>(
-        "SectorRef",
+        "Sector",
 
         "id", sol::readonly_property(
             &ScriptSector::GetID

@@ -26,7 +26,7 @@ Idle --(sees target)--> Chase --(in range)--> Attack
 
 ```lua
 -- Scripts/AI/Enemy.lua (entity script)
----@field target GameObject @ Target (the player)
+---@field target Entity @ Target (the player)
 target = nil
 
 ---@field sightRange number @ Sight Range
@@ -89,7 +89,7 @@ local function CanSee(dist)
     local aim = Vector3(t.x, t.y + aimHeight, t.z)
 
     local direction = Vector3(aim.x - origin.x, aim.y - origin.y, aim.z - origin.z).normalized
-    local hit = Game.Raycast(origin, direction, dist, gameObject.id, true)
+    local hit = Game.Raycast(origin, direction, dist, entity.id, true)
 
     return hit == nil or hit.entityID == target.id
 end
@@ -103,11 +103,11 @@ local function Attack()
 end
 
 function Start()
-    transform = gameObject.transform
-    rb = gameObject.rigidbody
+    transform = entity.transform
+    rb = entity.rigidbody
 
     if target == nil then
-        Debug.LogWarning("Enemy " .. gameObject.name .. " has no target assigned")
+        Debug.LogWarning("Enemy " .. entity.name .. " has no target assigned")
         return
     end
 
@@ -135,7 +135,7 @@ function Update()
         Steer(0, 0, 0, 0)
         if sees then
             state = CHASE
-            Debug.Print(gameObject.name .. " spotted you")
+            Debug.Print(entity.name .. " spotted you")
         end
 
     elseif state == CHASE then
@@ -229,8 +229,8 @@ local function PickGoal()
 end
 
 function Start()
-    transform = gameObject.transform
-    rb = gameObject.rigidbody
+    transform = entity.transform
+    rb = entity.rigidbody
 
     local p = transform.position
     homeX, homeZ = p.x, p.z

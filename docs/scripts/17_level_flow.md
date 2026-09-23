@@ -8,15 +8,15 @@ They communicate through the shared `Scripts` table, as described in
 
 ## Teleporter
 
-**Attach to:** a pad GameObject. Set `destination` to another GameObject, either a plain marker or
+**Attach to:** a pad Entity. Set `destination` to another Entity, either a plain marker or
 another teleporter for a two-way pair.
 
 ```lua
 -- Scripts/Flow/Teleporter.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
----@field destination GameObject @ Destination
+---@field destination Entity @ Destination
 destination = nil
 
 ---@field radius number @ Trigger Radius
@@ -38,12 +38,12 @@ function Update()
     if player == nil or destination == nil or not player.isValid or not destination.isValid then return end
 
     local p = player.transform.position
-    local me = gameObject.transform.position
+    local me = entity.transform.position
     local dx, dz = p.x - me.x, p.z - me.z
     local inside = math.sqrt(dx * dx + dz * dz) <= radius
 
     -- We are the pad the player just arrived at: stay quiet until they step off it.
-    if Scripts.teleportArrival == gameObject.id then
+    if Scripts.teleportArrival == entity.id then
         if not inside then Scripts.teleportArrival = nil end
         return
     end
@@ -68,11 +68,11 @@ player back at the last checkpoint (or where they started) if they fall out of t
 
 ### Checkpoint
 
-**Attach to:** a marker GameObject.
+**Attach to:** a marker Entity.
 
 ```lua
 -- Scripts/Flow/Checkpoint.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field radius number @ Trigger Radius
@@ -84,7 +84,7 @@ function Update()
     if reached or player == nil or not player.isValid then return end
 
     local p = player.transform.position
-    local me = gameObject.transform.position
+    local me = entity.transform.position
     local dx, dz = p.x - me.x, p.z - me.z
 
     if math.sqrt(dx * dx + dz * dz) <= radius then
@@ -108,8 +108,8 @@ local transform, rb
 local startPosition
 
 function Start()
-    transform = gameObject.transform
-    rb = gameObject.rigidbody
+    transform = entity.transform
+    rb = entity.rigidbody
     startPosition = transform.position
 end
 
@@ -132,7 +132,7 @@ fallen. Any [ChannelDoor](05_doors.md#switch-and-channel-door) on that channel t
 
 ### The counter
 
-**Attach to:** a manager GameObject.
+**Attach to:** a manager Entity.
 
 ```lua
 -- Scripts/Flow/KillCounter.lua (entity script)
@@ -162,7 +162,7 @@ end
 
 ## Level exit
 
-**Attach to:** an exit marker GameObject.
+**Attach to:** an exit marker Entity.
 
 Loads another level when the player reaches it. It can also require a channel to be on first, for
 example the `exit` channel the kill counter above turns on.
@@ -173,7 +173,7 @@ example the `exit` channel the kill counter above turns on.
 
 ```lua
 -- Scripts/Flow/LevelExit.lua (entity script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field nextLevel string @ Next Level Name
@@ -196,7 +196,7 @@ function Update()
     end
 
     local p = player.transform.position
-    local me = gameObject.transform.position
+    local me = entity.transform.position
     local dx, dz = p.x - me.x, p.z - me.z
 
     if math.sqrt(dx * dx + dz * dz) <= radius then

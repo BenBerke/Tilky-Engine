@@ -10,9 +10,9 @@ Two useful engine features for interaction:
   | `type` | `"Entity"`, `"Wall"`, `"SectorFloor"`, or `"SectorCeiling"` |
   | `distance` | How far away the hit was |
   | `position` | World position of the hit (`Vector3`) |
-  | `entity`, `entityID` | The GameObject that was hit (`nil` / an invalid ID if none) |
-  | `wall`, `wallID` | The `WallRef` that was hit |
-  | `sector`, `sectorID` | The `SectorRef` involved |
+  | `entity`, `entityID` | The Entity that was hit (`nil` / an invalid ID if none) |
+  | `wall`, `wallID` | The `Wall` that was hit |
+  | `sector`, `sectorID` | The `Sector` involved |
 
   With `requireCollider = true` only entities that have an active, non-trigger `Collider` can be
   hit. With `false` any entity can be hit, using a box the size of its transform's `scale`.
@@ -21,7 +21,7 @@ Two useful engine features for interaction:
 - Any script can be called by another script (`someScript:FunctionName()`), which lets you build
   a tiny "interface" system: anything that defines `Interact` can be used.
 
-A GameObject's `transform.position` is at its **feet**. The player's eyes (and camera) sit
+An Entity's `transform.position` is at its **feet**. The player's eyes (and camera) sit
 `playerController.eyeHeight` above that, so a ray meant to follow the player's gaze starts at
 `position.y + eyeHeight` and travels along `camera.forward`. Both scripts below do exactly that.
 
@@ -43,20 +43,20 @@ range = 48
 ---@field interactKey string @ Interact Key
 interactKey = "E"
 
----@field promptLabel GameObject @ Prompt Label (optional, needs a UIText)
+---@field promptLabel Entity @ Prompt Label (optional, needs a UIText)
 promptLabel = nil
 
 local camera, pc, transform, label
 
 function Start()
-    camera = gameObject.camera
-    pc = gameObject.playerController
-    transform = gameObject.transform
+    camera = entity.camera
+    pc = entity.playerController
+    transform = entity.transform
 
     if promptLabel ~= nil then label = promptLabel.uiText end
 
     if camera == nil or pc == nil then
-        Debug.LogError("Interactor: " .. gameObject.name .. " needs a Camera and a PlayerController")
+        Debug.LogError("Interactor: " .. entity.name .. " needs a Camera and a PlayerController")
     end
 end
 
@@ -72,14 +72,14 @@ end
 
 -- Looks for a script on `entity` that defines Interact(). If there is one, optionally uses it,
 -- and returns the prompt text to show. Returns nil if nothing there can be interacted with.
-local function Examine(entity, use)
-    local scripts = entity:GetScripts()
+local function Examine(target, use)
+    local scripts = target:GetScripts()
 
     for i = 1, #scripts do
         local script = scripts[i]
 
         if type(script.Interact) == "function" then
-            if use then script:Interact(gameObject) end
+            if use then script:Interact(entity) end   -- `entity` is the player (this script's Entity)
 
             -- The target script can provide a `prompt` string of its own.
             return "[" .. interactKey .. "] " .. (script.prompt or "Interact")
@@ -93,7 +93,7 @@ function Update()
     if camera == nil or pc == nil then return end
 
     -- requireCollider = true: only things with a Collider can be interacted with.
-    local hit = Game.Raycast(EyePosition(), camera.forward, range, gameObject.id, true)
+    local hit = Game.Raycast(EyePosition(), camera.forward, range, entity.id, true)
 
     local prompt = nil
     if hit ~= nil and hit.entity ~= nil then
@@ -117,7 +117,7 @@ end
 
 ## Lever
 
-**Attach to:** a GameObject with a `Collider`. Works with the Interactor above.
+**Attach to:** an Entity with a `Collider`. Works with the Interactor above.
 
 Toggles a channel that doors, alarms, and lights can listen to
 (see [05_doors.md](05_doors.md) and [07_lighting.md](07_lighting.md)).
@@ -132,7 +132,7 @@ prompt = "Pull lever"
 
 local isOn = false
 
--- Called by the Interactor. `self` is this script, `who` is the GameObject that used it.
+-- Called by the Interactor. `self` is this script, `who` is the Entity that used it.
 function Interact(self, who)
     isOn = not isOn
 
@@ -146,7 +146,7 @@ end
 **Notes**
 
 - Functions that other scripts call with a colon must take `self` as their first parameter:
-  `interactable:Interact(gameObject)` runs `Interact(interactable, gameObject)`.
+  `interactable:Interact(entity)` runs `Interact(interactable, entity)`.
 - `prompt` is a normal public field, so the Interactor can read it, and designers can edit it.
 
 ---
@@ -176,7 +176,7 @@ magazineSize = 8
 ---@field reloadTime number @ Reload Time (s)
 reloadTime = 1.5
 
----@field ammoLabel GameObject @ Ammo Label (optional, needs a UIText)
+---@field ammoLabel Entity @ Ammo Label (optional, needs a UIText)
 ammoLabel = nil
 
 local camera, pc, transform, label
@@ -202,7 +202,7 @@ local function Fire()
     local p = transform.position
     local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
 
-    local hit = Game.Raycast(eyes, camera.forward, range, gameObject.id, true)
+    local hit = Game.Raycast(eyes, camera.forward, range, entity.id, true)
     if hit == nil then return end
 
     if hit.entity ~= nil and hit.entity:HasScriptNamed("Health") then
@@ -212,15 +212,15 @@ local function Fire()
 end
 
 function Start()
-    camera = gameObject.camera
-    pc = gameObject.playerController
-    transform = gameObject.transform
+    camera = entity.camera
+    pc = entity.playerController
+    transform = entity.transform
     ammo = magazineSize
 
     if ammoLabel ~= nil then label = ammoLabel.uiText end
 
     if camera == nil or pc == nil then
-        Debug.LogError("Hitscan: " .. gameObject.name .. " needs a Camera and a PlayerController")
+        Debug.LogError("Hitscan: " .. entity.name .. " needs a Camera and a PlayerController")
     end
 end
 
@@ -250,5 +250,5 @@ end
 
 - `GetMouseButton` is true while held (automatic fire). Use `GetMouseButtonDown` instead for
   semi-automatic.
-- The weapon skips the shooter itself by passing `gameObject.id` as the ignored entity.
+- The weapon skips the shooter itself by passing `entity.id` as the ignored entity.
 - Enemies need a `Collider` to be hit, since `requireCollider` is `true`.

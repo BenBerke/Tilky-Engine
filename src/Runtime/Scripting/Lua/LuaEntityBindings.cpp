@@ -10,46 +10,46 @@
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 namespace {
-    // Registers a representative slice of GameObject's documentation with
+    // Registers a representative slice of Entity's documentation with
     // LuaBindingMetadata - see that header's scope note: this demonstrates
     // the "register metadata alongside the sol2 binding" pattern rather than
-    // exhaustively transcribing every one of GameObject's accessors right
+    // exhaustively transcribing every one of Entity's accessors right
     // now (retrofitting the rest, and every other existing usertype, is
     // follow-up work).
-    void RegisterGameObjectMetadata() {
+    void RegisterEntityMetadata() {
         LuaBindingMetadata::RegisterType({
-            .name = "GameObject",
-            .doc = "Tilky's GameObject facade - a safe handle to one entity. Never a raw entity ID.",
+            .name = "Entity",
+            .doc = "Tilky's Entity facade - a safe handle to one entity. Never a raw entity ID.",
             .properties = {
                 {.name = "id", .luaType = "integer", .readOnly = true, .doc = "Stable entity ID."},
-                {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once this GameObject has been destroyed."},
-                {.name = "name", .luaType = "string", .doc = "The GameObject's display name."},
+                {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once this Entity has been destroyed."},
+                {.name = "name", .luaType = "string", .doc = "The Entity's display name."},
                 {.name = "enabled", .luaType = "boolean", .doc = "Active state - disables every attached script's ticking when false."},
-                {.name = "transform", .luaType = "Transform?", .readOnly = true, .doc = "nil if this GameObject has no Transform."},
+                {.name = "transform", .luaType = "Transform?", .readOnly = true, .doc = "nil if this Entity has no Transform."},
                 {.name = "hasScript", .luaType = "boolean", .readOnly = true, .doc = "True if any script is attached."},
                 {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "Tags are assigned from the editor only - there is no SetTag."},
             },
             .methods = {
-                {.name = "Destroy", .params = {}, .returnType = "", .doc = "Queues this GameObject for destruction at the end of the current frame."},
+                {.name = "Destroy", .params = {}, .returnType = "", .doc = "Queues this Entity for destruction at the end of the current frame."},
                 {.name = "GetScript", .params = {{"name", "string"}}, .returnType = "Behaviour", .doc = "Looks up an attached script by name."},
-                {.name = "GetScripts", .params = {}, .returnType = "Behaviour[]", .doc = "Every script attached to this GameObject."},
+                {.name = "GetScripts", .params = {}, .returnType = "Behaviour[]", .doc = "Every script attached to this Entity."},
                 {.name = "HasScriptNamed", .params = {{"name", "string"}}, .returnType = "boolean", .doc = "True if a script matching `name` is attached."},
-                {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this GameObject has the given tag."},
+                {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this Entity has the given tag."},
                 {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
             }
         });
     }
 }
 
-// Registers ScriptEntity as the Lua-facing "GameObject" type - Tilky's
-// GameObject facade. This never exposes raw entity IDs, component storages,
+// Registers ScriptEntity as the Lua-facing "Entity" type - Tilky's
+// Entity facade. This never exposes raw entity IDs, component storages,
 // or the owning Level - every accessor here is a null-checked {Level*, ID}
 // handle, matching every other ScriptXxx wrapper in LuaWrappers.hpp.
 void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
-    RegisterGameObjectMetadata();
+    RegisterEntityMetadata();
 
     lua.new_usertype<ScriptEntity>(
-        "GameObject",
+        "Entity",
 
         "id",
         sol::property(&ScriptEntity::GetID),
@@ -60,13 +60,13 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         "name",
         sol::property(&ScriptEntity::GetName, &ScriptEntity::SetName),
 
-        // GameObject-level active state. See Entity::enabled - disabling a
-        // GameObject disables every attached script's ticking without
+        // Entity-level active state. See Entity::enabled - disabling a
+        // Entity disables every attached script's ticking without
         // touching each script's own `enabled` flag.
         "enabled",
         sol::property(&ScriptEntity::GetEnabled, &ScriptEntity::SetEnabled),
 
-        // Queues this GameObject for destruction; the actual removal happens
+        // Queues this Entity for destruction; the actual removal happens
         // once, after every script has finished running this frame.
         "Destroy",
         &ScriptEntity::Destroy,
@@ -116,12 +116,12 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             }
         ),
 
-        // True if this GameObject has ANY attached script. See GetScript /
+        // True if this Entity has ANY attached script. See GetScript /
         // HasScriptNamed below to look one up specifically.
         "hasScript",
         sol::property(&ScriptEntity::HasScript),
 
-        // True if this GameObject has an attached script matching `name`
+        // True if this Entity has an attached script matching `name`
         // (matches the final path segment of the script's asset id - see
         // ScriptEntity::HasScriptNamed).
         "HasScriptNamed",
@@ -148,7 +148,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         "getScriptById",
         &ScriptEntity::GetScriptById,
 
-        // Every script attached to this GameObject, as Behaviour references.
+        // Every script attached to this Entity, as Behaviour references.
         "GetScripts",
         &ScriptEntity::GetScripts,
         "getScripts",

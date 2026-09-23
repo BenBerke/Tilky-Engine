@@ -1107,18 +1107,18 @@ struct ScriptUIText {
 // Behaviour reference (another script instance, anywhere in the level)
 // ---------------------------------------------------------
 
-// Forward declaration: ScriptBehaviourRef::GetGameObject() returns a
+// Forward declaration: ScriptBehaviourRef::GetEntity() returns a
 // ScriptEntity by value and ScriptEntity::GetScript() returns a
 // ScriptBehaviourRef by value, so the two are defined with only forward
 // declarations of each other's methods here; the actual bodies of the
 // cross-referencing methods are inline definitions placed after both structs
-// are complete (see "Behaviour <-> GameObject cross-reference definitions"
+// are complete (see "Behaviour <-> Entity cross-reference definitions"
 // below ScriptEntity's closing brace).
 struct ScriptEntity;
 
 // A safe handle to one specific script (Behaviour) instance, identified by
 // its globally-unique ScriptInstanceID rather than by filename - so it stays
-// unambiguous even when the target GameObject has several scripts attached,
+// unambiguous even when the target Entity has several scripts attached,
 // including duplicates of the same script. Field and function access
 // (ref.someField, ref:SomeMethod()) is forwarded straight into the target
 // instance's own Lua environment via LuaScriptRuntime, so calling a public
@@ -1134,10 +1134,10 @@ struct ScriptBehaviourRef {
         return LuaScriptRuntime::IsInstanceValid(ownerID, instanceID);
     }
 
-    [[nodiscard]] ScriptEntity GetGameObject() const;
+    [[nodiscard]] ScriptEntity GetEntity() const;
 
     // The referenced script's own enabled flag - independent of the
-    // GameObject's enabled flag (Entity::enabled).
+    // Entity's enabled flag (Entity::enabled).
     [[nodiscard]] bool GetEnabled() const {
         if (level == nullptr) return false;
         return LuaScriptRuntime::GetInstanceEnabled(*level, ownerID, instanceID);
@@ -1153,13 +1153,13 @@ struct ScriptBehaviourRef {
     // from C++.
     //
     // A custom __index/__newindex on a sol2 usertype fully replaces its
-    // default property dispatch, so "isValid"/"gameObject"/"enabled" are
+    // default property dispatch, so "isValid"/"entity"/"enabled" are
     // handled here by name rather than also being registered as ordinary
     // usertype properties (which sol2 would then never see) - see the
     // "Behaviour" usertype registration in LuaSystem.cpp, which binds only
     // these two functions and nothing else.
     //
-    // Declared only here (like GetGameObject() above) and defined out-of-line
+    // Declared only here (like GetEntity() above) and defined out-of-line
     // after ScriptEntity is a complete type - LuaGet constructs a
     // sol::object from a ScriptEntity returned by value, which needs
     // ScriptEntity's full definition, not just the forward declaration
@@ -1169,13 +1169,13 @@ struct ScriptBehaviourRef {
 };
 
 // ---------------------------------------------------------
-// Entity (GameObject)
+// Entity (Entity)
 // ---------------------------------------------------------
 
-// Tilky's GameObject facade. Lua never sees the raw ECS entity or its
+// Tilky's Entity facade. Lua never sees the raw ECS entity or its
 // component storages - every field here is either a plain value or another
 // safe {Level*, ID} handle, and every accessor null-checks before touching
-// the level. Registered to Lua as "GameObject" (see LuaEntityBindings.cpp);
+// the level. Registered to Lua as "Entity" (see LuaEntityBindings.cpp);
 // the C++ type name stays ScriptEntity to minimize churn across the engine
 // side of the codebase.
 struct ScriptEntity {
@@ -1206,7 +1206,7 @@ struct ScriptEntity {
         entity->name = name;
     }
 
-    // GameObject-level active state. Disabling a GameObject effectively
+    // Entity-level active state. Disabling an Entity effectively
     // disables every attached script's ticking (Update/FixedUpdate skipped,
     // OnDisable/OnEnable fired) without touching each script's own `enabled`
     // flag - see Entity::enabled and ScriptBehaviourRef::GetEnabled/SetEnabled
@@ -1222,7 +1222,7 @@ struct ScriptEntity {
         entity->enabled = value;
     }
 
-    // Queues this GameObject for destruction. Safe to call from anywhere in
+    // Queues this Entity for destruction. Safe to call from anywhere in
     // a script's lifecycle (Start/Update/FixedUpdate/etc.) - the actual
     // removal (component teardown, OnDestroy on every attached script, then
     // erasing the entity) happens once, after every script has finished
@@ -1248,7 +1248,7 @@ struct ScriptEntity {
         return level != nullptr && level->scripts.HasAny(ownerID);
     }
 
-    // True if this GameObject has an attached script whose asset id
+    // True if this Entity has an attached script whose asset id
     // (ComponentScript::fileName, a project-relative path without extension -
     // see LuaScriptSystem's script identity notes) ends in `scriptName`.
     // Matching on the final path segment means both "Health" and
@@ -1269,7 +1269,7 @@ struct ScriptEntity {
     // Tags are assigned only from the editor (Project Settings + the
     // Sector/Wall/Entity inspectors) - scripts can query them (HasTag,
     // tagCount, GetTag) but never add/remove/rename one, so gameplay code
-    // can't drift a GameObject's tags out of sync with what a level
+    // can't drift an Entity's tags out of sync with what a level
     // designer set.
     [[nodiscard]] bool HasTag(const std::string& tag) const {
         const Entity* entity = GetEntity();
@@ -1288,12 +1288,12 @@ struct ScriptEntity {
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
         const Entity* entity = GetEntity();
-        if (entity == nullptr) throw sol::error("Invalid GameObject");
+        if (entity == nullptr) throw sol::error("Invalid Entity");
 
         const int index = luaIndex - 1;
 
         if (index < 0 || index >= static_cast<int>(entity->tags.size()))
-            throw sol::error("GameObject tag index out of range");
+            throw sol::error("Entity tag index out of range");
 
         return entity->tags[index];
     }
@@ -1364,7 +1364,7 @@ struct ScriptEntity {
         return {level, ownerID, instanceId};
     }
 
-    // Every script attached to this GameObject, as Behaviour references.
+    // Every script attached to this Entity, as Behaviour references.
     [[nodiscard]] std::vector<ScriptBehaviourRef> GetScripts() const {
         std::vector<ScriptBehaviourRef> result;
 
@@ -1406,14 +1406,14 @@ struct ScriptEntity {
 };
 
 // ---------------------------------------------------------
-// Behaviour <-> GameObject cross-reference definitions
+// Behaviour <-> Entity cross-reference definitions
 //
 // ScriptBehaviourRef and ScriptEntity refer to each other by value, so this
 // one method has to be defined out-of-line, here, after both types are
 // complete.
 // ---------------------------------------------------------
 
-inline ScriptEntity ScriptBehaviourRef::GetGameObject() const {
+inline ScriptEntity ScriptBehaviourRef::GetEntity() const {
     return {level, ownerID};
 }
 
@@ -1421,7 +1421,7 @@ inline sol::object ScriptBehaviourRef::LuaGet(const std::string& key, const sol:
     const sol::state_view luaView(state);
 
     if (key == "isValid") return sol::make_object(luaView, IsValid());
-    if (key == "gameObject") return sol::make_object(luaView, GetGameObject());
+    if (key == "entity") return sol::make_object(luaView, GetEntity());
     if (key == "enabled") return sol::make_object(luaView, GetEnabled());
 
     return LuaScriptRuntime::GetInstanceField(ownerID, instanceID, key, state);
@@ -1433,10 +1433,10 @@ inline void ScriptBehaviourRef::LuaSet(const std::string& key, sol::object value
         return;
     }
 
-    // isValid/gameObject are read-only; a stray write to them is ignored
+    // isValid/entity are read-only; a stray write to them is ignored
     // rather than silently poking a same-named field into the target
     // script's environment.
-    if (key == "isValid" || key == "gameObject") return;
+    if (key == "isValid" || key == "entity") return;
 
     LuaScriptRuntime::SetInstanceField(ownerID, instanceID, key, std::move(value));
 }
@@ -1470,49 +1470,49 @@ struct ScriptWall {
 
     [[nodiscard]] Vector2 GetStart() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->start;
     }
 
     [[nodiscard]] Vector2 GetEnd() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->end;
     }
 
     [[nodiscard]] Vector4 GetColor() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->color;
     }
 
     void SetColor(const Vector4& value) const {
         Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         wall->color = value;
     }
 
     [[nodiscard]] Vector2 GetTextureOffset() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->textureOffset;
     }
 
     void SetTextureOffset(const Vector2& value) const {
         Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         wall->textureOffset = value;
     }
 
     [[nodiscard]] std::string GetTextureFileName() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->textureFileName;
     }
 
     void SetTextureFileName(const std::string& value) const {
         Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         wall->textureFileName = value;
     }
 
@@ -1524,7 +1524,7 @@ struct ScriptWall {
     {
         const Wall* wall = GetWall();
 
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
 
         const auto tagId = TagRegistry::Find(tag);
 
@@ -1539,13 +1539,13 @@ struct ScriptWall {
     // can't drift a wall's tags out of sync with what a level designer set.
     [[nodiscard]] int GetTagCount() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return static_cast<int>(wall->tags.size());
     }
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
 
         const int index = luaIndex - 1;
 
@@ -1557,31 +1557,31 @@ struct ScriptWall {
 
     [[nodiscard]] ID GetFrontSector() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->frontSector;
     }
 
     [[nodiscard]] ID GetBackSector() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->backSector;
     }
 
     [[nodiscard]] Vector2 GetDir() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->dir;
     }
 
     [[nodiscard]] Vector2 GetNormal() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->normal;
     }
 
     [[nodiscard]] float GetLength() const {
         const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid WallRef");
+        if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->length;
     }
 };
@@ -1629,7 +1629,7 @@ struct ScriptSectorFloor {
 
     [[nodiscard]] float GetFloorHeight() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->floor.height;
     }
 
@@ -1638,7 +1638,7 @@ struct ScriptSectorFloor {
         SectorFloor* floor = GetSectorFloor();
 
         if (sector == nullptr || floor == nullptr) {
-            throw sol::error("Invalid SectorFloorRef");
+            throw sol::error("Invalid SectorFloor");
         }
 
         if (value >= floor->ceiling.height) {
@@ -1655,7 +1655,7 @@ struct ScriptSectorFloor {
 
     [[nodiscard]] float GetCeilingHeight() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->ceiling.height;
     }
 
@@ -1664,7 +1664,7 @@ struct ScriptSectorFloor {
         SectorFloor* floor = GetSectorFloor();
 
         if (sector == nullptr || floor == nullptr) {
-            throw sol::error("Invalid SectorFloorRef");
+            throw sol::error("Invalid SectorFloor");
         }
 
         if (value <= floor->floor.height) {
@@ -1681,37 +1681,37 @@ struct ScriptSectorFloor {
 
     [[nodiscard]] Vector4 GetFloorColor() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->floor.color;
     }
 
     void SetFloorColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         floor->floor.color = value;
     }
 
     [[nodiscard]] Vector4 GetCeilingColor() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->ceiling.color;
     }
 
     void SetCeilingColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         floor->ceiling.color = value;
     }
 
     [[nodiscard]] std::string GetFloorTexture() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->floor.texture;
     }
 
     void SetFloorTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         floor->floor.texture = value;
     }
 
@@ -1721,13 +1721,13 @@ struct ScriptSectorFloor {
 
     [[nodiscard]] std::string GetCeilingTexture() const {
         const SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         return floor->ceiling.texture;
     }
 
     void SetCeilingTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
-        if (floor == nullptr) throw sol::error("Invalid SectorFloorRef");
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         floor->ceiling.texture = value;
     }
 
@@ -1767,13 +1767,13 @@ struct ScriptSector {
     // Sector::name itself - no separate Lua-side copy.
     [[nodiscard]] std::string GetName() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return sector->name;
     }
 
     void SetName(const std::string& value) const {
         Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         sector->name = value;
     }
 
@@ -1793,25 +1793,25 @@ struct ScriptSector {
 
     [[nodiscard]] Vector3 GetLight() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return sector->light;
     }
 
     void SetLight(const Vector3 &value) const {
         Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         sector->light = value;
     }
 
     [[nodiscard]] int GetFloorCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->floors.size());
     }
 
     [[nodiscard]] ScriptSectorFloor GetFloor(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 
@@ -1828,13 +1828,13 @@ struct ScriptSector {
 
     [[nodiscard]] int GetVertexCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->vertices.size());
     }
 
     [[nodiscard]] Vector2 GetVertex(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 
@@ -1847,13 +1847,13 @@ struct ScriptSector {
 
     [[nodiscard]] int GetWallCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->walls.size());
     }
 
     [[nodiscard]] ScriptWall GetWall(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 
@@ -1878,13 +1878,13 @@ struct ScriptSector {
 
     [[nodiscard]] int GetEntityCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->entitiesInside.size());
     }
 
     [[nodiscard]] ScriptEntity GetEntity(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 
@@ -1900,13 +1900,13 @@ struct ScriptSector {
 
     [[nodiscard]] int GetNeighborCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->neighbors.size());
     }
 
     [[nodiscard]] ScriptSector GetNeighbor(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 
@@ -1935,7 +1935,7 @@ struct ScriptSector {
     // can't drift a sector's tags out of sync with what a level designer set.
     [[nodiscard]] bool HasTag(const std::string& tag) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const auto tagId = TagRegistry::Find(tag);
         if (!tagId.has_value()) return false;
@@ -1945,13 +1945,13 @@ struct ScriptSector {
 
     [[nodiscard]] int GetTagCount() const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
         return static_cast<int>(sector->tags.size());
     }
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
         const Sector* sector = GetSector();
-        if (sector == nullptr) throw sol::error("Invalid SectorRef");
+        if (sector == nullptr) throw sol::error("Invalid Sector");
 
         const int index = luaIndex - 1;
 

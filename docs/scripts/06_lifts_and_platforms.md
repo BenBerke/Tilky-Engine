@@ -34,7 +34,7 @@ Rises while the player is standing on it and sinks back when they step off.
 
 ```lua
 -- Scripts/Platforms/Lift.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field rise number @ Rise Height
@@ -97,7 +97,7 @@ Stands still until the player is aboard and presses a key, then travels to the o
 
 ```lua
 -- Scripts/Platforms/Elevator.lua (sector script)
----@field player GameObject @ Player
+---@field player Entity @ Player
 player = nil
 
 ---@field travel number @ Travel Distance
