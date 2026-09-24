@@ -31,9 +31,9 @@ void OpenGL::BuildGpuSprites() {
             const Sector& sector = level.sectors[transform->sectorIndex];
 
             gpuSprite.color = {
-                spriteComponent.color.x - (255.0f - sector.light.x),
-                spriteComponent.color.y - (255.0f - sector.light.y),
-                spriteComponent.color.z - (255.0f - sector.light.z),
+                spriteComponent.color.x - (255.0f - sector.light.x) / 255.0f,
+                spriteComponent.color.y - (255.0f - sector.light.y) / 255.0f,
+                spriteComponent.color.z - (255.0f - sector.light.z) / 255.0f,
                 spriteComponent.color.w
             };
         }
