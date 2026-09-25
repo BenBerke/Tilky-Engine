@@ -22,6 +22,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <array>
+#include <cstring>
 #include <string>
 #include <algorithm>
 #include <filesystem>
@@ -145,14 +146,14 @@ namespace {
         return pressed;
     }
 
-    // ── Reference-field pickers (Entity / Component / Behaviour) ────────
+    // ── Reference-field pickers (Entity / Wall / Sector / Component / Behaviour)
     //
-    // These are combo-box selectors rather than drag-and-drop: the editor
-    // has no hierarchy/outliner panel to drag an Entity *from* yet, so
-    // full Unity-style drag-and-drop for these three kinds is left as a
-    // documented follow-up rather than built as a side effect here. Asset
-    // fields (textures, etc.) already get real drag-and-drop for free by
-    // reusing MapEditorInternal::DrawAssetField below, same as every other
+    // Entity, Wall and Sector fields accept a drop of the matching row from
+    // the Map Editor's hierarchy, and Entity fields also accept an entity
+    // dragged straight off the canvas (see SubmitCanvasEntityDragSource).
+    // Each keeps its combo box for picking by hand. Component and Behaviour
+    // fields are combo-only. Asset fields (textures, etc.) get drag-and-drop
+    // by reusing MapEditorInternal::DrawAssetField below, same as every other
     // texture/sound/script field in the inspector.
 
     bool EntityHasComponentByType(Entity &entity, const int componentType) {
@@ -170,12 +171,48 @@ namespace {
         return buf;
     }
 
-    bool DrawEntityField(const char *label, EntityRefValue &ref) {
-        Level &level = LevelManager::CurrentLevel();
+    std::string DescribeWall(const Wall &wall) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Wall #%u", wall.id);
+        return buf;
+    }
 
-        const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
-        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+    std::string DescribeSector(const Sector &sector) {
+        char buf[160];
+        if (sector.name.empty()) snprintf(buf, sizeof(buf), "Sector #%u", sector.id);
+        else snprintf(buf, sizeof(buf), "%s (#%u)", sector.name.c_str(), sector.id);
+        return buf;
+    }
 
+    // Drop target for the item just drawn. A drop from the canvas also
+    // undoes the move the drag made on the way here - the user was
+    // assigning the entity, not relocating it.
+    bool AcceptLevelObjectDrop(const char *payloadType, ID &id) {
+        if (!ImGui::BeginDragDropTarget()) return false;
+
+        bool changed = false;
+
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(payloadType)) {
+            MapEditorInternal::LevelObjectDragPayload dropped;
+            std::memcpy(&dropped, payload->Data, sizeof(dropped));
+
+            id = dropped.id;
+            changed = true;
+
+            if (dropped.fromCanvas) MapEditorInternal::RevertCanvasEntityDrag();
+        }
+
+        ImGui::EndDragDropTarget();
+        return changed;
+    }
+
+    // Shared body of the Entity/Wall/Sector fields: label, a combo with
+    // "(None)" plus whatever drawOptions lists, and the combo itself doubling
+    // as the drop target for `payloadType`.
+    template<typename DrawOptions>
+    bool DrawLevelObjectRefField(const char *label, ID &id, const std::string &preview,
+                                 const char *payloadType, const char *tooltipKey,
+                                 DrawOptions &&drawOptions) {
         bool changed = false;
 
         ImGui::PushID(label);
@@ -183,28 +220,100 @@ namespace {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(200.0f);
 
-        if (ImGui::BeginCombo("##entityPicker", preview.c_str())) {
-            if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
-                ref.entityId = INVALID_ID;
+        if (ImGui::BeginCombo("##refPicker", preview.c_str())) {
+            if (ImGui::Selectable("(None)", id == INVALID_ID)) {
+                id = INVALID_ID;
                 changed = true;
             }
 
-            for (Entity &candidate : level.entities) {
-                const bool isSelected = candidate.id == ref.entityId;
-
-                if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
-                    ref.entityId = candidate.id;
-                    changed = true;
-                }
-
-                if (isSelected) ImGui::SetItemDefaultFocus();
-            }
+            drawOptions(id, changed);
 
             ImGui::EndCombo();
         }
 
+        changed |= AcceptLevelObjectDrop(payloadType, id);
+
+        if (ImGui::GetDragDropPayload() == nullptr)
+            ImGuiDrawFunctions::Tooltip(Localisation::Get(tooltipKey).c_str());
+
         ImGui::PopID();
         return changed;
+    }
+
+    bool DrawEntityField(const char *label, EntityRefValue &ref) {
+        Level &level = LevelManager::CurrentLevel();
+
+        const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
+        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+
+        return DrawLevelObjectRefField(
+            label, ref.entityId, preview,
+            MapEditorInternal::ENTITY_REF_PAYLOAD, "editor.ref_field.tooltip.entity",
+            [&level](ID &id, bool &changed) {
+                for (const Entity &candidate : level.entities) {
+                    const bool isSelected = candidate.id == id;
+
+                    if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
+                        id = candidate.id;
+                        changed = true;
+                    }
+
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+            }
+        );
+    }
+
+    bool DrawWallField(const char *label, WallRefValue &ref) {
+        Level &level = LevelManager::CurrentLevel();
+
+        const auto currentIt = level.wallIDToIndex.find(ref.wallId);
+        const std::string preview = currentIt != level.wallIDToIndex.end()
+                                        ? DescribeWall(level.walls[currentIt->second])
+                                        : "(None)";
+
+        return DrawLevelObjectRefField(
+            label, ref.wallId, preview,
+            MapEditorInternal::WALL_REF_PAYLOAD, "editor.ref_field.tooltip.wall",
+            [&level](ID &id, bool &changed) {
+                for (const Wall &candidate : level.walls) {
+                    const bool isSelected = candidate.id == id;
+
+                    if (ImGui::Selectable(DescribeWall(candidate).c_str(), isSelected)) {
+                        id = candidate.id;
+                        changed = true;
+                    }
+
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+            }
+        );
+    }
+
+    bool DrawSectorField(const char *label, SectorRefValue &ref) {
+        Level &level = LevelManager::CurrentLevel();
+
+        const auto currentIt = level.sectorIDToIndex.find(ref.sectorId);
+        const std::string preview = currentIt != level.sectorIDToIndex.end()
+                                        ? DescribeSector(level.sectors[currentIt->second])
+                                        : "(None)";
+
+        return DrawLevelObjectRefField(
+            label, ref.sectorId, preview,
+            MapEditorInternal::SECTOR_REF_PAYLOAD, "editor.ref_field.tooltip.sector",
+            [&level](ID &id, bool &changed) {
+                for (const Sector &candidate : level.sectors) {
+                    const bool isSelected = candidate.id == id;
+
+                    if (ImGui::Selectable(DescribeSector(candidate).c_str(), isSelected)) {
+                        id = candidate.id;
+                        changed = true;
+                    }
+
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+            }
+        );
     }
 
     bool DrawComponentField(const char *label, ComponentRefValue &ref, const int componentType) {
@@ -391,6 +500,18 @@ namespace {
                 AssetRefValue *av = std::get_if<AssetRefValue>(&value);
                 if (!av) return;
                 MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
+                break;
+            }
+            case ScriptValueType::Wall: {
+                WallRefValue *wv = std::get_if<WallRefValue>(&value);
+                if (!wv) return;
+                DrawWallField(field.displayName.c_str(), *wv);
+                break;
+            }
+            case ScriptValueType::Sector: {
+                SectorRefValue *sv = std::get_if<SectorRefValue>(&value);
+                if (!sv) return;
+                DrawSectorField(field.displayName.c_str(), *sv);
                 break;
             }
         }

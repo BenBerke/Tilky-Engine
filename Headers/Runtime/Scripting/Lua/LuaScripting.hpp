@@ -23,7 +23,7 @@ public:
     void Stop(Level& level) override;
     void Shutdown() override;
 
-    void RegisterVectorBindings(sol::state& lua);
+    static void RegisterVectorBindings(sol::state& lua);
     static void RegisterComponentBindings(sol::state& lua);
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);

@@ -173,34 +173,6 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
         return MathHelpers::InverseLerp(a, b, t);
     });
 
-    math.set_function("Vector2Distance", [](const Vector2& a, const Vector2& b) -> float {
-        return Vector2Math::Distance(a, b);
-    });
-
-    math.set_function("Vector2DistanceSquared", [](const Vector2& a, const Vector2& b) -> float {
-        return Vector2Math::DistanceSquared(a, b);
-    });
-
-    math.set_function("Vector2Dot", [](const Vector2& a, const Vector2& b) -> float {
-       return Vector2Math::Dot(a, b);
-    });
-
-    math.set_function("Vector3Dot", [](const Vector3& a, const Vector3& b) -> float {
-       return Vector3Math::Dot(a, b);
-    });
-
-    math.set_function("Vector3Distance", [](const Vector3& a, const Vector3& b) -> float {
-        return Vector3Math::Distance(a, b);
-    });
-
-    math.set_function("Vector3DistanceSquared", [](const Vector3& a, const Vector3& b) -> float {
-        return Vector3Math::DistanceSquared(a, b);
-    });
-
-    math.set_function("Vector3Cross", [](const Vector3& a, const Vector3& b) -> Vector3 {
-        return Vector3Math::Cross(a, b);
-    });
-
     math.set_function("Random", sol::overload(
         // One arg: int in [0, max).
         [](const int max) -> int {
@@ -229,4 +201,64 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     ));
 
     math.set_function("RandomFast", []() -> float { return GetRandomFast(); });
+
+    // =====================================
+    //            Vector Math
+    // =====================================
+
+    math.set_function("Vector2Distance", [](const Vector2& a, const Vector2& b) -> float {
+        return Vector2Math::Distance(a, b);
+    });
+
+    math.set_function("Vector2DistanceSquared", [](const Vector2& a, const Vector2& b) -> float {
+        return Vector2Math::DistanceSquared(a, b);
+    });
+
+    math.set_function("Vector2Dot", [](const Vector2& a, const Vector2& b) -> float {
+       return Vector2Math::Dot(a, b);
+    });
+
+    math.set_function("Vector2Add", [](const Vector2& a, const Vector2& b) -> Vector2 {
+        return a + b;
+   });
+
+    math.set_function("Vector2Sub", [](const Vector2& a, const Vector2& b) -> Vector2 {
+        return a - b;
+   });
+
+    math.set_function("Vector2Mul", [](const Vector2& a, const Vector2& b) -> Vector2 {
+        return a * b;
+   });
+
+    math.set_function("Vector2Div", [](const Vector2& a, const Vector2& b) -> Vector2 {
+        return a / b;
+   });
+
+    math.set_function("Vector3Dot", [](const Vector3& a, const Vector3& b) -> float {
+       return Vector3Math::Dot(a, b);
+    });
+
+    math.set_function("Vector3Distance", [](const Vector3& a, const Vector3& b) -> float {
+        return Vector3Math::Distance(a, b);
+    });
+
+    math.set_function("Vector3DistanceSquared", [](const Vector3& a, const Vector3& b) -> float {
+        return Vector3Math::DistanceSquared(a, b);
+    });
+
+    math.set_function("Vector3Cross", [](const Vector3& a, const Vector3& b) -> Vector3 {
+        return Vector3Math::Cross(a, b);
+    });
+
+    math.set_function("Vector3Add", [](const Vector3& a, const Vector3& b) -> Vector3 {
+        return a + b;
+    });
+
+    math.set_function("Vector3Sub", [](const Vector3& a, const Vector3& b) -> Vector3 {
+        return a - b;
+    });
+
+    math.set_function("Vector3Div", [](const Vector3& a, const Vector3& b) -> Vector3 {
+        return a / b;
+   });
 }

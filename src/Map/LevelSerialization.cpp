@@ -36,6 +36,8 @@ namespace {
             case ScriptValueType::Component: return "Component";
             case ScriptValueType::Behaviour: return "Behaviour";
             case ScriptValueType::Asset: return "Asset";
+            case ScriptValueType::Wall: return "Wall";
+            case ScriptValueType::Sector: return "Sector";
         }
 
         return "Unknown";
@@ -54,6 +56,8 @@ namespace {
         if (type == "Component") return ScriptValueType::Component;
         if (type == "Behaviour") return ScriptValueType::Behaviour;
         if (type == "Asset") return ScriptValueType::Asset;
+        if (type == "Wall") return ScriptValueType::Wall;
+        if (type == "Sector") return ScriptValueType::Sector;
 
         return ScriptValueType::String;
     }
@@ -105,6 +109,12 @@ namespace {
                 } else if constexpr (std::is_same_v<T, AssetRefValue>) {
                     valueJson["type"] = "Asset";
                     valueJson["path"] = typedValue.path;
+                } else if constexpr (std::is_same_v<T, WallRefValue>) {
+                    valueJson["type"] = "Wall";
+                    valueJson["wallId"] = typedValue.wallId;
+                } else if constexpr (std::is_same_v<T, SectorRefValue>) {
+                    valueJson["type"] = "Sector";
+                    valueJson["sectorId"] = typedValue.sectorId;
                 }
             },
             value
@@ -177,6 +187,12 @@ namespace {
 
             case ScriptValueType::Asset:
                 return AssetRefValue{valueJson.value("path", std::string{})};
+
+            case ScriptValueType::Wall:
+                return WallRefValue{valueJson.value("wallId", INVALID_ID)};
+
+            case ScriptValueType::Sector:
+                return SectorRefValue{valueJson.value("sectorId", INVALID_ID)};
         }
 
         return std::string{};

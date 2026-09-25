@@ -1475,6 +1475,20 @@ namespace {
     //  deferred deletion, copy-ID context menu
     // =========================================================================
 
+    // Makes the hierarchy row just drawn draggable onto a matching
+    // Entity/Wall/Sector script field. The row's Selectable only fires on a
+    // click-release over itself, so dragging a row away never selects it
+    // (and never swaps the inspector the user is dropping into).
+    void HierarchyRowDragSource(const char *payloadType, const ID id, const std::string &label) {
+        if (!ImGui::BeginDragDropSource()) return;
+
+        const LevelObjectDragPayload payload{id, false};
+        ImGui::SetDragDropPayload(payloadType, &payload, sizeof(payload));
+
+        ImGui::TextUnformatted(label.c_str());
+        ImGui::EndDragDropSource();
+    }
+
     void DrawHierarchyPanel(Level &level) {
         ImGui::Begin(Get("editor.hierarchy").c_str());
 
@@ -1596,6 +1610,8 @@ namespace {
                         editingSector = selectedSectorID != INVALID_ID;
                     }
 
+                    HierarchyRowDragSource(SECTOR_REF_PAYLOAD, sector.id, label);
+
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem(Get("editor.delete").c_str()))
                             sectorPendingDelete = sector.id;
@@ -1673,6 +1689,8 @@ namespace {
                         else SelectWall(wall.id);
                     }
 
+                    HierarchyRowDragSource(WALL_REF_PAYLOAD, wall.id, label);
+
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem(Get("editor.delete").c_str()))
                             wallPendingDelete = wall.id;
@@ -1733,6 +1751,8 @@ namespace {
 
                         editingEntity = !selectedEntities.empty();
                     }
+
+                    HierarchyRowDragSource(ENTITY_REF_PAYLOAD, entity.id, label);
 
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem(Get("editor.delete").c_str()))
@@ -2330,7 +2350,13 @@ namespace {
     void DrawSelectedEntityInspector(Level &level) {
         if (!editingEntity || currentMode != MODE_ENTITY) return;
 
-        Entity *entityPtr = FindEntityById(level, selectedEntity.id);
+        // A canvas drag keeps the inspector on the entity it was showing
+        // before the press, so the dragged entity can be dropped onto one of
+        // its script fields - see GetCanvasDragPinnedEntity.
+        const ID pinnedID = GetCanvasDragPinnedEntity();
+        const bool pinnedByCanvasDrag = pinnedID != INVALID_ID;
+
+        Entity *entityPtr = FindEntityById(level, pinnedByCanvasDrag ? pinnedID : selectedEntity.id);
         if (!entityPtr) {
             editingEntity = false;
             ResetInspectorState();
@@ -2342,8 +2368,9 @@ namespace {
         // Transform edits fan out across the selection: position as a delta,
         // rotation and scale absolutely. Captured here and propagated after
         // the component editor below, because that is where the transform
-        // fields actually live.
-        const bool multiEdit = selectedEntities.size() > 1;
+        // fields actually live. Not while pinned: the inspected entity is
+        // then not the primary of selectedEntities.
+        const bool multiEdit = selectedEntities.size() > 1 && !pinnedByCanvasDrag;
 
         const EntityTransformSnapshot transformBeforeEdit =
                 multiEdit ? CaptureEntityTransformSnapshot(level, entity.id) : EntityTransformSnapshot{};
@@ -3085,6 +3112,7 @@ namespace MapEditorInternal {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
         DrawDockSpace();
+        SubmitCanvasEntityDragSource();
 
         Level &level = LevelManager::CurrentLevel();
 

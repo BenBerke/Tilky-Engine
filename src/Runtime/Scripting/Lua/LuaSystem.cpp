@@ -289,6 +289,8 @@ namespace {
             case ScriptValueType::Component:  return "Component";
             case ScriptValueType::Behaviour:  return "Behaviour";
             case ScriptValueType::Asset:      return "Asset";
+            case ScriptValueType::Wall:       return "Wall";
+            case ScriptValueType::Sector:     return "Sector";
         }
 
         return "Unknown";
@@ -308,6 +310,8 @@ namespace {
             case ScriptValueType::Component:  return std::holds_alternative<ComponentRefValue>(value);
             case ScriptValueType::Behaviour:  return std::holds_alternative<BehaviourRefValue>(value);
             case ScriptValueType::Asset:      return std::holds_alternative<AssetRefValue>(value);
+            case ScriptValueType::Wall:       return std::holds_alternative<WallRefValue>(value);
+            case ScriptValueType::Sector:     return std::holds_alternative<SectorRefValue>(value);
         }
 
         return false;
@@ -358,6 +362,10 @@ namespace {
                 }
                 else if constexpr (std::is_same_v<T, AssetRefValue>)
                     HashCombine(seed, std::hash<std::string>{}(typedValue.path));
+                else if constexpr (std::is_same_v<T, WallRefValue>)
+                    HashCombine(seed, std::hash<ID>{}(typedValue.wallId));
+                else if constexpr (std::is_same_v<T, SectorRefValue>)
+                    HashCombine(seed, std::hash<ID>{}(typedValue.sectorId));
             },
             value
         );
@@ -518,6 +526,8 @@ namespace {
             case ScriptValueType::Component:  return ScriptValue{ComponentRefValue{}};
             case ScriptValueType::Behaviour:  return ScriptValue{BehaviourRefValue{}};
             case ScriptValueType::Asset:      return ScriptValue{AssetRefValue{}};
+            case ScriptValueType::Wall:       return ScriptValue{WallRefValue{}};
+            case ScriptValueType::Sector:     return ScriptValue{SectorRefValue{}};
         }
 
         return ScriptValue{0};
@@ -570,6 +580,8 @@ namespace {
         else if (typeName == "Entity") result.type = ScriptValueType::Entity;
         else if (typeName == "Behaviour" || typeName == "Script") result.type = ScriptValueType::Behaviour;
         else if (typeName == "Asset" || typeName == "Texture") result.type = ScriptValueType::Asset;
+        else if (typeName == "Wall") result.type = ScriptValueType::Wall;
+        else if (typeName == "Sector") result.type = ScriptValueType::Sector;
         else if (typeName == "enum") {
             result.type = ScriptValueType::Enum;
 
@@ -778,6 +790,18 @@ namespace {
                     return sol::make_object(luaView, ScriptBehaviourRef{&level, typedValue.entityId, typedValue.instanceId});
                 }
                 else if constexpr (std::is_same_v<T, AssetRefValue>) return sol::make_object(luaView, typedValue.path);
+                else if constexpr (std::is_same_v<T, WallRefValue>) {
+                    const ScriptWall wall{&level, typedValue.wallId};
+                    if (!wall.IsValid()) return sol::make_object(luaView, sol::nil);
+
+                    return sol::make_object(luaView, wall);
+                }
+                else if constexpr (std::is_same_v<T, SectorRefValue>) {
+                    const ScriptSector sector{&level, typedValue.sectorId};
+                    if (!sector.IsValid()) return sol::make_object(luaView, sol::nil);
+
+                    return sol::make_object(luaView, sector);
+                }
                 else return sol::make_object(luaView, typedValue);
             },
             value
@@ -991,7 +1015,16 @@ namespace {
             // runs on. See the kFixedTimeStep comment above for why this is a
             // local constant rather than something engine physics consumes yet.
             "fixedDeltaTime",
-            sol::property([](const ScriptGameTime&) { return kFixedTimeStep; })
+            sol::property([](const ScriptGameTime&) { return kFixedTimeStep; }),
+
+            "osTime",
+            sol::property([](const ScriptGameTime&) {
+                const auto now = std::chrono::system_clock::now();
+
+                // Convert duration since epoch to integer seconds
+                const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+                return seconds;
+            })
         );
 
         luaState["GameTime"] = ScriptGameTime {};

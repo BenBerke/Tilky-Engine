@@ -79,6 +79,18 @@ namespace Vector3Math {
         const __m128 distReg = _mm_sqrt_ss(_mm_set_ss(Dot3(delta, delta)));
         return _mm_cvtss_f32(distReg);
     }
+
+    inline Vector3 operator*(const Vector3& a, const Vector3& b) {
+        Vector3 v;
+        v.reg = _mm_mul_ps(a.reg, b.reg);
+        return v;
+    }
+
+    inline Vector3 operator/(const Vector3& a, const Vector3& b) {
+        Vector3 v;
+        v.reg = _mm_div_ps(a.reg, b.reg);
+        return v;
+    }
 }
 #else
 namespace Vector3Math {

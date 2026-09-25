@@ -5,11 +5,39 @@
 
 #include "../EditorInternal.hpp"
 
+#include "imgui.h"
+#include "imgui_internal.h"
+
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
 namespace {
     bool holdingEntity = false;
+
+    // Captured when a canvas press starts holdingEntity, so a drag that ends
+    // on a script field (instead of on the canvas) can be undone - the
+    // entities have been following the cursor the whole time. See
+    // RevertCanvasEntityDrag.
+    std::vector<std::pair<ID, Vector3>> canvasDragStartPositions;
+    std::vector<ID> selectionBeforeCanvasDrag;
+    ID primaryBeforeCanvasDrag = INVALID_ID;
+
+    // The entity the inspector was showing when the press landed. The press
+    // selects the pressed entity straight away, which would swap the
+    // inspector - and the field the user is aiming at - out from under the
+    // drag, so the inspector stays on this one until the frame after the
+    // release (the drop is delivered during the release frame's UI pass).
+    ID inspectorPinnedDuringCanvasDrag = INVALID_ID;
+
+    void BeginCanvasEntityHold(Level& level) {
+        canvasDragStartPositions.clear();
+
+        for (const ID entityID : MapEditorInternal::selectedEntities)
+            if (const ComponentTransform* transform = level.transforms.Get(entityID))
+                canvasDragStartPositions.emplace_back(entityID, transform->position);
+
+        holdingEntity = true;
+    }
 }
 
 namespace MapEditorInternal {
@@ -546,8 +574,68 @@ namespace MapEditorInternal {
         }
     }
 
+    void SubmitCanvasEntityDragSource() {
+        if (!holdingEntity || currentMode != MODE_ENTITY) return;
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
+
+        // Only become a drag-and-drop source while the cursor is over a
+        // panel. On the canvas this is an ordinary entity move, and an
+        // active extern source would also claim ImGui's active ID (and with
+        // it the keyboard, blocking WASD) for no reason. ImGui itself stops
+        // reporting hovered windows for a press that started outside them,
+        // so the hit test has to be asked for directly.
+        ImGuiWindow* hoveredWindow = nullptr;
+        ImGuiWindow* hoveredWindowUnderMoving = nullptr;
+        ImGui::FindHoveredWindowEx(ImGui::GetIO().MousePos, false, &hoveredWindow, &hoveredWindowUnderMoving);
+        if (hoveredWindow == nullptr) return;
+
+        const Entity* entity = LevelManager::CurrentLevel().GetEntity(selectedEntity.id);
+        if (entity == nullptr) return;
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern)) {
+            const LevelObjectDragPayload payload{entity->id, true};
+            ImGui::SetDragDropPayload(ENTITY_REF_PAYLOAD, &payload, sizeof(payload));
+
+            ImGui::Text("%s  (#%u)", entity->name.c_str(), static_cast<unsigned>(entity->id));
+            ImGui::EndDragDropSource();
+        }
+    }
+
+    void RevertCanvasEntityDrag() {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (const auto& [entityID, position] : canvasDragStartPositions) {
+            ComponentTransform* transform = level.transforms.Get(entityID);
+            if (transform == nullptr) continue;
+
+            transform->SetPosition(position);
+            transform->isDirty = true;
+        }
+
+        canvasDragStartPositions.clear();
+
+        // The press that started the drag also selected the dragged entity.
+        // Dropping it on a field means the user was assigning a reference,
+        // not picking a new selection, so the inspector goes back to the
+        // entity whose field was just filled.
+        if (const Entity* previousPrimary = level.GetEntity(primaryBeforeCanvasDrag)) {
+            selectedEntities = selectionBeforeCanvasDrag;
+            selectedEntity = *previousPrimary;
+        }
+
+        holdingEntity = false;
+    }
+
+    ID GetCanvasDragPinnedEntity() {
+        return editingEntity ? inspectorPinnedDuringCanvasDrag : INVALID_ID;
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
+
+        // Released last frame - the drop (if any) has been delivered, so the
+        // inspector can follow the selection again.
+        if (!holdingEntity) inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
         ValidateSelections(level);
 
@@ -599,6 +687,10 @@ namespace MapEditorInternal {
                                 std::find(selectedEntities.begin(), selectedEntities.end(), en->id)
                                     != selectedEntities.end();
 
+                            selectionBeforeCanvasDrag = selectedEntities;
+                            primaryBeforeCanvasDrag = selectedEntities.empty() ? INVALID_ID : selectedEntity.id;
+                            inspectorPinnedDuringCanvasDrag = editingEntity ? primaryBeforeCanvasDrag : INVALID_ID;
+
                             // Clicking an entity that is already part of a
                             // multi-selection keeps that selection and drags
                             // all of it; clicking anything else selects just
@@ -606,7 +698,7 @@ namespace MapEditorInternal {
                             if (!alreadyInSelection || selectedEntities.size() <= 1) SelectEntity(en->id);
                             else selectedEntity = *en;
 
-                            holdingEntity = true;
+                            BeginCanvasEntityHold(level);
                         }
                     }
                     else if (MultiSelectModifierHeld() || RangeSelectModifierHeld()) {

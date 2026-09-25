@@ -17,11 +17,12 @@
 #include "Headers/Math/Vector/Vector4.hpp"
 
 // Every type a serialized script field can have. Primitive/math types store
-// their value directly in ScriptValue below; the four reference kinds store
-// only a stable ID (never a name, never a pointer) so they survive entity
-// renames and (for Entity/Component/Behaviour) resolve safely to nil once
-// their target no longer exists. See EntityRefValue/ComponentRefValue/
-// BehaviourRefValue/AssetRefValue.
+// their value directly in ScriptValue below; the reference kinds store only
+// a stable ID or path (never a name, never a pointer) so they survive
+// renames and (for Entity/Component/Behaviour/Wall/Sector) resolve safely to
+// nil once their target no longer exists. See EntityRefValue/
+// ComponentRefValue/BehaviourRefValue/AssetRefValue/WallRefValue/
+// SectorRefValue.
 enum class ScriptValueType : std::uint8_t {
     Int,
     Float,
@@ -34,7 +35,9 @@ enum class ScriptValueType : std::uint8_t {
     Entity, // -> EntityRefValue
     Component,  // -> ComponentRefValue
     Behaviour,  // -> BehaviourRefValue (another script attached somewhere in the level)
-    Asset       // -> AssetRefValue (a path-based asset reference, e.g. a texture)
+    Asset,      // -> AssetRefValue (a path-based asset reference, e.g. a texture)
+    Wall,       // -> WallRefValue
+    Sector      // -> SectorRefValue
 };
 
 // A serialized reference to an Entity, by stable ID only.
@@ -79,6 +82,22 @@ struct AssetRefValue {
     friend bool operator==(const AssetRefValue&, const AssetRefValue&) = default;
 };
 
+// A serialized reference to a Wall, by stable ID only.
+// Resolves to a Wall in Lua, or nil if wallId no longer exists.
+struct WallRefValue {
+    ID wallId = INVALID_ID;
+
+    friend bool operator==(const WallRefValue&, const WallRefValue&) = default;
+};
+
+// A serialized reference to a Sector, by stable ID only.
+// Resolves to a Sector in Lua, or nil if sectorId no longer exists.
+struct SectorRefValue {
+    ID sectorId = INVALID_ID;
+
+    friend bool operator==(const SectorRefValue&, const SectorRefValue&) = default;
+};
+
 using ScriptValue = std::variant<
     int,
     float,
@@ -90,7 +109,9 @@ using ScriptValue = std::variant<
     EntityRefValue,
     ComponentRefValue,
     BehaviourRefValue,
-    AssetRefValue
+    AssetRefValue,
+    WallRefValue,
+    SectorRefValue
 >;
 
 // One named option of an Enum-typed field, e.g. `enum(Idle,Walk,Run)` parses

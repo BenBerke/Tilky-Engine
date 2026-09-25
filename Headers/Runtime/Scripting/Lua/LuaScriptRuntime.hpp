@@ -52,9 +52,9 @@ namespace LuaScriptRuntime {
     // Converts one serialized field value into the live Lua object a script
     // actually sees when the field is seeded at instance-load time:
     // primitives/math types pass through as themselves; EntityRefValue /
-    // ComponentRefValue / BehaviourRefValue resolve into a real Entity /
-    // component wrapper / Behaviour proxy (or nil if the target no longer
-    // exists); AssetRefValue resolves to the plain reference string (the same
+    // ComponentRefValue / BehaviourRefValue / WallRefValue / SectorRefValue
+    // resolve into a real Entity / component wrapper / Behaviour proxy /
+    // Wall / Sector (or nil if the target no longer exists); AssetRefValue resolves to the plain reference string (the same
     // format every other asset-path field in the engine already uses).
     sol::object ResolveScriptValue(sol::state_view lua, Level& level, const ScriptValue& value);
 }

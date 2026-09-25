@@ -26,6 +26,8 @@ Public fields are top-level variables that show up in the inspector. You declare
 | `enum(A,B,C)` | integer, the option's position starting at `0` | the option's number, e.g. `1` |
 | `Entity` | `Entity` (or `nil` if unassigned) | `nil` |
 | `Behaviour` | another script on some Entity (or `nil`) | `nil` |
+| `Wall` | `Wall` (or `nil` if unassigned) | `nil` |
+| `Sector` | `Sector` (or `nil` if unassigned) | `nil` |
 | `Transform`, `Sprite`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
 | `Asset` / `Texture` | the asset's path as a string | `nil` |
 
@@ -108,9 +110,132 @@ end
   and not the value the designer set.
 - References that are unassigned (or point at something that no longer exists) arrive as `nil`.
   Always check before using them.
-- To make a field a *script-to-script* API, just read it through a `Behaviour`:
-  `partner.speed = 10` writes into that script's own `speed`.
+- `Entity`, `Wall` and `Sector` fields can be filled by dragging a row from the Hierarchy onto the
+  field. An entity can also be dragged straight off the level view; it snaps back to where it was
+  when you drop it on the field. The dropdown still works too.
+- A `Behaviour` field lets one script read and write another script's variables. See
+  [Using another script's variables](#using-another-scripts-variables) below.
 - Sector scripts can't declare fields named `sector` or `entity`. Those names are reserved
   for the built-in globals.
 - Enum defaults are written as a number (`mode = 1`), and the option's position in the annotation
   decides its number, so keep that order stable once levels use it.
+
+## Using another script's variables
+
+A `Behaviour` field holds a reference to **one specific script** on some Entity. Through it you can
+read and write that script's top-level variables (its public fields included) and call its
+functions, as if they were your own.
+
+**Attach to:** `Generator.lua` on one Entity, `Lamp.lua` on another (or the same) Entity.
+
+```lua
+-- Scripts/Examples/Generator.lua (entity script)
+---@field power number @ Power
+power = 100
+
+---@field running bool @ Running
+running = true
+
+-- Called from other scripts with a colon, so it takes `self` first.
+function Drain(self, amount)
+    power = math.max(0, power - amount)
+    if power == 0 then running = false end
+end
+```
+
+```lua
+-- Scripts/Examples/Lamp.lua (entity script)
+---@field generator Behaviour @ Generator
+generator = nil
+
+---@field drainPerSecond number @ Drain Per Second
+drainPerSecond = 5
+
+function Update()
+    if generator == nil or not generator.isValid then return end
+
+    -- Read the generator's variables.
+    if not generator.running then return end
+    Debug.Print("generator power:", generator.power)
+
+    -- Call its function...
+    generator:Drain(drainPerSecond * Time.deltaTime)
+
+    -- ...or write a variable directly.
+    if generator.power < 10 then
+        generator.running = false
+    end
+end
+```
+
+Select the Lamp's Entity, open the **Generator** field's dropdown and pick the entry
+`<Generator Entity> / Generator.lua`. The dropdown lists every script on every Entity in the
+level, as `Entity / Script`.
+
+**Notes**
+
+- A write such as `generator.power = 50` changes the generator's own `power`. The generator sees the
+  new value the next time it reads `power`.
+- Only **top-level, non-`local`** variables and functions are visible. A `local` in the other
+  script can't be reached.
+- `isValid`, `entity` and `enabled` are built into every Behaviour reference, so a variable with one
+  of those names can't be reached through it. `generator.entity` is the Entity the script is on, and
+  `generator.enabled = false` switches that one script off.
+- The reference points at one exact script instance. If an Entity has two copies of the same script,
+  the dropdown shows both and the field keeps the one you picked.
+- Sector scripts can't be referenced by a `Behaviour` field or `GetScript`. Only entity scripts can.
+
+### Through an Entity field
+
+A `Behaviour` field has to be pointed at one exact script. When you have an **Entity** instead (from
+an `Entity` field, a raycast, a trigger and so on), ask it for the script by file name with
+`GetScript`. The result is the same kind of reference, so everything above still applies.
+
+**Attach to:** `Lamp.lua` on any Entity, with `Generator.lua` attached to the Entity you pick.
+
+```lua
+-- Scripts/Examples/Lamp.lua (entity script)
+---@field generatorEntity Entity @ Generator Entity
+generatorEntity = nil
+
+---@field drainPerSecond number @ Drain Per Second
+drainPerSecond = 5
+
+local generator = nil
+
+function Start()
+    if generatorEntity == nil then return end
+
+    -- Looks for a script named Generator on that Entity.
+    generator = generatorEntity:GetScript("Generator")
+    if not generator.isValid then
+        Debug.Print(generatorEntity.name .. " has no Generator script")
+        generator = nil
+    end
+end
+
+function Update()
+    if generator == nil or not generator.isValid then return end
+    if not generator.running then return end
+
+    generator:Drain(drainPerSecond * Time.deltaTime)
+    Debug.Print(generatorEntity.name, "power:", generator.power)
+end
+```
+
+Drag the generator's row from the Hierarchy onto the **Generator Entity** field, or pick it from the
+dropdown.
+
+**Notes**
+
+- `GetScript("Generator")` matches the script's **file name** and ignores its folder.
+- If the Entity has no such script, `GetScript` returns a reference whose `isValid` is `false`, not
+  `nil`. Check `isValid` before using it.
+- If the Entity has several scripts with that name, `GetScript` returns the first one. Use a
+  `Behaviour` field instead when you need a specific one.
+- `entity:GetScripts()` returns every script on the Entity. It's useful when you don't know the
+  script's name, e.g. to call `Interact` on whatever script defines it. See
+  [09 - Interaction](09_interaction.md).
+- Looking the script up once in `Start` and keeping it in a `local` is cheaper than calling
+  `GetScript` every frame. The `isValid` check in `Update` covers the Entity being destroyed later.
+- More examples: [10 - Health and Damage](10_health_and_damage.md).

@@ -857,6 +857,40 @@ namespace MapEditorInternal {
     // double-clicking a matching asset there. Returns true the frame
     // `value` changes.
     bool DrawAssetField(const char* label, std::string& value, AssetKind kind, float previewSize = 0.0f);
+
+    // Drag-and-drop of level objects onto Entity/Wall/Sector script fields.
+    // Sources are the hierarchy rows (all three kinds) and the canvas
+    // (entities only, while one is being dragged in Entity Mode); targets
+    // are the reference fields in the script inspector.
+    inline constexpr const char* ENTITY_REF_PAYLOAD = "TILKY_ENTITY_REF";
+    inline constexpr const char* WALL_REF_PAYLOAD = "TILKY_WALL_REF";
+    inline constexpr const char* SECTOR_REF_PAYLOAD = "TILKY_SECTOR_REF";
+
+    struct LevelObjectDragPayload {
+        ID id = INVALID_ID;
+
+        // Set when the drag started on the canvas: the entity has been
+        // following the cursor since, so a successful drop has to put it
+        // back where it was (see RevertCanvasEntityDrag).
+        bool fromCanvas = false;
+    };
+
+    // Called once per frame from the UI pass. Turns an in-progress canvas
+    // entity drag into an ImGui drag source while the cursor is over a
+    // panel, so it can be dropped onto a script field. Defined in
+    // MapEditorInput.cpp.
+    void SubmitCanvasEntityDragSource();
+
+    // Puts every entity moved by the last canvas drag back where it was
+    // when that drag started, and restores the selection the drag's press
+    // replaced. Defined in MapEditorInput.cpp.
+    void RevertCanvasEntityDrag();
+
+    // The entity the inspector must keep showing while a canvas drag is in
+    // progress (the press has already re-selected the dragged entity), or
+    // INVALID_ID when the inspector should follow the selection as usual.
+    // Defined in MapEditorInput.cpp.
+    ID GetCanvasDragPinnedEntity();
     
     // Safe to call unconditionally - it no-ops if the drop didn't land on
     // the Asset Browser panel, or if the Map Editor window isn't the one
