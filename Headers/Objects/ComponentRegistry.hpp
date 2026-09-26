@@ -16,8 +16,7 @@ X(ComponentScript,           CMP_SCRIPT,            scripts,            "compone
 X(ComponentPlayerController, CMP_PLAYER_CONTROLLER, playerControllers,  "component.player_controller") \
 X(ComponentCamera,           CMP_CAMERA,            cameras,            "component.camera") \
 X(ComponentCollider,         CMP_COLLIDER,          colliders,          "component.collider") \
-X(ComponentRigidbody,        CMP_RIGIDBODY,         rigidbodies,        "component.rigidbody") \
-X(ComponentModel,            CMP_MODEL,             models,             "component.model")
+X(ComponentRigidbody,        CMP_RIGIDBODY,         rigidbodies,        "component.rigidbody")
 
 #define TILKY_UI_COMPONENTS(X) \
 X(ComponentUITransform,      CMP_UI_TRANSFORM,      ui_transforms,      "component.ui_transform") \

@@ -372,15 +372,6 @@ namespace {
 
         gpuWalls.push_back(gpuWall);
     }
-
-    void CreateGPUModels() {
-        Level& level = LevelManager::CurrentLevel();
-
-        for (ComponentModel& modelComponent : level.models.components) {
-            if (modelComponent.fileName.empty()) continue;
-
-        }
-    }
 }
 
 //todo TILKYTODO put this function to a seperate script because it might also be used by the vulkan renderer

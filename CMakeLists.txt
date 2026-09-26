@@ -92,7 +92,6 @@ find_package(Freetype REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
 find_package(Lua REQUIRED)
-find_package(assimp CONFIG REQUIRED)
 
 # Added for EngineVersionManager (launcher-side engine version installer):
 # cpr for HTTP downloads, minizip-ng for ZIP extraction. Both are added to
@@ -358,7 +357,6 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Math/Quaternion/Quaternion.hpp
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLModel.cpp
 )
 
 # ============================================================
@@ -537,7 +535,6 @@ set(TILKY_EDITOR_SOURCES
         Headers/Objects/ScriptPublicType.hpp
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLModel.cpp
 )
 
 # ============================================================
@@ -727,7 +724,6 @@ function(configure_tilky_engine_executable target_name)
             Tilky_Local
             nlohmann_json::nlohmann_json
             sol2::sol2
-            assimp::assimp
             ${LUA_LIBRARIES}
     )
 

@@ -22,7 +22,6 @@
     },
     "sdl3-ttf",
     "sol2",
-    "spdlog",
-    "assimp"
+    "spdlog"
   ]
 }

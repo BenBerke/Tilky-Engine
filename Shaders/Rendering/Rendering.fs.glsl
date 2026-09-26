@@ -4,7 +4,6 @@
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
 #define RENDER_COLLIDER 4
-#define RENDER_MODEL 5
 
 in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
