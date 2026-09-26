@@ -180,6 +180,14 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
+
+        // Every mode's distance lighting reads this, so set it before the first draw.
+        glUniform3f(
+            cameraWorldPosUniform,
+            renderCameraTransform.position.x,
+            renderCameraTransform.position.y,
+            renderCameraTransform.position.z
+        );
     }
 
     {
@@ -224,6 +232,21 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     }
 
     {
+        ZoneScopedN("Build GPU Models");
+
+        // Opaque geometry: drawn before sprites so their alpha blends over models.
+        BuildGpuModels();
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_GREATER);
+
+        DrawGpuModels();
+        glDisable(GL_BLEND);
+    }
+
+    {
         ZoneScopedN("Build GPU Sprites");
 
         BuildGpuSprites();
@@ -235,12 +258,6 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDepthMask(GL_TRUE);
 
         glUniform1i(renderModeUniform, RENDER_SPRITE);
-        glUniform3f(
-            glGetUniformLocation(projectionShader->ID, "uCameraWorldPos"),
-            renderCameraTransform.position.x,
-            renderCameraTransform.position.y,
-            renderCameraTransform.position.z
-        );
 
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
         glDisable(GL_BLEND);

@@ -436,6 +436,7 @@ namespace {
             {"Camera",           CMP_CAMERA},
             {"Collider",         CMP_COLLIDER},
             {"Rigidbody",        CMP_RIGIDBODY},
+            {"Model",            CMP_MODEL},
         };
 
         return table;
@@ -762,6 +763,10 @@ namespace {
             case CMP_RIGIDBODY:
                 if (!level.rigidbodies.Has(ref.entityId)) break;
                 return sol::make_object(luaView, ScriptRigidbody{&level, ref.entityId});
+
+            case CMP_MODEL:
+                if (!level.models.Has(ref.entityId)) break;
+                return sol::make_object(luaView, ScriptModel{&level, ref.entityId});
 
             default: break;
         }

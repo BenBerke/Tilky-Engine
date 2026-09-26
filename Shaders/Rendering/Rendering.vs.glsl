@@ -4,6 +4,7 @@
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
 #define RENDER_COLLIDER 4
+#define RENDER_MODEL 5
 
 // Collision Sphere debug view stuff
 #define SIDECOUNT_SINGLE 0
@@ -109,6 +110,14 @@ struct Collider {
     vec4 scale;
 };
 
+// Must match OpenGLRendererInternal::GpuModelInstance (OpenGL.hpp).
+struct ModelInstance {
+    mat4 model;
+    mat3 normalMatrix;
+    vec4 color;
+// color.rgb = sector light
+};
+
 layout(std430, binding = 0) readonly buffer WallBuffer {
     Wall walls[];
 };
@@ -119,6 +128,10 @@ layout(std430, binding = 1) readonly buffer FlatTriangleBuffer {
 
 layout(std430, binding = 2) readonly buffer SpriteBuffer {
     Sprite sprites[];
+};
+
+layout(std430, binding = 3) readonly buffer ModelInstanceBuffer {
+    ModelInstance modelInstances[];
 };
 
 layout(std430, binding = 4) readonly buffer SectorBuffer {
@@ -134,10 +147,21 @@ layout(std430, binding = 7) readonly buffer SectorFloorBuffer {
     SectorFloor sectorFloors[];
 };
 
+// Model vertices. Every other mode is procedural and leaves these disabled.
+layout(location = 0) in vec3 aModelPosition;
+layout(location = 1) in vec3 aModelNormal;
+layout(location = 2) in vec2 aModelUV;
+
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform int renderMode;
 uniform vec3 uCameraWorldPos;
+
+// Model draw: first instance of the current batch, and the node transform
+// (plus unit-box normalization) of the mesh being drawn.
+uniform int uModelInstanceOffset;
+uniform mat4 uModelLocal;
+uniform mat3 uModelLocalNormal;
 
 out vec2 vWallUV;
 out vec2 vFlatUV;
@@ -152,6 +176,9 @@ flat out int vSpriteTextureIndex;
 out vec3 vWorldPos;
 out vec2 vSurfaceCoord;
 flat out vec2 vSurfaceSize;
+
+out vec3 vModelNormal;
+out vec2 vModelUV;
 
 const float tileSize = 32.0;
 const float PI = 3.14159265359;
@@ -711,10 +738,38 @@ void renderWall() {
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
+void renderModel() {
+    ModelInstance instance = modelInstances[uModelInstanceOffset + gl_InstanceID];
+
+    vec4 worldPos = instance.model * (uModelLocal * vec4(aModelPosition, 1.0));
+
+    // Inverse transpose on both levels keeps normals correct under
+    // nonuniform scale. Normalized per fragment.
+    vModelNormal = instance.normalMatrix * (uModelLocalNormal * aModelNormal);
+    vModelUV = aModelUV;
+
+    vColor = instance.color;
+
+    vWallUV = vec2(0.0);
+    vFlatUV = vec2(0.0);
+    vSpriteUV = vec2(0.0);
+
+    vTextureIndex = -1;
+    vFlatTextureIndex = -1;
+    vSpriteTextureIndex = -1;
+
+    vWorldPos = worldPos.xyz;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
+    gl_Position = uProjection * uView * worldPos;
+}
+
 void main() {
     if (renderMode == RENDER_FLAT) renderFlat();
     else if (renderMode == RENDER_WALL) renderWall();
     else if (renderMode == RENDER_SPRITE) renderSprite();
     else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
+    else if (renderMode == RENDER_MODEL) renderModel();
     else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
 }

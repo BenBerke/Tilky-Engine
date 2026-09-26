@@ -87,6 +87,9 @@ int OpenGL::GetOrCreateTextureIndex(const std::string& fileName) {
 }
 
 void OpenGL::RefreshTexturesFromLevel() {
+    // A model that failed to load may have been imported or fixed since.
+    failedModelFiles.clear();
+
     if (!BuildTextureAtlasFromLevel()) {
         spdlog::error("Failed to build texture atlas from level");
         return;

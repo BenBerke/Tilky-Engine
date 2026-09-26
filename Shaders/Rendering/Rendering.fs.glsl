@@ -4,6 +4,7 @@
 #define RENDER_FLAT 1
 #define RENDER_SPRITE 2
 #define RENDER_COLLIDER 4
+#define RENDER_MODEL 5
 
 in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
@@ -19,8 +20,16 @@ in vec3 vWorldPos;
 in vec2 vSurfaceCoord;
 flat in vec2 vSurfaceSize;
 
+in vec3 vModelNormal;
+in vec2 vModelUV;
+
 uniform sampler2D uAtlas;
 uniform int uTextureCount;
+
+// Models sample their own texture (unit 1) instead of the atlas.
+uniform sampler2D uModelTexture;
+uniform int uModelHasTexture;
+uniform vec4 uModelBaseColor;
 
 uniform int renderMode;
 uniform vec3 uCameraWorldPos;
@@ -29,6 +38,11 @@ uniform vec3 uCameraWorldPos;
 const float DISTANCE_LIGHT_START = 256.0;
 const float DISTANCE_LIGHT_END = 1536.0;
 const float DISTANCE_MIN_LIGHT = 0.18;
+
+// Fixed directional shading so a model's shape reads. The level has no light
+// sources; sector light and distance light still apply on top of this.
+const vec3 MODEL_LIGHT_DIRECTION = vec3(0.3713907, 0.7427814, 0.5570860);
+const float MODEL_AMBIENT = 0.55;
 
 // Approximate contact occlusion along wall boundaries.
 const float WALL_AO_DISTANCE = 12.0;
@@ -81,6 +95,19 @@ float GetDistanceLight() {
     return mix(1.0, DISTANCE_MIN_LIGHT, fade);
 }
 
+float GetModelShade() {
+    float lengthSquared = dot(vModelNormal, vModelNormal);
+
+    if (lengthSquared < 0.000001) return 1.0;
+
+    vec3 normal = vModelNormal * inversesqrt(lengthSquared);
+
+    // Two sided: face the normal toward the viewer, whatever the winding.
+    if (dot(normal, uCameraWorldPos - vWorldPos) < 0.0) normal = -normal;
+
+    return mix(MODEL_AMBIENT, 1.0, max(dot(normal, MODEL_LIGHT_DIRECTION), 0.0));
+}
+
 float GetWallAmbientOcclusion() {
     vec2 edgeDistance = min(vSurfaceCoord, vSurfaceSize - vSurfaceCoord);
     float nearestEdge = min(edgeDistance.x, edgeDistance.y);
@@ -120,6 +147,15 @@ void main() {
         if (texColor.a < 0.1) discard;
 
         FragColor = ApplyLighting(texColor * vColor, false);
+        return;
+    }
+    else if (renderMode == RENDER_MODEL) {
+        vec4 texColor = uModelHasTexture != 0 ? texture(uModelTexture, vModelUV) : vec4(1.0);
+        vec4 color = texColor * uModelBaseColor;
+
+        if (color.a < 0.1) discard;
+
+        FragColor = ApplyLighting(vec4(color.rgb * vColor.rgb * GetModelShade(), color.a), false);
         return;
     }
     else if (renderMode == RENDER_COLLIDER){

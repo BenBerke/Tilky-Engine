@@ -26,6 +26,7 @@ enum ComponentType {
     CMP_CAMERA,
     CMP_COLLIDER,
     CMP_RIGIDBODY,
+    CMP_MODEL,
 
     CMP_NORMAL_COUNT,
 
@@ -69,6 +70,16 @@ struct ComponentUITransform {
 };
 
 // endregion
+
+// Static 3D model drawn at the owner's ComponentTransform. fileName is
+// relative to the project's Assets folder, extension included (same as
+// texture references), e.g. "Models/crate.glb". Entities using the same file
+// share its GPU data; see OpenGLModel.cpp.
+struct ComponentModel {
+    ID ownerID = static_cast<ID>(-1);
+
+    std::string fileName;
+};
 
 struct ComponentRigidbody {
     ID ownerID = static_cast<ID>(-1);

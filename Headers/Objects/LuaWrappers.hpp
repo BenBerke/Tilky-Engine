@@ -608,6 +608,42 @@ struct ScriptRigidbody {
 };
 
 // ---------------------------------------------------------
+// Model
+// ---------------------------------------------------------
+
+struct ScriptModel {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+
+    [[nodiscard]] ComponentModel* GetComponent() const {
+        if (level == nullptr) return nullptr;
+        return level->models.Get(ownerID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] std::string GetFileName() const {
+        const ComponentModel* model = GetComponent();
+        if (model == nullptr) return {};
+        return model->fileName;
+    }
+
+    // The renderer reads fileName every frame, so the new model shows up on
+    // the next frame (loaded on first use, shared with every other user).
+    void SetFileName(const std::string& fileName) const {
+        ComponentModel* model = GetComponent();
+        if (model == nullptr) return;
+        model->fileName = fileName;
+    }
+
+    void ClearFileName() const {
+        SetFileName("");
+    }
+};
+
+// ---------------------------------------------------------
 // Collider
 // ---------------------------------------------------------
 
@@ -1314,6 +1350,10 @@ struct ScriptEntity {
         return level != nullptr && level->rigidbodies.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasModel() const {
+        return level != nullptr && level->models.Has(ownerID);
+    }
+
     [[nodiscard]] bool HasUITransform() const {
         return level != nullptr && level->ui_transforms.Has(ownerID);
     }
@@ -1389,6 +1429,10 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] ScriptRigidbody GetRigidbody() const {
+        return {level, ownerID};
+    }
+
+    [[nodiscard]] ScriptModel GetModel() const {
         return {level, ownerID};
     }
 

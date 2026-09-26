@@ -19,6 +19,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 namespace fs = std::filesystem;
@@ -726,7 +727,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -735,24 +736,37 @@ end
     // this map still comes back as a GenericFileEntry(AssetKind::Other)
     // rather than being hidden - this is what lets "unknown extensions
     // must still appear" hold in general.
-    const std::unordered_map<std::string, RegisteredExtensionKind> kExtensionRegistry = {
-        { ".png",  RegisteredExtensionKind::Texture },
-        { ".jpg",  RegisteredExtensionKind::Texture },
-        { ".jpeg", RegisteredExtensionKind::Texture },
-        { ".wav",  RegisteredExtensionKind::Sound   },
-        { ".lua",  RegisteredExtensionKind::Script  },
-        { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
-    };
+    //
+    // Model extensions come from ModelLoader so the browser, the importer
+    // and the exporter always agree on what counts as a model.
+    const std::unordered_map<std::string, RegisteredExtensionKind> kExtensionRegistry = [] {
+        std::unordered_map<std::string, RegisteredExtensionKind> registry = {
+            { ".png",  RegisteredExtensionKind::Texture },
+            { ".jpg",  RegisteredExtensionKind::Texture },
+            { ".jpeg", RegisteredExtensionKind::Texture },
+            { ".wav",  RegisteredExtensionKind::Sound   },
+            { ".lua",  RegisteredExtensionKind::Script  },
+            { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
+        };
+
+        for (const std::string& extension : ModelLoader::SupportedExtensions())
+            registry.emplace(extension, RegisteredExtensionKind::Model);
+
+        return registry;
+    }();
 
     // --- Tile visuals, keyed off the entry rather than a bare AssetKind so
     // Level (which has no AssetKind of its own) still gets a distinct look.
 
-    const char* EntryVisualTag(const AssetEntry& entry) {
+    // Models are never rendered into a thumbnail; their tile just names the
+    // file type, e.g. ".fbx".
+    std::string EntryVisualTag(const AssetEntry& entry) {
         if (entry.GetType() == AssetEntryType::Level) return "lvl";
 
         switch (entry.GetAssetKind()) {
             case AssetKind::Sound: return "wav";
             case AssetKind::Script: return "lua";
+            case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
             default: return "file";
         }
     }
@@ -763,6 +777,7 @@ end
         switch (entry.GetAssetKind()) {
             case AssetKind::Sound: return IM_COL32(45, 70, 90, 255);
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
+            case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
     }
@@ -1470,6 +1485,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Sound);
         case RegisteredExtensionKind::Script:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Script);
+        case RegisteredExtensionKind::Model:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Model);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1486,6 +1503,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Texture: return "TILKY_ASSET_TEXTURE";
         case AssetKind::Sound:   return "TILKY_ASSET_SOUND";
         case AssetKind::Script:  return "TILKY_ASSET_SCRIPT";
+        case AssetKind::Model:   return "TILKY_ASSET_MODEL";
         default:                 return "TILKY_ASSET_OTHER";
     }
 }
@@ -1493,6 +1511,8 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
 std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolutePath, const AssetKind kind) {
     switch (kind) {
         case AssetKind::Texture:return RelativeOrFallback(absolutePath,ProjectManager::GetAssetsPath()).generic_string();
+
+        case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound: {
             fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetSoundsPath());
@@ -1704,9 +1724,71 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
 
     spdlog::info("Asset browser: imported {} -> {}", sourceAbsolutePath.string(), destination.string());
     lastOperationError.clear();
+
+    if (!sourceIsDirectory && ModelLoader::IsModelFile(sourceAbsolutePath))
+        ImportModelDependencies(sourceAbsolutePath, destination);
+
     selectedFile = destination;
     Refresh();
     return true;
+}
+
+void AssetBrowser::ImportModelDependencies(const std::filesystem::path& sourceModel, const std::filesystem::path& importedModel) {
+    std::vector<ModelLoader::ModelDependency> dependencies;
+    std::string errorMessage;
+
+    // Resolved against the source folder only: the model is not inside the
+    // project yet, so the project's Assets folder says nothing about it.
+    if (!ModelLoader::CollectDependencies(sourceModel, {}, dependencies, errorMessage)) {
+        lastOperationError = "Imported \"" + importedModel.filename().string() + "\", but it could not be read: " + errorMessage;
+        spdlog::error("Asset browser: {}", lastOperationError);
+        return;
+    }
+
+    const fs::path sourceDirectory = sourceModel.parent_path().lexically_normal();
+    const fs::path importDirectory = importedModel.parent_path();
+
+    std::vector<std::string> missing;
+    int copied = 0;
+
+    for (const ModelLoader::ModelDependency& dependency : dependencies) {
+        if (dependency.status == ModelLoader::DependencyStatus::Embedded) continue;
+
+        if (dependency.status == ModelLoader::DependencyStatus::Missing) {
+            missing.push_back(dependency.reference);
+            continue;
+        }
+
+        const fs::path relative = dependency.resolvedPath.lexically_relative(sourceDirectory);
+        const bool insideSource = !relative.empty() && *relative.begin() != "..";
+        const fs::path target = importDirectory / (insideSource ? relative : dependency.resolvedPath.filename());
+
+        std::error_code ec;
+        if (fs::exists(target, ec)) {
+            spdlog::info("Asset browser: model dependency already present, kept: {}", target.string());
+            continue;
+        }
+
+        fs::create_directories(target.parent_path(), ec);
+        fs::copy_file(dependency.resolvedPath, target, fs::copy_options::none, ec);
+
+        if (ec) {
+            missing.push_back(dependency.reference + " (copy failed: " + ec.message() + ")");
+            continue;
+        }
+
+        ++copied;
+        spdlog::info("Asset browser: imported model dependency {} -> {}", dependency.resolvedPath.string(), target.string());
+    }
+
+    if (missing.empty()) return;
+
+    std::string list;
+    for (const std::string& name : missing) list += (list.empty() ? "" : ", ") + name;
+
+    lastOperationError = "Imported \"" + importedModel.filename().string() + "\" with " + std::to_string(copied) +
+        " dependency file(s), but these were not found and will be missing: " + list;
+    spdlog::warn("Asset browser: {}", lastOperationError);
 }
 
 bool AssetBrowser::IsScreenPointInside(const float screenX, const float screenY) const {
@@ -1789,8 +1871,8 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
     // offers more than one payload type at once - so probing all of them
     // here is how a drop target stays agnostic to which one a given
     // dragged entry happened to be offering.
-    static constexpr std::array<AssetKind, 3> kFieldReferenceKinds = {
-        AssetKind::Texture, AssetKind::Sound, AssetKind::Script
+    static constexpr std::array<AssetKind, 4> kFieldReferenceKinds = {
+        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model
     };
 
     for (const AssetKind kind : kFieldReferenceKinds) {
@@ -1864,6 +1946,7 @@ void AssetBrowser::NotifyAssetReferenceRenamed(
         case AssetKind::Texture: LevelManager::RenameTextureReference(oldReference, newReference); break;
         case AssetKind::Sound:   LevelManager::RenameSoundReference(oldReference, newReference); break;
         case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
+        case AssetKind::Model:   LevelManager::RenameModelReference(oldReference, newReference); break;
         default: break; // AssetKind::Other already handled above; AssetKind::Folder does not exist as a GetAssetKind() value
     }
 }
@@ -1967,12 +2050,12 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
         drawList->AddRectFilled(topLeft, boxMax, EntryTileTint(entry), 4.0f);
         drawList->AddRect(topLeft, boxMax, IM_COL32(150, 150, 150, 255), 4.0f);
 
-        const char* tag = EntryVisualTag(entry);
-        const ImVec2 tagSize = ImGui::CalcTextSize(tag);
+        const std::string tag = EntryVisualTag(entry);
+        const ImVec2 tagSize = ImGui::CalcTextSize(tag.c_str());
         drawList->AddText(
             {topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f},
             IM_COL32(220, 220, 220, 255),
-            tag
+            tag.c_str()
         );
     }
 

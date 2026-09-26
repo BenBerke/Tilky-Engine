@@ -37,6 +37,8 @@
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/TagRegistry.hpp"
+#include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Renderer/ModelLoader.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2079,6 +2081,88 @@ namespace ImGuiDrawFunctions {
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Rigidbody component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Model
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_MODEL) {
+            auto *c = entity.GetComponent<ComponentModel>();
+            if (c) {
+                // Dependency scan of the selected file. Reading a model is not
+                // cheap, so it only reruns when the file changes or on Rescan.
+                struct ModelDependencyReport {
+                    std::string fileName;
+                    bool scanned = false;
+                    bool readable = false;
+                    std::string error;
+                    std::vector<ModelLoader::ModelDependency> dependencies;
+                };
+
+                static ModelDependencyReport report;
+
+                BeginSection(Get("component.model.section").c_str());
+
+                MapEditorInternal::DrawAssetField(Get("component.model.file_name").c_str(), c->fileName, AssetKind::Model, 64.0f);
+                Tooltip(Get("editor.tooltip.component.model.file_name").c_str());
+
+                if (c->fileName.empty()) ImGui::TextDisabled("%s", Get("editor.none").c_str());
+                else ImGui::TextWrapped("%s", c->fileName.c_str());
+
+                EndSection();
+
+                if (!c->fileName.empty()) {
+                    const bool rescan = ImGui::SmallButton(Get("component.model.rescan").c_str());
+
+                    if (rescan || !report.scanned || report.fileName != c->fileName) {
+                        report = {};
+                        report.fileName = c->fileName;
+                        report.scanned = true;
+                        report.readable = ModelLoader::CollectDependencies(
+                            ModelLoader::ResolveModelPath(c->fileName),
+                            ProjectManager::GetAssetsPath(),
+                            report.dependencies,
+                            report.error
+                        );
+                    }
+
+                    BeginSection(Get("component.model.dependencies").c_str());
+
+                    const ImVec4 missingColor = {0.95f, 0.35f, 0.30f, 1.0f};
+
+                    if (!report.readable) ImGui::TextColored(missingColor, "%s", report.error.c_str());
+                    else if (report.dependencies.empty()) ImGui::TextDisabled("%s", Get("component.model.no_dependencies").c_str());
+
+                    for (const ModelLoader::ModelDependency& dependency : report.dependencies) {
+                        const bool isTexture = dependency.kind == ModelLoader::DependencyKind::Texture;
+                        const std::string label = isTexture
+                            ? dependency.reference + "  (" + dependency.materialName + ")"
+                            : dependency.reference;
+
+                        switch (dependency.status) {
+                            case ModelLoader::DependencyStatus::Found:
+                                ImGui::BulletText("%s", label.c_str());
+                                Tooltip(dependency.resolvedPath.string().c_str());
+                                break;
+                            case ModelLoader::DependencyStatus::Embedded:
+                                ImGui::BulletText("%s  [%s]", label.c_str(), Get("component.model.embedded").c_str());
+                                break;
+                            case ModelLoader::DependencyStatus::Missing:
+                                ImGui::Bullet();
+                                ImGui::TextColored(missingColor, "%s  [%s]", label.c_str(), Get("component.model.missing").c_str());
+                                break;
+                        }
+                    }
+
+                    EndSection();
+                }
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
+                    entity.RemoveComponent<ComponentModel>();
+                    CloseEditor();
+                }
+            } else { ImGui::TextDisabled("Model component missing"); }
         }
 
         // ── Close button (only when delete was not pressed) ───────────────────

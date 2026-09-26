@@ -4,6 +4,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <glad/glad.h>
@@ -19,6 +21,7 @@
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Objects/Level.hpp"
 
 struct Texture;
 
@@ -29,6 +32,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_FLAT = 1;
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_COLLIDER = 4;
+    inline constexpr int RENDER_MODEL = 5;
 
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
@@ -134,6 +138,54 @@ namespace OpenGLRendererInternal {
 
     static_assert(sizeof(GpuCollider) == sizeof(float) * 8);
 
+    // One entity drawing a model. Matches ModelInstance in Rendering.vs.glsl
+    // (std430, SSBO binding 3). Matrices are column major.
+    struct alignas(16) GpuModelInstance {
+        float modelMatrix[16]{};  // mat4: transform.position * rotation * scale
+        float normalMatrix[12]{}; // mat3: std430 pads each column to a vec4
+        Vector4 color;            // rgb = sector light, a = 1
+    };
+
+    static_assert(sizeof(GpuModelInstance) == 128);
+
+    struct GpuMesh {
+        GLuint vao = 0;
+        GLuint vbo = 0;
+        GLuint ebo = 0;
+        GLsizei indexCount = 0;
+        unsigned materialIndex = 0;
+    };
+
+    struct GpuModelMaterial {
+        Vector4 baseColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        GLuint texture = 0; // 0 = untextured
+    };
+
+    // One mesh placed by one model node, column major.
+    struct GpuModelDraw {
+        unsigned meshIndex = 0;
+        float localMatrix[16]{};
+        float localNormalMatrix[9]{};
+    };
+
+    // GPU resources of one model file, shared by every entity that uses it.
+    // Vertex data is uploaded once and never changes.
+    struct GpuModelAsset {
+        std::vector<GpuMesh> meshes;
+        std::vector<GpuModelMaterial> materials;
+        std::vector<GLuint> textures;
+        std::vector<GpuModelDraw> draws;
+        Uint64 lastUsedTicks = 0;
+    };
+
+    // Every entity using one asset this frame; their instances are contiguous
+    // in the model SSBO starting at firstInstance.
+    struct GpuModelBatch {
+        const GpuModelAsset* asset = nullptr;
+        GLint firstInstance = 0;
+        GLsizei instanceCount = 0;
+    };
+
     struct GPUTexture {
         GLuint id = 0;
         int width = 0;
@@ -151,6 +203,11 @@ namespace OpenGLRendererInternal {
         int x = 0;
         int y = 0;
     };
+
+    // Min/mag filtering and mipmaps for the texture bound to GL_TEXTURE_2D,
+    // following the level's texture setting. Shared by the atlas and model
+    // textures so both look the same.
+    void ApplyTextureSampling(RendererTextureSettings setting);
 }
 
 class OpenGL final : public IRenderer {
@@ -221,6 +278,9 @@ private:
     using GPUTexture = OpenGLRendererInternal::GPUTexture;
     using GpuCollider = OpenGLRendererInternal::GpuCollider;
     using GpuSectorFloor = OpenGLRendererInternal::GpuSectorFloor;
+    using GpuModelInstance = OpenGLRendererInternal::GpuModelInstance;
+    using GpuModelAsset = OpenGLRendererInternal::GpuModelAsset;
+    using GpuModelBatch = OpenGLRendererInternal::GpuModelBatch;
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
@@ -262,6 +322,17 @@ private:
     GLuint colliderSSBO = 0;
     GLsizei colliderCount = 0;
 
+    GLuint modelSSBO = 0;
+    GLsizeiptr modelSSBOCapacity = 0;
+
+    GLint modelInstanceOffsetUniform = -1;
+    GLint modelLocalUniform = -1;
+    GLint modelLocalNormalUniform = -1;
+    GLint modelBaseColorUniform = -1;
+    GLint modelHasTextureUniform = -1;
+    GLint modelTextureUniform = -1;
+    GLint cameraWorldPosUniform = -1;
+
     std::map<char, Character> Characters;
 
     std::vector<GpuWall> gpuWalls;
@@ -276,6 +347,18 @@ private:
 
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
+
+    // Keyed by ComponentModel::fileName. Assets nobody used for
+    // MODEL_UNUSED_LIFETIME_MS are released; failed loads are remembered so a
+    // broken reference is not retried every frame (cleared by
+    // RefreshTexturesFromLevel, the editor's "assets may have changed" signal).
+    std::unordered_map<std::string, GpuModelAsset> modelAssets;
+    std::unordered_set<std::string> failedModelFiles;
+    RendererTextureSettings modelTextureSetting = PIXEL_ART_SHIMMERY;
+
+    std::vector<GpuModelInstance> gpuModelInstances;
+    std::vector<GpuModelInstance> uploadedModelInstances;
+    std::vector<GpuModelBatch> modelBatches;
 
     std::vector<GPUTexture> textures;
     GLuint atlasTexture = 0;
@@ -299,6 +382,14 @@ private:
     void BuildGpuSectors();
     void BuildGpuSprites();
     void BuildGpuColliders();
+
+    // OpenGLModel.cpp
+    void BuildGpuModels();
+    void DrawGpuModels() const;
+    GpuModelAsset* AcquireModelAsset(const std::string& fileName);
+    void ReleaseUnusedModelAssets(Uint64 nowTicks);
+    void ApplyModelTextureSampling(RendererTextureSettings setting);
+    void DestroyAllModelAssets();
 
     void BuildGpuWallsFromMap();
     void UploadGpuWallsFromMap();

@@ -1146,6 +1146,7 @@ namespace {
         level.cameras.Clear();
         level.colliders.Clear();
         level.rigidbodies.Clear();
+        level.models.Clear();
 
         level.ui_transforms.Clear();
         level.ui_sprites.Clear();
@@ -1493,6 +1494,22 @@ namespace {
                 c.friction = rigidBodyJson.value("friction", 1.0f);
             }
         }
+
+        if (componentsJson.contains("models")) {
+            for (const json& modelJson : componentsJson["models"]) {
+                const ID ownerID = modelJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                Entity* entity = level.GetEntity(ownerID);
+                if (entity == nullptr) continue;
+
+                ComponentModel& c = level.models.Add(ownerID);
+                entity->componentsMask.set(CMP_MODEL);
+
+                c.fileName = modelJson.value("fileName", std::string{});
+            }
+        }
     }
 
     void SaveComponents(json &levelData, const Level &level) {
@@ -1509,6 +1526,7 @@ namespace {
         componentsJson["cameras"] = json::array();
         componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
+        componentsJson["models"] = json::array();
 
         for (const ComponentTransform& c : level.transforms.components) {
             componentsJson["transforms"].push_back({
@@ -1636,6 +1654,13 @@ namespace {
                 {"mass", c.mass},
                 {"gravityScale", c.gravityScale},
                 {"friction", c.friction}
+            });
+        }
+
+        for (const ComponentModel& c : level.models.components) {
+            componentsJson["models"].push_back({
+                {"ownerID", c.ownerID},
+                {"fileName", c.fileName}
             });
         }
 

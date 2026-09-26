@@ -50,6 +50,13 @@ namespace {
             Method("addVelocity", {Param("velocity", "Vector3")}),
         }));
 
+        RegisterType(Type("Model", "Static 3D model drawn at the Entity's Transform.", {
+            Prop("isValid", "boolean", true),
+            Prop("fileName", "string", false, "Model file relative to Assets, with extension (e.g. \"Models/crate.glb\"). Changing it swaps the rendered model next frame."),
+        }, {
+            Method("clearFileName"),
+        }));
+
         RegisterType(Type("Collider", "Sphere or box collision volume.", {
             Prop("isValid", "boolean", true),
             Prop("type", "ColliderType"),
@@ -261,6 +268,19 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             ),
 
             "addVelocity", &ScriptRigidbody::AddVelocity
+        );
+
+        lua.new_usertype<ScriptModel>(
+            "Model",
+
+            "isValid", sol::property(&ScriptModel::IsValid),
+
+            "fileName", sol::property(
+                &ScriptModel::GetFileName,
+                &ScriptModel::SetFileName
+            ),
+
+            "clearFileName", &ScriptModel::ClearFileName
         );
 
         lua.new_usertype<ScriptCollider>(

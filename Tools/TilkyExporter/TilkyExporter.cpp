@@ -7,11 +7,25 @@
  *   1. Path to the current project's project.tilky file.
  *   2. Path to the desired export folder.
  *   3. Path to Standalone.exe.
+ *
+ * Assets/ is copied as a whole. On top of that every model a level uses is
+ * checked: textures and side files (.mtl, .bin, ...) that live outside
+ * Assets/ are copied next to the exported model, where ModelLoader looks for
+ * them, and anything missing is reported by name.
  */
 
 #include <filesystem>
 #include <iostream>
+#include <map>
+#include <set>
 #include <string>
+#include <vector>
+
+#include <SDL3/SDL.h>
+
+#include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Objects/Level.hpp"
+#include "Headers/Runtime/Renderer/ModelLoader.hpp"
 
 namespace fs = std::filesystem;
 
@@ -125,6 +139,108 @@ static bool CopyAllDlls(const fs::path &from, const fs::path &to) {
     return true;
 }
 
+static bool IsInsideDirectory(const fs::path& path, const fs::path& directory) {
+    std::error_code ec;
+    const fs::path canonicalPath = fs::weakly_canonical(path, ec);
+    if (ec) return false;
+
+    const fs::path canonicalDirectory = fs::weakly_canonical(directory, ec);
+    if (ec) return false;
+
+    const fs::path relative = canonicalPath.lexically_relative(canonicalDirectory);
+    return !relative.empty() && *relative.begin() != "..";
+}
+
+// Model reference -> names of the levels using it.
+static std::map<std::string, std::set<std::string>> CollectLevelModels(const fs::path& assetsSrc, std::vector<std::string>& problems) {
+    std::map<std::string, std::set<std::string>> usersByModel;
+
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assetsSrc, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file() || it->path().extension() != ".bson") continue;
+
+        Level level;
+        std::string errorMessage;
+
+        if (!LevelSerialization::LoadLevelFromFile(it->path(), level, nullptr, &errorMessage)) {
+            problems.push_back("Could not read level " + it->path().string() + " to check its models: " + errorMessage);
+            continue;
+        }
+
+        for (const ComponentModel& model : level.models.components)
+            if (!model.fileName.empty()) usersByModel[model.fileName].insert(level.name);
+    }
+
+    if (ec) problems.push_back("Failed to scan " + assetsSrc.string() + " for levels: " + ec.message());
+
+    return usersByModel;
+}
+
+static std::string JoinNames(const std::set<std::string>& names) {
+    std::string joined;
+    for (const std::string& name : names) joined += (joined.empty() ? "" : ", ") + name;
+    return joined;
+}
+
+// Returns false only on a hard copy failure. Missing files are collected in
+// `problems` so every one of them is reported, not just the first.
+static bool ExportModelDependencies(const fs::path& assetsSrc, const fs::path& assetsDest, std::vector<std::string>& problems) {
+    const auto usersByModel = CollectLevelModels(assetsSrc, problems);
+
+    for (const auto& [reference, levels] : usersByModel) {
+        const fs::path modelSrc = (assetsSrc / fs::path(std::u8string(reference.begin(), reference.end()))).lexically_normal();
+        const std::string usedBy = " (used by level " + JoinNames(levels) + ")";
+
+        std::vector<ModelLoader::ModelDependency> dependencies;
+        std::string errorMessage;
+
+        if (!ModelLoader::CollectDependencies(modelSrc, assetsSrc, dependencies, errorMessage)) {
+            problems.push_back("MISSING model '" + reference + "'" + usedBy + ": " + errorMessage);
+            continue;
+        }
+
+        const fs::path modelDestDirectory = (assetsDest / modelSrc.lexically_relative(assetsSrc)).parent_path();
+
+        for (const ModelLoader::ModelDependency& dependency : dependencies) {
+            const std::string what = dependency.kind == ModelLoader::DependencyKind::Texture ? "texture" : "file";
+
+            if (dependency.status == ModelLoader::DependencyStatus::Embedded) continue;
+
+            if (dependency.status == ModelLoader::DependencyStatus::Missing) {
+                std::string problem = "MISSING " + what + " '" + dependency.reference + "' needed by model '" + reference + "'";
+                if (!dependency.materialName.empty()) problem += " (material '" + dependency.materialName + "')";
+
+                problems.push_back(problem + usedBy);
+                continue;
+            }
+
+            // Inside Assets it was already copied with everything else.
+            if (IsInsideDirectory(dependency.resolvedPath, assetsSrc)) continue;
+
+            const fs::path destination = modelDestDirectory / dependency.resolvedPath.filename();
+
+            std::error_code ec;
+            if (fs::exists(destination, ec)) {
+                if (fs::file_size(destination, ec) == fs::file_size(dependency.resolvedPath, ec)) continue;
+
+                problems.push_back(
+                    "CONFLICT: external " + what + " " + dependency.resolvedPath.string() +
+                    " of model '" + reference + "' was not copied because " + destination.string() +
+                    " already exists with different contents"
+                );
+                continue;
+            }
+
+            if (!CopyFileChecked(dependency.resolvedPath, destination)) return false;
+
+            std::cout << "Copied external " << what << " " << dependency.resolvedPath
+                      << " of model '" << reference << "' to " << destination << "\n";
+        }
+    }
+
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -158,6 +274,9 @@ int main(int argc, char** argv) {
     std::cout << "Copied assets from " << assetsSrc
               << " to " << assetsDest << "\n";
 
+    std::vector<std::string> modelProblems;
+    if (!ExportModelDependencies(assetsSrc, assetsDest, modelProblems)) return 1;
+
     // Copy EngineAssets/Fonts
     const fs::path engineAssetsSrc = standaloneDir / "EngineAssets";
     const fs::path engineAssetsDest = destinationPath / "EngineAssets";
@@ -181,6 +300,15 @@ int main(int argc, char** argv) {
     if (!CopyFileChecked(standaloneExePath, standaloneDest)) return 1;
     std::cout << "Copied standalone executable from " << standaloneExePath
               << " to " << standaloneDest << "\n";
+
+    if (!modelProblems.empty()) {
+        std::cerr << "\nExport completed, but " << modelProblems.size()
+                  << " model dependency problem(s) were found. Affected models render without these files:\n";
+
+        for (const std::string& problem : modelProblems) std::cerr << "  - " << problem << "\n";
+
+        return 0;
+    }
 
     std::cout << "Export completed successfully.\n";
     return 0;

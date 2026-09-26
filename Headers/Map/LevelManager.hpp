@@ -28,6 +28,7 @@ namespace LevelManager {
     void RenameTextureReference(const std::string& oldReference, const std::string& newReference);
     void RenameSoundReference(const std::string& oldReference, const std::string& newReference);
     void RenameScriptReference(const std::string& oldReference, const std::string& newReference);
+    void RenameModelReference(const std::string& oldReference, const std::string& newReference);
 }
 
 #endif // TILKY_ENGINE_LEVELMANAGER_H

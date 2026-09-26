@@ -140,4 +140,13 @@ namespace LevelManager {
             for (SectorScript& script : sector.scripts)
                 if (script.fileName == oldReference) script.fileName = newReference;
     }
+
+    void RenameModelReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentModel& model : level.models.components)
+            if (model.fileName == oldReference) model.fileName = newReference;
+    }
 }

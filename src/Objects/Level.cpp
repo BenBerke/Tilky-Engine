@@ -154,6 +154,13 @@ ID Level::CreateEntity(Entity& copy) {
         // velocity intentionally left as default (runtime state)
     }
 
+    if (copy.HasComponent<ComponentModel>()) {
+        auto *s = entity.AddComponent<ComponentModel>();
+        const ComponentModel *cs = copy.GetComponent<ComponentModel>();
+
+        s->fileName = cs->fileName;
+    }
+
     // UI Components
     if (copy.HasComponent<ComponentUITransform>()) {
         auto *s = entity.AddComponent<ComponentUITransform>();
@@ -196,6 +203,7 @@ void Level::DestroyEntity(const ID entityID) {
     rigidbodies.Remove(entityID);
 
     sprites.Remove(entityID);
+    models.Remove(entityID);
     audioSources.Remove(entityID);
     scripts.Remove(entityID);
     playerControllers.Remove(entityID);

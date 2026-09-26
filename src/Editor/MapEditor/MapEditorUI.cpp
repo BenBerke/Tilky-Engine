@@ -7,6 +7,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstring>
 #include <filesystem>
@@ -2578,8 +2579,8 @@ namespace MapEditorInternal {
         ImGui::PushID(label);
         ImGui::BeginGroup();
 
-        if (previewSize > 0.0f && kind == AssetKind::Texture) {
-            const ImTextureID preview = GetPreviewTextureID(value);
+        if (previewSize > 0.0f && (kind == AssetKind::Texture || kind == AssetKind::Model)) {
+            const ImTextureID preview = kind == AssetKind::Texture ? GetPreviewTextureID(value) : ImTextureID{};
             const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
             if (preview != ImTextureID{}) ImGui::Image(preview, ImVec2(previewSize, previewSize));
@@ -2589,6 +2590,21 @@ namespace MapEditorInternal {
                 dl->AddRectFilled(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize),
                                   IM_COL32(35, 35, 40, 255));
                 dl->AddRect(cursor, ImVec2(cursor.x + previewSize, cursor.y + previewSize), IM_COL32(90, 90, 100, 255));
+
+                // Models are never rendered into a preview: the box names the file type, same as the asset browser.
+                if (kind == AssetKind::Model && !value.empty()) {
+                    std::string extension = std::filesystem::path(value).extension().string();
+                    std::ranges::transform(extension, extension.begin(), [](const unsigned char ch) {
+                        return static_cast<char>(std::tolower(ch));
+                    });
+
+                    const ImVec2 textSize = ImGui::CalcTextSize(extension.c_str());
+                    dl->AddText(
+                        ImVec2(cursor.x + (previewSize - textSize.x) * 0.5f, cursor.y + (previewSize - textSize.y) * 0.5f),
+                        IM_COL32(220, 220, 220, 255),
+                        extension.c_str()
+                    );
+                }
             }
 
             changed |= AcceptAssetDropOrClick(value, kind);

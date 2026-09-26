@@ -37,6 +37,8 @@ namespace {
                 {.name = "collider", .luaType = "Collider?", .readOnly = true, .doc = "nil if this Entity has no Collider."},
                 {.name = "hasRigidbody", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Rigidbody."},
                 {.name = "rigidbody", .luaType = "Rigidbody?", .readOnly = true, .doc = "nil if this Entity has no Rigidbody."},
+                {.name = "hasModel", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Model."},
+                {.name = "model", .luaType = "Model?", .readOnly = true, .doc = "nil if this Entity has no Model."},
                 {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
                 {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
                 {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
@@ -225,6 +227,20 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
                 if (!entity.HasRigidbody()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetRigidbody());
+            }
+        ),
+
+        "hasModel",
+        sol::property(&ScriptEntity::HasModel),
+
+        "model",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+
+                if (!entity.HasModel()) return sol::nil;
+
+                return sol::make_object(luaState, entity.GetModel());
             }
         ),
 

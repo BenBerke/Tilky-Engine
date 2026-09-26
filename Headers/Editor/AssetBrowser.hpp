@@ -17,6 +17,9 @@
 //  - Sound / Script: referenced by name WITHOUT extension (relative to
 //    the Sounds / Scripts folder), matching how the engine already names
 //    scripts - e.g. "click" or "ui/click", extension implied.
+//  - Model: referenced like a texture, relative to Assets WITH extension,
+//    e.g. "Models/crate.glb". Extensions come from
+//    ModelLoader::SupportedExtensions().
 //
 // This is a different axis to AssetEntryType below: AssetKind is about
 // what a field widget should do with the asset (drag-drop payload type,
@@ -30,6 +33,7 @@ enum class AssetKind {
     Texture,
     Sound,
     Script,
+    Model,
     Other // shown for transparency, but not draggable/thumbnailed
 };
 
@@ -339,7 +343,9 @@ public:
     // from the OS file manager) into the folder currently being browsed.
     // Handles name collisions by appending " (2)", " (3)", etc. Never
     // throws; returns false (and reports why, via spdlog and the
-    // in-browser error banner) on any failure.
+    // in-browser error banner) on any failure. A model file brings its
+    // textures and side files (.mtl, .bin, ...) along - see
+    // ImportModelDependencies().
     bool ImportExternalFile(const std::filesystem::path& sourceAbsolutePath);
 
     // Hit-tests a SCREEN-space point (e.g. from an SDL_EVENT_DROP_FILE or
@@ -437,6 +443,13 @@ private:
     void ClearSelectionUnder(const std::filesystem::path& removedPath);
 
     void ScanCurrentDirectory();
+
+    // Copies what an imported model needs next to its imported copy: files
+    // below the source model's folder keep their relative path, anything
+    // else lands beside the model, which is where ModelLoader looks last.
+    // Existing files are never overwritten. Missing dependencies are
+    // reported through lastOperationError.
+    void ImportModelDependencies(const std::filesystem::path& sourceModel, const std::filesystem::path& importedModel);
 
     void DrawBreadcrumbs();
     void DrawSearchBar();

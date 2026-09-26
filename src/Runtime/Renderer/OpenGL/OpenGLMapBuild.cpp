@@ -582,6 +582,13 @@ bool OpenGL::CreateMap() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
+    // Per-entity model transforms. Grown on demand by BuildGpuModels().
+    glGenBuffers(1, &modelSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, modelSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, modelSSBO);
+    modelSSBOCapacity = 0;
+
     projectionShader->use();
 
     renderModeUniform = glGetUniformLocation(projectionShader->ID, "renderMode");
@@ -604,6 +611,15 @@ bool OpenGL::CreateMap() {
         spdlog::critical("Failed to get projection shader uniform location: uProjection");
         return false;
     }
+
+    // Not fatal when missing: the driver drops uniforms a shader never reads.
+    cameraWorldPosUniform = glGetUniformLocation(projectionShader->ID, "uCameraWorldPos");
+    modelInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uModelInstanceOffset");
+    modelLocalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocal");
+    modelLocalNormalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocalNormal");
+    modelBaseColorUniform = glGetUniformLocation(projectionShader->ID, "uModelBaseColor");
+    modelHasTextureUniform = glGetUniformLocation(projectionShader->ID, "uModelHasTexture");
+    modelTextureUniform = glGetUniformLocation(projectionShader->ID, "uModelTexture");
 
     spdlog::info("OpenGL renderer map creation completed successfully");
 
