@@ -238,12 +238,15 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         BuildGpuModels();
 
         glEnable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_GREATER);
 
         DrawGpuModels();
         glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
     }
 
     {

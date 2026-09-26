@@ -205,7 +205,7 @@ void Level::DestroyEntity(const ID entityID) {
     sprites.Remove(entityID);
     models.Remove(entityID);
     audioSources.Remove(entityID);
-    scripts.Remove(entityID);
+    scripts.RemoveAll(entityID); // Remove() takes a script instance ID, not an owner ID
     playerControllers.Remove(entityID);
     cameras.Remove(entityID);
     transforms.Remove(entityID);
