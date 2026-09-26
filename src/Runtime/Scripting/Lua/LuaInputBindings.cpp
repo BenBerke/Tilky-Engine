@@ -14,7 +14,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterInputMetadata() {
-        RegisterType(Type("Input", "Global keyboard/mouse input table. Key names: letters, digits, "
+        RegisterType(GlobalTable("Input", "Global keyboard/mouse input table. Key names: letters, digits, "
             "Space/Escape/Enter/Tab/Backspace, Left/Right/Up/Down, LShift/RShift/LCtrl/RCtrl/LAlt/RAlt.", {
             Prop("MouseLeft", "integer", true),
             Prop("MouseMiddle", "integer", true),

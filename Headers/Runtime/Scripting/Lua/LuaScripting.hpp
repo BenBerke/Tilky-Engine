@@ -29,7 +29,7 @@ public:
     void RegisterInputBindings(sol::state& lua);
     static void RegisterMathBindings(sol::state& lua);
     void RegisterEditorFunctionBindings(sol::state& lua);
-    void RegisterGameBindings(sol::state& lua);
+    static void RegisterGameBindings(sol::state& lua);
 
     static void RegisterWallBindings(sol::state& lua);
     void RegisterSectorBindings(sol::state& lua);

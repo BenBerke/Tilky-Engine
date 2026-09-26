@@ -2,7 +2,12 @@
   "name": "tilky-engine",
   "version-string": "0.1.0",
   "dependencies": [
-    "spdlog",
+    "cpr",
+    "freetype",
+    "lua",
+    "minizip-ng",
+    "nlohmann-json",
+    "openal-soft",
     {
       "name": "sdl3",
       "features": [
@@ -16,12 +21,8 @@
       ]
     },
     "sdl3-ttf",
-    "freetype",
-    "nlohmann-json",
     "sol2",
-    "lua",
-    "openal-soft",
-    "cpr",
-    "minizip-ng"
+    "spdlog",
+    "assimp"
   ]
 }

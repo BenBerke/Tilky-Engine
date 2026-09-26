@@ -12,6 +12,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
@@ -19,7 +20,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterGameMetadata() {
-        RegisterType(Type("Game", "Global game/level table.", {}, {
+        RegisterType(GlobalTable("Game", "Global game/level table.", {}, {
             Method("LoadLevel", {Param("levelName", "string")}),
             Method(
                 "Raycast",
@@ -31,6 +32,11 @@ namespace {
                 "Returns nil on miss, else a table with type/typeID/position/distance/"
                 "entityID/wallID/sectorID and (whichever applies) entity/wall/sector."
             ),
+            Method("FindEntity", {Param("name", "string")}, "Entity?", "First Entity with this exact name, or nil."),
+            Method("FindEntities", {Param("name", "string")}, "Entity[]", "Every Entity with this exact name."),
+            Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
+            Method("GetEntity", {Param("id", "integer")}, "Entity?", "The Entity with this ID (e.g. a Raycast hit's entityID), or nil."),
+            Method("GetEntities", {}, "Entity[]", "Every Entity in the level."),
         }));
     }
 }
@@ -61,6 +67,55 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
     game.set_function("LoadLevel", [](const std::string& levelName)->void {
        Editor::LoadLevel(levelName);
+    });
+
+    game.set_function("FindEntity", [](sol::this_state state, const std::string& name) -> sol::object {
+        Level& level = LevelManager::CurrentLevel();
+
+        for (const Entity& candidate : level.entities)
+            if (candidate.name == name) return sol::make_object(state, ScriptEntity{&level, candidate.id});
+
+        return sol::make_object(state, sol::nil);
+    });
+
+    game.set_function("FindEntities", [](const std::string& name) -> sol::as_table_t<std::vector<ScriptEntity>> {
+        Level& level = LevelManager::CurrentLevel();
+        std::vector<ScriptEntity> result;
+
+        for (const Entity& candidate : level.entities)
+            if (candidate.name == name) result.push_back({&level, candidate.id});
+
+        return sol::as_table(std::move(result));
+    });
+
+    game.set_function("FindEntitiesWithTag", [](const std::string& tag) -> sol::as_table_t<std::vector<ScriptEntity>> {
+        Level& level = LevelManager::CurrentLevel();
+        std::vector<ScriptEntity> result;
+
+        for (const Entity& candidate : level.entities) {
+            const ScriptEntity entity{&level, candidate.id};
+            if (entity.HasTag(tag)) result.push_back(entity);
+        }
+
+        return sol::as_table(std::move(result));
+    });
+
+    game.set_function("GetEntity", [](sol::this_state state, const ID id) -> sol::object {
+        Level& level = LevelManager::CurrentLevel();
+
+        if (level.GetEntity(id) == nullptr) return sol::make_object(state, sol::nil);
+
+        return sol::make_object(state, ScriptEntity{&level, id});
+    });
+
+    game.set_function("GetEntities", []() -> sol::as_table_t<std::vector<ScriptEntity>> {
+        Level& level = LevelManager::CurrentLevel();
+        std::vector<ScriptEntity> result;
+        result.reserve(level.entities.size());
+
+        for (const Entity& candidate : level.entities) result.push_back({&level, candidate.id});
+
+        return sol::as_table(std::move(result));
     });
 
     game.set_function("Raycast",

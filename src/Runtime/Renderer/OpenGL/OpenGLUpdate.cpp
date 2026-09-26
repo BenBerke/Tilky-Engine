@@ -63,8 +63,6 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     ComponentTransform renderCameraTransform = *cameraTransform;
 
-    //todo TILKY_TODO stop using playercontroller and check for normal cameras
-
     if (!useEditorCamera) {
         float eyeHeight = 0.0f;
 
@@ -245,6 +243,16 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         );
 
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
+    }
+
+    {
+        ZoneScopedN("Build GPU Models");
+
+        BuildGpuModels();
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, modelSSBO);
+        glUniform1i(renderModeUniform, RENDER_MODEL);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, modelCount);
         glDisable(GL_BLEND);
     }
 

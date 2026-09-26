@@ -26,6 +26,7 @@ enum ComponentType {
     CMP_CAMERA,
     CMP_COLLIDER,
     CMP_RIGIDBODY,
+    CMP_MODEL,
 
     CMP_NORMAL_COUNT,
 
@@ -70,6 +71,12 @@ struct ComponentUITransform {
 
 // endregion
 
+struct ComponentModel {
+    ID ownerID = static_cast<ID>(-1);
+
+    std::string fileName{};
+};
+
 struct ComponentRigidbody {
     ID ownerID = static_cast<ID>(-1);
 
@@ -88,7 +95,6 @@ struct ComponentRigidbody {
     void ApplyAirResistance(float resistance, float dt);
     void ApplyGravity(float gravity, float dt);
 };
-
 
 enum ColliderType {
     COLLIDERTYPE_SPHERE,

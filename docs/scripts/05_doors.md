@@ -21,8 +21,8 @@ Things to know:
 - With several floor intervals in one sector, the ceiling also must not rise past the next
   interval's floor. That is why every script writes the ceiling through `pcall`: an invalid value
   is reported once and the door stops, instead of erroring every frame.
-- Scripts with a **player** field need the player assigned in the inspector. There is no "find the
-  player" call.
+- Scripts with a **player** field need the player assigned in the inspector. You could look it up
+  with `Game.FindEntity("Player")` in `Start` instead, but then renaming the entity breaks it.
 - The distance helper below works on the sector's outline, so it works for a door of any shape.
   It returns `0` while the player is inside the door sector.
 

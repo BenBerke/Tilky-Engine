@@ -10,12 +10,10 @@
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 namespace {
-    // Registers a representative slice of Entity's documentation with
-    // LuaBindingMetadata - see that header's scope note: this demonstrates
-    // the "register metadata alongside the sol2 binding" pattern rather than
-    // exhaustively transcribing every one of Entity's accessors right
-    // now (retrofitting the rest, and every other existing usertype, is
-    // follow-up work).
+    // Registers Entity's documentation with LuaBindingMetadata (autocomplete
+    // + LuaLS stub). Only the PascalCase method spellings are listed; the
+    // camelCase aliases (getScript, hasTag, ...) are deliberately left out
+    // so autocomplete doesn't suggest every method twice.
     void RegisterEntityMetadata() {
         LuaBindingMetadata::RegisterType({
             .name = "Entity",
@@ -25,13 +23,33 @@ namespace {
                 {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once this Entity has been destroyed."},
                 {.name = "name", .luaType = "string", .doc = "The Entity's display name."},
                 {.name = "enabled", .luaType = "boolean", .doc = "Active state - disables every attached script's ticking when false."},
+                {.name = "hasTransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Transform."},
                 {.name = "transform", .luaType = "Transform?", .readOnly = true, .doc = "nil if this Entity has no Transform."},
+                {.name = "hasSprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Sprite."},
+                {.name = "sprite", .luaType = "Sprite?", .readOnly = true, .doc = "nil if this Entity has no Sprite."},
+                {.name = "hasAudioSource", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has an AudioSource."},
+                {.name = "audioSource", .luaType = "AudioSource?", .readOnly = true, .doc = "nil if this Entity has no AudioSource."},
+                {.name = "hasPlayerController", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a PlayerController."},
+                {.name = "playerController", .luaType = "PlayerController?", .readOnly = true, .doc = "nil if this Entity has no PlayerController."},
+                {.name = "hasCamera", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Camera."},
+                {.name = "camera", .luaType = "Camera?", .readOnly = true, .doc = "nil if this Entity has no Camera."},
+                {.name = "hasCollider", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Collider."},
+                {.name = "collider", .luaType = "Collider?", .readOnly = true, .doc = "nil if this Entity has no Collider."},
+                {.name = "hasRigidbody", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Rigidbody."},
+                {.name = "rigidbody", .luaType = "Rigidbody?", .readOnly = true, .doc = "nil if this Entity has no Rigidbody."},
+                {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
+                {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
+                {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
+                {.name = "uiSprite", .luaType = "UISprite?", .readOnly = true, .doc = "nil if this Entity has no UISprite."},
+                {.name = "hasUIText", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UIText."},
+                {.name = "uiText", .luaType = "UIText?", .readOnly = true, .doc = "nil if this Entity has no UIText."},
                 {.name = "hasScript", .luaType = "boolean", .readOnly = true, .doc = "True if any script is attached."},
                 {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "Tags are assigned from the editor only - there is no SetTag."},
             },
             .methods = {
                 {.name = "Destroy", .params = {}, .returnType = "", .doc = "Queues this Entity for destruction at the end of the current frame."},
                 {.name = "GetScript", .params = {{"name", "string"}}, .returnType = "Behaviour", .doc = "Looks up an attached script by name."},
+                {.name = "GetScriptById", .params = {{"instanceId", "integer"}}, .returnType = "Behaviour", .doc = "Looks up an attached script by its unique instance id."},
                 {.name = "GetScripts", .params = {}, .returnType = "Behaviour[]", .doc = "Every script attached to this Entity."},
                 {.name = "HasScriptNamed", .params = {{"name", "string"}}, .returnType = "boolean", .doc = "True if a script matching `name` is attached."},
                 {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this Entity has the given tag."},

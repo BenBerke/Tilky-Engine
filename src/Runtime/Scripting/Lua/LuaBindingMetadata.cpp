@@ -41,7 +41,8 @@ namespace LuaBindingMetadata {
                 file << "\n";
             }
 
-            file << "local " << type.name << " = {}\n\n";
+            if (type.isGlobalTable) file << type.name << " = {}\n\n";
+            else file << "local " << type.name << " = {}\n\n";
 
             for (const MethodDoc& method : type.methods) {
                 if (!method.doc.empty()) file << "---" << method.doc << "\n";
@@ -51,7 +52,7 @@ namespace LuaBindingMetadata {
 
                 if (!method.returnType.empty()) file << "---@return " << method.returnType << "\n";
 
-                file << "function " << type.name << ":" << method.name << "(";
+                file << "function " << type.name << (type.isGlobalTable ? "." : ":") << method.name << "(";
 
                 for (std::size_t i = 0; i < method.params.size(); ++i) {
                     if (i > 0) file << ", ";
@@ -61,6 +62,10 @@ namespace LuaBindingMetadata {
                 file << ") end\n\n";
             }
         }
+
+        file << "---The Entity this script is attached to.\n---@type Entity\nentity = nil\n\n";
+        file << "---Sector scripts only: the sector this script is attached to.\n---@type Sector\nsector = nil\n\n";
+        file << "---One table shared by every script in the level.\n---@type table\nScripts = {}\n";
 
         return true;
     }

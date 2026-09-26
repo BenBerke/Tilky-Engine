@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -995,9 +996,10 @@ namespace {
     }
 
     void RegisterGameTimeMetadata() {
-        LuaBindingMetadata::RegisterType(LuaBindingMetadata::Type("GameTime", "Global frame-timing table.", {
+        LuaBindingMetadata::RegisterType(LuaBindingMetadata::GlobalTable("GameTime", "Global frame-timing table.", {
             LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
             LuaBindingMetadata::Prop("fixedDeltaTime", "number", true, "The fixed step FixedUpdate() runs on."),
+            LuaBindingMetadata::Prop("osTime", "integer", true, "Wall-clock time: whole seconds since the Unix epoch (1970-01-01 UTC)."),
         }));
     }
 

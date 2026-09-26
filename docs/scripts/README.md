@@ -51,12 +51,12 @@ console and logged, and the script keeps running.
 |------|------------|
 | `entity` | The Entity this script is on. On a sector script it is an invalid placeholder (`entity.isValid == false`) |
 | `sector` | Sector scripts only: the sector the script is on |
-| `GameTime` | `deltaTime`, `fixedDeltaTime` |
+| `GameTime` | `deltaTime`, `fixedDeltaTime`, `osTime` (wall-clock seconds since 1970, UTC) |
 | `Input` | Keyboard and mouse: `GetKey`, `GetKeyDown`, `GetKeyUp`, `GetMouseButton*`, `GetMousePosition` |
-| `Game` | `Game.Raycast(...)`, `Game.LoadLevel(name)` |
+| `Game` | `Raycast(...)`, `LoadLevel(name)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |
 | `Debug` | `Print` (in-game console), `LogInfo`, `LogWarning`, `LogError`, `LogCritical` |
-| `mathT` | `Clamp`, `Lerp`, `InverseLerp`, `DegToRad`, `RadToDeg`, `Random`, `RandomF`, vector distance/dot/cross |
-| `Vector2`, `Vector3`, `Vector4` | Constructors: `Vector3(x, y, z)` |
+| `mathT` | Everything in Lua's `math` (`Abs`, `Floor`, `Sin`, ...), constants (`Pi`, `Tau`, `Infinity`, ...), `Clamp`, `Lerp`, `SmoothDamp`, `MoveTowards`, angle helpers, random helpers and `Vector2*`/`Vector3*`/`Vector4*` functions. The script editor's autocomplete lists them all |
+| `Vector2`, `Vector3`, `Vector4` | Constructors: `Vector3(x, y, z)`. Support `+ - * /` (with a vector or a number), unary `-`, `==` and `tostring` |
 | `Scripts` | One table shared by **every** script in the level. Reset when the level starts |
 
 Only the Lua `base`, `math`, `table` and `string` libraries are loaded. There is **no** `os`, `io`,
@@ -102,8 +102,10 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
    local p = transform.position
    transform.position = Vector3(p.x, 5, p.z)
    ```
-2. **No vector arithmetic.** The bindings expose `x`, `y`, `z`, `length`, `lengthSquared` and
-   `normalized` only, so these examples work component by component. Don't write `a + b`.
+2. **Vector math makes new vectors.** `a + b`, `v * 2`, `v / 2` and `-v` work and return a new
+   vector, so `transform.position = transform.position + offset` is the way to move something.
+   `*` and `/` between two vectors work per component. Many older examples here still do the math
+   component by component, which works too.
 3. **Set public fields' values in `Start`, not at the top of the file.** The inspector's values are
    applied *after* the file's top level runs, so top-level code only ever sees the inline default.
 4. **Calling into another script uses a colon and an explicit `self`.**
@@ -121,8 +123,10 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
 7. **Setters can throw.** For example a sector's ceiling must stay above its floor. Wrap risky
    writes in `pcall` (see [05_doors.md](05_doors.md)) so one bad value doesn't spam the console
    every frame.
-8. **There is no `Find` and no `Instantiate`.** Get at other objects through an `Entity`
-   public field, `Game.Raycast`, `sector:GetEntity(i)`, or the `Scripts` table.
+8. **There is no `Instantiate`.** To get at other objects, use an `Entity` public field,
+   `Game.FindEntity("Name")`, `Game.FindEntitiesWithTag("Tag")`, `Game.Raycast`,
+   `sector:GetEntity(i)`, or the `Scripts` table. The `Find` calls go through every Entity in the
+   level, so call them in `Start` and keep the result instead of calling them every frame.
 9. **Tags are read-only from Lua.** Assign them in the editor, then test with `HasTag("Name")`.
 10. **`Entity:Destroy()` is deferred** to the end of the frame, so the object is still valid for
     the rest of the current frame.

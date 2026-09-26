@@ -40,6 +40,10 @@ namespace LuaBindingMetadata {
         std::string doc;
         std::vector<PropertyDoc> properties;
         std::vector<MethodDoc> methods;
+        // True for a global table/singleton (mathT, Game, Input, Debug,
+        // GameTime): the LuaLS stub then declares it as a global and its
+        // functions with `.` (mathT.Clamp(...)) instead of `:`.
+        bool isGlobalTable = false;
     };
 
     // Terse, positional constructors for RegisterType() call sites - a
@@ -60,6 +64,11 @@ namespace LuaBindingMetadata {
 
     inline TypeDoc Type(std::string name, std::string doc, std::vector<PropertyDoc> properties = {}, std::vector<MethodDoc> methods = {}) {
         return {std::move(name), std::move(doc), std::move(properties), std::move(methods)};
+    }
+
+    // Same as Type(), for a global table/singleton - see TypeDoc::isGlobalTable.
+    inline TypeDoc GlobalTable(std::string name, std::string doc, std::vector<PropertyDoc> properties = {}, std::vector<MethodDoc> methods = {}) {
+        return {std::move(name), std::move(doc), std::move(properties), std::move(methods), true};
     }
 
     // Registers one type's documentation. Call once per usertype, right

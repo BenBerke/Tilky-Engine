@@ -16,7 +16,7 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterDebugMetadata() {
-        RegisterType(Type("Debug", "Global logging table. Every function accepts any number of arguments, "
+        RegisterType(GlobalTable("Debug", "Global logging table. Every function accepts any number of arguments, "
             "space-joined via tostring() (like Lua's print).", {}, {
             Method("Print", {}, "", "Shows the message in the in-editor console."),
             Method("LogInfo"),

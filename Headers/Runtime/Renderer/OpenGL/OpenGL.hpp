@@ -29,6 +29,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_FLAT = 1;
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_COLLIDER = 4;
+    inline constexpr int RENDER_MODEL = 5;
 
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
@@ -132,6 +133,19 @@ namespace OpenGLRendererInternal {
         Vector4 scale; // if sphere, x = radius. if box use vec3 is x y z
     };
 
+    struct alignas(16) GpuModel {
+        float modelMatrix[16]{};
+    };
+    static_assert(sizeof(GpuModel) == 64);
+
+    struct GpuMesh {
+        GLuint vao = 0;
+        GLuint vbo = 0;
+        GLuint ebo = 0;
+        GLsizei indexCount = 0;
+        unsigned materialIndex = 0;
+    };
+
     static_assert(sizeof(GpuCollider) == sizeof(float) * 8);
 
     struct GPUTexture {
@@ -221,6 +235,7 @@ private:
     using GPUTexture = OpenGLRendererInternal::GPUTexture;
     using GpuCollider = OpenGLRendererInternal::GpuCollider;
     using GpuSectorFloor = OpenGLRendererInternal::GpuSectorFloor;
+    using GpuModel = OpenGLRendererInternal::GpuModel;
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
@@ -262,6 +277,9 @@ private:
     GLuint colliderSSBO = 0;
     GLsizei colliderCount = 0;
 
+    GLuint modelSSBO = 0;
+    GLuint modelCount = 0;
+
     std::map<char, Character> Characters;
 
     std::vector<GpuWall> gpuWalls;
@@ -276,6 +294,9 @@ private:
 
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
+
+    std::vector<GpuModel> gpuModels;
+    std::unordered_map<std::string, std::vector<GpuModel>> modelMeshes;
 
     std::vector<GPUTexture> textures;
     GLuint atlasTexture = 0;
@@ -299,6 +320,7 @@ private:
     void BuildGpuSectors();
     void BuildGpuSprites();
     void BuildGpuColliders();
+    void BuildGpuModels();
 
     void BuildGpuWallsFromMap();
     void UploadGpuWallsFromMap();

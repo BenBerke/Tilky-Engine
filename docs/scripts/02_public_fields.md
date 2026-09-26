@@ -159,7 +159,7 @@ function Update()
     Debug.Print("generator power:", generator.power)
 
     -- Call its function...
-    generator:Drain(drainPerSecond * Time.deltaTime)
+    generator:Drain(drainPerSecond * GameTime.deltaTime)
 
     -- ...or write a variable directly.
     if generator.power < 10 then
@@ -218,7 +218,7 @@ function Update()
     if generator == nil or not generator.isValid then return end
     if not generator.running then return end
 
-    generator:Drain(drainPerSecond * Time.deltaTime)
+    generator:Drain(drainPerSecond * GameTime.deltaTime)
     Debug.Print(generatorEntity.name, "power:", generator.power)
 end
 ```
