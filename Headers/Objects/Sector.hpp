@@ -112,6 +112,15 @@ struct Sector {
 
     ID id = INVALID_ID;
 
+    // Logical parent, INVALID_ID for a root sector. This is the source of
+    // truth for the hierarchy - only change it through Level::SetSectorParent.
+    ID parentID = INVALID_ID;
+
+    // Direct children's IDs. A cache derived from every sector's parentID,
+    // kept in sync by Level::SetSectorParent and refilled from scratch by
+    // Level::RebuildSectorChildren. Not a source of truth, don't serialize it.
+    std::vector<ID> children;
+
     std::vector<ID> entitiesInside;
     std::vector<Sector*> neighbors;
     std::vector<Wall*> walls;

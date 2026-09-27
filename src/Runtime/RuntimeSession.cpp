@@ -277,7 +277,12 @@ namespace {
 
             renderer->BeginImGuiFrame();
 
+            // The runtime editor writes sector values from its inspector, the
+            // scroll wheel, UV nudges and texture drops. Diffing around it
+            // passes any of those on to child sectors without hooking each one.
+            const auto parentsBeforeDraw = level.SnapshotParentSectorValues();
             RuntimeEditor::Draw(level);
+            level.PropagateSnapshottedSectorChanges(parentsBeforeDraw);
 
             renderer->EndImGuiFrame();
 
@@ -289,6 +294,8 @@ namespace {
 
         UpdateFpsCounter();
 
+        const auto parentsBeforeUpdate = level.SnapshotParentSectorValues();
+
         RuntimeEditor::Update(
             level,
             *renderer,
@@ -298,6 +305,8 @@ namespace {
             renderer->screenWidth,
             renderer->screenHeight
         );
+
+        level.PropagateSnapshottedSectorChanges(parentsBeforeUpdate);
 
         EditorFunctions::UpdateConsole(GameTime::deltaTime);
         EditorFunctions::ClearConsole();

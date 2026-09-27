@@ -166,6 +166,7 @@ namespace MapQueries {
         RebuildLevelLookups(level);
         AssignWallsToSectors(level);
         AssignNeighborsToSectors(level);
+        level.RebuildSectorChildren();
     }
 
     void BuildPvs(Level& level) {

@@ -1671,6 +1671,24 @@ struct ScriptSectorFloor {
         return GetSectorFloor() != nullptr;
     }
 
+    // Every setter below makes its write through here, so the change also
+    // reaches the sector's children, same as an edit in the inspector
+    // (Level::PropagateSectorChanges).
+    template<typename Write>
+    void WriteAndPropagate(Write&& write) const {
+        Sector* sector = GetSector();
+        if (sector == nullptr || GetSectorFloor() == nullptr) throw sol::error("Invalid SectorFloor");
+
+        if (sector->children.empty()) {
+            write();
+            return;
+        }
+
+        const std::vector<SectorFloor> floorsBefore = sector->floors;
+        write();
+        level->PropagateSectorChanges(sectorID, floorsBefore, sector->light);
+    }
+
     [[nodiscard]] float GetFloorHeight() const {
         const SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
@@ -1694,7 +1712,7 @@ struct ScriptSectorFloor {
             throw sol::error("Sector floor interval overlaps the previous interval");
         }
 
-        floor->floor.height = value;
+        WriteAndPropagate([&] { floor->floor.height = value; });
     }
 
     [[nodiscard]] float GetCeilingHeight() const {
@@ -1720,7 +1738,7 @@ struct ScriptSectorFloor {
             throw sol::error("Sector floor interval overlaps the next interval");
         }
 
-        floor->ceiling.height = value;
+        WriteAndPropagate([&] { floor->ceiling.height = value; });
     }
 
     [[nodiscard]] Vector4 GetFloorColor() const {
@@ -1732,7 +1750,7 @@ struct ScriptSectorFloor {
     void SetFloorColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        floor->floor.color = value;
+        WriteAndPropagate([&] { floor->floor.color = value; });
     }
 
     [[nodiscard]] Vector4 GetCeilingColor() const {
@@ -1744,7 +1762,7 @@ struct ScriptSectorFloor {
     void SetCeilingColor(const Vector4& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        floor->ceiling.color = value;
+        WriteAndPropagate([&] { floor->ceiling.color = value; });
     }
 
     [[nodiscard]] std::string GetFloorTexture() const {
@@ -1756,7 +1774,7 @@ struct ScriptSectorFloor {
     void SetFloorTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        floor->floor.texture = value;
+        WriteAndPropagate([&] { floor->floor.texture = value; });
     }
 
     void ClearFloorTexture() const {
@@ -1772,7 +1790,7 @@ struct ScriptSectorFloor {
     void SetCeilingTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        floor->ceiling.texture = value;
+        WriteAndPropagate([&] { floor->ceiling.texture = value; });
     }
 
     void ClearCeilingTexture() const {
@@ -1844,7 +1862,12 @@ struct ScriptSector {
     void SetLight(const Vector3 &value) const {
         Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid Sector");
+
+        const Vector3 lightBefore = sector->light;
         sector->light = value;
+
+        // Passes the change on to child sectors, same as the inspector.
+        level->PropagateSectorChanges(sectorID, sector->floors, lightBefore);
     }
 
     [[nodiscard]] int GetFloorCount() const {

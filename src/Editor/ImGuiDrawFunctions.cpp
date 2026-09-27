@@ -1144,6 +1144,65 @@ namespace ImGuiDrawFunctions {
         ImGui::PopID();
         EndSection();
 
+        // ── Parent Sector ────────────────────────────────────────────────────────
+        // Picked from the combo or dropped from the hierarchy. Attaching keeps
+        // every value as it is - from then on, edits to the parent move this
+        // sector's values by the same amount (Level::PropagateSectorChanges).
+
+        BeginSection(Get("sector.parent").c_str());
+        ImGui::PushID("SectorParent");
+
+        Level &level = LevelManager::CurrentLevel();
+
+        // Keyed by sector ID so an error doesn't follow the user to the next
+        // sector they select.
+        static ID lastParentEditSectorId = INVALID_ID;
+        static bool parentRejected = false;
+
+        if (lastParentEditSectorId != sector.id) {
+            lastParentEditSectorId = sector.id;
+            parentRejected = false;
+        }
+
+        const Sector *currentParent = level.GetSector(sector.parentID);
+        const std::string parentPreview = currentParent != nullptr ? DescribeSector(*currentParent) : "(None)";
+
+        ID requestedParent = sector.parentID;
+
+        const bool parentPicked = DrawLevelObjectRefField(
+            Get("sector.parent_field").c_str(), requestedParent, parentPreview,
+            MapEditorInternal::SECTOR_REF_PAYLOAD, "editor.tooltip.sector.parent",
+            [&level, &sector](ID &id, bool &changed) {
+                for (const Sector &candidate : level.sectors) {
+                    // The sector itself and its descendants would make a cycle.
+                    if (level.IsSectorAncestor(sector.id, candidate.id)) continue;
+
+                    const bool isSelected = candidate.id == id;
+
+                    if (ImGui::Selectable(DescribeSector(candidate).c_str(), isSelected)) {
+                        id = candidate.id;
+                        changed = true;
+                    }
+
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+            }
+        );
+
+        // Only a drop can get here with a cycle, the combo never lists one.
+        if (parentPicked) parentRejected = !level.SetSectorParent(sector.id, requestedParent);
+
+        if (parentRejected) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
+            ImGui::TextWrapped("%s", Get("sector.parent_cycle_error").c_str());
+            ImGui::PopStyleColor();
+        }
+
+        if (!sector.children.empty()) SmallMetaText("%s: %d", Get("sector.child_count").c_str(), static_cast<int>(sector.children.size()));
+
+        ImGui::PopID();
+        EndSection();
+
         // ── Scripts ──────────────────────────────────────────────────────────────
         // Sector scripts (Sector::scripts). Same per-script controls as an
         // entity's Script component (DrawScriptAttachmentFields), drawn

@@ -2247,6 +2247,10 @@ namespace {
         const SectorEditSnapshot beforeEdit =
                 multiEdit ? CaptureSectorEditSnapshot(sector) : SectorEditSnapshot{};
 
+        // Parent -> child propagation runs after multi-edit, so each edited
+        // sector in the selection passes its own change on to its children.
+        const auto parentsBeforeEdit = level.SnapshotParentSectorValues();
+
         if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, it->second, DRAGGABLE)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
@@ -2263,6 +2267,8 @@ namespace {
 
         if (multiEdit && PropagateSectorEdits(level, beforeEdit, sector, selectedSectors, selectedSectorID))
             hasUnsavedChanges = true;
+
+        level.PropagateSnapshottedSectorChanges(parentsBeforeEdit);
     }
 
     // Geometry Mode's inspector. This is the same

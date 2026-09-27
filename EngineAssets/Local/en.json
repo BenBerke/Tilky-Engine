@@ -775,6 +775,11 @@
   "sector.no_scripts": "No scripts attached.",
   "editor.tooltip.sector.add_script": "Attach a Lua script to this sector. The script gets a `sector` global that refers to this sector.",
   "editor.tooltip.sector.remove_script": "Detach this script from the sector.",
+  "sector.parent": "Parent Sector",
+  "sector.parent_field": "Parent",
+  "editor.tooltip.sector.parent": "Drag a sector here from the hierarchy, or pick one from the list. When the parent's values change, this sector's values change by the same amount.",
+  "sector.parent_cycle_error": "Can't use this sector as the parent: it is this sector or one of its children.",
+  "sector.child_count": "Child sectors",
   "wall.tags": "Tags",
   "entity.tags": "Tags"
 }

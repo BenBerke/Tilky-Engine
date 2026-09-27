@@ -864,6 +864,7 @@ namespace {
             sector.floors.clear();
 
             sector.id = LoadIDField(sectorJson, "id", static_cast<ID>(sectorIndex));
+            sector.parentID = LoadIDField(sectorJson, "parentID", static_cast<ID>(INVALID_ID));
 
             if (sector.id == INVALID_ID) sector.id = static_cast<ID>(sectorIndex);
 
@@ -1117,7 +1118,8 @@ namespace {
                 },
                 {"name", sector.name},
                 {"tags", sector.tags},
-                {"tagIds", sector.tagIds}
+                {"tagIds", sector.tagIds},
+                    {"parentID", sector.parentID}
             };
 
             // Only written when there is something to write, so levels
