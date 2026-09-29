@@ -884,6 +884,12 @@ namespace MapEditorInternal {
     // header. Defined in MapEditorUI.cpp.
     void DrawCountBadge(int count);
 
+    // Hierarchy row text for both editors: "Name  (#id)" once the object
+    // is named, "Sector #id" / "Wall #id" until then. Always the stable
+    // ID, so it matches the inspector header. Defined in MapEditorUI.cpp.
+    std::string SectorHierarchyLabel(const Sector& sector);
+    std::string WallHierarchyLabel(const Wall& wall);
+
     // Called once per frame from the UI pass. Turns an in-progress canvas
     // entity drag into an ImGui drag source while the cursor is over a
     // panel, so it can be dropped onto a script field. Defined in

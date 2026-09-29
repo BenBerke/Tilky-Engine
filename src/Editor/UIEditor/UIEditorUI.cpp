@@ -1110,7 +1110,7 @@ namespace {
                 ImGui::Indent();
 
                 for (const Sector& sector : level.sectors) {
-                    const std::string label = Get("editor.hierarchy.sector") + " #" + std::to_string(sector.id);
+                    const std::string label = SectorHierarchyLabel(sector);
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(sector.id));
@@ -1145,7 +1145,7 @@ namespace {
                 ImGui::Indent();
 
                 for (const Wall& wall : level.walls) {
-                    const std::string label = "Wall #" + std::to_string(wall.id);
+                    const std::string label = WallHierarchyLabel(wall);
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(wall.id));

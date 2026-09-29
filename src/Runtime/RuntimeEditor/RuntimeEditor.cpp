@@ -511,7 +511,7 @@ namespace RuntimeEditorUi {
             Wall& wall = level.walls[selectedWall];
 
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, selectedWall, DRAGGABLE);
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE);
 
             if (deleteRequested) {
                 level.walls.erase(level.walls.begin() + selectedWall);
@@ -540,7 +540,6 @@ namespace RuntimeEditorUi {
                 ImGuiDrawFunctions::DrawSectorEditor(
                     level.sectors[selectedSector],
                     &open,
-                    selectedSector,
                     true
                 );
 

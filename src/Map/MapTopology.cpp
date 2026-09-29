@@ -769,6 +769,7 @@ namespace {
     struct OldSectorInfo {
         ID id = INVALID_ID;
         ID parentID = INVALID_ID;
+        std::string name;
         std::vector<SectorFloor> floors;
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
         std::vector<SectorScript> scripts;
@@ -787,6 +788,7 @@ namespace {
 
             info.id = sector.id;
             info.parentID = sector.parentID;
+            info.name = sector.name;
             info.floors = sector.floors;
             info.lightValue = sector.light;
             info.scripts = sector.scripts;
@@ -927,12 +929,14 @@ namespace {
                 // children still point at its ID, so they stay with the keeper.
                 sector.parentID = reconciledFace.source->parentID;
 
-                // Scripts belong to the sector's identity, not to a piece of
-                // its area: only the face that keeps the old sector's ID
-                // (the "keeper", see ReconcileFaces) inherits them. Siblings
-                // split off with a fresh ID start with none, so a split
-                // never runs one script twice.
+                // Name and scripts belong to the sector's identity, not to a
+                // piece of its area: only the face that keeps the old
+                // sector's ID (the "keeper", see ReconcileFaces) inherits
+                // them. Siblings split off with a fresh ID start with none,
+                // so a split never runs one script twice or leaves two
+                // sectors answering to the same name.
                 if (reconciledFace.sectorID == reconciledFace.source->id) {
+                    sector.name = reconciledFace.source->name;
                     sector.scripts = reconciledFace.source->scripts;
                     sector.nextScriptInstanceID = reconciledFace.source->nextScriptInstanceID;
                 }

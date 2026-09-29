@@ -636,6 +636,8 @@ namespace {
             seenWallIDs.insert(wall.id);
             highestWallID = std::max(highestWallID, wall.id);
 
+            wall.name = wallJson.value("name", std::string{});
+
             LoadTagArrays(wallJson, "Wall", wall.id, wall.tags, wall.tagIds);
 
             level.walls.push_back(std::move(wall));
@@ -650,6 +652,7 @@ namespace {
         for (const Wall &wall: level.walls) {
             levelData["walls"].push_back({
                 {"id", wall.id},
+                {"name", wall.name},
                 {
                     "start", {
                         wall.start.x,

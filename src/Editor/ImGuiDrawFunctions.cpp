@@ -174,8 +174,9 @@ namespace {
     }
 
     std::string DescribeWall(const Wall &wall) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "Wall #%u", wall.id);
+        char buf[160];
+        if (wall.name.empty()) snprintf(buf, sizeof(buf), "Wall #%u", wall.id);
+        else snprintf(buf, sizeof(buf), "%s (#%u)", wall.name.c_str(), wall.id);
         return buf;
     }
 
@@ -775,7 +776,7 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawSectorEditor(Sector &sector, bool *open, const int sectorId, const bool draggable) {
+    bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable) {
         constexpr float MIN_ROOM_HEIGHT = 0.01f;
 
         bool deleteRequested = false;
@@ -795,9 +796,13 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        char idBuf[32] = "";
-        if (sectorId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", sectorId);
-        DrawInspectorHeader("Sector", idBuf);
+        DrawInspectorHeader("Sector", DescribeSector(sector).c_str());
+
+        BeginSection("Identity");
+        SmallMetaText("ID: %u", sector.id);
+        FieldWidth(220.0f);
+        ImGui::InputText(Get("sector.name").c_str(), &sector.name);
+        EndSection();
 
         for (size_t floorIndex = 0; floorIndex < sector.floors.size(); ++floorIndex) {
             ImGui::PushID(static_cast<int>(floorIndex));
@@ -1112,13 +1117,6 @@ namespace ImGuiDrawFunctions {
 
         EndSection();
 
-        // ── Meta ─────────────────────────────────────────────────────────────────
-
-        if (sectorId >= 0) {
-            ImGui::Spacing();
-            SmallMetaText("ID: %d", sector.id);
-        }
-
         // ── Tags ─────────────────────────────────────────────────────────────────
         // Placed immediately above the Delete button per the section
         // ordering below. See DrawTagsEditor for the shared row/assignment
@@ -1277,7 +1275,7 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawWallEditor(Wall &wall, bool *open, const int wallId, const bool draggable) {
+    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
@@ -1287,9 +1285,13 @@ namespace ImGuiDrawFunctions {
         }
 
         // ── Summary header ───────────────────────────────────────────────────
-        char idBuf[32] = "";
-        if (wallId >= 0) snprintf(idBuf, sizeof(idBuf), "#%d", wallId);
-        DrawInspectorHeader("Wall", idBuf);
+        DrawInspectorHeader("Wall", DescribeWall(wall).c_str());
+
+        BeginSection("Identity");
+        SmallMetaText("ID: %u", wall.id);
+        FieldWidth(220.0f);
+        ImGui::InputText(Get("wall.name").c_str(), &wall.name);
+        EndSection();
 
         // ── Sector Links ─────────────────────────────────────────────────────
         BeginSection("Sector Links");
@@ -1357,12 +1359,6 @@ namespace ImGuiDrawFunctions {
         ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &wall.flipTextureY);
 
         EndSection();
-
-        // ── Meta ─────────────────────────────────────────────────────────────
-        if (wallId >= 0) {
-            ImGui::Spacing();
-            SmallMetaText("ID: %d   internal id: %d", wallId, wall.id);
-        }
 
         // ── Tags ─────────────────────────────────────────────────────────────
         BeginSection(Get("wall.tags").c_str());

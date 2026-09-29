@@ -313,6 +313,17 @@ namespace MapEditorInternal {
         ImGui::TextUnformatted(label.c_str());
         ImGui::EndDragDropSource();
     }
+
+    std::string SectorHierarchyLabel(const Sector &sector) {
+        if (sector.name.empty())
+            return Localisation::Get("editor.hierarchy.sector") + " #" + std::to_string(sector.id);
+        return sector.name + "  (#" + std::to_string(sector.id) + ")";
+    }
+
+    std::string WallHierarchyLabel(const Wall &wall) {
+        if (wall.name.empty()) return "Wall #" + std::to_string(wall.id);
+        return wall.name + "  (#" + std::to_string(wall.id) + ")";
+    }
 }
 
 // =============================================================================
@@ -1578,7 +1589,7 @@ namespace {
                 ID sectorPendingDelete = INVALID_ID;
 
                 for (const Sector &sector: level.sectors) {
-                    const std::string label = Get("editor.hierarchy.sector") + " #" + std::to_string(sector.id);
+                    const std::string label = SectorHierarchyLabel(sector);
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(sector.id));
@@ -1652,7 +1663,7 @@ namespace {
                 ID wallPendingDelete = INVALID_ID;
 
                 for (const Wall &wall: level.walls) {
-                    const std::string label = "Wall #" + std::to_string(wall.id);
+                    const std::string label = WallHierarchyLabel(wall);
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(wall.id));
@@ -2271,7 +2282,7 @@ namespace {
         // sector in the selection passes its own change on to its children.
         const auto parentsBeforeEdit = level.SnapshotParentSectorValues();
 
-        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, it->second, DRAGGABLE)) {
+        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
             const std::vector<ID> sectorsToDelete =
@@ -2324,7 +2335,7 @@ namespace {
                 multiEdit ? CaptureWallEditSnapshot(wall) : WallEditSnapshot{};
 
         const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, it->second, DRAGGABLE);
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE);
 
         if (deleteRequested) {
             // DeleteSelectedWalls already handles the whole selection as one

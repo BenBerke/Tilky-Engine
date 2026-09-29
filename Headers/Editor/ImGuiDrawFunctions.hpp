@@ -31,11 +31,12 @@ namespace ImGuiDrawFunctions {
     // ── Inspector windows ─────────────────────────────────────────────────────
     // Returns true when the caller should delete the object.
     // `open`      – pointer to the bool controlling window visibility (may be null)
-    // `id`        – ≥0 shows the ID badge; pass -1 to hide it
     // `draggable` – use DragFloat widgets instead of InputFloat
+    // The header shows the object's own stable ID (sector.id / wall.id) -
+    // the same number the hierarchy shows - never its vector index.
 
-    bool DrawSectorEditor   (Sector &sector, bool *open, int sectorId,  bool draggable);
-    bool DrawWallEditor     (Wall   &wall,   bool *open, int wallId,    bool draggable);
+    bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable);
+    bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
     bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void SmallMetaText(const char* fmt, ...);
