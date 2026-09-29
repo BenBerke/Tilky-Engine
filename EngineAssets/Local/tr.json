@@ -29,6 +29,7 @@
   "editor.hierarchy": "Dünya Listesi",
   "editor.hierarchy.sectors": "Kesimler",
   "editor.hierarchy.entities": "Nesneler",
+  "editor.hierarchy.ui_entities": "UI Nesneleri",
   "editor.hierarchy.dots": "Noktalar",
   "editor.delete": "Sil",
   "editor.texture_none": "Doku Yok",

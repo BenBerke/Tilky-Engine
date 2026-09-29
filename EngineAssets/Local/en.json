@@ -61,6 +61,7 @@
   "editor.hierarchy": "Hierarchy",
   "editor.hierarchy.sectors": "Sectors",
   "editor.hierarchy.entities": "Entities",
+  "editor.hierarchy.ui_entities": "UI Entities",
   "editor.hierarchy.dots": "Dots",
   "editor.delete": "Delete",
   "editor.texture_none": "No Texture",

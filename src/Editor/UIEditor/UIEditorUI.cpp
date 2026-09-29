@@ -26,6 +26,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -102,13 +103,18 @@ namespace {
     // types - that would be inventing infrastructure you didn't ask for.
     // ---------------------------------------------------------------------
 
-    enum class UIComponentType { Transform, Text, Sprite };
+    // Script is the odd one out: an entity can carry several script
+    // instances, so it is always addable and is edited through the Map
+    // Editor's own component editor (see uiScriptEditorState below) rather
+    // than DrawUIComponentEditor().
+    enum class UIComponentType { Transform, Text, Sprite, Script };
 
     const char* UIComponentDisplayNameKey(const UIComponentType type) {
         switch (type) {
             case UIComponentType::Transform: return "editor.ui.transform.title";
             case UIComponentType::Text: return "editor.ui.text.title";
             case UIComponentType::Sprite: return "editor.ui.sprite.title";
+            case UIComponentType::Script: return "component.script";
         }
         return "";
     }
@@ -118,6 +124,7 @@ namespace {
             case UIComponentType::Transform: return entity.HasComponent<ComponentUITransform>();
             case UIComponentType::Text: return entity.HasComponent<ComponentUIText>();
             case UIComponentType::Sprite: return entity.HasComponent<ComponentUISprite>();
+            case UIComponentType::Script: return !entity.GetScripts().empty();
         }
         return false;
     }
@@ -134,8 +141,14 @@ namespace {
 
     UIEntityInspectorState uiEntityInspectorState;
 
+    // A UI entity is a normal entity, so it can carry scripts too. Their
+    // editor is the Map Editor's shared component editor - public fields,
+    // Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
+    ImGuiDrawFunctions::EntityInspectorState uiScriptEditorState;
+
     void ResetUIInspectorState() {
         uiEntityInspectorState = {};
+        uiScriptEditorState = {};
     }
 
     // Detects a selection change (from ANY source - hierarchy click, canvas
@@ -625,8 +638,8 @@ namespace {
     // real DrawEntityEditor() and its "Add Component" block.
     // ---------------------------------------------------------------------
 
-    void DrawUIComponentCard(const char* label, UIEntityInspectorState& state, const UIComponentType type) {
-        ImGui::PushID(static_cast<int>(type));
+    bool DrawUIComponentCard(const char* label, const std::string& rowID) {
+        ImGui::PushID(rowID.c_str());
 
         const ImVec2 rowMin = ImGui::GetCursorScreenPos();
         const float rowW = ImGui::GetContentRegionAvail().x;
@@ -640,28 +653,40 @@ namespace {
         ImGui::TextUnformatted(label);
         ImGui::SameLine(rowW - 56.0f);
 
-        if (ImGui::SmallButton("Edit")) {
-            state.selectedComponent = static_cast<int>(type);
-            state.editingComponent = true;
-        }
+        const bool editPressed = ImGui::SmallButton("Edit");
 
         ImGui::Unindent(6.0f);
         ImGui::Spacing();
         ImGui::PopID();
+        return editPressed;
     }
 
     void DrawUIComponentsSection(Entity& entity, UIEntityInspectorState& state) {
         ImGuiDrawFunctions::BeginSection("Components");
 
-        if (UIEntityHasComponent(entity, UIComponentType::Transform))
-            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Transform)).c_str(),
-                                 state, UIComponentType::Transform);
-        if (UIEntityHasComponent(entity, UIComponentType::Text))
-            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Text)).c_str(),
-                                 state, UIComponentType::Text);
-        if (UIEntityHasComponent(entity, UIComponentType::Sprite))
-            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Sprite)).c_str(),
-                                 state, UIComponentType::Sprite);
+        for (const UIComponentType type : {UIComponentType::Transform, UIComponentType::Text, UIComponentType::Sprite}) {
+            if (!UIEntityHasComponent(entity, type)) continue;
+
+            if (DrawUIComponentCard(Get(UIComponentDisplayNameKey(type)).c_str(),
+                                    std::to_string(static_cast<int>(type)))) {
+                state.selectedComponent = static_cast<int>(type);
+                state.editingComponent = true;
+            }
+        }
+
+        // One row per script instance, same as the Map Editor's list.
+        for (ComponentScript* script : entity.GetScripts()) {
+            const std::string displayName = script->fileName.empty()
+                ? std::string("Script (unassigned)")
+                : std::filesystem::path(script->fileName).filename().string();
+            const std::string label = script->enabled ? displayName : displayName + " (disabled)";
+
+            if (DrawUIComponentCard(label.c_str(), "script" + std::to_string(script->instanceID))) {
+                uiScriptEditorState.selectedComponent = CMP_SCRIPT;
+                uiScriptEditorState.editingComponent = true;
+                uiScriptEditorState.selectedScriptInstanceID = script->instanceID;
+            }
+        }
 
         ImGuiDrawFunctions::EndSection();
     }
@@ -680,33 +705,33 @@ namespace {
             std::vector<UIComponentType> addable;
             if (!UIEntityHasComponent(entity, UIComponentType::Text)) addable.push_back(UIComponentType::Text);
             if (!UIEntityHasComponent(entity, UIComponentType::Sprite)) addable.push_back(UIComponentType::Sprite);
+            // Always addable - an entity can hold several scripts - so this
+            // list is never empty.
+            addable.push_back(UIComponentType::Script);
 
-            if (addable.empty())
-                ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.component.all_added").c_str());
-            else {
-                if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
-                    state.componentToAdd = 0;
+            if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
+                state.componentToAdd = 0;
 
-                std::vector<std::string> names;
-                for (const UIComponentType type : addable) names.push_back(Get(UIComponentDisplayNameKey(type)));
+            std::vector<std::string> names;
+            for (const UIComponentType type : addable) names.push_back(Get(UIComponentDisplayNameKey(type)));
 
-                ImGuiDrawFunctions::FieldWidth(200.0f);
-                if (ImGui::BeginCombo(Get("component.component").c_str(), names[state.componentToAdd].c_str())) {
-                    for (int i = 0; i < static_cast<int>(addable.size()); ++i) {
-                        const bool isSelected = state.componentToAdd == i;
-                        if (ImGui::Selectable(names[i].c_str(), isSelected)) state.componentToAdd = i;
-                        if (isSelected) ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndCombo();
+            ImGuiDrawFunctions::FieldWidth(200.0f);
+            if (ImGui::BeginCombo(Get("component.component").c_str(), names[state.componentToAdd].c_str())) {
+                for (int i = 0; i < static_cast<int>(addable.size()); ++i) {
+                    const bool isSelected = state.componentToAdd == i;
+                    if (ImGui::Selectable(names[i].c_str(), isSelected)) state.componentToAdd = i;
+                    if (isSelected) ImGui::SetItemDefaultFocus();
                 }
+                ImGui::EndCombo();
+            }
 
-                if (ImGui::Button(Get("common.add").c_str())) {
-                    if (addable[state.componentToAdd] == UIComponentType::Text) entity.AddComponent<ComponentUIText>();
-                    else if (addable[state.componentToAdd] == UIComponentType::Sprite) entity.AddComponent<ComponentUISprite>();
-                    state.addingComponent = false;
-                    state.componentToAdd = 0;
-                    uiHasUnsavedChanges = true;
-                }
+            if (ImGui::Button(Get("common.add").c_str())) {
+                if (addable[state.componentToAdd] == UIComponentType::Text) entity.AddComponent<ComponentUIText>();
+                else if (addable[state.componentToAdd] == UIComponentType::Sprite) entity.AddComponent<ComponentUISprite>();
+                else if (addable[state.componentToAdd] == UIComponentType::Script) entity.AddScript().enabled = true;
+                state.addingComponent = false;
+                state.componentToAdd = 0;
+                uiHasUnsavedChanges = true;
             }
 
             ImGui::PopID();
@@ -910,6 +935,10 @@ namespace {
 
         if (uiEntityInspectorState.editingComponent && uiEntityInspectorState.selectedComponent != -1)
             DrawUIComponentEditor(*entity, uiEntityInspectorState);
+
+        if (uiScriptEditorState.editingComponent && uiScriptEditorState.selectedComponent != -1)
+            ImGuiDrawFunctions::DrawComponentEditor(*entity, uiScriptEditorState,
+                                                    &uiScriptEditorState.editingComponent, false);
     }
 
     // ---------------------------------------------------------------------
@@ -1003,58 +1032,190 @@ namespace {
         ImGui::Separator();
         Spacing();
 
-        int uiEntityCount = 0;
-        for (Entity& entity : level.entities) if (entity.GetComponent<ComponentUITransform>() != nullptr) ++uiEntityCount;
+        ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 12.0f);
 
-        if (uiEntityCount == 0) {
-            Spacing(2);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-            ImGui::TextWrapped("%s", Get("editor.ui.hierarchy.empty").c_str());
-            ImGui::PopStyleColor();
-            ImGui::End();
-            return;
-        }
+        // ---- UI Entities ----
+        {
+            int uiEntityCount = 0;
+            for (Entity& entity : level.entities) if (entity.HasComponent<ComponentUITransform>()) ++uiEntityCount;
 
-        ID entityPendingDelete = INVALID_ID;
+            const bool open = ImGui::CollapsingHeader(Get("editor.hierarchy.ui_entities").c_str(),
+                                                      ImGuiTreeNodeFlags_DefaultOpen);
+            DrawCountBadge(uiEntityCount);
 
-        for (Entity& entity : level.entities) {
-            const auto* uiTransform = entity.GetComponent<ComponentUITransform>();
-            if (uiTransform == nullptr) continue;
+            if (open) {
+                ImGui::Indent();
 
-            const std::string label = entity.name.empty()
-            ? (Get("editor.ui.hierarchy.unnamed") + " #" + std::to_string(entity.id)) : entity.name;
-            if (!matches(label)) continue;
+                if (uiEntityCount == 0) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                    ImGui::TextWrapped("%s", Get("editor.ui.hierarchy.empty").c_str());
+                    ImGui::PopStyleColor();
+                }
 
-            ImGui::PushID(static_cast<int>(entity.id));
+                ID entityPendingDelete = INVALID_ID;
 
-            const auto* entityText = entity.GetComponent<ComponentUIText>();
-            const auto* entitySprite = entity.GetComponent<ComponentUISprite>();
-            const bool hasText = entityText != nullptr && !entityText->text.empty();
-            const bool hasSprite = entitySprite != nullptr && !entitySprite->texture.empty();
+                for (Entity& entity : level.entities) {
+                    if (!entity.HasComponent<ComponentUITransform>()) continue;
 
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
-            ImGui::TextUnformatted(hasText && hasSprite ? "[T+S]" : hasText ? "[T]" : hasSprite ? "[S]" : "[.]");
-            ImGui::PopStyleColor();
-            ImGui::SameLine(0.0f, 6.0f);
+                    const std::string label = entity.name.empty()
+                    ? (Get("editor.ui.hierarchy.unnamed") + " #" + std::to_string(entity.id)) : entity.name;
+                    if (!matches(label)) continue;
 
-            const bool selected = selectedUIEntityID == entity.id;
-            if (ImGui::Selectable(label.c_str(), selected))
-                selectedUIEntityID = entity.id;
+                    ImGui::PushID(static_cast<int>(entity.id));
 
-            if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem(Get("editor.delete").c_str())) entityPendingDelete = entity.id;
-                ImGui::EndPopup();
+                    const auto* entityText = entity.GetComponent<ComponentUIText>();
+                    const auto* entitySprite = entity.GetComponent<ComponentUISprite>();
+                    const bool hasText = entityText != nullptr && !entityText->text.empty();
+                    const bool hasSprite = entitySprite != nullptr && !entitySprite->texture.empty();
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
+                    ImGui::TextUnformatted(hasText && hasSprite ? "[T+S]" : hasText ? "[T]" : hasSprite ? "[S]" : "[.]");
+                    ImGui::PopStyleColor();
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const bool selected = selectedUIEntityID == entity.id;
+                    if (ImGui::Selectable(label.c_str(), selected))
+                        selectedUIEntityID = entity.id;
+
+                    HierarchyRowDragSource(ENTITY_REF_PAYLOAD, entity.id, label);
+
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem(Get("editor.delete").c_str())) entityPendingDelete = entity.id;
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+
+                if (entityPendingDelete != INVALID_ID) {
+                    if (selectedUIEntityID == entityPendingDelete) selectedUIEntityID = INVALID_ID;
+                    level.DestroyEntity(entityPendingDelete);
+                    uiHasUnsavedChanges = true;
+                }
             }
-
-            ImGui::PopID();
         }
 
-        if (entityPendingDelete != INVALID_ID) {
-            if (selectedUIEntityID == entityPendingDelete) selectedUIEntityID = INVALID_ID;
-            level.DestroyEntity(entityPendingDelete);
-            uiHasUnsavedChanges = true;
+        // ---- Level objects (sectors, walls, non-UI entities) ----
+        // Listed so they can be dragged onto Entity/Wall/Sector fields from
+        // here too. They're edited in the Map Editor, so clicking one
+        // switches there and selects it - the same as a plain click on it in
+        // the Map Editor's own hierarchy.
+        {
+            const bool open = ImGui::CollapsingHeader(Get("editor.hierarchy.sectors").c_str());
+            DrawCountBadge(static_cast<int>(level.sectors.size()));
+
+            if (open) {
+                ImGui::Indent();
+
+                for (const Sector& sector : level.sectors) {
+                    const std::string label = Get("editor.hierarchy.sector") + " #" + std::to_string(sector.id);
+                    if (!matches(label)) continue;
+
+                    ImGui::PushID(static_cast<int>(sector.id));
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
+                    ImGui::TextUnformatted("[S]");
+                    ImGui::PopStyleColor();
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const bool selected = std::ranges::find(selectedSectors, sector.id) != selectedSectors.end();
+                    if (ImGui::Selectable(label.c_str(), selected)) {
+                        currentState = STATE_MAP;
+                        currentMode = MODE_SECTOR;
+                        SelectSector(sector.id);
+                        editingSector = selectedSectorID != INVALID_ID;
+                    }
+
+                    HierarchyRowDragSource(SECTOR_REF_PAYLOAD, sector.id, label);
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+            }
         }
 
+        {
+            const bool open = ImGui::CollapsingHeader("Walls");
+            DrawCountBadge(static_cast<int>(level.walls.size()));
+
+            if (open) {
+                ImGui::Indent();
+
+                for (const Wall& wall : level.walls) {
+                    const std::string label = "Wall #" + std::to_string(wall.id);
+                    if (!matches(label)) continue;
+
+                    ImGui::PushID(static_cast<int>(wall.id));
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
+                    ImGui::TextUnformatted("[W]");
+                    ImGui::PopStyleColor();
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const bool selected = std::ranges::find(selectedWalls, wall.id) != selectedWalls.end();
+                    if (ImGui::Selectable(label.c_str(), selected)) {
+                        currentState = STATE_MAP;
+                        if (currentMode != MODE_GEOMETRY) {
+                            const Mode previousMode = currentMode;
+                            currentMode = MODE_GEOMETRY;
+                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
+                        }
+                        SelectWall(wall.id);
+                    }
+
+                    HierarchyRowDragSource(WALL_REF_PAYLOAD, wall.id, label);
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+            }
+        }
+
+        {
+            int entityCount = 0;
+            for (Entity& entity : level.entities) if (!entity.HasComponent<ComponentUITransform>()) ++entityCount;
+
+            const bool open = ImGui::CollapsingHeader(Get("editor.hierarchy.entities").c_str());
+            DrawCountBadge(entityCount);
+
+            if (open) {
+                ImGui::Indent();
+
+                for (Entity& entity : level.entities) {
+                    if (entity.HasComponent<ComponentUITransform>()) continue;
+
+                    const std::string label = entity.name + "  (#" + std::to_string(entity.id) + ")";
+                    if (!matches(label)) continue;
+
+                    ImGui::PushID(static_cast<int>(entity.id));
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
+                    ImGui::TextUnformatted("[E]");
+                    ImGui::PopStyleColor();
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const bool selected = std::ranges::find(selectedEntities, entity.id) != selectedEntities.end();
+                    if (ImGui::Selectable(label.c_str(), selected)) {
+                        currentState = STATE_MAP;
+                        currentMode = MODE_ENTITY;
+                        SelectEntity(entity.id);
+                        editingEntity = !selectedEntities.empty();
+                    }
+
+                    HierarchyRowDragSource(ENTITY_REF_PAYLOAD, entity.id, label);
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+            }
+        }
+
+        ImGui::PopStyleVar();
         ImGui::End();
     }
 

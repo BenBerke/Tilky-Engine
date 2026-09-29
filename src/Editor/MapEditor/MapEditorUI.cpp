@@ -278,6 +278,44 @@ static bool RunExporter() {
 }
 
 // =============================================================================
+//  Hierarchy helpers shared with the UI Editor (declared in EditorInternal.hpp)
+// =============================================================================
+
+namespace MapEditorInternal {
+    // Small rounded count badge rendered inline (SameLine after the header).
+    void DrawCountBadge(const int count) {
+        if (count <= 0) return;
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), " %d ", count);
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.92f, 1.00f, 1.00f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 1.0f));
+        ImGui::SmallButton(buf);
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(4);
+    }
+
+    // Makes the hierarchy row just drawn draggable onto a matching
+    // Entity/Wall/Sector script field. The row's Selectable only fires on a
+    // click-release over itself, so dragging a row away never selects it
+    // (and never swaps the inspector the user is dropping into).
+    void HierarchyRowDragSource(const char *payloadType, const ID id, const std::string &label) {
+        if (!ImGui::BeginDragDropSource()) return;
+
+        const LevelObjectDragPayload payload{id, false};
+        ImGui::SetDragDropPayload(payloadType, &payload, sizeof(payload));
+
+        ImGui::TextUnformatted(label.c_str());
+        ImGui::EndDragDropSource();
+    }
+}
+
+// =============================================================================
 //  Anonymous namespace — all private UI state and drawing
 // =============================================================================
 
@@ -368,23 +406,6 @@ namespace {
         spdlog::info("Created new level: {}", levelName);
     }
 
-    // Small rounded count badge rendered inline (SameLine after the header).
-    void DrawCountBadge(const int count) {
-        if (count <= 0) return;
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), " %d ", count);
-
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.92f, 1.00f, 1.00f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 1.0f));
-        ImGui::SmallButton(buf);
-        ImGui::PopStyleVar(2);
-        ImGui::PopStyleColor(4);
-    }
 
     // =========================================================================
     //  DrawDockSpace
@@ -1476,20 +1497,6 @@ namespace {
     //  deferred deletion, copy-ID context menu
     // =========================================================================
 
-    // Makes the hierarchy row just drawn draggable onto a matching
-    // Entity/Wall/Sector script field. The row's Selectable only fires on a
-    // click-release over itself, so dragging a row away never selects it
-    // (and never swaps the inspector the user is dropping into).
-    void HierarchyRowDragSource(const char *payloadType, const ID id, const std::string &label) {
-        if (!ImGui::BeginDragDropSource()) return;
-
-        const LevelObjectDragPayload payload{id, false};
-        ImGui::SetDragDropPayload(payloadType, &payload, sizeof(payload));
-
-        ImGui::TextUnformatted(label.c_str());
-        ImGui::EndDragDropSource();
-    }
-
     void DrawHierarchyPanel(Level &level) {
         ImGui::Begin(Get("editor.hierarchy").c_str());
 
@@ -1710,13 +1717,20 @@ namespace {
             }
         }
 
-        // ---- Entities -----------------------------------------------------
-        {
-            const bool open = ImGui::CollapsingHeader(
-                Get("editor.hierarchy.entities").c_str(),
-                ImGuiTreeNodeFlags_DefaultOpen
-            );
-            DrawCountBadge(static_cast<int>(level.entities.size()));
+        // ---- Entities / UI Entities --------------------------------------
+        // Both live in level.entities; an entity carrying a UI transform is
+        // what the UI Editor edits, so it gets its own section here. Clicking
+        // one still opens the regular entity inspector - a UI entity is a
+        // normal entity (scripts, tags, ...), the UI Editor just owns its
+        // on-screen layout.
+        auto drawEntitySection = [&](const std::string &header, const bool uiEntities,
+                                     const char *tag, const ImVec4 &tagColor) {
+            int count = 0;
+            for (Entity &entity: level.entities)
+                if (entity.HasComponent<ComponentUITransform>() == uiEntities) ++count;
+
+            const bool open = ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            DrawCountBadge(count);
 
             if (open) {
                 ImGui::Indent();
@@ -1724,13 +1738,15 @@ namespace {
                 ID entityPendingDelete = INVALID_ID;
 
                 for (Entity &entity: level.entities) {
+                    if (entity.HasComponent<ComponentUITransform>() != uiEntities) continue;
+
                     const std::string label = entity.name + "  (#" + std::to_string(entity.id) + ")";
                     if (!matches(label)) continue;
 
                     ImGui::PushID(static_cast<int>(entity.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
-                    ImGui::TextUnformatted("[E]");
+                    ImGui::PushStyleColor(ImGuiCol_Text, tagColor);
+                    ImGui::TextUnformatted(tag);
                     ImGui::PopStyleColor();
 
                     ImGui::SameLine(0.0f, 6.0f);
@@ -1782,11 +1798,15 @@ namespace {
                         editingEntity = false;
                         ResetInspectorState();
                     }
+                    if (selectedUIEntityID == entityPendingDelete) selectedUIEntityID = INVALID_ID;
                     level.DestroyEntity(entityPendingDelete);
                     hasUnsavedChanges = true;
                 }
             }
-        }
+        };
+
+        drawEntitySection(Get("editor.hierarchy.entities"), false, "[E]", ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
+        drawEntitySection(Get("editor.hierarchy.ui_entities"), true, "[UI]", ImVec4(0.95f, 0.80f, 1.00f, 1.00f));
 
         // Dots deliberately have no hierarchy section: they are internal
         // snap anchors, not user-facing objects (see EditorInternal.hpp).

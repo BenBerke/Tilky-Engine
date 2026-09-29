@@ -875,6 +875,15 @@ namespace MapEditorInternal {
         bool fromCanvas = false;
     };
 
+    // Makes the hierarchy row just drawn draggable onto a matching
+    // Entity/Wall/Sector field. Used by both the Map Editor's and the UI
+    // Editor's hierarchies. Defined in MapEditorUI.cpp.
+    void HierarchyRowDragSource(const char* payloadType, ID id, const std::string& label);
+
+    // Small rounded count badge drawn SameLine after a hierarchy section
+    // header. Defined in MapEditorUI.cpp.
+    void DrawCountBadge(int count);
+
     // Called once per frame from the UI pass. Turns an in-progress canvas
     // entity drag into an ImGui drag source while the cursor is over a
     // panel, so it can be dropped onto a script field. Defined in

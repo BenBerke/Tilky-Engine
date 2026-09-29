@@ -26,6 +26,7 @@
   "editor.hierarchy": "Йерархия",
   "editor.hierarchy.sectors": "Сектори",
   "editor.hierarchy.entities": "Обекти",
+  "editor.hierarchy.ui_entities": "UI обекти",
   "editor.hierarchy.dots": "Точки",
   "editor.delete": "Изтрий",
   "editor.texture_none": "Без текстура",
