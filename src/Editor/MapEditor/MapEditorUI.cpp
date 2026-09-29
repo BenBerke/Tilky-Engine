@@ -3316,7 +3316,9 @@ namespace MapEditorInternal {
             if (pendingSectorParams.floors.empty()) pendingSectorParams.floors.resize(1);
             else if (pendingSectorParams.floors.size() > 1) pendingSectorParams.floors.resize(1);
 
-            auto &[floor, ceiling] = pendingSectorParams.floors.front();
+            SectorFloor& pendingFloor = pendingSectorParams.floors.front();
+            SectorSurface& floor = pendingFloor.floor;
+            SectorSurface& ceiling = pendingFloor.ceiling;
 
             floor.height = floorHeight;
             floor.color = floorColor;

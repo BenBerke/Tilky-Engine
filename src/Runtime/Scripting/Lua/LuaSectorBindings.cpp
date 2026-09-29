@@ -45,6 +45,16 @@ namespace {
             Method("GetNeighbor", {Param("index", "integer")}, "Sector", "1-based."),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this sector has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
+            Method("MoveFloorToCeiling", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?")}, {},
+                   "Moves floor `floorIndex` (1-based) toward its ceiling at `speed` units/s, stopping `gap` below it (default 0). The move runs by itself every frame; starting another replaces it."),
+            Method("MoveCeilingToFloor", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?")}, {},
+                   "Moves the ceiling of floor `floorIndex` (1-based) toward its floor at `speed` units/s, stopping `gap` above it (default 0)."),
+            Method("MoveFloorToCeilingOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?")}, {},
+                   "Like MoveFloorToCeiling, but arrives after `seconds` instead of moving at a set speed."),
+            Method("MoveCeilingToFloorOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?")}, {},
+                   "Like MoveCeilingToFloor, but arrives after `seconds` instead of moving at a set speed."),
+            Method("IsMoving", {Param("floorIndex", "integer")}, "boolean", "True while the floor or ceiling of floor `floorIndex` is still moving."),
+            Method("StopMoving", {Param("floorIndex", "integer")}, {}, "Stops floor `floorIndex`'s floor and ceiling where they are."),
         }));
     }
 }
@@ -158,6 +168,34 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "GetEntity", &ScriptSector::GetEntity,
         "GetNeighbor", &ScriptSector::GetNeighbor,
         "HasTag", &ScriptSector::HasTag,
-        "GetTag", &ScriptSector::GetTag
+        "GetTag", &ScriptSector::GetTag,
+
+        // Each move has a gap-less overload that leaves the default gap (0).
+        "MoveFloorToCeiling", sol::overload(
+            &ScriptSector::MoveFloorToCeiling,
+            [](const ScriptSector& self, const int floorIndex, const float speed) {
+                self.MoveFloorToCeiling(floorIndex, speed, 0.0f);
+            }
+        ),
+        "MoveCeilingToFloor", sol::overload(
+            &ScriptSector::MoveCeilingToFloor,
+            [](const ScriptSector& self, const int floorIndex, const float speed) {
+                self.MoveCeilingToFloor(floorIndex, speed, 0.0f);
+            }
+        ),
+        "MoveFloorToCeilingOverTime", sol::overload(
+            &ScriptSector::MoveFloorToCeilingOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float seconds) {
+                self.MoveFloorToCeilingOverTime(floorIndex, seconds, 0.0f);
+            }
+        ),
+        "MoveCeilingToFloorOverTime", sol::overload(
+            &ScriptSector::MoveCeilingToFloorOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float seconds) {
+                self.MoveCeilingToFloorOverTime(floorIndex, seconds, 0.0f);
+            }
+        ),
+        "IsMoving", &ScriptSector::IsMoving,
+        "StopMoving", &ScriptSector::StopMoving
     );
 }

@@ -1699,14 +1699,8 @@ struct ScriptSectorFloor {
         Sector* sector = GetSector();
         SectorFloor* floor = GetSectorFloor();
 
-        if (sector == nullptr || floor == nullptr) {
-            throw sol::error("Invalid SectorFloor");
-        }
-
-        if (value >= floor->ceiling.height) {
-            throw sol::error("Sector floor height must be below its ceiling");
-        }
-
+        if (sector == nullptr || floor == nullptr) throw sol::error("Invalid SectorFloor");
+        if (value >= floor->ceiling.height) throw sol::error("Sector floor height must be below its ceiling");
         if (floorIndex > 0 &&
             value < sector->floors[floorIndex - 1].ceiling.height) {
             throw sol::error("Sector floor interval overlaps the previous interval");
@@ -1725,14 +1719,8 @@ struct ScriptSectorFloor {
         Sector* sector = GetSector();
         SectorFloor* floor = GetSectorFloor();
 
-        if (sector == nullptr || floor == nullptr) {
-            throw sol::error("Invalid SectorFloor");
-        }
-
-        if (value <= floor->floor.height) {
-            throw sol::error("Sector ceiling height must be above its floor");
-        }
-
+        if (sector == nullptr || floor == nullptr) throw sol::error("Invalid SectorFloor");
+        if (value <= floor->floor.height) throw sol::error("Sector ceiling height must be above its floor");
         if (floorIndex + 1 < static_cast<int>(sector->floors.size()) &&
             value > sector->floors[floorIndex + 1].floor.height) {
             throw sol::error("Sector floor interval overlaps the next interval");
@@ -1891,6 +1879,49 @@ struct ScriptSector {
             .sectorID = sectorID,
             .floorIndex = index
         };
+    }
+
+    // Floor/ceiling movement. The moving itself is SectorFloor's
+    // (SurfaceMove / UpdateMovement, ticked by Level::UpdateSectorMovement),
+    // these only validate the Lua arguments and start or query it.
+    [[nodiscard]] SectorFloor& GetMovableFloor(const int luaIndex) const {
+        SectorFloor* floor = GetFloor(luaIndex).GetSectorFloor();
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
+        return *floor;
+    }
+
+    static void CheckMoveArguments(const float speedOrSeconds, const float gap, const bool isDuration) {
+        if (isDuration ? speedOrSeconds < 0.0f : speedOrSeconds <= 0.0f)
+            throw sol::error(isDuration ? "Move time must not be negative" : "Move speed must be above 0");
+        if (gap < 0.0f) throw sol::error("Move gap must not be negative");
+    }
+
+    void MoveFloorToCeiling(const int luaIndex, const float speed, const float gap) const {
+        CheckMoveArguments(speed, gap, false);
+        GetMovableFloor(luaIndex).MoveFloorToCeiling(speed, gap);
+    }
+
+    void MoveCeilingToFloor(const int luaIndex, const float speed, const float gap) const {
+        CheckMoveArguments(speed, gap, false);
+        GetMovableFloor(luaIndex).MoveCeilingToFloor(speed, gap);
+    }
+
+    void MoveFloorToCeilingOverTime(const int luaIndex, const float seconds, const float gap) const {
+        CheckMoveArguments(seconds, gap, true);
+        GetMovableFloor(luaIndex).MoveFloorToCeilingOverTime(seconds, gap);
+    }
+
+    void MoveCeilingToFloorOverTime(const int luaIndex, const float seconds, const float gap) const {
+        CheckMoveArguments(seconds, gap, true);
+        GetMovableFloor(luaIndex).MoveCeilingToFloorOverTime(seconds, gap);
+    }
+
+    [[nodiscard]] bool IsMoving(const int luaIndex) const {
+        return GetMovableFloor(luaIndex).IsMoving();
+    }
+
+    void StopMoving(const int luaIndex) const {
+        GetMovableFloor(luaIndex).StopMoving();
     }
 
     [[nodiscard]] int GetVertexCount() const {

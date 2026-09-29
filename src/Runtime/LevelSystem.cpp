@@ -249,6 +249,12 @@ namespace LevelSystem {
             scriptingSystem.Update(level);
         }
 
+        {
+            // After scripts, so a move started this frame already moves.
+            ZoneScopedN("Sector Movement");
+            level.UpdateSectorMovement(GameTime::deltaTime);
+        }
+
         if (activeController != nullptr && activeController->isActive) {
             const ID ownerID = activeController->ownerID;
 

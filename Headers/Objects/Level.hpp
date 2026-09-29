@@ -121,6 +121,11 @@ struct Level {
     void PropagateSectorChanges(ID sectorID, const std::vector<SectorFloor>& floorsBefore,
                                 const Vector3& lightBefore, const std::vector<ID>& skip = {});
 
+    // Advances every moving floor/ceiling (SectorFloor::UpdateMovement) by
+    // `deltaTime` and passes the change on to the sector's children, same as
+    // a height written from Lua.
+    void UpdateSectorMovement(float deltaTime);
+
     struct SectorValuesSnapshot {
         ID id = INVALID_ID;
         std::vector<SectorFloor> floors;

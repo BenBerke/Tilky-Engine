@@ -385,6 +385,31 @@ void Level::PropagateSectorChanges(const ID sectorID, const std::vector<SectorFl
     }
 }
 
+void Level::UpdateSectorMovement(const float deltaTime) {
+    for (Sector& sector : sectors) {
+        if (std::ranges::none_of(sector.floors, &SectorFloor::IsMoving)) continue;
+
+        std::vector<SectorFloor> floorsBefore;
+        if (!sector.children.empty()) floorsBefore = sector.floors;
+
+        bool changed = false;
+
+        for (size_t i = 0; i < sector.floors.size(); ++i) {
+            const float lowest = i > 0
+                ? sector.floors[i - 1].ceiling.height
+                : -std::numeric_limits<float>::infinity();
+            const float highest = i + 1 < sector.floors.size()
+                ? sector.floors[i + 1].floor.height
+                : std::numeric_limits<float>::infinity();
+
+            changed |= sector.floors[i].UpdateMovement(deltaTime, lowest, highest);
+        }
+
+        if (changed && !sector.children.empty())
+            PropagateSectorChanges(sector.id, floorsBefore, sector.light);
+    }
+}
+
 std::vector<Level::SectorValuesSnapshot> Level::SnapshotParentSectorValues() const {
     std::vector<SectorValuesSnapshot> snapshots;
 

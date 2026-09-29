@@ -1,7 +1,10 @@
 #ifndef TILKY_ENGINE_SECTOR_H
 #define TILKY_ENGINE_SECTOR_H
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -39,9 +42,95 @@ struct SectorSurface {
     bool flipTextureY = false;
 };
 
+// A floor or ceiling travelling toward the opposite surface of its
+// SectorFloor. Started from Lua (Sector:MoveFloorToCeiling and friends) and
+// advanced once per frame by SectorFloor::UpdateMovement. Runtime-only state:
+// never serialized.
+struct SurfaceMove {
+    bool active = false;
+    float speed = 0.0f; // units per second
+    float gap = 0.0f;   // distance to stop short of the opposite surface
+};
+
 struct SectorFloor {
     SectorSurface floor;
     SectorSurface ceiling;
+
+    SurfaceMove floorMove;
+    SurfaceMove ceilingMove;
+
+    // A move never closes the room completely: the floor has to stay below
+    // its ceiling, so any smaller gap is raised to this.
+    static constexpr float MIN_MOVE_GAP = 0.01f;
+
+    // Where each move stops. Follows the opposite surface, so a floor moving
+    // up still stops `gap` below a ceiling that is itself moving.
+    [[nodiscard]] float FloorMoveTarget() const { return ceiling.height - floorMove.gap; }
+    [[nodiscard]] float CeilingMoveTarget() const { return floor.height + ceilingMove.gap; }
+
+    void MoveFloorToCeiling(const float speed, const float gap) {
+        floorMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
+    }
+
+    void MoveCeilingToFloor(const float speed, const float gap) {
+        ceilingMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
+    }
+
+    // Same as above, with the speed picked so the move takes `seconds` from
+    // the current heights. 0 seconds snaps on the next update.
+    void MoveFloorToCeilingOverTime(const float seconds, const float gap) {
+        MoveFloorToCeiling(0.0f, gap);
+        floorMove.speed = SpeedForDuration(FloorMoveTarget() - floor.height, seconds);
+    }
+
+    void MoveCeilingToFloorOverTime(const float seconds, const float gap) {
+        MoveCeilingToFloor(0.0f, gap);
+        ceilingMove.speed = SpeedForDuration(CeilingMoveTarget() - ceiling.height, seconds);
+    }
+
+    [[nodiscard]] bool IsMoving() const {
+        return floorMove.active || ceilingMove.active;
+    }
+
+    void StopMoving() {
+        floorMove.active = false;
+        ceilingMove.active = false;
+    }
+
+    // Advances the active moves by `deltaTime` seconds. `lowest`/`highest`
+    // are the heights this interval may not leave (the previous interval's
+    // ceiling and the next one's floor). Returns true if a height changed.
+    bool UpdateMovement(const float deltaTime, const float lowest, const float highest) {
+        const float floorBefore = floor.height;
+        const float ceilingBefore = ceiling.height;
+
+        if (floorMove.active) {
+            const float target = std::max(FloorMoveTarget(), lowest);
+            floor.height = MoveToward(floor.height, target, floorMove.speed * deltaTime);
+            if (floor.height == target) floorMove.active = false;
+        }
+
+        if (ceilingMove.active) {
+            const float target = std::min(CeilingMoveTarget(), highest);
+            ceiling.height = MoveToward(ceiling.height, target, ceilingMove.speed * deltaTime);
+            if (ceiling.height == target) ceilingMove.active = false;
+        }
+
+        return floor.height != floorBefore || ceiling.height != ceilingBefore;
+    }
+
+private:
+    static float SpeedForDuration(const float distance, const float seconds) {
+        if (seconds <= 0.0f) return std::numeric_limits<float>::infinity();
+        return std::abs(distance) / seconds;
+    }
+
+    // Written as !(maxDelta < distance) so an infinite speed times a zero
+    // deltaTime (NaN) snaps to the target instead of poisoning the height.
+    static float MoveToward(const float current, const float target, const float maxDelta) {
+        if (!(maxDelta < std::abs(target - current))) return target;
+        return target > current ? current + maxDelta : current - maxDelta;
+    }
 };
 
 // A Lua script attached to a sector. Deliberately NOT a ComponentScript and

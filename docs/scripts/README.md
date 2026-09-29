@@ -11,7 +11,7 @@ its public fields.
 | [03_player.md](03_player.md) | Crouch, double jump, speed zones, jump pads |
 | [04_entity_movement.md](04_entity_movement.md) | Patrol, orbit, bob & spin, follow, keyboard mover |
 | [05_doors.md](05_doors.md) | Automatic, use-key, locked, and switch-controlled doors |
-| [06_lifts_and_platforms.md](06_lifts_and_platforms.md) | Lifts, call-button elevators, crushers, rising lava |
+| [06_lifts_and_platforms.md](06_lifts_and_platforms.md) | Built-in floor/ceiling movement, lifts, call-button elevators, crushers, rising lava |
 | [07_lighting.md](07_lighting.md) | Flicker, pulse, alarm strobe, day/night, light switch |
 | [08_walls_and_textures.md](08_walls_and_textures.md) | Scrolling textures, texture switches, color cycling |
 | [09_interaction.md](09_interaction.md) | Look-and-press interaction, levers, hitscan weapon |
@@ -50,7 +50,7 @@ console and logged, and the script keeps running.
 | Name | What it is |
 |------|------------|
 | `entity` | The Entity this script is on. On a sector script it is an invalid placeholder (`entity.isValid == false`) |
-| `sector` | Sector scripts only: the sector the script is on |
+| `sector` | Sector scripts only: the sector the script is on. Its `MoveFloorToCeiling`/`MoveCeilingToFloor` (and `...OverTime`) move a floor or ceiling for you, see [06_lifts_and_platforms.md](06_lifts_and_platforms.md) |
 | `GameTime` | `deltaTime`, `fixedDeltaTime`, `osTime` (wall-clock seconds since 1970, UTC) |
 | `Input` | Keyboard and mouse: `GetKey`, `GetKeyDown`, `GetKeyUp`, `GetMouseButton*`, `GetMousePosition` |
 | `Game` | `Raycast(...)`, `LoadLevel(name)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |

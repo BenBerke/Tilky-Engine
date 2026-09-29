@@ -14,6 +14,10 @@ Both setters enforce that the floor stays below the ceiling (and doesn't overlap
 in the same sector), so give lifts a ceiling comfortably above their highest stop, and write the
 values through `pcall` like the door scripts do.
 
+For the common case of "move this floor up to the ceiling" (or the ceiling down to the floor) you
+don't have to write the movement yourself: see [Built-in floor and ceiling movement](#built-in-floor-and-ceiling-movement)
+below.
+
 To know whether the player is standing in the sector, ask the sector which entities are inside:
 
 ```lua
@@ -21,6 +25,125 @@ local playerIsInside = false
 
 for i = 1, sector.entityCount do
     if sector:GetEntity(i).id == player.id then playerIsInside = true end
+end
+```
+
+---
+
+## Built-in floor and ceiling movement
+
+`Sector` has built-in functions that move one floor interval's floor or ceiling toward the other
+surface for you. You call them once, and the engine moves the surface a bit every frame until it
+arrives, so there is no `Update` code and no `pcall` needed.
+
+```lua
+sector:MoveFloorToCeiling(floorIndex, speed, gap)          -- speed in units/s
+sector:MoveCeilingToFloor(floorIndex, speed, gap)
+sector:MoveFloorToCeilingOverTime(floorIndex, seconds, gap) -- arrives after `seconds`
+sector:MoveCeilingToFloorOverTime(floorIndex, seconds, gap)
+
+sector:IsMoving(floorIndex)   -- true while that floor or ceiling is still moving
+sector:StopMoving(floorIndex) -- stops both where they are
+```
+
+| Parameter | Meaning |
+|-----------|---------|
+| `floorIndex` | Which floor interval of the sector to move, 1-based like `GetFloor` |
+| `speed` | Units per second. Must be above 0 |
+| `seconds` | How long the move takes, measured from the heights when you call it. `0` snaps on the next frame |
+| `gap` | Optional, default `0`. How far short of the other surface to stop. `MoveFloorToCeiling(1, 30, 10)` leaves 10 units between floor and ceiling |
+
+Lua has no overloading on "a number that means speed" vs "a number that means seconds", so the
+timed versions have their own `...OverTime` names. `gap` can be left out of all four.
+
+**How they behave**
+
+- The target follows the other surface. The floor stops `gap` below the ceiling's *current*
+  height, so it still stops in the right place if something else moves the ceiling meanwhile.
+- If the surfaces are already closer than `gap`, the surface moves *away* until the gap is
+  reached. `sector:MoveCeilingToFloor(1, 60, 40)` on a closed door opens it to 40 units.
+- A gap below `0.01` is raised to `0.01`: a floor can never touch its ceiling. A negative gap,
+  a speed of 0 or less, or a negative time raises an error.
+- The floor and the ceiling of an interval move independently, so both can move at once. Starting
+  a new move on the same surface replaces the old one.
+- A surface never moves into the interval above or below it in the same sector.
+- Child sectors follow the move, same as when you write `floorHeight` yourself.
+- Writing `floorHeight`/`ceilingHeight` directly doesn't cancel a move. Call `StopMoving` first.
+
+### One-shot lift with the built-in movement
+
+**Attach to:** the lift sector.
+
+When the player steps on, the floor rises to 16 units below the ceiling over two seconds.
+
+```lua
+-- Scripts/Platforms/OneShotLift.lua (sector script)
+---@field player Entity @ Player
+player = nil
+
+---@field travelTime number @ Travel Time (s)
+travelTime = 2
+
+---@field headroom number @ Space Left Under Ceiling
+headroom = 16
+
+local started = false
+
+local function PlayerIsInside()
+    for i = 1, sector.entityCount do
+        if sector:GetEntity(i).id == player.id then return true end
+    end
+    return false
+end
+
+function Update()
+    if started or player == nil or not player.isValid then return end
+
+    if PlayerIsInside() then
+        started = true
+        sector:MoveFloorToCeilingOverTime(1, travelTime, headroom)
+    end
+end
+```
+
+### Door with the built-in movement
+
+**Attach to:** the door sector. Its ceiling starts closed (down at the floor).
+
+Press the use key inside the sector to open the door, and again to close it.
+
+```lua
+-- Scripts/Doors/BuiltinDoor.lua (sector script)
+---@field player Entity @ Player
+player = nil
+
+---@field openHeight number @ Open Height
+openHeight = 40
+
+---@field speed number @ Speed
+speed = 60
+
+---@field useKey string @ Use Key
+useKey = "E"
+
+local open = false
+
+local function PlayerIsInside()
+    for i = 1, sector.entityCount do
+        if sector:GetEntity(i).id == player.id then return true end
+    end
+    return false
+end
+
+function Update()
+    if player == nil or not player.isValid then return end
+    if not Input.GetKeyDown(useKey) or not PlayerIsInside() then return end
+
+    open = not open
+
+    -- A gap larger than the current opening moves the ceiling up (away
+    -- from the floor), a gap of 0 closes it.
+    sector:MoveCeilingToFloor(1, speed, open and openHeight or 0)
 end
 ```
 
