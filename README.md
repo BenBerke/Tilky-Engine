@@ -260,7 +260,7 @@ end
 | **Profiling**                 | Tracy                                 |
 | **Serialization**             | nlohmann/json                         |
 | **Logging**                   | spdlog                                |
-| **Assets**                    | SDL3_image, SDL3_ttf, FreeType        |
+| **Assets**                    | SDL3_image, SDL3_ttf, FreeType, Assimp        |
 | **Build System**              | CMake, Ninja                          |
 | **Dependency Management**     | vcpkg                                 |
 | **Exporter and Helper Tools** | C++20                                 |
