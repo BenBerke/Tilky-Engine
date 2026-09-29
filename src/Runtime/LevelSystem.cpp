@@ -86,9 +86,7 @@ namespace {
 
     ComponentPlayerController *activeController = nullptr;
 
-    //todo Add C# as well
     LuaScriptSystem scriptingSystem;
-    //CSharpScriptSystem scriptingSystem;
     bool scriptingInitialized = false;
 
     bool EnsureScriptingInitialized() {
@@ -158,6 +156,7 @@ namespace LevelSystem {
     }
 
     void Start(Level &level) {
+        ZoneScopedN("LevelSystemStart");
         if (!EnsureScriptingInitialized()) return;
 
         SoundManager::SetListenerGain(level.listenerSettings.masterGain);
@@ -233,8 +232,10 @@ namespace LevelSystem {
             }
         } else spdlog::info("Level started without an active player controller");
 
-        scriptingSystem.Start(level);
-
+        {
+            ZoneScopedN("Scripting System Start");
+            scriptingSystem.Start(level);
+        }
         // Future level start systems will run here.
     }
 

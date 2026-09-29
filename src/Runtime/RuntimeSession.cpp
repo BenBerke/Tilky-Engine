@@ -54,6 +54,7 @@ namespace {
 #endif
 
     bool StartRenderer(const std::string& windowName, const bool useEditorCamera) {
+        ZoneScopedN("StartRenderer");
         // TODO: TILKY_TODO Try Vulkan first when Vulkan support is ready.
         renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
 
