@@ -326,11 +326,20 @@ namespace LevelSystem {
                     continue;
                 }
 
-                if (level.rigidbodies.Get(transform.ownerID) == nullptr || !transform.isDirty) continue;
+                if (!transform.isDirty) continue;
+
+                // Every moved entity updates its sector, not only physics
+                // bodies: a script moving a plain entity has to show up in
+                // Sector:ContainsEntity and OnEntityEnter too.
                 const int oldSectorIndex = transform.sectorIndex;
                 transform.UpdateObjectSectorAndFloor(level.sectors);
 
                 const int newSectorIndex = transform.sectorIndex;
+
+                // Step-down below is for physics bodies only, and needs a
+                // sector on both sides (-1 means outside the map).
+                if (level.rigidbodies.Get(transform.ownerID) == nullptr) continue;
+                if (oldSectorIndex < 0 || newSectorIndex < 0) continue;
 
                 // UpdateObjectSectorAndFloor() shouldn't change the transform position
                 // Doing this is technically slower but it is cleaner
@@ -388,6 +397,12 @@ namespace LevelSystem {
                     }
                 }
             }
+        }
+
+        {
+            // After every position and sector change of the frame.
+            ZoneScopedN("Sector Occupancy Events");
+            scriptingSystem.DispatchSectorOccupancyEvents(level);
         }
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;

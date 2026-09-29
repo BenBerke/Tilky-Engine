@@ -5,10 +5,15 @@
 #ifndef TILKY_ENGINE_WRAPPERS_HPP
 #define TILKY_ENGINE_WRAPPERS_HPP
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
+#include <tuple>
+#include <vector>
 
 #include <sol/error.hpp>
 
+#include "Headers/Math/Constants.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
@@ -1854,6 +1859,9 @@ struct ScriptSector {
         const Vector3 lightBefore = sector->light;
         sector->light = value;
 
+        // Setting the light directly overrides a FadeLight in progress.
+        sector->lightFade.active = false;
+
         // Passes the change on to child sectors, same as the inspector.
         level->PropagateSectorChanges(sectorID, sector->floors, lightBefore);
     }
@@ -2057,6 +2065,236 @@ struct ScriptSector {
             throw sol::error("Sector tag index out of range");
 
         return sector->tags[index];
+    }
+
+    // ---------------------------------------------------------------------
+    // Everything below backs the Sector functions listed in docs/sector.md.
+    // ---------------------------------------------------------------------
+
+    [[nodiscard]] Sector& RequireSector() const {
+        Sector* sector = GetSector();
+        if (sector == nullptr) throw sol::error("Invalid Sector");
+        return *sector;
+    }
+
+    // ---- Occupancy ------------------------------------------------------
+    // Read from Sector::entitiesInside, which
+    // ComponentTransform::UpdateObjectSectorAndFloor keeps current as
+    // entities move. An entity is inside exactly one sector - the innermost
+    // one containing its (x, z) position, height ignored - so an entity
+    // standing in a child sector (a pillar, a platform) is not inside the
+    // parent. Entities without a Transform are never inside any sector.
+
+    [[nodiscard]] bool ContainsEntity(const ScriptEntity& entity) const {
+        const Sector& sector = RequireSector();
+        return std::ranges::find(sector.entitiesInside, entity.ownerID) != sector.entitiesInside.end();
+    }
+
+    [[nodiscard]] bool ContainsEntityWithTag(const std::string& tag) const {
+        const Sector& sector = RequireSector();
+
+        return std::ranges::any_of(sector.entitiesInside, [&](const ID id) {
+            return ScriptEntity{level, id}.HasTag(tag);
+        });
+    }
+
+    [[nodiscard]] std::vector<ScriptEntity> GetEntities() const {
+        const Sector& sector = RequireSector();
+
+        std::vector<ScriptEntity> result;
+        result.reserve(sector.entitiesInside.size());
+        for (const ID id : sector.entitiesInside) result.push_back({level, id});
+        return result;
+    }
+
+    [[nodiscard]] std::vector<ScriptEntity> GetEntitiesWithTag(const std::string& tag) const {
+        const Sector& sector = RequireSector();
+
+        std::vector<ScriptEntity> result;
+        for (const ID id : sector.entitiesInside) {
+            const ScriptEntity entity{level, id};
+            if (entity.HasTag(tag)) result.push_back(entity);
+        }
+        return result;
+    }
+
+    [[nodiscard]] int CountEntities() const {
+        return GetEntityCount();
+    }
+
+    [[nodiscard]] int CountEntitiesWithTag(const std::string& tag) const {
+        return static_cast<int>(GetEntitiesWithTag(tag).size());
+    }
+
+    [[nodiscard]] bool IsEmpty() const {
+        return RequireSector().entitiesInside.empty();
+    }
+
+    // ---- Moving to a set height -----------------------------------------
+
+    void MoveFloorTo(const int luaIndex, const float height, const float speed) const {
+        CheckMoveArguments(speed, 0.0f, false);
+        GetMovableFloor(luaIndex).MoveFloorTo(height, speed);
+    }
+
+    void MoveCeilingTo(const int luaIndex, const float height, const float speed) const {
+        CheckMoveArguments(speed, 0.0f, false);
+        GetMovableFloor(luaIndex).MoveCeilingTo(height, speed);
+    }
+
+    void MoveFloorToOverTime(const int luaIndex, const float height, const float seconds) const {
+        CheckMoveArguments(seconds, 0.0f, true);
+        GetMovableFloor(luaIndex).MoveFloorToOverTime(height, seconds);
+    }
+
+    void MoveCeilingToOverTime(const int luaIndex, const float height, const float seconds) const {
+        CheckMoveArguments(seconds, 0.0f, true);
+        GetMovableFloor(luaIndex).MoveCeilingToOverTime(height, seconds);
+    }
+
+    [[nodiscard]] bool IsFloorMoving(const int luaIndex) const {
+        return GetMovableFloor(luaIndex).IsFloorMoving();
+    }
+
+    [[nodiscard]] bool IsCeilingMoving(const int luaIndex) const {
+        return GetMovableFloor(luaIndex).IsCeilingMoving();
+    }
+
+    // ---- Light fading -----------------------------------------------------
+
+    void FadeLight(const Vector3& color, const float seconds) const {
+        if (seconds < 0.0f) throw sol::error("Fade time must not be negative");
+
+        Sector& sector = RequireSector();
+        sector.lightFade = {true, sector.light, color, 0.0f, seconds};
+    }
+
+    [[nodiscard]] bool IsLightFading() const {
+        return RequireSector().lightFade.active;
+    }
+
+    // ---- Shape ------------------------------------------------------------
+    // All in map space: Vector2 x/y are world x/z. Measured from the
+    // triangles, so holes (child sectors) are not part of the area.
+
+    [[nodiscard]] float GetArea() const {
+        float area = 0.0f;
+        for (const Triangle& triangle : RequireSector().triangles) area += TriangleArea(triangle);
+        return area;
+    }
+
+    // Area-weighted centroid. Can fall outside the sector for L-shapes and
+    // rings, like any centroid.
+    [[nodiscard]] Vector2 GetCenter() const {
+        const Sector& sector = RequireSector();
+
+        float totalArea = 0.0f;
+        float x = 0.0f;
+        float y = 0.0f;
+
+        for (const Triangle& triangle : sector.triangles) {
+            const float area = TriangleArea(triangle);
+            totalArea += area;
+            x += area * (triangle.a.x + triangle.b.x + triangle.c.x) / 3.0f;
+            y += area * (triangle.a.y + triangle.b.y + triangle.c.y) / 3.0f;
+        }
+
+        if (totalArea <= 0.0f) {
+            // Degenerate sector: fall back to the average vertex.
+            if (sector.vertices.empty()) return {0.0f, 0.0f};
+            for (const Vector2& vertex : sector.vertices) { x += vertex.x; y += vertex.y; }
+            const auto count = static_cast<float>(sector.vertices.size());
+            return {x / count, y / count};
+        }
+
+        return {x / totalArea, y / totalArea};
+    }
+
+    [[nodiscard]] std::tuple<Vector2, Vector2> GetBounds() const {
+        Vector2 minimum, maximum;
+        ComputeBounds(RequireSector(), minimum, maximum);
+        return {minimum, maximum};
+    }
+
+    // Uniformly distributed point inside the sector. The three randoms are
+    // in [0, 1]; the Lua binding feeds them from the mathT random generator
+    // so RandomSeed covers this too.
+    [[nodiscard]] Vector2 PointInside(const float pick, float u, float v) const {
+        const Sector& sector = RequireSector();
+        if (sector.triangles.empty()) throw sol::error("Sector has no area");
+
+        const float totalArea = GetArea();
+        float remaining = pick * totalArea;
+        const Triangle* chosen = &sector.triangles.back();
+
+        for (const Triangle& triangle : sector.triangles) {
+            remaining -= TriangleArea(triangle);
+            if (remaining <= 0.0f) { chosen = &triangle; break; }
+        }
+
+        if (u + v > 1.0f) { u = 1.0f - u; v = 1.0f - v; }
+
+        return {
+            chosen->a.x + (chosen->b.x - chosen->a.x) * u + (chosen->c.x - chosen->a.x) * v,
+            chosen->a.y + (chosen->b.y - chosen->a.y) * u + (chosen->c.y - chosen->a.y) * v
+        };
+    }
+
+    // ---- Heights at a point (slopes included) ------------------------------
+
+    [[nodiscard]] float GetFloorHeightAt(const Vector2& point, const int luaIndex) const {
+        Vector2 minimum, maximum;
+        ComputeBounds(RequireSector(), minimum, maximum);
+        return SurfaceHeightAt(GetMovableFloor(luaIndex).floor, minimum, maximum, point);
+    }
+
+    [[nodiscard]] float GetCeilingHeightAt(const Vector2& point, const int luaIndex) const {
+        Vector2 minimum, maximum;
+        ComputeBounds(RequireSector(), minimum, maximum);
+        return SurfaceHeightAt(GetMovableFloor(luaIndex).ceiling, minimum, maximum, point);
+    }
+
+private:
+    static float TriangleArea(const Triangle& t) {
+        return std::abs((t.b.x - t.a.x) * (t.c.y - t.a.y) - (t.c.x - t.a.x) * (t.b.y - t.a.y)) * 0.5f;
+    }
+
+    // Slopes are measured from an edge of this rectangle. Must match
+    // ComputeSectorBounds() in PhysicsSystem.cpp and GetSectorBounds() in
+    // Rendering_vs.glsl (triangles first, vertices as the fallback), or the
+    // height reported here won't be the height on screen.
+    static void ComputeBounds(const Sector& sector, Vector2& minimum, Vector2& maximum) {
+        minimum = {0.0f, 0.0f};
+        maximum = {0.0f, 0.0f};
+
+        bool first = true;
+        auto include = [&](const Vector2& p) {
+            if (first) { minimum = {p.x, p.y}; maximum = {p.x, p.y}; first = false; return; }
+            minimum = {std::min(minimum.x, p.x), std::min(minimum.y, p.y)};
+            maximum = {std::max(maximum.x, p.x), std::max(maximum.y, p.y)};
+        };
+
+        if (!sector.triangles.empty()) {
+            for (const Triangle& t : sector.triangles) { include(t.a); include(t.b); include(t.c); }
+        }
+        else for (const Vector2& vertex : sector.vertices) include(vertex);
+    }
+
+    // Mirrors GetSurfaceHeight()/GetSlopeOffset() in PhysicsSystem.cpp.
+    static float SurfaceHeightAt(const SectorSurface& surface, const Vector2& minimum,
+                                 const Vector2& maximum, const Vector2& point) {
+        if (surface.slopeStrength == 0.0f) return surface.height;
+
+        const float gradient = surface.slopeStrength * Constants::DegToRad;
+
+        switch (surface.slopeDirection) {
+            case PLUS_X:  return surface.height + (point.x - minimum.x) * gradient;
+            case MINUS_X: return surface.height + (maximum.x - point.x) * gradient;
+            case PLUS_Z:  return surface.height + (point.y - minimum.y) * gradient;
+            case MINUS_Z: return surface.height + (maximum.y - point.y) * gradient;
+        }
+
+        return surface.height;
     }
 };
 

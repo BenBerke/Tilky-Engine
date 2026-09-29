@@ -43,13 +43,29 @@ struct SectorSurface {
 };
 
 // A floor or ceiling travelling toward the opposite surface of its
-// SectorFloor. Started from Lua (Sector:MoveFloorToCeiling and friends) and
-// advanced once per frame by SectorFloor::UpdateMovement. Runtime-only state:
-// never serialized.
+// SectorFloor, or toward a fixed height. Started from Lua
+// (Sector:MoveFloorToCeiling, Sector:MoveFloorTo and friends) and advanced
+// once per frame by SectorFloor::UpdateMovement. Runtime-only state: never
+// serialized.
 struct SurfaceMove {
     bool active = false;
     float speed = 0.0f; // units per second
     float gap = 0.0f;   // distance to stop short of the opposite surface
+
+    // Set by MoveFloorTo/MoveCeilingTo: head for `targetHeight` instead of
+    // the opposite surface. Still never passes the opposite surface.
+    bool hasTargetHeight = false;
+    float targetHeight = 0.0f;
+};
+
+// A light colour change spread over time (Sector:FadeLight), advanced once
+// per frame by Level::UpdateSectorMovement. Runtime-only: never serialized.
+struct LightFade {
+    bool active = false;
+    Vector3 from = {0.0f, 0.0f, 0.0f};
+    Vector3 to = {0.0f, 0.0f, 0.0f};
+    float elapsed = 0.0f;
+    float duration = 0.0f;
 };
 
 struct SectorFloor {
@@ -64,9 +80,17 @@ struct SectorFloor {
     static constexpr float MIN_MOVE_GAP = 0.01f;
 
     // Where each move stops. Follows the opposite surface, so a floor moving
-    // up still stops `gap` below a ceiling that is itself moving.
-    [[nodiscard]] float FloorMoveTarget() const { return ceiling.height - floorMove.gap; }
-    [[nodiscard]] float CeilingMoveTarget() const { return floor.height + ceilingMove.gap; }
+    // up still stops `gap` below a ceiling that is itself moving. A move to a
+    // fixed height stops there, or at the opposite surface if that is closer.
+    [[nodiscard]] float FloorMoveTarget() const {
+        const float limit = ceiling.height - floorMove.gap;
+        return floorMove.hasTargetHeight ? std::min(floorMove.targetHeight, limit) : limit;
+    }
+
+    [[nodiscard]] float CeilingMoveTarget() const {
+        const float limit = floor.height + ceilingMove.gap;
+        return ceilingMove.hasTargetHeight ? std::max(ceilingMove.targetHeight, limit) : limit;
+    }
 
     void MoveFloorToCeiling(const float speed, const float gap) {
         floorMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
@@ -74,6 +98,25 @@ struct SectorFloor {
 
     void MoveCeilingToFloor(const float speed, const float gap) {
         ceilingMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
+    }
+
+    // Moves toward an absolute height, up or down.
+    void MoveFloorTo(const float height, const float speed) {
+        floorMove = {true, speed, MIN_MOVE_GAP, true, height};
+    }
+
+    void MoveCeilingTo(const float height, const float speed) {
+        ceilingMove = {true, speed, MIN_MOVE_GAP, true, height};
+    }
+
+    void MoveFloorToOverTime(const float height, const float seconds) {
+        MoveFloorTo(height, 0.0f);
+        floorMove.speed = SpeedForDuration(FloorMoveTarget() - floor.height, seconds);
+    }
+
+    void MoveCeilingToOverTime(const float height, const float seconds) {
+        MoveCeilingTo(height, 0.0f);
+        ceilingMove.speed = SpeedForDuration(CeilingMoveTarget() - ceiling.height, seconds);
     }
 
     // Same as above, with the speed picked so the move takes `seconds` from
@@ -91,6 +134,9 @@ struct SectorFloor {
     [[nodiscard]] bool IsMoving() const {
         return floorMove.active || ceilingMove.active;
     }
+
+    [[nodiscard]] bool IsFloorMoving() const { return floorMove.active; }
+    [[nodiscard]] bool IsCeilingMoving() const { return ceilingMove.active; }
 
     void StopMoving() {
         floorMove.active = false;
@@ -186,6 +232,30 @@ struct Sector {
     };
 
     Vector3 light = {255.0f, 255.0f, 255.0f};
+
+    // Runtime-only (see LightFade). Not serialized, not carried by MapTopology.
+    LightFade lightFade;
+
+    // Advances lightFade by `deltaTime`. Returns true if `light` changed.
+    bool UpdateLightFade(const float deltaTime) {
+        if (!lightFade.active) return false;
+
+        lightFade.elapsed += deltaTime;
+
+        if (lightFade.duration <= 0.0f || lightFade.elapsed >= lightFade.duration) {
+            light = lightFade.to;
+            lightFade.active = false;
+            return true;
+        }
+
+        const float t = lightFade.elapsed / lightFade.duration;
+        light = {
+            lightFade.from.x + (lightFade.to.x - lightFade.from.x) * t,
+            lightFade.from.y + (lightFade.to.y - lightFade.from.y) * t,
+            lightFade.from.z + (lightFade.to.z - lightFade.from.z) * t
+        };
+        return true;
+    }
 
     std::vector<Vector2> vertices;
 

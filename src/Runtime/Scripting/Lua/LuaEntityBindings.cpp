@@ -56,6 +56,7 @@ namespace {
                 {.name = "HasScriptNamed", .params = {{"name", "string"}}, .returnType = "boolean", .doc = "True if a script matching `name` is attached."},
                 {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this Entity has the given tag."},
                 {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
+                {.name = "GetSector", .params = {}, .returnType = "Sector?", .doc = "The sector this Entity is standing in, or nil (outside the map, or no Transform)."},
             }
         });
     }
@@ -299,6 +300,22 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         "GetTag",
         &ScriptEntity::GetTag,
         "getTag",
-        &ScriptEntity::GetTag
+        &ScriptEntity::GetTag,
+
+        // The sector whose entitiesInside lists this Entity - the same
+        // membership Sector:ContainsEntity and OnEntityEnter use.
+        "GetSector",
+        [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+            const ComponentTransform* transform =
+                entity.level != nullptr ? entity.level->transforms.Get(entity.ownerID) : nullptr;
+
+            if (transform == nullptr || transform->sectorIndex < 0 ||
+                transform->sectorIndex >= static_cast<int>(entity.level->sectors.size()))
+                return sol::make_object(state, sol::nil);
+
+            return sol::make_object(state, ScriptSector{
+                entity.level, entity.level->sectors[transform->sectorIndex].id
+            });
+        }
     );
 }

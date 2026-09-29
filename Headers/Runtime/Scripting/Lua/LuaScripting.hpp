@@ -28,6 +28,16 @@ public:
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);
     static void RegisterMathBindings(sol::state& lua);
+
+    // A float in [0, 1] from the same generator as mathT.RandomF, so
+    // mathT.RandomSeed also makes Sector:RandomPointInside repeatable.
+    static float SharedRandomUnitFloat();
+
+    // Fires OnEntityEnter/OnEntityExit on sector scripts for every entity
+    // that moved into or out of their sector since the last call. Called
+    // once per frame by LevelSystem::Update, after positions and sector
+    // membership have been updated for the frame.
+    void DispatchSectorOccupancyEvents(Level& level);
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
 

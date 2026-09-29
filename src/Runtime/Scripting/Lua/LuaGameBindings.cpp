@@ -2,6 +2,7 @@
 // Created by berke on 6/22/2026.
 //
 
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include <sol/state.hpp>
@@ -37,6 +38,8 @@ namespace {
             Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
             Method("GetEntity", {Param("id", "integer")}, "Entity?", "The Entity with this ID (e.g. a Raycast hit's entityID), or nil."),
             Method("GetEntities", {}, "Entity[]", "Every Entity in the level."),
+            Method("GetSectorAt", {Param("position", "Vector2|Vector3")}, "Sector?",
+                   "The innermost sector containing `position` (x, z; height ignored), or nil if it is outside the map."),
         }));
     }
 }
@@ -117,6 +120,23 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
         return sol::as_table(std::move(result));
     });
+
+    // Same lookup that decides which sector an entity is in.
+    const auto sectorAt = [](const sol::this_state state, const Vector2 point) -> sol::object {
+        Level& level = LevelManager::CurrentLevel();
+
+        const int index = MapQueries::FindSectorContainingPoint(level.sectors, point);
+        if (index < 0) return sol::make_object(state, sol::nil);
+
+        return sol::make_object(state, ScriptSector{&level, level.sectors[index].id});
+    };
+
+    game.set_function("GetSectorAt", sol::overload(
+        [sectorAt](const sol::this_state state, const Vector2& position) { return sectorAt(state, position); },
+        [sectorAt](const sol::this_state state, const Vector3& position) {
+            return sectorAt(state, {position.x, position.z});
+        }
+    ));
 
     game.set_function("Raycast",
                       [](sol::this_state state,

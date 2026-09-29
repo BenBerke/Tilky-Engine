@@ -371,6 +371,10 @@ namespace {
     }
 }
 
+float LuaScriptSystem::SharedRandomUnitFloat() {
+    return RandomUnitFloat();
+}
+
 void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     RegisterMathMetadata();
 

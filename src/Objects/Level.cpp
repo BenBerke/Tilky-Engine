@@ -387,12 +387,14 @@ void Level::PropagateSectorChanges(const ID sectorID, const std::vector<SectorFl
 
 void Level::UpdateSectorMovement(const float deltaTime) {
     for (Sector& sector : sectors) {
-        if (std::ranges::none_of(sector.floors, &SectorFloor::IsMoving)) continue;
+        const bool floorsMoving = std::ranges::any_of(sector.floors, &SectorFloor::IsMoving);
+        if (!floorsMoving && !sector.lightFade.active) continue;
 
         std::vector<SectorFloor> floorsBefore;
         if (!sector.children.empty()) floorsBefore = sector.floors;
+        const Vector3 lightBefore = sector.light;
 
-        bool changed = false;
+        bool changed = sector.UpdateLightFade(deltaTime);
 
         for (size_t i = 0; i < sector.floors.size(); ++i) {
             const float lowest = i > 0
@@ -406,7 +408,7 @@ void Level::UpdateSectorMovement(const float deltaTime) {
         }
 
         if (changed && !sector.children.empty())
-            PropagateSectorChanges(sector.id, floorsBefore, sector.light);
+            PropagateSectorChanges(sector.id, floorsBefore, lightBefore);
     }
 }
 

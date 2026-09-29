@@ -67,6 +67,8 @@
 //   end
 //
 // Lifecycle: Start, Update, FixedUpdate, OnEnable, OnDisable, OnDestroy.
+// Sector scripts also get OnEntityEnter(entity) / OnEntityExit(entity) - see
+// DispatchSectorOccupancyEvents.
 // ============================================================================
 
 namespace {
@@ -112,6 +114,10 @@ namespace {
         sol::protected_function onDisableFunction;
         sol::protected_function onDestroyFunction;
 
+        // Sector scripts only.
+        sol::protected_function onEntityEnterFunction;
+        sol::protected_function onEntityExitFunction;
+
         bool started = false;   // Start() has run at least once
         bool enabled = false;   // last computed effective-enabled state (script.enabled && owner.enabled)
         bool destroyed = false; // OnDestroy has already fired - guards against double teardown
@@ -122,6 +128,11 @@ namespace {
     sol::state lua;
 
     std::vector<ScriptInstance> scriptInstances;
+
+    // Sector ID -> the entities that were inside it the last time
+    // DispatchSectorOccupancyEvents ran. Diffed against
+    // Sector::entitiesInside to find who entered and who left.
+    std::unordered_map<ID, std::vector<ID>> lastSectorOccupants;
     std::unordered_map<std::string, ScriptAsset> scriptAssets; // keyed by assetId
 
     // Entity instances only. An entity script's ScriptInstanceID is unique
@@ -241,10 +252,12 @@ namespace {
         EditorFunctions::Print(message, kScriptErrorColor, 15.0f);
     }
 
-    void CallLifecycle(const ScriptInstance& instance, const sol::protected_function& fn, const char* stageName) {
+    template<typename... Args>
+    void CallLifecycle(const ScriptInstance& instance, const sol::protected_function& fn, const char* stageName,
+                       Args&&... args) {
         if (!fn.valid()) return;
 
-        const sol::protected_function_result result = fn();
+        const sol::protected_function_result result = fn(std::forward<Args>(args)...);
 
         if (!result.valid()) {
             const sol::error error = result;
@@ -445,6 +458,7 @@ namespace {
     bool IsReservedFieldName(const std::string& name) {
         static const std::unordered_set<std::string> reserved = {
             "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
+            "OnEntityEnter", "OnEntityExit",
             "entity", "sector", "Scripts", "GameTime", "Input", "Game", "Debug"
         };
 
@@ -924,6 +938,11 @@ namespace {
         instance.onDisableFunction   = GetOptionalScriptFunction(instance.environment, "OnDisable", assetId);
         instance.onDestroyFunction   = GetOptionalScriptFunction(instance.environment, "OnDestroy", assetId);
 
+        if (ownerKind == ScriptOwnerKind::Sector) {
+            instance.onEntityEnterFunction = GetOptionalScriptFunction(instance.environment, "OnEntityEnter", assetId);
+            instance.onEntityExitFunction  = GetOptionalScriptFunction(instance.environment, "OnEntityExit", assetId);
+        }
+
         return true;
     }
 
@@ -1194,6 +1213,11 @@ void LuaScriptSystem::Start(Level& level) {
         for (SectorScript& script : sector.scripts)
             InstantiateScript(level, ScriptOwnerKind::Sector, sector.id, script);
 
+    // Whoever is already inside a sector when the level starts is the
+    // baseline - no OnEntityEnter for them.
+    lastSectorOccupants.clear();
+    for (const Sector& sector : level.sectors) lastSectorOccupants[sector.id] = sector.entitiesInside;
+
     // First activation: OnEnable before Start, matching Unity's ordering on
     // an object's first activation.
     for (ScriptInstance& instance : scriptInstances) {
@@ -1262,6 +1286,43 @@ void LuaScriptSystem::Update(Level& level) {
     // FlushPendingDestroys's declaration comment in LuaScripting.hpp.
     // LevelSystem::Update() calls it once, after this frame's physics and
     // transform-sync work has finished.
+}
+
+void LuaScriptSystem::DispatchSectorOccupancyEvents(Level& level) {
+    for (const Sector& sector : level.sectors) {
+        std::vector<ID>& before = lastSectorOccupants[sector.id];
+
+        // Copied: a handler can move entities, which rewrites entitiesInside.
+        const std::vector<ID> now = sector.entitiesInside;
+        if (now == before) continue;
+
+        std::vector<ID> entered;
+        std::vector<ID> exited;
+
+        for (const ID id : now)
+            if (std::ranges::find(before, id) == before.end()) entered.push_back(id);
+        for (const ID id : before)
+            if (std::ranges::find(now, id) == now.end()) exited.push_back(id);
+
+        before = now;
+
+        const ID sectorID = sector.id;
+
+        // By index: a handler can't add instances, but keep it safe anyway.
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            const ScriptInstance& instance = scriptInstances[i];
+
+            if (instance.ownerKind != ScriptOwnerKind::Sector || instance.ownerID != sectorID) continue;
+            if (instance.destroyed || !instance.enabled) continue;
+
+            // Exits first, so a script counting occupants never sees one
+            // entity in two places.
+            for (const ID id : exited)
+                CallLifecycle(instance, instance.onEntityExitFunction, "OnEntityExit", ScriptEntity{&level, id});
+            for (const ID id : entered)
+                CallLifecycle(instance, instance.onEntityEnterFunction, "OnEntityEnter", ScriptEntity{&level, id});
+        }
+    }
 }
 
 void LuaScriptSystem::Stop(Level&) {
