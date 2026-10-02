@@ -41,6 +41,9 @@ namespace {
                 "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
+                "OnEntityEnter", "OnEntityExit",
+                "OnCollisionEnter", "OnCollision", "OnCollisionExit",
+                "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
                 "entity", "sector",
                 "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
             };

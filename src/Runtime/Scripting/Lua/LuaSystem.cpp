@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <regex>
 #include <string>
@@ -68,7 +69,10 @@
 //
 // Lifecycle: Start, Update, FixedUpdate, OnEnable, OnDisable, OnDestroy.
 // Sector scripts also get OnEntityEnter(entity) / OnEntityExit(entity) - see
-// DispatchSectorOccupancyEvents.
+// DispatchSectorOccupancyEvents. Entity scripts also get
+// OnCollisionEnter(other) / OnCollision(other) / OnCollisionExit(other), the
+// same three as OnTrigger* for trigger colliders - see DispatchContactEvents -
+// and OnSectorChange(sector) - see DispatchSectorChangeEvents.
 // ============================================================================
 
 namespace {
@@ -118,6 +122,15 @@ namespace {
         sol::protected_function onEntityEnterFunction;
         sol::protected_function onEntityExitFunction;
 
+        // Entity scripts only.
+        sol::protected_function onCollisionEnterFunction;
+        sol::protected_function onCollisionFunction;
+        sol::protected_function onCollisionExitFunction;
+        sol::protected_function onTriggerEnterFunction;
+        sol::protected_function onTriggerFunction;
+        sol::protected_function onTriggerExitFunction;
+        sol::protected_function onSectorChangeFunction;
+
         bool started = false;   // Start() has run at least once
         bool enabled = false;   // last computed effective-enabled state (script.enabled && owner.enabled)
         bool destroyed = false; // OnDestroy has already fired - guards against double teardown
@@ -133,6 +146,15 @@ namespace {
     // DispatchSectorOccupancyEvents ran. Diffed against
     // Sector::entitiesInside to find who entered and who left.
     std::unordered_map<ID, std::vector<ID>> lastSectorOccupants;
+
+    // Entity ID -> the sector ID (INVALID_ID = outside the map) it was in the
+    // last time DispatchSectorChangeEvents ran. Only entities that own a
+    // script are tracked.
+    std::unordered_map<ID, ID> lastEntitySectors;
+
+    // Last frame's contacts, sorted and unique - see DispatchContactEvents.
+    std::vector<PhysicsSystem::CollisionPair> lastCollisions;
+    std::vector<PhysicsSystem::CollisionPair> lastTriggers;
     std::unordered_map<std::string, ScriptAsset> scriptAssets; // keyed by assetId
 
     // Entity instances only. An entity script's ScriptInstanceID is unique
@@ -459,6 +481,8 @@ namespace {
         static const std::unordered_set<std::string> reserved = {
             "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
             "OnEntityEnter", "OnEntityExit",
+            "OnCollisionEnter", "OnCollision", "OnCollisionExit",
+            "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
             "entity", "sector", "Scripts", "GameTime", "Input", "Game", "Debug"
         };
 
@@ -943,6 +967,16 @@ namespace {
             instance.onEntityExitFunction  = GetOptionalScriptFunction(instance.environment, "OnEntityExit", assetId);
         }
 
+        if (ownerKind == ScriptOwnerKind::Entity) {
+            instance.onCollisionEnterFunction = GetOptionalScriptFunction(instance.environment, "OnCollisionEnter", assetId);
+            instance.onCollisionFunction      = GetOptionalScriptFunction(instance.environment, "OnCollision", assetId);
+            instance.onCollisionExitFunction  = GetOptionalScriptFunction(instance.environment, "OnCollisionExit", assetId);
+            instance.onTriggerEnterFunction   = GetOptionalScriptFunction(instance.environment, "OnTriggerEnter", assetId);
+            instance.onTriggerFunction        = GetOptionalScriptFunction(instance.environment, "OnTrigger", assetId);
+            instance.onTriggerExitFunction    = GetOptionalScriptFunction(instance.environment, "OnTriggerExit", assetId);
+            instance.onSectorChangeFunction   = GetOptionalScriptFunction(instance.environment, "OnSectorChange", assetId);
+        }
+
         return true;
     }
 
@@ -1019,11 +1053,120 @@ namespace {
         }
     }
 
+    // The ID of the sector the entity is in, or INVALID_ID when it is outside
+    // the map or has no transform.
+    ID GetEntitySectorID(Level& level, const ID entityID) {
+        const ComponentTransform* transform = level.transforms.Get(entityID);
+
+        if (transform == nullptr || transform->sectorIndex < 0 ||
+            transform->sectorIndex >= static_cast<int>(level.sectors.size()))
+            return INVALID_ID;
+
+        return level.sectors[transform->sectorIndex].id;
+    }
+
+    bool CollisionPairLess(const PhysicsSystem::CollisionPair& lhs, const PhysicsSystem::CollisionPair& rhs) {
+        return lhs.a != rhs.a ? lhs.a < rhs.a : lhs.b < rhs.b;
+    }
+
+    using ContactCallback = sol::protected_function ScriptInstance::*;
+
+    // One Enter/every-frame/Exit callback family, e.g. OnCollision*.
+    struct ContactCallbacks {
+        ContactCallback enter;
+        ContactCallback stay;
+        ContactCallback exit;
+        const char* enterName;
+        const char* stayName;
+        const char* exitName;
+    };
+
+    constexpr ContactCallbacks kCollisionCallbacks = {
+        &ScriptInstance::onCollisionEnterFunction,
+        &ScriptInstance::onCollisionFunction,
+        &ScriptInstance::onCollisionExitFunction,
+        "OnCollisionEnter", "OnCollision", "OnCollisionExit"
+    };
+
+    constexpr ContactCallbacks kTriggerCallbacks = {
+        &ScriptInstance::onTriggerEnterFunction,
+        &ScriptInstance::onTriggerFunction,
+        &ScriptInstance::onTriggerExitFunction,
+        "OnTriggerEnter", "OnTrigger", "OnTriggerExit"
+    };
+
+    // Diffs this frame's `contacts` against `last` (then replaces it) and
+    // fires `callbacks` on both entities of every pair, each getting the
+    // other one as its argument.
+    void DispatchContactSet(
+        Level& level,
+        const std::vector<PhysicsSystem::CollisionPair>& contacts,
+        std::vector<PhysicsSystem::CollisionPair>& last,
+        const ContactCallbacks& callbacks
+    ) {
+        if (contacts.empty() && last.empty()) return;
+
+        std::vector<PhysicsSystem::CollisionPair> now = contacts;
+        std::ranges::sort(now, CollisionPairLess);
+        now.erase(std::unique(now.begin(), now.end()), now.end());
+
+        std::vector<PhysicsSystem::CollisionPair> entered;
+        std::vector<PhysicsSystem::CollisionPair> exited;
+        std::ranges::set_difference(now, last, std::back_inserter(entered), CollisionPairLess);
+        std::ranges::set_difference(last, now, std::back_inserter(exited), CollisionPairLess);
+
+        last = now;
+
+        // Entity ID -> indices of its scripts that define any of these
+        // callbacks, so entities without one cost nothing below.
+        std::unordered_map<ID, std::vector<size_t>> listeners;
+
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            const ScriptInstance& instance = scriptInstances[i];
+            if (instance.ownerKind != ScriptOwnerKind::Entity) continue;
+
+            if ((instance.*callbacks.enter).valid() ||
+                (instance.*callbacks.stay).valid() ||
+                (instance.*callbacks.exit).valid())
+                listeners[instance.ownerID].push_back(i);
+        }
+
+        if (listeners.empty()) return;
+
+        const auto notify = [&](const ID self, const ID other, const ContactCallback callback, const char* stageName) {
+            const auto it = listeners.find(self);
+            if (it == listeners.end()) return;
+
+            for (const size_t index : it->second) {
+                const ScriptInstance& instance = scriptInstances[index];
+                if (instance.destroyed || !instance.enabled) continue;
+
+                CallLifecycle(instance, instance.*callback, stageName, ScriptEntity{&level, other});
+            }
+        };
+
+        const auto notifyBoth = [&](const std::vector<PhysicsSystem::CollisionPair>& pairs,
+                                    const ContactCallback callback, const char* stageName) {
+            for (const PhysicsSystem::CollisionPair& pair : pairs) {
+                notify(pair.a, pair.b, callback, stageName);
+                notify(pair.b, pair.a, callback, stageName);
+            }
+        };
+
+        // Exits first, then enters, then every contact that is touching this
+        // frame (enter frame included).
+        notifyBoth(exited, callbacks.exit, callbacks.exitName);
+        notifyBoth(entered, callbacks.enter, callbacks.enterName);
+        notifyBoth(now, callbacks.stay, callbacks.stayName);
+    }
+
     void RegisterGameTimeMetadata() {
         LuaBindingMetadata::RegisterType(LuaBindingMetadata::GlobalTable("GameTime", "Global frame-timing table.", {
             LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
             LuaBindingMetadata::Prop("fixedDeltaTime", "number", true, "The fixed step FixedUpdate() runs on."),
             LuaBindingMetadata::Prop("osTime", "integer", true, "Wall-clock time: whole seconds since the Unix epoch (1970-01-01 UTC)."),
+            LuaBindingMetadata::Prop("fps", "integer", true, "Get the current frames-per-second"),
+            LuaBindingMetadata::Prop("timeInSeconds", "integer", true, "Get the time in seconds since the engine started")
         }));
     }
 
@@ -1050,6 +1193,16 @@ namespace {
                 // Convert duration since epoch to integer seconds
                 const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
                 return seconds;
+            }),
+
+            "fps",
+            sol::property([](const ScriptGameTime&) {
+                return GameTime::GetFPS();
+            }),
+
+            "timeInSeconds",
+            sol::property([](const ScriptGameTime&) {
+                return GameTime::timeInSeconds();
             })
         );
 
@@ -1218,6 +1371,15 @@ void LuaScriptSystem::Start(Level& level) {
     lastSectorOccupants.clear();
     for (const Sector& sector : level.sectors) lastSectorOccupants[sector.id] = sector.entitiesInside;
 
+    // Same for OnSectorChange: the sector an entity starts in is the baseline.
+    lastEntitySectors.clear();
+    for (const ScriptInstance& instance : scriptInstances)
+        if (instance.ownerKind == ScriptOwnerKind::Entity)
+            lastEntitySectors[instance.ownerID] = GetEntitySectorID(level, instance.ownerID);
+
+    lastCollisions.clear();
+    lastTriggers.clear();
+
     // First activation: OnEnable before Start, matching Unity's ordering on
     // an object's first activation.
     for (ScriptInstance& instance : scriptInstances) {
@@ -1325,6 +1487,46 @@ void LuaScriptSystem::DispatchSectorOccupancyEvents(Level& level) {
     }
 }
 
+void LuaScriptSystem::DispatchSectorChangeEvents(Level& level) {
+    // Entity ID -> its new sector ID. Collected first, so an entity with
+    // several scripts is only compared once and every script sees the change.
+    std::vector<std::pair<ID, ID>> changed;
+
+    for (const ScriptInstance& instance : scriptInstances) {
+        if (instance.ownerKind != ScriptOwnerKind::Entity || instance.destroyed) continue;
+
+        const ID sectorID = GetEntitySectorID(level, instance.ownerID);
+        const auto [it, inserted] = lastEntitySectors.try_emplace(instance.ownerID, sectorID);
+
+        // First time this entity is seen: its current sector is the baseline.
+        if (inserted || it->second == sectorID) continue;
+
+        it->second = sectorID;
+        changed.emplace_back(instance.ownerID, sectorID);
+    }
+
+    for (const auto& [entityID, sectorID] : changed) {
+        const sol::object sectorObject = sectorID == INVALID_ID
+            ? sol::make_object(lua, sol::nil)
+            : sol::make_object(lua, ScriptSector{&level, sectorID});
+
+        // By index: a handler can't add instances, but keep it safe anyway.
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            const ScriptInstance& instance = scriptInstances[i];
+
+            if (instance.ownerKind != ScriptOwnerKind::Entity || instance.ownerID != entityID) continue;
+            if (instance.destroyed || !instance.enabled) continue;
+
+            CallLifecycle(instance, instance.onSectorChangeFunction, "OnSectorChange", sectorObject);
+        }
+    }
+}
+
+void LuaScriptSystem::DispatchContactEvents(Level& level, const PhysicsSystem::Contacts& contacts) {
+    DispatchContactSet(level, contacts.collisions, lastCollisions, kCollisionCallbacks);
+    DispatchContactSet(level, contacts.triggers, lastTriggers, kTriggerCallbacks);
+}
+
 void LuaScriptSystem::Stop(Level&) {
     for (ScriptInstance& instance : scriptInstances) CallDestroy(instance);
 }
@@ -1335,6 +1537,9 @@ void LuaScriptSystem::FlushPendingDestroys(Level& level) {
 
 void LuaScriptSystem::Shutdown() {
     scriptInstances.clear();
+    lastEntitySectors.clear();
+    lastCollisions.clear();
+    lastTriggers.clear();
     instanceIndexById.clear();
     pendingDestroys.clear();
     scriptAssets.clear();

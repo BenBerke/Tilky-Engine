@@ -513,7 +513,7 @@ namespace {
 }
 
 namespace PhysicsSystem {
-    void Run(Level& level) {
+    void Run(Level& level, Contacts& contacts) {
         ZoneScopedN("PhysicsSystem::Run");
 
         for (ComponentRigidbody& rigidbody : level.rigidbodies.components) {
@@ -676,6 +676,11 @@ namespace PhysicsSystem {
                     const float penetration = radiusSum - distance;
 
                     if (penetration <= Constants::Epsilon) continue;
+
+                    contacts.collisions.push_back({
+                        std::min(selfCollider.ownerID, otherID),
+                        std::max(selfCollider.ownerID, otherID)
+                    });
 
                     const __m128 calculatedDirection = _mm_mul_ps(delta, inverseDistance);
                     const __m128 fallbackDirection = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
@@ -913,6 +918,78 @@ namespace PhysicsSystem {
 
                 std::ranges::sort(allWalls, std::less<const Wall*>{});
                 allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
+            }
+        }
+
+        {
+            ZoneScopedN("Trigger overlaps");
+
+            // After every push-out above, so overlaps are tested at the
+            // frame's final positions. Triggers don't need a rigidbody -
+            // a static trigger volume is the common case.
+            for (const ComponentCollider& trigger : colliders.ActiveSpheres()) {
+                if (!trigger.isTrigger) continue;
+
+                const ComponentTransform* triggerTransform = level.transforms.Get(trigger.ownerID);
+                if (triggerTransform == nullptr) [[unlikely]] continue;
+
+                const int sectorIndex = triggerTransform->sectorIndex;
+                if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+                const Sector& sector = level.sectors[sectorIndex];
+
+                allEntities.clear();
+                allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
+
+                for (const Sector* neighbour : sector.neighbors) {
+                    if (neighbour == nullptr) [[unlikely]] continue;
+                    allEntities.insert(allEntities.end(), neighbour->entitiesInside.begin(), neighbour->entitiesInside.end());
+                }
+
+                std::ranges::sort(allEntities);
+                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
+
+                const float triggerRadius = std::max(0.0f, trigger.scale.x);
+
+                const Vector3 triggerPosition = {
+                    triggerTransform->position.x,
+                    triggerTransform->position.y + triggerRadius,
+                    triggerTransform->position.z
+                };
+
+                for (const ID otherID : allEntities) {
+                    if (otherID == trigger.ownerID) continue;
+
+                    const ComponentCollider* otherCollider = level.colliders.Get(otherID);
+
+                    if (otherCollider == nullptr ||
+                        !otherCollider->isActive ||
+                        otherCollider->type != COLLIDERTYPE_SPHERE) continue;
+
+                    const ComponentTransform* otherTransform = level.transforms.Get(otherID);
+                    if (otherTransform == nullptr) [[unlikely]] continue;
+
+                    const float otherRadius = std::max(0.0f, otherCollider->scale.x);
+                    const float radiusSum = triggerRadius + otherRadius;
+
+                    const Vector3 otherPosition = {
+                        otherTransform->position.x,
+                        otherTransform->position.y + otherRadius,
+                        otherTransform->position.z
+                    };
+
+                    const __m128 delta = _mm_sub_ps(triggerPosition.reg, otherPosition.reg);
+                    const float distanceSq = _mm_cvtss_f32(dot3_ss(delta, delta));
+
+                    if (distanceSq >= radiusSum * radiusSum) continue;
+
+                    // Two overlapping triggers find each other twice; the
+                    // caller dedupes.
+                    contacts.triggers.push_back({
+                        std::min(trigger.ownerID, otherID),
+                        std::max(trigger.ownerID, otherID)
+                    });
+                }
             }
         }
     }

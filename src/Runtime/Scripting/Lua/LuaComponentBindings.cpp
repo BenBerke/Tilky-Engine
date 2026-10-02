@@ -109,7 +109,7 @@ namespace {
 
         RegisterType(Type("UISprite", "A UI element's texture.", {
             Prop("isValid", "boolean", true),
-            Prop("textureIndex", "string"),
+            Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\")."),
         }));
 
         RegisterType(Type("UIText", "A UI element's text label.", {
@@ -132,7 +132,7 @@ namespace {
 
         RegisterType(Type("Sprite", "Billboard/multi-directional sprite component.", {
             Prop("isValid", "boolean", true),
-            Prop("sideCount", "integer", false, "1 (single), 4 (90 deg steps) or 8 (45 deg steps)."),
+            Prop("sideCount", "integer", false, "0 = single, 1 = 8-sided (45 deg steps), 2 = 4-sided (90 deg steps). Other values are ignored."),
             Prop("color", "Vector4"),
             Prop("northTextureFileName", "string"),
             Prop("northEastTextureFileName", "string"),

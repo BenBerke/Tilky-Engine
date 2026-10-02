@@ -55,6 +55,31 @@ Returns the sector the entity is standing in. It returns `nil` if the entity is 
 or has no Transform (UI entities, for example). This is the same membership `ContainsEntity` and
 `OnEntityEnter` use.
 
+## OnSectorChange
+
+A callback you **define** in a script attached to an entity. The engine calls it when that entity
+ends up in a different sector.
+
+```lua
+function OnSectorChange(sector) end
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `sector` | `Sector?` | The sector the entity is in now, or `nil` if it left the map. |
+
+- It fires at the end of the frame the entity crossed over, right after the sectors'
+  `OnEntityExit` / `OnEntityEnter`.
+- The sector the entity starts the level in does not count as a change.
+- It only runs on **entity** scripts, and only while the script is enabled. On a sector script it
+  is ignored. `OnSectorChange` is a reserved name, so you can't use it for a public field.
+
+```lua
+function OnSectorChange(sector)
+    if sector ~= nil and sector:HasTag("water") then Debug.Print(entity.name .. " is swimming") end
+end
+```
+
 ---
 
 ## Properties

@@ -608,7 +608,7 @@
   "editor.ui.transform.tooltip_position": "Offset from the anchor point, in pixels",
   "editor.ui.transform.tooltip_resolved": "Computed by the UI layout system - read only",
   "editor.ui.transform.tooltip_rotation": "Rotation in degrees, around the pivot",
-  "editor.ui.transform.tooltip_scale": "Scale multiplier - negative values flip the element",
+  "editor.ui.transform.tooltip_scale": "Size in pixels. Ignored on an axis where the anchors are apart (stretched) - negative values flip the element",
   "editor.ui.transform.values": "Position / Scale / Rotation",
   "editor.ui.component.all_added": "All available components are already on this entity",
   "editor.ui.entity.title": "UI Entity",

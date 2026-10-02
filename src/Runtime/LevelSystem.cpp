@@ -89,6 +89,11 @@ namespace {
     LuaScriptSystem scriptingSystem;
     bool scriptingInitialized = false;
 
+    // Entity-entity contacts PhysicsSystem found this frame, handed to the
+    // scripts' OnCollision* / OnTrigger* callbacks. Kept around only to
+    // reuse its allocations.
+    PhysicsSystem::Contacts frameContacts;
+
     bool EnsureScriptingInitialized() {
         if (scriptingInitialized) return true;
 
@@ -292,6 +297,8 @@ namespace LevelSystem {
             constexpr int COLLISION_ITERATIONS = 1;
             const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
 
+            frameContacts.Clear();
+
             for (int i = 0; i < COLLISION_ITERATIONS; i++) {
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
                     ComponentTransform *transform = level.transforms.Get(r.ownerID);
@@ -311,7 +318,7 @@ namespace LevelSystem {
 
                     if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
                 }
-                PhysicsSystem::Run(level);
+                PhysicsSystem::Run(level, frameContacts);
             }
 
         } // Zone Physics
@@ -403,6 +410,12 @@ namespace LevelSystem {
             // After every position and sector change of the frame.
             ZoneScopedN("Sector Occupancy Events");
             scriptingSystem.DispatchSectorOccupancyEvents(level);
+            scriptingSystem.DispatchSectorChangeEvents(level);
+        }
+
+        {
+            ZoneScopedN("Contact Events");
+            scriptingSystem.DispatchContactEvents(level, frameContacts);
         }
 
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;

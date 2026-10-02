@@ -44,9 +44,12 @@ namespace {
         return extension == ".wav";
     }
 
+    // Sounds are keyed without their extension, matching the reference the
+    // inspector stores (AssetBrowser::ToAssetReference strips it). Stripping
+    // it here too means "Doors/open" and "Doors/open.wav" both find the sound.
     std::string NormalizeSoundFileName(const std::string& fileName) {
         if (fileName.empty()) return {};
-        return fs::path(fileName).lexically_normal().generic_string();
+        return fs::path(fileName).lexically_normal().replace_extension().generic_string();
     }
 }
 

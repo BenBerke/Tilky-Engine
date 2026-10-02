@@ -1107,10 +1107,12 @@ struct ScriptUISprite {
         return sprite->texture;
     }
 
-    void SetTextureIndex(const int index) const {
+    // Despite the name this is the texture's path (relative to Assets, with
+    // extension), the same string the UI editor stores.
+    void SetTextureIndex(const std::string& texture) const {
         ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return;
-        sprite->texture = index;
+        sprite->texture = texture;
     }
 };
 

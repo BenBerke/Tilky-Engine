@@ -3,6 +3,7 @@
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Runtime/Scripting/IScripting.hpp"
+#include "Headers/Runtime/PhysicsSystem.hpp"
 
 #include <string>
 #include <vector>
@@ -38,6 +39,18 @@ public:
     // once per frame by LevelSystem::Update, after positions and sector
     // membership have been updated for the frame.
     void DispatchSectorOccupancyEvents(Level& level);
+
+    // Fires OnSectorChange(sector) on entity scripts whose entity is now in
+    // a different sector than at the last call (sector is nil once the
+    // entity leaves the map). Called by LevelSystem::Update right after
+    // DispatchSectorOccupancyEvents.
+    void DispatchSectorChangeEvents(Level& level);
+
+    // Fires OnCollisionEnter/OnCollision/OnCollisionExit(other) and
+    // OnTriggerEnter/OnTrigger/OnTriggerExit(other) on entity scripts, from
+    // this frame's contacts diffed against last frame's. `contacts` may hold
+    // duplicates. Called once per frame by LevelSystem::Update, after physics.
+    void DispatchContactEvents(Level& level, const PhysicsSystem::Contacts& contacts);
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
 
