@@ -160,8 +160,8 @@ speed = 60
 ---@field useDistance number @ Use Distance
 useDistance = 28
 
----@field useKey string @ Use Key
-useKey = "E"
+---@field useKey Key @ Use Key
+useKey = Key.E
 
 ---@field requiredKey string @ Required Key (empty = unlocked)
 requiredKey = ""
@@ -213,10 +213,10 @@ local function DistanceToSector(px, pz)
     return best
 end
 
--- Keys are collected into the shared Scripts table by the Pickup script.
+-- Keys are collected into the shared Global table by the Pickup script.
 local function HasKey()
     if requiredKey == "" then return true end
-    return Scripts.keys ~= nil and Scripts.keys[requiredKey] == true
+    return Global.keys ~= nil and Global.keys[requiredKey] == true
 end
 
 local function SetCeiling(height)
@@ -273,7 +273,7 @@ end
 
 ## Switch and channel door
 
-Two scripts that talk through the shared `Scripts` table. A **switch** flips a named *channel*,
+Two scripts that talk through the shared `Global` table. A **switch** flips a named *channel*,
 and any **channel door** listening on that channel follows it. Several doors can share a channel,
 and one switch can drive them all.
 
@@ -292,11 +292,11 @@ channel = "door1"
 ---@field useDistance number @ Use Distance
 useDistance = 24
 
----@field useKey string @ Use Key
-useKey = "E"
+---@field useKey Key @ Use Key
+useKey = Key.E
 
 function Start()
-    Scripts.channels = Scripts.channels or {}
+    Global.channels = Global.channels or {}
 end
 
 function Update()
@@ -308,8 +308,8 @@ function Update()
     local dx, dz = p.x - s.x, p.z - s.z
 
     if math.sqrt(dx * dx + dz * dz) <= useDistance then
-        Scripts.channels[channel] = not Scripts.channels[channel]
-        Debug.Print("Switch '" .. channel .. "' is now " .. (Scripts.channels[channel] and "ON" or "OFF"))
+        Global.channels[channel] = not Global.channels[channel]
+        Debug.Print("Switch '" .. channel .. "' is now " .. (Global.channels[channel] and "ON" or "OFF"))
     end
 end
 ```
@@ -352,7 +352,7 @@ end
 function Update()
     if broken then return end
 
-    local isOn = Scripts.channels ~= nil and Scripts.channels[channel] == true
+    local isOn = Global.channels ~= nil and Global.channels[channel] == true
     local wanted = isOn and openCeiling or closedCeiling
     local current = door.ceilingHeight
 
@@ -370,9 +370,9 @@ end
 
 **Notes**
 
-- `Scripts` is shared by every script and cleared each time the level starts, so channels always
+- `Global` is shared by every script and starts empty each time the game starts, so channels always
   begin "off".
 - The switch and door never reference each other. Any script can flip a channel:
   [17_level_flow.md](17_level_flow.md) uses one to open an exit once enough enemies are dead.
-- `Scripts.channels[channel] = not Scripts.channels[channel]` works even the first time, because
+- `Global.channels[channel] = not Global.channels[channel]` works even the first time, because
   a missing key is `nil` and `not nil` is `true`.

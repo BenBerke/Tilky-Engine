@@ -247,7 +247,7 @@ pass straight through, and the engine reports the overlap instead.
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
 
-    Scripts.checkpoint = entity.transform.position
+    Global.checkpoint = entity.transform.position
     Debug.Print("Checkpoint reached")
 end
 ```

@@ -166,7 +166,7 @@ end
 -- Scripts/ForceField.lua (entity with a sphere Collider)
 -- Solid while "on", passable while "off". Press F to switch.
 function Update()
-    if Input.GetKeyDown("F") then
+    if Input.GetKeyDown(Key.F) then
         entity.collider.isActive = not entity.collider.isActive
     end
 end

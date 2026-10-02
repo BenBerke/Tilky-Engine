@@ -28,6 +28,10 @@ public:
     static void RegisterComponentBindings(sol::state& lua);
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);
+
+    // The Lua Key table as enum options (name, scancode), for public fields
+    // typed `Key`. Defined in LuaInputBindings.cpp.
+    static std::vector<ScriptEnumOption> KeyEnumOptions();
     static void RegisterMathBindings(sol::state& lua);
 
     // A float in [0, 1] from the same generator as mathT.RandomF, so

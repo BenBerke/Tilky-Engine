@@ -194,8 +194,8 @@ entity.transform.position = entity.transform.position + Vector3(0, 10, 0)
 
 ## 7. Input
 
-`Input` reads the keyboard and mouse. Key names are strings like `"E"`, `"Space"`, `"LShift"`,
-`"Up"`.
+`Input` reads the keyboard and mouse. Keys come from the `Key` table, like `Key.E`, `Key.Space`,
+`Key.LShift` and `Key.Up`. Type `Key.` and the editor lists them all.
 
 ```lua
 -- Scripts/Jumper.lua (entity with a Rigidbody)
@@ -206,7 +206,7 @@ function Update()
     local body = entity.rigidbody
     if body == nil then return end
 
-    if Input.GetKeyDown("J") and body.isGrounded then
+    if Input.GetKeyDown(Key.J) and body.isGrounded then
         local v = body.velocity
         body.velocity = Vector3(v.x, jumpSpeed, v.z)
     end
@@ -313,9 +313,9 @@ end
   `false`, so check that.
 - Variables you want other scripts to see must be **global** in the script (no `local`), like
   `health` above.
-- For state the whole level shares (a score, collected keys), use the `Scripts` table:
-  `Scripts.score = (Scripts.score or 0) + 1`. It is shared by every script and is reset when the
-  level starts.
+- For state the whole game shares (a score, collected keys), use the [`Global`](Global.md) table:
+  `Global.score = (Global.score or 0) + 1`. It is shared by every script, keeps its contents when
+  the level changes, and starts empty each time the game starts.
 
 ---
 
@@ -347,8 +347,9 @@ end
 ## 12. What's not available
 
 Only Lua's `base`, `math`, `table` and `string` libraries are loaded: no `os`, `io`, `require` or
-`coroutine`. There is also no way to create a new entity from a script yet. Place what you need in
-the editor ahead of time and "switch it on" when you need it: move it into place, make its sprite
+`coroutine`. Scripts can create entities (`Game.CreateEntity()`) and add or remove their
+components (`entity:AddComponent(Component.Sprite)`), but they can't attach scripts. Place anything that
+needs a script in the editor ahead of time and "switch it on" when you need it: move it into place, make its sprite
 visible, turn its collider on. Note that `entity.enabled = false` only pauses the entity's
 **scripts**. The entity is still drawn and still collides. See [Entity](Entity.md#enabled).
 

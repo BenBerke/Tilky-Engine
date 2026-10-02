@@ -4,11 +4,11 @@
 
 ```lua
 function Update()
-    if Input.GetKeyDown("E") then Debug.Print("E was pressed") end
+    if Input.GetKeyDown(Key.E) then Debug.Print("E was pressed") end
 end
 ```
 
-Keys are named with strings. Input is checked once per frame, so read it in `Update`, not in
+Keys come from the [`Key`](#keys) table: `Key.E`, `Key.Space`, `Key.LShift`. Input is checked once per frame, so read it in `Update`, not in
 `FixedUpdate` (which may run zero or several times in a frame and miss or repeat a press).
 
 ---
@@ -21,42 +21,48 @@ Keys are named with strings. Input is checked once per frame, so read it in `Upd
 | `GetKey(key)` | boolean | `true` every frame while the key is held. |
 | `GetKeyUp(key)` | boolean | `true` only on the frame the key was released. |
 | `GetDoubleKey(key, keyTwo)` | boolean | `true` while both keys are held. |
-| `GetDoubleKeyDown(key, keyTwo)` | boolean | `true` on the frame both keys become held: either one was just pressed while the other is down. Good for shortcuts like `"LCtrl", "S"`. |
-| `GetAnyKey()` | string | The name of a held key, or `"UNKNOWN"`. |
-| `GetAnyKeyDown()` | string | The name of a key pressed this frame, or `"UNKNOWN"`. |
-| `GetAnyKeyUp()` | string | The name of a key released this frame, or `"UNKNOWN"`. |
+| `GetDoubleKeyDown(key, keyTwo)` | boolean | `true` on the frame both keys become held: either one was just pressed while the other is down. Good for shortcuts like `Key.LCtrl, Key.S`. |
+| `GetKeyName(key)` | string | The key's name in the `Key` table: `"E"` for `Key.E`, `"Space"` for `Key.Space`. Good for on-screen prompts like `[E] Open`. |
+| `GetAnyKey()` | `Key` or `nil` | A held key. |
+| `GetAnyKeyDown()` | `Key` or `nil` | A key pressed this frame. |
+| `GetAnyKeyUp()` | `Key` or `nil` | A key released this frame. |
 
-### Key names
+### Keys
 
-| Group | Names |
+Every key is a value in the global `Key` table. The script editor and VS Code suggest them as you
+type `Key.`.
+
+| Group | Values |
 |---|---|
-| Letters | `"A"` to `"Z"` (capitals) |
-| Digits | `"0"` to `"9"` (the row above the letters, not the numpad) |
-| Special | `"Space"`, `"Escape"`, `"Enter"`, `"Tab"`, `"Backspace"` |
-| Arrows | `"Left"`, `"Right"`, `"Up"`, `"Down"` |
-| Modifiers | `"LShift"`, `"RShift"`, `"LCtrl"`, `"RCtrl"`, `"LAlt"`, `"RAlt"` |
+| Letters | `Key.A` to `Key.Z` |
+| Number row | `Key.Alpha0` to `Key.Alpha9` (the row above the letters, not the numpad) |
+| Special | `Key.Space`, `Key.Escape`, `Key.Enter`, `Key.Tab`, `Key.Backspace` |
+| Arrows | `Key.Left`, `Key.Right`, `Key.Up`, `Key.Down` |
+| Modifiers | `Key.LShift`, `Key.RShift`, `Key.LCtrl`, `Key.RCtrl`, `Key.LAlt`, `Key.RAlt` |
 
-Names are case-sensitive. A name that isn't in this list (`"a"`, `"F1"`, `"Shift"`) is not an
-error: the functions just return `false`, so check the spelling if a key never seems to work.
+The values are plain numbers, so you can keep one in a variable or compare two with `==`.
 
-Keys are physical positions on a US layout. On other layouts `"Z"` is the key where Z is on a US
+A misspelled key (`Key.Spcae`) is `nil`, and passing `nil` or a number that isn't a key raises an
+error naming the problem.
+
+Keys are physical positions on a US layout. On other layouts `Key.Z` is the key where Z is on a US
 keyboard, which keeps WASD-style controls in the same place.
 
 ### The GetAnyKey functions
 
-If several keys qualify, they return the one that comes first internally (letters, then digits,
-then the rest), and only if it has a name in the table above. Holding `F1` and `LShift` together
-returns `"UNKNOWN"`, because `F1` comes first and has no name. They are best for "press any key to continue" and for simple key rebinding.
+They return `nil` when no key qualifies. Keys without a value in the `Key` table, like `F1`, are
+ignored. If several keys qualify, they return the one that comes first: letters, then the number
+row, then the rest. They are best for "press any key to continue" and for simple key rebinding.
 
 ```lua
 -- Wait for a key, then remember it as the "use" key.
-local useKey = "E"
+local useKey = Key.E
 local listening = false
 
 function Update()
     if listening then
         local key = Input.GetAnyKeyDown()
-        if key ~= "UNKNOWN" then
+        if key ~= nil then
             useKey = key
             listening = false
         end
@@ -103,7 +109,7 @@ function Start()
 end
 
 function Update()
-    if not Input.GetKeyDown("F") then return end
+    if not Input.GetKeyDown(Key.F) then return end
 
     on = not on
     sector:FadeLight(on and litColor or Vector3(20, 20, 20), 0.1)
@@ -120,11 +126,11 @@ maxCharge = 1.5
 local charge = 0
 
 function Update()
-    if Input.GetKey("G") then
+    if Input.GetKey(Key.G) then
         charge = mathT.Min(charge + GameTime.deltaTime, maxCharge)
     end
 
-    if Input.GetKeyUp("G") then
+    if Input.GetKeyUp(Key.G) then
         local power = charge / maxCharge   -- 0..1
         Debug.Print("Throw with power", mathT.Round(power, 2))
         charge = 0

@@ -93,8 +93,8 @@ offTexture = nil
 ---@field onTexture Texture @ On Texture
 onTexture = nil
 
----@field useKey string @ Use Key
-useKey = "E"
+---@field useKey Key @ Use Key
+useKey = Key.E
 
 ---@field useDistance number @ Use Distance
 useDistance = 40
@@ -153,7 +153,7 @@ end
   `wall.textureFileName`.
 - To make the switch *do* something, set a channel from
   [05_doors.md](05_doors.md) right where `s.on` changes:
-  `Scripts.channels = Scripts.channels or {}` then `Scripts.channels["door1"] = s.on`.
+  `Global.channels = Global.channels or {}` then `Global.channels["door1"] = s.on`.
 
 ---
 

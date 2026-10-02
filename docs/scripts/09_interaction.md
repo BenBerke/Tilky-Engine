@@ -40,8 +40,8 @@ Casts a ray from the player's eyes every frame. If the entity it hits has a scri
 ---@field range number @ Reach
 range = 48
 
----@field interactKey string @ Interact Key
-interactKey = "E"
+---@field interactKey Key @ Interact Key
+interactKey = Key.E
 
 ---@field promptLabel Entity @ Prompt Label (optional, needs a UIText)
 promptLabel = nil
@@ -82,7 +82,7 @@ local function Examine(target, use)
             if use then script:Interact(entity) end   -- `entity` is the player (this script's Entity)
 
             -- The target script can provide a `prompt` string of its own.
-            return "[" .. interactKey .. "] " .. (script.prompt or "Interact")
+            return "[" .. Input.GetKeyName(interactKey) .. "] " .. (script.prompt or "Interact")
         end
     end
 
@@ -136,8 +136,8 @@ local isOn = false
 function Interact(self, who)
     isOn = not isOn
 
-    Scripts.channels = Scripts.channels or {}
-    Scripts.channels[channel] = isOn
+    Global.channels = Global.channels or {}
+    Global.channels[channel] = isOn
 
     Debug.Print(who.name .. " turned '" .. channel .. "' " .. (isOn and "on" or "off"))
 end
@@ -234,7 +234,7 @@ function Update()
         reloading = reloading - dt
         if reloading <= 0 then ammo = magazineSize end
     else
-        local wantsReload = Input.GetKeyDown("R") and ammo < magazineSize
+        local wantsReload = Input.GetKeyDown(Key.R) and ammo < magazineSize
         if wantsReload or (ammo == 0 and Input.GetMouseButtonDown(Input.MouseLeft)) then
             reloading = reloadTime
         elseif cooldown <= 0 and ammo > 0 and Input.GetMouseButton(Input.MouseLeft) then

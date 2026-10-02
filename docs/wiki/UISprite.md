@@ -42,7 +42,7 @@ fullIcon = "Textures/UI/ammo_full.png"
 emptyIcon = "Textures/UI/ammo_empty.png"
 
 function Update()
-    local wanted = (Scripts.ammo or 0) > 0 and fullIcon or emptyIcon
+    local wanted = (Global.ammo or 0) > 0 and fullIcon or emptyIcon
     if entity.uiSprite.textureIndex ~= wanted then entity.uiSprite.textureIndex = wanted end
 end
 ```
@@ -103,7 +103,7 @@ end
 
 ```lua
 -- Scripts/UI/KeyIcon.lua (one Image per key, e.g. a red key icon)
--- Shows the icon once Scripts.keys[keyName] is true (set by a pickup script).
+-- Shows the icon once Global.keys[keyName] is true (set by a pickup script).
 ---@field keyName string @ Key Name
 keyName = "red"
 
@@ -111,7 +111,7 @@ keyName = "red"
 size = Vector2(48, 48)
 
 function Update()
-    local has = Scripts.keys ~= nil and Scripts.keys[keyName] == true
+    local has = Global.keys ~= nil and Global.keys[keyName] == true
     entity.uiTransform.scale = has and size or Vector2(0, 0)
 end
 ```

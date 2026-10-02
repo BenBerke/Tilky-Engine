@@ -50,7 +50,7 @@ function Update()
 
     if Input.GetMouseButton(Input.MouseRight) then
         target = baseFov * zoomScale
-    elseif Input.GetKey("LShift") and Input.GetKey("W") then
+    elseif Input.GetKey(Key.LShift) and Input.GetKey(Key.W) then
         target = baseFov + sprintFovBonus   -- same condition the PlayerController sprints on
     end
 
@@ -128,8 +128,8 @@ function, so an explosion, a landing, or a crusher can all rattle the camera.
 
 ```lua
 -- Scripts/Camera/ScreenShake.lua (entity script)
----@field testKey string @ Test Key (empty = none)
-testKey = "T"
+---@field testKey Key @ Test Key
+testKey = Key.T
 
 local cam
 local strength = 0.0
@@ -155,7 +155,7 @@ end
 function Update()
     if cam == nil then return end
 
-    if testKey ~= "" and Input.GetKeyDown(testKey) then Shake(nil, 2.0, 0.4) end
+    if Input.GetKeyDown(testKey) then Shake(nil, 2.0, 0.4) end
 
     -- The mouse look keeps adding to yaw/pitch, so take back last frame's shake first.
     cam.yaw = cam.yaw - offsetYaw

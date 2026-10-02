@@ -3,13 +3,13 @@
 Pickups are plain entity scripts that compare distances every frame. For a nicer look, add
 [BobAndSpin](04_entity_movement.md#bob-and-spin) to the same Entity.
 
-Collected items are recorded in the shared `Scripts` table so any other script (a door, the HUD,
+Collected items are recorded in the shared `Global` table so any other script (a door, the HUD,
 an exit) can react:
 
 | Key | Meaning |
 |-----|---------|
-| `Scripts.coins` | Number of coins collected |
-| `Scripts.keys[name]` | `true` once the key called `name` has been collected |
+| `Global.coins` | Number of coins collected |
+| `Global.keys[name]` | `true` once the key called `name` has been collected |
 
 ---
 
@@ -51,12 +51,12 @@ local function Apply()
         return true
 
     elseif kind == KIND_COIN then
-        Scripts.coins = (Scripts.coins or 0) + amount
+        Global.coins = (Global.coins or 0) + amount
         return true
 
     elseif kind == KIND_KEY then
-        Scripts.keys = Scripts.keys or {}
-        Scripts.keys[keyName] = true
+        Global.keys = Global.keys or {}
+        Global.keys[keyName] = true
         Debug.Print("Picked up the " .. keyName .. " key")
         return true
     end
@@ -94,7 +94,7 @@ end
 **Notes**
 
 - Health pickups are only consumed if the player actually needs the health.
-- `Scripts.coins = (Scripts.coins or 0) + amount` works even before anything has created the
+- `Global.coins = (Global.coins or 0) + amount` works even before anything has created the
   counter, since a missing value is `nil` and `nil or 0` is `0`.
 - Destroying the Entity also removes its `AudioSource`, so the sound may be cut off. If that
   happens, play the pickup sound from an `AudioSource` on the player instead.
@@ -120,13 +120,13 @@ function Start()
         return
     end
 
-    Scripts.coins = Scripts.coins or 0
+    Global.coins = Global.coins or 0
 end
 
 function Update()
     if label == nil then return end
 
-    local coins = Scripts.coins or 0
+    local coins = Global.coins or 0
 
     -- Only touch the text when the number changes.
     if coins ~= shown then

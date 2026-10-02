@@ -228,6 +228,7 @@ public:
     int CreateTexture(const std::string& fileName) override;
 
     bool CreateMap() override;
+    void ReloadMap() override;
 
     void RenderText(
         const Shader &shader,

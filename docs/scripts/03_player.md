@@ -19,8 +19,8 @@ Hold a key to walk slowly with a lower eye height.
 
 ```lua
 -- Scripts/Player/Crouch.lua (entity script)
----@field crouchKey string @ Crouch Key
-crouchKey = "LCtrl"
+---@field crouchKey Key @ Crouch Key
+crouchKey = Key.LCtrl
 
 ---@field crouchSpeed number @ Crouch Speed
 crouchSpeed = 22
@@ -81,8 +81,8 @@ overwriting the vertical velocity.
 ---@field extraJumps int @ Extra Air Jumps
 extraJumps = 1
 
----@field jumpKey string @ Jump Key
-jumpKey = "Space"
+---@field jumpKey Key @ Jump Key
+jumpKey = Key.Space
 
 local rb, pc
 local jumpsLeft = 0

@@ -1,7 +1,7 @@
 # Game
 
-`Game` is the table for questions about the **level as a whole**: finding entities, finding the
-sector at a point, and casting rays.
+`Game` is the table for the **level as a whole**: creating and finding entities, finding the
+sector at a point, casting rays, and moving to another level.
 
 ```lua
 local player
@@ -13,6 +13,7 @@ end
 
 | Function | Returns | |
 |---|---|---|
+| [`CreateEntity(isUIEntity)`](#createentity) | `Entity` | Adds a new entity to the level. |
 | [`FindEntity(name)`](#finding-entities) | `Entity` or `nil` | The first entity with exactly this name. |
 | [`FindEntities(name)`](#finding-entities) | list of `Entity` | Every entity with exactly this name. |
 | [`FindEntitiesWithTag(tag)`](#finding-entities) | list of `Entity` | Every entity with this tag. |
@@ -20,7 +21,52 @@ end
 | [`GetEntities()`](#finding-entities) | list of `Entity` | Every entity in the level. |
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider)`](#raycast) | table or `nil` | What a line hits first. |
-| [`LoadLevel(levelName)`](#loadlevel) | | Replaces the current level. Not ready for gameplay yet. |
+| [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
+
+| Property | Type | | |
+|---|---|---|---|
+| [`levelName`](#levelname) | string | read-only | The current level's name. |
+
+---
+
+## CreateEntity
+
+```lua
+Game.CreateEntity()          -- world entity
+Game.CreateEntity(true)      -- UI entity
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `isUIEntity` | boolean, optional | `true` makes a [UI entity](Entity.md#world-entities-and-ui-entities). Leave it out (or pass `false`) for a world entity. |
+
+Adds a new entity to the level right away and returns it. It is the same as placing a new entity in
+the editor:
+
+- It is named `"Entity"`, has no tags and is enabled.
+- A world entity gets a [Transform](Transform.md) at the origin. A UI entity gets a
+  [UI Transform](UITransform.md) instead. It has no other components.
+- It gets a new `id`, so `Game.FindEntity`, `Game.GetEntities` and the other lookups find it from
+  now on.
+
+Give it more components with [`AddComponent`](Entity.md#adding-and-removing-components), for
+example `"Sprite"` to draw it or `"Collider"` to make it solid. Scripts can't be added, so a created
+entity can't run a script of its own.
+
+Entities created while the game runs are **not** saved into the level. Stopping the game in the
+editor removes them.
+
+```lua
+-- Drop a visible marker where the player is standing.
+function Update()
+    if not Input.GetKeyDown(Key.M) then return end
+
+    local marker = Game.CreateEntity()
+    marker.name = "Waypoint"
+    marker.transform.position = entity.transform.position
+    marker:AddComponent(Component.Sprite).northTextureFileName = "Textures/flag.png"
+end
+```
 
 ---
 
@@ -160,9 +206,65 @@ end
 Game.LoadLevel(levelName)
 ```
 
-Loads `levelName` from the project's `Levels` folder (with or without the `.bson` extension) and
-replaces the current level with it.
+| Parameter | Type | |
+|---|---|---|
+| `levelName` | string | A level in the project's `Levels` folder, with or without `.bson`: `"Level2"` or `"Level2.bson"`. |
 
-> **Not ready for gameplay yet.** It swaps the level immediately, in the middle of the calling
-> script, and doesn't start the new level's scripts or player controller. Use it for tools and
-> experiments, not for moving the player to the next level.
+Switches the game to another level. The level is loaded from its **saved file**, so in the editor,
+unsaved changes to that level aren't included. Save it before pressing Play if you want them.
+
+**When it happens.** The call only queues the switch, the same way
+[`entity:Destroy()`](Entity.md#destroying-entities) is queued. The rest of the frame carries on in
+the old level: code after the call still runs, and `Game.levelName` is still the old name. Once the
+frame is over:
+
+1. Every script in the old level gets `OnDestroy`.
+2. The new level replaces the old one. Its entities, sectors, sounds and background are all its
+   own, exactly as saved.
+3. The new level starts just like the first one does: its camera and Player Controller are picked,
+   and every script gets `OnEnable` and `Start`.
+
+If `LoadLevel` is called several times in one frame, the last call wins. Calls made from
+`OnDestroy` during a switch are ignored. Calls from the new level's `Start` are fine: they switch
+again after the new level's first frame.
+
+**What carries over.** Only the [`Global`](Global.md) table. Everything else belongs to the level.
+Each level has its own player entity, placed in the editor. Entities, sectors and walls you kept in
+variables or in `Global` don't carry over; see [Global](Global.md#rules).
+
+**Errors.** A name that isn't a string, or a level that doesn't exist, raises an error at the call,
+and nothing is queued. If the file exists but can't be read, the error is logged and the game stays
+on the current level.
+
+**In the editor.** Pressing **Stop** always puts you back on the level you pressed **Play** on,
+whatever level the game ended on.
+
+Loading happens in one go, so the game may freeze for a moment while a big level loads.
+
+```lua
+-- Scripts/Flow/Exit.lua (trigger at the end of the level)
+---@field nextLevel string @ Next Level
+nextLevel = "Level2"
+
+function OnTriggerEnter(other)
+    if other.hasPlayerController then Game.LoadLevel(nextLevel) end
+end
+```
+
+```lua
+-- Restart the current level when the player falls out of the map.
+function Update()
+    if entity:GetSector() == nil then Game.LoadLevel(Game.levelName) end
+end
+```
+
+---
+
+## levelName
+
+```lua
+Game.levelName   -- "Level2"
+```
+
+The current level's name: its file name in the `Levels` folder, without `.bson`. It changes when
+the new level starts, not when `LoadLevel` is called. Assigning to it raises an error.

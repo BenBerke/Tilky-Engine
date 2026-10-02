@@ -240,10 +240,10 @@ end
 function Update()
     local dx, dz = 0.0, 0.0
 
-    if Input.GetKey("Left") then dx = dx - 1 end
-    if Input.GetKey("Right") then dx = dx + 1 end
-    if Input.GetKey("Up") then dz = dz + 1 end
-    if Input.GetKey("Down") then dz = dz - 1 end
+    if Input.GetKey(Key.Left) then dx = dx - 1 end
+    if Input.GetKey(Key.Right) then dx = dx + 1 end
+    if Input.GetKey(Key.Up) then dz = dz + 1 end
+    if Input.GetKey(Key.Down) then dz = dz - 1 end
 
     if dx == 0 and dz == 0 then return end
 
@@ -259,6 +259,6 @@ end
 **Notes**
 
 - `Input.GetKey` is true while held, `GetKeyDown` only on the frame it was pressed, and `GetKeyUp`
-  only on the frame it was released. Key names: letters `A`-`Z`, digits `0`-`9`, `Space`,
-  `Escape`, `Enter`, `Tab`, `Backspace`, `Left`/`Right`/`Up`/`Down`, `LShift`/`RShift`,
-  `LCtrl`/`RCtrl`, `LAlt`/`RAlt`. An unknown name simply returns `false`.
+  only on the frame it was released. Keys come from the `Key` table: `Key.A`-`Key.Z`,
+  `Key.Alpha0`-`Key.Alpha9`, `Key.Space`, `Key.Escape`, `Key.Enter`, `Key.Tab`, `Key.Backspace`,
+  `Key.Left`/`Right`/`Up`/`Down`, `Key.LShift`/`RShift`, `Key.LCtrl`/`RCtrl`, `Key.LAlt`/`RAlt`.

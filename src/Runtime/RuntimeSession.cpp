@@ -21,7 +21,10 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 
+#include "Headers/Editor/Editor.hpp"
+
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
 
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -46,6 +49,9 @@ namespace {
 
 #ifndef TILKY_STANDALONE
     std::unique_ptr<Level> editorLevelSnapshot;
+    // The background is editor state rather than part of Level, so it is
+    // snapshotted next to it: Game.LoadLevel changes it during Play.
+    std::string editorBackgroundSnapshot;
 
     bool relativeMouseMode = true;
 
@@ -102,6 +108,46 @@ namespace {
         AudioSystem::ApplyListenerSettings(level);
 
         return true;
+    }
+
+    // Game.LoadLevel, after the frame that asked for it. The new level is read
+    // from its saved file first, so a level that fails to load leaves the
+    // current one running. The Lua state is kept, and with it Global.
+    void SwitchRuntimeLevel(Level& level, const std::string& levelName) {
+        ZoneScopedN("SwitchRuntimeLevel");
+
+        Level loadedLevel;
+        LevelSerialization::LevelExtraData extraData;
+        std::string errorMessage;
+
+        if (!LevelSerialization::LoadLevelFromFile(LevelSerialization::BuildLevelPath(levelName), loadedLevel, &extraData, &errorMessage)) {
+            spdlog::error("Game.LoadLevel(\"{}\") failed: {}", levelName, errorMessage);
+            return;
+        }
+
+        loadedLevel.name = levelName;
+
+        LevelSystem::StopLevel(level);
+        AudioSystem::Shutdown(level);
+
+        // A script's OnDestroy may have asked for another level; the switch
+        // already under way wins.
+        LevelSystem::TakeRequestedLevel();
+
+        level = std::move(loadedLevel);
+        Editor::backgroundTextureFileName = extraData.backgroundTextureFileName;
+
+        PrepareRuntimeLevel(level);
+        renderer->ReloadMap();
+
+        AudioSystem::Start(level);
+        LevelSystem::Start(level);
+        AudioSystem::ApplyListenerSettings(level);
+
+        // The load time shouldn't show up as one huge frame.
+        GameTime::Update();
+
+        spdlog::info("Switched to level {}", levelName);
     }
 
     void ShutdownGameSystems(Level& level) {
@@ -238,6 +284,7 @@ namespace {
         relativeMouseMode = true;
 
         editorLevelSnapshot = std::make_unique<Level>(level);
+        editorBackgroundSnapshot = Editor::backgroundTextureFileName;
 
         spdlog::info("Runtime level snapshot created");
 
@@ -366,6 +413,7 @@ namespace {
         }
 
         LevelManager::CurrentLevel() = *editorLevelSnapshot;
+        Editor::backgroundTextureFileName = editorBackgroundSnapshot;
 
         editorLevelSnapshot.reset();
 
@@ -435,6 +483,9 @@ namespace RuntimeSession {
             case STANDALONE: spdlog::critical("Invalid runtime type in Tilky_Engine"); break;
         }
 #endif
+
+        if (const std::optional<std::string> requestedLevel = LevelSystem::TakeRequestedLevel())
+            SwitchRuntimeLevel(level, *requestedLevel);
     } // Update
 
     void Shutdown() {

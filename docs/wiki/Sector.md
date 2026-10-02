@@ -181,7 +181,7 @@ changes sector. See [Callback Functions](CallbackFunctions.md#onsectorchange).
 
 - In a sector script, `entity` exists but is an empty placeholder (`entity.isValid == false`).
   Use `sector`.
-- Other scripts can't reach a sector script through `GetScript`. Share state through the `Scripts`
+- Other scripts can't reach a sector script through `GetScript`. Share state through the `Global`
   table, or have the sector script look up the entities it needs.
 - Setting a height that would put a floor at or above its ceiling, or into another interval, raises
   an error. Wrap uncertain writes in `pcall`.

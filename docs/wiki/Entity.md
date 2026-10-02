@@ -40,6 +40,7 @@ other entities from:
 |---|---|
 | A public field | `---@field target Entity` |
 | A callback | `other` in `OnCollisionEnter(other)`, `entity` in a sector's `OnEntityEnter(entity)` |
+| A new one | `Game.CreateEntity()`, see [Creating entities](#creating-entities) |
 | By name | `Game.FindEntity("Player")` (first match or `nil`), `Game.FindEntities("Crate")` (list) |
 | By tag | `Game.FindEntitiesWithTag("enemy")` (list) |
 | By ID | `Game.GetEntity(id)`, for example with a raycast hit's `entityID` |
@@ -82,12 +83,13 @@ entity doesn't have one.
 | `hasUISprite` | `uiSprite` | [UI Sprite](UISprite.md) |
 | `hasUIText` | `uiText` | [UI Text](UIText.md) |
 
-Scripts can't add or remove components. Set them up in the editor.
+Scripts can add and remove them with `AddComponent` and `RemoveComponent`. See
+[Adding and removing components](#adding-and-removing-components).
 
 ### Methods
 
 Every method also has a camelCase spelling (`destroy`, `getScript`, `hasTag`, ...), except
-`GetSector`.
+`GetSector`, `AddComponent` and `RemoveComponent`.
 
 | Method | Returns | Description |
 |---|---|---|
@@ -99,6 +101,8 @@ Every method also has a camelCase spelling (`destroy`, `getScript`, `hasTag`, ..
 | `HasTag(tag)` | boolean | `true` if the entity has `tag`. An unknown tag name returns `false`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. Raises an error if out of range. |
 | `GetSector()` | Sector or `nil` | The sector the entity stands in, or `nil` outside the map or without a Transform. See [Sector occupancy](Sector.md#occupancy). |
+| `AddComponent(component)` | the component | Adds a component, e.g. `Component.Sprite`, and returns it. See [Adding and removing components](#adding-and-removing-components). |
+| `RemoveComponent(component)` | boolean | Removes a component. `false` if the entity didn't have it. |
 
 Script references (`Behaviour`) are covered on the [Script](Script.md#behaviour-references) page.
 
@@ -143,7 +147,87 @@ drawn, it collides, its handle is valid. At the end of the frame every script on
 - anything that was touching it gets `OnCollisionExit` / `OnTriggerExit` next frame, with an
   invalid `other`.
 
-There is no way to create entities from scripts. Place everything you need in the editor.
+## Creating entities
+
+`Game.CreateEntity()` adds a new, empty world entity to the level and returns it;
+`Game.CreateEntity(true)` adds a UI entity. It starts with only a Transform (or UI Transform). Give
+it more with [`AddComponent`](#adding-and-removing-components). It can't be given a script. See
+[Game.CreateEntity](Game.md#createentity).
+
+## Adding and removing components
+
+```lua
+local sprite = entity:AddComponent(Component.Sprite)   -- returns the Sprite
+entity:RemoveComponent(Component.Collider)             -- true if there was one
+```
+
+Components are picked from the global `Component` table. The script editor and VS Code suggest
+its values as you type `Component.`:
+
+| World entities | UI entities |
+|---|---|
+| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText` |
+
+- The values are plain numbers. A misspelled one (`Component.Sprit`) is `nil`, and passing `nil` or
+  a number that isn't in the table raises an error.
+- `AddComponent` returns the component, the same value as `entity.sprite`, `entity.collider`, and
+  so on. If the entity already has one, nothing changes and that one is returned.
+- A new component starts with its default settings, listed on its own page. Set what you need on
+  the returned value. Only that component is added: unlike in the editor, adding
+  `Component.PlayerController` doesn't also add a Rigidbody, Collider and Camera.
+- `RemoveComponent` returns `true` if it removed one and `false` if the entity didn't have it.
+  The component is gone straight away: `entity.collider` is `nil` from the next line on, and
+  component values you kept report `isValid == false`.
+- World components can't be added to a UI entity (one with a UI Transform), and UI components
+  can't be added to a world entity (one with a Transform). Trying raises an error.
+- **Scripts** can't be added or removed this way, so there is no `Component.Script`.
+- On an entity that has been destroyed, `AddComponent` returns `nil` and `RemoveComponent`
+  returns `false`.
+
+Changes made while the game runs are not saved into the level. Stopping the game in the editor
+puts every entity back the way it was.
+
+Some components only take part in choices the engine makes **when the level starts**:
+
+- **Player Controller**: only the controller picked at level start ever runs (see
+  [Which controller is used](PlayerController.md#which-controller-is-used)). One added later does
+  nothing. Removing the running one stops player movement for the rest of the level.
+- **Camera**: the first camera with `isActive` on is the one that renders (see
+  [Only one camera renders](Camera.md#only-one-camera-renders)). A new camera starts with `isActive`
+  on, but it only takes over once every camera before it is turned off. Removing the last active
+  camera leaves nothing to draw the level with.
+- **Audio Source**: `playOnStart` has nothing to wait for, so a new source never starts by itself.
+  Call `play()`, or set `looping` with a `soundFileName`.
+
+```lua
+-- Scripts/Thrower.lua (on the player): F throws a ball with a sprite and a trigger collider.
+---@field speed number
+speed = 300
+
+local balls = {}
+
+function Update()
+    if Input.GetKeyDown(Key.F) then
+        local ball = Game.CreateEntity()
+        ball.name = "Ball"
+        ball.transform.position = entity.transform.position
+
+        ball:AddComponent(Component.Sprite).northTextureFileName = "Textures/ball.png"
+
+        local collider = ball:AddComponent(Component.Collider)
+        collider.isTrigger = true
+        collider.scale = Vector3(8, 8, 8)
+
+        table.insert(balls, ball)
+    end
+
+    for _, ball in ipairs(balls) do
+        if ball.isValid then
+            ball.transform.position = ball.transform.position + entity.camera.forward * speed * GameTime.deltaTime
+        end
+    end
+end
+```
 
 ## Examples
 
@@ -231,8 +315,8 @@ Other scripts call it with `thing:GetScript("Hideable"):SetShown(false)`.
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
 
-    Scripts.coins = (Scripts.coins or 0) + 1
-    Debug.Print("Coins:", Scripts.coins)
+    Global.coins = (Global.coins or 0) + 1
+    Debug.Print("Coins:", Global.coins)
     entity:Destroy()
 end
 ```

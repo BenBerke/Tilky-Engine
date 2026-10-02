@@ -16,36 +16,45 @@ namespace {
 
 namespace AudioSystem {
     void Start(Level& level) {
-        for (ComponentAudioSource& audio : level.audioSources.components) {
-            if (audio.ownerID == static_cast<ID>(-1)) {
-                spdlog::error("Audio source has no valid owner");
-                continue;
-            }
-
-            audio.name = MakeAudioSourceName(audio.ownerID);
-
-            if (!SoundManager::CreateSource(audio.name)) {
-                spdlog::error("Failed to create audio source: {}", audio.name);
-                continue;
-            }
-
-            SoundManager::SetSourcePitch(audio.name, audio.pitch);
-            SoundManager::SetSourceGain(audio.name, audio.gain);
-            SoundManager::SetSourceLooping(audio.name, audio.looping);
-            SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
-            SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
-            SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
-            SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
-            SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
-            SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
-
-            const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
-
-            if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
-            if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
-        }
+        for (ComponentAudioSource& audio : level.audioSources.components) StartSource(level, audio);
 
         spdlog::info("Audio system started");
+    }
+
+    void StartSource(Level& level, ComponentAudioSource& audio) {
+        if (audio.ownerID == static_cast<ID>(-1)) {
+            spdlog::error("Audio source has no valid owner");
+            return;
+        }
+
+        audio.name = MakeAudioSourceName(audio.ownerID);
+
+        if (!SoundManager::CreateSource(audio.name)) {
+            spdlog::error("Failed to create audio source: {}", audio.name);
+            return;
+        }
+
+        SoundManager::SetSourcePitch(audio.name, audio.pitch);
+        SoundManager::SetSourceGain(audio.name, audio.gain);
+        SoundManager::SetSourceLooping(audio.name, audio.looping);
+        SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
+        SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
+        SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
+        SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
+        SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
+        SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
+
+        const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
+
+        if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
+        if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
+    }
+
+    void DestroySource(ComponentAudioSource& audio) {
+        if (audio.name.empty()) return;
+
+        SoundManager::DestroySource(audio.name);
+        audio.name.clear();
     }
 
     void Update(Level& level) {
@@ -76,12 +85,7 @@ namespace AudioSystem {
     }
 
     void Shutdown(Level& level) {
-        for (ComponentAudioSource& audio : level.audioSources.components) {
-            if (!audio.name.empty()) {
-                SoundManager::DestroySource(audio.name);
-                audio.name.clear();
-            }
-        }
+        for (ComponentAudioSource& audio : level.audioSources.components) DestroySource(audio);
     }
 
     void ApplyListenerSettings(const Level& level) {

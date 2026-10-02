@@ -36,6 +36,11 @@ public:
 
     virtual bool CreateMap() = 0;
 
+    // Rebuilds the map's GPU data and textures for a level that replaced
+    // the current one while the game runs (Game.LoadLevel). Call after
+    // CreateMap() has run once.
+    virtual void ReloadMap() = 0;
+
     void SetUseEditorCamera(const bool enabled) {
         useEditorCamera = enabled;
 

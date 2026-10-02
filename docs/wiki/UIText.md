@@ -66,13 +66,13 @@ end
 
 ```lua
 -- Scripts/UI/Message.lua (UI entity with a Text)
--- Anything can show a message with: Scripts.ShowMessage("Door unlocked", 3)
+-- Anything can show a message with: Global.ShowMessage("Door unlocked", 3)
 local timeLeft = 0
 
 function Start()
     entity.uiText.text = ""
 
-    Scripts.ShowMessage = function(message, seconds)
+    Global.ShowMessage = function(message, seconds)
         entity.uiText.text = message
         timeLeft = seconds or 2
     end

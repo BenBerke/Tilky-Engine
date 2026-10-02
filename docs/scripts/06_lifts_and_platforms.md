@@ -123,8 +123,8 @@ openHeight = 40
 ---@field speed number @ Speed
 speed = 60
 
----@field useKey string @ Use Key
-useKey = "E"
+---@field useKey Key @ Use Key
+useKey = Key.E
 
 local open = false
 
@@ -229,8 +229,8 @@ travel = 64
 ---@field speed number @ Speed
 speed = 40
 
----@field callKey string @ Call Key
-callKey = "E"
+---@field callKey Key @ Call Key
+callKey = Key.E
 
 local MIN_GAP = 0.5
 

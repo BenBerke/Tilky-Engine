@@ -21,39 +21,39 @@ like Lua's `math`. Everything with `Angle` in its name, and `Vector2Rotate` /
 
 ## Constants
 
-| Name | Value |
-|---|---|
-| `Pi` | 3.14159... |
-| `Tau` | `2 * Pi`, one full turn in radians. |
-| `HalfPi` | `Pi / 2`, a quarter turn in radians. |
-| `E` | Euler's number, 2.71828... |
-| `Sqrt2` | Square root of 2. |
-| `Infinity` / `NegativeInfinity` | Positive and negative infinity. |
+| Name | Value                                             |
+|---|---------------------------------------------------|
+| `Pi` | 3.14159265359f                                    |
+| `Tau` | `2 * Pi`, one full turn in radians.               |
+| `HalfPi` | `Pi / 2`, a quarter turn in radians.              |
+| `E` | Euler's number,  2.718281828459045f               |
+| `Sqrt2` | Square root of 2.                                 |
+| `Infinity` / `NegativeInfinity` | Positive and negative infinity.                   |
 | `Epsilon` | `1e-6`, the default tolerance of `Approximately`. |
-| `MaxInteger` / `MinInteger` | Largest and smallest Lua integer. |
+| `MaxInteger` / `MinInteger` | Largest and smallest Lua integer.                 |
 
 ---
 
 ## Basic
 
-| Function | Returns | |
-|---|---|---|
-| `Abs(x)` | number | |
-| `Sign(x)` | integer | `-1`, `0` or `1`. |
-| `Floor(x)` / `Ceil(x)` | integer | |
-| `Round(x)` | integer | Rounds half away from zero: `Round(2.5)` is `3`, `Round(-2.5)` is `-3`. |
-| `Round(x, digits)` | number | Rounds to that many decimals: `Round(3.14159, 2)` is `3.14`. |
-| `Trunc(x)` | integer | Drops the fraction (rounds toward zero). |
-| `Frac(x)` | number | The fraction: `x - Trunc(x)`. `Frac(-1.25)` is `-0.25`. |
-| `Min(a, b, ...)` / `Max(a, b, ...)` | number | Any number of arguments. |
+| Function | Returns |                                                                                         |
+|---|---|-----------------------------------------------------------------------------------------|
+| `Abs(x)` | number | Absoulete value                                                                         |
+| `Sign(x)` | integer | `-1`, `0` or `1`.                                                                       |
+| `Floor(x)` / `Ceil(x)` | integer |                                                                                         |
+| `Round(x)` | integer | Rounds half away from zero: `Round(2.5)` is `3`, `Round(-2.5)` is `-3`.                 |
+| `Round(x, digits)` | number | Rounds to that many decimals: `Round(3.14159, 2)` is `3.14`.                            |
+| `Trunc(x)` | integer | Drops the fraction (rounds toward zero).                                                |
+| `Frac(x)` | number | The fraction: `x - Trunc(x)`. `Frac(-1.25)` is `-0.25`.                                 |
+| `Min(a, b, ...)` / `Max(a, b, ...)` | number | Any number of arguments.                                                                |
 | `Mod(x, d)` | number | Floored modulo, like Lua's `%`: the result has the sign of `d`. `Mod(-1, 360)` is `359`. |
-| `Fmod(x, d)` | number | C-style remainder: the result has the sign of `x`. `Fmod(-1, 360)` is `-1`. |
-| `Sqrt(x)` | number | |
-| `Pow(base, exponent)` | number | |
-| `Exp(x)` | number | `E` raised to `x`. |
-| `Log(x[, base])` | number | Natural log, or the log in `base`. |
-| `Log10(x)` / `Log2(x)` | number | |
-| `Hypot(x, y)` | number | `Sqrt(x*x + y*y)`, without overflow. |
+| `Fmod(x, d)` | number | C-style remainder: the result has the sign of `x`. `Fmod(-1, 360)` is `-1`.             |
+| `Sqrt(x)` | number |                                                                                         |
+| `Pow(base, exponent)` | number |                                                                                         |
+| `Exp(x)` | number | `E` raised to `x`.                                                                      |
+| `Log(x[, base])` | number | Natural log, or the log in `base`.                                                      |
+| `Log10(x)` / `Log2(x)` | number |                                                                                         |
+| `Hypot(x, y)` | number | `Sqrt(x*x + y*y)`, without overflow.                                                    |
 
 ---
 

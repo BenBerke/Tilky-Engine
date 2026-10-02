@@ -158,7 +158,7 @@ onTexture = nil
 door = nil
 
 function Update()
-    if not Input.GetKeyDown("E") then return end
+    if not Input.GetKeyDown(Key.E) then return end
 
     local camera = entity.camera
     local controller = entity.playerController

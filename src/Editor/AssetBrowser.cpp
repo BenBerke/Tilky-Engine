@@ -45,7 +45,7 @@ namespace {
                 "OnCollisionEnter", "OnCollision", "OnCollisionExit",
                 "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
                 "entity", "sector",
-                "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
+                "GameTime", "Input", "Game", "Debug", "Global", "mathT"
             };
 
             for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
@@ -53,6 +53,7 @@ namespace {
 
                 for (const LuaBindingMetadata::PropertyDoc& prop : type.properties) list.push_back(prop.name);
                 for (const LuaBindingMetadata::MethodDoc& method : type.methods) list.push_back(method.name);
+                for (const LuaBindingMetadata::EnumValueDoc& value : type.enumValues) list.push_back(value.name);
             }
 
             std::ranges::sort(list);
@@ -1132,9 +1133,10 @@ void AssetBrowser::UpdateAutocomplete() {
 
         if (type != nullptr) {
             std::vector<std::string> memberNames;
-            memberNames.reserve(type->properties.size() + type->methods.size());
+            memberNames.reserve(type->properties.size() + type->methods.size() + type->enumValues.size());
             for (const LuaBindingMetadata::PropertyDoc& prop : type->properties) memberNames.push_back(prop.name);
             for (const LuaBindingMetadata::MethodDoc& method : type->methods) memberNames.push_back(method.name);
+            for (const LuaBindingMetadata::EnumValueDoc& value : type->enumValues) memberNames.push_back(value.name);
             std::ranges::sort(memberNames);
 
             const std::string wordLower = LowerCopy(word);

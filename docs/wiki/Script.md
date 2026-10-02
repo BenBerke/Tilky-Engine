@@ -30,7 +30,7 @@ imps running `Imp.lua` never share a `health` variable. What they do share:
 | Shared | What it is |
 |---|---|
 | Engine globals | `Input`, `Game`, `GameTime`, `Debug`, `mathT`, `Vector2`, `Vector3`, `Vector4`, `ColliderType`, and Lua's `math`, `string`, `table` |
-| `Scripts` | A table **every** script in the level can read and write. It's recreated empty when the level starts. |
+| `Global` | A table **every** script can read and write. It keeps its contents when the level changes and starts empty each time the game starts. See [Global](Global.md). |
 
 Each environment also gets its own owner globals:
 
@@ -79,7 +79,7 @@ comment **directly above** its default:
 - The default must be a simple literal, because the editor reads it as text without running the
   script.
 - Names used by the engine can't be fields: every [callback](CallbackFunctions.md) name, `entity`,
-  `sector`, `Scripts`, `GameTime`, `Input`, `Game` and `Debug`.
+  `sector`, `Global`, `GameTime`, `Input`, `Game` and `Debug`.
 - If you later delete a field from the script, the inspector keeps showing its old saved value
   so you can remove it by hand.
 
@@ -93,6 +93,7 @@ comment **directly above** its default:
 | `string` | string | `"text"` | text box |
 | `Vector2` / `Vector3` / `Vector4` | vector | `Vector3(0, 1, 0)` | 2 to 4 number boxes |
 | `enum(A,B,C)` | integer: `0` for A, `1` for B, ... | `1` | dropdown |
+| `Key` | a [`Key`](Input.md#keys) value | `Key.E` | dropdown of every key |
 | `Entity` | [Entity](Entity.md) or `nil` | `nil` | entity picker |
 | `Sector` | [Sector](Sector.md) or `nil` | `nil` | sector picker |
 | `Wall` | [Wall](Wall.md) or `nil` | `nil` | wall picker |
@@ -111,6 +112,9 @@ speed = 40
 
 ---@field mode enum(Idle,Patrol,Chase) @ Starting Mode
 mode = 1 -- Patrol
+
+---@field useKey Key @ Use Key
+useKey = Key.E
 
 ---@field target Entity @ Target
 target = nil
@@ -200,7 +204,7 @@ Scripts attached to a sector:
   callbacks;
 - have no entity-style Enabled switch other than their own **Enabled** box;
 - **can't** be reached with `GetScript` or a `Behaviour` field. Talk to them through the shared
-  `Scripts` table, or let the sector script find the entities it needs itself;
+  `Global` table, or let the sector script find the entities it needs itself;
 - are ordered after all entity scripts.
 
 ## In the editor
@@ -222,7 +226,7 @@ value = 1
 
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
-    Scripts.score = (Scripts.score or 0) + value
+    Global.score = (Global.score or 0) + value
     entity:Destroy()
 end
 ```
@@ -232,7 +236,7 @@ end
 local shown = -1
 
 function Update()
-    local score = Scripts.score or 0
+    local score = Global.score or 0
     if score ~= shown then
         shown = score
         entity.uiText.text = "Score: " .. score
@@ -273,10 +277,10 @@ end
 
 ```lua
 -- Scripts/Events/Button.lua (entity with a trigger Collider)
--- Anything can listen with: Scripts.onButton = function(name) ... end
+-- Anything can listen with: Global.onButton = function(name) ... end
 function OnTriggerEnter(other)
-    if other.hasPlayerController and Scripts.onButton ~= nil then
-        Scripts.onButton(entity.name)
+    if other.hasPlayerController and Global.onButton ~= nil then
+        Global.onButton(entity.name)
     end
 end
 ```
@@ -284,14 +288,14 @@ end
 ```lua
 -- Scripts/Events/Listener.lua (can be a sector script)
 function Start()
-    Scripts.onButton = function(buttonName)
+    Global.onButton = function(buttonName)
         Debug.Print("Button pressed:", buttonName)
         if sector ~= nil then sector:MoveFloorTo(1, 64, 40) end
     end
 end
 ```
 
-Remember to mutate `Scripts` (`Scripts.x = ...`) rather than replace it (`Scripts = {}`), which
+Remember to mutate `Global` (`Global.x = ...`) rather than replace it (`Global = {}`), which
 would only change your own script's copy of the variable.
 
 For a fuller event bus, timers and other helpers, see

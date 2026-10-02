@@ -139,7 +139,7 @@ end
 
 function Update()
     local pc = entity.playerController
-    local crouching = Input.GetKey("LCtrl")
+    local crouching = Input.GetKey(Key.LCtrl)
 
     local wantedEye = crouching and crouchEyeHeight or standEye
     pc.eyeHeight = mathT.MoveTowards(pc.eyeHeight, wantedEye, 40 * GameTime.deltaTime)
@@ -165,7 +165,7 @@ function Update()
     end
 
     -- The controller already handles the jump from the ground; this adds one in the air.
-    if Input.GetKeyDown("Space") and not usedAirJump then
+    if Input.GetKeyDown(Key.Space) and not usedAirJump then
         usedAirJump = true
         local v = body.velocity
         body.velocity = Vector3(v.x, airJumpPower, v.z)

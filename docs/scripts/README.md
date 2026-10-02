@@ -52,12 +52,14 @@ console and logged, and the script keeps running.
 | `entity` | The Entity this script is on. On a sector script it is an invalid placeholder (`entity.isValid == false`) |
 | `sector` | Sector scripts only: the sector the script is on. Its `MoveFloorToCeiling`/`MoveCeilingToFloor` (and `...OverTime`) move a floor or ceiling for you, see [06_lifts_and_platforms.md](06_lifts_and_platforms.md) |
 | `GameTime` | `deltaTime`, `fixedDeltaTime`, `osTime` (wall-clock seconds since 1970, UTC) |
-| `Input` | Keyboard and mouse: `GetKey`, `GetKeyDown`, `GetKeyUp`, `GetMouseButton*`, `GetMousePosition` |
-| `Game` | `Raycast(...)`, `LoadLevel(name)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |
+| `Input` | Keyboard and mouse: `GetKey(Key.E)`, `GetKeyDown`, `GetKeyUp`, `GetKeyName`, `GetMouseButton*`, `GetMousePosition` |
+| `Key` | Keyboard keys for `Input`: `Key.A`, `Key.Space`, `Key.LShift`, ... |
+| `Component` | Component types for `entity:AddComponent` / `RemoveComponent`: `Component.Sprite`, ... |
+| `Game` | `Raycast(...)`, `LoadLevel(name)`, `levelName`, `CreateEntity(isUIEntity?)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |
 | `Debug` | `Print` (in-game console), `LogInfo`, `LogWarning`, `LogError`, `LogCritical` |
 | `mathT` | Everything in Lua's `math` (`Abs`, `Floor`, `Sin`, ...), constants (`Pi`, `Tau`, `Infinity`, ...), `Clamp`, `Lerp`, `SmoothDamp`, `MoveTowards`, angle helpers, random helpers and `Vector2*`/`Vector3*`/`Vector4*` functions. The script editor's autocomplete lists them all |
 | `Vector2`, `Vector3`, `Vector4` | Constructors: `Vector3(x, y, z)`. Support `+ - * /` (with a vector or a number), unary `-`, `==` and `tostring` |
-| `Scripts` | One table shared by **every** script in the level. Reset when the level starts |
+| `Global` | One table shared by **every** script. Kept across level changes, empty again each time the game starts |
 
 Only the Lua `base`, `math`, `table` and `string` libraries are loaded. There is **no** `os`, `io`,
 `require`, or `coroutine`. Do timing with a variable and `GameTime.deltaTime` (see
@@ -116,22 +118,22 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
    -- Anywhere else
    target:GetScript("Health"):TakeDamage(10)
    ```
-5. **Share state by mutating `Scripts`, never by replacing it.** `Scripts.keys = Scripts.keys or {}`
-   is fine. `Scripts = {}` only changes your own copy of the variable.
+5. **Share state by mutating `Global`, never by replacing it.** `Global.keys = Global.keys or {}`
+   is fine. `Global = {}` only changes your own copy of the variable.
 6. **Sector scripts can't be reached with `GetScript`.** Only entity scripts can. Use the shared
-   `Scripts` table (or a public field on an entity) to talk to a sector script.
+   `Global` table (or a public field on an entity) to talk to a sector script.
 7. **Setters can throw.** For example a sector's ceiling must stay above its floor. Wrap risky
    writes in `pcall` (see [05_doors.md](05_doors.md)) so one bad value doesn't spam the console
    every frame.
 8. **There is no `Instantiate`.** To get at other objects, use an `Entity` public field,
    `Game.FindEntity("Name")`, `Game.FindEntitiesWithTag("Tag")`, `Game.Raycast`,
-   `sector:GetEntity(i)`, or the `Scripts` table. The `Find` calls go through every Entity in the
+   `sector:GetEntity(i)`, or the `Global` table. The `Find` calls go through every Entity in the
    level, so call them in `Start` and keep the result instead of calling them every frame.
 9. **Tags are read-only from Lua.** Assign them in the editor, then test with `HasTag("Name")`.
 10. **`Entity:Destroy()` is deferred** to the end of the frame, so the object is still valid for
     the rest of the current frame.
-11. **`Game.LoadLevel` from a script is experimental.** The engine's own code carries a TODO about
-    checking it in a running game. See [17_level_flow.md](17_level_flow.md).
+11. **`Game.LoadLevel` is deferred** to the end of the frame, like `Destroy()`. Only the `Global`
+    table carries over to the new level. See [17_level_flow.md](17_level_flow.md).
 
 ## How these examples were checked
 

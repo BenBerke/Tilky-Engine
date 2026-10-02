@@ -7,10 +7,13 @@
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include <sol/state.hpp>
 
-#include "Headers/Editor/Editor.hpp"
+#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,8 +24,12 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterGameMetadata() {
-        RegisterType(GlobalTable("Game", "Global game/level table.", {}, {
-            Method("LoadLevel", {Param("levelName", "string")}),
+        RegisterType(GlobalTable("Game", "Global game/level table.", {
+            Prop("levelName", "string", true, "The current level's name, as passed to LoadLevel."),
+        }, {
+            Method("LoadLevel", {Param("levelName", "string")}, {},
+                   "Switches to the level `levelName` from the Levels folder at the end of this frame. "
+                   "Raises an error if there is no such level."),
             Method(
                 "Raycast",
                 {
@@ -33,6 +40,9 @@ namespace {
                 "Returns nil on miss, else a table with type/typeID/position/distance/"
                 "entityID/wallID/sectorID and (whichever applies) entity/wall/sector."
             ),
+            Method("CreateEntity", {Param("isUIEntity", "boolean?")}, "Entity",
+                   "Adds a new empty Entity named \"Entity\" to the level and returns it. It starts with a Transform "
+                   "at the origin, or a UITransform when `isUIEntity` is true."),
             Method("FindEntity", {Param("name", "string")}, "Entity?", "First Entity with this exact name, or nil."),
             Method("FindEntities", {Param("name", "string")}, "Entity[]", "Every Entity with this exact name."),
             Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
@@ -68,8 +78,45 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         game = lua.create_named_table("Game");
     }
 
-    game.set_function("LoadLevel", [](const std::string& levelName)->void {
-       Editor::LoadLevel(levelName);
+    // Only queues the switch; RuntimeSession does it once this frame is over.
+    // The file is checked here so a wrong name is an error at the call.
+    game.set_function("LoadLevel", [](const sol::object& value) {
+        if (value.get_type() != sol::type::string)
+            throw sol::error("Game.LoadLevel expects a level name (string)");
+
+        const std::string levelName = LevelSerialization::CleanLevelName(value.as<std::string>());
+
+        std::error_code ec;
+        if (levelName.empty() || !std::filesystem::is_regular_file(LevelSerialization::BuildLevelPath(levelName), ec))
+            throw sol::error("Game.LoadLevel: there is no level called \"" + levelName + "\" in the Levels folder");
+
+        LevelSystem::RequestLevelLoad(levelName);
+    });
+
+    // Game is a plain table, so levelName is served from its metatable: it
+    // always reads the current level, and assigning to it is an error.
+    sol::table gameMeta = lua.create_table();
+
+    gameMeta[sol::meta_function::index] = [](const sol::table&, const sol::object& key, const sol::this_state state) -> sol::object {
+        if (key.is<std::string>() && key.as<std::string>() == "levelName")
+            return sol::make_object(state, LevelManager::CurrentLevel().name);
+
+        return sol::make_object(state, sol::nil);
+    };
+
+    gameMeta[sol::meta_function::new_index] = [](sol::table self, const sol::object& key, const sol::object& value) {
+        if (key.is<std::string>() && key.as<std::string>() == "levelName")
+            throw sol::error("Game.levelName is read-only");
+
+        self.raw_set(key, value);
+    };
+
+    game[sol::metatable_key] = gameMeta;
+
+    game.set_function("CreateEntity", [](const sol::optional<bool> isUIEntity) -> ScriptEntity {
+        Level& level = LevelManager::CurrentLevel();
+
+        return {&level, level.CreateEntity(isUIEntity.value_or(false))};
     });
 
     game.set_function("FindEntity", [](sol::this_state state, const std::string& name) -> sol::object {

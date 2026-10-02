@@ -30,11 +30,11 @@ namespace LevelManager {
         currentLevelIndex = -1;
     }
 
-    bool LoadLevelFromFile(const fs::path& levelFile) {
+    bool LoadLevelFromFile(const fs::path& levelFile, LevelSerialization::LevelExtraData* outExtraData) {
         Level loadedLevel;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(levelFile, loadedLevel, nullptr, &errorMessage)) {
+        if (!LevelSerialization::LoadLevelFromFile(levelFile, loadedLevel, outExtraData, &errorMessage)) {
             std::cerr << errorMessage << "\n";
             return false;
         }
@@ -51,7 +51,7 @@ namespace LevelManager {
         return LoadLevelFromFile(LevelSerialization::BuildLevelPath(levelName));
     }
 
-    bool LoadFirstProjectLevel() {
+    bool LoadFirstProjectLevel(LevelSerialization::LevelExtraData* outExtraData) {
         const fs::path levelsPath = ProjectManager::GetLevelsPath();
 
         if (!fs::exists(levelsPath) || !fs::is_directory(levelsPath)) {
@@ -78,7 +78,7 @@ namespace LevelManager {
 
         std::ranges::sort(levelFiles);
 
-        return LoadLevelFromFile(levelFiles.front());
+        return LoadLevelFromFile(levelFiles.front(), outExtraData);
     }
 
     // The reason its here is for legacy reasons

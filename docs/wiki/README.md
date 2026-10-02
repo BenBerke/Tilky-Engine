@@ -47,7 +47,7 @@ Every script can use these globals without setting anything up.
 | [Input](Input.md) | Keyboard and mouse. |
 | [GameTime](GameTime.md) | `deltaTime`, `fixedDeltaTime` and the real-world clock. |
 | [Debug](Debug.md) | Print to the in-game console or write to the engine log. |
-| [Scripts](Scripts.md) | A table shared by every script, for level-wide state. |
+| [Global](Global.md) | A table shared by every script, for game-wide state that survives level changes. |
 | [mathT](mathT.md) | Maths helpers: clamping, interpolation, angles, random numbers, vector maths. |
 | [Vector2, Vector3, Vector4](Vector.md) | Positions, directions and colours, with `+ - * /`. |
 

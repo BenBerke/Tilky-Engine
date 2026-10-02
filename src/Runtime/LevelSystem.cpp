@@ -13,6 +13,10 @@
 
 #include <tracy/Tracy.hpp>
 
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
@@ -84,7 +88,13 @@ namespace {
             );
     }
 
-    ComponentPlayerController *activeController = nullptr;
+    // The controller picked in Start(), by owner ID. Not a pointer: scripts
+    // can add and remove components mid-game, which moves the others around
+    // in their storage.
+    ID activeControllerID = INVALID_ENTITY_ID;
+
+    // See RequestLevelLoad.
+    std::optional<std::string> requestedLevel;
 
     LuaScriptSystem scriptingSystem;
     bool scriptingInitialized = false;
@@ -206,12 +216,13 @@ namespace LevelSystem {
         }
 
         if (activeCamera == nullptr) {
-            activeController = nullptr;
+            activeControllerID = INVALID_ENTITY_ID;
             spdlog::error("Level::Start failed: the level has no camera");
             return;
         }
 
-        activeController = GetActivePlayerController(level);
+        ComponentPlayerController *activeController = GetActivePlayerController(level);
+        activeControllerID = activeController != nullptr ? activeController->ownerID : INVALID_ENTITY_ID;
 
         if (activeController != nullptr) {
             ComponentTransform *playerTransform = level.transforms.Get(activeController->ownerID);
@@ -228,7 +239,7 @@ namespace LevelSystem {
             }
             else {
                 const ID controllerEntityID = activeController->ownerID;
-                activeController = nullptr;
+                activeControllerID = INVALID_ENTITY_ID;
 
                 spdlog::error(
                     "Level::Start skipped player controller: entity {} is missing transform or rigidbody",
@@ -260,8 +271,10 @@ namespace LevelSystem {
             level.UpdateSectorMovement(GameTime::deltaTime);
         }
 
+        ComponentPlayerController *activeController = level.playerControllers.Get(activeControllerID);
+
         if (activeController != nullptr && activeController->isActive) {
-            const ID ownerID = activeController->ownerID;
+            const ID ownerID = activeControllerID;
 
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
             if (!playerTransform) [[unlikely]]
@@ -430,6 +443,20 @@ namespace LevelSystem {
     void Shutdown(Level &level) {
         scriptingSystem.Shutdown();
         scriptingInitialized = false;
-        activeController = nullptr;
+        activeControllerID = INVALID_ENTITY_ID;
+        requestedLevel.reset();
+    }
+
+    void StopLevel(Level &level) {
+        scriptingSystem.Stop(level);
+        activeControllerID = INVALID_ENTITY_ID;
+    }
+
+    void RequestLevelLoad(const std::string &levelName) {
+        requestedLevel = levelName;
+    }
+
+    std::optional<std::string> TakeRequestedLevel() {
+        return std::exchange(requestedLevel, std::nullopt);
     }
 }

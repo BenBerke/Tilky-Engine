@@ -35,11 +35,11 @@ Two hotkeys:
 
 ```lua
 -- Scripts/Debug/DebugTools.lua (entity script)
----@field infoKey string @ Player Info Key
-infoKey = "P"
+---@field infoKey Key @ Player Info Key
+infoKey = Key.P
 
----@field inspectKey string @ Inspect Key
-inspectKey = "I"
+---@field inspectKey Key @ Inspect Key
+inspectKey = Key.I
 
 ---@field range number @ Inspect Range
 range = 500
@@ -118,8 +118,8 @@ end
 - Sectors, walls, and Entities all have `tagCount` and `GetTag(i)`, which is why one
   `TagList` helper works for all three.
 - The function keys (`F1`...) aren't available to scripts, so debug hotkeys use letters.
-  `Input.GetAnyKeyDown()` returns the name of whatever key was pressed this frame, which is handy
-  for finding out what a key is called.
+  `Input.GetKeyName(Input.GetAnyKeyDown())` gives the name of whatever key was pressed this frame
+  (check `GetAnyKeyDown()` isn't `nil` first), which is handy for finding out what a key is called.
 
 ---
 

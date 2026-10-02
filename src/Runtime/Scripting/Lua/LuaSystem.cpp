@@ -483,7 +483,7 @@ namespace {
             "OnEntityEnter", "OnEntityExit",
             "OnCollisionEnter", "OnCollision", "OnCollisionExit",
             "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
-            "entity", "sector", "Scripts", "GameTime", "Input", "Game", "Debug"
+            "entity", "sector", "Global", "GameTime", "Input", "Game", "Debug"
         };
 
         return reserved.contains(name);
@@ -550,8 +550,11 @@ namespace {
 
             case ScriptValueType::Enum: {
                 if (!enumOptions.empty()) {
+                    // A Key field's default is written `Key.E`.
+                    const std::string optionName = rhs.starts_with("Key.") ? rhs.substr(4) : rhs;
+
                     for (const ScriptEnumOption& option : enumOptions)
-                        if (option.name == rhs) return ScriptValue{option.value};
+                        if (option.name == optionName) return ScriptValue{option.value};
 
                     try { return ScriptValue{std::stoi(rhs)}; }
                     catch (...) {}
@@ -622,6 +625,11 @@ namespace {
         else if (typeName == "Asset" || typeName == "Texture") result.type = ScriptValueType::Asset;
         else if (typeName == "Wall") result.type = ScriptValueType::Wall;
         else if (typeName == "Sector") result.type = ScriptValueType::Sector;
+        else if (typeName == "Key") {
+            // A dropdown of every key; the value is the Key table's number.
+            result.type = ScriptValueType::Enum;
+            result.enumOptions = LuaScriptSystem::KeyEnumOptions();
+        }
         else if (typeName == "enum") {
             result.type = ScriptValueType::Enum;
 
@@ -902,7 +910,7 @@ namespace {
         instance.environment = sol::environment(lua, sol::create, lua.globals());
 
         InjectOwnerGlobals(level, instance);
-        instance.environment["Scripts"] = lua["Scripts"];
+        instance.environment["Global"] = lua["Global"];
 
         const sol::load_result loadedScript = lua.load_file(path.string());
 
@@ -1202,7 +1210,7 @@ namespace {
 
             "timeInSeconds",
             sol::property([](const ScriptGameTime&) {
-                return GameTime::timeInSeconds();
+                return GameTime::timeInSeconds;
             })
         );
 
@@ -1325,7 +1333,10 @@ bool LuaScriptSystem::Initialize() {
 
         RegisterBindings(*this);
 
-        lua["Scripts"] = lua.create_table();
+        // Shared by every script. Made here and not in Start() so it lives as
+        // long as this Lua state - the whole game session, across level
+        // changes - and starts empty again only on the next Initialize().
+        lua["Global"] = lua.create_table();
 
         // Best-effort: regenerate the LuaLS stub file every time scripting
         // initializes, so it never drifts from the metadata registered
@@ -1354,9 +1365,6 @@ void LuaScriptSystem::Start(Level& level) {
     instanceIndexById.clear();
     pendingDestroys.clear();
     fixedUpdateAccumulator = 0.0f;
-
-    // Shared table for cross-script utilities/state.
-    lua["Scripts"] = lua.create_table();
 
     for (ComponentScript& script : level.scripts.components)
         InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);

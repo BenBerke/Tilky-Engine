@@ -95,9 +95,9 @@ end
 
 **Attach to:** a sector that should flash red while an alarm is on.
 
-The alarm is a channel in the shared `Scripts` table (the same trick the doors use), so any
-script can trigger it: `Scripts.channels = Scripts.channels or {}` then
-`Scripts.channels["alarm"] = true`.
+The alarm is a channel in the shared `Global` table (the same trick the doors use), so any
+script can trigger it: `Global.channels = Global.channels or {}` then
+`Global.channels["alarm"] = true`.
 
 ```lua
 -- Scripts/Lighting/AlarmStrobe.lua (sector script)
@@ -119,7 +119,7 @@ function Start()
 end
 
 function Update()
-    local active = Scripts.channels ~= nil and Scripts.channels[channel] == true
+    local active = Global.channels ~= nil and Global.channels[channel] == true
 
     if not active then
         if wasActive then
@@ -225,8 +225,8 @@ Press a key while standing in the sector to toggle its lights.
 ---@field player Entity @ Player
 player = nil
 
----@field toggleKey string @ Toggle Key
-toggleKey = "F"
+---@field toggleKey Key @ Toggle Key
+toggleKey = Key.F
 
 ---@field offBrightness number @ Brightness When Off (0-1)
 offBrightness = 0.1

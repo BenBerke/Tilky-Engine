@@ -526,6 +526,32 @@ void OpenGL::RefreshFlatTrianglesIfLayoutChanged() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
 }
 
+// Reuses the buffers CreateMap() made. Sectors, sprites, colliders and
+// models are rebuilt from the level every frame, so only the baked data -
+// texture atlas, walls, floor/ceiling triangles - needs redoing here.
+void OpenGL::ReloadMap() {
+    spdlog::info("Reloading OpenGL renderer map data");
+
+    LevelManager::TriangulateCurrentLevelSectors();
+
+    // Walls store atlas region indices, so the atlas comes first.
+    RefreshTexturesFromLevel();
+    UploadGpuWallsFromMap();
+
+    BuildFlatTrianglesFromSectors();
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, flatSSBO);
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        flatTriangles.size() * sizeof(GpuFlatTriangle),
+        flatTriangles.empty() ? nullptr : flatTriangles.data(),
+        GL_DYNAMIC_DRAW
+    );
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+
+    spdlog::info("Reloaded OpenGL map GPU data. Walls: {}, flat triangles: {}", gpuWalls.size(), flatTriangles.size());
+}
+
 bool OpenGL::CreateMap() {
     using namespace OpenGLRendererInternal;
 

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
 
 namespace LevelManager {
@@ -20,9 +21,11 @@ namespace LevelManager {
 
     void ClearLoadedLevels();
 
-    bool LoadLevelFromFile(const std::filesystem::path& levelFile);
+    // `outExtraData` receives what the file stores beside the Level itself,
+    // such as the background texture.
+    bool LoadLevelFromFile(const std::filesystem::path& levelFile, LevelSerialization::LevelExtraData* outExtraData = nullptr);
     bool LoadLevelByName(const std::string& levelName);
-    bool LoadFirstProjectLevel();
+    bool LoadFirstProjectLevel(LevelSerialization::LevelExtraData* outExtraData = nullptr);
     void TriangulateCurrentLevelSectors();
 
     void RenameTextureReference(const std::string& oldReference, const std::string& newReference);

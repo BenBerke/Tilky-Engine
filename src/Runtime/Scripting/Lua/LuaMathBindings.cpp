@@ -414,11 +414,11 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
     math["Acos"] = luaMath.get<sol::object>("acos");
     math["Atan"] = luaMath.get<sol::object>("atan");
 
-    math["Pi"] = std::numbers::pi;
-    math["Tau"] = 2.0 * std::numbers::pi;
-    math["HalfPi"] = std::numbers::pi / 2.0;
-    math["E"] = std::numbers::e;
-    math["Sqrt2"] = std::numbers::sqrt2;
+    math["Pi"] = Constants::Pi;
+    math["Tau"] = 2.0f * Constants::Pi;
+    math["HalfPi"] = .5f * Constants::Pi;
+    math["E"] = Constants::Euler;
+    math["Sqrt2"] = Constants::Sqrt2;
     math["Infinity"] = std::numeric_limits<double>::infinity();
     math["NegativeInfinity"] = -std::numeric_limits<double>::infinity();
     math["Epsilon"] = static_cast<double>(Constants::Epsilon);

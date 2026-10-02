@@ -199,7 +199,7 @@ local function Use(index)
 end
 
 function Update()
-    if #cameras > 0 and Input.GetKeyDown("C") then
+    if #cameras > 0 and Input.GetKeyDown(Key.C) then
         Use(current % #cameras + 1)
     end
 end

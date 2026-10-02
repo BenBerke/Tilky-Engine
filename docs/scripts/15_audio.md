@@ -93,8 +93,8 @@ up and presses a key.
 ---@field player Entity @ Player
 player = nil
 
----@field useKey string @ Toggle Key
-useKey = "E"
+---@field useKey Key @ Toggle Key
+useKey = Key.E
 
 ---@field useDistance number @ Use Distance
 useDistance = 30

@@ -181,15 +181,15 @@ end
 copy quietly reuses the first one's bus.
 
 Lets scripts talk **without knowing about each other**: one side calls `Emit("coinCollected", 5)`,
-any number of other scripts are told. The bus lives in the shared `Scripts` table.
+any number of other scripts are told. The bus lives in the shared `Global` table.
 
 ```lua
 -- Scripts/Utils/EventBus.lua (entity script)
 
 -- The bus is built when the script is loaded (before any script's Start), so every Start()
--- can already use Scripts.Events. Top-level code of *other* scripts can't rely on it, since
+-- can already use Global.Events. Top-level code of *other* scripts can't rely on it, since
 -- load order isn't guaranteed.
-local bus = Scripts.Events
+local bus = Global.Events
 
 if bus == nil then
     bus = { listeners = {}, nextHandle = 1 }
@@ -227,7 +227,7 @@ if bus == nil then
         end
     end
 
-    Scripts.Events = bus
+    Global.Events = bus
 end
 
 -- Demo: listen for "greeting" and send one.
@@ -253,17 +253,17 @@ end
 local handle
 
 function Start()
-    handle = Scripts.Events.Subscribe("coinCollected", function(amount)
+    handle = Global.Events.Subscribe("coinCollected", function(amount)
         Debug.Print("Collected " .. amount .. " coins")
     end)
 end
 
 function OnDestroy()
-    Scripts.Events.Unsubscribe("coinCollected", handle)
+    Global.Events.Unsubscribe("coinCollected", handle)
 end
 
 -- ...and wherever the coin is picked up:
-Scripts.Events.Emit("coinCollected", 5)
+Global.Events.Emit("coinCollected", 5)
 ```
 
 **Notes**

@@ -191,7 +191,7 @@ function Start()
 end
 
 function Update()
-    if player == nil or not Input.GetKeyDown("E") then return end
+    if player == nil or not Input.GetKeyDown(Key.E) then return end
 
     local d = mathT.Vector3Distance(player.transform.position, entity.transform.position)
     if d > range then return end

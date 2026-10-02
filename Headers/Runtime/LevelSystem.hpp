@@ -7,6 +7,9 @@
 
 #include "Headers/Objects/Level.hpp"
 
+#include <optional>
+#include <string>
+
 /// This only runs during Play or Standalone. Does not run during Realtime Editor
 /// Responsible for updating physics, scripts, audio etc.
 
@@ -14,6 +17,16 @@ namespace LevelSystem {
     void Start(Level& level);
     void Update(Level& level);
     void Shutdown(Level& level);
+
+    // Ends the level for a level change: every script gets OnDestroy, but
+    // the Lua state (and the Global table) stays for the next Start().
+    void StopLevel(Level& level);
+
+    // Game.LoadLevel queues the level here; RuntimeSession switches to it
+    // once the current frame has finished. A later request in the same
+    // frame replaces an earlier one.
+    void RequestLevelLoad(const std::string& levelName);
+    std::optional<std::string> TakeRequestedLevel();
 
     // Boots the Lua scripting subsystem (opens the sol::state, registers
     // every binding, populates LuaBindingMetadata) if it hasn't already run.
