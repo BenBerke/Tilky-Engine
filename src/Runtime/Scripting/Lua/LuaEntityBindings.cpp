@@ -46,6 +46,11 @@ namespace {
         AudioSystem::StartSource(level, *entity.AddComponent<ComponentAudioSource>());
     }
 
+    // Starts unticked: a script switches to it by setting isActive = true.
+    void AddCamera(Level&, Entity& entity) {
+        entity.AddComponent<ComponentCamera>()->isActive = false;
+    }
+
     bool RemoveAudioSource(Entity& entity) {
         if (ComponentAudioSource* audio = entity.GetComponent<ComponentAudioSource>()) AudioSystem::DestroySource(*audio);
         return entity.RemoveComponent<ComponentAudioSource>();
@@ -67,7 +72,8 @@ namespace {
         {"AudioSource", CMP_AUDIO_SOURCE, false, &HasComponentOf<ComponentAudioSource>, &AddAudioSource,
          &RemoveAudioSource, &GetComponentOf<&ScriptEntity::GetAudioSource>},
         Kind<ComponentPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, false),
-        Kind<ComponentCamera, &ScriptEntity::GetCamera>("Camera", CMP_CAMERA, false),
+        {"Camera", CMP_CAMERA, false, &HasComponentOf<ComponentCamera>, &AddCamera,
+         &RemoveComponentOf<ComponentCamera>, &GetComponentOf<&ScriptEntity::GetCamera>},
         Kind<ComponentCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, false),
         Kind<ComponentRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, false),
         Kind<ComponentModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, false),

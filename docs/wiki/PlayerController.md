@@ -22,9 +22,18 @@ The player entity needs:
 
 ### Which controller is used
 
-Only one Player Controller runs: the **first one with Is Active ticked when the level starts**.
-Unticking `isActive` during play pauses it. Ticking a *different* controller during play does not
-switch to it.
+Only one Player Controller runs: the one with **Is Active** ticked.
+
+- **Ticking a controller's Is Active switches control to it** and unticks every other controller,
+  in the inspector or from a script (`playerController.isActive = true`).
+- The camera does **not** switch with it. To see through the new player too, also set its
+  `camera.isActive = true`.
+- When control leaves a player, its horizontal velocity is set to `0`, so it stops instead of
+  sliding on.
+- Unticking the active controller leaves none active, which pauses player control.
+- Adding a Player Controller in the editor ticks it and its Camera, so it takes over. A copied
+  entity's controller starts unticked.
+- If several controllers were saved ticked, the first one keeps Is Active when the level starts.
 
 ### Movement
 
@@ -39,7 +48,9 @@ Every frame, while it is active:
 | **V** | Toggle **No Clip**. |
 | Mouse | Look around. |
 
-- "Forward" is the direction the **active camera** faces (its `yaw`), flattened onto the ground.
+- "Forward" is the direction the player's **own** [Camera](Camera.md) faces (its `yaw`), flattened
+  onto the ground, even while another entity's camera is in use. A player without a Camera of its
+  own uses the active camera's instead.
 - The controller sets the Rigidbody's **horizontal** velocity directly to `speed` (or
   `runningSpeed`) in the direction of the keys. When no movement key is held, the horizontal
   velocity is set to `0`: the player stops instantly, with no sliding.
@@ -62,7 +73,8 @@ Jump Strength of 100, a jump peaks at roughly `100² / (2 × 96) ≈ 52` units.
 
 ### Looking
 
-Moving the mouse turns the active camera. Horizontal movement changes `yaw` by
+Moving the mouse turns the player's own camera, **only while it is the active camera**. While
+another entity's camera is in use, the mouse does nothing. Horizontal movement changes `yaw` by
 `mouse × Sensitivity X` and vertical movement changes `pitch` by `mouse × Sensitivity Y`. Pitch is
 kept between **Min Pitch** and **Max Pitch**. Yaw wraps around to stay within `0..360`, then is
 kept between **Min Yaw** and **Max Yaw** (the defaults allow a full turn).
@@ -77,9 +89,9 @@ No Clip. A script can't turn the player's collider on or off separately.
 
 ### Sound
 
-Each frame the controller moves the audio **listener**, the "ears" for every
-[Audio Source](AudioSource.md), to the eye position, facing where the camera looks. Without an
-active Player Controller the listener doesn't move.
+The audio **listener**, the "ears" for every [Audio Source](AudioSource.md), follows the active
+[Camera](Camera.md), not the controller. When the player's own camera is active, that puts it at
+the player's eye position, facing where they look.
 
 ## In the editor
 
@@ -102,7 +114,7 @@ active Player Controller the listener doesn't move.
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Player Controller is gone. |
-| `isActive` | boolean | read/write | `false` pauses movement and mouse look. |
+| `isActive` | boolean | read/write | `true` switches control to this controller and unticks the others. `false` pauses movement and mouse look. |
 | `speed` | number | read/write | |
 | `runningSpeed` | number | read/write | |
 | `jumpPower` | number | read/write | |
@@ -182,10 +194,7 @@ local timeLeft = 0
 
 function Play(self, seconds)
     timeLeft = seconds
-    entity.playerController.isActive = false
-
-    local v = entity.rigidbody.velocity
-    entity.rigidbody.velocity = Vector3(0, v.y, 0) -- stop sliding
+    entity.playerController.isActive = false -- also stops the player's walking velocity
 end
 
 function Update()

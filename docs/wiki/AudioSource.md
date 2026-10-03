@@ -29,9 +29,9 @@ several overlapping sounds, put Audio Sources on several entities.
 - The source faces the Transform's `forward`. That only matters for the
   [sound cone](#sound-cone).
 - When a script destroys the entity, its sound stops.
-- The **listener**, the "ears", is the player's eye position, facing where the camera looks. The
-  [Player Controller](PlayerController.md) moves it every frame. Without an active Player
-  Controller the listener stays where it was.
+- The **listener**, the "ears", is at the active [Camera](Camera.md), facing where it looks. It is
+  at eye height when that camera's entity is the active [Player Controller](PlayerController.md).
+  Switching cameras moves the ears too. With no active camera the listener stays where it was.
 
 ### Playing
 

@@ -31,18 +31,14 @@ namespace PlayerControllerSystem {
         rigidbody.velocity.z = planarVelocity.y;
     }
 
-    void Start(
-        ComponentPlayerController &controller,
-        const ComponentTransform &playerTransform,
-        const ComponentRigidbody &rigidbody,
-        const ComponentCamera &camera,
-        const std::vector<Sector> &sectors
-    );
-
+    // ownCamera is the camera on the controller's entity (may be null). The
+    // mouse only turns it while it is the active camera. Movement follows
+    // ownCamera's yaw, or the active camera's when the player has none.
     void Update(
         ComponentPlayerController &controller,
         ComponentTransform &playerTransform,
-        ComponentCamera &camera,
+        ComponentCamera *ownCamera,
+        const ComponentCamera *activeCamera,
         ComponentRigidbody &rigidbody,
         ComponentCollider *sphereCollider,
         const std::vector<Sector> &sectors

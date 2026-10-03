@@ -12,50 +12,20 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp"
-#include "Headers/Runtime/Sound/SoundManager.hpp"
 
 /// This is a built-in script for handling player movement.
 /// Anything in this script can technically be achieved through a user-made Lua script.
 
 namespace {
-    Vector3 GetCameraPosition(const ComponentPlayerController& controller, const ComponentTransform& playerTransform) {
-        return {
-            playerTransform.position.x,
-            playerTransform.position.y + controller.eyeHeight,
-            playerTransform.position.z
-        };
-    }
-
-    void UpdateAudioListener(
-        const ComponentTransform& playerTransform,
-        const ComponentPlayerController& controller,
-        const ComponentCamera& camera,
-        const ComponentRigidbody& rigidbody
-    ) {
-        SoundManager::SetListenerPosition(GetCameraPosition(controller, playerTransform));
-        SoundManager::SetListenerOrientation(camera.forward);
-        SoundManager::SetListenerVelocity(rigidbody.velocity);
-    }
-
     double jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 }
 
 namespace PlayerControllerSystem {
-    void Start(
-        ComponentPlayerController& controller,
-        const ComponentTransform& playerTransform,
-        const ComponentRigidbody& rigidbody,
-        const ComponentCamera& camera,
-        const std::vector<Sector>& sectors
-    ) {
-        (void)sectors;
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
-    }
-
     void Update(
         ComponentPlayerController& controller,
         ComponentTransform& playerTransform,
-        ComponentCamera& camera,
+        ComponentCamera* ownCamera,
+        const ComponentCamera* activeCamera,
         ComponentRigidbody& rigidbody,
         ComponentCollider* sphereCollider,
         const std::vector<Sector>& sectors
@@ -96,17 +66,25 @@ namespace PlayerControllerSystem {
 
         if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
 
-        camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
-        camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
+        // Mouse look only while the player's own camera is the one in use.
+        if (ownCamera != nullptr && ownCamera->isActive) {
+            ComponentCamera& camera = *ownCamera;
 
-        camera.pitch = std::clamp(camera.pitch, controller.minPitch, controller.maxPitch);
+            camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;
+            camera.pitch -= InputManager::GetMouseDelta().y * controller.sensitivityY;
 
-        camera.yaw = std::fmod(camera.yaw, 360.0f);
-        if (camera.yaw < 0.0f) camera.yaw += 360.0f;
+            camera.pitch = std::clamp(camera.pitch, controller.minPitch, controller.maxPitch);
 
-        camera.yaw = std::clamp(camera.yaw, controller.minYaw, controller.maxYaw);
+            camera.yaw = std::fmod(camera.yaw, 360.0f);
+            if (camera.yaw < 0.0f) camera.yaw += 360.0f;
 
-        const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
+            camera.yaw = std::clamp(camera.yaw, controller.minYaw, controller.maxYaw);
+        }
+
+        const ComponentCamera* moveCamera = ownCamera != nullptr ? ownCamera : activeCamera;
+        const float moveYaw = moveCamera != nullptr ? moveCamera->yaw : 0.0f;
+
+        const float yawRadians = moveYaw * std::numbers::pi_v<float> / 180.0f;
 
         const float yawSin = std::sin(yawRadians);
         const float yawCos = std::cos(yawRadians);
@@ -125,7 +103,5 @@ namespace PlayerControllerSystem {
             rigidbody.velocity.x = 0.0f;
             rigidbody.velocity.z = 0.0f;
         }
-
-        UpdateAudioListener(playerTransform, controller, camera, rigidbody);
     }
 }

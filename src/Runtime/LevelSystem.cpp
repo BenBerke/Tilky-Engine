@@ -53,45 +53,13 @@ namespace {
         return level.transforms.Get(controller->ownerID);
     }
 
-    void SetActiveCamera(const ID entityID, Level &level) {
-        bool found = false;
+    // The controller last reported as unusable, so a broken setup is logged
+    // once rather than every frame.
+    ID reportedControllerID = INVALID_ENTITY_ID;
 
-        for (ComponentCamera &camera: level.cameras.components) {
-            camera.isActive = camera.ownerID == entityID;
-
-            if (camera.isActive) found = true;
-        }
-
-        if (!found) {
-            spdlog::warn(
-                "Tried to set active camera to entity {}, but that entity has no camera component",
-                entityID
-            );
-        }
-    }
-
-    void SetActivePlayerController(const ID entityID, Level &level) {
-        bool found = false;
-
-        for (ComponentPlayerController &controller: level.playerControllers.components) {
-            controller.isActive = controller.ownerID == entityID;
-
-            if (controller.isActive) {
-                found = true;
-            }
-        }
-
-        if (!found)
-            spdlog::warn(
-                "Tried to set active player controller to entity {}, but that entity has no player controller component",
-                entityID
-            );
-    }
-
-    // The controller picked in Start(), by owner ID. Not a pointer: scripts
-    // can add and remove components mid-game, which moves the others around
-    // in their storage.
-    ID activeControllerID = INVALID_ENTITY_ID;
+    // The controller that ran last frame. When control leaves it, its walking
+    // velocity is cleared, or the old player would keep sliding.
+    ID previousControllerID = INVALID_ENTITY_ID;
 
     // See RequestLevelLoad.
     std::optional<std::string> requestedLevel;
@@ -187,13 +155,12 @@ namespace LevelSystem {
             static_cast<int>(level.listenerSettings.distanceModel)
         );
 
-        for (const ComponentCamera &cam: level.cameras.components) {
-            if (cam.isActive) {
-                //todo support multiple cameras
-                SetActiveCamera(cam.ownerID, level);
-                break;
-            }
-        }
+        // A level saved with several ticked keeps the first of each.
+        if (const ComponentCamera *camera = GetActiveCamera(level)) level.ActivateCamera(camera->ownerID);
+        if (const ComponentPlayerController *controller = GetActivePlayerController(level))
+            level.ActivatePlayerController(controller->ownerID);
+        reportedControllerID = INVALID_ENTITY_ID;
+        previousControllerID = INVALID_ENTITY_ID;
 
         // for (Entity &entity: level.entities) {
         //     entity.Start(); // Currently does nothing, probably should do nothing
@@ -206,7 +173,7 @@ namespace LevelSystem {
         ComponentCamera *activeCamera = GetActiveCamera(level);
         if (activeCamera == nullptr && !level.cameras.components.empty()) {
             const ID cameraEntityID = level.cameras.components.front().ownerID;
-            SetActiveCamera(cameraEntityID, level);
+            level.ActivateCamera(cameraEntityID);
             activeCamera = GetActiveCamera(level);
 
             spdlog::info(
@@ -216,37 +183,11 @@ namespace LevelSystem {
         }
 
         if (activeCamera == nullptr) {
-            activeControllerID = INVALID_ENTITY_ID;
             spdlog::error("Level::Start failed: the level has no camera");
             return;
         }
 
-        ComponentPlayerController *activeController = GetActivePlayerController(level);
-        activeControllerID = activeController != nullptr ? activeController->ownerID : INVALID_ENTITY_ID;
-
-        if (activeController != nullptr) {
-            ComponentTransform *playerTransform = level.transforms.Get(activeController->ownerID);
-            const ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(activeController->ownerID);
-
-            if (playerTransform != nullptr && playerRigidbody != nullptr) [[likely]] {
-                PlayerControllerSystem::Start(
-                    *activeController,
-                    *playerTransform,
-                    *playerRigidbody,
-                    *activeCamera,
-                    level.sectors
-                );
-            }
-            else {
-                const ID controllerEntityID = activeController->ownerID;
-                activeControllerID = INVALID_ENTITY_ID;
-
-                spdlog::error(
-                    "Level::Start skipped player controller: entity {} is missing transform or rigidbody",
-                    controllerEntityID
-                );
-            }
-        } else spdlog::info("Level started without an active player controller");
+        if (GetActivePlayerController(level) == nullptr) spdlog::info("Level started without an active player controller");
 
         {
             ZoneScopedN("Scripting System Start");
@@ -271,35 +212,46 @@ namespace LevelSystem {
             level.UpdateSectorMovement(GameTime::deltaTime);
         }
 
-        ComponentPlayerController *activeController = level.playerControllers.Get(activeControllerID);
+        // Looked up every frame, so ticking another controller switches to it.
+        ComponentPlayerController *activeController = GetActivePlayerController(level);
+        const ID activeControllerID = activeController != nullptr ? activeController->ownerID : INVALID_ENTITY_ID;
 
-        if (activeController != nullptr && activeController->isActive) {
-            const ID ownerID = activeControllerID;
+        if (activeControllerID != previousControllerID) {
+            if (ComponentRigidbody *released = level.rigidbodies.Get(previousControllerID)) {
+                released->velocity.x = 0.0f;
+                released->velocity.z = 0.0f;
+            }
+
+            previousControllerID = activeControllerID;
+        }
+
+        if (activeController != nullptr) {
+            const ID ownerID = activeController->ownerID;
 
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
-            if (!playerTransform) [[unlikely]]
-                spdlog::error("Player controller entity {} has no transform", ownerID);
-            else {
-                ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
-                if (!playerRigidbody) [[unlikely]]
-                    spdlog::error("Player controller entity {} has no rigidbody", ownerID);
-                else {
-                    ComponentCamera *activeCamera = GetActiveCamera(level);
-                    if (!activeCamera) [[unlikely]]
-                        spdlog::warn("LevelSystem::Update skipped player controller: no active camera");
-                    else {
-                        ComponentCollider *playerCollider = level.colliders.Get(ownerID);
+            ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
+            ComponentCamera *ownCamera = level.cameras.Get(ownerID);
+            const ComponentCamera *activeCamera = GetActiveCamera(level);
 
-                        PlayerControllerSystem::Update(
-                            *activeController,
-                            *playerTransform,
-                            *activeCamera,
-                            *playerRigidbody,
-                            playerCollider,
-                            level.sectors
-                        );
-                    }
+            if (playerTransform == nullptr || playerRigidbody == nullptr || (ownCamera == nullptr && activeCamera == nullptr)) [[unlikely]] {
+                if (reportedControllerID != ownerID) {
+                    spdlog::error(
+                        "Player controller entity {} skipped: it needs a transform, a rigidbody and a camera (its own or an active one)",
+                        ownerID
+                    );
+                    reportedControllerID = ownerID;
                 }
+            }
+            else {
+                PlayerControllerSystem::Update(
+                    *activeController,
+                    *playerTransform,
+                    ownCamera,
+                    activeCamera,
+                    *playerRigidbody,
+                    level.colliders.Get(ownerID),
+                    level.sectors
+                );
             }
         }
 
@@ -443,13 +395,15 @@ namespace LevelSystem {
     void Shutdown(Level &level) {
         scriptingSystem.Shutdown();
         scriptingInitialized = false;
-        activeControllerID = INVALID_ENTITY_ID;
+        reportedControllerID = INVALID_ENTITY_ID;
+        previousControllerID = INVALID_ENTITY_ID;
         requestedLevel.reset();
     }
 
     void StopLevel(Level &level) {
         scriptingSystem.Stop(level);
-        activeControllerID = INVALID_ENTITY_ID;
+        reportedControllerID = INVALID_ENTITY_ID;
+        previousControllerID = INVALID_ENTITY_ID;
     }
 
     void RequestLevelLoad(const std::string &levelName) {

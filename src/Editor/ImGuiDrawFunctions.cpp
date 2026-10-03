@@ -68,16 +68,18 @@ namespace {
     static void AddEditorComponent(Entity &entity) {
         if constexpr (std::is_same_v<T, ComponentPlayerController>) {
             if (!entity.HasComponent<ComponentPlayerController>()) {
-                auto *pc = entity.AddComponent<ComponentPlayerController>();
+                entity.AddComponent<ComponentPlayerController>();
                 if (!entity.HasComponent<ComponentRigidbody>())  entity.AddComponent<ComponentRigidbody>();
                 if (!entity.HasComponent<ComponentCollider>())    entity.AddComponent<ComponentCollider>();
                 if (!entity.HasComponent<ComponentCamera>())      entity.AddComponent<ComponentCamera>();
-                pc->isActive = true;
+                // A player added in the editor takes over, camera and all.
+                LevelManager::CurrentLevel().ActivatePlayerController(entity.id);
+                LevelManager::CurrentLevel().ActivateCamera(entity.id);
             }
         } else if constexpr (std::is_same_v<T, ComponentCamera>) {
             if (!entity.HasComponent<ComponentCamera>()) {
-                auto *cam = entity.AddComponent<ComponentCamera>();
-                cam->isActive = true;
+                entity.AddComponent<ComponentCamera>();
+                LevelManager::CurrentLevel().ActivateCamera(entity.id);
             }
         } else if constexpr (std::is_same_v<T, ComponentScript>) {
             // Deliberately unconditional: ScriptComponentStorage already
@@ -2009,7 +2011,8 @@ namespace ImGuiDrawFunctions {
                 BeginSection("State");
                 ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
                 Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
-                ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive);
+                if (ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive) && c->isActive)
+                    LevelManager::CurrentLevel().ActivatePlayerController(entity.id);
                 Tooltip(Get("editor.tooltip.component.player_controller.is_active").c_str());
                 EndSection();
 
@@ -2050,7 +2053,8 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.camera.smoothing_strength").c_str(), &c->smoothingStrength, draggable);
 
                 BeginSection("State");
-                ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);
+                if (ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive) && c->isActive)
+                    LevelManager::CurrentLevel().ActivateCamera(entity.id);
                 Tooltip(Get("editor.tooltip.component.camera.is_active").c_str());
                 EndSection();
 

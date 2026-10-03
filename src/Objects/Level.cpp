@@ -109,7 +109,7 @@ ID Level::CreateEntity(Entity& copy) {
         auto *s = entity.AddComponent<ComponentPlayerController>();
         const ComponentPlayerController *cs = copy.GetComponent<ComponentPlayerController>();
 
-        s->isActive = cs->isActive;
+        s->isActive = false; // the original stays the active one
         s->speed = cs->speed;
         s->runningSpeed = cs->runningSpeed;
         s->jumpPower = cs->jumpPower;
@@ -125,7 +125,7 @@ ID Level::CreateEntity(Entity& copy) {
         auto *s = entity.AddComponent<ComponentCamera>();
         const ComponentCamera *cs = copy.GetComponent<ComponentCamera>();
 
-        s->isActive = cs->isActive;
+        s->isActive = false; // the original stays the active one
         s->yaw = cs->yaw;
         s->pitch = cs->pitch;
         s->fov = cs->fov;
@@ -221,6 +221,15 @@ void Level::DestroyEntity(const ID entityID) {
     std::erase_if(entities, [entityID](const Entity& entity) {
         return entity.id == entityID;
     });
+}
+
+void Level::ActivateCamera(const ID entityID) {
+    for (ComponentCamera& camera : cameras.components) camera.isActive = camera.ownerID == entityID;
+}
+
+void Level::ActivatePlayerController(const ID entityID) {
+    for (ComponentPlayerController& controller : playerControllers.components)
+        controller.isActive = controller.ownerID == entityID;
 }
 
 void Level::DestroyEntity(const Entity& entity) {

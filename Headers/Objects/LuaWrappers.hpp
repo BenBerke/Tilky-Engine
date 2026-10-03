@@ -756,7 +756,9 @@ struct ScriptPlayerController {
     void SetIsActive(const bool active) const {
         ComponentPlayerController* pc = GetComponent();
         if (pc == nullptr) return;
-        pc->isActive = active;
+
+        if (active) level->ActivatePlayerController(ownerID);
+        else pc->isActive = false;
     }
 
     [[nodiscard]] float GetSpeed() const {
@@ -900,7 +902,9 @@ struct ScriptCamera {
     void SetIsActive(const bool active) const {
         ComponentCamera* camera = GetComponent();
         if (camera == nullptr) return;
-        camera->isActive = active;
+
+        if (active) level->ActivateCamera(ownerID);
+        else camera->isActive = false;
     }
 
     [[nodiscard]] float GetYaw() const {

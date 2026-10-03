@@ -88,6 +88,12 @@ struct Level {
     void DestroyEntity(ID entityID);
     void DestroyEntity(const Entity& entity);
 
+    // Only one camera and one player controller are active at a time. These
+    // tick the entity's one on and untick every other. Unticking the active
+    // one is a plain isActive = false, which leaves none active.
+    void ActivateCamera(ID entityID);
+    void ActivatePlayerController(ID entityID);
+
     Sector* GetSector(ID sectorID);
     const Sector* GetSector(ID sectorID) const;
 

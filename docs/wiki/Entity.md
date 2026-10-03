@@ -187,15 +187,14 @@ its values as you type `Component.`:
 Changes made while the game runs are not saved into the level. Stopping the game in the editor
 puts every entity back the way it was.
 
-Some components only take part in choices the engine makes **when the level starts**:
+Some components behave differently when added while the game runs:
 
-- **Player Controller**: only the controller picked at level start ever runs (see
-  [Which controller is used](PlayerController.md#which-controller-is-used)). One added later does
-  nothing. Removing the running one stops player movement for the rest of the level.
-- **Camera**: the first camera with `isActive` on is the one that renders (see
-  [Only one camera renders](Camera.md#only-one-camera-renders)). A new camera starts with `isActive`
-  on, but it only takes over once every camera before it is turned off. Removing the last active
-  camera leaves nothing to draw the level with.
+- **Player Controller**: a new one starts with `isActive` off. Set it to `true` to switch control
+  to it (see [Which controller is used](PlayerController.md#which-controller-is-used)). Removing the
+  running one stops player movement until another is ticked.
+- **Camera**: a new camera starts with `isActive` off, so it doesn't cut the view. Set it to `true`
+  to switch to it (see [Only one camera renders](Camera.md#only-one-camera-renders)). Removing the
+  active camera leaves nothing to draw the level with until another is ticked.
 - **Audio Source**: `playOnStart` has nothing to wait for, so a new source never starts by itself.
   Call `play()`, or set `looping` with a `soundFileName`.
 

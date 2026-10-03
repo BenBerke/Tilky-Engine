@@ -7,6 +7,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 
 namespace {
     std::string MakeAudioSourceName(const ID ownerID) {
@@ -31,10 +32,41 @@ namespace {
         SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
         SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
     }
+
+    // The listener hears from the active camera: its entity's position (at
+    // eye height when that entity is the active player), facing where it
+    // looks. With no active camera the listener stays where it was.
+    void UpdateListener(const Level& level) {
+        const ComponentCamera* camera = nullptr;
+
+        for (const ComponentCamera& candidate : level.cameras.components) {
+            if (!candidate.isActive) continue;
+            camera = &candidate;
+            break;
+        }
+
+        if (camera == nullptr) return;
+
+        const ComponentTransform* transform = level.transforms.Get(camera->ownerID);
+        if (transform == nullptr) return;
+
+        Vector3 position = transform->position;
+
+        const ComponentPlayerController* controller = level.playerControllers.Get(camera->ownerID);
+        if (controller != nullptr && controller->isActive) position.y += controller->eyeHeight;
+
+        const ComponentRigidbody* rigidbody = level.rigidbodies.Get(camera->ownerID);
+
+        SoundManager::SetListenerPosition(position);
+        SoundManager::SetListenerOrientation(CameraSystem::GetCameraForwardEngineSpace(camera->yaw, camera->pitch));
+        SoundManager::SetListenerVelocity(rigidbody != nullptr ? rigidbody->velocity : Vector3{0.0f, 0.0f, 0.0f});
+    }
 }
 
 namespace AudioSystem {
     void Start(Level& level) {
+        UpdateListener(level);
+
         for (ComponentAudioSource& audio : level.audioSources.components) StartSource(level, audio);
 
         spdlog::info("Audio system started");
@@ -66,6 +98,8 @@ namespace AudioSystem {
     }
 
     void Update(Level& level) {
+        UpdateListener(level);
+
         for (ComponentAudioSource& audio : level.audioSources.components) {
             if (audio.ownerID == static_cast<ID>(-1)) {
                 spdlog::error("Audio source has no valid owner");

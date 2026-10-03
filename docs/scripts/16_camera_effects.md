@@ -9,7 +9,7 @@ These scripts go on the Entity that holds the `Camera` component, which is norma
 | `yaw`, `pitch` | Look angles in degrees. The `PlayerController` changes these from the mouse every frame |
 | `forward` | Read-only `Vector3`, the direction the camera faces |
 | `nearPlane`, `farPlane`, `aspectRatio` | Projection settings |
-| `isActive` | Whether this camera is the one rendering |
+| `isActive` | Whether this camera is the one rendering. Setting it to `true` switches to it and unticks the others |
 
 ---
 
