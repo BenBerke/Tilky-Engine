@@ -74,6 +74,30 @@ void ComponentAudioSource::SetSourceLooping(const bool _looping) const {
     SoundManager::SetSourceLooping(this->name, _looping);
 }
 
+void ComponentAudioSource::SetSourceReferenceDistance(const float distance) const {
+    SoundManager::SetSourceReferenceDistance(this->name, distance);
+}
+
+void ComponentAudioSource::SetSourceMaxDistance(const float distance) const {
+    SoundManager::SetSourceMaxDistance(this->name, distance);
+}
+
+void ComponentAudioSource::SetSourceRollOffFactor(const float factor) const {
+    SoundManager::SetSourceRollOffFactor(this->name, factor);
+}
+
+void ComponentAudioSource::SetSourceInnerConeAngle(const float angle) const {
+    SoundManager::SetSourceInnerConeAngle(this->name, angle);
+}
+
+void ComponentAudioSource::SetSourceOuterConeAngle(const float angle) const {
+    SoundManager::SetSourceOuterConeAngle(this->name, angle);
+}
+
+void ComponentAudioSource::SetSourceOuterGain(const float _outerGain) const {
+    SoundManager::SetSourceOuterGain(this->name, _outerGain);
+}
+
 void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {
     SoundManager::SetSourcePosition(this->name, position);
 }

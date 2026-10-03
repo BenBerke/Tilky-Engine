@@ -11,12 +11,16 @@ Sound comes from an `AudioSource` component (`entity.audioSource`, `nil` if ther
 | `audio.looping` | Loop the sound |
 | `audio.playOnStart` | Whether the level starts it automatically |
 | `audio.referenceDistance`, `maxDistance`, `rollOffFactor` | How volume falls off with distance |
-| `audio:setSourcePosition(Vector3)` | Move the sound's 3D position |
+| `audio.innerConeAngle`, `outerConeAngle`, `outerGain` | Directional sound, pointing along `transform.forward` (see [Audio Source](../wiki/AudioSource.md#sound-cone)) |
+| `audio:setSourcePosition(Vector3)` | Move the sound's 3D position until the next frame, when it goes back to the entity |
 
 Audio has **no stop or pause function**. To silence a looping sound, set `gain` to `0`.
 
-Sound files arrive in a script as `Asset` (or `Texture`) public fields. Their value is the asset
-path, which can be assigned straight to `audio.soundFileName`.
+A sound is named by its path inside `Assets`, for example `"Sounds/Footsteps/step.wav"` for
+`Assets/Sounds/Footsteps/step.wav`. The `.wav` is optional and the file can be in any folder under
+`Assets`. `Asset` public fields only pick textures, so take sound paths as `string` fields.
+
+The sound always plays from the entity that owns the `AudioSource`, and follows it as it moves.
 
 ---
 
@@ -30,11 +34,11 @@ naturally speed up when sprinting.
 
 ```lua
 -- Scripts/Audio/Footsteps.lua (entity script)
----@field stepSoundA Asset @ Step Sound A
-stepSoundA = nil
+---@field stepSoundA string @ Step Sound A
+stepSoundA = "Sounds/Footsteps/stepA.wav"
 
----@field stepSoundB Asset @ Step Sound B
-stepSoundB = nil
+---@field stepSoundB string @ Step Sound B
+stepSoundB = "Sounds/Footsteps/stepB.wav"
 
 ---@field stride number @ Distance Per Step
 stride = 22
@@ -67,12 +71,12 @@ function Update()
     if travelled < stride then return end
     travelled = travelled - stride
 
-    -- Alternate sounds; fall back to whichever one is assigned.
+    -- Alternate sounds; fall back to whichever one is set.
     local sound = useA and stepSoundA or stepSoundB
-    if sound == nil then sound = stepSoundA or stepSoundB end
+    if sound == "" then sound = useA and stepSoundB or stepSoundA end
     useA = not useA
 
-    if sound ~= nil then audio.soundFileName = sound end
+    if sound ~= "" then audio.soundFileName = sound end
     audio.pitch = 1 + mathT.RandomF(-pitchVariation, pitchVariation)
     audio:play()
 end
@@ -155,8 +159,10 @@ end
 Call `PlaySound()` at the moment the state changes. In `UseDoor.lua` (see
 [05_doors.md](05_doors.md)) that is right after `isOpen = true` or `isOpen = false`.
 
-To place the sound at the door, move the source first:
+The sound plays where the `soundSource` entity is, so put that entity at the door. If several
+doors share one source, move the entity to the door before playing; the sound follows it:
 
 ```lua
-audio:setSourcePosition(soundSource.transform.position)
+soundSource.transform.position = doorPosition -- a Vector3 you work out from the door's walls
+audio:play()
 ```

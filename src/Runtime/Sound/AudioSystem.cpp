@@ -12,6 +12,25 @@ namespace {
     std::string MakeAudioSourceName(const ID ownerID) {
         return "entity_" + std::to_string(ownerID) + "_audio";
     }
+
+    // Puts the source on its entity, facing the entity's map forward, and
+    // pushes every component setting to OpenAL.
+    void ApplySourceSettings(const Level& level, const ComponentAudioSource& audio) {
+        if (const ComponentTransform* transform = level.transforms.Get(audio.ownerID)) {
+            SoundManager::SetSourcePosition(audio.name, transform->position);
+            SoundManager::SetSourceDirection(audio.name, {transform->forward.x, 0.0f, transform->forward.y});
+        }
+
+        SoundManager::SetSourcePitch(audio.name, audio.pitch);
+        SoundManager::SetSourceGain(audio.name, audio.gain);
+        SoundManager::SetSourceLooping(audio.name, audio.looping);
+        SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
+        SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
+        SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
+        SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
+        SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
+        SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
+    }
 }
 
 namespace AudioSystem {
@@ -34,19 +53,8 @@ namespace AudioSystem {
             return;
         }
 
-        SoundManager::SetSourcePitch(audio.name, audio.pitch);
-        SoundManager::SetSourceGain(audio.name, audio.gain);
-        SoundManager::SetSourceLooping(audio.name, audio.looping);
-        SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
-        SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
-        SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
-        SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
-        SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
-        SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
+        ApplySourceSettings(level, audio);
 
-        const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
-
-        if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
         if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
     }
 
@@ -64,21 +72,14 @@ namespace AudioSystem {
                 continue;
             }
 
-            if (audio.name.empty()) audio.name = MakeAudioSourceName(audio.ownerID);
+            // A component added without StartSource() (an entity copy, for
+            // example) gets its OpenAL source here.
+            if (audio.name.empty()) {
+                audio.name = MakeAudioSourceName(audio.ownerID);
+                if (!SoundManager::CreateSource(audio.name)) continue;
+            }
 
-            ComponentTransform* transform = level.transforms.Get(audio.ownerID);
-
-            if (transform != nullptr) SoundManager::SetSourcePosition(audio.name, transform->position);
-
-            SoundManager::SetSourcePitch(audio.name, audio.pitch);
-            SoundManager::SetSourceGain(audio.name, audio.gain);
-            SoundManager::SetSourceLooping(audio.name, audio.looping);
-            SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
-            SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
-            SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
-            SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
-            SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
-            SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
+            ApplySourceSettings(level, audio);
 
             if (audio.looping && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
         }

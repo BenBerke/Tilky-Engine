@@ -312,7 +312,9 @@ struct ComponentAudioSource {
     float rollOffFactor = 1.0f;       // How fast the sound fades (1.0 is "real")
 
     // Sound Cone (Directional audio behavior)
-    float innerConeAngle = 360.0f;    // Inside this yaw, sound is full volume
+    // The cone points along the owner's transform forward. Angles are the full
+    // cone width in degrees, 360 means no cone.
+    float innerConeAngle = 360.0f;    // Inside this cone, sound is full volume
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
@@ -323,6 +325,18 @@ struct ComponentAudioSource {
     void SetSourceGain(float _gain) const;
 
     void SetSourceLooping(bool _looping) const;
+
+    void SetSourceReferenceDistance(float distance) const;
+
+    void SetSourceMaxDistance(float distance) const;
+
+    void SetSourceRollOffFactor(float factor) const;
+
+    void SetSourceInnerConeAngle(float angle) const;
+
+    void SetSourceOuterConeAngle(float angle) const;
+
+    void SetSourceOuterGain(float _outerGain) const;
 
     void SetSourcePosition(const Vector3& position) const;
 

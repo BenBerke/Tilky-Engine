@@ -13,6 +13,7 @@
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Runtime/Sound/AudioSystem.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
@@ -1049,6 +1050,10 @@ namespace {
                 if (instance.ownerKind != ScriptOwnerKind::Entity || instance.ownerID != entityId) continue;
                 CallDestroy(instance);
             }
+
+            // Otherwise its OpenAL source outlives it and keeps playing where
+            // the entity died.
+            if (ComponentAudioSource* audio = level.audioSources.Get(entityId)) AudioSystem::DestroySource(*audio);
 
             level.DestroyEntity(entityId);
         }

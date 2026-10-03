@@ -32,6 +32,9 @@ namespace SoundManager {
 
     void SetSourcePosition(const std::string& sourceName, Vector3 pos);
 
+    // The way the source faces. The sound cone points along it.
+    void SetSourceDirection(const std::string& sourceName, Vector3 direction);
+
     // Set to true to make the sound repeat automatically when it reaches the end.
     void SetSourceLooping(const std::string& sourceName, bool looping);
 
@@ -44,10 +47,10 @@ namespace SoundManager {
     // How quickly the sound fades with distance.
     void SetSourceRollOffFactor(const std::string& sourceName, float rollOffFactor);
 
-    // The yaw in degrees where the directional sound is at full gain.
+    // The full width of the cone, in degrees (0-360), where the sound is at full gain.
     void SetSourceInnerConeAngle(const std::string& sourceName, float innerConeAngle);
 
-    // The yaw in degrees where the directional sound reaches outer gain.
+    // The full width of the cone, in degrees (0-360), past which the sound is at outer gain.
     void SetSourceOuterConeAngle(const std::string& sourceName, float outerConeAngle);
 
     // The gain used outside the outer cone.

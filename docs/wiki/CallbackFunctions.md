@@ -291,10 +291,10 @@ function OnSectorChange(sector)
     local audio = entity.audioSource
     if audio == nil or sector == nil then return end
 
-    -- Paths are inside Assets/Sounds, with the extension.
-    if sector:HasTag("water") then audio.soundFileName = "Footsteps/splash.wav"
-    elseif sector:HasTag("metal") then audio.soundFileName = "Footsteps/clank.wav"
-    else audio.soundFileName = "Footsteps/step.wav" end
+    -- Paths are inside Assets, with the extension.
+    if sector:HasTag("water") then audio.soundFileName = "Sounds/Footsteps/splash.wav"
+    elseif sector:HasTag("metal") then audio.soundFileName = "Sounds/Footsteps/clank.wav"
+    else audio.soundFileName = "Sounds/Footsteps/step.wav" end
 end
 ```
 

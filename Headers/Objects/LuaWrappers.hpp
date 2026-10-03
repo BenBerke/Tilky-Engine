@@ -135,6 +135,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->referenceDistance = distance;
+        audio->SetSourceReferenceDistance(distance);
     }
 
     [[nodiscard]] float GetMaxDistance() const {
@@ -149,6 +150,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->maxDistance = distance;
+        audio->SetSourceMaxDistance(distance);
     }
 
     [[nodiscard]] float GetRollOffFactor() const {
@@ -163,6 +165,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->rollOffFactor = factor;
+        audio->SetSourceRollOffFactor(factor);
     }
 
     [[nodiscard]] float GetInnerConeAngle() const {
@@ -177,6 +180,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->innerConeAngle = angle;
+        audio->SetSourceInnerConeAngle(angle);
     }
 
     [[nodiscard]] float GetOuterConeAngle() const {
@@ -191,6 +195,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->outerConeAngle = angle;
+        audio->SetSourceOuterConeAngle(angle);
     }
 
     [[nodiscard]] float GetOuterGain() const {
@@ -205,6 +210,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->outerGain = gain;
+        audio->SetSourceOuterGain(gain);
     }
 
     void PlaySound() const {

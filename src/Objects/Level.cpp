@@ -73,7 +73,8 @@ ID Level::CreateEntity(Entity& copy) {
         auto *s = entity.AddComponent<ComponentAudioSource>();
         const ComponentAudioSource *ca = copy.GetComponent<ComponentAudioSource>();
 
-        s->name = ca->name;
+        // name is left empty: it names the original's OpenAL source, and the
+        // copy gets its own when the audio system starts it.
         s->soundFileName = ca->soundFileName;
         s->pitch = ca->pitch;
         s->gain = ca->gain;

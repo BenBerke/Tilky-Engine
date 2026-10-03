@@ -1520,7 +1520,7 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
         case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound: {
-            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetSoundsPath());
+            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath());
             rel.replace_extension();
             return rel.generic_string();
         }

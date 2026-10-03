@@ -50,7 +50,8 @@ There are two separate "facing" values:
 - `rotation` is a quaternion. It turns [models](Model.md) and **static** [sprites](Sprite.md). The
   inspector shows it as X/Y/Z angles in degrees. From Lua it is a `Vector4` `(x, y, z, w)`.
 - `forward` is a flat `Vector2` direction on the map `(x, z)`. It is the way a 4- or 8-direction
-  sprite faces, which picks which of its images you see.
+  sprite faces, which picks which of its images you see, and the way an
+  [Audio Source's](AudioSource.md#sound-cone) sound cone points.
 
 Neither one moves the camera. The camera has its own `yaw` and `pitch` (see [Camera](Camera.md)).
 
@@ -70,7 +71,7 @@ Neither one moves the camera. The camera has its own `yaw` and `pitch` (see [Cam
 | `position` | Vector3 | read/write | Feet position. Setting it updates sector membership this frame. |
 | `rotation` | Vector4 | read/write | Quaternion `(x, y, z, w)`. Normalised when written. |
 | `scale` | Vector3 | read/write | |
-| `forward` | Vector2 | read/write | Facing on the map, used by directional sprites. |
+| `forward` | Vector2 | read/write | Facing on the map, used by directional sprites and the Audio Source sound cone. |
 | `relativeHeight` | number | read/write | Height above the floor. Physics overwrites it every frame on physics bodies. |
 | `sectorIndex` | integer | read-only | Internal index of the current sector, `-1` outside the map. Use `entity:GetSector()` instead: it returns the sector itself and survives map edits. |
 | `isDirty` | boolean | read/write | Engine flag meaning "moved this frame". You shouldn't need it. |

@@ -14,17 +14,21 @@ several overlapping sounds, put Audio Sources on several entities.
 ### Sound files
 
 - Sounds must be **`.wav`** files, 8- or 16-bit, mono or stereo.
-- They must be inside the project's **`Assets/Sounds`** folder (sub-folders are fine). Every sound
-  there is loaded ahead of time, so playing one never waits for the disk.
-- `soundFileName` is the path **inside `Assets/Sounds`**. The extension is optional:
-  `Assets/Sounds/Doors/open.wav` can be written `"Doors/open"` (the form the inspector stores) or
-  `"Doors/open.wav"`.
+- They can be **anywhere inside the project's `Assets` folder**. Every `.wav` there is loaded
+  ahead of time, so playing one never waits for the disk.
+- `soundFileName` is the path **inside `Assets`**. The extension is optional:
+  `Assets/Sounds/Doors/open.wav` can be written `"Sounds/Doors/open"` (the form the inspector
+  stores) or `"Sounds/Doors/open.wav"`. Dragging the file from the Asset Browser onto the
+  **Sound** field fills it in for you.
 - **Use mono files for 3D sounds.** Stereo files usually play without distance fading or direction.
 
 ### Where the sound is and who hears it
 
 - The sound plays at the entity's [Transform](Transform.md) position. The source follows the
-  entity every frame.
+  entity every frame, however it moves (a script, physics, a lift).
+- The source faces the Transform's `forward`. That only matters for the
+  [sound cone](#sound-cone).
+- When a script destroys the entity, its sound stops.
 - The **listener**, the "ears", is the player's eye position, facing where the camera looks. The
   [Player Controller](PlayerController.md) moves it every frame. Without an active Player
   Controller the listener stays where it was.
@@ -70,10 +74,19 @@ sounds that should carry across a room.
 
 ### Sound cone
 
-**Inner Angle**, **Outer Angle** and **Outer Gain** describe a directional speaker. Full volume
-inside the inner cone, `outerGain` × volume outside the outer cone, and a blend in between. The
-engine doesn't give sources a facing direction yet, so every source plays equally in all
-directions and **these settings currently have no effect**.
+**Inner Angle**, **Outer Angle** and **Outer Gain** make the source a directional speaker, like a
+loudspeaker or a monster shouting forwards. The cone points along the Transform's `forward`, flat
+on the map.
+
+- **Inner Angle** is the full width of the cone, in degrees, where the sound is at full volume.
+  `90` means 45° either side of `forward`.
+- **Outer Angle** is the full width past which the sound is at `outerGain` × volume. Between the
+  two angles it blends.
+- **Outer Gain** is the volume multiplier behind the speaker, from `0` (silent) to `1`.
+
+Angles are clamped to `0`–`360` and Outer Gain to `0`–`1`. With both angles at `360`, the default,
+there is no cone and the source plays equally in all directions. Like distance fading, the cone
+only works on mono sounds.
 
 ### Level-wide settings
 
@@ -92,8 +105,8 @@ speed of sound and the distance model for all sources.
 | **Reference Distance** | `referenceDistance` | `1` | |
 | **Max Distance** | `maxDistance` | `10000` | |
 | **Rolloff Factor** | `rollOffFactor` | `1` | |
-| **Inner Angle** / **Outer Angle** | `innerConeAngle` / `outerConeAngle` | `360` / `360` | No effect yet. |
-| **Outer Gain** | `outerGain` | `0` | No effect yet. |
+| **Inner Angle** / **Outer Angle** | `innerConeAngle` / `outerConeAngle` | `360` / `360` | See [Sound cone](#sound-cone). |
+| **Outer Gain** | `outerGain` | `0` | Only matters when the angles are below `360`. |
 
 ## Scripting
 
@@ -106,12 +119,12 @@ speed of sound and the distance model for all sources.
 | `gain` | number | read/write | Applies immediately. |
 | `looping` | boolean | read/write | |
 | `playOnStart` | boolean | read/write | |
-| `referenceDistance` | number | read/write | |
-| `maxDistance` | number | read/write | |
-| `rollOffFactor` | number | read/write | |
-| `innerConeAngle` | number | read/write | No effect yet. |
-| `outerConeAngle` | number | read/write | No effect yet. |
-| `outerGain` | number | read/write | No effect yet. |
+| `referenceDistance` | number | read/write | Applies immediately. |
+| `maxDistance` | number | read/write | Applies immediately. |
+| `rollOffFactor` | number | read/write | Applies immediately. |
+| `innerConeAngle` | number | read/write | Applies immediately. Degrees, `0`–`360`. |
+| `outerConeAngle` | number | read/write | Applies immediately. Degrees, `0`–`360`. |
+| `outerGain` | number | read/write | Applies immediately. `0`–`1`. |
 
 | Method | Description |
 |---|---|
@@ -125,9 +138,9 @@ speed of sound and the distance model for all sources.
 
 ```lua
 -- Scripts/Audio/Doorbell.lua (entity with an Audio Source and a trigger Collider)
--- Path inside Assets/Sounds. (Asset fields only accept textures, so use a string.)
+-- Path inside Assets. (Asset fields only accept textures, so use a string.)
 ---@field sound string @ Sound
-sound = "Bells/ding.wav"
+sound = "Sounds/Bells/ding.wav"
 
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
@@ -143,7 +156,7 @@ end
 ```lua
 -- Scripts/Audio/Footsteps.lua (on the player, with an Audio Source)
 ---@field stepSound string @ Step Sound
-stepSound = "Footsteps/step.wav"
+stepSound = "Sounds/Footsteps/step.wav"
 
 ---@field stepDistance number @ Units Per Step
 stepDistance = 24
@@ -218,6 +231,29 @@ function Update()
     local audio = entity.audioSource
     audio.gain = math.max(0, audio.gain - speed * GameTime.deltaTime)
     if audio.gain == 0 then speed = 0 end
+end
+```
+
+### A speaker that's loud in front and quiet behind
+
+```lua
+-- Scripts/Audio/Speaker.lua (entity with a looping Audio Source)
+-- Slowly turns, so the player hears the music sweep past.
+---@field degreesPerSecond number @ Turn Speed (deg/s)
+degreesPerSecond = 30
+
+local angle = 0
+
+function Start()
+    local audio = entity.audioSource
+    audio.innerConeAngle = 60  -- full volume within 30° of forward
+    audio.outerConeAngle = 180 -- outerGain beyond 90° of forward
+    audio.outerGain = 0.1
+end
+
+function Update()
+    angle = angle + math.rad(degreesPerSecond) * GameTime.deltaTime
+    entity.transform.forward = Vector2(math.sin(angle), math.cos(angle))
 end
 ```
 
