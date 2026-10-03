@@ -173,7 +173,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glUniformMatrix4fv(projectionUniform, 1, GL_TRUE, camera->projection.Data());
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, atlasTexture);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
 
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 

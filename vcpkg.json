@@ -17,6 +17,7 @@
     {
       "name": "sdl3-image",
       "features": [
+        "jpeg",
         "png"
       ]
     },

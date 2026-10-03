@@ -14,6 +14,7 @@
 
 #include "imgui.h"
 
+#include "Headers/Editor/Editor.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Project/ProjectManager.hpp"
@@ -408,6 +409,18 @@ namespace {
 
         const fs::path destination = targetPath.parent_path() / finalName;
 
+        // A level renamed to the name of a level in another folder would make
+        // that name ambiguous - see LevelSerialization::FindLevelPath.
+        if (!targetIsDirectory && destination.extension() == AssetBrowser::kLevelFileExtension) {
+            for (const fs::path& existing : LevelSerialization::FindLevelFiles(destination.stem().string())) {
+                std::error_code equivEc;
+                if (!fs::equivalent(existing, targetPath, equivEc) || equivEc) {
+                    errorMessage = "A level with that name already exists.";
+                    return false;
+                }
+            }
+        }
+
         std::error_code destExistsEc;
         if (fs::exists(destination, destExistsEc)) {
             // On case-insensitive filesystems, a pure-case rename (e.g.
@@ -579,8 +592,10 @@ namespace {
         const fs::path fileName = BuildLevelFileName(levelName);
         const fs::path destination = destinationDirectory / fileName;
 
+        // Levels are found by name anywhere under Assets, so the name must be
+        // free project-wide, not just in this folder.
         std::error_code existsEc;
-        if (fs::exists(destination, existsEc)) {
+        if (fs::exists(destination, existsEc) || !LevelSerialization::FindLevelFiles(destination.stem().string()).empty()) {
             errorMessage = "A level with that name already exists.";
             return false;
         }
@@ -1519,14 +1534,9 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
 
         case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
-        case AssetKind::Sound: {
-            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath());
-            rel.replace_extension();
-            return rel.generic_string();
-        }
-
+        case AssetKind::Sound:
         case AssetKind::Script: {
-            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetScriptsPath());
+            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath());
             rel.replace_extension();
             return rel.generic_string();
         }
@@ -1707,7 +1717,14 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
     else {
         const std::string stem = sourceAbsolutePath.stem().string();
         const std::string ext = sourceAbsolutePath.extension().string();
-        for (int suffix = 2; fs::exists(destination); ++suffix)
+
+        // Level names must be free across the whole Assets folder, not just here.
+        const bool isLevel = ext == kLevelFileExtension;
+        const auto taken = [&] {
+            return fs::exists(destination) || (isLevel && !LevelSerialization::FindLevelFiles(destination.stem().string()).empty());
+        };
+
+        for (int suffix = 2; taken(); ++suffix)
             destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
     }
 
@@ -2333,6 +2350,9 @@ void AssetBrowser::DrawRenameModal() {
                 if (pendingConfirmedPath.has_value() && *pendingConfirmedPath == oldPath) pendingConfirmedPath = newPath;
 
                 if (newPath != oldPath) NotifyAssetReferenceRenamed(renamedKind, oldPath, newPath);
+
+                if (!activeModal.targetIsDirectory && oldPath.extension() == kLevelFileExtension)
+                    Editor::LevelFileRenamed(oldPath.stem().string(), newPath.stem().string());
 
                 Refresh();
             }

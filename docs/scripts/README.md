@@ -1,7 +1,7 @@
 # Lua Script Examples
 
 Copy-paste-ready Lua scripts for Tilky. Every example is a complete script: drop it into your
-project's `Assets/Scripts/` folder (sub-folders are fine), attach it in the inspector, and fill in
+project's `Assets` folder (any sub-folder is fine), attach it in the inspector, and fill in
 its public fields.
 
 | File | What's inside |

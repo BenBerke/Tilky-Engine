@@ -306,6 +306,7 @@
   "common.exit": "Exit",
   "common.copy_id": "Copy ID",
   "editor.name_required": "Name required",
+  "editor.level_name_taken": "A level with this name already exists",
   "editor.project.current_level": "Current Level",
   "editor.project.all_levels": "All Levels",
   "editor.project.build": "Build",

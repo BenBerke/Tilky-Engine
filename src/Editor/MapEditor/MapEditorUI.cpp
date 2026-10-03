@@ -25,6 +25,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Entity.hpp"
@@ -736,11 +737,10 @@ namespace {
 
             PushDangerStyle();
             if (ImGui::Button(Get("common.delete").c_str(), ImVec2(90.0f, 0.0f))) {
-                const std::filesystem::path path =
-                        ProjectManager::GetLevelsPath() / (deleteLevelPending + ".bson");
+                const std::filesystem::path path = LevelSerialization::FindLevelPath(deleteLevelPending);
 
                 try {
-                    if (std::filesystem::remove(path)) {
+                    if (!path.empty() && std::filesystem::remove(path)) {
                         spdlog::info("Deleted level: {}", path.string());
                         if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
                         UpdateLevels();
@@ -968,11 +968,19 @@ namespace {
             ImGui::SetNextItemWidth(260.0f);
             ImGui::InputText("##NewLevelName", newLevelNameBuf, IM_ARRAYSIZE(newLevelNameBuf));
 
-            const bool nameValid = newLevelNameBuf[0] != '\0';
+            // Level names are unique across the whole Assets folder, and
+            // Editor::maps already lists every one of them.
+            const bool nameEmpty = newLevelNameBuf[0] == '\0';
+            const bool nameTaken = !nameEmpty && std::ranges::find(Editor::maps, LevelSerialization::CleanLevelName(newLevelNameBuf)) != Editor::maps.end();
+            const bool nameValid = !nameEmpty && !nameTaken;
 
-            if (!nameValid) {
+            if (nameEmpty) {
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", Get("editor.name_required").c_str());
+            }
+            else if (nameTaken) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", Get("editor.level_name_taken").c_str());
             }
 
             ImGui::Spacing();

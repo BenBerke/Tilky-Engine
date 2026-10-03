@@ -260,6 +260,7 @@
   "common.exit": "Çık",
   "common.copy_id": "Kimlik Numarasıyla Kopyala",
   "editor.name_required": "İsim Gerekiyor",
+  "editor.level_name_taken": "Bu isimde bir seviye zaten var",
   "editor.project.current_level": "Mevcut Seviye",
   "editor.project.all_levels": "Bütün Seviyeler",
   "editor.project.build": "Oluştur",

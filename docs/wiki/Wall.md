@@ -88,11 +88,10 @@ check `isValid`.
 | `HasTag(tag)` | boolean | `true` if the wall has `tag`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. |
 
-> **A texture has to be used somewhere in the level already.** When the level loads, the engine
-> packs every texture used by the level's walls, floors, ceilings, sprites and UI images into one
-> atlas. A texture that nothing uses at that moment isn't in the atlas, so switching to it from a
-> script draws a black surface. Make sure every texture a script switches to is used somewhere,
-> for example on a spare sprite with its scale set to 0, hidden out of sight.
+> **Any image in `Assets` can be switched to.** When the level loads, the engine packs every
+> `.png`, `.jpg` and `.jpeg` file under `Assets` into the texture atlas, so a script can switch to
+> an image the level doesn't use yet. An image added to `Assets` while the game is running is only
+> picked up the next time the level loads.
 
 ### Getting the sector on each side
 

@@ -16,8 +16,9 @@ appears in the console and in the script's inspector panel.
 
 ## Autocomplete
 
-When scripting starts, the engine writes an API description to `Assets/Scripts/.luals/tilky_api.lua`.
-Editors using the Lua language server (LuaLS) can read it for autocomplete and hover docs. It
+When scripting starts, the engine writes an API description to `.luals/tilky_api.lua` in the project
+folder (next to `project.tilky`, outside `Assets`). Open the project folder in an editor that uses
+the Lua language server (LuaLS) and it reads it for autocomplete and hover docs. It
 covers the bindings that have documentation registered, so some newer members may be missing from
 it.
 

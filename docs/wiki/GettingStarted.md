@@ -9,7 +9,7 @@ You don't need to know Lua already. The language basics used here are explained 
 
 ## 1. What a script is
 
-A script is a `.lua` file in your project's `Assets/Scripts/` folder. On its own it does nothing.
+A script is a `.lua` file anywhere in your project's `Assets` folder. On its own it does nothing.
 It runs once you **attach** it to something:
 
 - **An entity**, through the entity's **Custom Script** component. Most scripts are these.
@@ -357,8 +357,8 @@ visible, turn its collider on. Note that `entity.enabled = false` only pauses th
 
 ## 13. Working in an external editor
 
-When scripting starts, the engine writes `Assets/Scripts/.luals/tilky_api.lua`. It describes every
-Tilky type and function. Open your `Scripts` folder in VS Code with the **Lua** extension (LuaLS)
+When scripting starts, the engine writes `.luals/tilky_api.lua` in your project folder, next to
+`project.tilky`. It describes every Tilky type and function. Open the project folder in VS Code with the **Lua** extension (LuaLS)
 and you get autocomplete and hover docs for `entity`, `Input`, `Game` and the rest. The built-in
 script editor's autocomplete comes from the same data.
 

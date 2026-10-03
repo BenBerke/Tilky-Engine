@@ -1,6 +1,7 @@
 #ifndef TILKY_ENGINE_OPENGLRENDERER_HPP
 #define TILKY_ENGINE_OPENGLRENDERER_HPP
 
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -194,7 +195,16 @@ namespace OpenGLRendererInternal {
 
     struct GPUTextureRegion {
         Vector4 uvRect; // x = uMin, y = vMin, z = uMax, w = vMax
-        Vector4 data;   // x = valid, y/z/w unused for now
+        Vector4 data;   // x = valid, y = atlas page (texture array layer), z/w unused for now
+    };
+
+    // An image decoded to tightly packed RGBA8, kept between atlas rebuilds
+    // until its file changes on disk.
+    struct DecodedImage {
+        std::vector<unsigned char> pixels;
+        int width = 0;
+        int height = 0;
+        std::filesystem::file_time_type writeTime;
     };
 
     struct LoadedTextureSurface {
@@ -204,10 +214,11 @@ namespace OpenGLRendererInternal {
         int y = 0;
     };
 
-    // Min/mag filtering and mipmaps for the texture bound to GL_TEXTURE_2D,
-    // following the level's texture setting. Shared by the atlas and model
-    // textures so both look the same.
-    void ApplyTextureSampling(RendererTextureSettings setting);
+    // Min/mag filtering and mipmaps for the texture bound to `target`,
+    // following the level's texture setting. Shared by the atlas (a
+    // GL_TEXTURE_2D_ARRAY, one layer per page) and model textures so both
+    // look the same.
+    void ApplyTextureSampling(RendererTextureSettings setting, GLenum target = GL_TEXTURE_2D);
 }
 
 class OpenGL final : public IRenderer {
@@ -264,6 +275,7 @@ public:
     }
 
     bool BuildTextureAtlasFromLevel();
+    const OpenGLRendererInternal::DecodedImage* GetDecodedImage(const std::filesystem::path& path);
 
     void BeginImGuiFrame() const override;
     void EndImGuiFrame() const override;
@@ -362,7 +374,8 @@ private:
     std::vector<GpuModelBatch> modelBatches;
 
     std::vector<GPUTexture> textures;
-    GLuint atlasTexture = 0;
+    GLuint atlasTexture = 0; // GL_TEXTURE_2D_ARRAY, one ATLAS_SIZE layer per page
+    std::unordered_map<std::string, OpenGLRendererInternal::DecodedImage> decodedImageCache; // keyed by absolute path
     GLuint textureRegionSSBO = 0;
 
     std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;

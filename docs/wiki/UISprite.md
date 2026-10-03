@@ -13,7 +13,7 @@ icons, a logo. It fills the rectangle of the entity's [UI Transform](UITransform
 - It turns with the UI Transform's `rotation`.
 - It isn't affected by any sector's light. The texture's own transparency is kept.
 - Images are drawn before [Text](UIText.md), so text always appears on top of images.
-- Like every texture, the image is packed into the texture atlas when the level loads.
+- Like every image in `Assets`, it is packed into the texture atlas when the level loads.
 
 ## In the editor
 
@@ -30,8 +30,8 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 | `isValid` | boolean | read-only | `false` if the entity or its Image is gone. |
 | `textureIndex` | string | read/write | Despite the name, the image's **path**, e.g. `"Textures/UI/crosshair.png"`. |
 
-Switching images from a script works like any other texture change. The new image has to be used
-somewhere in the level already, or it draws black (see the note on the [Sprite](Sprite.md) page).
+Switching images from a script works like any other texture change: any image in `Assets` can be
+used (see the note on the [Sprite](Sprite.md) page).
 
 ```lua
 -- Scripts/UI/AmmoIcon.lua (UI entity with an Image)

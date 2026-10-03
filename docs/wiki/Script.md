@@ -15,11 +15,11 @@ New to scripting? Start with [Getting Started](GettingStarted.md).
 
 ### The script file
 
-A script is a `.lua` file anywhere under `Assets/Scripts/`. Create one in the Asset Browser with
+A script is a `.lua` file anywhere under `Assets`. Create one in the Asset Browser with
 **Create File > Script (.lua)**. The new file comes with a small template.
 
-The component refers to the file by its path inside `Assets/Scripts`, **without** the `.lua`:
-`Assets/Scripts/Enemies/Imp.lua` is `Enemies/Imp`. Drag the file from the Asset Browser onto
+The component refers to the file by its path inside `Assets`, **without** the `.lua`:
+`Assets/Scripts/Enemies/Imp.lua` is `Scripts/Enemies/Imp`. Drag the file from the Asset Browser onto
 **File Name** to set it.
 
 ### One environment per attachment
@@ -211,7 +211,7 @@ Scripts attached to a sector:
 
 | Field | Notes |
 |---|---|
-| **File Name** | The script, as a path inside `Assets/Scripts` without `.lua`. Drag a `.lua` file onto it. |
+| **File Name** | The script, as a path inside `Assets` without `.lua`. Drag a `.lua` file onto it. |
 | **Enabled** | The script's own on/off switch. |
 | *public fields* | One control per `---@field` in the script, as described [above](#types). |
 

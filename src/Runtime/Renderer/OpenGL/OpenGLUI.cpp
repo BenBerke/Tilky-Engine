@@ -103,7 +103,7 @@ void OpenGL::DrawUIRectangle(
         }
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, atlasTexture);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
 
         SetUniform1i("uAtlas", 0);
         SetUniform1i("uTextureIndex", textureIndex);

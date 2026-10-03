@@ -150,11 +150,10 @@ use raises an error.
 | Geometry | `GetVertex(i)`, `GetWall(i)`, `GetNeighbor(i)` |
 | Tags | `HasTag(tag)`, `GetTag(i)` |
 
-> **A texture has to be used somewhere in the level already.** When the level loads, the engine
-> packs every texture used by the level's walls, floors, ceilings, sprites and UI images into one
-> atlas. A texture that nothing uses at that moment isn't in the atlas, so switching to it from a
-> script draws a black surface. Make sure every texture a script switches to is used somewhere,
-> for example on a spare sprite with its scale set to 0, hidden out of sight.
+> **Any image in `Assets` can be switched to.** When the level loads, the engine packs every
+> `.png`, `.jpg` and `.jpeg` file under `Assets` into the texture atlas, so a script can switch to
+> an image the level doesn't use yet. An image added to `Assets` while the game is running is only
+> picked up the next time the level loads.
 
 Every move is **fire-and-forget**: call it once and the engine moves the surface a little each
 frame until it arrives. No `Update` code is needed. Starting another move on the same surface

@@ -28,8 +28,9 @@ namespace {
             Prop("levelName", "string", true, "The current level's name, as passed to LoadLevel."),
         }, {
             Method("LoadLevel", {Param("levelName", "string")}, {},
-                   "Switches to the level `levelName` from the Levels folder at the end of this frame. "
-                   "Raises an error if there is no such level."),
+                   "Switches to the level `levelName` at the end of this frame. The level file can be in any "
+                   "folder under Assets; levelName is its file name without .bson. "
+                   "Raises an error if there is no such level, or more than one."),
             Method(
                 "Raycast",
                 {
@@ -86,9 +87,11 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
         const std::string levelName = LevelSerialization::CleanLevelName(value.as<std::string>());
 
-        std::error_code ec;
-        if (levelName.empty() || !std::filesystem::is_regular_file(LevelSerialization::BuildLevelPath(levelName), ec))
-            throw sol::error("Game.LoadLevel: there is no level called \"" + levelName + "\" in the Levels folder");
+        if (levelName.empty()) throw sol::error("Game.LoadLevel expects a level name, got an empty string");
+
+        std::string errorMessage;
+        if (LevelSerialization::FindLevelPath(levelName, &errorMessage).empty())
+            throw sol::error("Game.LoadLevel: " + errorMessage);
 
         LevelSystem::RequestLevelLoad(levelName);
     });

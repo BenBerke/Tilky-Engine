@@ -208,7 +208,7 @@ Game.LoadLevel(levelName)
 
 | Parameter | Type | |
 |---|---|---|
-| `levelName` | string | A level in the project's `Levels` folder, with or without `.bson`: `"Level2"` or `"Level2.bson"`. |
+| `levelName` | string | A level's file name, with or without `.bson`: `"Level2"` or `"Level2.bson"`. The file can be in any folder under `Assets`. |
 
 Switches the game to another level. The level is loaded from its **saved file**, so in the editor,
 unsaved changes to that level aren't included. Save it before pressing Play if you want them.
@@ -232,8 +232,8 @@ again after the new level's first frame.
 Each level has its own player entity, placed in the editor. Entities, sectors and walls you kept in
 variables or in `Global` don't carry over; see [Global](Global.md#rules).
 
-**Errors.** A name that isn't a string, or a level that doesn't exist, raises an error at the call,
-and nothing is queued. If the file exists but can't be read, the error is logged and the game stays
+**Errors.** A name that isn't a string, a level that doesn't exist, or a name that more than one
+level file has, raises an error at the call, and nothing is queued. If the file exists but can't be read, the error is logged and the game stays
 on the current level.
 
 **In the editor.** Pressing **Stop** always puts you back on the level you pressed **Play** on,

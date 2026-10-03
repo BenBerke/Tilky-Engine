@@ -96,11 +96,10 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 Texture paths are the same strings the inspector stores, relative to `Assets` with the extension,
 e.g. `"Textures/Monsters/imp_front.png"`.
 
-> **A texture has to be used somewhere in the level already.** When the level loads, the engine
-> packs every texture used by the level's walls, floors, ceilings, sprites and UI images into one
-> atlas. A texture that nothing uses at that moment isn't in the atlas, so switching to it from a
-> script draws a black surface. Make sure every texture a script switches to is used somewhere,
-> for example on a spare sprite with its scale set to 0, hidden out of sight.
+> **Any image in `Assets` can be switched to.** When the level loads, the engine packs every
+> `.png`, `.jpg` and `.jpeg` file under `Assets` into the texture atlas, so a script can switch to
+> an image the level doesn't use yet. An image added to `Assets` while the game is running is only
+> picked up the next time the level loads.
 
 ## Examples
 
@@ -132,8 +131,7 @@ function Update()
 end
 ```
 
-Only change the texture when the frame actually changes, not every frame. Every frame image must
-be used somewhere in the level (see the note above), or it will show as black.
+Only change the texture when the frame actually changes, not every frame.
 
 ### Flash red when hurt
 

@@ -206,6 +206,7 @@
   "common.exit": "Изход",
   "common.copy_id": "Копирай ID",
   "editor.name_required": "Изисква се име",
+  "editor.level_name_taken": "Вече има ниво с това име",
   "editor.project.current_level": "Текущо ниво",
   "editor.project.all_levels": "Всички нива",
   "editor.project.build": "Компилиране",

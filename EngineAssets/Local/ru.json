@@ -257,6 +257,7 @@
   "common.exit": "Выход",
   "common.copy_id": "Копировать ID",
   "editor.name_required": "Требуется имя",
+  "editor.level_name_taken": "Уровень с таким именем уже существует",
   "editor.project.current_level": "Текущий уровень",
   "editor.project.all_levels": "Все уровни",
   "editor.project.build": "Сборка",

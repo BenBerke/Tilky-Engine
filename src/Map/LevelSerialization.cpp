@@ -1276,12 +1276,12 @@ namespace {
 
                 ScriptAttachmentSettingsFromJson(scriptJson, c);
 
-                // Keep the full saved path (project-relative, no extension) -
+                // Keep the full saved path (Assets-relative, no extension) -
                 // NOT just its stem. Reducing to the stem here used to drop
                 // any subfolder ("Scripts/Doors/Switch" -> "Switch"), so on
                 // the next load LuaScriptSystem would look for "Switch.lua"
-                // directly under Assets/Scripts and silently fail to find
-                // every script organized into a subfolder. Sector scripts
+                // directly under Assets and silently fail to find every
+                // script organized into a subfolder. Sector scripts
                 // (LoadSectorScripts below) never had this bug - they always
                 // kept the full path.
                 c.fileName = loadedName;
@@ -1739,9 +1739,57 @@ namespace LevelSerialization {
         return levelName;
     }
 
-    fs::path BuildLevelPath(const std::string& levelName) {
+    std::vector<fs::path> ListLevelFiles() {
+        std::vector<fs::path> levelFiles;
+        const fs::path assetsPath = ProjectManager::GetAssetsPath();
+
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_regular_file() && it->path().extension() == ".bson") levelFiles.push_back(it->path());
+        }
+
+        std::ranges::sort(levelFiles);
+        return levelFiles;
+    }
+
+    std::vector<fs::path> FindLevelFiles(const std::string& levelName) {
         const std::string cleanName = CleanLevelName(levelName);
-        return ProjectManager::GetLevelsPath() / (cleanName + ".bson");
+
+        std::vector<fs::path> matches;
+        for (fs::path& levelFile : ListLevelFiles())
+            if (levelFile.stem().string() == cleanName) matches.push_back(std::move(levelFile));
+
+        return matches;
+    }
+
+    fs::path FindLevelPath(const std::string& levelName, std::string* errorMessage) {
+        const std::string cleanName = CleanLevelName(levelName);
+        const std::vector<fs::path> matches = FindLevelFiles(cleanName);
+
+        if (matches.empty()) {
+            SetError(errorMessage, "There is no level called \"" + cleanName + "\" in the Assets folder");
+            return {};
+        }
+
+        if (matches.size() > 1) {
+            std::string message = "More than one level is called \"" + cleanName + "\"; rename all but one:";
+            for (const fs::path& match : matches) message += "\n  " + match.string();
+
+            SetError(errorMessage, message);
+            return {};
+        }
+
+        return matches.front();
+    }
+
+    fs::path ResolveLevelSavePath(const std::string& levelName, std::string* errorMessage) {
+        const std::string cleanName = CleanLevelName(levelName);
+        const std::vector<fs::path> matches = FindLevelFiles(cleanName);
+
+        if (matches.empty()) return ProjectManager::GetAssetsPath() / (cleanName + ".bson");
+        if (matches.size() == 1) return matches.front();
+
+        return FindLevelPath(cleanName, errorMessage); // reports the duplicates
     }
 
     bool LoadLevelFromFile(const fs::path& levelFile, Level& outLevel, LevelExtraData* outExtraData,std::string* errorMessage) {

@@ -120,7 +120,9 @@ namespace {
         LevelSerialization::LevelExtraData extraData;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(LevelSerialization::BuildLevelPath(levelName), loadedLevel, &extraData, &errorMessage)) {
+        const std::filesystem::path levelPath = LevelSerialization::FindLevelPath(levelName, &errorMessage);
+
+        if (levelPath.empty() || !LevelSerialization::LoadLevelFromFile(levelPath, loadedLevel, &extraData, &errorMessage)) {
             spdlog::error("Game.LoadLevel(\"{}\") failed: {}", levelName, errorMessage);
             return;
         }

@@ -1302,10 +1302,10 @@ struct ScriptEntity {
     }
 
     // True if this Entity has an attached script whose asset id
-    // (ComponentScript::fileName, a project-relative path without extension -
+    // (ComponentScript::fileName, an Assets-relative path without extension -
     // see LuaScriptSystem's script identity notes) ends in `scriptName`.
     // Matching on the final path segment means both "Health" and
-    // "Player/Health" find a script stored at "Scripts/Player/Health.lua".
+    // "Player/Health" find a script stored at "Assets/Scripts/Player/Health.lua".
     // Use GetScriptById for an unambiguous lookup when several same-named
     // scripts might be attached.
     [[nodiscard]] bool HasScriptNamed(const std::string& scriptName) const {

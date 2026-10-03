@@ -12,12 +12,13 @@
 
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
 // which drag-and-drop payload type it uses.
-//  - Texture: referenced by filename WITH extension (relative to the
-//    project's Textures folder), e.g. "brick01.png" or "ui/icon.png".
-//  - Sound: referenced WITHOUT extension, relative to Assets, so a sound
-//    can live in any folder - e.g. "Sounds/ui/click", extension implied.
-//  - Script: referenced by name WITHOUT extension (relative to the
-//    Scripts folder) - e.g. "click" or "ui/click", extension implied.
+// Every kind can live in any folder under Assets.
+//  - Texture: referenced WITH extension, relative to Assets, e.g.
+//    "Textures/brick01.png" or "ui/icon.png".
+//  - Sound: referenced WITHOUT extension, relative to Assets, e.g.
+//    "Sounds/ui/click", extension implied.
+//  - Script: referenced WITHOUT extension, relative to Assets, e.g.
+//    "Scripts/Player" or "Enemies/Grunt", extension implied.
 //  - Model: referenced like a texture, relative to Assets WITH extension,
 //    e.g. "Models/crate.glb". Extensions come from
 //    ModelLoader::SupportedExtensions().

@@ -184,14 +184,14 @@ namespace {
     // ------------------------------------------------------------------
     // Script identity
     //
-    // A script's identity (ComponentScript::fileName) is a project-relative
-    // path under Assets/Scripts, without extension, using forward slashes -
-    // exactly what AssetBrowser::ToAssetReference(kind=Script) already
-    // produces. NormalizeScriptId only defends against callers that pass a
-    // raw OS path, backslashes, or a trailing ".lua" - it must NEVER reduce
-    // the value to just its filename stem, which was the previous bug that
-    // made "Scripts/Player/Health.lua" and "Scripts/Enemies/Health.lua"
-    // collide into the same identity ("Health").
+    // A script's identity (ComponentScript::fileName) is its path relative
+    // to Assets, without extension, using forward slashes - exactly what
+    // AssetBrowser::ToAssetReference(kind=Script) already produces. Scripts
+    // can live in any folder under Assets. NormalizeScriptId only defends
+    // against callers that pass a raw OS path, backslashes, or a trailing
+    // ".lua" - it must NEVER reduce the value to just its filename stem,
+    // which was the previous bug that made "Player/Health.lua" and
+    // "Enemies/Health.lua" collide into the same identity ("Health").
     // ------------------------------------------------------------------
 
     std::string NormalizeScriptId(const std::string& rawId) {
@@ -203,7 +203,7 @@ namespace {
     }
 
     fs::path GetScriptPathFromId(const std::string& assetId) {
-        return ProjectManager::GetScriptsPath() / (assetId + ".lua");
+        return ProjectManager::GetAssetsPath() / (assetId + ".lua");
     }
 
     ScriptInstance* FindInstanceById(const ScriptInstanceID instanceId) {
@@ -1349,7 +1349,8 @@ bool LuaScriptSystem::Initialize() {
         // LuaBindingMetadata.hpp's scope note. Failure here (e.g. no project
         // loaded yet) is non-fatal - it only affects editor autocomplete.
         if (ProjectManager::HasProject()) {
-            const fs::path stubDirectory = ProjectManager::GetScriptsPath() / ".luals";
+            // Project root, not Assets, so it is never exported or shown as an asset.
+            const fs::path stubDirectory = ProjectManager::GetProjectFolder() / ".luals";
             std::error_code ec;
             fs::create_directories(stubDirectory, ec);
 
