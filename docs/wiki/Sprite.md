@@ -26,6 +26,13 @@ The Transform's `scale.y` isn't used by sprites. New entities start at scale 32,
 - **Static sprites** (Is Static on) don't turn. They're oriented by the Transform's **rotation**,
   like a flat card or poster placed in the world. Viewed side-on they're a thin line.
 
+### Is Active
+
+An inactive sprite isn't drawn at all, in the game or in the editor's 3D view. Everything else
+about the entity carries on: its scripts run, its [Collider](Collider.md) still collides and its
+[Audio Source](AudioSource.md) still plays. Use it to hide something and show it again later
+without removing the component.
+
 ### Directions
 
 **Direction Level** chooses how many pictures the sprite has:
@@ -68,12 +75,14 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 | **Direction Level** | `sideCount` | Single | See [Directions](#directions). |
 | **Color** | `color` | `1, 1, 1, 1` | Tint. |
 | **Is Static** | | off | Editor only. |
+| **Is Active** | `isActive` | on | Off = not drawn. See [Is Active](#is-active). |
 
 ## Scripting
 
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Sprite is gone. |
+| `isActive` | boolean | read/write | `false` hides the sprite. |
 | `color` | Vector4 | read/write | Tint, `0..1`. |
 | `sideCount` | integer | read/write | `0` single, `1` 8-sided, `2` 4-sided. Other values are ignored. |
 | `northTextureFileName` | string | read/write | Slot 0. |

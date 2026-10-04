@@ -110,6 +110,7 @@ namespace {
         RegisterType(Type("UISprite", "A UI element's texture.", {
             Prop("isValid", "boolean", true),
             Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\")."),
+            Prop("isActive", "boolean", false, "false = not drawn."),
         }));
 
         RegisterType(Type("UIText", "A UI element's text label.", {
@@ -135,6 +136,7 @@ namespace {
 
         RegisterType(Type("Sprite", "Billboard/multi-directional sprite component.", {
             Prop("isValid", "boolean", true),
+            Prop("isActive", "boolean", false, "false = not drawn."),
             Prop("sideCount", "integer", false, "0 = single, 1 = 8-sided (45 deg steps), 2 = 4-sided (90 deg steps). Other values are ignored."),
             Prop("color", "Vector4"),
             Prop("northTextureFileName", "string"),
@@ -460,6 +462,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
 
         "isValid", sol::property(&ScriptUISprite::IsValid),
 
+        "isActive", sol::property(
+            &ScriptUISprite::GetIsActive,
+            &ScriptUISprite::SetIsActive
+        ),
+
         "textureIndex", sol::property(
             &ScriptUISprite::GetTextureIndex,
             &ScriptUISprite::SetTextureIndex
@@ -524,6 +531,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         "Sprite",
 
         "isValid", sol::property(&ScriptSprite::IsValid),
+
+        "isActive", sol::property(
+            &ScriptSprite::GetIsActive,
+            &ScriptSprite::SetIsActive
+        ),
 
         "sideCount", sol::property(
             &ScriptSprite::GetSideCount,

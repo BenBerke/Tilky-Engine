@@ -1871,6 +1871,8 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Checkbox(Get("component.sprite.is_static").c_str(), &c->isStatic);
                 Tooltip(Get("editor.tooltip.component.sprite.is_static").c_str());
+                ImGui::Checkbox(Get("component.sprite.is_active").c_str(), &c->isActive);
+                Tooltip(Get("editor.tooltip.component.sprite.is_active").c_str());
 
                 ImGui::Spacing();
                 ImGui::Separator();
@@ -2079,11 +2081,17 @@ namespace ImGuiDrawFunctions {
                     Get("component.collider.type.box")
                 };
                 const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
-                static int selectedColliderIndex = 0;
+                int selectedColliderIndex = c->type == COLLIDERTYPE_BOX ? 1 : 0;
 
                 FieldWidth(140.0f);
-                ImGui::Combo(Get("component.collider.type").c_str(),
-                             &selectedColliderIndex, items, IM_ARRAYSIZE(items));
+                if (ImGui::Combo(Get("component.collider.type").c_str(),
+                                 &selectedColliderIndex, items, IM_ARRAYSIZE(items))) {
+                    // Type decides where the collider sits in the storage, so it goes
+                    // through SetType. That can move the component, so fetch it again.
+                    LevelManager::CurrentLevel().colliders.SetType(
+                        entity.id, selectedColliderIndex == 1 ? COLLIDERTYPE_BOX : COLLIDERTYPE_SPHERE);
+                    c = entity.GetComponent<ComponentCollider>();
+                }
 
                 if (selectedColliderIndex == 0) {
                     FieldWidth(120.0f);
@@ -2104,7 +2112,12 @@ namespace ImGuiDrawFunctions {
                 Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
                 ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
                 Tooltip(Get("editor.tooltip.component.collider.is_trigger").c_str());
-                ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
+                // Goes through SetActive so physics moves it in or out of the active colliders.
+                bool colliderActive = c->isActive;
+                if (ImGui::Checkbox(Get("component.collider.is_active").c_str(), &colliderActive)) {
+                    LevelManager::CurrentLevel().colliders.SetActive(entity.id, colliderActive);
+                    c = entity.GetComponent<ComponentCollider>();
+                }
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();

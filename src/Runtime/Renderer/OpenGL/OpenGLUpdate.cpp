@@ -321,6 +321,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
+            if (!sprite.isActive) continue;
+
             const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
             if (transform == nullptr) [[unlikely]] {

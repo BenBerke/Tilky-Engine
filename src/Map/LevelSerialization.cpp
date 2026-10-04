@@ -1222,6 +1222,7 @@ namespace {
                     spriteJson["color"][3].get<float>()
                 };
                 c.isStatic = spriteJson.value("isStatic", false);
+                c.isActive = spriteJson.value("isActive", true);
 
                 entity->componentsMask.set(CMP_SPRITE);
             }
@@ -1354,6 +1355,7 @@ namespace {
                 entity->componentsMask.set(CMP_UI_SPRITE);
 
                 c.texture = spriteJson.value("texture", "");
+                c.isActive = spriteJson.value("isActive", true);
             }
         }
 
@@ -1462,7 +1464,10 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentCollider &c = level.colliders.Add(ownerID);
+                // Built whole and handed to InsertLoaded, which files it under the
+                // right part of the storage for its type and active state.
+                ComponentCollider c{};
+                c.ownerID = ownerID;
                 entity->componentsMask.set(CMP_COLLIDER);
 
                 c.isActive = colliderJson.value("isActive", true);
@@ -1477,6 +1482,8 @@ namespace {
                         colliderJson["scale"][2].get<float>()
                     };
                 }
+
+                level.colliders.InsertLoaded(c);
             }
         }
 
@@ -1573,7 +1580,8 @@ namespace {
                 {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)},
                 {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
-                {"isStatic", c.isStatic}
+                {"isStatic", c.isStatic},
+                {"isActive", c.isActive}
             });
         }
 
@@ -1592,7 +1600,8 @@ namespace {
         for (const ComponentUISprite &c: level.ui_sprites.components) {
             componentsJson["uiSprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"texture", c.texture}
+                {"texture", c.texture},
+                {"isActive", c.isActive}
             });
         }
 

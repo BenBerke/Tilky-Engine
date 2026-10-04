@@ -378,6 +378,17 @@ struct ScriptSprite {
         return slot >= 0 && slot < TEXTURE_SLOT_COUNT;
     }
 
+    [[nodiscard]] bool GetIsActive() const {
+        const ComponentSprite* sprite = GetComponent();
+        return sprite != nullptr && sprite->isActive;
+    }
+
+    void SetIsActive(const bool active) const {
+        ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->isActive = active;
+    }
+
     [[nodiscard]] static bool IsValidSideCount(const int sideCount) {
         return sideCount == SIDECOUNT_SINGLE || sideCount == SIDECOUNT_90 || sideCount == SIDECOUNT_45;
     }
@@ -1132,6 +1143,17 @@ struct ScriptUISprite {
         ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return;
         sprite->texture = texture;
+    }
+
+    [[nodiscard]] bool GetIsActive() const {
+        const ComponentUISprite* sprite = GetComponent();
+        return sprite != nullptr && sprite->isActive;
+    }
+
+    void SetIsActive(const bool active) const {
+        ComponentUISprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->isActive = active;
     }
 };
 

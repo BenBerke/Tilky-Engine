@@ -13,6 +13,8 @@ icons, a logo. It fills the rectangle of the entity's [UI Transform](UITransform
 - It turns with the UI Transform's `rotation`.
 - It isn't affected by any sector's light. The texture's own transparency is kept.
 - Images are drawn before [Text](UIText.md), so text always appears on top of images.
+- An inactive image (**Is Active** off) isn't drawn in the game. The UI Editor still shows it,
+  faded, so you can find and select it.
 - Like every image in `Assets`, it is packed into the texture atlas when the level loads.
 
 ## In the editor
@@ -22,6 +24,7 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 | Field | Lua | Notes |
 |---|---|---|
 | **Texture** | `textureIndex` | Image path relative to `Assets`, with the extension. The editor warns if the file can't be found. |
+| **Is Active** | `isActive` | On by default. Off = not drawn in the game. |
 
 ## Scripting
 
@@ -29,6 +32,7 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Image is gone. |
 | `textureIndex` | string | read/write | Despite the name, the image's **path**, e.g. `"Textures/UI/crosshair.png"`. |
+| `isActive` | boolean | read/write | `false` hides the image. |
 
 Switching images from a script works like any other texture change: any image in `Assets` can be
 used (see the note on the [Sprite](Sprite.md) page).
@@ -49,25 +53,16 @@ end
 
 ### Showing and hiding an image
 
-Images have no visibility switch, and `entity.enabled` only affects scripts. Shrink the element
-instead:
+Set `isActive`. (`entity.enabled` only affects scripts, so it won't hide the image.) A
+[UI Text](UIText.md) on the same entity is separate and stays visible.
 
 ```lua
--- Scripts/UI/Toggle.lua (UI entity with an Image)
--- Other scripts call icon:GetScript("Toggle"):SetShown(false)
-local shownSize
-
-function Start()
-    shownSize = entity.uiTransform.scale
-end
-
-function SetShown(self, shown)
-    entity.uiTransform.scale = shown and shownSize or Vector2(0, 0)
+-- Scripts/UI/Crosshair.lua (UI entity with an Image)
+-- Hides the crosshair while the player holds Tab.
+function Update()
+    entity.uiSprite.isActive = not Input.GetKey(Key.Tab)
 end
 ```
-
-This works for images anchored to a point. For stretched images, move them off-screen instead,
-for example with `position = Vector2(0, -10000)`.
 
 ## Examples
 

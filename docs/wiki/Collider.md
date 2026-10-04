@@ -74,7 +74,8 @@ and floors don't fire these callbacks: only entity-to-entity contacts do.
 
 ### Is Active
 
-An inactive collider is ignored completely. The entity passes through walls and other entities,
+An inactive collider is ignored completely. It also keeps its setting when the level is saved and
+loaded. The entity passes through walls and other entities,
 floors and ceilings no longer hold it in, and triggers don't notice it. The
 [Player Controller](PlayerController.md) uses this for No Clip, and it sets the player's
 `isActive` every frame.

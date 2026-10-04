@@ -11,6 +11,8 @@ void OpenGL::BuildGpuSprites() {
     Level& level = LevelManager::CurrentLevel();
 
     for (ComponentSprite& spriteComponent : level.sprites.components) {
+        if (!spriteComponent.isActive) continue;
+
         ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;

@@ -619,6 +619,9 @@ namespace {
         if (DrawAssetField(Get("editor.ui.sprite.texture").c_str(), sprite.texture, AssetKind::Texture, 32.0f))
             changed = true;
 
+        if (ImGui::Checkbox(Get("editor.ui.sprite.is_active").c_str(), &sprite.isActive))
+            changed = true;
+
         if (!sprite.texture.empty() && preview == nullptr) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.35f, 1.0f));
             ImGui::TextWrapped("%s", Get("editor.ui.sprite.missing_texture").c_str());

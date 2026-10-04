@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 #include <algorithm>
 
@@ -66,6 +67,7 @@ ID Level::CreateEntity(Entity& copy) {
         s->textureFileNames = cs->textureFileNames;
         s->sideCount = cs->sideCount;
         s->isStatic = cs->isStatic;
+        s->isActive = cs->isActive;
     }
 
     if (copy.HasComponent<ComponentAudioSource>()) {
@@ -138,11 +140,19 @@ ID Level::CreateEntity(Entity& copy) {
         auto *s = entity.AddComponent<ComponentCollider>();
         const ComponentCollider *cs = copy.GetComponent<ComponentCollider>();
 
-        s->type = cs->type;
-        s->isActive = cs->isActive;
         s->isTrigger = cs->isTrigger;
         s->scale = cs->scale;
         s->stepSize = cs->stepSize;
+
+        // Type and active state decide where the collider sits in the storage,
+        // so they go through the storage. That can swap elements (including the
+        // original's), so read them first and don't use s or cs afterwards.
+        const ColliderType type = cs->type;
+        const bool isActive = cs->isActive;
+
+        ColliderStorage& colliders = LevelManager::CurrentLevel().colliders;
+        colliders.SetType(entity.id, type);
+        colliders.SetActive(entity.id, isActive);
     }
 
     if (copy.HasComponent<ComponentRigidbody>()) {
@@ -182,6 +192,7 @@ ID Level::CreateEntity(Entity& copy) {
         const ComponentUISprite *cs = copy.GetComponent<ComponentUISprite>();
 
         s->texture = cs->texture;
+        s->isActive = cs->isActive;
     }
 
     if (copy.HasComponent<ComponentUIText>()) {

@@ -386,7 +386,8 @@ namespace MapEditorInternal {
 
             const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
 
-            DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, 1.0f});
+            // Inactive sprites aren't drawn in game; show them faded so they can still be found.
+            DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, sprite.isActive ? 1.0f : 0.25f});
         }
 
         // Draw text.

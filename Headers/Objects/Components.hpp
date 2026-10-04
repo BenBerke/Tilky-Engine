@@ -50,6 +50,8 @@ struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
 
     std::string texture;
+
+    bool isActive = true; // false = not drawn
 };
 
 struct ComponentUITransform {
@@ -385,6 +387,7 @@ struct ComponentSprite {
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
     bool isStatic;
+    bool isActive = true; // false = not uploaded to the sprite SSBO, so not drawn
 };
 
 template<typename T>
@@ -522,18 +525,15 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
 
         ComponentCollider comp{};
         comp.ownerID  = id;
-        // New components default to active sphere — insert at firstBoxIndex
-        // so they land in the sphere region.
-        const size_t insertAt = firstBoxIndex;
-        components.push_back(comp);                     // append at back first
+        // New components default to active sphere. Append at the back (the
+        // inactive region), then activate, which walks it through the inactive
+        // and box boundaries so the elements it displaces stay in their regions.
+        components.push_back(comp);
         entityToIndex[id] = components.size() - 1;
 
-        // Then swap into the sphere slot
-        _swapElements(insertAt, components.size() - 1);
-        firstBoxIndex++;
-        firstInactiveIndex++;
+        _activateComponent(components.size() - 1);
 
-        return components[insertAt];
+        return components[entityToIndex[id]];
     }
 
     bool Remove(ID id) {
