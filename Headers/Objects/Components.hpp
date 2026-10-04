@@ -312,7 +312,7 @@ struct ComponentAudioSource {
     float rollOffFactor = 1.0f;       // How fast the sound fades (1.0 is "real")
 
     // Sound Cone (Directional audio behavior)
-    // The cone points along the owner's transform forward. Angles are the full
+    // The cone points along the owner's transform rotation (local +Z). Angles are the full
     // cone width in degrees, 360 means no cone.
     float innerConeAngle = 360.0f;    // Inside this cone, sound is full volume
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
@@ -357,7 +357,6 @@ struct ComponentTransform {
     Quaternion rotation = Quaternion::Identity();
 
     float relativeHeight = 0.0f;
-    Vector2 forward = {1.0f, 0.0f};
 
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 

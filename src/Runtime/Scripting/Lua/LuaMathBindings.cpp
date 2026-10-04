@@ -3,6 +3,7 @@
 //
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Math/MathHelpers.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "sol/sol.hpp"
@@ -164,6 +165,13 @@ namespace {
             Method("Vector4Mul", {Param("a", "Vector4"), Param("b", "Vector4")}, "Vector4", "Per component, e.g. tinting a color."),
             Method("Vector4Scale", {Param("v", "Vector4"), Param("scale", "number")}, "Vector4"),
             Method("Vector4Lerp", {Param("a", "Vector4"), Param("b", "Vector4"), Param("t", "number")}, "Vector4", "E.g. fading between two colors."),
+
+            // --- Quaternions (Vector4 x, y, z, w; degrees) ---
+            Method("QuaternionFromEuler", {Param("x", "number"), Param("y", "number"), Param("z", "number")}, "Vector4", "Rotation from X/Y/Z angles in degrees, the same angles the inspector shows. Y turns left/right like camera yaw."),
+            Method("QuaternionToEuler", {Param("q", "Vector4")}, "Vector3", "X/Y/Z angles in degrees, the same angles the inspector shows. Y stays within -90..90, so Y 135 reads back as (180, 45, 180)."),
+            Method("QuaternionAngleAxis", {Param("axis", "Vector3"), Param("degrees", "number")}, "Vector4", "Rotation of degrees around axis. A zero axis gives no rotation."),
+            Method("QuaternionMultiply", {Param("a", "Vector4"), Param("b", "Vector4")}, "Vector4", "Combined rotation: b first, then a."),
+            Method("QuaternionRotate", {Param("q", "Vector4"), Param("v", "Vector3")}, "Vector3", "Rotates v by q. QuaternionRotate(transform.rotation, Vector3(0, 0, 1)) is the way an entity faces."),
         }));
     }
 }
@@ -929,5 +937,33 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
 
     math.set_function("Vector4Lerp", [](const Vector4& a, const Vector4& b, const float t) -> Vector4 {
         return {std::lerp(a.x, b.x, t), std::lerp(a.y, b.y, t), std::lerp(a.z, b.z, t), std::lerp(a.w, b.w, t)};
+    });
+
+    // =====================================
+    //         Quaternion Math
+    // =====================================
+    // Quaternions are Vector4 (x, y, z, w) in Lua, like transform.rotation.
+
+    const auto toQuaternion = [](const Vector4& q) { return Quaternion{q.x, q.y, q.z, q.w}; };
+    const auto toVector4 = [](const Quaternion& q) { return Vector4{q.x, q.y, q.z, q.w}; };
+
+    math.set_function("QuaternionFromEuler", [toVector4](const float x, const float y, const float z) -> Vector4 {
+        return toVector4(Quaternion::FromEulerDegrees(x, y, z));
+    });
+
+    math.set_function("QuaternionToEuler", [toQuaternion](const Vector4& q) -> Vector3 {
+        return toQuaternion(q).ToEulerDegrees();
+    });
+
+    math.set_function("QuaternionAngleAxis", [toVector4](const Vector3& axis, const float degrees) -> Vector4 {
+        return toVector4(Quaternion::FromAxisAngle(axis.x, axis.y, axis.z, degrees * Constants::DegToRad));
+    });
+
+    math.set_function("QuaternionMultiply", [toQuaternion, toVector4](const Vector4& a, const Vector4& b) -> Vector4 {
+        return toVector4((toQuaternion(a) * toQuaternion(b)).Normalized());
+    });
+
+    math.set_function("QuaternionRotate", [toQuaternion](const Vector4& q, const Vector3& v) -> Vector3 {
+        return QuaternionMath::Rotate(toQuaternion(q), v);
     });
 }

@@ -66,7 +66,7 @@ function Update()
         waiting = waitTime
     else
         transform.position = Vector3(p.x + dx / dist * step, p.y, p.z + dz / dist * step)
-        transform.forward = Vector2(dx / dist, dz / dist)   -- face the way we're going
+        transform:lookDirection(Vector3(dx, 0, dz))   -- face the way we're going
     end
 end
 ```
@@ -74,8 +74,8 @@ end
 **Notes**
 
 - Movement stays on the ground plane and keeps the entity's own `y`.
-- `transform.forward` is a `Vector2` (`x`, `z`). Directional sprites use it to pick which side to
-  show.
+- `transform:lookDirection` turns the entity's `rotation` to face a direction (left and right only,
+  by default). Directional sprites use the rotation to pick which side to show.
 - Want a longer route? Replace the two points with a table of waypoints and an index.
 
 ---
@@ -252,7 +252,7 @@ function Update()
     local step = speed * GameTime.deltaTime
 
     transform:addPosition(Vector3(dx / len * step, 0, dz / len * step))
-    transform.forward = Vector2(dx / len, dz / len)
+    transform:lookDirection(Vector3(dx, 0, dz))
 end
 ```
 

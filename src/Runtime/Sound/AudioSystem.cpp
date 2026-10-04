@@ -4,6 +4,7 @@
 
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -14,12 +15,12 @@ namespace {
         return "entity_" + std::to_string(ownerID) + "_audio";
     }
 
-    // Puts the source on its entity, facing the entity's map forward, and
+    // Puts the source on its entity, facing the rotation's local +Z, and
     // pushes every component setting to OpenAL.
     void ApplySourceSettings(const Level& level, const ComponentAudioSource& audio) {
         if (const ComponentTransform* transform = level.transforms.Get(audio.ownerID)) {
             SoundManager::SetSourcePosition(audio.name, transform->position);
-            SoundManager::SetSourceDirection(audio.name, {transform->forward.x, 0.0f, transform->forward.y});
+            SoundManager::SetSourceDirection(audio.name, QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()));
         }
 
         SoundManager::SetSourcePitch(audio.name, audio.pitch);

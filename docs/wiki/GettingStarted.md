@@ -92,9 +92,7 @@ local angle = 0
 
 function Update()
     angle = angle + 90 * GameTime.deltaTime
-
-    local radians = mathT.DegToRad(angle)
-    entity.transform.forward = Vector2(mathT.Sin(radians), mathT.Cos(radians))
+    entity.transform.rotation = mathT.QuaternionFromEuler(0, angle, 0)
 end
 ```
 
@@ -103,9 +101,11 @@ end
 - `GameTime.deltaTime` is how many seconds the last frame took. Multiplying by it turns "90 per
   frame" into "90 per **second**", so the speed is the same on a fast or a slow computer. Do this
   for **everything** that changes over time.
-- `mathT` is the engine's maths table: `Sin`, `Cos`, `Lerp`, `Clamp`, random numbers and more.
-  Lua's own `math` table also works.
-- `transform.forward` is the direction the sprite faces. Only 4- and 8-direction sprites show it.
+- `mathT` is the engine's maths table: `Sin`, `Cos`, `Lerp`, `Clamp`, random numbers, rotations
+  and more. Lua's own `math` table also works.
+- `transform.rotation` is the way the entity faces. `QuaternionFromEuler(0, angle, 0)` turns it
+  `angle` degrees around the vertical axis, like **Rotation Y** in the inspector. A normal sprite
+  always faces the camera, so you see the turn on 4- and 8-direction sprites and on models.
 
 ---
 
@@ -123,9 +123,7 @@ local angle = 0
 
 function Update()
     angle = angle + degreesPerSecond * GameTime.deltaTime
-
-    local radians = mathT.DegToRad(angle)
-    entity.transform.forward = Vector2(mathT.Sin(radians), mathT.Cos(radians))
+    entity.transform.rotation = mathT.QuaternionFromEuler(0, angle, 0)
 end
 ```
 
@@ -359,8 +357,18 @@ visible, turn its collider on. Note that `entity.enabled = false` only pauses th
 
 When scripting starts, the engine writes `.luals/tilky_api.lua` in your project folder, next to
 `project.tilky`. It describes every Tilky type and function. Open the project folder in VS Code with the **Lua** extension (LuaLS)
-and you get autocomplete and hover docs for `entity`, `Input`, `Game` and the rest. The built-in
-script editor's autocomplete comes from the same data.
+and you get autocomplete and hover docs for `entity`, `Input`, `Game` and the rest. Projects made
+in the launcher come with a `.luarc.json` that points LuaLS at that file. For an older project,
+add one yourself:
+
+```json
+{
+  "workspace.library": ["./.luals"],
+  "workspace.checkThirdParty": false
+}
+```
+
+The built-in script editor's autocomplete comes from the same data.
 
 ---
 

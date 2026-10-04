@@ -18,7 +18,9 @@ appears in the console and in the script's inspector panel.
 
 When scripting starts, the engine writes an API description to `.luals/tilky_api.lua` in the project
 folder (next to `project.tilky`, outside `Assets`). Open the project folder in an editor that uses
-the Lua language server (LuaLS) and it reads it for autocomplete and hover docs. It
+the Lua language server (LuaLS) and it reads it for autocomplete and hover docs, using the
+`.luarc.json` the launcher puts in new projects (see
+[Getting Started](../wiki/GettingStarted.md#13-working-in-an-external-editor)). It
 covers the bindings that have documentation registered, so some newer members may be missing from
 it.
 

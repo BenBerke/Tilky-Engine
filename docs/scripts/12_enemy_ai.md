@@ -67,7 +67,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform.forward = Vector2(dx / dist, dz / dist)
+        transform:lookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then
@@ -208,7 +208,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform.forward = Vector2(dx / dist, dz / dist)
+        transform:lookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then

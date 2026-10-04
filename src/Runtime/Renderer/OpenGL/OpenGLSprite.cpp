@@ -2,6 +2,7 @@
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Sector.hpp"
 
 void OpenGL::BuildGpuSprites() {
@@ -52,11 +53,14 @@ void OpenGL::BuildGpuSprites() {
             GetTextureRegionIndex(spriteComponent.textureFileNames[7])
         };
 
+        // Directional sprites face the rotation's local +Z, flattened onto the map.
+        const Vector3 facing = QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward());
+
         gpuSprite.data = {
             transform->scale.x,
             static_cast<float>(spriteComponent.sideCount),
-            transform->forward.x,
-            transform->forward.y
+            facing.x,
+            facing.z
         };
 
         Quaternion rotation = Quaternion::Identity();

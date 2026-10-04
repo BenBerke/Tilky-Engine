@@ -11,7 +11,7 @@ Sound comes from an `AudioSource` component (`entity.audioSource`, `nil` if ther
 | `audio.looping` | Loop the sound |
 | `audio.playOnStart` | Whether the level starts it automatically |
 | `audio.referenceDistance`, `maxDistance`, `rollOffFactor` | How volume falls off with distance |
-| `audio.innerConeAngle`, `outerConeAngle`, `outerGain` | Directional sound, pointing along `transform.forward` (see [Audio Source](../wiki/AudioSource.md#sound-cone)) |
+| `audio.innerConeAngle`, `outerConeAngle`, `outerGain` | Directional sound, pointing the way `transform.rotation` faces (see [Audio Source](../wiki/AudioSource.md#sound-cone)) |
 | `audio:setSourcePosition(Vector3)` | Move the sound's 3D position until the next frame, when it goes back to the entity |
 
 Audio has **no stop or pause function**. To silence a looping sound, set `gain` to `0`.

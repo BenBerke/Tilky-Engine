@@ -36,15 +36,17 @@ The Transform's `scale.y` isn't used by sprites. New entities start at scale 32,
 | **8-Sided** | `1` | All eight: N, NE, E, SE, S, SW, W, NW. |
 | **4-Sided** | `2` | Four: N, E, S, W. |
 
-With 4 or 8 sides, the engine compares the sprite's facing, the Transform's `forward` direction,
-with the direction from the sprite to the camera:
+With 4 or 8 sides, the engine compares the sprite's facing with the direction from the sprite to
+the camera. The facing is the way the Transform's `rotation` points (its local +Z), flattened onto
+the map, so only rotation Y matters. Rotation `0, 0, 0` faces +Z.
 
 - **N** (North) is shown when the camera is **in front** of the sprite, looking at its face.
 - **S** (South) is shown when the camera is **behind** it.
 - The others follow in order around the sprite: N, NE, E, SE, S, SW, W, NW. Each picture covers a
   45° slice with 8 sides, or a 90° slice with 4.
 
-To turn a directional sprite, set `transform.forward`, not the rotation. If the side pictures
+To turn a directional sprite, set its rotation: **Rotation Y** in the inspector, or
+`transform:lookAt(point)` / `transform:lookDirection(direction)` from Lua. If the side pictures
 appear on the opposite sides from what you expected, swap E with W (and NE with NW, SE with SW).
 
 ### Colour and light
@@ -163,9 +165,8 @@ end
 -- Scripts/Sprites/FaceMovement.lua (8-sided sprite on something with a Rigidbody)
 function Update()
     local v = entity.rigidbody.velocity
-    local flat = Vector2(v.x, v.z)
 
-    if flat.length > 1 then entity.transform.forward = flat.normalized end
+    if Vector2(v.x, v.z).length > 1 then entity.transform:lookDirection(v) end
 end
 ```
 

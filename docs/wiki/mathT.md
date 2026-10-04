@@ -14,8 +14,8 @@ whichever you like. Note that `mathT.Random*` and `math.random` are separate gen
 `mathT.RandomSeed` doesn't affect `math.random`.
 
 **Radians or degrees?** `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan` and `Atan2` use **radians**,
-like Lua's `math`. Everything with `Angle` in its name, and `Vector2Rotate` /
-`Vector2FromAngle`, use **degrees**. Convert with `DegToRad` and `RadToDeg`.
+like Lua's `math`. Everything with `Angle` in its name, `Vector2Rotate` /
+`Vector2FromAngle`, and the `Quaternion*` functions use **degrees**. Convert with `DegToRad` and `RadToDeg`.
 
 ---
 
@@ -107,6 +107,9 @@ return value. Keep it in a variable and pass it back in next frame. `deltaTime` 
 `GameTime.deltaTime`.
 
 ```lua
+---@field targetY number @ Target Height
+targetY = 64
+
 local velocity = 0
 
 function Update()
@@ -130,17 +133,28 @@ end
 
 ```lua
 -- Turn toward the player at 90 degrees per second.
+local player
 local facing = 0
 
+function Start()
+    player = Game.FindEntity("Player")
+end
+
 function Update()
+    if player == nil then return end
+
     local p, me = player.transform.position, entity.transform.position
-    local wanted = mathT.Vector2ToAngle(Vector2(p.x - me.x, p.z - me.z))
+    -- Atan2(x, z) is the angle the same way round as rotation Y and camera yaw.
+    local wanted = mathT.RadToDeg(mathT.Atan2(p.x - me.x, p.z - me.z))
     facing = mathT.MoveTowardsAngle(facing, wanted, 90 * GameTime.deltaTime)
+    entity.transform.rotation = mathT.QuaternionFromEuler(0, facing, 0)
 end
 ```
 
-`transform.rotation` is a quaternion, not an angle. To turn an angle into a rotation, see
-[Transform](Transform.md#rotation-helpers).
+`transform.rotation` is a quaternion, not an angle, so `QuaternionFromEuler` turns the angle into
+one (see [Quaternions](#quaternions)). `Vector2ToAngle` measures from +X instead, so it doesn't
+line up with rotation Y. To face a target straight away, with no turning speed, use
+`transform:lookAt` (see [Transform](Transform.md#scripting)).
 
 ---
 
@@ -265,4 +279,42 @@ entity.transform.position = mathT.Vector3MoveTowards(pos, target, speed * GameTi
 -- Fade a sprite from white to red over one second.
 local t = mathT.Clamp01(timer)
 entity.sprite.color = mathT.Vector4Lerp(Vector4(1, 1, 1, 1), Vector4(1, 0, 0, 1), t)
+```
+
+---
+
+## Quaternions
+
+Rotations, such as [`transform.rotation`](Transform.md#rotation), are quaternions stored in a
+`Vector4` `(x, y, z, w)`. Angles are in degrees and use the same X/Y/Z as the inspector: Y turns
+left and right like camera `yaw`. An entity faces its local +Z, `Vector3(0, 0, 1)`.
+
+| Function | |
+|---|---|
+| `QuaternionFromEuler(x, y, z)` | Rotation from X/Y/Z angles in degrees. Returns a `Vector4`. |
+| `QuaternionToEuler(q)` | The X/Y/Z angles in degrees, as a `Vector3`. Y comes back in `-90..90` (see below). |
+| `QuaternionAngleAxis(axis, degrees)` | Rotation of `degrees` around the `Vector3` `axis`. A zero axis gives no rotation. |
+| `QuaternionMultiply(a, b)` | Both rotations combined: `b` first, then `a`. |
+| `QuaternionRotate(q, v)` | Rotates the `Vector3` `v` by `q`. |
+
+`QuaternionToEuler` gives back *a* set of angles for the rotation, not always the ones you put in.
+Y is kept within `-90..90`, so a turn of Y `135` reads back as `180, 45, 180`, which is the same
+rotation. To read how far an entity is turned left or right, use its facing direction instead:
+
+```lua
+local f = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
+local yaw = mathT.RadToDeg(mathT.Atan2(f.x, f.z)) -- same as camera yaw
+```
+
+To make an entity face a point or a direction, use
+[`transform:lookAt`](Transform.md#scripting) / `transform:lookDirection` instead of building the
+quaternion yourself.
+
+```lua
+-- Spin around the vertical axis.
+local turn = mathT.QuaternionAngleAxis(Vector3(0, 1, 0), 90 * GameTime.deltaTime)
+entity.transform.rotation = mathT.QuaternionMultiply(turn, entity.transform.rotation)
+
+-- Which way is the entity facing?
+local facing = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
 ```

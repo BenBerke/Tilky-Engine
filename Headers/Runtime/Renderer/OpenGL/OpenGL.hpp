@@ -98,8 +98,8 @@ namespace OpenGLRendererInternal {
         Vector4 data;
         // data.x = sprite width / scale.x
         // data.y = sideCount
-        // data.z = forward.x
-        // data.w = forward.y
+        // data.z = facing.x (rotation's local +Z on the map)
+        // data.w = facing.z
 
         Vector4 rotation;
         // Quaternion: x, y, z, w

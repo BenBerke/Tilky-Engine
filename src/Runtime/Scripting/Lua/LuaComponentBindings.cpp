@@ -123,11 +123,14 @@ namespace {
             Prop("rotation", "Vector4", false, "Quaternion, stored as (x, y, z, w)."),
             Prop("scale", "Vector3"),
             Prop("relativeHeight", "number", false, "Height above the current sector floor."),
-            Prop("forward", "Vector2"),
             Prop("sectorIndex", "integer", true),
             Prop("isDirty", "boolean"),
         }, {
             Method("addPosition", {Param("position", "Vector3")}),
+            Method("lookAt", {Param("point", "Vector3"), Param("yawOnly", "boolean?")}, {},
+                   "Turns the entity so its local +Z faces a world point. yawOnly (default true) only turns left/right; false also tilts up/down."),
+            Method("lookDirection", {Param("direction", "Vector3"), Param("yawOnly", "boolean?")}, {},
+                   "Turns the entity so its local +Z faces along a direction. yawOnly (default true) only turns left/right; false also tilts up/down."),
         }));
 
         RegisterType(Type("Sprite", "Billboard/multi-directional sprite component.", {
@@ -499,11 +502,6 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptTransform::SetRelativeHeight
         ),
 
-        "forward", sol::property(
-            &ScriptTransform::GetForward,
-            &ScriptTransform::SetForward
-        ),
-
         "sectorIndex", sol::property(&ScriptTransform::GetSectorIndex),
 
         "isDirty", sol::property(
@@ -511,7 +509,15 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptTransform::SetIsDirty
         ),
 
-        "addPosition", &ScriptTransform::AddPosition
+        "addPosition", &ScriptTransform::AddPosition,
+
+        "lookAt", [](const ScriptTransform& self, const Vector3& point, const sol::optional<bool> yawOnly) {
+            self.LookAt(point, yawOnly.value_or(true));
+        },
+
+        "lookDirection", [](const ScriptTransform& self, const Vector3& direction, const sol::optional<bool> yawOnly) {
+            self.LookDirection(direction, yawOnly.value_or(true));
+        }
     );
 
     lua.new_usertype<ScriptSprite>(

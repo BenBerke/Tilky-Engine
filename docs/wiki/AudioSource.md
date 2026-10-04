@@ -26,8 +26,8 @@ several overlapping sounds, put Audio Sources on several entities.
 
 - The sound plays at the entity's [Transform](Transform.md) position. The source follows the
   entity every frame, however it moves (a script, physics, a lift).
-- The source faces the Transform's `forward`. That only matters for the
-  [sound cone](#sound-cone).
+- The source faces the way the Transform's `rotation` points (its local +Z). That only matters for
+  the [sound cone](#sound-cone).
 - When a script destroys the entity, its sound stops.
 - The **listener**, the "ears", is at the active [Camera](Camera.md), facing where it looks. It is
   at eye height when that camera's entity is the active [Player Controller](PlayerController.md).
@@ -75,11 +75,11 @@ sounds that should carry across a room.
 ### Sound cone
 
 **Inner Angle**, **Outer Angle** and **Outer Gain** make the source a directional speaker, like a
-loudspeaker or a monster shouting forwards. The cone points along the Transform's `forward`, flat
-on the map.
+loudspeaker or a monster shouting forwards. The cone points the way the Transform's `rotation`
+faces: rotation Y turns it left and right, and rotation X tilts it up and down.
 
 - **Inner Angle** is the full width of the cone, in degrees, where the sound is at full volume.
-  `90` means 45° either side of `forward`.
+  `90` means 45° either side of the facing direction.
 - **Outer Angle** is the full width past which the sound is at `outerGain` × volume. Between the
   two angles it blends.
 - **Outer Gain** is the volume multiplier behind the speaker, from `0` (silent) to `1`.
@@ -246,14 +246,14 @@ local angle = 0
 
 function Start()
     local audio = entity.audioSource
-    audio.innerConeAngle = 60  -- full volume within 30° of forward
-    audio.outerConeAngle = 180 -- outerGain beyond 90° of forward
+    audio.innerConeAngle = 60  -- full volume within 30° of the facing direction
+    audio.outerConeAngle = 180 -- outerGain beyond 90° of it
     audio.outerGain = 0.1
 end
 
 function Update()
-    angle = angle + math.rad(degreesPerSecond) * GameTime.deltaTime
-    entity.transform.forward = Vector2(math.sin(angle), math.cos(angle))
+    angle = angle + degreesPerSecond * GameTime.deltaTime
+    entity.transform.rotation = mathT.QuaternionFromEuler(0, angle, 0)
 end
 ```
 

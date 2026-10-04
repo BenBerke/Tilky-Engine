@@ -31,8 +31,8 @@ struct Sprite {
     vec4 data;
 // data.x = sprite width
 // data.y = sideCount
-// data.z = forward.x
-// data.w = forward.y
+// data.z = facing.x (rotation's local +Z on the map)
+// data.w = facing.z
 
     vec4 rotation;
 // Quaternion layout: x, y, z, w
@@ -253,7 +253,7 @@ int SelectSpriteTextureIndex(Sprite sprite, vec3 spriteWorldPos) {
         return sprite.textureIndices0.x;
     }
 
-    vec2 spriteForward = SafeNormalize2(sprite.data.zw, vec2(1.0, 0.0));
+    vec2 spriteForward = SafeNormalize2(sprite.data.zw, vec2(0.0, 1.0));
     vec2 toCamera = SafeNormalize2(
     uCameraWorldPos.xz - spriteWorldPos.xz,
     spriteForward

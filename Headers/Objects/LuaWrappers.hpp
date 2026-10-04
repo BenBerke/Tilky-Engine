@@ -19,6 +19,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 
 // ---------------------------------------------------------
@@ -288,18 +289,6 @@ struct ScriptTransform {
         transform->relativeHeight = height;
     }
 
-    [[nodiscard]] Vector2 GetForward() const {
-        const ComponentTransform* transform = GetComponent();
-        if (transform == nullptr) return {1.0f, 0.0f};
-        return transform->forward;
-    }
-
-    void SetForward(const Vector2& forward) const {
-        ComponentTransform* transform = GetComponent();
-        if (transform == nullptr) return;
-        transform->forward = forward;
-    }
-
     [[nodiscard]] int GetSectorIndex() const {
         const ComponentTransform* transform = GetComponent();
         if (transform == nullptr) return -1;
@@ -331,6 +320,26 @@ struct ScriptTransform {
         if (transform == nullptr) return;
 
         transform->rotation = Quaternion{rotation.x, rotation.y, rotation.z, rotation.w}.Normalized();
+
+        transform->isDirty = true;
+    }
+
+    // Turns the entity so its local +Z faces point. Does nothing if point is
+    // on top of the entity.
+    void LookAt(const Vector3& point, const bool yawOnly) const {
+        const ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return;
+
+        LookDirection(point - transform->position, yawOnly);
+    }
+
+    // Turns the entity so its local +Z faces along direction. Does nothing
+    // for a direction with nothing to face.
+    void LookDirection(const Vector3& direction, const bool yawOnly) const {
+        ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return;
+
+        if (!QuaternionMath::LookRotation(direction, yawOnly, transform->rotation)) return;
 
         transform->isDirty = true;
     }

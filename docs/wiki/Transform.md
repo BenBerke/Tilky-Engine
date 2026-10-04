@@ -15,9 +15,9 @@ instead.
 `position` is the point at the **bottom** of the entity, where it touches the floor, not its
 centre:
 
-- A [sprite](Sprite.md) is drawn upward from it.
-- A sphere [collider](Collider.md) sits on it: its centre is one radius above `position`.
-- The [player camera](PlayerController.md) is `eyeHeight` above it.
+- A sprite is drawn upward from it.
+- A sphere collider sits on it: its centre is one radius above `position`.
+- The player camera is `eyeHeight` above it.
 
 So an entity standing on a floor at height 0 has `position.y == 0`.
 
@@ -43,17 +43,21 @@ entities with a Rigidbody and a Collider, and uses it to decide whether gravity 
 
 New entities start at `32, 32, 32`.
 
-### Rotation and forward
+### Rotation
 
-There are two separate "facing" values:
+`rotation` is a quaternion. The inspector shows it as X/Y/Z angles in degrees. From Lua it is a
+`Vector4` `(x, y, z, w)`.
 
-- `rotation` is a quaternion. It turns [models](Model.md) and **static** [sprites](Sprite.md). The
-  inspector shows it as X/Y/Z angles in degrees. From Lua it is a `Vector4` `(x, y, z, w)`.
-- `forward` is a flat `Vector2` direction on the map `(x, z)`. It is the way a 4- or 8-direction
-  sprite faces, which picks which of its images you see, and the way an
-  [Audio Source's](AudioSource.md#sound-cone) sound cone points.
+An entity **faces its local +Z**. With rotation `0, 0, 0` it faces +Z on the map, and rotation Y
+turns it left and right the same way as camera `yaw`, so Y `90` faces +X. The rotation is used by:
 
-Neither one moves the camera. The camera has its own `yaw` and `pitch` (see [Camera](Camera.md)).
+- [Models](Model.md) and **static** [sprites](Sprite.md), which turn with it fully.
+- 4- and 8-direction [sprites](Sprite.md#directions), which use the facing flattened onto
+  the map to pick which of their images you see.
+- The [Audio Source's](AudioSource.md#sound-cone) sound cone, which points along the facing,
+  tilted up or down too.
+
+It does not move the camera. The camera has its own `yaw` and `pitch` (see [Camera](Camera.md)).
 
 ## In the editor
 
@@ -71,7 +75,6 @@ Neither one moves the camera. The camera has its own `yaw` and `pitch` (see [Cam
 | `position` | Vector3 | read/write | Feet position. Setting it updates sector membership this frame. |
 | `rotation` | Vector4 | read/write | Quaternion `(x, y, z, w)`. Normalised when written. |
 | `scale` | Vector3 | read/write | |
-| `forward` | Vector2 | read/write | Facing on the map, used by directional sprites and the Audio Source sound cone. |
 | `relativeHeight` | number | read/write | Height above the floor. Physics overwrites it every frame on physics bodies. |
 | `sectorIndex` | integer | read-only | Internal index of the current sector, `-1` outside the map. Use `entity:GetSector()` instead: it returns the sector itself and survives map edits. |
 | `isDirty` | boolean | read/write | Engine flag meaning "moved this frame". You shouldn't need it. |
@@ -79,6 +82,12 @@ Neither one moves the camera. The camera has its own `yaw` and `pitch` (see [Cam
 | Method | Description |
 |---|---|
 | `addPosition(offset)` | Moves by a `Vector3` offset. Same as `position = position + offset`. |
+| `lookAt(point, [yawOnly])` | Turns so the entity faces a world `Vector3` point. Does nothing if the point is at the entity's position. |
+| `lookDirection(direction, [yawOnly])` | Turns so the entity faces along a `Vector3` direction. Does nothing for a zero direction. |
+
+`yawOnly` defaults to `true`: the entity only turns left and right, and the height of the point or
+direction is ignored. Pass `false` to tilt up and down as well (never any roll). Upright things
+such as sprites and characters usually want the default.
 
 **Vectors are copies.** `entity.transform.position.x = 5` changes a temporary copy and has no effect.
 Build a new vector and assign it:
@@ -97,16 +106,22 @@ physics runs later in the frame, and a big jump can pass straight through a thin
 
 ### Rotation helpers
 
-There are no quaternion functions in `mathT`. For a rotation around the vertical axis only
-(turning left and right), the quaternion is:
+[`mathT`](mathT.md#quaternions) has the quaternion functions. Angles are in degrees, the same as
+the inspector:
 
 ```lua
-local function YawRotation(degrees)
-    local half = mathT.DegToRad(degrees) * 0.5
-    return Vector4(0, mathT.Sin(half), 0, mathT.Cos(half))
-end
+-- Face +X (rotation Y 90 in the inspector).
+entity.transform.rotation = mathT.QuaternionFromEuler(0, 90, 0)
 
-entity.transform.rotation = YawRotation(90)
+-- Read the angles back.
+local angles = mathT.QuaternionToEuler(entity.transform.rotation)
+
+-- Turn a further 45 degrees to the right.
+local turn = mathT.QuaternionAngleAxis(Vector3(0, 1, 0), 45)
+entity.transform.rotation = mathT.QuaternionMultiply(turn, entity.transform.rotation)
+
+-- The direction the entity faces, as a unit Vector3.
+local facing = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
 ```
 
 ## Examples
@@ -137,8 +152,7 @@ function Update()
     local y = base.y + (mathT.Sin(t * bobSpeed * mathT.Tau) + 1) * 0.5 * bobHeight
     entity.transform.position = Vector3(base.x, y, base.z)
 
-    local half = mathT.DegToRad(t * spinSpeed) * 0.5
-    entity.transform.rotation = Vector4(0, mathT.Sin(half), 0, mathT.Cos(half))
+    entity.transform.rotation = mathT.QuaternionFromEuler(0, t * spinSpeed, 0)
 end
 ```
 
@@ -168,8 +182,7 @@ function Update()
     entity.transform.position = moved
 
     -- Face the way we're walking (for 4/8-direction sprites).
-    local d = target - here
-    if d.length > 0.001 then entity.transform.forward = Vector2(d.x, d.z).normalized end
+    entity.transform:lookAt(target)
 
     if mathT.Vector3Distance(moved, target) < 0.01 then
         target = (target == pointB) and pointA or pointB

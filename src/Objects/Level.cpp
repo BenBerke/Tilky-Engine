@@ -53,7 +53,6 @@ ID Level::CreateEntity(Entity& copy) {
 
         s->position = cs->position;
         s->relativeHeight = cs->relativeHeight;
-        s->forward = cs->forward;
         s->scale = cs->scale;
         s->sectorIndex = cs->sectorIndex;
         s->isDirty = cs->isDirty;
