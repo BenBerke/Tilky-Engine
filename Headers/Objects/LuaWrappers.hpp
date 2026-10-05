@@ -8,12 +8,14 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <tuple>
 #include <vector>
 
 #include <sol/error.hpp>
 
 #include "Headers/Math/Constants.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
@@ -2283,6 +2285,29 @@ struct ScriptSector {
         };
     }
 
+    // ---- Distance to the outline -------------------------------------------
+    // Map space (x, z), height ignored. Measured to the outer boundary and to
+    // every hole (child sector), and 0 while the entity is inside. Standing
+    // in a child sector counts as outside, same as ContainsEntity.
+
+    [[nodiscard]] float DistanceToSector(const ScriptEntity& entity) const {
+        return std::sqrt(DistanceToSectorSquared(entity));
+    }
+
+    [[nodiscard]] float DistanceToSectorSquared(const ScriptEntity& entity) const {
+        const ComponentTransform* transform = entity.GetTransform().GetComponent();
+        if (transform == nullptr) throw sol::error("Entity has no Transform");
+
+        const Sector& sector = RequireSector();
+        const Vector2 point{transform->position.x, transform->position.z};
+        if (Geometry::IsPointInPolygon(sector.vertices, sector.innerLoops, point)) return 0.0f;
+
+        float best = LoopDistanceSquared(sector.vertices, point);
+        for (const std::vector<Vector2>& hole : sector.innerLoops)
+            best = std::min(best, LoopDistanceSquared(hole, point));
+        return best;
+    }
+
     // ---- Heights at a point (slopes included) ------------------------------
 
     [[nodiscard]] float GetFloorHeightAt(const Vector2& point, const int luaIndex) const {
@@ -2300,6 +2325,32 @@ struct ScriptSector {
 private:
     static float TriangleArea(const Triangle& t) {
         return std::abs((t.b.x - t.a.x) * (t.c.y - t.a.y) - (t.c.x - t.a.x) * (t.b.y - t.a.y)) * 0.5f;
+    }
+
+    // Squared distance from `point` to the nearest edge of a closed loop.
+    // Infinity for an empty loop.
+    static float LoopDistanceSquared(const std::vector<Vector2>& loop, const Vector2& point) {
+        float best = std::numeric_limits<float>::infinity();
+        if (loop.empty()) return best;
+
+        Vector2 prev = loop.back();
+        for (const Vector2& cur : loop) {
+            const float ex = cur.x - prev.x;
+            const float ey = cur.y - prev.y;
+            const float lengthSquared = ex * ex + ey * ey;
+
+            float t = 0.0f;
+            if (lengthSquared > 0.0f)
+                t = std::clamp(((point.x - prev.x) * ex + (point.y - prev.y) * ey) / lengthSquared, 0.0f, 1.0f);
+
+            const float dx = point.x - (prev.x + ex * t);
+            const float dy = point.y - (prev.y + ey * t);
+            best = std::min(best, dx * dx + dy * dy);
+
+            prev = cur;
+        }
+
+        return best;
     }
 
     // Slopes are measured from an edge of this rectangle. Must match

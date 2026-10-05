@@ -86,6 +86,10 @@ namespace {
             Method("GetCenter", {}, "Vector2", "Area-weighted centre (x, z). Can lie outside L-shaped or ring-shaped sectors."),
             Method("GetArea", {}, "number", "Floor area, not counting child sectors cut out of it."),
             Method("GetBounds", {}, "Vector2, Vector2", "Returns min, max of the sector's bounding rectangle (x, z)."),
+            Method("DistanceToSector", {Param("entity", "Entity")}, "number",
+                   "Distance from `entity` (x, z) to the nearest edge of this sector, holes included. 0 while the entity is inside."),
+            Method("DistanceToSectorSquared", {Param("entity", "Entity")}, "number",
+                   "DistanceToSector squared. Cheaper: compare it against range * range."),
             Method("RandomPointInside", {Param("floorIndex", "integer?")}, "Vector3",
                    "A random point inside the sector, standing on floor `floorIndex` (default 1). Follows mathT.RandomSeed."),
             Method("GetFloorHeightAt", {Param("position", "Vector2|Vector3"), Param("floorIndex", "integer?")}, "number",
@@ -276,6 +280,8 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "GetCenter", &ScriptSector::GetCenter,
         "GetArea", &ScriptSector::GetArea,
         "GetBounds", &ScriptSector::GetBounds,
+        "DistanceToSector", &ScriptSector::DistanceToSector,
+        "DistanceToSectorSquared", &ScriptSector::DistanceToSectorSquared,
 
         "RandomPointInside", sol::overload(
             [](const ScriptSector& self) { return RandomPointInside(self, 1); },

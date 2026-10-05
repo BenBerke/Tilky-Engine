@@ -479,6 +479,43 @@ local min, max = sector:GetBounds()
 local width, depth = max.x - min.x, max.y - min.y
 ```
 
+### DistanceToSector
+
+```lua
+sector:DistanceToSector(entity) -> number
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `entity` | Entity | Measured from its transform's `x` and `z`. Height is ignored. |
+
+Distance from the entity to the nearest edge of the sector's outline. Returns `0` while the entity
+is inside the sector. Child sectors cut out of this one count as **outside**, same as
+`ContainsEntity`, and their edges count as part of the outline. Works for a sector of any shape.
+Raises an error if the entity has no Transform.
+
+```lua
+-- Open a door when the player comes within 30 units of it.
+if sector:DistanceToSector(player) <= 30 then
+    sector:MoveCeilingToFloor(1, 60, 40)
+end
+```
+
+### DistanceToSectorSquared
+
+```lua
+sector:DistanceToSectorSquared(entity) -> number
+```
+
+`DistanceToSector` squared, without the square root. Compare it against a squared range when you
+only need "is it within range":
+
+```lua
+if sector:DistanceToSectorSquared(player) <= range * range then
+    -- in range
+end
+```
+
 ### RandomPointInside
 
 ```lua

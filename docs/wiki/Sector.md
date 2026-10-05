@@ -146,7 +146,7 @@ use raises an error.
 | Movement | `MoveFloorToCeiling(i, speed[, gap])`, `MoveCeilingToFloor(i, speed[, gap])`, their `...OverTime(i, seconds[, gap])` versions, `MoveFloorTo(i, height, speed)`, `MoveCeilingTo(i, height, speed)`, their `...OverTime(i, height, seconds)` versions, `IsMoving(i)`, `IsFloorMoving(i)`, `IsCeilingMoving(i)`, `StopMoving(i)` |
 | Light | `FadeLight(color, seconds)`, `IsLightFading()` |
 | Occupancy | `ContainsEntity(e)`, `ContainsEntityWithTag(tag)`, `GetEntities()`, `GetEntitiesWithTag(tag)`, `CountEntities([tag])`, `IsEmpty()`, `GetEntity(i)` |
-| Shape | `GetArea()`, `GetCenter()`, `GetBounds()` (returns two values), `RandomPointInside([i])` |
+| Shape | `GetArea()`, `GetCenter()`, `GetBounds()` (returns two values), `RandomPointInside([i])`, `DistanceToSector(e)`, `DistanceToSectorSquared(e)` |
 | Geometry | `GetVertex(i)`, `GetWall(i)`, `GetNeighbor(i)` |
 | Tags | `HasTag(tag)`, `GetTag(i)` |
 
