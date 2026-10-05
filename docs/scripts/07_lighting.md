@@ -1,8 +1,8 @@
 # 07 - Lighting
 
 Every sector has a `light` property: a `Vector3` of red, green, blue in the range **0-255**
-(`255, 255, 255` is full white, `0, 0, 0` is dark). It returns a copy, so to change it, build a new
-`Vector3` and assign it back.
+(`255, 255, 255` is full white, `0, 0, 0` is dark). `sector.light.x = 0` changes one channel; a
+value stored in a variable is a copy, so assign it back after changing it.
 
 ```lua
 local base = sector.light                     -- copy

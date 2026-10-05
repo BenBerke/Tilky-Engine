@@ -80,8 +80,8 @@ comment **directly above** its default:
   script.
 - Names used by the engine can't be fields: every [callback](CallbackFunctions.md) name, `entity`,
   `sector`, `Global`, `GameTime`, `Input`, `Game` and `Debug`.
-- If you later delete a field from the script, the inspector keeps showing its old saved value
-  so you can remove it by hand.
+- If you delete or rename a field in the script, its saved value is dropped. A renamed field
+  starts again from its default.
 
 ### Types
 

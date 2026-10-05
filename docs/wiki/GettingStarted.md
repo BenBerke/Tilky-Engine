@@ -170,19 +170,19 @@ local transform = entity.transform      -- nil if it has no Transform
 local body = entity.rigidbody           -- nil if it has no Rigidbody
 ```
 
-Each component page lists what you can read and write. One rule catches everyone at first:
-
-**Vectors are copies.** This does nothing:
+Each component page lists what you can read and write. Vector properties can be changed one
+component at a time:
 
 ```lua
-entity.transform.position.y = 50        -- changes a copy, which is then thrown away
+entity.transform.position.y = 50        -- moves the entity
 ```
 
-Read the vector, make a new one, and write it back:
+But a vector you store in a variable is your own **copy**:
 
 ```lua
-local p = entity.transform.position
-entity.transform.position = Vector3(p.x, 50, p.z)
+local start = entity.transform.position
+start.y = 50                            -- only changes `start`, the entity stays put
+entity.transform.position = start       -- now it moves
 
 -- or, with vector maths:
 entity.transform.position = entity.transform.position + Vector3(0, 10, 0)

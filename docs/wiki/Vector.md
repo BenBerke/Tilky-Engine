@@ -63,26 +63,35 @@ distance instead: `(a - b).length < 0.01`.
 
 ---
 
-## Vectors are copies
+## Changing one component
 
-A vector you get from a component is a **copy**. Changing it changes nothing else:
-
-```lua
-entity.transform.position.y = 50        -- changes a copy, which is then thrown away
-```
-
-Read it, change it, and write the whole vector back:
+Setting `x`, `y`, `z` or `w` straight on a component's vector property changes the component:
 
 ```lua
-local p = entity.transform.position
-p.y = 50
-entity.transform.position = p
+entity.transform.position.y = 50        -- moves the entity
+entity.rigidbody.velocity.y = 0         -- stops falling
+entity.sprite.color.w = 0.5             -- half transparent
 ```
 
-The same goes for colours, velocities and every other vector property.
+The same goes for colours, velocities and every other writable vector property. Read-only ones
+such as `camera.forward` raise an error instead.
+
+## Vectors in variables are copies
+
+A vector you put in a variable or a table is your own **copy**. Changing it changes nothing else:
+
+```lua
+local start = entity.transform.position
+start.y = 50                            -- only changes `start`
+entity.transform.position = start       -- now the entity moves
+```
 
 The other way round is safe too: after `entity.transform.position = p`, changing `p` doesn't
 move the entity again.
+
+This works because the engine rewrites `<something>.<property>.x = value` when it loads your
+script, so only a direct `a.b.position.y = ...` assignment writes through. Going through a
+variable (`local p = a.b.position; p.y = ...`) always changes the copy.
 
 ---
 

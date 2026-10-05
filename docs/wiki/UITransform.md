@@ -89,7 +89,7 @@ canvas previews the layout at a target resolution.
 | `resolvedPosition` | Vector2 | read-only | Final top-left corner on screen, in pixels. Updated when the frame is drawn. |
 | `resolvedSize` | Vector2 | read-only | Final size in pixels. |
 
-As with every vector, write a whole new value: `ui.position = Vector2(10, 20)`.
+Set a whole vector (`ui.position = Vector2(10, 20)`) or one component (`ui.position.x = 10`).
 
 ## Examples
 

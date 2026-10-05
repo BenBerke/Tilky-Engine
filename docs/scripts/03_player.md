@@ -108,8 +108,9 @@ end
 
 **Notes**
 
-- `rb.velocity` returns a copy, so build a new `Vector3` and assign it back. Keeping `v.x` and
-  `v.z` preserves the controller's horizontal movement.
+- `local v = rb.velocity` is a copy, so build a new `Vector3` and assign it back. Keeping `v.x` and
+  `v.z` preserves the controller's horizontal movement. (`rb.velocity.y = pc.jumpPower` would also
+  work.)
 - Make the extra jump stronger or weaker than the first by using a different number instead of
   `pc.jumpPower`.
 

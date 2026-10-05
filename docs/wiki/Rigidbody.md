@@ -75,8 +75,8 @@ push each one by half, whatever their masses.
 |---|---|
 | `addVelocity(v)` | Adds a `Vector3` to the velocity. Good for impulses: explosions, launches, knockback. |
 
-Remember that vectors are copies: `rigidbody.velocity.y = 50` does nothing. Assign a whole new
-vector.
+`rigidbody.velocity.y = 50` changes just the vertical speed. A velocity stored in a variable is a
+copy, so assign it back after changing it.
 
 On the **player**, the [Player Controller](PlayerController.md#movement) overwrites the horizontal
 velocity every frame. Vertical changes (jump pads, launches) work; horizontal pushes don't.

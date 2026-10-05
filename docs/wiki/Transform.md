@@ -89,12 +89,13 @@ It does not move the camera. The camera has its own `yaw` and `pitch` (see [Came
 direction is ignored. Pass `false` to tilt up and down as well (never any roll). Upright things
 such as sprites and characters usually want the default.
 
-**Vectors are copies.** `entity.transform.position.x = 5` changes a temporary copy and has no effect.
-Build a new vector and assign it:
+You can change one component directly: `entity.transform.position.x = 5` moves the entity. A
+vector stored in a variable is a copy, so assign it back when you've changed it:
 
 ```lua
 local p = entity.transform.position
-entity.transform.position = Vector3(5, p.y, p.z)
+p.x = 5                                 -- only changes p
+entity.transform.position = p           -- moves the entity
 ```
 
 ### Moving things that have a Rigidbody

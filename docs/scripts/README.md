@@ -99,10 +99,12 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
 
 ## Things that will bite you
 
-1. **Vectors are copies.** `transform.position.y = 5` does nothing. Read, change, write back:
+1. **Vectors in variables are copies.** `transform.position.y = 5` moves the entity, but
+   `local p = transform.position; p.y = 5` only changes `p`. Write it back:
    ```lua
    local p = transform.position
-   transform.position = Vector3(p.x, 5, p.z)
+   p.y = 5
+   transform.position = p
    ```
 2. **Vector math makes new vectors.** `a + b`, `v * 2`, `v / 2` and `-v` work and return a new
    vector, so `transform.position = transform.position + offset` is the way to move something.

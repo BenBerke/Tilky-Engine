@@ -13,6 +13,7 @@
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaSourceRewrite.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 
 #include <sol/sol.hpp>
@@ -768,11 +769,14 @@ namespace {
             }
         }
 
-        script.schemaHash = asset.schemaHash;
+        // Drop values for fields the script no longer declares.
+        std::erase_if(script.publicValues, [&asset](const auto& entry) {
+            return std::ranges::none_of(asset.publicFields, [&entry](const ScriptPublicField& field) {
+                return field.name == entry.first;
+            });
+        });
 
-        // Orphaned values (fields no longer declared by the script) are left
-        // alone here - the editor inspector shows them and lets the user
-        // remove them manually.
+        script.schemaHash = asset.schemaHash;
     }
 
     // ------------------------------------------------------------------
@@ -865,6 +869,23 @@ namespace {
     // Instance load / lifecycle
     // ------------------------------------------------------------------
 
+    // lua.load_file, plus the vector write-through rewrite (see
+    // LuaSourceRewrite.hpp). Same chunk name as load_file, so error messages
+    // look identical.
+    sol::load_result LoadScriptFile(const fs::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file) return lua.load_file(path.string()); // let Lua report the open error
+
+        std::string source{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+        // luaL_loadfile skips a UTF-8 BOM and a leading `#` line; lua.load
+        // doesn't. Keep the newline so line numbers don't shift.
+        if (source.starts_with("\xEF\xBB\xBF")) source.erase(0, 3);
+        if (source.starts_with('#')) source.erase(0, std::min(source.find('\n'), source.size()));
+
+        return lua.load(LuaSourceRewrite::RewriteVectorComponentAssignments(source), "@" + path.string());
+    }
+
     bool IsSectorOwnerGlobal(const std::string& name) {
         return name == "sector" || name == "entity";
     }
@@ -913,7 +934,7 @@ namespace {
         InjectOwnerGlobals(level, instance);
         instance.environment["Global"] = lua["Global"];
 
-        const sol::load_result loadedScript = lua.load_file(path.string());
+        const sol::load_result loadedScript = LoadScriptFile(path);
 
         if (!loadedScript.valid()) {
             // Strip the project path otherwise its too long and may not fit to the screen
@@ -1610,13 +1631,13 @@ const std::string* LuaScriptSystem::GetScriptLoadError(const std::string& fileNa
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
 
-    // Compile only - load_file never runs the chunk - and only once per
+    // Compile only - loading never runs the chunk - and only once per
     // on-disk revision, so polling this from the inspector every frame is
     // cheap.
     if (!asset.loadErrorChecked) {
         asset.loadErrorChecked = true;
 
-        const sol::load_result loaded = lua.load_file(path.string());
+        const sol::load_result loaded = LoadScriptFile(path);
 
         if (!loaded.valid()) {
             const sol::error error = loaded;

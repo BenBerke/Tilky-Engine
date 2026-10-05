@@ -678,8 +678,8 @@ namespace ImGuiDrawFunctions {
     //  sector inspector's Scripts section
     // ─────────────────────────────────────────────────────────────────────────
     // Everything about one attached script except removing it (each caller
-    // owns that): file picker, enabled flag, compile error, public
-    // variables and orphaned values. Takes the owner-agnostic
+    // owns that): file picker, enabled flag, compile error and public
+    // variables. Takes the owner-agnostic
     // ScriptAttachmentData so entity and sector scripts get the exact same
     // controls. `ownerLabel` ("entity 4", "sector 2") only shows up in log
     // messages. Callers must have pushed an ID unique to this attachment.
@@ -721,6 +721,14 @@ namespace ImGuiDrawFunctions {
 
         BeginSection("Public Variables");
 
+        // Drop values for fields the script no longer declares (e.g. after
+        // editing it while this inspector is open).
+        std::erase_if(script.publicValues, [fields](const auto &entry) {
+            return std::ranges::none_of(*fields, [&entry](const ScriptPublicField &field) {
+                return field.name == entry.first;
+            });
+        });
+
         for (const ScriptPublicField &field: *fields) {
             auto valueIt = script.publicValues.find(field.name);
 
@@ -730,46 +738,6 @@ namespace ImGuiDrawFunctions {
             }
 
             DrawScriptValueEditor(field, valueIt->second);
-        }
-
-        EndSection();
-
-        BeginSection("Orphaned Variables");
-
-        bool hasOrphans = false;
-
-        for (auto valueIt = script.publicValues.begin(); valueIt != script.publicValues.end();) {
-            const std::string &valueName = valueIt->first;
-
-            const bool existsInSchema = std::ranges::any_of(
-                *fields,
-                [&valueName](const ScriptPublicField &field) {
-                    return field.name == valueName;
-                }
-            );
-
-            if (existsInSchema) {
-                ++valueIt;
-                continue;
-            }
-
-            hasOrphans = true;
-
-            SmallMetaText("%s", valueName.c_str());
-
-            ImGui::SameLine();
-
-            const std::string delLabel = "Remove##orphan_" + valueName;
-
-            if (ImGui::SmallButton(delLabel.c_str())) {
-                valueIt = script.publicValues.erase(valueIt);
-            } else {
-                ++valueIt;
-            }
-        }
-
-        if (!hasOrphans) {
-            ImGui::TextDisabled("None");
         }
 
         EndSection();
