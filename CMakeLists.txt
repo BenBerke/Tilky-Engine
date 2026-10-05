@@ -306,7 +306,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Scripting/Lua/LuaSystem.cpp
         src/Runtime/Scripting/Lua/LuaBindingMetadata.cpp
         src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
-        src/Runtime/Scripting/Lua/LuaSourceRewrite.cpp
+        src/Runtime/Scripting/Lua/LuaScriptCompiler.cpp
         src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
         src/Runtime/Scripting/Lua/LuaEntityBindings.cpp
         src/Runtime/Scripting/Lua/LuaInputBindings.cpp

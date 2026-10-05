@@ -97,11 +97,8 @@ Set a whole vector (`ui.position = Vector2(10, 20)`) or one component (`ui.posit
 
 ```lua
 -- Scripts/UI/HealthBar.lua (UI entity with an Image, anchored top-left, pivot 0, 0)
----@field player Entity
-player = nil
-
----@field fullWidth number @ Width At Full Health
-fullWidth = 300
+public Entity player = nil
+public number fullWidth = 300
 
 local health
 
@@ -124,11 +121,8 @@ Because the pivot is at the left edge, the bar shrinks toward the left.
 
 ```lua
 -- Scripts/UI/SlideIn.lua
----@field from Vector2 @ Start Offset
-from = Vector2(0, -200)
-
----@field duration number
-duration = 0.5
+public Vector2 from = Vector2(0, -200)
+public number duration = 0.5
 
 local target
 local t = 0

@@ -37,14 +37,9 @@ Casts a ray from the player's eyes every frame. If the entity it hits has a scri
 
 ```lua
 -- Scripts/Interaction/Interactor.lua (entity script)
----@field range number @ Reach
-range = 48
-
----@field interactKey Key @ Interact Key
-interactKey = Key.E
-
----@field promptLabel Entity @ Prompt Label (optional, needs a UIText)
-promptLabel = nil
+public number range = 48
+public Key interactKey = Key.E
+public Entity promptLabel = nil
 
 local camera, pc, transform, label
 
@@ -124,11 +119,8 @@ Toggles a channel that doors, alarms, and lights can listen to
 
 ```lua
 -- Scripts/Interaction/Lever.lua (entity script)
----@field channel string @ Channel
-channel = "door1"
-
----@field prompt string @ Prompt
-prompt = "Pull lever"
+public string channel = "door1"
+public string prompt = "Pull lever"
 
 local isOn = false
 
@@ -161,23 +153,12 @@ anything hit that has a `Health` script
 
 ```lua
 -- Scripts/Interaction/Hitscan.lua (entity script)
----@field damage number @ Damage
-damage = 20
-
----@field range number @ Range
-range = 400
-
----@field fireDelay number @ Seconds Between Shots
-fireDelay = 0.25
-
----@field magazineSize int @ Magazine Size
-magazineSize = 8
-
----@field reloadTime number @ Reload Time (s)
-reloadTime = 1.5
-
----@field ammoLabel Entity @ Ammo Label (optional, needs a UIText)
-ammoLabel = nil
+public number damage = 20
+public number range = 400
+public number fireDelay = 0.25
+public int magazineSize = 8
+public number reloadTime = 1.5
+public Entity ammoLabel = nil
 
 local camera, pc, transform, label
 local ammo = 0

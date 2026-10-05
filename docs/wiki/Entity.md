@@ -38,7 +38,7 @@ other entities from:
 
 | Where from | How |
 |---|---|
-| A public field | `---@field target Entity` |
+| A public field | `public Entity target` |
 | A callback | `other` in `OnCollisionEnter(other)`, `entity` in a sector's `OnEntityEnter(entity)` |
 | A new one | `Game.CreateEntity()`, see [Creating entities](#creating-entities) |
 | By name | `Game.FindEntity("Player")` (first match or `nil`), `Game.FindEntities("Crate")` (list) |
@@ -200,8 +200,7 @@ Some components behave differently when added while the game runs:
 
 ```lua
 -- Scripts/Thrower.lua (on the player): F throws a ball with a sprite and a trigger collider.
----@field speed number
-speed = 300
+public number speed = 300
 
 local balls = {}
 
@@ -234,14 +233,9 @@ end
 
 ```lua
 -- Scripts/Follow.lua
----@field target Entity @ Target
-target = nil
-
----@field speed number @ Speed
-speed = 30
-
----@field stopDistance number @ Stop Distance
-stopDistance = 16
+public Entity target = nil
+public number speed = 30
+public number stopDistance = 16
 
 function Update()
     if target == nil or not target.isValid then return end

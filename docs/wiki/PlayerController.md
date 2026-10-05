@@ -136,11 +136,8 @@ Whatever you aim "from the player's eyes" (raycasts, projectiles) should start a
 
 ```lua
 -- Scripts/Player/Crouch.lua (on the player)
----@field crouchEyeHeight number @ Crouched Eye Height
-crouchEyeHeight = 6
-
----@field crouchSpeed number @ Crouched Speed
-crouchSpeed = 20
+public number crouchEyeHeight = 6
+public number crouchSpeed = 20
 
 local standEye, standSpeed
 
@@ -163,8 +160,7 @@ end
 
 ```lua
 -- Scripts/Player/DoubleJump.lua (on the player)
----@field airJumpPower number @ Air Jump Strength
-airJumpPower = 90
+public number airJumpPower = 90
 
 local usedAirJump = false
 

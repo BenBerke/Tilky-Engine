@@ -21,17 +21,10 @@ Two ways to move something:
 
 ```lua
 -- Scripts/Movement/Patrol.lua (entity script)
----@field pointA Entity @ Point A
-pointA = nil
-
----@field pointB Entity @ Point B
-pointB = nil
-
----@field speed number @ Speed
-speed = 30
-
----@field waitTime number @ Wait At Ends (s)
-waitTime = 1.0
+public Entity pointA = nil
+public Entity pointB = nil
+public number speed = 30
+public number waitTime = 1.0
 
 local transform
 local goingToB = true
@@ -86,14 +79,9 @@ end
 
 ```lua
 -- Scripts/Movement/Orbit.lua (entity script)
----@field center Entity @ Center (optional)
-center = nil
-
----@field radius number @ Radius
-radius = 40
-
----@field degreesPerSecond number @ Degrees Per Second
-degreesPerSecond = 90
+public Entity center = nil
+public number radius = 40
+public number degreesPerSecond = 90
 
 local transform
 local angle = 0.0
@@ -138,14 +126,9 @@ will fight the bobbing.
 
 ```lua
 -- Scripts/Movement/BobAndSpin.lua (entity script)
----@field bobHeight number @ Bob Height
-bobHeight = 3
-
----@field bobSpeed number @ Bob Speed
-bobSpeed = 2
-
----@field spinDegreesPerSecond number @ Spin (deg/s)
-spinDegreesPerSecond = 120
+public number bobHeight = 3
+public number bobSpeed = 2
+public number spinDegreesPerSecond = 120
 
 local transform
 local baseY = 0.0
@@ -188,14 +171,9 @@ any frame rate.
 
 ```lua
 -- Scripts/Movement/Follow.lua (entity script)
----@field target Entity @ Target
-target = nil
-
----@field followSpeed number @ Follow Speed (higher = snappier)
-followSpeed = 4
-
----@field offset Vector3 @ Offset
-offset = Vector3(0, 0, 0)
+public Entity target = nil
+public number followSpeed = 4
+public Vector3 offset = Vector3(0, 0, 0)
 
 local transform
 
@@ -228,8 +206,7 @@ end
 
 ```lua
 -- Scripts/Movement/KeyboardMover.lua (entity script)
----@field speed number @ Speed
-speed = 40
+public number speed = 40
 
 local transform
 

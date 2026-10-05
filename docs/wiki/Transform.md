@@ -131,14 +131,9 @@ local facing = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1
 
 ```lua
 -- Scripts/Movement/BobAndSpin.lua (pickup with a Model)
----@field bobHeight number @ Bob Height
-bobHeight = 4
-
----@field bobSpeed number @ Bobs Per Second
-bobSpeed = 0.5
-
----@field spinSpeed number @ Degrees Per Second
-spinSpeed = 90
+public number bobHeight = 4
+public number bobSpeed = 0.5
+public number spinSpeed = 90
 
 local base
 local t = 0
@@ -161,14 +156,9 @@ end
 
 ```lua
 -- Scripts/Movement/Patrol.lua (no Rigidbody needed)
----@field pointA Vector3 @ Point A
-pointA = Vector3(0, 0, 0)
-
----@field pointB Vector3 @ Point B
-pointB = Vector3(128, 0, 0)
-
----@field speed number @ Speed
-speed = 30
+public Vector3 pointA = Vector3(0, 0, 0)
+public Vector3 pointB = Vector3(128, 0, 0)
+public number speed = 30
 
 local target
 

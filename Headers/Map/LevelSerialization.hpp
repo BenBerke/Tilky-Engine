@@ -8,6 +8,11 @@
 #include "Headers/Objects/Level.hpp"
 
 namespace LevelSerialization {
+    // A script's public fields as JSON text - the field manifest the exporter
+    // writes next to each precompiled script (see TilkyExporter.cpp).
+    std::string ScriptPublicFieldsToJsonText(const std::vector<ScriptPublicField>& fields);
+    bool ScriptPublicFieldsFromJsonText(const std::string& text, std::vector<ScriptPublicField>& outFields, std::string* errorMessage = nullptr);
+
     struct LevelExtraData {
         std::string backgroundTextureFileName;
     };

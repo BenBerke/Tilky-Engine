@@ -119,14 +119,9 @@ e.g. `"Textures/Monsters/imp_front.png"`.
 ```lua
 -- Scripts/Sprites/Animate.lua (single-direction sprite)
 -- Cycles through numbered frames: Textures/Fire/fire1.png, fire2.png, ...
----@field folder string @ Frame Path Prefix
-folder = "Textures/Fire/fire"
-
----@field frameCount int @ Frames
-frameCount = 4
-
----@field fps number @ Frames Per Second
-fps = 8
+public string folder = "Textures/Fire/fire"
+public int frameCount = 4
+public number fps = 8
 
 local t = 0
 local shown = -1
@@ -149,8 +144,7 @@ Only change the texture when the frame actually changes, not every frame.
 ```lua
 -- Scripts/Sprites/HurtFlash.lua
 -- Another script calls enemy:GetScript("HurtFlash"):Flash()
----@field flashTime number @ Flash Seconds
-flashTime = 0.15
+public number flashTime = 0.15
 
 local timeLeft = 0
 
@@ -183,8 +177,7 @@ end
 
 ```lua
 -- Scripts/Sprites/Pulse.lua
----@field speed number
-speed = 2
+public number speed = 2
 
 local t = 0
 

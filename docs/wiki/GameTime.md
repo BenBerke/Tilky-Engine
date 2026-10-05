@@ -17,8 +17,7 @@ Frames don't all take the same time. Anything that should happen **per second** 
 **per frame** has to be multiplied by `deltaTime`, or it will run faster on faster computers.
 
 ```lua
----@field speed number
-speed = 30   -- units per second
+public number speed = 30   -- units per second
 
 function Update()
     -- Wrong: moves 30 units every frame (1800 per second at 60 fps).

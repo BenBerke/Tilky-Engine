@@ -122,9 +122,8 @@ struct ScriptEnumOption {
     int value = 0;
 };
 
-// One field of a script's schema, parsed from its `---@field` doc comments
-// (see LuaScriptSystem::ExtractSchema in LuaSystem.cpp) - never by executing
-// the script. This is intentionally plain data: the editor inspector, the
+// One field of a script's schema, from its `public <Type> <name> = <value>`
+// declarations (see LuaScriptCompiler) - never by executing the script. This is intentionally plain data: the editor inspector, the
 // serializer, and the future LuaLS stub generator all read the same struct.
 struct ScriptPublicField {
     std::string name;
@@ -133,17 +132,17 @@ struct ScriptPublicField {
     std::string displayName;
 
     // Only meaningful when type == Enum. Ordered name<->value table parsed
-    // from the field's `enum(...)` annotation.
+    // from the field's `enum(...)` type.
     std::vector<ScriptEnumOption> enumOptions;
 
     // Only meaningful when type == Component. Which ComponentType
     // (Components.hpp) the field accepts, e.g. CMP_RIGIDBODY for a field
-    // annotated `---@field body Rigidbody`. -1 if unresolved/invalid.
+    // declared `public Rigidbody body`. -1 if unresolved/invalid.
     int componentType = -1;
 
     // Reserved for future list/array field support (see the scripting
     // redesign notes). Always false today - the schema parser recognizes and
-    // rejects `Type[]` annotations with a warning instead of misinterpreting
+    // rejects `Type[]` declarations with an error instead of misinterpreting
     // them as a single value of an unknown type.
     bool isArray = false;
 };

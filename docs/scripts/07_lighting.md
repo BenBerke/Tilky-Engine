@@ -21,17 +21,10 @@ Holds a random brightness for a random short time, then picks another.
 
 ```lua
 -- Scripts/Lighting/Flicker.lua (sector script)
----@field minBrightness number @ Min Brightness (0-1)
-minBrightness = 0.3
-
----@field maxBrightness number @ Max Brightness (0-1)
-maxBrightness = 1.0
-
----@field minInterval number @ Min Hold Time (s)
-minInterval = 0.03
-
----@field maxInterval number @ Max Hold Time (s)
-maxInterval = 0.15
+public number minBrightness = 0.3
+public number maxBrightness = 1.0
+public number minInterval = 0.03
+public number maxInterval = 0.15
 
 local base
 local timer = 0.0
@@ -62,14 +55,9 @@ end
 
 ```lua
 -- Scripts/Lighting/Pulse.lua (sector script)
----@field period number @ Period (s)
-period = 2.0
-
----@field minBrightness number @ Min Brightness (0-1)
-minBrightness = 0.35
-
----@field maxBrightness number @ Max Brightness (0-1)
-maxBrightness = 1.0
+public number period = 2.0
+public number minBrightness = 0.35
+public number maxBrightness = 1.0
 
 local base
 local clock = 0.0
@@ -101,14 +89,9 @@ script can trigger it: `Global.channels = Global.channels or {}` then
 
 ```lua
 -- Scripts/Lighting/AlarmStrobe.lua (sector script)
----@field channel string @ Channel
-channel = "alarm"
-
----@field flashesPerSecond number @ Flashes Per Second
-flashesPerSecond = 2
-
----@field alarmColor Vector3 @ Alarm Color
-alarmColor = Vector3(255, 0, 0)
+public string channel = "alarm"
+public number flashesPerSecond = 2
+public Vector3 alarmColor = Vector3(255, 0, 0)
 
 local base
 local clock = 0.0
@@ -163,11 +146,8 @@ Blends through a list of colors over a day.
 
 ```lua
 -- Scripts/Lighting/DayNight.lua (sector script)
----@field dayLength number @ Day Length (s)
-dayLength = 120
-
----@field startTime number @ Start Time (0-1, 0.5 = noon)
-startTime = 0.5
+public number dayLength = 120
+public number startTime = 0.5
 
 -- One entry per key moment of the day, evenly spaced from midnight (0) around to midnight (1).
 local KEYFRAMES = {
@@ -222,14 +202,9 @@ Press a key while standing in the sector to toggle its lights.
 
 ```lua
 -- Scripts/Lighting/LightSwitch.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field toggleKey Key @ Toggle Key
-toggleKey = Key.F
-
----@field offBrightness number @ Brightness When Off (0-1)
-offBrightness = 0.1
+public Entity player = nil
+public Key toggleKey = Key.F
+public number offBrightness = 0.1
 
 local base
 local lightsOn = true

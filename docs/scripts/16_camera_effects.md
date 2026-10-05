@@ -20,14 +20,9 @@ The change eases in and out instead of snapping.
 
 ```lua
 -- Scripts/Camera/FovEffects.lua (entity script)
----@field sprintFovBonus number @ Sprint FOV Bonus
-sprintFovBonus = 10
-
----@field zoomScale number @ Zoom FOV Multiplier (0.5 = 2x zoom)
-zoomScale = 0.5
-
----@field blendSpeed number @ Blend Speed
-blendSpeed = 8
+public number sprintFovBonus = 10
+public number zoomScale = 0.5
+public number blendSpeed = 8
 
 local cam
 local baseFov = 60.0
@@ -68,14 +63,9 @@ Adds a gentle vertical sway while walking on the ground.
 
 ```lua
 -- Scripts/Camera/HeadBob.lua (entity script)
----@field bobHeight number @ Bob Height
-bobHeight = 0.6
-
----@field stepsPerUnit number @ Bob Cycles Per Unit Walked
-stepsPerUnit = 0.04
-
----@field blendSpeed number @ Fade Speed
-blendSpeed = 10
+public number bobHeight = 0.6
+public number stepsPerUnit = 0.04
+public number blendSpeed = 10
 
 local pc, rb
 local baseEye = 12.0
@@ -128,8 +118,7 @@ function, so an explosion, a landing, or a crusher can all rattle the camera.
 
 ```lua
 -- Scripts/Camera/ScreenShake.lua (entity script)
----@field testKey Key @ Test Key
-testKey = Key.T
+public Key testKey = Key.T
 
 local cam
 local strength = 0.0
@@ -179,8 +168,7 @@ end
 **Calling it from another script**
 
 ```lua
----@field shaker Behaviour @ Screen Shake Script
-shaker = nil
+public Behaviour shaker = nil
 
 -- ...when something explodes:
 if shaker ~= nil then shaker:Shake(3.0, 0.5) end

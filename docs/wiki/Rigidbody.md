@@ -87,8 +87,7 @@ velocity every frame. Vertical changes (jump pads, launches) work; horizontal pu
 
 ```lua
 -- Scripts/JumpPad.lua (entity with a trigger Collider)
----@field launchSpeed number @ Launch Speed
-launchSpeed = 200
+public number launchSpeed = 200
 
 function OnTriggerEnter(other)
     local body = other.rigidbody
@@ -104,11 +103,8 @@ end
 ```lua
 -- Scripts/Barrel.lua (entity with a Collider)
 -- Call barrel:GetScript("Barrel"):Explode() from another script.
----@field radius number
-radius = 96
-
----@field force number
-force = 250
+public number radius = 96
+public number force = 250
 
 function Explode(self)
     local center = entity.transform.position
@@ -137,8 +133,7 @@ end
 ```lua
 -- Scripts/LowGravity.lua (on anything with a Rigidbody)
 -- Floaty physics in sectors tagged "lowgravity".
----@field lowScale number @ Gravity Scale In Low-G
-lowScale = 2
+public number lowScale = 2
 
 local normalScale
 

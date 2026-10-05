@@ -7,7 +7,7 @@ Everything a Lua script can do with a sector.
 | Where from | How |
 |---|---|
 | A script attached to the sector | the global `sector` |
-| A public field | `---@field door Sector` |
+| A public field | `public Sector door` |
 | A point in the map  | `Game.GetSectorAt(position)` |
 | An entity  | `entity:GetSector()` |
 | A raycast hit | `hit.sector` |
@@ -125,8 +125,7 @@ sector:ContainsEntity(entity) -> boolean
 Returns `true` if `entity` is inside this sector.
 
 ```lua
----@field player Entity
-player = nil
+public Entity player = nil
 
 function Update()
     if sector:ContainsEntity(player) then sector:FadeLight(Vector3(255, 80, 80), 0.5) end
@@ -231,8 +230,7 @@ function OnEntityExit(entity) end
 
 ```lua
 -- Trap room: slam the door behind the player, reopen it when the room is clear.
----@field door Sector
-door = nil
+public Sector door = nil
 
 function OnEntityEnter(entity)
     if entity.hasPlayerController then door:MoveCeilingToFloor(1, 200) end

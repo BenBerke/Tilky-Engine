@@ -19,20 +19,11 @@ an exit) can react:
 
 ```lua
 -- Scripts/Pickups/Pickup.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field kind enum(Health,Coin,Key) @ Kind
-kind = 0
-
----@field amount number @ Amount (health restored / coins given)
-amount = 25
-
----@field keyName string @ Key Name (for Key pickups)
-keyName = "red"
-
----@field pickupRadius number @ Pickup Radius
-pickupRadius = 14
+public Entity player = nil
+public enum(Health, Coin, Key) kind = Health
+public number amount = 25
+public string keyName = "red"
+public number pickupRadius = 14
 
 local KIND_HEALTH, KIND_COIN, KIND_KEY = 0, 1, 2
 

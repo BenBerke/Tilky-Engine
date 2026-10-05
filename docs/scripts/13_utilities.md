@@ -108,14 +108,9 @@ Easing functions take progress `t` in `0..1` and return a reshaped `0..1`. Feed 
 
 ```lua
 -- Scripts/Utils/TweenMover.lua (entity script)
----@field offset Vector3 @ Move By
-offset = Vector3(0, 0, 40)
-
----@field duration number @ One-way Duration (s)
-duration = 1.5
-
----@field easing enum(Linear,SmoothStep,EaseIn,EaseOut,Bounce) @ Easing
-easing = 1
+public Vector3 offset = Vector3(0, 0, 40)
+public number duration = 1.5
+public enum(Linear, SmoothStep, EaseIn, EaseOut, Bounce) easing = SmoothStep
 
 local function Linear(t) return t end
 local function SmoothStep(t) return t * t * (3 - 2 * t) end
@@ -284,11 +279,8 @@ brings it back after a delay at its original spot.
 
 ```lua
 -- Scripts/Utils/Respawner.lua (entity script)
----@field target Entity @ Target
-target = nil
-
----@field respawnDelay number @ Respawn Delay (s)
-respawnDelay = 5
+public Entity target = nil
+public number respawnDelay = 5
 
 local spawnPosition
 local timer = 0.0

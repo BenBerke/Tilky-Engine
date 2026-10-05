@@ -76,8 +76,7 @@ end
 
 ```lua
 -- Scripts/Keys/KeyPickup.lua (trigger)
----@field keyName string
-keyName = "red"
+public string keyName = "red"
 
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
@@ -91,8 +90,7 @@ end
 
 ```lua
 -- Scripts/Keys/LockedDoor.lua (sector script on the door sector)
----@field keyName string
-keyName = "red"
+public string keyName = "red"
 
 function OnEntityEnter(e)
     if not e.hasPlayerController then return end

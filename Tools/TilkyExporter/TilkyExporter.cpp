@@ -12,20 +12,29 @@
  * checked: textures and side files (.mtl, .bin, ...) that live outside
  * Assets/ are copied next to the exported model, where ModelLoader looks for
  * them, and anything missing is reported by name.
+ *
+ * Scripts are precompiled: each Assets/<id>.lua becomes <id>.luac (Lua
+ * bytecode of the LuaScriptCompiler output) plus <id>.fields.json (its public
+ * fields), and the source is not shipped. A script that doesn't compile fails
+ * the export.
  */
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include <SDL3/SDL.h>
+#include <sol/sol.hpp>
 
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
 namespace fs = std::filesystem;
 
@@ -241,6 +250,85 @@ static bool ExportModelDependencies(const fs::path& assetsSrc, const fs::path& a
     return true;
 }
 
+static bool WriteFileChecked(const fs::path& path, const std::string_view contents) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (file) return true;
+
+    std::cerr << "Failed to write " << path << "\n";
+    return false;
+}
+
+// Replaces every Assets/<id>.lua in the export with <id>.luac (bytecode, line
+// info kept so runtime errors still name a line) and <id>.fields.json.
+// Compile errors are collected in `problems`; returns false if there were any
+// or a file couldn't be written.
+static bool PrecompileScripts(const fs::path& assetsDest, std::vector<std::string>& problems) {
+    std::vector<fs::path> scripts;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assetsDest, ec), end; !ec && it != end; it.increment(ec))
+        if (it->is_regular_file() && it->path().extension() == ".lua") scripts.push_back(it->path());
+
+    if (ec) {
+        problems.push_back("Failed to scan " + assetsDest.string() + " for scripts: " + ec.message());
+        return false;
+    }
+
+    sol::state lua;
+    const std::size_t problemsBefore = problems.size();
+
+    for (const fs::path& script : scripts) {
+        fs::path idPath = script.lexically_relative(assetsDest);
+        const std::string assetId = idPath.replace_extension().generic_string();
+        const std::string chunkName = assetId + ".lua";
+
+        std::string source;
+        {
+            // Closed before the fs::remove below - Windows can't delete an open file.
+            std::ifstream file(script, std::ios::binary);
+            if (!file) {
+                problems.push_back("Failed to read " + chunkName);
+                continue;
+            }
+            source.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        }
+
+        const LuaScriptCompiler::Result compiled = LuaScriptCompiler::Compile(source);
+        if (!compiled.Succeeded()) {
+            for (const LuaScriptCompiler::Diagnostic& error : compiled.errors)
+                problems.push_back(chunkName + ":" + std::to_string(error.line) + ": " + error.message);
+            continue;
+        }
+
+        // Same chunk name the editor uses, so error messages match.
+        const sol::load_result loaded = lua.load(compiled.luaSource, "@" + chunkName, sol::load_mode::text);
+        if (!loaded.valid()) {
+            const sol::error error = loaded;
+            problems.push_back(error.what());
+            continue;
+        }
+
+        const sol::protected_function function = loaded;
+        const sol::bytecode bytecode = function.dump();
+
+        fs::path bytecodePath = script;
+        bytecodePath.replace_extension(".luac");
+        fs::path fieldsPath = script;
+        fieldsPath.replace_extension(".fields.json");
+
+        if (!WriteFileChecked(bytecodePath, bytecode.as_string_view())) return false;
+        if (!WriteFileChecked(fieldsPath, LevelSerialization::ScriptPublicFieldsToJsonText(compiled.publicFields))) return false;
+
+        if (!fs::remove(script, ec) || ec) {
+            problems.push_back("Failed to remove the source of " + chunkName + " from the export: " + ec.message());
+            continue;
+        }
+        std::cout << "Compiled script " << chunkName << "\n";
+    }
+
+    return problems.size() == problemsBefore;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -276,6 +364,13 @@ int main(int argc, char** argv) {
 
     std::vector<std::string> modelProblems;
     if (!ExportModelDependencies(assetsSrc, assetsDest, modelProblems)) return 1;
+
+    std::vector<std::string> scriptProblems;
+    if (!PrecompileScripts(assetsDest, scriptProblems)) {
+        std::cerr << "\nExport failed: " << scriptProblems.size() << " script problem(s):\n";
+        for (const std::string& problem : scriptProblems) std::cerr << "  - " << problem << "\n";
+        return 1;
+    }
 
     // Copy EngineAssets/Fonts
     const fs::path engineAssetsSrc = standaloneDir / "EngineAssets";

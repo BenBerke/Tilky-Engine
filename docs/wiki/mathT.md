@@ -107,8 +107,7 @@ return value. Keep it in a variable and pass it back in next frame. `deltaTime` 
 `GameTime.deltaTime`.
 
 ```lua
----@field targetY number @ Target Height
-targetY = 64
+public number targetY = 64
 
 local velocity = 0
 

@@ -7,7 +7,7 @@ its public fields.
 | File | What's inside |
 |------|---------------|
 | [01_hello_world.md](01_hello_world.md) | Lifecycle functions, logging, timers |
-| [02_public_fields.md](02_public_fields.md) | Every `---@field` type and how it shows up in the inspector |
+| [02_public_fields.md](02_public_fields.md) | Every `public` field type and how it shows up in the inspector |
 | [03_player.md](03_player.md) | Crouch, double jump, speed zones, jump pads |
 | [04_entity_movement.md](04_entity_movement.md) | Patrol, orbit, bob & spin, follow, keyboard mover |
 | [05_doors.md](05_doors.md) | Automatic, use-key, locked, and switch-controlled doors |
@@ -67,12 +67,11 @@ Only the Lua `base`, `math`, `table` and `string` libraries are loaded. There is
 
 ### Public fields
 
-A public field is a plain top-level variable with a `---@field` comment directly above its default
-value. The inspector reads the comment, so the script is never run just to build the UI:
+A public field is a top-level variable declared with `public` and a type. The editor reads the
+declaration, so the script is never run just to build the UI:
 
 ```lua
----@field speed number @ Move Speed
-speed = 30
+public number speed = 30
 ```
 
 Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
@@ -90,7 +89,7 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
 - **Player and camera:** the player scripts assume the `Camera` component is on the same
   Entity as the `PlayerController` (the usual setup), and log an error if it isn't. If your
   camera lives on a separate Entity, add a public field such as
-  `---@field playerCamera Camera` to the script and use that instead of `entity.camera`.
+  `public Camera playerCamera` to the script and use that instead of `entity.camera`.
 - **Lists are 1-based:** `sector:GetWall(1)` is the first wall.
 - **Colors:** wall, floor, ceiling, and sprite colors are `Vector4` in `0..1`. `sector.light` is a
   `Vector3` in `0..255`.

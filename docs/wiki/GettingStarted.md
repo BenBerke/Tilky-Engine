@@ -116,8 +116,7 @@ inspector instead, so each entity can have its own value:
 
 ```lua
 -- Scripts/Spin.lua
----@field degreesPerSecond number @ Spin Speed
-degreesPerSecond = 90
+public number degreesPerSecond = 90
 
 local angle = 0
 
@@ -129,10 +128,10 @@ end
 
 The rules:
 
-- The `---@field name type @ Label` comment goes **directly above** a top-level
-  `name = default` line. The `@ Label` part is optional.
+- A field is declared at the top level as `public <type> <name> = <default>`. The inspector
+  label comes from the name (`degreesPerSecond` shows as "Degrees Per Second").
 - The default must be a plain value: `90`, `"text"`, `true`, `Vector3(0, 1, 0)` or `nil`. The
-  editor reads it as text without running your script.
+  editor reads it without running your script.
 - The value set in the inspector is applied **after** the top of the file runs. So use the field
   inside functions (like `Start` and `Update`), not at the top level.
 
@@ -140,11 +139,8 @@ Fields can also point at things in the level: another entity, a sector, a wall, 
 another script.
 
 ```lua
----@field target Entity @ Follow Target
-target = nil
-
----@field door Sector
-door = nil
+public Entity target = nil
+public Sector door = nil
 ```
 
 In the inspector these become slots you fill by picking an object. If a slot is left empty, or the
@@ -197,8 +193,7 @@ entity.transform.position = entity.transform.position + Vector3(0, 10, 0)
 
 ```lua
 -- Scripts/Jumper.lua (entity with a Rigidbody)
----@field jumpSpeed number
-jumpSpeed = 120
+public number jumpSpeed = 120
 
 function Update()
     local body = entity.rigidbody
@@ -258,7 +253,7 @@ Inside a sector script, `sector` is the sector it is attached to.
 
 A script often needs something that isn't its own entity. The options, best first:
 
-1. **A public field** (`---@field door Sector`). You pick it in the inspector, so it can't break
+1. **A public field** (`public Sector door`). You pick it in the inspector, so it can't break
    if something gets renamed.
 2. **Callback arguments**, like `other` in `OnTriggerEnter`.
 3. **Tags.** Give entities a tag in the editor, then use
@@ -279,8 +274,7 @@ and write its variables, and call its functions with a colon:
 
 ```lua
 -- Scripts/Health.lua
----@field maxHealth number
-maxHealth = 100
+public number maxHealth = 100
 
 health = 0
 
@@ -298,8 +292,7 @@ end
 
 ```lua
 -- Scripts/Spikes.lua (trigger)
----@field damage number
-damage = 25
+public number damage = 25
 
 function OnTriggerEnter(other)
     local health = other:GetScript("Health")
@@ -323,8 +316,7 @@ There is no `wait()` or coroutine library. Count time yourself:
 
 ```lua
 -- Scripts/Blinker.lua (entity with a Sprite)
----@field interval number
-interval = 0.5
+public number interval = 0.5
 
 local timer = 0
 local visible = true

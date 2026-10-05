@@ -10,6 +10,8 @@
 #include <vector>
 #include <TextEditor.h>
 
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
+
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
 // which drag-and-drop payload type it uses.
 // Every kind can live in any folder under Assets.
@@ -416,6 +418,13 @@ private:
     void UpdateAutocomplete();
     void DrawAutocompletePopup();
     void AcceptAutocomplete(int index);
+
+    // The open script's own declarations (`public Entity target`), so their
+    // names are suggested and `target.` completes Entity members. Recompiled
+    // only when the text changed since the last lookup.
+    const std::vector<LuaScriptCompiler::DeclarationInfo>& OpenScriptDeclarations();
+    std::string declarationsSource;
+    std::vector<LuaScriptCompiler::DeclarationInfo> declarations;
 
     std::vector<std::string> autocompleteMatches;
     std::string autocompleteWordStart;

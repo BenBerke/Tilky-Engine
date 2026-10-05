@@ -33,14 +33,9 @@ settings, put it on the walls, and filter with `wall:HasTag(...)`.
 
 ```lua
 -- Scripts/Walls/ScrollingWall.lua (sector script)
----@field scrollX number @ Scroll X (per second)
-scrollX = 0.0
-
----@field scrollY number @ Scroll Y (per second)
-scrollY = 0.25
-
----@field onlyTag string @ Only Walls With Tag (empty = all)
-onlyTag = ""
+public number scrollX = 0.0
+public number scrollY = 0.25
+public string onlyTag = ""
 
 local walls = {}
 
@@ -81,23 +76,12 @@ Looks at the wall and presses a key to flip it between an "off" and an "on" text
 
 ```lua
 -- Scripts/Walls/TextureSwitch.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field switchTag string @ Wall Tag
-switchTag = "Switch"
-
----@field offTexture Texture @ Off Texture
-offTexture = nil
-
----@field onTexture Texture @ On Texture
-onTexture = nil
-
----@field useKey Key @ Use Key
-useKey = Key.E
-
----@field useDistance number @ Use Distance
-useDistance = 40
+public Entity player = nil
+public string switchTag = "Switch"
+public Texture offTexture = nil
+public Texture onTexture = nil
+public Key useKey = Key.E
+public number useDistance = 40
 
 local switches = {}   -- wall -> on/off
 
@@ -165,11 +149,8 @@ Cycles the tint of walls through the rainbow with three phase-shifted sine waves
 
 ```lua
 -- Scripts/Walls/ColorCycle.lua (sector script)
----@field cyclesPerSecond number @ Cycles Per Second
-cyclesPerSecond = 0.25
-
----@field onlyTag string @ Only Walls With Tag (empty = all)
-onlyTag = ""
+public number cyclesPerSecond = 0.25
+public string onlyTag = ""
 
 local walls = {}
 local clock = 0.0

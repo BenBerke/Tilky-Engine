@@ -111,8 +111,7 @@ radius of about 6 to 10.
 ```lua
 -- Scripts/DamageZone.lua (entity with a trigger Collider)
 -- Hurts anything with a Health script while it stands inside.
----@field damagePerSecond number @ Damage Per Second
-damagePerSecond = 20
+public number damagePerSecond = 20
 
 function OnTrigger(other)
     local health = other:GetScript("Health")
@@ -126,8 +125,7 @@ end
 
 ```lua
 -- Scripts/DoorTrigger.lua (entity with a trigger Collider in front of a door)
----@field door Sector @ Door
-door = nil
+public Sector door = nil
 
 local inside = 0
 
@@ -148,8 +146,7 @@ end
 
 ```lua
 -- Scripts/Grow.lua (entity with a Sprite and a sphere Collider)
----@field growPerSecond number
-growPerSecond = 4
+public number growPerSecond = 4
 
 function Update()
     local s = entity.transform.scale

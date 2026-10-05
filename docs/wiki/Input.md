@@ -120,8 +120,7 @@ end
 
 ```lua
 -- Scripts/ChargeThrow.lua (on the player): hold G to charge, release to throw.
----@field maxCharge number @ Seconds To Full Power
-maxCharge = 1.5
+public number maxCharge = 1.5
 
 local charge = 0
 

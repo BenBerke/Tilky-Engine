@@ -4,7 +4,7 @@
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
-#include "Headers/Runtime/Scripting/Lua/LuaSourceRewrite.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 #include "sol/sol.hpp"
 
 #include <fmt/format.h>
@@ -143,7 +143,7 @@ void LuaScriptSystem::RegisterVectorBindings(sol::state& lua) {
         sol::meta_function::to_string, [](const Vector4& v) { return fmt::format("Vector4({}, {}, {}, {})", v.x, v.y, v.z, v.w); }
     );
 
-    // Target of the load-time rewrite in LuaSourceRewrite: `a.position.y = 5`
+    // Target of the vector write-through pass in LuaScriptCompiler: `a.position.y = 5`
     // runs as `__vref(a, "position").y = 5`. Reading the vector, changing it
     // and assigning it back goes through the property's setter, so side
     // effects (dirty flags, sector updates, ...) still happen. Plain tables
@@ -178,5 +178,5 @@ void LuaScriptSystem::RegisterVectorBindings(sol::state& lua) {
             end
             return setmetatable({{owner, key}}, refMeta)
         end
-    )lua", LuaSourceRewrite::kVectorRefFunction), "=(vector reference)");
+    )lua", LuaScriptCompiler::kVectorRefFunction), "=(vector reference)");
 }

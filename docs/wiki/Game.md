@@ -90,8 +90,7 @@ Game.GetEntities()               -- { Entity, ... }
 
 ```lua
 -- Count the enemies left and open the exit when none remain.
----@field exit Sector
-exit = nil
+public Sector exit = nil
 
 function Update()
     for _, e in ipairs(Game.FindEntitiesWithTag("enemy")) do
@@ -178,8 +177,7 @@ nothing within `length`, the result is `nil`. Otherwise it is a table:
 
 ```lua
 -- Scripts/Shoot.lua (on the player): damage whatever is under the crosshair.
----@field damage number
-damage = 20
+public number damage = 20
 
 function Update()
     if not Input.GetMouseButtonDown(Input.MouseLeft) then return end
@@ -243,8 +241,7 @@ Loading happens in one go, so the game may freeze for a moment while a big level
 
 ```lua
 -- Scripts/Flow/Exit.lua (trigger at the end of the level)
----@field nextLevel string @ Next Level
-nextLevel = "Level2"
+public string nextLevel = "Level2"
 
 function OnTriggerEnter(other)
     if other.hasPlayerController then Game.LoadLevel(nextLevel) end

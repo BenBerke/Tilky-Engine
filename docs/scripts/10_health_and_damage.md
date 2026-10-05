@@ -24,20 +24,11 @@ end
 
 ```lua
 -- Scripts/Combat/Health.lua (entity script)
----@field maxHealth number @ Max Health
-maxHealth = 100
-
----@field currentHealth number @ Current Health
-currentHealth = 100
-
----@field destroyOnDeath bool @ Destroy On Death
-destroyOnDeath = true
-
----@field invulnerableTime number @ Invulnerability After A Hit (s)
-invulnerableTime = 0.0
-
----@field deathListener Behaviour @ Death Listener (optional)
-deathListener = nil
+public number maxHealth = 100
+public number currentHealth = 100
+public bool destroyOnDeath = true
+public number invulnerableTime = 0.0
+public Behaviour deathListener = nil
 
 local dead = false
 local invulnerable = 0.0
@@ -123,14 +114,9 @@ hurts.
 
 ```lua
 -- Scripts/Combat/DamageZone.lua (sector script)
----@field damage number @ Damage Per Tick
-damage = 5
-
----@field interval number @ Seconds Between Ticks
-interval = 0.5
-
----@field requiredTag string @ Only Hurt Entities With Tag (empty = all)
-requiredTag = ""
+public number damage = 5
+public number interval = 0.5
+public string requiredTag = ""
 
 local timer = 0.0
 
@@ -168,11 +154,8 @@ Heals a little each second, but only after not having been hurt for a while.
 
 ```lua
 -- Scripts/Combat/HealthRegen.lua (entity script)
----@field regenPerSecond number @ Regen Per Second
-regenPerSecond = 3
-
----@field delayAfterHit number @ Delay After A Hit (s)
-delayAfterHit = 5
+public number regenPerSecond = 3
+public number delayAfterHit = 5
 
 local health
 local lastHealth = 0.0

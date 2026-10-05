@@ -136,11 +136,8 @@ end
 
 ```lua
 -- Scripts/Camera/Zoom.lua (on the player)
----@field zoomFov number @ Zoomed FOV
-zoomFov = 40
-
----@field speed number @ Zoom Speed
-speed = 10
+public number zoomFov = 40
+public number speed = 10
 
 local normalFov
 
@@ -222,14 +219,9 @@ back on when you switch back.
 
 ```lua
 -- Scripts/Camera/Sweep.lua (on an entity with a Camera, placed high on a wall)
----@field centerYaw number @ Center Yaw
-centerYaw = 0
-
----@field range number @ Sweep Degrees
-range = 45
-
----@field period number @ Seconds Per Sweep
-period = 6
+public number centerYaw = 0
+public number range = 45
+public number period = 6
 
 local t = 0
 

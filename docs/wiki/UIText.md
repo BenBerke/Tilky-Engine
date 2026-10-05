@@ -90,11 +90,8 @@ end
 
 ```lua
 -- Scripts/UI/LookAtLabel.lua (UI entity with a Text)
----@field player Entity
-player = nil
-
----@field reach number
-reach = 200
+public Entity player = nil
+public number reach = 200
 
 local shown = nil
 

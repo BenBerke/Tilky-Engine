@@ -13,14 +13,9 @@ another teleporter for a two-way pair.
 
 ```lua
 -- Scripts/Flow/Teleporter.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field destination Entity @ Destination
-destination = nil
-
----@field radius number @ Trigger Radius
-radius = 16
+public Entity player = nil
+public Entity destination = nil
+public number radius = 16
 
 local function Teleport()
     -- Positions are measured at the feet, so the player lands where the destination stands.
@@ -72,11 +67,8 @@ player back at the last checkpoint (or where they started) if they fall out of t
 
 ```lua
 -- Scripts/Flow/Checkpoint.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field radius number @ Trigger Radius
-radius = 20
+public Entity player = nil
+public number radius = 20
 
 local reached = false
 
@@ -101,8 +93,7 @@ end
 
 ```lua
 -- Scripts/Flow/KillPlane.lua (entity script)
----@field killHeight number @ Kill Below Height
-killHeight = -200
+public number killHeight = -200
 
 local transform, rb
 local startPosition
@@ -136,11 +127,8 @@ fallen. Any [ChannelDoor](05_doors.md#switch-and-channel-door) on that channel t
 
 ```lua
 -- Scripts/Flow/KillCounter.lua (entity script)
----@field killsRequired int @ Kills Required
-killsRequired = 3
-
----@field channel string @ Channel To Turn On
-channel = "exit"
+public int killsRequired = 3
+public string channel = "exit"
 
 -- Called by an enemy's Health script (its "Death Listener" field points at this script).
 function OnDeath(self, who)
@@ -173,17 +161,10 @@ example the `exit` channel the kill counter above turns on.
 
 ```lua
 -- Scripts/Flow/LevelExit.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field nextLevel string @ Next Level Name
-nextLevel = ""
-
----@field requiredChannel string @ Required Channel (empty = none)
-requiredChannel = ""
-
----@field radius number @ Trigger Radius
-radius = 20
+public Entity player = nil
+public string nextLevel = ""
+public string requiredChannel = ""
+public number radius = 20
 
 local loading = false
 

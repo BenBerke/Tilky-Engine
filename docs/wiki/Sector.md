@@ -113,7 +113,7 @@ This drives `sector:ContainsEntity`, `sector:GetEntities`, `entity:GetSector()`,
 | Where from | How |
 |---|---|
 | A script attached to the sector | the global `sector` |
-| A public field | `---@field door Sector` |
+| A public field | `public Sector door` |
 | A point on the map | `Game.GetSectorAt(position)` |
 | An entity | `entity:GetSector()` |
 | A raycast hit | `hit.sector` |
@@ -194,17 +194,10 @@ changes sector. See [Callback Functions](CallbackFunctions.md#onsectorchange).
 ```lua
 -- Scripts/Doors/ProximityDoor.lua (sector script on the door sector)
 -- Draw the door as a thin sector whose ceiling starts at its floor (closed).
----@field openHeight number @ Open Height
-openHeight = 40
-
----@field speed number @ Speed
-speed = 80
-
----@field range number @ Trigger Range
-range = 48
-
----@field stayOpen number @ Seconds Open
-stayOpen = 3
+public number openHeight = 40
+public number speed = 80
+public number range = 48
+public number stayOpen = 3
 
 local player
 local openTimer = 0
@@ -234,14 +227,9 @@ end
 
 ```lua
 -- Scripts/Lifts/StepLift.lua (sector script on the lift platform)
----@field topHeight number @ Top Height
-topHeight = 64
-
----@field speed number @ Speed
-speed = 30
-
----@field wait number @ Seconds At Top
-wait = 2
+public number topHeight = 64
+public number speed = 30
+public number wait = 2
 
 local bottom
 local timer = 0
@@ -274,11 +262,8 @@ end
 
 ```lua
 -- Scripts/Lights/Flicker.lua (sector script)
----@field onColor Vector3 @ On Color
-onColor = Vector3(255, 240, 200)
-
----@field offColor Vector3 @ Off Color
-offColor = Vector3(40, 35, 30)
+public Vector3 onColor = Vector3(255, 240, 200)
+public Vector3 offColor = Vector3(40, 35, 30)
 
 local timer = 0
 

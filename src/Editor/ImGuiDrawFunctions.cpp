@@ -414,8 +414,8 @@ namespace {
     }
 
     // Script public-field editor. Dispatches on the field's schema type
-    // (parsed from the script's ---@field annotations - see
-    // LuaScriptSystem::ExtractSchema) to the matching typed control.
+    // (from the script's `public` declarations - see LuaScriptCompiler) to
+    // the matching typed control.
     void DrawScriptValueEditor(const ScriptPublicField &field, ScriptValue &value) {
         switch (field.type) {
             case ScriptValueType::Int: {

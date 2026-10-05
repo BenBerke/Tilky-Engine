@@ -1936,3 +1936,52 @@ namespace LevelSerialization {
         return true;
     }
 }
+
+namespace LevelSerialization {
+    std::string ScriptPublicFieldsToJsonText(const std::vector<ScriptPublicField>& fields) {
+        json fieldsJson = json::array();
+
+        for (const ScriptPublicField& field : fields) {
+            json options = json::array();
+            for (const ScriptEnumOption& option : field.enumOptions)
+                options.push_back(json{{"name", option.name}, {"value", option.value}});
+
+            fieldsJson.push_back(json{
+                {"name", field.name},
+                {"type", ScriptValueTypeToString(field.type)},
+                {"default", ScriptValueToJson(field.defaultValue)},
+                {"displayName", field.displayName},
+                {"enumOptions", options},
+                {"componentType", field.componentType},
+            });
+        }
+
+        return fieldsJson.dump(1, '	');
+    }
+
+    bool ScriptPublicFieldsFromJsonText(const std::string& text, std::vector<ScriptPublicField>& outFields, std::string* errorMessage) {
+        outFields.clear();
+
+        try {
+            for (const json& fieldJson : json::parse(text)) {
+                ScriptPublicField field;
+                field.name = fieldJson.at("name").get<std::string>();
+                field.type = ScriptValueTypeFromString(fieldJson.at("type").get<std::string>());
+                field.defaultValue = ScriptValueFromJson(fieldJson.at("default"));
+                field.displayName = fieldJson.value("displayName", field.name);
+                field.componentType = fieldJson.value("componentType", -1);
+
+                for (const json& option : fieldJson.value("enumOptions", json::array()))
+                    field.enumOptions.push_back({option.at("name").get<std::string>(), option.at("value").get<int>()});
+
+                outFields.push_back(std::move(field));
+            }
+        } catch (const std::exception& exception) {
+            if (errorMessage != nullptr) *errorMessage = exception.what();
+            outFields.clear();
+            return false;
+        }
+
+        return true;
+    }
+}

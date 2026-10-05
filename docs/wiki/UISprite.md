@@ -39,11 +39,8 @@ used (see the note on the [Sprite](Sprite.md) page).
 
 ```lua
 -- Scripts/UI/AmmoIcon.lua (UI entity with an Image)
----@field fullIcon string
-fullIcon = "Textures/UI/ammo_full.png"
-
----@field emptyIcon string
-emptyIcon = "Textures/UI/ammo_empty.png"
+public string fullIcon = "Textures/UI/ammo_full.png"
+public string emptyIcon = "Textures/UI/ammo_empty.png"
 
 function Update()
     local wanted = (Global.ammo or 0) > 0 and fullIcon or emptyIcon
@@ -72,8 +69,7 @@ end
 -- Scripts/UI/DamageFlash.lua
 -- A red, semi-transparent full-screen Image (anchors 0,0 to 1,1).
 -- Call flash:GetScript("DamageFlash"):Flash() when the player is hurt.
----@field duration number
-duration = 0.2
+public number duration = 0.2
 
 local timeLeft = 0
 
@@ -99,11 +95,8 @@ end
 ```lua
 -- Scripts/UI/KeyIcon.lua (one Image per key, e.g. a red key icon)
 -- Shows the icon once Global.keys[keyName] is true (set by a pickup script).
----@field keyName string @ Key Name
-keyName = "red"
-
----@field size Vector2 @ Icon Size
-size = Vector2(48, 48)
+public string keyName = "red"
+public Vector2 size = Vector2(48, 48)
 
 function Update()
     local has = Global.keys ~= nil and Global.keys[keyName] == true

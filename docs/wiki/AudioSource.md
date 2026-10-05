@@ -139,8 +139,7 @@ speed of sound and the distance model for all sources.
 ```lua
 -- Scripts/Audio/Doorbell.lua (entity with an Audio Source and a trigger Collider)
 -- Path inside Assets. (Asset fields only accept textures, so use a string.)
----@field sound string @ Sound
-sound = "Sounds/Bells/ding.wav"
+public string sound = "Sounds/Bells/ding.wav"
 
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
@@ -155,11 +154,8 @@ end
 
 ```lua
 -- Scripts/Audio/Footsteps.lua (on the player, with an Audio Source)
----@field stepSound string @ Step Sound
-stepSound = "Sounds/Footsteps/step.wav"
-
----@field stepDistance number @ Units Per Step
-stepDistance = 24
+public string stepSound = "Sounds/Footsteps/step.wav"
+public number stepDistance = 24
 
 local travelled = 0
 local last
@@ -191,8 +187,7 @@ end
 ```lua
 -- Scripts/Audio/Radio.lua (entity with a looping Audio Source)
 -- Press E near it to toggle.
----@field range number
-range = 48
+public number range = 48
 
 local on = true
 local player
@@ -239,8 +234,7 @@ end
 ```lua
 -- Scripts/Audio/Speaker.lua (entity with a looping Audio Source)
 -- Slowly turns, so the player hears the music sweep past.
----@field degreesPerSecond number @ Turn Speed (deg/s)
-degreesPerSecond = 30
+public number degreesPerSecond = 30
 
 local angle = 0
 

@@ -85,8 +85,7 @@ Runs **every frame** while the script is active. `GameTime.deltaTime` is the len
 frame in seconds. Multiply anything that changes over time by it.
 
 ```lua
----@field speed number
-speed = 20
+public number speed = 20
 
 function Update()
     entity.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
@@ -199,8 +198,7 @@ whose `isValid` is `false`. Check `other.isValid` before using it in `OnCollisio
 ```lua
 -- Scripts/BouncePad.lua: launch whatever bumps into this entity straight up.
 -- Give the pad a Sphere Collider (not a trigger) and no Rigidbody.
----@field launchSpeed number
-launchSpeed = 180
+public number launchSpeed = 180
 
 function OnCollisionEnter(other)
     local body = other.rigidbody
@@ -254,8 +252,7 @@ end
 
 ```lua
 -- Scripts/HealingPool.lua: heal whoever stands in it, a bit every frame.
----@field healPerSecond number
-healPerSecond = 10
+public number healPerSecond = 10
 
 function OnTrigger(other)
     local health = other:GetScript("Health")
@@ -326,8 +323,7 @@ Called on sector scripts when an entity crosses into or out of their sector.
 ```lua
 -- Scripts/TrapRoom.lua (sector script): lock the door behind the player
 -- and open it once every enemy in the room is gone.
----@field door Sector
-door = nil
+public Sector door = nil
 
 function OnEntityEnter(e)
     if e.hasPlayerController and door ~= nil then door:MoveCeilingToFloor(1, 200) end

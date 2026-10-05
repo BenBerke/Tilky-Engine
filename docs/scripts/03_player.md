@@ -19,14 +19,9 @@ Hold a key to walk slowly with a lower eye height.
 
 ```lua
 -- Scripts/Player/Crouch.lua (entity script)
----@field crouchKey Key @ Crouch Key
-crouchKey = Key.LCtrl
-
----@field crouchSpeed number @ Crouch Speed
-crouchSpeed = 22
-
----@field crouchEyeHeight number @ Crouch Eye Height
-crouchEyeHeight = 6
+public Key crouchKey = Key.LCtrl
+public number crouchSpeed = 22
+public number crouchEyeHeight = 6
 
 local pc
 local standingSpeed, standingRunSpeed, standingEye
@@ -78,11 +73,8 @@ overwriting the vertical velocity.
 
 ```lua
 -- Scripts/Player/DoubleJump.lua (entity script)
----@field extraJumps int @ Extra Air Jumps
-extraJumps = 1
-
----@field jumpKey Key @ Jump Key
-jumpKey = Key.Space
+public int extraJumps = 1
+public Key jumpKey = Key.Space
 
 local rb, pc
 local jumpsLeft = 0
@@ -125,11 +117,8 @@ they leave.
 
 ```lua
 -- Scripts/Player/SpeedZone.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field multiplier number @ Speed Multiplier
-multiplier = 1.6
+public Entity player = nil
+public number multiplier = 1.6
 
 local pc
 local baseSpeed, baseRunSpeed
@@ -199,11 +188,8 @@ Launches the player upward when they stand on the sector.
 
 ```lua
 -- Scripts/Player/JumpPad.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field launchSpeed number @ Launch Speed
-launchSpeed = 160
+public Entity player = nil
+public number launchSpeed = 160
 
 local rb
 

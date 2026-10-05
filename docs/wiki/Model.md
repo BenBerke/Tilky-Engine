@@ -82,8 +82,7 @@ Everything else about how a model looks is set through its [Transform](Transform
 
 ```lua
 -- Scripts/Models/Spin.lua
----@field degreesPerSecond number @ Spin Speed
-degreesPerSecond = 120
+public number degreesPerSecond = 120
 
 local angle = 0
 
@@ -99,11 +98,8 @@ end
 ```lua
 -- Scripts/Models/Breakable.lua
 -- Swap to a broken model after enough hits: crate:GetScript("Breakable"):Hit()
----@field brokenModel string @ Broken Model
-brokenModel = "Models/crate_broken.glb"
-
----@field hitsToBreak int @ Hits To Break
-hitsToBreak = 3
+public string brokenModel = "Models/crate_broken.glb"
+public int hitsToBreak = 3
 
 local hits = 0
 
@@ -120,8 +116,7 @@ end
 
 ```lua
 -- Scripts/Models/PopIn.lua
----@field duration number @ Seconds
-duration = 0.4
+public number duration = 0.4
 
 local finalScale
 local t = 0

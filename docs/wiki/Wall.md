@@ -54,7 +54,7 @@ The sector's light also darkens the wall (see [Sector](Sector.md#light)).
 
 | Where from | How |
 |---|---|
-| A public field | `---@field switchWall Wall` |
+| A public field | `public Wall switchWall` |
 | A sector | `sector:GetWall(i)`, `i` from `1` to `sector.wallCount` |
 | A raycast hit | `hit.wall`, when `hit.type == "Wall"` |
 
@@ -122,8 +122,7 @@ raycast from an entity script.
 ```lua
 -- Scripts/Walls/Scroll.lua (sector script)
 -- Scrolls every wall of this sector that has the "conveyor" tag.
----@field speed Vector2 @ Repeats Per Second
-speed = Vector2(0.5, 0)
+public Vector2 speed = Vector2(0.5, 0)
 
 local walls = {}
 
@@ -147,14 +146,9 @@ end
 ```lua
 -- Scripts/Walls/WallSwitch.lua (on the player)
 -- Look at a wall tagged "switch" and press E to flip it.
----@field reach number @ Reach
-reach = 48
-
----@field onTexture Texture @ On Texture
-onTexture = nil
-
----@field door Sector @ Door To Open
-door = nil
+public number reach = 48
+public Texture onTexture = nil
+public Sector door = nil
 
 function Update()
     if not Input.GetKeyDown(Key.E) then return end
@@ -179,8 +173,7 @@ end
 
 ```lua
 -- Scripts/Walls/Alarm.lua (sector script)
----@field flashColor Vector4
-flashColor = Vector4(1, 0.2, 0.2, 1)
+public Vector4 flashColor = Vector4(1, 0.2, 0.2, 1)
 
 local walls = {}
 local original = {}

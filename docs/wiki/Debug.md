@@ -67,8 +67,7 @@ convention is `LogWarning` for "something is set up wrong but the game can carry
 missing public field, and `LogError` for "this script can't do its job".
 
 ```lua
----@field door Sector
-door = nil
+public Sector door = nil
 
 function Start()
     if door == nil then

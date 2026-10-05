@@ -34,17 +34,10 @@ naturally speed up when sprinting.
 
 ```lua
 -- Scripts/Audio/Footsteps.lua (entity script)
----@field stepSoundA string @ Step Sound A
-stepSoundA = "Sounds/Footsteps/stepA.wav"
-
----@field stepSoundB string @ Step Sound B
-stepSoundB = "Sounds/Footsteps/stepB.wav"
-
----@field stride number @ Distance Per Step
-stride = 22
-
----@field pitchVariation number @ Random Pitch Variation
-pitchVariation = 0.1
+public string stepSoundA = "Sounds/Footsteps/stepA.wav"
+public string stepSoundB = "Sounds/Footsteps/stepB.wav"
+public number stride = 22
+public number pitchVariation = 0.1
 
 local audio, rb
 local travelled = 0.0
@@ -94,17 +87,10 @@ up and presses a key.
 
 ```lua
 -- Scripts/Audio/Radio.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field useKey Key @ Toggle Key
-useKey = Key.E
-
----@field useDistance number @ Use Distance
-useDistance = 30
-
----@field volume number @ Volume When On
-volume = 1.0
+public Entity player = nil
+public Key useKey = Key.E
+public number useDistance = 30
+public number volume = 1.0
 
 local audio
 local isOn = false
@@ -145,8 +131,7 @@ Sectors have no `AudioSource`, but a sector script can borrow one: give it a pub
 lines to add to a door or lift script:
 
 ```lua
----@field soundSource Entity @ Sound Source (an object with an AudioSource)
-soundSource = nil
+public Entity soundSource = nil
 
 local function PlaySound()
     if soundSource == nil then return end

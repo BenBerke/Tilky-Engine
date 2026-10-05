@@ -38,14 +38,9 @@ Two hotkeys:
 
 ```lua
 -- Scripts/Debug/DebugTools.lua (entity script)
----@field infoKey Key @ Player Info Key
-infoKey = Key.P
-
----@field inspectKey Key @ Inspect Key
-inspectKey = Key.I
-
----@field range number @ Inspect Range
-range = 500
+public Key infoKey = Key.P
+public Key inspectKey = Key.I
+public number range = 500
 
 local camera, pc, transform
 

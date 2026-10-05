@@ -27,12 +27,34 @@ namespace fs = std::filesystem;
 
 namespace {
     // Every identifier the script editor's autocomplete can suggest: Lua
-    // keywords, the lifecycle function names a Behaviour can define, a
-    // handful of always-available globals, and - the main point - every
+    // keywords, Tilky's declaration keywords/field types/attributes (see
+    // LuaScriptCompiler), the lifecycle function names a Behaviour can
+    // define, a handful of always-available globals, and - the main point - every
     // type/property/method name registered with LuaBindingMetadata (see
     // that header), so autocomplete and the future generated LuaLS stubs
     // are driven by the same data instead of two hand-maintained lists.
     // Built once, lazily, on first use.
+    // Lua highlighting plus Tilky's declaration keywords (`public`) as
+    // keywords and its field types as known identifiers.
+    const TextEditor::LanguageDefinition& ScriptLanguageDefinition() {
+        static const TextEditor::LanguageDefinition definition = [] {
+            TextEditor::LanguageDefinition lua = TextEditor::LanguageDefinition::Lua();
+
+            for (const std::string& keyword : LuaScriptCompiler::DeclarationKeywordNames())
+                lua.mKeywords.insert(keyword);
+
+            for (const std::string& type : LuaScriptCompiler::FieldTypeNames()) {
+                TextEditor::Identifier identifier;
+                identifier.mDeclaration = "Field type";
+                lua.mIdentifiers.insert_or_assign(type, identifier);
+            }
+
+            return lua;
+        }();
+
+        return definition;
+    }
+
     const std::vector<std::string>& AutocompleteCandidates() {
         LevelSystem::EnsureScriptingInitialized();
 
@@ -48,6 +70,11 @@ namespace {
                 "entity", "sector",
                 "GameTime", "Input", "Game", "Debug", "Global", "mathT"
             };
+
+            for (std::vector<std::string> names : {LuaScriptCompiler::DeclarationKeywordNames(),
+                                                   LuaScriptCompiler::FieldTypeNames(),
+                                                   LuaScriptCompiler::FieldAttributeNames()})
+                list.insert(list.end(), names.begin(), names.end());
 
             for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
                 list.push_back(type.name);
@@ -189,7 +216,13 @@ namespace {
     // without that, e.g. typing "mathT." would fail to resolve at all
     // against the registered type name "mathT", since the base lookup
     // used to be an exact-case match.
-    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(const std::vector<std::string>& chain) {
+    //
+    // A chain can also start at one of the script's own declarations
+    // (`public Entity target` makes `target.` resolve as Entity).
+    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(
+        const std::vector<std::string>& chain,
+        const std::vector<LuaScriptCompiler::DeclarationInfo>& declarations
+    ) {
         if (chain.empty()) return nullptr;
 
         const auto& typesByName = TypeDocsByName();
@@ -197,7 +230,13 @@ namespace {
 
         const std::string baseLower = LowerCopy(chain.front());
         const auto aliasIt = aliases.find(baseLower);
-        const std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
+        std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
+
+        const auto declaration = std::ranges::find(declarations, chain.front(), &LuaScriptCompiler::DeclarationInfo::name);
+        if (declaration != declarations.end()) {
+            if (declaration->luaType.empty()) return nullptr;
+            baseTypeName = declaration->luaType;
+        }
 
         const auto baseIt = typesByName.find(LowerCopy(baseTypeName));
         if (baseIt == typesByName.end()) return nullptr;
@@ -651,16 +690,13 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                R"lua(-- Fields declared like this show up (and become editable) in the Inspector.
--- The comment above each field is what gives it a type - see the Tilky
--- scripting docs for the full list (number, string, bool, Vector2/3/4,
--- Entity, Behaviour, an engine component name like Rigidbody, ...).
+                R"lua(-- `public` fields show up (and become editable) in the Inspector.
+-- The word after `public` is the field's type - see the Tilky scripting
+-- docs for the full list (number, int, bool, string, Vector2/3/4, Entity,
+-- Behaviour, an engine component name like Rigidbody, enum(...), Key, ...).
 
----@field speed number
-speed = 200
-
----@field target Entity
-target = nil
+public number speed = 200
+public Entity target = nil
 
 -- Called once, the first time this script becomes active.
 function Start()
@@ -828,7 +864,7 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
         std::istreambuf_iterator<char>{}
     };
 
-    scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
+    scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
 
     scriptEditor.SetText(contents);
 
@@ -1109,6 +1145,18 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     ImGui::End();
 }
 
+const std::vector<LuaScriptCompiler::DeclarationInfo>& AssetBrowser::OpenScriptDeclarations() {
+    std::string text = scriptEditor.GetText();
+
+    if (text != declarationsSource) {
+        // Declarations that fail to compile are left out; the rest still help.
+        declarations = LuaScriptCompiler::Compile(text).declarations;
+        declarationsSource = std::move(text);
+    }
+
+    return declarations;
+}
+
 void AssetBrowser::UpdateAutocomplete() {
     if (!scriptEditorOpen || scriptEditor.IsReadOnly() ||
         !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
@@ -1142,7 +1190,7 @@ void AssetBrowser::UpdateAutocomplete() {
     // doesn't understand (plain identifier chains only - no calls,
     // indexing, or local-variable type inference).
     if (start > 0 && line[start - 1] == '.') {
-        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1));
+        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1), OpenScriptDeclarations());
 
         autocompleteMatches.clear();
 
@@ -1193,7 +1241,13 @@ void AssetBrowser::UpdateAutocomplete() {
     // case-mismatched accept still inserts correctly-cased text.
     const std::string wordLower = LowerCopy(word);
 
-    for (const std::string& candidate : AutocompleteCandidates()) {
+    std::vector<std::string> candidates = AutocompleteCandidates();
+    for (const LuaScriptCompiler::DeclarationInfo& declaration : OpenScriptDeclarations())
+        candidates.push_back(declaration.name);
+    std::ranges::sort(candidates);
+    candidates.erase(std::ranges::unique(candidates).begin(), candidates.end());
+
+    for (const std::string& candidate : candidates) {
         if (candidate.size() <= word.size() || !StartsWithCaseInsensitive(candidate, wordLower)) continue;
 
         autocompleteMatches.push_back(candidate);

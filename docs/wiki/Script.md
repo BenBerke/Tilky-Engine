@@ -63,21 +63,26 @@ script's switch through a [Behaviour reference](#behaviour-references): `behavio
   doesn't run.
 - An error **inside a callback** is printed in red in the in-game console and logged. Only that one
   call stops. The script stays loaded and its callbacks keep being called.
+- When you **export**, every script is compiled ahead of time and the game ships only the compiled
+  form, not your `.lua` source. A script with a mistake in it stops the export and is listed in its
+  output.
 
 ## Public fields
 
-A public field is a top-level variable the inspector can edit. Declare it with a `---@field`
-comment **directly above** its default:
+A public field is a top-level variable the inspector can edit. Declare it with `public`, its
+type, its name and a default:
 
 ```text
----@field <name> <type> @ <Label>
-<name> = <default>
+public <type> <name> = <default>
 ```
 
-- `@ Label` is optional. Without it, the inspector shows the variable name.
-- Blank lines and ordinary `--` comments may sit between the annotation and the assignment.
-- The default must be a simple literal, because the editor reads it as text without running the
-  script.
+- The inspector label comes from the name: `moveSpeed` shows as "Move Speed".
+- `public` only works at the top level of the script (not inside functions or blocks, and not with
+  `local`).
+- The default must be a plain value, because the editor reads it without running the script.
+  `= <default>` is optional; without it the field starts at zero, empty or `nil`.
+- Mistakes in a declaration (unknown type, wrong kind of default, a field declared twice) are
+  shown in the inspector like a syntax error, and the script doesn't run until they're fixed.
 - Names used by the engine can't be fields: every [callback](CallbackFunctions.md) name, `entity`,
   `sector`, `Global`, `GameTime`, `Input`, `Game` and `Debug`.
 - If you delete or rename a field in the script, its saved value is dropped. A renamed field
@@ -85,14 +90,14 @@ comment **directly above** its default:
 
 ### Types
 
-| Annotation | In Lua | Default literal | Inspector |
+| Type | In Lua | Default value | Inspector |
 |---|---|---|---|
 | `number` / `float` | number | `1.5` | number box |
 | `int` / `integer` | integer | `3` | whole-number box |
 | `bool` / `boolean` | boolean | `true` | checkbox |
 | `string` | string | `"text"` | text box |
 | `Vector2` / `Vector3` / `Vector4` | vector | `Vector3(0, 1, 0)` | 2 to 4 number boxes |
-| `enum(A,B,C)` | integer: `0` for A, `1` for B, ... | `1` | dropdown |
+| `enum(A, B, C)` | integer: `0` for A, `1` for B, ... | one of the options, e.g. `B` | dropdown |
 | `Key` | a [`Key`](Input.md#keys) value | `Key.E` | dropdown of every key |
 | `Entity` | [Entity](Entity.md) or `nil` | `nil` | entity picker |
 | `Sector` | [Sector](Sector.md) or `nil` | `nil` | sector picker |
@@ -107,23 +112,12 @@ Reference fields (Entity, Sector, Wall, Behaviour, components) store the target'
 survive renames. If the target is deleted, the field is `nil` when the level starts.
 
 ```lua
----@field speed number @ Walk Speed
-speed = 40
-
----@field mode enum(Idle,Patrol,Chase) @ Starting Mode
-mode = 1 -- Patrol
-
----@field useKey Key @ Use Key
-useKey = Key.E
-
----@field target Entity @ Target
-target = nil
-
----@field targetBody Rigidbody @ Target's Rigidbody
-targetBody = nil
-
----@field door Sector @ Door
-door = nil
+public number speed = 40
+public enum(Idle, Patrol, Chase) mode = Patrol
+public Key useKey = Key.E
+public Entity target = nil
+public Rigidbody targetBody = nil
+public Sector door = nil
 
 function Start()
     if mode == 2 then Debug.Print("starting in Chase mode") end
@@ -162,8 +156,7 @@ usually named `self`, even if it never uses it:
 
 ```lua
 -- Scripts/Health.lua
----@field maxHealth number
-maxHealth = 100
+public number maxHealth = 100
 
 health = 0 -- global, so other scripts can read it
 
@@ -213,7 +206,7 @@ Scripts attached to a sector:
 |---|---|
 | **File Name** | The script, as a path inside `Assets` without `.lua`. Drag a `.lua` file onto it. |
 | **Enabled** | The script's own on/off switch. |
-| *public fields* | One control per `---@field` in the script, as described [above](#types). |
+| *public fields* | One control per `public` field in the script, as described [above](#types). |
 
 ## Examples
 
@@ -221,8 +214,7 @@ Scripts attached to a sector:
 
 ```lua
 -- Scripts/Score/Coin.lua (coin with a trigger Collider)
----@field value int
-value = 1
+public int value = 1
 
 function OnTriggerEnter(other)
     if not other.hasPlayerController then return end
@@ -249,11 +241,8 @@ end
 ```lua
 -- Scripts/AI/Brain.lua
 -- The entity also has "Patrol" and "Chase" scripts. Only one is enabled at a time.
----@field player Entity
-player = nil
-
----@field sightRange number
-sightRange = 200
+public Entity player = nil
+public number sightRange = 200
 
 local patrol, chase
 

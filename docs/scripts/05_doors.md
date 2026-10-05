@@ -36,17 +36,10 @@ Opens when the player comes near, closes when they leave.
 
 ```lua
 -- Scripts/Doors/AutoDoor.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
-
----@field speed number @ Open/Close Speed
-speed = 60
-
----@field triggerDistance number @ Trigger Distance
-triggerDistance = 30
+public Entity player = nil
+public number openHeight = 40
+public number speed = 60
+public number triggerDistance = 30
 
 local MIN_GAP = 0.01
 
@@ -148,26 +141,13 @@ give it a name like `red` to lock it until a matching key pickup
 
 ```lua
 -- Scripts/Doors/UseDoor.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
-
----@field speed number @ Open/Close Speed
-speed = 60
-
----@field useDistance number @ Use Distance
-useDistance = 28
-
----@field useKey Key @ Use Key
-useKey = Key.E
-
----@field requiredKey string @ Required Key (empty = unlocked)
-requiredKey = ""
-
----@field autoCloseDelay number @ Auto-close After (s, 0 = never)
-autoCloseDelay = 4
+public Entity player = nil
+public number openHeight = 40
+public number speed = 60
+public number useDistance = 28
+public Key useKey = Key.E
+public string requiredKey = ""
+public number autoCloseDelay = 4
 
 local MIN_GAP = 0.01
 
@@ -283,17 +263,10 @@ and one switch can drive them all.
 
 ```lua
 -- Scripts/Doors/Switch.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field channel string @ Channel
-channel = "door1"
-
----@field useDistance number @ Use Distance
-useDistance = 24
-
----@field useKey Key @ Use Key
-useKey = Key.E
+public Entity player = nil
+public string channel = "door1"
+public number useDistance = 24
+public Key useKey = Key.E
 
 function Start()
     Global.channels = Global.channels or {}
@@ -320,14 +293,9 @@ end
 
 ```lua
 -- Scripts/Doors/ChannelDoor.lua (sector script)
----@field channel string @ Channel
-channel = "door1"
-
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
-
----@field speed number @ Open/Close Speed
-speed = 60
+public string channel = "door1"
+public number openHeight = 40
+public number speed = 60
 
 local MIN_GAP = 0.01
 
