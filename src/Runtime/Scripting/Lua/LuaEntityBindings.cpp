@@ -114,9 +114,7 @@ namespace {
     }
 
     // Registers Entity's documentation with LuaBindingMetadata (autocomplete
-    // + LuaLS stub). Only the PascalCase method spellings are listed; the
-    // camelCase aliases (getScript, hasTag, ...) are deliberately left out
-    // so autocomplete doesn't suggest every method twice.
+    // + LuaLS stub).
     void RegisterEntityMetadata() {
         LuaBindingMetadata::RegisterType({
             .name = "Entity",
@@ -202,8 +200,6 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // once, after every script has finished running this frame.
         "Destroy",
         &ScriptEntity::Destroy,
-        "destroy",
-        &ScriptEntity::Destroy,
 
         "hasTransform",
         sol::property(&ScriptEntity::HasTransform),
@@ -258,8 +254,6 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // ScriptEntity::HasScriptNamed).
         "HasScriptNamed",
         &ScriptEntity::HasScriptNamed,
-        "hasScriptNamed",
-        &ScriptEntity::HasScriptNamed,
 
         // Looks up an attached script (Behaviour) by name. Lua:
         //   local health = target:GetScript("Health")
@@ -270,20 +264,14 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // forwarded straight into that script's own environment.
         "GetScript",
         &ScriptEntity::GetScript,
-        "getScript",
-        &ScriptEntity::GetScript,
 
         // Unambiguous lookup by the script's globally-unique instance id -
         // what a serialized Behaviour-reference field resolves through.
         "GetScriptById",
         &ScriptEntity::GetScriptById,
-        "getScriptById",
-        &ScriptEntity::GetScriptById,
 
         // Every script attached to this Entity, as Behaviour references.
         "GetScripts",
-        &ScriptEntity::GetScripts,
-        "getScripts",
         &ScriptEntity::GetScripts,
 
         "hasPlayerController",
@@ -405,12 +393,8 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
         "HasTag",
         &ScriptEntity::HasTag,
-        "hasTag",
-        &ScriptEntity::HasTag,
 
         "GetTag",
-        &ScriptEntity::GetTag,
-        "getTag",
         &ScriptEntity::GetTag,
 
         // The sector whose entitiesInside lists this Entity - the same

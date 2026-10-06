@@ -41,13 +41,20 @@ There are three ways a sound starts:
 |---|---|
 | **Play On Start** | Once, when the level starts. |
 | **Looping** | A looping source with a sound set **plays all the time**. Whenever it isn't playing, the engine starts it again, even without Play On Start. |
-| `audio:play()` | Right now, from the beginning. If something was already playing on this source, it is cut off. |
+| `audio:Play()` | Right now, from the beginning. If something was already playing on this source, it is cut off. |
 
-**Looping** makes the sound repeat. A looping source can't be stopped directly. To silence it, set
-`looping = false` (it finishes the current pass and stops) or set `gain = 0` (instantly silent,
-still running).
+**Looping** makes the sound repeat, and the engine keeps a looping source going: if it ever stops,
+it is started again next frame.
 
-There is no `stop` or `pause` function.
+To stop or pause from a script:
+
+- `audio:Stop()` stops the sound and rewinds it. `audio:Pause()` stops it where it is.
+- Both put the source **on hold**, so the engine won't restart a looping sound behind your back.
+  `audio:Play()` (from the start) or `audio:Resume()` (from where it paused) takes it off hold.
+- The hold isn't saved: when the level starts again, looping and Play On Start behave as usual.
+
+Setting `looping = false` instead lets the current pass finish and then stops. Setting `gain = 0`
+silences it at once but keeps it running.
 
 ### Volume and pitch
 
@@ -114,7 +121,7 @@ speed of sound and the distance model for all sources.
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Audio Source is gone. |
 | `name` | string | read-only | Internal source name, like `entity_12_audio`. |
-| `soundFileName` | string | read/write | The sound `play()` plays and looping repeats. Changing it doesn't interrupt what's playing. |
+| `soundFileName` | string | read/write | The sound `Play()` plays and looping repeats. Changing it doesn't interrupt what's playing. |
 | `pitch` | number | read/write | Applies immediately, even mid-sound. |
 | `gain` | number | read/write | Applies immediately. |
 | `looping` | boolean | read/write | |
@@ -128,9 +135,13 @@ speed of sound and the distance model for all sources.
 
 | Method | Description |
 |---|---|
-| `play()` | Plays `soundFileName` from the start, cutting off anything already playing on this source. Does nothing if `soundFileName` is empty. |
-| `clearSoundFileName()` | Empties `soundFileName`. What's already playing carries on. |
-| `setSourcePosition(position)` | Moves the sound. It's pointless on an entity with a Transform, because the source is put back on the entity every frame. |
+| `Play()` | Plays `soundFileName` from the start, cutting off anything already playing on this source. Does nothing if `soundFileName` is empty. |
+| `Stop()` | Stops the sound and rewinds it. A looping source stays stopped until `Play()`. |
+| `Pause()` | Pauses the sound where it is. A looping source stays paused until `Resume()` or `Play()`. |
+| `Resume()` | Continues a paused sound from where it stopped. Does nothing unless the sound is paused. |
+| `IsPlaying()` | `true` while the sound is playing. `false` while paused, stopped, or after a one-shot sound has finished. |
+| `ClearSoundFileName()` | Empties `soundFileName`. What's already playing carries on. |
+| `SetSourcePosition(position)` | Moves the sound. It's pointless on an entity with a Transform, because the source is put back on the entity every frame. |
 
 ## Examples
 
@@ -146,7 +157,7 @@ function OnTriggerEnter(other)
 
     local audio = entity.audioSource
     audio.soundFileName = sound
-    audio:play()
+    audio:Play()
 end
 ```
 
@@ -177,7 +188,7 @@ function Update()
         travelled = 0
         local audio = entity.audioSource
         audio.pitch = mathT.RandomF(0.9, 1.1)
-        audio:play()
+        audio:Play()
     end
 end
 ```
@@ -191,11 +202,9 @@ public number range = 48
 
 local on = true
 local player
-local volume
 
 function Start()
     player = Game.FindEntity("Player")
-    volume = entity.audioSource.gain
 end
 
 function Update()
@@ -205,7 +214,7 @@ function Update()
     if d > range then return end
 
     on = not on
-    entity.audioSource.gain = on and volume or 0 -- looping sources can't be stopped, only muted
+    if on then entity.audioSource:Resume() else entity.audioSource:Pause() end
 end
 ```
 

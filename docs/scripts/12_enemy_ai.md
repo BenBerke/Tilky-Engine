@@ -50,7 +50,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform:lookDirection(Vector3(dx, 0, dz))
+        transform:LookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then
@@ -58,7 +58,7 @@ local function Steer(dx, dz, dist, speed)
         rb.velocity = Vector3(vx, v.y, vz)   -- keep v.y so gravity still works
     else
         local dt = GameTime.deltaTime
-        transform:addPosition(Vector3(vx * dt, 0, vz * dt))
+        transform:AddPosition(Vector3(vx * dt, 0, vz * dt))
     end
 end
 
@@ -182,7 +182,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform:lookDirection(Vector3(dx, 0, dz))
+        transform:LookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then
@@ -190,7 +190,7 @@ local function Steer(dx, dz, dist, speed)
         rb.velocity = Vector3(vx, v.y, vz)
     else
         local dt = GameTime.deltaTime
-        transform:addPosition(Vector3(vx * dt, 0, vz * dt))
+        transform:AddPosition(Vector3(vx * dt, 0, vz * dt))
     end
 end
 

@@ -172,8 +172,11 @@ nothing within `length`, the result is `nil`. Otherwise it is a table:
     `scale`, standing on its position. Colliders are ignored. This also hits things like
     invisible markers, so `true` is usually what you want.
 
-`transform.position` is at the **feet**. A "look" ray should start at eye height
-(`position.y + playerController.eyeHeight`) and point along the [camera](Camera.md)'s `forward`.
+For a ray from a camera through the crosshair, use
+[`camera:Raycast([length], [requireCollider])`](Camera.md#scripting). It starts at the eye
+(`transform.position` is at the **feet**), follows the camera's current `yaw` and `pitch`, ignores
+the camera's own entity, and returns the same table. `camera:ScreenToRay(x, y)` gives the
+`origin, direction` for any other point on screen.
 
 ```lua
 -- Scripts/Shoot.lua (on the player): damage whatever is under the crosshair.
@@ -182,9 +185,7 @@ public number damage = 20
 function Update()
     if not Input.GetMouseButtonDown(Input.MouseLeft) then return end
 
-    local p = entity.transform.position
-    local eye = Vector3(p.x, p.y + entity.playerController.eyeHeight, p.z)
-    local hit = Game.Raycast(eye, entity.camera.forward, 2000, entity.id, true)
+    local hit = entity.camera:Raycast(2000, true)
     if hit == nil then return end
 
     if hit.entity ~= nil then

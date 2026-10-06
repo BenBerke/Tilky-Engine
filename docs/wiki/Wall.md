@@ -84,7 +84,7 @@ check `isValid`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `clearTextureFileName()` | | Removes the texture. |
+| `ClearTextureFileName()` | | Removes the texture. |
 | `HasTag(tag)` | boolean | `true` if the wall has `tag`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. |
 
@@ -154,12 +154,9 @@ function Update()
     if not Input.GetKeyDown(Key.E) then return end
 
     local camera = entity.camera
-    local controller = entity.playerController
-    if camera == nil or controller == nil then return end
+    if camera == nil then return end
 
-    local p = entity.transform.position
-    local eye = Vector3(p.x, p.y + controller.eyeHeight, p.z)
-    local hit = Game.Raycast(eye, camera.forward, reach, entity.id, false)
+    local hit = camera:Raycast(reach, false)
 
     if hit == nil or hit.wall == nil or not hit.wall:HasTag("switch") then return end
 

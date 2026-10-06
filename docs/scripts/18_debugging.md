@@ -65,10 +65,8 @@ local function PrintPlayerInfo()
 end
 
 local function Inspect()
-    -- Start the ray at the player's eyes. requireCollider = false: see every entity, not only solid ones.
-    local p = transform.position
-    local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
-    local hit = Game.Raycast(eyes, camera.forward, range, entity.id, false)
+    -- A ray from the player's eyes. requireCollider = false: see every entity, not only solid ones.
+    local hit = camera:Raycast(range, false)
 
     if hit == nil then
         Debug.Print("Looking at nothing")

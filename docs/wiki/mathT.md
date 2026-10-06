@@ -153,7 +153,7 @@ end
 `transform.rotation` is a quaternion, not an angle, so `QuaternionFromEuler` turns the angle into
 one (see [Quaternions](#quaternions)). `Vector2ToAngle` measures from +X instead, so it doesn't
 line up with rotation Y. To face a target straight away, with no turning speed, use
-`transform:lookAt` (see [Transform](Transform.md#scripting)).
+`transform:LookAt` (see [Transform](Transform.md#scripting)).
 
 ---
 
@@ -301,12 +301,12 @@ Y is kept within `-90..90`, so a turn of Y `135` reads back as `180, 45, 180`, w
 rotation. To read how far an entity is turned left or right, use its facing direction instead:
 
 ```lua
-local f = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
+local f = entity.transform.forward
 local yaw = mathT.RadToDeg(mathT.Atan2(f.x, f.z)) -- same as camera yaw
 ```
 
 To make an entity face a point or a direction, use
-[`transform:lookAt`](Transform.md#scripting) / `transform:lookDirection` instead of building the
+[`transform:LookAt`](Transform.md#scripting) / `transform:LookDirection` instead of building the
 quaternion yourself.
 
 ```lua
@@ -314,6 +314,6 @@ quaternion yourself.
 local turn = mathT.QuaternionAngleAxis(Vector3(0, 1, 0), 90 * GameTime.deltaTime)
 entity.transform.rotation = mathT.QuaternionMultiply(turn, entity.transform.rotation)
 
--- Which way is the entity facing?
+-- Which way is the entity facing? (Same as entity.transform.forward.)
 local facing = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
 ```

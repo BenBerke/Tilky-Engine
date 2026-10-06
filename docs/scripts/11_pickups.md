@@ -75,7 +75,7 @@ function Update()
 
     if Apply() then
         local sound = entity.audioSource
-        if sound ~= nil then sound:play() end
+        if sound ~= nil then sound:Play() end
 
         entity:Destroy()
     end

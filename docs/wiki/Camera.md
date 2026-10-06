@@ -53,8 +53,12 @@ The direction comes from two angles, in degrees:
 - **`pitch`** tilts up and down. `0` is level, positive looks up and negative looks down.
 
 From those the engine computes `forward`, a unit `Vector3` pointing where the camera looks:
-`(sin(yaw)·cos(pitch), sin(pitch), cos(yaw)·cos(pitch))`. Use it to aim raycasts, projectiles and
-"what am I looking at" checks.
+`(sin(yaw)·cos(pitch), sin(pitch), cos(yaw)·cos(pitch))`. Use it to aim projectiles. For "what am
+I looking at", `camera:Raycast()` already shoots from the eye along this direction (see
+[Scripting](#scripting)).
+
+On screen, **right** is `(-cos(yaw), 0, sin(yaw))`. At yaw `0` that is **-x**, which is the way
+the player strafes with **D**.
 
 While a [Player Controller](PlayerController.md) is active, the mouse changes its own camera's
 `yaw` and `pitch` every frame, **but only while that camera is the active one**. When another
@@ -130,6 +134,22 @@ local function Forward(yaw, pitch)
 end
 ```
 
+The methods below don't have that delay: they read `yaw` and `pitch` when you call them.
+
+| Method | Returns | Description |
+|---|---|---|
+| `Raycast([length], [requireCollider])` | table or `nil` | Shoots a ray from the eye through the middle of the screen (the crosshair), ignoring the camera's own entity. `length` defaults to `farPlane` and `requireCollider` to `false`. Returns the same hit table as [`Game.Raycast`](Game.md#raycast), or `nil` on a miss. |
+| `GetEyePosition()` | Vector3 | Where the camera sees from: the Transform position, raised by **Eye Height** when the entity has an active Player Controller. See [Where the camera is](#where-the-camera-is). |
+| `WorldToScreen(point)` | Vector2 or `nil` | Where a world `point` shows up on screen, from `(0, 0)` top-left to `(1, 1)` bottom-right, the same space as UI anchors. Values outside `0`–`1` are off screen. `nil` when the point is behind the camera. |
+| `ScreenToRay(x, y)` | Vector3, Vector3 | The ray through a screen point (same `0`–`1` space): returns `origin, direction`, ready for `Game.Raycast`. `ScreenToRay(0.5, 0.5)` is the ray `Raycast` uses. |
+
+Two details:
+
+- The eye is the **body's** eye. When [Smooth stepping](#smooth-stepping) is gliding the view up a
+  step, the drawn view is briefly a little lower than `GetEyePosition()`.
+- `Raycast` skips the camera's own entity. That matters most with `requireCollider = false`, where
+  every entity counts as a box the size of its Transform scale, and the eye is inside your own box.
+
 ## Examples
 
 ### Zoom while holding the right mouse button
@@ -181,6 +201,49 @@ function Update()
     lastPitch = mathT.RandomF(-strength, strength)
     camera.yaw = camera.yaw + lastYaw
     camera.pitch = camera.pitch + lastPitch
+end
+```
+
+### Shoot whatever is under the crosshair
+
+```lua
+-- Scripts/Camera/Shoot.lua (on the player)
+public number range = 2000
+public number damage = 25
+
+function Update()
+    if not Input.GetMouseButtonDown(Input.MouseLeft) then return end
+
+    local hit = entity.camera:Raycast(range, true)
+    if hit == nil or hit.entity == nil then return end
+
+    local health = hit.entity:GetScript("Health")
+    if health.isValid then health:TakeDamage(damage) end
+end
+```
+
+### A marker that follows an entity on screen
+
+```lua
+-- Scripts/Camera/Marker.lua (on a UI entity with a UITransform and a UISprite)
+public Entity player
+public Entity target
+
+function Update()
+    if player == nil or target == nil or not target.isValid then
+        entity.uiSprite.isActive = false
+        return
+    end
+
+    -- Aim at the target's head, not its feet.
+    local point = target.transform.position + Vector3(0, target.transform.scale.y, 0)
+    local screen = player.camera:WorldToScreen(point)
+
+    entity.uiSprite.isActive = screen ~= nil
+    if screen ~= nil then
+        entity.uiTransform.anchorMin = screen
+        entity.uiTransform.anchorMax = screen
+    end
 end
 ```
 

@@ -260,7 +260,8 @@ A script often needs something that isn't its own entity. The options, best firs
    `Game.FindEntitiesWithTag("enemy")` or `entity:HasTag("enemy")`.
 4. **Names.** `Game.FindEntity("Player")` returns the first entity with that exact name, or `nil`.
 5. **Raycasts.** `Game.Raycast(origin, direction, length, ignoredEntityID, requireCollider)`
-   returns what a line hits first.
+   returns what a line hits first. `entity.camera:Raycast()` does the same through the middle of
+   the screen.
 
 `Game.Find...` searches every entity in the level. Call it once in `Start` and keep the result,
 not every frame.

@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -21,7 +22,9 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Headers/Math/Vector/Vector3Math.hpp"
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
+#include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 
 // ---------------------------------------------------------
@@ -217,10 +220,38 @@ struct ScriptAudioSource {
     }
 
     void PlaySound() const {
-        const ComponentAudioSource* audio = GetComponent();
+        ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
 
         audio->PlaySound();
+    }
+
+    void StopSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->StopSound();
+    }
+
+    void PauseSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->PauseSound();
+    }
+
+    void ResumeSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->ResumeSound();
+    }
+
+    [[nodiscard]] bool IsPlaying() const {
+        const ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return false;
+
+        return audio->IsPlaying();
     }
 
     void SetSourcePosition(const Vector3& position) const {
@@ -344,6 +375,53 @@ struct ScriptTransform {
         if (!QuaternionMath::LookRotation(direction, yawOnly, transform->rotation)) return;
 
         transform->isDirty = true;
+    }
+
+    // ---- Directions, from rotation ----
+    // Right is local -X: with +Z ahead and +Y up, that is the screen's right
+    // (see Matrix4::LookAt), and the way the player strafes with D.
+
+    [[nodiscard]] Vector3 GetForward() const {
+        return RotateLocal(QuaternionMath::LocalForward());
+    }
+
+    [[nodiscard]] Vector3 GetRight() const {
+        return RotateLocal({-1.0f, 0.0f, 0.0f});
+    }
+
+    [[nodiscard]] Vector3 GetUp() const {
+        return RotateLocal({0.0f, 1.0f, 0.0f});
+    }
+
+    // ---- Distance / direction to a point ----
+    // The 2D versions ignore height (y). Directions are unit length, or zero
+    // when the point is on top of this transform.
+
+    [[nodiscard]] float DistanceTo(const Vector3& point) const {
+        return Vector3Math::Length(point - GetPosition());
+    }
+
+    [[nodiscard]] float DistanceTo2D(const Vector3& point) const {
+        Vector3 delta = point - GetPosition();
+        delta.y = 0.0f;
+        return Vector3Math::Length(delta);
+    }
+
+    [[nodiscard]] Vector3 DirectionTo(const Vector3& point) const {
+        return Vector3Math::Normalized(point - GetPosition());
+    }
+
+    [[nodiscard]] Vector3 DirectionTo2D(const Vector3& point) const {
+        Vector3 delta = point - GetPosition();
+        delta.y = 0.0f;
+        return Vector3Math::Normalized(delta);
+    }
+
+private:
+    [[nodiscard]] Vector3 RotateLocal(const Vector3& local) const {
+        const ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return local;
+        return QuaternionMath::Rotate(transform->rotation, local);
     }
 };
 
@@ -637,6 +715,22 @@ struct ScriptRigidbody {
         ComponentRigidbody* rb = GetComponent();
         if (rb == nullptr) return;
         rb->AddVelocity(velocity);
+    }
+
+    // velocity += impulse / mass, so heavier bodies move less. A mass of 0
+    // or less is treated as 1.
+    void AddImpulse(const Vector3& impulse) const {
+        ComponentRigidbody* rb = GetComponent();
+        if (rb == nullptr) return;
+
+        const float mass = rb->mass > 0.0f ? rb->mass : 1.0f;
+        rb->AddVelocity(impulse / mass);
+    }
+
+    void Stop() const {
+        ComponentRigidbody* rb = GetComponent();
+        if (rb == nullptr) return;
+        rb->velocity = {0.0f, 0.0f, 0.0f};
     }
 };
 
@@ -1011,6 +1105,82 @@ struct ScriptCamera {
         const ComponentCamera* camera = GetComponent();
         if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
         return camera->target;
+    }
+
+    // Where the camera sees from: the owner's Transform, raised by the eye
+    // height of an active PlayerController on the same entity. This is the
+    // body's eye, without the renderer's stair smoothing.
+    [[nodiscard]] Vector3 GetEyePosition() const {
+        if (level == nullptr) return {0.0f, 0.0f, 0.0f};
+
+        const ComponentTransform* transform = level->transforms.Get(ownerID);
+        if (transform == nullptr) return {0.0f, 0.0f, 0.0f};
+
+        Vector3 eye = transform->position;
+
+        const ComponentPlayerController* controller = level->playerControllers.Get(ownerID);
+        if (controller != nullptr && controller->isActive) eye.y += controller->eyeHeight;
+
+        return eye;
+    }
+
+    // Unit vector through the middle of the screen. Built from yaw/pitch
+    // rather than read from `forward`, which only updates when a frame is drawn.
+    [[nodiscard]] Vector3 GetViewForward() const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
+        return CameraSystem::GetCameraForwardEngineSpace(camera->yaw, camera->pitch);
+    }
+
+    // World point -> screen, normalized: (0, 0) top-left, (1, 1) bottom-right,
+    // like UITransform anchors. Points off to the side give values outside
+    // 0..1. nullopt when the point is behind the camera.
+    [[nodiscard]] std::optional<Vector2> WorldToScreen(const Vector3& point) const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return std::nullopt;
+
+        Vector3 forward, right, up;
+        GetViewBasis(*camera, forward, right, up);
+
+        const Vector3 delta = point - GetEyePosition();
+        const float depth = Vector3Math::Dot(delta, forward);
+        if (depth <= Constants::Epsilon) return std::nullopt;
+
+        const float tanHalfFov = std::tan(camera->fov * 0.5f * Constants::DegToRad);
+        const float ndcX = Vector3Math::Dot(delta, right) / (depth * tanHalfFov * camera->aspectRatio);
+        const float ndcY = Vector3Math::Dot(delta, up) / (depth * tanHalfFov);
+
+        return Vector2{(ndcX + 1.0f) * 0.5f, (1.0f - ndcY) * 0.5f};
+    }
+
+    // Screen point (normalized, as WorldToScreen) -> unit direction of the
+    // ray from the eye through it.
+    [[nodiscard]] Vector3 ScreenToDirection(const float x, const float y) const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
+
+        Vector3 forward, right, up;
+        GetViewBasis(*camera, forward, right, up);
+
+        const float tanHalfFov = std::tan(camera->fov * 0.5f * Constants::DegToRad);
+        const float ndcX = x * 2.0f - 1.0f;
+        const float ndcY = 1.0f - y * 2.0f;
+
+        return Vector3Math::Normalized(
+            forward + right * (ndcX * tanHalfFov * camera->aspectRatio) + up * (ndcY * tanHalfFov)
+        );
+    }
+
+private:
+    // Same axes as Matrix4::LookAt. Right comes from yaw alone so it stays
+    // defined when looking straight up or down.
+    static void GetViewBasis(const ComponentCamera& camera, Vector3& forward, Vector3& right, Vector3& up) {
+        forward = CameraSystem::GetCameraForwardEngineSpace(camera.yaw, camera.pitch);
+
+        const float yawRadians = camera.yaw * Constants::DegToRad;
+        right = {-std::cos(yawRadians), 0.0f, std::sin(yawRadians)};
+
+        up = Vector3Math::Cross(right, forward);
     }
 };
 

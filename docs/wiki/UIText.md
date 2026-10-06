@@ -98,9 +98,7 @@ local shown = nil
 function Update()
     if player == nil then return end
 
-    local p = player.transform.position
-    local eye = Vector3(p.x, p.y + player.playerController.eyeHeight, p.z)
-    local hit = Game.Raycast(eye, player.camera.forward, reach, player.id, false)
+    local hit = player.camera:Raycast(reach, false)
 
     local label = ""
     if hit ~= nil and hit.entity ~= nil then label = hit.entity.name end

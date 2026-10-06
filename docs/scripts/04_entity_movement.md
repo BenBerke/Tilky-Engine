@@ -2,7 +2,7 @@
 
 Scripts for moving props, platforms, and characters around. Position is a `Vector3` where `x` and
 `z` are the ground plane and `y` is height. Move something by reading `transform.position`,
-building a new `Vector3`, and assigning it back (or use `transform:addPosition(...)` for relative
+building a new `Vector3`, and assigning it back (or use `transform:AddPosition(...)` for relative
 moves).
 
 Two ways to move something:
@@ -59,7 +59,7 @@ function Update()
         waiting = waitTime
     else
         transform.position = Vector3(p.x + dx / dist * step, p.y, p.z + dz / dist * step)
-        transform:lookDirection(Vector3(dx, 0, dz))   -- face the way we're going
+        transform:LookDirection(Vector3(dx, 0, dz))   -- face the way we're going
     end
 end
 ```
@@ -67,7 +67,7 @@ end
 **Notes**
 
 - Movement stays on the ground plane and keeps the entity's own `y`.
-- `transform:lookDirection` turns the entity's `rotation` to face a direction (left and right only,
+- `transform:LookDirection` turns the entity's `rotation` to face a direction (left and right only,
   by default). Directional sprites use the rotation to pick which side to show.
 - Want a longer route? Replace the two points with a table of waypoints and an index.
 
@@ -228,8 +228,8 @@ function Update()
     local len = math.sqrt(dx * dx + dz * dz)
     local step = speed * GameTime.deltaTime
 
-    transform:addPosition(Vector3(dx / len * step, 0, dz / len * step))
-    transform:lookDirection(Vector3(dx, 0, dz))
+    transform:AddPosition(Vector3(dx / len * step, 0, dz / len * step))
+    transform:LookDirection(Vector3(dx, 0, dz))
 end
 ```
 

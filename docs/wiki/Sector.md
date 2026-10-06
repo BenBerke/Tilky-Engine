@@ -142,7 +142,7 @@ use raises an error.
 
 | Group | Functions |
 |---|---|
-| Floors | `GetFloor(i)` returns a `SectorFloor` with read/write `floorHeight`, `ceilingHeight`, `floorColor`, `ceilingColor`, `floorTexture`, `ceilingTexture`, plus `clearFloorTexture()` and `clearCeilingTexture()`. `GetFloorHeightAt(point[, i])` and `GetCeilingHeightAt(point[, i])` include slopes. |
+| Floors | `GetFloor(i)` returns a `SectorFloor` with read/write `floorHeight`, `ceilingHeight`, `floorColor`, `ceilingColor`, `floorTexture`, `ceilingTexture`, plus `ClearFloorTexture()` and `ClearCeilingTexture()`. `GetFloorHeightAt(point[, i])` and `GetCeilingHeightAt(point[, i])` include slopes. |
 | Movement | `MoveFloorToCeiling(i, speed[, gap])`, `MoveCeilingToFloor(i, speed[, gap])`, their `...OverTime(i, seconds[, gap])` versions, `MoveFloorTo(i, height, speed)`, `MoveCeilingTo(i, height, speed)`, their `...OverTime(i, height, seconds)` versions, `IsMoving(i)`, `IsFloorMoving(i)`, `IsCeilingMoving(i)`, `StopMoving(i)` |
 | Light | `FadeLight(color, seconds)`, `IsLightFading()` |
 | Occupancy | `ContainsEntity(e)`, `ContainsEntityWithTag(tag)`, `GetEntities()`, `GetEntitiesWithTag(tag)`, `CountEntities([tag])`, `IsEmpty()`, `GetEntity(i)` |

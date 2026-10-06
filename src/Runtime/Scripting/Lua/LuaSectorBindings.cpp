@@ -21,8 +21,8 @@ namespace {
             Prop("floorTexture", "string"),
             Prop("ceilingTexture", "string"),
         }, {
-            Method("clearFloorTexture"),
-            Method("clearCeilingTexture"),
+            Method("ClearFloorTexture"),
+            Method("ClearCeilingTexture"),
         }));
 
         RegisterType(Type("Sector", "A safe reference to one map sector.", {
@@ -156,10 +156,10 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
             &ScriptSectorFloor::SetCeilingTexture
         ),
 
-        "clearFloorTexture",
+        "ClearFloorTexture",
         &ScriptSectorFloor::ClearFloorTexture,
 
-        "clearCeilingTexture",
+        "ClearCeilingTexture",
         &ScriptSectorFloor::ClearCeilingTexture
     );
 

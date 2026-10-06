@@ -24,6 +24,16 @@ namespace SoundManager {
     void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName);
     void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const std::string& soundFileName);
 
+    bool IsSourcePlaying(const std::string& sourceName);
+
+    // Stop rewinds; Pause keeps the place so ResumeSource can continue from it.
+    void StopSource(const std::string& sourceName);
+    void PauseSource(const std::string& sourceName);
+
+    // Continues a paused source. Does nothing unless it is paused; returns
+    // whether it resumed.
+    bool ResumeSource(const std::string& sourceName);
+
     // The multiplier for the frequency. 1.0 is normal. 2.0 is an octave higher and double speed.
     void SetSourcePitch(const std::string& sourceName, float pitch);
 

@@ -116,7 +116,7 @@ namespace AudioSystem {
 
             ApplySourceSettings(level, audio);
 
-            if (audio.looping && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
+            if (audio.looping && !audio.isHeld && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
         }
     }
 

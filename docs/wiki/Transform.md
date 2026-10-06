@@ -78,12 +78,22 @@ It does not move the camera. The camera has its own `yaw` and `pitch` (see [Came
 | `relativeHeight` | number | read/write | Height above the floor. Physics overwrites it every frame on physics bodies. |
 | `sectorIndex` | integer | read-only | Internal index of the current sector, `-1` outside the map. Use `entity:GetSector()` instead: it returns the sector itself and survives map edits. |
 | `isDirty` | boolean | read/write | Engine flag meaning "moved this frame". You shouldn't need it. |
+| `forward` | Vector3 | read-only | Unit vector the entity faces (local +Z), from `rotation`. |
+| `right` | Vector3 | read-only | Unit vector to the entity's right, from `rotation`. With rotation `0, 0, 0` it is -X, the same as the camera's screen right at yaw `0`. |
+| `up` | Vector3 | read-only | Unit vector out of the top of the entity (local +Y), from `rotation`. |
 
 | Method | Description |
 |---|---|
-| `addPosition(offset)` | Moves by a `Vector3` offset. Same as `position = position + offset`. |
-| `lookAt(point, [yawOnly])` | Turns so the entity faces a world `Vector3` point. Does nothing if the point is at the entity's position. |
-| `lookDirection(direction, [yawOnly])` | Turns so the entity faces along a `Vector3` direction. Does nothing for a zero direction. |
+| `AddPosition(offset)` | Moves by a `Vector3` offset. Same as `position = position + offset`. |
+| `LookAt(point, [yawOnly])` | Turns so the entity faces a world `Vector3` point. Does nothing if the point is at the entity's position. |
+| `LookDirection(direction, [yawOnly])` | Turns so the entity faces along a `Vector3` direction. Does nothing for a zero direction. |
+| `DistanceTo(target)` | Straight-line distance to `target`, which is an `Entity` (its position) or a `Vector3` point. |
+| `DistanceTo2D(target)` | Like `DistanceTo`, but ignores height: distance across the map. |
+| `DirectionTo(target)` | Unit `Vector3` pointing at `target`. Zero if the target is exactly at this position. |
+| `DirectionTo2D(target)` | Like `DirectionTo`, but flat (`y` is `0`). Good for `LookDirection` and walking along the ground. |
+
+Passing an `Entity` that has no Transform (a UI entity) to `DistanceTo` and the others raises an
+error.
 
 `yawOnly` defaults to `true`: the entity only turns left and right, and the height of the point or
 direction is ignored. Pass `false` to tilt up and down as well (never any roll). Upright things
@@ -117,12 +127,12 @@ entity.transform.rotation = mathT.QuaternionFromEuler(0, 90, 0)
 -- Read the angles back.
 local angles = mathT.QuaternionToEuler(entity.transform.rotation)
 
--- Turn a further 45 degrees to the right.
+-- Turn a further 45 degrees to the left (positive Y turns from +Z toward +X).
 local turn = mathT.QuaternionAngleAxis(Vector3(0, 1, 0), 45)
 entity.transform.rotation = mathT.QuaternionMultiply(turn, entity.transform.rotation)
 
 -- The direction the entity faces, as a unit Vector3.
-local facing = mathT.QuaternionRotate(entity.transform.rotation, Vector3(0, 0, 1))
+local facing = entity.transform.forward
 ```
 
 ## Examples
@@ -173,11 +183,37 @@ function Update()
     entity.transform.position = moved
 
     -- Face the way we're walking (for 4/8-direction sprites).
-    entity.transform:lookAt(target)
+    entity.transform:LookAt(target)
 
     if mathT.Vector3Distance(moved, target) < 0.01 then
         target = (target == pointB) and pointA or pointB
     end
+end
+```
+
+### Chase the player when they come close
+
+```lua
+-- Scripts/Movement/Chase.lua (enemy with a Rigidbody)
+public Entity player
+public number sightRange = 300
+public number speed = 40
+
+function Update()
+    if player == nil or not player.isValid then return end
+
+    local t = entity.transform
+    local rb = entity.rigidbody
+    local v = rb.velocity
+
+    if t:DistanceTo2D(player) > sightRange then
+        rb.velocity = Vector3(0, v.y, 0)
+        return
+    end
+
+    local dir = t:DirectionTo2D(player)
+    t:LookDirection(dir)
+    rb.velocity = Vector3(dir.x * speed, v.y, dir.z * speed)
 end
 ```
 

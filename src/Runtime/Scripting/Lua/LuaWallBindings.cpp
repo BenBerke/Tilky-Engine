@@ -26,7 +26,7 @@ namespace {
             Prop("textureFileName", "string"),
             Prop("tagCount", "integer", true),
         }, {
-            Method("clearTextureFileName"),
+            Method("ClearTextureFileName"),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this wall has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
         }));
@@ -90,7 +90,7 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
             &ScriptWall::SetTextureFileName
         ),
 
-        "clearTextureFileName",
+        "ClearTextureFileName",
         &ScriptWall::ClearTextureFileName,
 
         // Read-only: tags are assigned from the editor only - no SetTag.

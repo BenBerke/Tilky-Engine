@@ -144,7 +144,7 @@ struct ComponentPlayerController {
     float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;
 
-    //todo Max-Min pitch is acting weirdly
+    //todo TILKYTODO Max-Min pitch is acting weirdly
     float minPitch = -89.0f, maxPitch = 89.0f;
     float minYaw =  .0f, maxYaw = 360.0f;
 
@@ -320,7 +320,16 @@ struct ComponentAudioSource {
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
-    void PlaySound() const;
+    // Runtime only, not saved. Set by StopSound/PauseSound so AudioSystem
+    // doesn't restart a looping source the script silenced; PlaySound and
+    // ResumeSound clear it.
+    bool isHeld = false;
+
+    void PlaySound();
+    void StopSound();
+    void PauseSound();
+    void ResumeSound();
+    [[nodiscard]] bool IsPlaying() const;
 
     void SetSourcePitch(float _pitch) const;
 

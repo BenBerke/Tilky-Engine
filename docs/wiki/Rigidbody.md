@@ -45,15 +45,16 @@ frame, so writing it from a script has no lasting effect.
 
 ### Mass
 
-**Mass** is stored but **not used** by the physics yet. Collisions between two moving bodies always
-push each one by half, whatever their masses.
+**Mass** is **not used** by the physics simulation yet. Collisions between two moving bodies always
+push each one by half, whatever their masses. The only thing that reads it is `AddImpulse`, which
+moves a heavy body less than a light one.
 
 ## In the editor
 
 | Field | Lua | Default | Notes |
 |---|---|---|---|
 | **Is Static** | `isStatic` | off | Frozen in place. |
-| **Mass** | `mass` | `1` | Not used yet. |
+| **Mass** | `mass` | `1` | Only used by `AddImpulse`. |
 | **Gravity Scale** | `gravityScale` | `9.8` | Multiplies the level's gravity. |
 | **Friction** | `friction` | `1` | Horizontal slow-down, units/s per second. |
 
@@ -67,13 +68,15 @@ push each one by half, whatever their masses.
 | `velocity` | Vector3 | read/write | Units per second. |
 | `isGrounded` | boolean | read/write | Resting on a floor this frame. Recalculated by physics every frame. |
 | `isStatic` | boolean | read/write | |
-| `mass` | number | read/write | Unused. |
+| `mass` | number | read/write | Only used by `AddImpulse`. |
 | `gravityScale` | number | read/write | |
 | `friction` | number | read/write | |
 
 | Method | Description |
 |---|---|
-| `addVelocity(v)` | Adds a `Vector3` to the velocity. Good for impulses: explosions, launches, knockback. |
+| `AddVelocity(v)` | Adds a `Vector3` to the velocity. Every body gets the same change, whatever its mass. |
+| `AddImpulse(impulse)` | Adds `impulse / mass` to the velocity, so heavier bodies move less. Good for explosions and knockback that should push a crate further than a boulder. A mass of `0` or less counts as `1`. |
+| `Stop()` | Sets the velocity to zero. |
 
 `rigidbody.velocity.y = 50` changes just the vertical speed. A velocity stored in a variable is a
 copy, so assign it back after changing it.
@@ -117,7 +120,7 @@ function Explode(self)
 
             if distance < radius and distance > 0.001 then
                 local strength = force * (1 - distance / radius)
-                body:addVelocity(offset.normalized * strength + Vector3(0, strength * 0.5, 0))
+                body:AddImpulse(offset.normalized * strength + Vector3(0, strength * 0.5, 0))
             end
         end
     end

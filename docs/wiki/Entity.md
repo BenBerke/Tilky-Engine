@@ -88,9 +88,6 @@ Scripts can add and remove them with `AddComponent` and `RemoveComponent`. See
 
 ### Methods
 
-Every method also has a camelCase spelling (`destroy`, `getScript`, `hasTag`, ...), except
-`GetSector`, `AddComponent` and `RemoveComponent`.
-
 | Method | Returns | Description |
 |---|---|---|
 | `Destroy()` | | Queues the entity for removal at the end of this frame. See [Destroying](#destroying-entities). |
@@ -196,7 +193,7 @@ Some components behave differently when added while the game runs:
   to switch to it (see [Only one camera renders](Camera.md#only-one-camera-renders)). Removing the
   active camera leaves nothing to draw the level with until another is ticked.
 - **Audio Source**: `playOnStart` has nothing to wait for, so a new source never starts by itself.
-  Call `play()`, or set `looping` with a `soundFileName`.
+  Call `Play()`, or set `looping` with a `soundFileName`.
 
 ```lua
 -- Scripts/Thrower.lua (on the player): F throws a ball with a sprite and a trigger collider.

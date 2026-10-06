@@ -72,7 +72,7 @@ roughly the size of the model.
 
 | Method | Description |
 |---|---|
-| `clearFileName()` | Empties `fileName`, so nothing is drawn. |
+| `ClearFileName()` | Empties `fileName`, so nothing is drawn. |
 
 Everything else about how a model looks is set through its [Transform](Transform.md).
 

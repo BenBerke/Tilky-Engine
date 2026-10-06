@@ -175,6 +175,48 @@ namespace SoundManager {
         PlaySoundOnSource(sourceName, soundFileName);
     }
 
+    void StopSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSourceStop(iterator->second);
+        CheckALErrors("Failed to stop source");
+    }
+
+    void PauseSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSourcePause(iterator->second);
+        CheckALErrors("Failed to pause source");
+    }
+
+    bool ResumeSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return false;
+        }
+
+        ALint state = 0;
+        alGetSourcei(iterator->second, AL_SOURCE_STATE, &state);
+
+        // alSourcePlay on a stopped source would restart it, which is Play's job.
+        if (state != AL_PAUSED) return false;
+
+        alSourcePlay(iterator->second);
+        return CheckALErrors("Failed to resume source");
+    }
+
     void GenerateSounds() {
         for (const ALuint source: sources | std::views::values) {
             alSourceStop(source);

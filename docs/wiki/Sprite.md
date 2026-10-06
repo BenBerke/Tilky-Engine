@@ -53,7 +53,7 @@ the map, so only rotation Y matters. Rotation `0, 0, 0` faces +Z.
   45° slice with 8 sides, or a 90° slice with 4.
 
 To turn a directional sprite, set its rotation: **Rotation Y** in the inspector, or
-`transform:lookAt(point)` / `transform:lookDirection(direction)` from Lua. If the side pictures
+`transform:LookAt(point)` / `transform:LookDirection(direction)` from Lua. If the side pictures
 appear on the opposite sides from what you expected, swap E with W (and NE with NW, SE with SW).
 
 ### Colour and light
@@ -71,7 +71,7 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 
 | Field | Lua | Default | Notes |
 |---|---|---|---|
-| **Texture Index** (one per direction) | `northTextureFileName`, ... or `getTextureFileName(slot)` | empty | Image paths relative to `Assets`. |
+| **Texture Index** (one per direction) | `northTextureFileName`, ... or `GetTextureFileName(slot)` | empty | Image paths relative to `Assets`. |
 | **Direction Level** | `sideCount` | Single | See [Directions](#directions). |
 | **Color** | `color` | `1, 1, 1, 1` | Tint. |
 | **Is Static** | | off | Editor only. |
@@ -96,10 +96,10 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 
 | Method | Description |
 |---|---|
-| `getTextureFileName(slot)` | The texture in `slot`. |
-| `setTextureFileName(slot, fileName)` | Sets the texture in `slot`. |
-| `clearTextureFileName(slot)` | Empties `slot`. |
-| `clearAllTextureFileNames()` | Empties all eight slots. |
+| `GetTextureFileName(slot)` | The texture in `slot`. |
+| `SetTextureFileName(slot, fileName)` | Sets the texture in `slot`. |
+| `ClearTextureFileName(slot)` | Empties `slot`. |
+| `ClearAllTextureFileNames()` | Empties all eight slots. |
 
 > **Slots are numbered from 0**, `0` (N) to `7` (NW), unlike most lists in the Lua API. A slot
 > outside `0..7` is ignored: getters return `""` and setters do nothing.
@@ -132,7 +132,7 @@ function Update()
 
     if frame ~= shown then
         shown = frame
-        entity.sprite:setTextureFileName(0, folder .. frame .. ".png")
+        entity.sprite:SetTextureFileName(0, folder .. frame .. ".png")
     end
 end
 ```
@@ -169,7 +169,7 @@ end
 function Update()
     local v = entity.rigidbody.velocity
 
-    if Vector2(v.x, v.z).length > 1 then entity.transform:lookDirection(v) end
+    if Vector2(v.x, v.z).length > 1 then entity.transform:LookDirection(v) end
 end
 ```
 

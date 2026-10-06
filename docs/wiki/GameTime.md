@@ -21,10 +21,10 @@ public number speed = 30   -- units per second
 
 function Update()
     -- Wrong: moves 30 units every frame (1800 per second at 60 fps).
-    -- entity.transform:addPosition(Vector3(speed, 0, 0))
+    -- entity.transform:AddPosition(Vector3(speed, 0, 0))
 
     -- Right: moves 30 units per second at any frame rate.
-    entity.transform:addPosition(Vector3(speed * GameTime.deltaTime, 0, 0))
+    entity.transform:AddPosition(Vector3(speed * GameTime.deltaTime, 0, 0))
 end
 ```
 

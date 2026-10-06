@@ -707,7 +707,7 @@ end
 function Update()
     -- entity is this script's own Entity - every script gets one
     -- automatically, no lookup required.
-    -- entity.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
+    -- entity.transform:AddPosition(Vector3(0, 0, speed * GameTime.deltaTime))
 
     -- Reading an Entity-reference field gives you a real Entity back,
     -- or nil if nothing is assigned in the Inspector.

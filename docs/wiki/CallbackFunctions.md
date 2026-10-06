@@ -88,7 +88,7 @@ frame in seconds. Multiply anything that changes over time by it.
 public number speed = 20
 
 function Update()
-    entity.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
+    entity.transform:AddPosition(Vector3(0, 0, speed * GameTime.deltaTime))
 end
 ```
 

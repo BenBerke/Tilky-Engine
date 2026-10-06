@@ -57,9 +57,28 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     return true;
 }
 
-void ComponentAudioSource::PlaySound() const {
+void ComponentAudioSource::PlaySound() {
     if (soundFileName.empty()) return;
+    isHeld = false;
     SoundManager::PlaySoundOnSource(name, soundFileName);
+}
+
+void ComponentAudioSource::StopSound() {
+    isHeld = true;
+    SoundManager::StopSource(name);
+}
+
+void ComponentAudioSource::PauseSound() {
+    isHeld = true;
+    SoundManager::PauseSource(name);
+}
+
+void ComponentAudioSource::ResumeSound() {
+    if (SoundManager::ResumeSource(name)) isHeld = false;
+}
+
+bool ComponentAudioSource::IsPlaying() const {
+    return SoundManager::IsSourcePlaying(name);
 }
 
 void ComponentAudioSource::SetSourcePitch(const float _pitch) const {

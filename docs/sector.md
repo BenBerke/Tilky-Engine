@@ -253,7 +253,7 @@ sector:GetFloor(floorIndex) -> SectorFloor
 
 One floor/ceiling interval. `SectorFloor` has `floorHeight`, `ceilingHeight`, `floorColor`,
 `ceilingColor`, `floorTexture` and `ceilingTexture` (all read/write), plus `index`, `isValid`,
-`clearFloorTexture()` and `clearCeilingTexture()`. Writing a height raises an error if the floor
+`ClearFloorTexture()` and `ClearCeilingTexture()`. Writing a height raises an error if the floor
 would reach its ceiling or overlap another interval.
 
 ### GetFloorHeightAt 

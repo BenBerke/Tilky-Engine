@@ -17,7 +17,7 @@ Useful `Wall` members:
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
 | `wall.textureOffset` | `Vector2` | Scrolls the texture. Change it over time for moving surfaces |
-| `wall.textureFileName` | `string` | Swap the texture. `wall:clearTextureFileName()` removes it |
+| `wall.textureFileName` | `string` | Swap the texture. `wall:ClearTextureFileName()` removes it |
 | `wall.start`, `wall["end"]`, `wall.length` | read-only | Endpoints (`Vector2`) and length. `end` is a Lua keyword, so use `wall["end"]` |
 | `wall.frontSector`, `wall.backSector` | integer IDs | `backSector` identifies the neighbour on a portal wall |
 | `wall:HasTag("Name")` | boolean | Tags are assigned in the editor |
@@ -72,7 +72,7 @@ end
 **Attach to:** the sector containing a wall tagged `Switch`.
 
 Looks at the wall and presses a key to flip it between an "off" and an "on" texture. It uses
-`Game.Raycast` from the camera to see which wall is being looked at.
+`camera:Raycast` from the camera to see which wall is being looked at.
 
 ```lua
 -- Scripts/Walls/TextureSwitch.lua (sector script)
@@ -105,13 +105,10 @@ function Update()
     if not Input.GetKeyDown(useKey) then return end
 
     local camera = player.camera
-    local pc = player.playerController
-    if camera == nil or pc == nil then return end
+    if camera == nil then return end
 
-    -- Cast a ray from the player's eyes (feet position + eye height) along the camera's forward direction.
-    local p = player.transform.position
-    local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
-    local hit = Game.Raycast(eyes, camera.forward, useDistance, player.id, false)
+    -- Cast a ray from the player's eyes through the middle of the screen.
+    local hit = camera:Raycast(useDistance, false)
     if hit == nil or hit.type ~= "Wall" then return end
 
     for _, s in ipairs(switches) do

@@ -4,17 +4,18 @@ Sound comes from an `AudioSource` component (`entity.audioSource`, `nil` if ther
 
 | Member | Notes |
 |--------|-------|
-| `audio.soundFileName` | The sound to play. `audio:clearSoundFileName()` empties it |
-| `audio:play()` | Plays `soundFileName` on this source |
+| `audio.soundFileName` | The sound to play. `audio:ClearSoundFileName()` empties it |
+| `audio:Play()` | Plays `soundFileName` on this source, from the start |
+| `audio:Stop()`, `audio:Pause()` | Stop (rewinds) or pause. Either one also keeps a looping sound from restarting by itself |
+| `audio:Resume()` | Continues a paused sound |
+| `audio:IsPlaying()` | `true` while the sound is playing |
 | `audio.gain` | Volume |
 | `audio.pitch` | Playback speed and pitch, `1` is normal |
 | `audio.looping` | Loop the sound |
 | `audio.playOnStart` | Whether the level starts it automatically |
 | `audio.referenceDistance`, `maxDistance`, `rollOffFactor` | How volume falls off with distance |
 | `audio.innerConeAngle`, `outerConeAngle`, `outerGain` | Directional sound, pointing the way `transform.rotation` faces (see [Audio Source](../wiki/AudioSource.md#sound-cone)) |
-| `audio:setSourcePosition(Vector3)` | Move the sound's 3D position until the next frame, when it goes back to the entity |
-
-Audio has **no stop or pause function**. To silence a looping sound, set `gain` to `0`.
+| `audio:SetSourcePosition(Vector3)` | Move the sound's 3D position until the next frame, when it goes back to the entity |
 
 A sound is named by its path inside `Assets`, for example `"Sounds/Footsteps/step.wav"` for
 `Assets/Sounds/Footsteps/step.wav`. The `.wav` is optional and the file can be in any folder under
@@ -71,7 +72,7 @@ function Update()
 
     if sound ~= "" then audio.soundFileName = sound end
     audio.pitch = 1 + mathT.RandomF(-pitchVariation, pitchVariation)
-    audio:play()
+    audio:Play()
 end
 ```
 
@@ -82,15 +83,14 @@ end
 **Attach to:** a prop with an `AudioSource`. In the inspector, set a music file, tick *Looping*,
 and tick *Play On Start*.
 
-The music plays from the start of the level, but it's silent (gain `0`) until the player walks
-up and presses a key.
+The music is paused from the start of the level until the player walks up and presses a key.
+Pausing also stops the engine from restarting the looping sound by itself.
 
 ```lua
 -- Scripts/Audio/Radio.lua (entity script)
 public Entity player = nil
 public Key useKey = Key.E
 public number useDistance = 30
-public number volume = 1.0
 
 local audio
 local isOn = false
@@ -103,20 +103,16 @@ function Start()
         return
     end
 
-    audio.gain = 0.0   -- there is no Stop(), so "off" means volume 0
+    audio:Pause()
 end
 
 function Update()
     if audio == nil or player == nil or not player.isValid then return end
     if not Input.GetKeyDown(useKey) then return end
 
-    local p = player.transform.position
-    local me = entity.transform.position
-    local dx, dz = p.x - me.x, p.z - me.z
-
-    if math.sqrt(dx * dx + dz * dz) <= useDistance then
+    if entity.transform:DistanceTo2D(player) <= useDistance then
         isOn = not isOn
-        audio.gain = isOn and volume or 0.0
+        if isOn then audio:Resume() else audio:Pause() end
         Debug.Print(isOn and "Radio on" or "Radio off")
     end
 end
@@ -137,7 +133,7 @@ local function PlaySound()
     if soundSource == nil then return end
 
     local audio = soundSource.audioSource
-    if audio ~= nil then audio:play() end
+    if audio ~= nil then audio:Play() end
 end
 ```
 
@@ -149,5 +145,5 @@ doors share one source, move the entity to the door before playing; the sound fo
 
 ```lua
 soundSource.transform.position = doorPosition -- a Vector3 you work out from the door's walls
-audio:play()
+audio:Play()
 ```

@@ -83,9 +83,10 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
 - **Axes:** `x` and `z` are the ground plane, `y` is up. Sector vertices are `Vector2`, where the
   vertex's `y` is the world `z`.
 - **Feet, not eyes:** `transform.position` is at an entity's feet. The player's camera sits
-  `playerController.eyeHeight` above it, so anything aimed "from the player's eyes" uses
-  `position.y + eyeHeight`.
-- **Facing:** a camera with yaw `a` (degrees) looks along `x = sin(a)`, `z = cos(a)`.
+  `playerController.eyeHeight` above it. `camera:GetEyePosition()` gives that point, and
+  `camera:Raycast()` shoots from it through the middle of the screen.
+- **Facing:** a camera with yaw `a` (degrees) looks along `x = sin(a)`, `z = cos(a)`. An entity
+  faces `transform.forward`, and `transform.right` / `transform.up` complete the set.
 - **Player and camera:** the player scripts assume the `Camera` component is on the same
   Entity as the `PlayerController` (the usual setup), and log an error if it isn't. If your
   camera lives on a separate Entity, add a public field such as
