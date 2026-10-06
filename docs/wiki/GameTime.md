@@ -92,7 +92,7 @@ end
 
 ```lua
 function Update()
-    Debug.Print("Current FPS:" ... GameTime.fps)
+    Debug.Print("Current FPS:" .., GameTime.fps)
 end
 ```
 
