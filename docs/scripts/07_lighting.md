@@ -15,7 +15,7 @@ All scripts on this page are **sector scripts**.
 
 ## Flicker
 
-**Attach to:** a sector with a broken light.
+**Attach to:** a sector 
 
 Holds a random brightness for a random short time, then picks another.
 
