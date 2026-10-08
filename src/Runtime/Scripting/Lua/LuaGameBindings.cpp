@@ -52,7 +52,51 @@ namespace {
             Method("GetEntities", {}, "Entity[]", "Every Entity in the level."),
             Method("GetSectorAt", {Param("position", "Vector2|Vector3")}, "Sector?",
                    "The innermost sector containing `position` (x, z; height ignored), or nil if it is outside the map."),
+
+            Method("SetSkyMode", {Param("mode", "SkyMode")}, {}, "How the sky image wraps around the camera, e.g. SkyMode.Cylinder."),
+            Method("GetSkyMode", {}, "SkyMode"),
+            Method("SetSkyTexture", {Param("path", "string")}, {},
+                   "The sky image for Equirectangular and Cylinder, relative to Assets. \"\" clears it."),
+            Method("GetSkyTexture", {}, "string"),
+            Method("SetSkyCubemapFace", {Param("face", "SkyFace"), Param("path", "string")}, {},
+                   "One Cubemap face image, relative to Assets, e.g. SkyFace.Up. \"\" clears it."),
+            Method("GetSkyCubemapFace", {Param("face", "SkyFace")}, "string"),
+            Method("SetSkyRotation", {Param("degrees", "number")}, {}, "Turns the sky, in the same direction as camera yaw."),
+            Method("GetSkyRotation", {}, "number"),
+            Method("SetSkyRotationSpeed", {Param("degreesPerSecond", "number")}, {}, "Keeps turning the sky while the game runs."),
+            Method("GetSkyRotationSpeed", {}, "number"),
+            Method("SetSkyTint", {Param("color", "Vector3")}, {}, "Multiplies the sky image. 0..255 per channel."),
+            Method("GetSkyTint", {}, "Vector3"),
+            Method("SetSkyHorizonOffset", {Param("degrees", "number")}, {}, "Moves the horizon up (positive) or down."),
+            Method("GetSkyHorizonOffset", {}, "number"),
+            Method("SetSkyFallbackColor", {Param("color", "Vector3")}, {},
+                   "Shown when the sky has no usable image. 0..255 per channel."),
+            Method("GetSkyFallbackColor", {}, "Vector3"),
         }));
+
+        std::vector<EnumValueDoc> modes;
+        for (const SkyModeInfo& mode : SKY_MODES) modes.push_back({mode.name, static_cast<int>(mode.mode), {}});
+        RegisterType(Enum("SkyMode", "Sky projection modes for Game.SetSkyMode.", std::move(modes)));
+
+        std::vector<EnumValueDoc> faces;
+        for (const SkyFaceInfo& face : SKY_FACES) faces.push_back({face.name, static_cast<int>(face.face), {}});
+        RegisterType(Enum("SkyFace", "Cubemap faces for Game.SetSkyCubemapFace. Front is +Z, Right is -X, Up is +Y.",
+                          std::move(faces)));
+    }
+
+    SkyMode ToSkyMode(const int value) {
+        const std::optional<SkyMode> mode = SkyModeFromInt(value);
+        if (!mode) throw sol::error("Game.SetSkyMode expects a SkyMode value, e.g. SkyMode.Cylinder");
+        return *mode;
+    }
+
+    SkyFace ToSkyFace(const int value, const char *function) {
+        if (!IsValidSkyFace(value)) throw sol::error(std::string(function) + " expects a SkyFace value, e.g. SkyFace.Up");
+        return static_cast<SkyFace>(value);
+    }
+
+    SkySettings &CurrentSky() {
+        return LevelManager::CurrentLevel().sky;
     }
 }
 
@@ -188,6 +232,41 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
             return sectorAt(state, {position.x, position.z});
         }
     ));
+
+    // ---- Sky (Level::sky) ----
+    sol::table skyMode = lua.create_named_table("SkyMode");
+    for (const SkyModeInfo& mode : SKY_MODES) skyMode[mode.name] = static_cast<int>(mode.mode);
+
+    sol::table skyFace = lua.create_named_table("SkyFace");
+    for (const SkyFaceInfo& face : SKY_FACES) skyFace[face.name] = static_cast<int>(face.face);
+
+    game.set_function("SetSkyMode", [](const int mode) { CurrentSky().mode = ToSkyMode(mode); });
+    game.set_function("GetSkyMode", [] { return static_cast<int>(CurrentSky().mode); });
+
+    game.set_function("SetSkyTexture", [](const std::string& path) { CurrentSky().texture = path; });
+    game.set_function("GetSkyTexture", [] { return CurrentSky().texture; });
+
+    game.set_function("SetSkyCubemapFace", [](const int face, const std::string& path) {
+        CurrentSky().Face(ToSkyFace(face, "Game.SetSkyCubemapFace")) = path;
+    });
+    game.set_function("GetSkyCubemapFace", [](const int face) {
+        return CurrentSky().Face(ToSkyFace(face, "Game.GetSkyCubemapFace"));
+    });
+
+    game.set_function("SetSkyRotation", [](const float degrees) { CurrentSky().rotation = degrees; });
+    game.set_function("GetSkyRotation", [] { return CurrentSky().rotation; });
+
+    game.set_function("SetSkyRotationSpeed", [](const float degreesPerSecond) { CurrentSky().rotationSpeed = degreesPerSecond; });
+    game.set_function("GetSkyRotationSpeed", [] { return CurrentSky().rotationSpeed; });
+
+    game.set_function("SetSkyTint", [](const Vector3& color) { CurrentSky().tint = color; });
+    game.set_function("GetSkyTint", [] { return CurrentSky().tint; });
+
+    game.set_function("SetSkyHorizonOffset", [](const float degrees) { CurrentSky().horizonOffset = degrees; });
+    game.set_function("GetSkyHorizonOffset", [] { return CurrentSky().horizonOffset; });
+
+    game.set_function("SetSkyFallbackColor", [](const Vector3& color) { CurrentSky().fallbackColor = color; });
+    game.set_function("GetSkyFallbackColor", [] { return CurrentSky().fallbackColor; });
 
     game.set_function("Raycast",
                       [](sol::this_state state,

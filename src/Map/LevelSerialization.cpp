@@ -354,17 +354,61 @@ namespace {
         if (outExtraData == nullptr) return;
 
         *outExtraData = LevelSerialization::LevelExtraData{};
-
-        if (!levelData.contains("levelVars") || !levelData["levelVars"].is_object()) return;
-
-        outExtraData->backgroundTextureFileName = levelData["levelVars"].value("backgroundTextureFileName", std::string());
     }
 
     void SaveExtraData(json &levelData, const LevelSerialization::LevelExtraData *extraData) {
         if (extraData == nullptr) return;
 
-        levelData["levelVars"] = {
-            {"backgroundTextureFileName", extraData->backgroundTextureFileName}
+        levelData["levelVars"] = json::object();
+    }
+
+    // Same [x, y, z] array form sector lights use.
+    Vector3 LoadSkyColor(const json &skyJson, const char *field, const Vector3 &defaultValue) {
+        if (!skyJson.contains(field)) return defaultValue;
+
+        const json &vectorJson = skyJson.at(field);
+        if (!vectorJson.is_array() || vectorJson.size() != 3) return defaultValue;
+
+        return {vectorJson[0].get<float>(), vectorJson[1].get<float>(), vectorJson[2].get<float>()};
+    }
+
+    void LoadSky(const json &skyJson, SkySettings &sky) {
+        sky = SkySettings{};
+
+        if (const std::optional<SkyMode> mode = FindSkyModeByName(skyJson.value("mode", std::string())))
+            sky.mode = *mode;
+
+        sky.texture = skyJson.value("texture", std::string());
+
+        if (skyJson.contains("cubemapFaces") && skyJson["cubemapFaces"].is_object()) {
+            const json &facesJson = skyJson["cubemapFaces"];
+            for (const SkyFaceInfo &face : SKY_FACES)
+                sky.Face(face.face) = facesJson.value(face.name, std::string());
+        }
+
+        sky.rotation = skyJson.value("rotation", 0.0f);
+        sky.rotationSpeed = skyJson.value("rotationSpeed", 0.0f);
+        sky.horizonOffset = skyJson.value("horizonOffset", 0.0f);
+
+        sky.tint = LoadSkyColor(skyJson, "tint", sky.tint);
+        sky.fallbackColor = LoadSkyColor(skyJson, "fallbackColor", sky.fallbackColor);
+    }
+
+    json SaveSky(const SkySettings &sky) {
+        json facesJson = json::object();
+        for (const SkyFaceInfo &face : SKY_FACES) facesJson[face.name] = sky.Face(face.face);
+
+        const SkyModeInfo *mode = FindSkyMode(sky.mode);
+
+        return {
+            {"mode", mode != nullptr ? mode->name : SKY_MODES[0].name},
+            {"texture", sky.texture},
+            {"cubemapFaces", facesJson},
+            {"rotation", sky.rotation},
+            {"rotationSpeed", sky.rotationSpeed},
+            {"horizonOffset", sky.horizonOffset},
+            {"tint", {sky.tint.x, sky.tint.y, sky.tint.z}},
+            {"fallbackColor", {sky.fallbackColor.x, sky.fallbackColor.y, sky.fallbackColor.z}}
         };
     }
 
@@ -409,6 +453,9 @@ namespace {
 
             rendererSettings.textureSetting = rendererSettingsJson.value("textureSetting", PIXEL_ART_SHIMMERY);
         }
+
+        if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
+        else level.sky = SkySettings{};
     }
 
     void SaveLevelStats(json &levelData, const Level &level) {
@@ -434,7 +481,8 @@ namespace {
                 "rendererSettings", {
                     {"textureSetting", rendererSettings.textureSetting}
                 }
-            }
+            },
+            {"sky", SaveSky(level.sky)}
         };
     }
 

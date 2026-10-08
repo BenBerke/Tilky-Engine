@@ -1,7 +1,7 @@
 # Game
 
 `Game` is the table for the **level as a whole**: creating and finding entities, finding the
-sector at a point, casting rays, and moving to another level.
+sector at a point, casting rays, changing the sky, and moving to another level.
 
 ```lua
 local player
@@ -22,6 +22,14 @@ end
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider)`](#raycast) | table or `nil` | What a line hits first. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
+| [`SetSkyMode(mode)`, `GetSkyMode()`](#sky) | `SkyMode` | How the sky image wraps around the camera. |
+| [`SetSkyTexture(path)`, `GetSkyTexture()`](#sky) | string | The image for Equirectangular and Cylinder skies. |
+| [`SetSkyCubemapFace(face, path)`, `GetSkyCubemapFace(face)`](#sky) | string | One image of a Cubemap sky. |
+| [`SetSkyRotation(degrees)`, `GetSkyRotation()`](#sky) | number | Turns the sky. |
+| [`SetSkyRotationSpeed(degreesPerSecond)`, `GetSkyRotationSpeed()`](#sky) | number | Keeps the sky turning. |
+| [`SetSkyTint(color)`, `GetSkyTint()`](#sky) | `Vector3` | Colors the sky image. |
+| [`SetSkyHorizonOffset(degrees)`, `GetSkyHorizonOffset()`](#sky) | number | Moves the horizon up or down. |
+| [`SetSkyFallbackColor(color)`, `GetSkyFallbackColor()`](#sky) | `Vector3` | Shown when there is no usable image. |
 
 | Property | Type | | |
 |---|---|---|---|
@@ -218,7 +226,7 @@ the old level: code after the call still runs, and `Game.levelName` is still the
 frame is over:
 
 1. Every script in the old level gets `OnDestroy`.
-2. The new level replaces the old one. Its entities, sectors, sounds and background are all its
+2. The new level replaces the old one. Its entities, sectors, sounds and sky are all its
    own, exactly as saved.
 3. The new level starts just like the first one does: its camera and Player Controller are picked,
    and every script gets `OnEnable` and `Start`.
@@ -266,3 +274,69 @@ Game.levelName   -- "Level2"
 
 The current level's name: its file name in the `Levels` folder, without `.bson`. It changes when
 the new level starts, not when `LoadLevel` is called. Assigning to it raises an error.
+
+---
+
+## Sky
+
+```lua
+function Start()
+    Game.SetSkyMode(SkyMode.Equirectangular)
+    Game.SetSkyTexture("Skies/sunset.png")
+    Game.SetSkyRotationSpeed(2)
+end
+```
+
+Every level has one sky, drawn behind everything: wherever no wall, floor, ceiling or sprite
+covers the screen, you see the sky. To open a ceiling to it, make the ceiling see-through (alpha 0
+in its color). The sky is set in the editor under **World Settings > Rendering > Sky** and saved
+with the level. Changes made from a script last until the level is loaded again, and are undone
+when you stop playing in the editor.
+
+| Mode | Images | |
+|---|---|---|
+| `SkyMode.Cubemap` | six, set with `SetSkyCubemapFace` | A cube around the camera. |
+| `SkyMode.Equirectangular` | one 2:1 panorama, set with `SetSkyTexture` | A sphere around the camera. The middle of the image is Front. |
+| `SkyMode.Cylinder` | one strip, set with `SetSkyTexture` | DOOM's sky. The image repeats every 90 degrees (a 256 pixel wide image), and its rows are tied to the screen: row 0 at the top, row 100 in the middle, 200 rows top to bottom. Looking up and down doesn't move it, just like in DOOM. |
+
+**Directions.** Front is +Z (where a camera with yaw 0 looks), Right is -X, Left is +X, Up is +Y.
+`SkyFace` has `Right`, `Left`, `Up`, `Down`, `Front` and `Back`. Every face is drawn as if you were
+standing inside the cube looking at it, upright. Up has Front along its bottom edge, Down has
+Front along its top edge.
+
+```lua
+-- A cubemap from Assets/Skies/Space.
+local faces = {
+    [SkyFace.Right] = "right", [SkyFace.Left] = "left", [SkyFace.Up] = "up",
+    [SkyFace.Down] = "down", [SkyFace.Front] = "front", [SkyFace.Back] = "back",
+}
+
+function Start()
+    Game.SetSkyMode(SkyMode.Cubemap)
+    for face, name in pairs(faces) do
+        Game.SetSkyCubemapFace(face, "Skies/Space/" .. name .. ".png")
+    end
+end
+```
+
+| Setting | Unit | |
+|---|---|---|
+| Rotation | degrees | Turns the sky the same way camera yaw turns. |
+| Rotation speed | degrees per second | Added to the rotation every frame while the game runs. The editor view never spins. |
+| Horizon offset | degrees | Positive raises the horizon. On Cubemap and Equirectangular skies it moves every point of the sky up by that angle; on a Cylinder sky it is the angle at the middle of the screen. |
+| Tint | `Vector3`, 0..255 | Multiplies the image. White (255, 255, 255) leaves it unchanged. |
+| Fallback color | `Vector3`, 0..255 | Fills the screen when the sky has no usable image: no texture, a Cubemap with a face missing, or an image that fails to load. It also shows through transparent pixels. |
+
+```lua
+-- Dusk: slowly turn the sky red.
+local t = 0
+
+function Update()
+    t = math.min(t + GameTime.deltaTime / 10, 1)
+    Game.SetSkyTint(Vector3(255, 255 - 135 * t, 255 - 135 * t))
+end
+```
+
+`SetSkyMode` raises an error for a value that isn't in `SkyMode`, and the cube face functions do
+the same for a value that isn't in `SkyFace`. Paths are relative to `Assets`; an empty string
+clears the image.

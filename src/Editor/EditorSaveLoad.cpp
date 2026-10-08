@@ -347,7 +347,6 @@ namespace MapEditorInternal {
         level.name = cleanName;
 
         LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
 
         std::string errorMessage;
         const fs::path path = LevelSerialization::ResolveLevelSavePath(cleanName, &errorMessage);
@@ -387,7 +386,6 @@ namespace Editor {
             return false;
         }
 
-        backgroundTextureFileName = extraData.backgroundTextureFileName;
         currentMap = cleanName;
 
         // Dots are editor-session data scoped to whatever level is on
@@ -459,7 +457,6 @@ namespace Editor {
         level.name = cleanName;
 
         LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName.clear();
 
         std::string errorMessage;
         const fs::path path = LevelSerialization::ResolveLevelSavePath(cleanName, &errorMessage);
@@ -469,7 +466,6 @@ namespace Editor {
             return false;
         }
 
-        backgroundTextureFileName = extraData.backgroundTextureFileName;
         currentMap = cleanName;
 
         // Same editor-session reset as LoadLevel(): a brand-new level starts with

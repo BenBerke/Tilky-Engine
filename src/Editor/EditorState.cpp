@@ -5,7 +5,6 @@ namespace Editor {
     std::string currentMap;
 
     Vector3 playerStartPos = {0.0f, 0.0f, 0.0f};
-    std::string backgroundTextureFileName = "";
 }
 
 namespace MapEditorInternal {

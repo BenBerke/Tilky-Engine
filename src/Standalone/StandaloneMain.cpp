@@ -2,7 +2,6 @@
 // StandaloneMain.cpp
 //
 
-#include "Headers/Editor/Editor.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
@@ -35,9 +34,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to load startup level for the project\n";
         return 1;
     }
-
-    // The renderer draws the background from this editor-side global.
-    Editor::backgroundTextureFileName = extraData.backgroundTextureFileName;
 
     if (!RuntimeSession::Start(ProjectManager::GetProjectName())) {
         std::cerr << "Failed to start standalone runtime session.\n";

@@ -13,8 +13,9 @@ namespace LevelSerialization {
     std::string ScriptPublicFieldsToJsonText(const std::vector<ScriptPublicField>& fields);
     bool ScriptPublicFieldsFromJsonText(const std::string& text, std::vector<ScriptPublicField>& outFields, std::string* errorMessage = nullptr);
 
+    // Data saved in a level file that does not belong on the Level itself.
+    // Empty for now; kept as the place for such data.
     struct LevelExtraData {
-        std::string backgroundTextureFileName;
     };
 
     std::string CleanLevelName(const std::string& levelName);

@@ -379,10 +379,8 @@ private:
     GLuint textureRegionSSBO = 0;
 
     std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
-    int backgroundTextureIndex = -1;
     std::unordered_map<std::string, int> textureRegionIndexByName;
     std::unordered_map<std::string, int> textureIndexByName;
-    std::string backgroundTextureFileName;
 
     bool InitializeOpenGL();
     bool InitializeFont();
@@ -411,7 +409,9 @@ private:
     void BuildFlatTrianglesFromSectors();
     void RefreshFlatTrianglesIfLayoutChanged();
 
-    void DrawBackground(float pitch, float yaw, float horizontalFov, float parallaxStrength, float backgroundScroll);
+    // OpenGLBackground.cpp: the level's sky, drawn before the world.
+    void DrawBackground(const ComponentCamera& camera, const SkySettings& sky);
+    GLuint GetSkyTextureID(const std::string& fileName, GLint wrapS, GLint wrapT, Vector2* outSize);
     int GetOrCreateTextureIndex(const std::string& fileName);
     int GetTextureRegionIndex(const std::string& fileName) const;
 

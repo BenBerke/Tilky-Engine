@@ -13,6 +13,7 @@
 
 #include <tracy/Tracy.hpp>
 
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -211,6 +212,9 @@ namespace LevelSystem {
             ZoneScopedN("Sector Movement");
             level.UpdateSectorMovement(GameTime::deltaTime);
         }
+
+        // Only here, so the sky spins while the game runs and never in the editor.
+        level.sky.spin = std::fmod(level.sky.spin + level.sky.rotationSpeed * GameTime::deltaTime, 360.0f);
 
         // Looked up every frame, so ticking another controller switches to it.
         ComponentPlayerController *activeController = GetActivePlayerController(level);

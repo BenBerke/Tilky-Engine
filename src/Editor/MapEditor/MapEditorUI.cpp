@@ -575,9 +575,67 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
-        DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture,
-                       32.0f);
-        HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
+        // ---- Sky ----
+        {
+            SkySettings &sky = level.sky;
+
+            ImGui::TextUnformatted(Get("settings.rendering.sky.title").c_str());
+
+            const SkyModeInfo *selectedMode = FindSkyMode(sky.mode);
+            if (selectedMode == nullptr) selectedMode = &SKY_MODES[0];
+
+            if (ImGui::BeginCombo(Get("settings.rendering.sky.mode").c_str(), Get(selectedMode->labelKey).c_str())) {
+                for (const SkyModeInfo &mode : SKY_MODES) {
+                    const bool selected = mode.mode == sky.mode;
+
+                    if (ImGui::Selectable(Get(mode.labelKey).c_str(), selected)) sky.mode = mode.mode;
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(mode.tooltipKey).c_str());
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get(selectedMode->tooltipKey).c_str());
+
+            if (sky.mode == SkyMode::Cubemap) {
+                for (const SkyFaceInfo &face : SKY_FACES) {
+                    ImGui::PushID(face.name);
+                    DrawAssetField(Get(face.labelKey).c_str(), sky.Face(face.face), AssetKind::Texture, 32.0f);
+                    ImGui::PopID();
+                }
+                HoverTooltip(Get("settings.rendering.tooltip.sky.faces").c_str());
+            }
+            else {
+                DrawAssetField(Get("settings.rendering.sky.texture").c_str(), sky.texture, AssetKind::Texture, 32.0f);
+                HoverTooltip(Get("settings.rendering.tooltip.sky.texture").c_str());
+            }
+
+            ImGui::InputFloat(Get("settings.rendering.sky.rotation").c_str(), &sky.rotation, 1.0f, 15.0f, "%.1f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation").c_str());
+
+            ImGui::InputFloat(Get("settings.rendering.sky.rotation_speed").c_str(), &sky.rotationSpeed, 0.5f, 5.0f, "%.2f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation_speed").c_str());
+
+            ImGui::InputFloat(Get("settings.rendering.sky.horizon_offset").c_str(), &sky.horizonOffset, 1.0f, 5.0f, "%.1f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.horizon_offset").c_str());
+
+            // Stored 0..255, edited as 0..1 like sector light.
+            const auto colorField = [](const char *label, Vector3 &color) {
+                float normalized[3] = {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f};
+
+                if (ImGui::ColorEdit3(label, normalized,
+                                      ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_DisplayRGB |
+                                      ImGuiColorEditFlags_PickerHueWheel)) {
+                    color = {normalized[0] * 255.0f, normalized[1] * 255.0f, normalized[2] * 255.0f};
+                }
+            };
+
+            colorField(Get("settings.rendering.sky.tint").c_str(), sky.tint);
+            HoverTooltip(Get("settings.rendering.tooltip.sky.tint").c_str());
+
+            colorField(Get("settings.rendering.sky.fallback_color").c_str(), sky.fallbackColor);
+            HoverTooltip(Get("settings.rendering.tooltip.sky.fallback_color").c_str());
+        }
 
         ImGui::Spacing();
         {

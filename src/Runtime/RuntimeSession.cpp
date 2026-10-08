@@ -21,7 +21,6 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Engine/InputManager.hpp"
 
-#include "Headers/Editor/Editor.hpp"
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -51,7 +50,6 @@ namespace {
     std::unique_ptr<Level> editorLevelSnapshot;
     // The background is editor state rather than part of Level, so it is
     // snapshotted next to it: Game.LoadLevel changes it during Play.
-    std::string editorBackgroundSnapshot;
 
     bool relativeMouseMode = true;
 
@@ -137,7 +135,6 @@ namespace {
         LevelSystem::TakeRequestedLevel();
 
         level = std::move(loadedLevel);
-        Editor::backgroundTextureFileName = extraData.backgroundTextureFileName;
 
         PrepareRuntimeLevel(level);
         renderer->ReloadMap();
@@ -286,7 +283,6 @@ namespace {
         relativeMouseMode = true;
 
         editorLevelSnapshot = std::make_unique<Level>(level);
-        editorBackgroundSnapshot = Editor::backgroundTextureFileName;
 
         spdlog::info("Runtime level snapshot created");
 
@@ -415,7 +411,6 @@ namespace {
         }
 
         LevelManager::CurrentLevel() = *editorLevelSnapshot;
-        Editor::backgroundTextureFileName = editorBackgroundSnapshot;
 
         editorLevelSnapshot.reset();
 

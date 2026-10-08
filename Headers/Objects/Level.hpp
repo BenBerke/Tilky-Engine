@@ -12,6 +12,7 @@
 #include "Components.hpp"
 #include "Entity.hpp"
 #include "Loadables.hpp"
+#include "Sky.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;
@@ -61,6 +62,7 @@ struct Level {
     ListenerSettings listenerSettings;
     WorldSettings worldSettings;
     RendererSettings rendererSettings;
+    SkySettings sky;
 
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;
