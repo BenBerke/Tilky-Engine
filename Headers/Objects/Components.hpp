@@ -174,7 +174,7 @@ struct ComponentCamera {
     float farPlane = 10000.0f;
 
     bool smoothStep = true; // When true, smoothly move up/down steps instead of teleporting
-    float smoothingStrength = 1.0f;
+    float smoothingStrength = 4.8f;
 
     // Read-only, do not change in game via scripts
     float smoothStepStartY = 0.0f;

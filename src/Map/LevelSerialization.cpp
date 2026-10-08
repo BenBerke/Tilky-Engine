@@ -1451,7 +1451,7 @@ namespace {
                 c.nearPlane = cameraJson.value("nearPlane", 0.1f);
                 c.farPlane = cameraJson.value("farPlane", 10000.0f);
                 c.smoothStep = cameraJson.value("smoothStep", false);
-                c.smoothingStrength = cameraJson.value("smoothingStrength", 1.0f);
+                c.smoothingStrength = cameraJson.value("smoothingStrength", 4.8f);
             }
         }
 

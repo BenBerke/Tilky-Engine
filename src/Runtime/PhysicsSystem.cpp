@@ -475,14 +475,21 @@ namespace {
 
         const bool wallStartsAtFeet = spanBottom <= feetHeight + GROUND_CONTACT_SLOP;
 
-        const bool canStep =
+        const bool isClimbableStep =
                 stepSize > 0.0f &&
                 wallStartsAtFeet &&
                 stepHeight > Constants::Epsilon &&
-                stepHeight <= stepSize + Constants::Epsilon &&
-                velocityIntoWall < -Constants::Epsilon;
+                stepHeight <= stepSize + Constants::Epsilon;
 
-        if (canStep) {
+        // A step the body could climb never pushes it sideways: walking into
+        // it steps up, anything else leaves it alone. Right after stepping
+        // down (LevelSystem drops the body once its centre crosses the
+        // edge), the sphere still overhangs the step it left; pushing it out
+        // of that riser shoved the body - and the camera - forward by up to
+        // a full radius in one frame.
+        if (isClimbableStep && velocityIntoWall >= -Constants::Epsilon) return false;
+
+        if (isClimbableStep) {
             const float verticalCorrection = stepHeight + PENETRATION_SLOP;
 
             transform.AddPosition({0.0f, verticalCorrection, 0.0f});
