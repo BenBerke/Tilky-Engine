@@ -229,6 +229,10 @@ namespace MapEditorInternal {
 
     extern ImFont* scriptEditorFont;
 
+    // Font Awesome 6 Solid, for the toolbar's icon buttons. nullptr if the
+    // font file is missing; the toolbar falls back to short text then.
+    extern ImFont* editorIconFont;
+
     // --
 
     extern Vector2 cameraPos;

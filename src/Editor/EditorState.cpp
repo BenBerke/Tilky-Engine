@@ -14,6 +14,7 @@ namespace MapEditorInternal {
     TTF_TextEngine* textEngine = nullptr;
 
     ImFont* scriptEditorFont = nullptr;
+    ImFont* editorIconFont = nullptr;
 
     float editorZoom = 1.0f;
     float GRID_SIZE = 12.0f; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)

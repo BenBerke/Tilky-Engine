@@ -20,6 +20,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Editor/AssetBrowser.hpp"
+#include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
@@ -1406,41 +1407,6 @@ namespace {
 
             DrawTagsSection();
 
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ---- Build --------------------------------------------------------
-            SectionHeader(Get("editor.project.build").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            PushSuccessStyle();
-
-            if (FullWidthButton(Get("editor.export").c_str())) RunExporter();
-
-            PopSuccessStyle();
-
-            HoverTooltip(Get("editor.tooltip.export").c_str());
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ---- Application --------------------------------------------------
-            SectionHeader(Get("editor.project.application").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            PushDangerStyle();
-
-            if (FullWidthButton(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
-
-            PopDangerStyle();
-
-            HoverTooltip(Get("editor.tooltip.shutdown").c_str());
-
-            ImGui::Spacing();
 
             //todo TILKYTODO make an editor settings menu
 
@@ -1453,7 +1419,11 @@ namespace {
 
         ImGui::End();
 
-        // ---- Shutdown confirmation modal --------------------------------------
+        DrawCreateLevelModal();
+    }
+
+    // Asks before closing the editor. Opened from Project > Shutdown.
+    void DrawShutdownConfirmModal() {
         if (shutdownConfirmOpen) {
             ImGui::OpenPopup("##ShutdownConfirm");
             shutdownConfirmOpen = false;
@@ -1489,58 +1459,115 @@ namespace {
 
             ImGui::EndPopup();
         }
-
-        DrawCreateLevelModal();
     }
 
     // =========================================================================
-    //  User Settings floating button (top-left anchor)
+    //  Level actions - shared by the top menu bar and the toolbar
     // =========================================================================
 
-    void DrawUserSettingsButton() {
-        const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        constexpr float margin = 12.0f;
+    void SaveLevelFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            ShowNotification(Get("levels.notification.saved").c_str());
+        } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
+    }
 
-        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + margin, viewport->WorkPos.y + margin), ImGuiCond_Always,
-                                ImVec2(0.0f, 0.0f));
+    void SaveAndPlayFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
+            quit = true;
+            play = true;
+        }
+    }
 
-        ImGui::SetNextWindowBgAlpha(0.0f);
+    void OpenRuntimeEditorFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
+            switchToRuntime = true;
+        }
+    }
 
-        constexpr ImGuiWindowFlags overlayFlags =
-                ImGuiWindowFlags_NoDecoration |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_AlwaysAutoResize;
+    void SaveAndQuitFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing();
+            quit = true;
+        }
+    }
 
-        ImGui::Begin("##UserSettingsButtonOverlay", nullptr, overlayFlags);
+    // =========================================================================
+    //  Top menu bar: Project | Project Settings | User Settings
+    // =========================================================================
 
-        const bool wasOpen = userSettingsOpen;
-        if (wasOpen) PushAccentStyle();
+    void DrawMainMenuBar() {
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
+                if (ImGui::MenuItem(Get("editor.save").c_str())) SaveLevelFromEditor();
+                if (ImGui::MenuItem(Get("editor.save_and_quit").c_str())) SaveAndQuitFromEditor();
+                if (ImGui::MenuItem(Get("editor.export").c_str())) RunExporter();
 
-        const std::string buttonLabel = wasOpen ? Get("editor.user_settings_active") : Get("editor.user_settings");
-        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) userSettingsOpen = !userSettingsOpen;
+                ImGui::Separator();
 
-        if (wasOpen) PopAccentStyle();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.30f, 1.0f));
+                if (ImGui::MenuItem(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
+                ImGui::PopStyleColor();
 
-        ImGui::End();
+                ImGui::EndMenu();
+            }
 
+            // Plain items, not menus: a click opens or closes the window.
+            if (ImGui::MenuItem(Get("editor.project_settings").c_str(), nullptr, projectSettingsOpen))
+                projectSettingsOpen = !projectSettingsOpen;
+
+            if (ImGui::MenuItem(Get("editor.user_settings").c_str(), nullptr, userSettingsOpen))
+                userSettingsOpen = !userSettingsOpen;
+
+            ImGui::EndMainMenuBar();
+        }
+
+        if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
+
+        DrawShutdownConfirmModal();
     }
 
     // =========================================================================
-    //  Project Settings floating button (bottom-right anchor)
+    //  Toolbar: square icon buttons, centred just below the menu bar
     // =========================================================================
 
-    void DrawProjectSettingsButton() {
-        const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        constexpr float margin = 12.0f;
+    // One square button. Shows `icon` (a Font Awesome glyph) when the icon
+    // font loaded, otherwise `fallback`; the full name and what it does go
+    // in the tooltip.
+    bool ToolbarButton(const char *id, const char *icon, const char *fallback, const std::string &name,
+                       const std::string &tooltip) {
+        constexpr float BUTTON_SIZE = 32.0f;
 
+        ImGui::PushID(id);
+
+        if (editorIconFont != nullptr) ImGui::PushFont(editorIconFont, 0.0f);
+        const bool pressed = ImGui::Button(editorIconFont != nullptr ? icon : fallback, ImVec2(BUTTON_SIZE, BUTTON_SIZE));
+        if (editorIconFont != nullptr) ImGui::PopFont();
+
+        HoverTooltip((name + "\n" + tooltip).c_str());
+
+        ImGui::PopID();
+        return pressed;
+    }
+
+    void DrawToolbar() {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        constexpr float margin = 6.0f;
+
+        // WorkPos is already below the main menu bar.
         ImGui::SetNextWindowPos(
-            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - margin,
-                   viewport->WorkPos.y + viewport->WorkSize.y - margin),
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
             ImGuiCond_Always,
-            ImVec2(1.0f, 1.0f)
+            ImVec2(0.5f, 0.0f)
         );
 
         ImGui::SetNextWindowBgAlpha(0.0f);
@@ -1550,23 +1577,34 @@ namespace {
                 ImGuiWindowFlags_NoMove |
                 ImGuiWindowFlags_NoSavedSettings |
                 ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoDocking |
                 ImGuiWindowFlags_AlwaysAutoResize;
 
-        ImGui::Begin("##ProjectSettingsButtonOverlay", nullptr, overlayFlags);
+        ImGui::Begin("##EditorToolbarOverlay", nullptr, overlayFlags);
 
-        const bool wasOpen = projectSettingsOpen;
-        if (wasOpen) PushAccentStyle();
+        if (ToolbarButton("save", ICON_FA_FLOPPY_DISK, "S", Get("editor.save"), Get("editor.tooltip.save")))
+            SaveLevelFromEditor();
 
-        const std::string buttonLabel =
-                wasOpen ? Get("editor.project_settings_active") : Get("editor.project_settings");
+        ImGui::SameLine();
 
-        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) projectSettingsOpen = !projectSettingsOpen;
+        PushSuccessStyle();
+        const bool playPressed = ToolbarButton("save_and_play", ICON_FA_PLAY, ">", Get("editor.save_and_play"),
+                                               Get("editor.tooltip.save_and_play"));
+        PopSuccessStyle();
+        if (playPressed) SaveAndPlayFromEditor();
 
-        if (wasOpen) PopAccentStyle();
+        ImGui::SameLine();
+
+        if (ToolbarButton("runtime_editor", ICON_FA_CUBE, "RT", Get("editor.runtime_editor"),
+                          Get("editor.tooltip.runtime_editor")))
+            OpenRuntimeEditorFromEditor();
+
+        ImGui::SameLine();
+
+        if (ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.switch_to_ui"), Get("editor.tooltip.switch_to_ui")))
+            currentState = STATE_UI;
 
         ImGui::End();
-
-        if (projectSettingsOpen) DrawProjectSettingsWindow();
     }
 
     // =========================================================================
@@ -3257,6 +3295,7 @@ namespace MapEditorInternal {
     void DrawEditorUI() {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
+        DrawMainMenuBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
 
@@ -3472,75 +3511,12 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // ---- Action buttons -----------------------------------------------
-        SectionHeader(Get("editor.actions").c_str());
-        ImGui::Spacing();
-
-        PushAccentStyle();
-        if (FullWidthButton(Get("editor.save").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                ShowNotification(Get("levels.notification.saved").c_str());
-            } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
-        }
-        PopAccentStyle();
-        HoverTooltip(Get("editor.tooltip.save").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.runtime_editor").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
-                switchToRuntime = true;
-            }
-        }
-        HoverTooltip(Get("editor.tooltip.runtime_editor").c_str());
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        PushSuccessStyle();
-        if (FullWidthButton(Get("editor.save_and_play").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
-                quit = true;
-                play = true;
-            }
-        }
-        PopSuccessStyle();
-        HoverTooltip(Get("editor.tooltip.save_and_play").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.save_and_quit").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing();
-                quit = true;
-            }
-        }
-        HoverTooltip(Get("editor.tooltip.save_and_quit").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.switch_to_ui").c_str()))
-            currentState = STATE_UI;
-
-        HoverTooltip(Get("editor.tooltip.switch_to_ui").c_str());
-
         ImGui::End();
 
         // ---- Other panels -------------------------------------------------
         DrawWorldSettings();
         DrawHierarchyPanel(level);
-        DrawProjectSettingsButton();
-        DrawUserSettingsButton();
+        DrawToolbar();
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         DrawAssetBrowserPanel();

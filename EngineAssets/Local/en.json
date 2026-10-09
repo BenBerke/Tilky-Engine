@@ -10,6 +10,7 @@
   "&Context_3": "Floor as in the story of a building. First floor, second floor etc.",
   "editor.floor": "Floor",
   "editor.save": "Save",
+  "editor.menu.project": "Project",
   "editor.save_and_play": "Save & Play",
   "editor.save_and_quit": "Save & Quit",
   "editor.runtime_editor": "Runtime Editor",
