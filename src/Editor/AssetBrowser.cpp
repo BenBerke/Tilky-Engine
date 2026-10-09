@@ -1461,6 +1461,50 @@ void AssetBrowser::DuplicateCurrentLine() {
 }
 
 // ============================================================================
+// Sound preview
+// ============================================================================
+
+namespace {
+    // OpenAL only runs while the game plays, so editor previews go through
+    // SDL's own audio. One preview at a time: starting another replaces it.
+    SDL_AudioStream* previewStream = nullptr;
+
+    void PlaySoundPreview(const std::filesystem::path& path) {
+        if (!SDL_WasInit(SDL_INIT_AUDIO) && !SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+            spdlog::error("Sound preview: SDL audio failed to start: {}", SDL_GetError());
+            return;
+        }
+
+        const std::u8string utf8Path = path.u8string();
+
+        SDL_AudioSpec spec;
+        Uint8* data = nullptr;
+        Uint32 length = 0;
+
+        if (!SDL_LoadWAV(reinterpret_cast<const char*>(utf8Path.c_str()), &spec, &data, &length)) {
+            spdlog::error("Sound preview: SDL_LoadWAV failed for {}: {}", path.string(), SDL_GetError());
+            return;
+        }
+
+        if (previewStream != nullptr) SDL_DestroyAudioStream(previewStream);
+
+        previewStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+
+        if (previewStream == nullptr) {
+            spdlog::error("Sound preview: no playback device: {}", SDL_GetError());
+            SDL_free(data);
+            return;
+        }
+
+        SDL_PutAudioStreamData(previewStream, data, static_cast<int>(length));
+        SDL_FlushAudioStream(previewStream);
+        SDL_free(data);
+
+        SDL_ResumeAudioStreamDevice(previewStream); // device streams start paused
+    }
+}
+
+// ============================================================================
 // AssetEntry hierarchy
 // ============================================================================
 
@@ -1497,6 +1541,7 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         browser.RequestOpenScript(GetPath());
         return;
     }
+    if (kind == AssetKind::Sound) PlaySoundPreview(GetPath());
 
     if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
 
