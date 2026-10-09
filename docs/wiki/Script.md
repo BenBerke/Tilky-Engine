@@ -115,6 +115,11 @@ field stores the exact component, so it still points at the same one when the en
 components of that type are added, removed or reordered. Component fields saved before entities
 could have several components of a type load empty: pick the component again in the inspector.
 
+Entity, Sector, Wall and component fields can also be filled by dragging an entity, sector or wall
+from the hierarchy (or an entity straight off the level) onto the field. On a component field, the
+dropped entity's **first** component of that type is picked, and an entity without one isn't
+accepted. The dropdown picks any of them.
+
 ```lua
 public number speed = 40
 public enum(Idle, Patrol, Chase) mode = Patrol
@@ -209,6 +214,7 @@ Scripts attached to a sector:
 | Field | Notes |
 |---|---|
 | **File Name** | The script, as a path inside `Assets` without `.lua`. Drag a `.lua` file onto it. |
+| **Open File** | Opens the script in the script editor. Shown once a file is set, on entity and sector scripts, in every editor. |
 | **Enabled** | The script's own on/off switch. |
 | *public fields* | One control per `public` field in the script, as described [above](#types). |
 

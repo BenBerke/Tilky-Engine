@@ -571,7 +571,10 @@ namespace RuntimeEditorUi {
             ImGui::End();
         }
 
-        // Outside the check above, so open flipbooks don't vanish while looking around.
+        // Outside the check above, so open scripts and flipbooks don't vanish
+        // while looking around. No code font: the map editor's belongs to its
+        // own ImGui context, so the script editor uses the default one here.
+        MapEditorInternal::assetBrowser.DrawTextEditorWindow(nullptr);
         MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
 
         // ── Drop textures straight onto geometry ─────────────────────────────

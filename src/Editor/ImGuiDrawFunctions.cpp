@@ -405,6 +405,36 @@ namespace {
             ImGui::EndCombo();
         }
 
+        // An entity dragged from the hierarchy or the level picks its first
+        // component of this type. Entities without one aren't accepted, so
+        // the field doesn't light up for them.
+        if (ImGui::BeginDragDropTarget()) {
+            const ImGuiPayload *active = ImGui::GetDragDropPayload();
+
+            if (active != nullptr && active->IsDataType(MapEditorInternal::ENTITY_REF_PAYLOAD)) {
+                MapEditorInternal::LevelObjectDragPayload dragged;
+                std::memcpy(&dragged, active->Data, sizeof(dragged));
+
+                Entity *candidate = level.GetEntity(dragged.id);
+                const std::vector<std::uint64_t> instances = candidate != nullptr
+                    ? ComponentInstancesByType(*candidate, componentType)
+                    : std::vector<std::uint64_t>{};
+
+                if (!instances.empty() && ImGui::AcceptDragDropPayload(MapEditorInternal::ENTITY_REF_PAYLOAD)) {
+                    ref.entityId = dragged.id;
+                    ref.instanceId = instances.front();
+                    changed = true;
+
+                    if (dragged.fromCanvas) MapEditorInternal::RevertCanvasEntityDrag();
+                }
+            }
+
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::GetDragDropPayload() == nullptr)
+            ImGuiDrawFunctions::Tooltip(Localisation::Get("editor.ref_field.tooltip.component").c_str());
+
         ImGui::PopID();
         return changed;
     }
@@ -855,6 +885,15 @@ namespace ImGuiDrawFunctions {
 
         if (ImGui::SmallButton("Refresh Fields")) {
             LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+        }
+
+        if (!script.fileName.empty()) {
+            ImGui::SameLine();
+
+            // fileName is the Assets-relative path without ".lua".
+            if (ImGui::SmallButton(Get("component.script.open_file").c_str()))
+                MapEditorInternal::assetBrowser.RequestOpenScript(ProjectManager::GetAssetsPath() / (script.fileName + ".lua"));
+            Tooltip(Get("editor.tooltip.component.script.open_file").c_str());
         }
 
         EndSection();

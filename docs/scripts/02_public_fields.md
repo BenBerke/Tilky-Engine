@@ -97,6 +97,9 @@ end
 - `Entity`, `Wall` and `Sector` fields can be filled by dragging a row from the Hierarchy onto the
   field. An entity can also be dragged straight off the level view; it snaps back to where it was
   when you drop it on the field. The dropdown still works too.
+- Component fields (`AudioSource`, `Sprite`, `Collider`, ...) work the same way: drop an entity on
+  the field and it picks that entity's **first** component of that type. An entity without one
+  isn't accepted. To pick a second or third one, use the dropdown.
 - A `Behaviour` field lets one script read and write another script's variables. See
   [Using another script's variables](#using-another-scripts-variables) below.
 - Sector scripts can't declare fields named `sector` or `entity`. Those names are reserved
