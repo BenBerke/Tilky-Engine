@@ -51,10 +51,12 @@ struct EntityRefValue {
 // A serialized reference to one engine component on one entity. componentType
 // is a ComponentType (Components.hpp) value, stored as int here to avoid a
 // circular include - Components.hpp already includes this header for
-// ScriptValue itself.
+// ScriptValue itself. instanceId picks which of the entity's components of
+// that type (ComponentInstanceID; unused for Transform, which is one per entity).
 struct ComponentRefValue {
     ID entityId = INVALID_ID;
     int componentType = -1;
+    ComponentInstanceID instanceId = INVALID_COMPONENT_INSTANCE_ID;
 
     friend bool operator==(const ComponentRefValue&, const ComponentRefValue&) = default;
 };

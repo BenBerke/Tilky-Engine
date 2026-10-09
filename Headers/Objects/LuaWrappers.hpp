@@ -34,15 +34,29 @@
 struct ScriptAudioSource {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's AudioSources this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentAudioSource* GetComponent() const {
         if (level == nullptr) return nullptr;
 
-        return level->audioSources.Get(ownerID);
+        return level->audioSources.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentAudioSource* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentAudioSource* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] std::string GetName() const {
@@ -432,6 +446,8 @@ private:
 struct ScriptSprite {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Sprites this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     static constexpr int TEXTURE_SLOT_COUNT = 8;
 
@@ -447,11 +463,23 @@ struct ScriptSprite {
     [[nodiscard]] ComponentSprite* GetComponent() const {
         if (level == nullptr) return nullptr;
 
-        return level->sprites.Get(ownerID);
+        return level->sprites.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentSprite* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentSprite* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] static bool IsValidSlot(const int slot) {
@@ -623,10 +651,12 @@ struct ScriptSprite {
 struct ScriptRigidbody {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Rigidbodys this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentRigidbody* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->rigidbodies.Get(ownerID);
+        return level->rigidbodies.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -741,14 +771,28 @@ struct ScriptRigidbody {
 struct ScriptModel {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Models this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentModel* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->models.Get(ownerID);
+        return level->models.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentModel* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentModel* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] std::string GetFileName() const {
@@ -777,14 +821,28 @@ struct ScriptModel {
 struct ScriptCollider {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Colliders this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCollider* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->colliders.Get(ownerID);
+        return level->colliders.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentCollider* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentCollider* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] ColliderType GetType() const {
@@ -795,7 +853,7 @@ struct ScriptCollider {
 
     void SetType(const ColliderType type) const {
         if (level == nullptr) return;
-        level->colliders.SetType(ownerID, type);
+        level->colliders.SetType(instanceID, type);
     }
 
     [[nodiscard]] bool GetIsActive() const {
@@ -806,7 +864,7 @@ struct ScriptCollider {
 
     void SetIsActive(const bool active) const {
         if (level == nullptr) return;
-        level->colliders.SetActive(ownerID, active);
+        level->colliders.SetActive(instanceID, active);
     }
 
     [[nodiscard]] bool GetIsTrigger() const {
@@ -853,10 +911,12 @@ struct ScriptCollider {
 struct ScriptPlayerController {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's PlayerControllers this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentPlayerController* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->playerControllers.Get(ownerID);
+        return level->playerControllers.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -873,7 +933,7 @@ struct ScriptPlayerController {
         ComponentPlayerController* pc = GetComponent();
         if (pc == nullptr) return;
 
-        if (active) level->ActivatePlayerController(ownerID);
+        if (active) level->ActivatePlayerController(*pc);
         else pc->isActive = false;
     }
 
@@ -999,10 +1059,12 @@ struct ScriptPlayerController {
 struct ScriptCamera {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Cameras this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCamera* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->cameras.Get(ownerID);
+        return level->cameras.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -1019,7 +1081,7 @@ struct ScriptCamera {
         ComponentCamera* camera = GetComponent();
         if (camera == nullptr) return;
 
-        if (active) level->ActivateCamera(ownerID);
+        if (active) level->ActivateCamera(*camera);
         else camera->isActive = false;
     }
 
@@ -1118,8 +1180,8 @@ struct ScriptCamera {
 
         Vector3 eye = transform->position;
 
-        const ComponentPlayerController* controller = level->playerControllers.Get(ownerID);
-        if (controller != nullptr && controller->isActive) eye.y += controller->eyeHeight;
+        for (const ComponentPlayerController* controller : level->playerControllers.GetAll(ownerID))
+            if (controller->isActive) eye.y += controller->eyeHeight;
 
         return eye;
     }
@@ -1293,10 +1355,12 @@ struct ScriptUITransform {
 struct ScriptUISprite {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's UISprites this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUISprite* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->ui_sprites.Get(ownerID);
+        return level->ui_sprites.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -1336,10 +1400,12 @@ struct ScriptUISprite {
 struct ScriptUIText {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's UITexts this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUIText* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->ui_texts.Get(ownerID);
+        return level->ui_texts.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -1437,6 +1503,15 @@ struct ScriptBehaviourRef {
 struct ScriptEntity {
     Level* level = nullptr;
     ID ownerID = INVALID_ENTITY_ID;
+
+    // The instance ID of this entity's first component in `storage`, or
+    // INVALID_COMPONENT_INSTANCE_ID (an invalid handle) when it has none.
+    template<typename Storage>
+    [[nodiscard]] ComponentInstanceID FirstInstance(Storage Level::* storage) const {
+        if (level == nullptr) return INVALID_COMPONENT_INSTANCE_ID;
+        const auto* component = (level->*storage).Get(ownerID);
+        return component == nullptr ? INVALID_COMPONENT_INSTANCE_ID : component->instanceID;
+    }
 
     [[nodiscard]] Entity* GetEntity() const {
         if (level == nullptr || ownerID == INVALID_ENTITY_ID) return nullptr;
@@ -1590,12 +1665,14 @@ struct ScriptEntity {
         return {level, ownerID};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptSprite GetSprite() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::sprites)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptAudioSource GetAudioSource() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::audioSources)};
     }
 
     // Looks up an attached script (Behaviour) by asset id, matching only the
@@ -1636,36 +1713,43 @@ struct ScriptEntity {
         return result;
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptPlayerController GetPlayerController() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::playerControllers)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCamera GetCamera() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::cameras)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCollider GetCollider() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::colliders)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptRigidbody GetRigidbody() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::rigidbodies)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptModel GetModel() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::models)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {
         return {level, ownerID};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUISprite GetUISprite() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::ui_sprites)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUIText GetUIText() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::ui_texts)};
     }
 };
 

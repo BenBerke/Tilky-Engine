@@ -21,6 +21,10 @@ Every frame, for every Rigidbody:
    walls, other entities, the floor and the ceiling, removes the velocity going into them, and
    updates `isGrounded`.
 
+An entity can have several Rigidbodies, but only the **first** one simulates. The others are kept
+with their settings and do nothing, and the inspector says so. To switch, drag another one to the
+top of the component list, or remove the first one from a script.
+
 ### Gravity
 
 The level's **Gravity** (the Physics section of the level settings, default `9.8`) is multiplied by the

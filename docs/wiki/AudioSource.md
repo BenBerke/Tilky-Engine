@@ -7,7 +7,8 @@ quieter with distance and come from the direction of the entity. Use one for any
 noise: a humming generator, a door, a monster, the player's footsteps.
 
 Each Audio Source plays **one sound at a time**. Starting a new one stops the current one. For
-several overlapping sounds, put Audio Sources on several entities.
+several overlapping sounds, give the entity several Audio Sources (see
+[Several on one entity](#several-on-one-entity)).
 
 ## How it works
 
@@ -24,8 +25,8 @@ several overlapping sounds, put Audio Sources on several entities.
 
 ### Where the sound is and who hears it
 
-- The sound plays at the entity's [Transform](Transform.md) position. The source follows the
-  entity every frame, however it moves (a script, physics, a lift).
+- The sound plays at the entity's [Transform](Transform.md) position, plus the source's `offset`.
+  The source follows the entity every frame, however it moves (a script, physics, a lift).
 - The source faces the way the Transform's `rotation` points (its local +Z). That only matters for
   the [sound cone](#sound-cone).
 - When a script destroys the entity, its sound stops.
@@ -95,6 +96,14 @@ Angles are clamped to `0`–`360` and Outer Gain to `0`–`1`. With both angles 
 there is no cone and the source plays equally in all directions. Like distance fading, the cone
 only works on mono sounds.
 
+### Several on one entity
+
+An entity can have any number of Audio Sources. Each one has its own sound, settings and
+`offset`, and they play independently, so a voice isn't cut off by footsteps.
+`entity.audioSource` is the first one; `entity:GetComponents(Component.AudioSource)` lists them
+all. The `offset` is relative to the Transform and turns with its rotation. See
+[Several components of one type](Entity.md#several-components-of-one-type).
+
 ### Level-wide settings
 
 The level's audio settings, not the component's, control master volume, the Doppler effect,
@@ -114,13 +123,15 @@ speed of sound and the distance model for all sources.
 | **Rolloff Factor** | `rollOffFactor` | `1` | |
 | **Inner Angle** / **Outer Angle** | `innerConeAngle` / `outerConeAngle` | `360` / `360` | See [Sound cone](#sound-cone). |
 | **Outer Gain** | `outerGain` | `0` | Only matters when the angles are below `360`. |
+| **Offset** | `offset` | `0, 0, 0` | See [Several on one entity](#several-on-one-entity). |
 
 ## Scripting
 
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Audio Source is gone. |
-| `name` | string | read-only | Internal source name, like `entity_12_audio`. |
+| `name` | string | read-only | Internal source name, like `entity_12_audio_3`. |
+| `offset` | Vector3 | read/write | Position relative to the Transform, turned with its rotation. See [Several on one entity](#several-on-one-entity). |
 | `soundFileName` | string | read/write | The sound `Play()` plays and looping repeats. Changing it doesn't interrupt what's playing. |
 | `pitch` | number | read/write | Applies immediately, even mid-sound. |
 | `gain` | number | read/write | Applies immediately. |

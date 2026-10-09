@@ -45,6 +45,13 @@ Then it is drawn from its [Transform](Transform.md):
 
 The units a model was authored in don't matter. Only the Transform scale decides how big it is.
 
+### Several on one entity
+
+An entity can have several Models, all drawn. Each sits at the Transform position plus its
+`offset` (turned with the entity's rotation), with the Transform's rotation and scale.
+`entity.model` is the first one; `entity:GetComponents(Component.Model)` lists them all. See
+[Several components of one type](Entity.md#several-components-of-one-type).
+
 ### Lighting
 
 The model's own colours and textures are shaded by the [sector](Sector.md#light)'s light: each
@@ -60,6 +67,7 @@ roughly the size of the model.
 | Field | Lua | Notes |
 |---|---|---|
 | **Model File** | `fileName` | Path relative to `Assets`, with extension. Drag a model from the Asset Browser. |
+| **Offset** | `offset` | Position relative to the Transform. See [Several on one entity](#several-on-one-entity). |
 | **Textures & Files** | | What the model depends on. |
 | **Rescan Dependencies** | | Looks for missing files again. |
 
@@ -69,6 +77,7 @@ roughly the size of the model.
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Model is gone. |
 | `fileName` | string | read/write | Model path, e.g. `"Models/crate.glb"`. Empty draws nothing. |
+| `offset` | Vector3 | read/write | Position relative to the Transform, turned with its rotation. See [Several on one entity](#several-on-one-entity). |
 
 | Method | Description |
 |---|---|

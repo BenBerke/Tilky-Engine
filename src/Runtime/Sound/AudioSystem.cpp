@@ -11,15 +11,16 @@
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 
 namespace {
-    std::string MakeAudioSourceName(const ID ownerID) {
-        return "entity_" + std::to_string(ownerID) + "_audio";
+    // One OpenAL source per component: an entity can have several.
+    std::string MakeAudioSourceName(const ComponentAudioSource& audio) {
+        return "entity_" + std::to_string(audio.ownerID) + "_audio_" + std::to_string(audio.instanceID);
     }
 
-    // Puts the source on its entity, facing the rotation's local +Z, and
+    // Puts the source on its entity (plus its offset), facing the rotation's local +Z, and
     // pushes every component setting to OpenAL.
     void ApplySourceSettings(const Level& level, const ComponentAudioSource& audio) {
         if (const ComponentTransform* transform = level.transforms.Get(audio.ownerID)) {
-            SoundManager::SetSourcePosition(audio.name, transform->position);
+            SoundManager::SetSourcePosition(audio.name, transform->LocalToWorld(audio.offset));
             SoundManager::SetSourceDirection(audio.name, QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()));
         }
 
@@ -79,7 +80,7 @@ namespace AudioSystem {
             return;
         }
 
-        audio.name = MakeAudioSourceName(audio.ownerID);
+        audio.name = MakeAudioSourceName(audio);
 
         if (!SoundManager::CreateSource(audio.name)) {
             spdlog::error("Failed to create audio source: {}", audio.name);
@@ -110,7 +111,7 @@ namespace AudioSystem {
             // A component added without StartSource() (an entity copy, for
             // example) gets its OpenAL source here.
             if (audio.name.empty()) {
-                audio.name = MakeAudioSourceName(audio.ownerID);
+                audio.name = MakeAudioSourceName(audio);
                 if (!SoundManager::CreateSource(audio.name)) continue;
             }
 

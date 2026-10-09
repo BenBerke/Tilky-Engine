@@ -310,53 +310,56 @@ namespace GameFunctions {
                 continue;
             }
 
-            const ComponentCollider* collider = level.colliders.Get(entity.id);
+            // Every collider on the entity counts, each at its own offset.
+            for (const ComponentCollider* collider : level.colliders.GetAll(entity.id)) {
+                if (!collider->isActive || collider->isTrigger) continue;
 
-            if (collider == nullptr || !collider->isActive || collider->isTrigger) continue;
+                const Vector3 base = transform->LocalToWorld(collider->offset);
 
-            if (collider->type == COLLIDERTYPE_SPHERE) {
-                const float radius = std::max(0.0f, collider->scale.x);
+                if (collider->type == COLLIDERTYPE_SPHERE) {
+                    const float radius = std::max(0.0f, collider->scale.x);
 
-                const Vector3 center = {
-                    transform->position.x,
-                    transform->position.y + radius,
-                    transform->position.z
-                };
+                    const Vector3 center = {
+                        base.x,
+                        base.y + radius,
+                        base.z
+                    };
 
-                const std::optional<float> hitDistance = RaySphereIntersection(
-                    pos,
-                    normalizedDir,
-                    center,
-                    radius,
-                    closestDistance
-                );
+                    const std::optional<float> hitDistance = RaySphereIntersection(
+                        pos,
+                        normalizedDir,
+                        center,
+                        radius,
+                        closestDistance
+                    );
 
-                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
-            }
-            else if (collider->type == COLLIDERTYPE_BOX) {
-                const Vector3 halfSize = collider->scale * 0.5f;
+                    if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+                }
+                else if (collider->type == COLLIDERTYPE_BOX) {
+                    const Vector3 halfSize = collider->scale * 0.5f;
 
-                const Vector3 boxMin = {
-                    transform->position.x - halfSize.x,
-                    transform->position.y,
-                    transform->position.z - halfSize.z
-                };
+                    const Vector3 boxMin = {
+                        base.x - halfSize.x,
+                        base.y,
+                        base.z - halfSize.z
+                    };
 
-                const Vector3 boxMax = {
-                    transform->position.x + halfSize.x,
-                    transform->position.y + collider->scale.y,
-                    transform->position.z + halfSize.z
-                };
+                    const Vector3 boxMax = {
+                        base.x + halfSize.x,
+                        base.y + collider->scale.y,
+                        base.z + halfSize.z
+                    };
 
-                const std::optional<float> hitDistance = RayAABBIntersection(
-                    pos,
-                    normalizedDir,
-                    boxMin,
-                    boxMax,
-                    closestDistance
-                );
+                    const std::optional<float> hitDistance = RayAABBIntersection(
+                        pos,
+                        normalizedDir,
+                        boxMin,
+                        boxMax,
+                        closestDistance
+                    );
 
-                if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+                    if (hitDistance.has_value()) submitEntityHit(entity, *hitDistance);
+                }
             }
         }
 

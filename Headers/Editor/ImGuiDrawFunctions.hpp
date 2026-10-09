@@ -22,7 +22,9 @@ namespace ImGuiDrawFunctions {
 
         int selectedComponent = -1;
         int componentToAdd = CMP_SPRITE;
-        ScriptInstanceID selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
+        // Which instance of selectedComponent is being edited: a ScriptInstanceID
+        // for scripts, a ComponentInstanceID for everything else.
+        std::uint64_t selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
     };
 
     // ── Spacing utility ───────────────────────────────────────────────────────

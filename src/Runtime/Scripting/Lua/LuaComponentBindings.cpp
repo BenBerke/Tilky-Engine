@@ -25,6 +25,7 @@ namespace {
 
         RegisterType(Type("AudioSource", "OpenAL audio source component.", {
             Prop("isValid", "boolean", true),
+            Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("name", "string", true, "OpenAL source name."),
             Prop("soundFileName", "string"),
             Prop("pitch", "number"),
@@ -64,6 +65,7 @@ namespace {
 
         RegisterType(Type("Model", "Static 3D model drawn at the Entity's Transform.", {
             Prop("isValid", "boolean", true),
+            Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("fileName", "string", false, "Model file relative to Assets, with extension (e.g. \"Models/crate.glb\"). Changing it swaps the rendered model next frame."),
         }, {
             Method("ClearFileName"),
@@ -71,6 +73,7 @@ namespace {
 
         RegisterType(Type("Collider", "Sphere or box collision volume.", {
             Prop("isValid", "boolean", true),
+            Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("type", "ColliderType"),
             Prop("isActive", "boolean"),
             Prop("isTrigger", "boolean"),
@@ -169,6 +172,7 @@ namespace {
 
         RegisterType(Type("Sprite", "Billboard/multi-directional sprite component.", {
             Prop("isValid", "boolean", true),
+            Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("isActive", "boolean", false, "false = not drawn."),
             Prop("sideCount", "integer", false, "0 = single, 1 = 8-sided (45 deg steps), 2 = 4-sided (90 deg steps). Other values are ignored."),
             Prop("color", "Vector4"),
@@ -204,6 +208,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
 
     lua.new_usertype<ScriptAudioSource>(
         "AudioSource",
+
+        "offset", sol::property(&ScriptAudioSource::GetOffset, &ScriptAudioSource::SetOffset),
 
         "isValid", sol::property(
             &ScriptAudioSource::IsValid
@@ -324,6 +330,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         lua.new_usertype<ScriptModel>(
             "Model",
 
+            "offset", sol::property(&ScriptModel::GetOffset, &ScriptModel::SetOffset),
+
             "isValid", sol::property(&ScriptModel::IsValid),
 
             "fileName", sol::property(
@@ -336,6 +344,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
 
         lua.new_usertype<ScriptCollider>(
             "Collider",
+
+            "offset", sol::property(&ScriptCollider::GetOffset, &ScriptCollider::SetOffset),
 
             "isValid", sol::property(&ScriptCollider::IsValid),
 
@@ -624,6 +634,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
 
     lua.new_usertype<ScriptSprite>(
         "Sprite",
+
+        "offset", sol::property(&ScriptSprite::GetOffset, &ScriptSprite::SetOffset),
 
         "isValid", sol::property(&ScriptSprite::IsValid),
 

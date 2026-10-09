@@ -32,14 +32,33 @@ struct Entity {
     void Start();
     void Update();
 
+    // An entity can have several components of a type (except Transform and
+    // UITransform). GetComponent returns the first one; the order is the
+    // inspector's.
     template<typename T>
     T* GetComponent();
 
+    // All of this entity's components of type T, in order. Only valid until
+    // the next component is added or removed.
+    template<typename T>
+    std::vector<T*> GetComponents();
+
+    // The component with this instance ID, if this entity owns it.
+    template<typename T>
+    T* GetComponentInstance(ComponentInstanceID instanceID);
+
+    // Adds a new component after the existing ones. Transform and UITransform
+    // are one per entity: for those it returns the existing one.
     template<typename T>
     T* AddComponent();
 
+    // Removes every component of type T. False if there was none.
     template<typename T>
     bool RemoveComponent();
+
+    // Removes the one component with this instance ID, if this entity owns it.
+    template<typename T>
+    bool RemoveComponentInstance(ComponentInstanceID instanceID);
 
     template<typename T>
     bool HasComponent();

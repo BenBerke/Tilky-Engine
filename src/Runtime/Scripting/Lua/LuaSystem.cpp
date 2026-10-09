@@ -414,6 +414,7 @@ namespace {
                 else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
                     HashCombine(seed, std::hash<int>{}(typedValue.componentType));
+                    HashCombine(seed, std::hash<std::uint64_t>{}(typedValue.instanceId));
                 }
                 else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
@@ -556,6 +557,14 @@ namespace {
     // Reference resolution: serialized ScriptValue -> live Lua object
     // ------------------------------------------------------------------
 
+    // The referenced component, as long as it still exists on that entity.
+    template<typename Wrapper, typename Storage>
+    sol::object ResolveInstanceRef(const sol::state_view luaView, Level& level, Storage& storage, const ComponentRefValue& ref) {
+        const auto* component = storage.GetInstance(ref.instanceId);
+        if (component == nullptr || component->ownerID != ref.entityId) return sol::make_object(luaView, sol::nil);
+        return sol::make_object(luaView, Wrapper{&level, ref.entityId, ref.instanceId});
+    }
+
     sol::object ResolveComponentRef(const sol::state_view luaView, Level& level, const ComponentRefValue& ref) {
         if (ref.entityId == INVALID_ID) return sol::make_object(luaView, sol::nil);
 
@@ -564,33 +573,13 @@ namespace {
                 if (!level.transforms.Has(ref.entityId)) break;
                 return sol::make_object(luaView, ScriptTransform{&level, ref.entityId});
 
-            case CMP_SPRITE:
-                if (!level.sprites.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptSprite{&level, ref.entityId});
-
-            case CMP_AUDIO_SOURCE:
-                if (!level.audioSources.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptAudioSource{&level, ref.entityId});
-
-            case CMP_PLAYER_CONTROLLER:
-                if (!level.playerControllers.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptPlayerController{&level, ref.entityId});
-
-            case CMP_CAMERA:
-                if (!level.cameras.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptCamera{&level, ref.entityId});
-
-            case CMP_COLLIDER:
-                if (!level.colliders.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptCollider{&level, ref.entityId});
-
-            case CMP_RIGIDBODY:
-                if (!level.rigidbodies.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptRigidbody{&level, ref.entityId});
-
-            case CMP_MODEL:
-                if (!level.models.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptModel{&level, ref.entityId});
+            case CMP_SPRITE: return ResolveInstanceRef<ScriptSprite>(luaView, level, level.sprites, ref);
+            case CMP_AUDIO_SOURCE: return ResolveInstanceRef<ScriptAudioSource>(luaView, level, level.audioSources, ref);
+            case CMP_PLAYER_CONTROLLER: return ResolveInstanceRef<ScriptPlayerController>(luaView, level, level.playerControllers, ref);
+            case CMP_CAMERA: return ResolveInstanceRef<ScriptCamera>(luaView, level, level.cameras, ref);
+            case CMP_COLLIDER: return ResolveInstanceRef<ScriptCollider>(luaView, level, level.colliders, ref);
+            case CMP_RIGIDBODY: return ResolveInstanceRef<ScriptRigidbody>(luaView, level, level.rigidbodies, ref);
+            case CMP_MODEL: return ResolveInstanceRef<ScriptModel>(luaView, level, level.models, ref);
 
             default: break;
         }
@@ -852,7 +841,7 @@ namespace {
 
             // Otherwise its OpenAL source outlives it and keeps playing where
             // the entity died.
-            if (ComponentAudioSource* audio = level.audioSources.Get(entityId)) AudioSystem::DestroySource(*audio);
+            for (ComponentAudioSource* audio : level.audioSources.GetAll(entityId)) AudioSystem::DestroySource(*audio);
 
             level.DestroyEntity(entityId);
         }

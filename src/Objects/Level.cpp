@@ -39,55 +39,75 @@ ID Level::CreateEntity(const bool uiEntity) {
     return newId;
 }
 
-// Create entity through copy-paste
-// Whenever a component is added or changed, this has to be updated too
-// It would be good if we switch to C++26 and have reflections
+namespace {
+    // Runtime-only state a copy starts without. Everything else is copied.
+    template<typename T>
+    void ResetCopiedRuntimeState(T&) {}
+
+    void ResetCopiedRuntimeState(ComponentAudioSource& audio) {
+        audio.name.clear(); // names the original's OpenAL source; the copy gets its own when started
+        audio.isHeld = false;
+    }
+
+    void ResetCopiedRuntimeState(ComponentPlayerController& controller) {
+        controller.isActive = false; // the original stays the active one
+        controller.velocity = {};
+        controller.currentSpeed = 0.0f;
+        controller.currentEyeHeight = 0.0f;
+    }
+
+    void ResetCopiedRuntimeState(ComponentCamera& camera) {
+        camera.isActive = false; // the original stays the active one
+        camera.isStepping = false;
+        camera.stepOffsetY = 0.0f;
+        camera.hasPreviousTransformY = false;
+    }
+
+    void ResetCopiedRuntimeState(ComponentRigidbody& rigidbody) {
+        rigidbody.velocity = {};
+        rigidbody.isGrounded = false;
+    }
+
+    void ResetCopiedRuntimeState(ComponentUITransform& transform) {
+        transform.resolvedPosition = {};
+        transform.resolvedSize = {};
+    }
+
+    // Copies every component of one type, in order, each with a new instance ID.
+    template<typename Storage>
+    void CopyComponents(Storage& storage, const ID from, const ID to, ComponentMask& mask, const int bit) {
+        const std::vector<ComponentInstanceID> instances = storage.InstancesOf(from);
+        for (const ComponentInstanceID instanceID : instances) {
+            auto component = *storage.GetInstance(instanceID); // copy first: inserting can reallocate
+            component.ownerID = to;
+            component.instanceID = INVALID_COMPONENT_INSTANCE_ID;
+            ResetCopiedRuntimeState(component);
+            storage.InsertLoaded(component);
+            mask.set(bit);
+        }
+    }
+}
+
+// Create entity through copy-paste. Copies every component (all instances of
+// each type) whole, minus runtime-only state - see ResetCopiedRuntimeState.
 ID Level::CreateEntity(Entity& copy) {
     Entity entity;
     entity.id = nextEntityID++;
     entity.name = copy.name + "Copy";
     entity.enabled = copy.enabled;
+    entity.attachedLevelId = id;
 
-    if (copy.HasComponent<ComponentTransform>()) {
-        auto *s = entity.AddComponent<ComponentTransform>();
-        const ComponentTransform *cs = copy.GetComponent<ComponentTransform>();
-
-        s->position = cs->position;
-        s->relativeHeight = cs->relativeHeight;
-        s->scale = cs->scale;
-        s->sectorIndex = cs->sectorIndex;
-        s->isDirty = cs->isDirty;
-        s->rotation = cs->rotation;
-    }
-
-    if (copy.HasComponent<ComponentSprite>()) {
-        auto *s = entity.AddComponent<ComponentSprite>();
-        const ComponentSprite *cs = copy.GetComponent<ComponentSprite>();
-
-        s->textureFileNames = cs->textureFileNames;
-        s->sideCount = cs->sideCount;
-        s->isStatic = cs->isStatic;
-        s->isActive = cs->isActive;
-    }
-
-    if (copy.HasComponent<ComponentAudioSource>()) {
-        auto *s = entity.AddComponent<ComponentAudioSource>();
-        const ComponentAudioSource *ca = copy.GetComponent<ComponentAudioSource>();
-
-        // name is left empty: it names the original's OpenAL source, and the
-        // copy gets its own when the audio system starts it.
-        s->soundFileName = ca->soundFileName;
-        s->pitch = ca->pitch;
-        s->gain = ca->gain;
-        s->looping = ca->looping;
-        s->playOnStart = ca->playOnStart;
-        s->referenceDistance = ca->referenceDistance;
-        s->maxDistance = ca->maxDistance;
-        s->rollOffFactor = ca->rollOffFactor;
-        s->innerConeAngle = ca->innerConeAngle;
-        s->outerConeAngle = ca->outerConeAngle;
-        s->outerGain = ca->outerGain;
-    }
+    CopyComponents(transforms, copy.id, entity.id, entity.componentsMask, CMP_TRANSFORM);
+    CopyComponents(sprites, copy.id, entity.id, entity.componentsMask, CMP_SPRITE);
+    CopyComponents(audioSources, copy.id, entity.id, entity.componentsMask, CMP_AUDIO_SOURCE);
+    CopyComponents(playerControllers, copy.id, entity.id, entity.componentsMask, CMP_PLAYER_CONTROLLER);
+    CopyComponents(cameras, copy.id, entity.id, entity.componentsMask, CMP_CAMERA);
+    CopyComponents(colliders, copy.id, entity.id, entity.componentsMask, CMP_COLLIDER);
+    CopyComponents(rigidbodies, copy.id, entity.id, entity.componentsMask, CMP_RIGIDBODY);
+    CopyComponents(models, copy.id, entity.id, entity.componentsMask, CMP_MODEL);
+    CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
+    CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
+    CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
 
     // Copies every attached script (not just the first), each getting its
     // own new instance ID via AddScript()/ScriptComponentStorage::Add - see
@@ -106,102 +126,6 @@ ID Level::CreateEntity(Entity& copy) {
         s.schemaHash = originalScript->schemaHash;
     }
 
-    if (copy.HasComponent<ComponentPlayerController>()) {
-        auto *s = entity.AddComponent<ComponentPlayerController>();
-        const ComponentPlayerController *cs = copy.GetComponent<ComponentPlayerController>();
-
-        s->isActive = false; // the original stays the active one
-        s->speed = cs->speed;
-        s->runningSpeed = cs->runningSpeed;
-        s->jumpPower = cs->jumpPower;
-        s->eyeHeight = cs->eyeHeight;
-        s->friction = cs->friction;
-        s->sensitivityX = cs->sensitivityX;
-        s->sensitivityY = cs->sensitivityY;
-        s->noClip = cs->noClip;
-        // velocity, currentSpeed, currentEyeHeight intentionally left as default (read-only runtime state)
-    }
-
-    if (copy.HasComponent<ComponentCamera>()) {
-        auto *s = entity.AddComponent<ComponentCamera>();
-        const ComponentCamera *cs = copy.GetComponent<ComponentCamera>();
-
-        s->isActive = false; // the original stays the active one
-        s->yaw = cs->yaw;
-        s->pitch = cs->pitch;
-        s->fov = cs->fov;
-        s->aspectRatio = cs->aspectRatio;
-        s->nearPlane = cs->nearPlane;
-        s->farPlane = cs->farPlane;
-        // forward, target, view, projection intentionally left as default (runtime derived state)
-    }
-
-    if (copy.HasComponent<ComponentCollider>()) {
-        auto *s = entity.AddComponent<ComponentCollider>();
-        const ComponentCollider *cs = copy.GetComponent<ComponentCollider>();
-
-        s->isTrigger = cs->isTrigger;
-        s->scale = cs->scale;
-        s->stepSize = cs->stepSize;
-
-        // Type and active state decide where the collider sits in the storage,
-        // so they go through the storage. That can swap elements (including the
-        // original's), so read them first and don't use s or cs afterwards.
-        const ColliderType type = cs->type;
-        const bool isActive = cs->isActive;
-
-        ColliderStorage& colliders = LevelManager::CurrentLevel().colliders;
-        colliders.SetType(entity.id, type);
-        colliders.SetActive(entity.id, isActive);
-    }
-
-    if (copy.HasComponent<ComponentRigidbody>()) {
-        auto *s = entity.AddComponent<ComponentRigidbody>();
-        const ComponentRigidbody *cs = copy.GetComponent<ComponentRigidbody>();
-
-        s->isStatic = cs->isStatic;
-        s->mass = cs->mass;
-        s->gravityScale = cs->gravityScale;
-        s->friction = cs->friction;
-        // velocity intentionally left as default (runtime state)
-    }
-
-    if (copy.HasComponent<ComponentModel>()) {
-        auto *s = entity.AddComponent<ComponentModel>();
-        const ComponentModel *cs = copy.GetComponent<ComponentModel>();
-
-        s->fileName = cs->fileName;
-    }
-
-    // UI Components
-    if (copy.HasComponent<ComponentUITransform>()) {
-        auto *s = entity.AddComponent<ComponentUITransform>();
-        const ComponentUITransform *cs = copy.GetComponent<ComponentUITransform>();
-
-        s->anchorMin = cs->anchorMin;
-        s->anchorMax = cs->anchorMax;
-        s->pivot = cs->pivot;
-        s->position = cs->position;
-        s->scale = cs->scale;
-        s->rotation = cs->rotation;
-        // resolvedPosition, resolvedSize intentionally left as default (runtime derived state)
-    }
-
-    if (copy.HasComponent<ComponentUISprite>()) {
-        auto *s = entity.AddComponent<ComponentUISprite>();
-        const ComponentUISprite *cs = copy.GetComponent<ComponentUISprite>();
-
-        s->texture = cs->texture;
-        s->isActive = cs->isActive;
-    }
-
-    if (copy.HasComponent<ComponentUIText>()) {
-        auto *s = entity.AddComponent<ComponentUIText>();
-        const ComponentUIText *cs = copy.GetComponent<ComponentUIText>();
-
-        s->text = cs->text;
-    }
-
     entities.push_back(entity);
 
     return entity.id;
@@ -212,34 +136,36 @@ void Level::DestroyEntity(const ID entityID) {
 
     for (Sector& sector : sectors) std::erase(sector.entitiesInside, entityID);
 
-    colliders.Remove(entityID);
-    rigidbodies.Remove(entityID);
+    colliders.RemoveAll(entityID);
+    rigidbodies.RemoveAll(entityID);
 
-    sprites.Remove(entityID);
-    models.Remove(entityID);
-    audioSources.Remove(entityID);
-    scripts.RemoveAll(entityID); // Remove() takes a script instance ID, not an owner ID
-    playerControllers.Remove(entityID);
-    cameras.Remove(entityID);
-    transforms.Remove(entityID);
+    sprites.RemoveAll(entityID);
+    models.RemoveAll(entityID);
+    audioSources.RemoveAll(entityID);
+    scripts.RemoveAll(entityID);
+    playerControllers.RemoveAll(entityID);
+    cameras.RemoveAll(entityID);
+    transforms.RemoveAll(entityID);
 
     // UI components.
-    ui_sprites.Remove(entityID);
-    ui_texts.Remove(entityID);
-    ui_transforms.Remove(entityID);
+    ui_sprites.RemoveAll(entityID);
+    ui_texts.RemoveAll(entityID);
+    ui_transforms.RemoveAll(entityID);
 
     std::erase_if(entities, [entityID](const Entity& entity) {
         return entity.id == entityID;
     });
 }
 
-void Level::ActivateCamera(const ID entityID) {
-    for (ComponentCamera& camera : cameras.components) camera.isActive = camera.ownerID == entityID;
+void Level::ActivateCamera(const ComponentCamera& camera) {
+    const ComponentInstanceID instanceID = camera.instanceID;
+    for (ComponentCamera& other : cameras.components) other.isActive = other.instanceID == instanceID;
 }
 
-void Level::ActivatePlayerController(const ID entityID) {
-    for (ComponentPlayerController& controller : playerControllers.components)
-        controller.isActive = controller.ownerID == entityID;
+void Level::ActivatePlayerController(const ComponentPlayerController& controller) {
+    const ComponentInstanceID instanceID = controller.instanceID;
+    for (ComponentPlayerController& other : playerControllers.components)
+        other.isActive = other.instanceID == instanceID;
 }
 
 void Level::DestroyEntity(const Entity& entity) {

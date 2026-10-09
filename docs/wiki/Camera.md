@@ -15,11 +15,12 @@ any other entity: a security camera, a cutscene viewpoint, a spectator.
 ### Only one camera renders
 
 A level can contain many cameras, but only **one** is used at a time: the one with **Is Active**
-ticked.
+ticked. This counts each Camera component, so an entity with two cameras can only have one of them
+active, and only if no other camera in the level is.
 
-- **Ticking a camera's Is Active switches to it** and unticks every other camera, in the
-  inspector or from a script (`camera.isActive = true`). Is Active always shows which camera is in
-  use.
+- **Ticking a camera's Is Active switches to it** and unticks every other camera, including other
+  cameras on the same entity, in the inspector or from a script (`camera.isActive = true`). Is
+  Active always shows which camera is in use.
 - Unticking the active camera leaves **no** camera active, and nothing is drawn until a script
   ticks one.
 - Adding a Camera in the editor ticks it, so it takes over. A Camera added by a script

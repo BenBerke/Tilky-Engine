@@ -1498,9 +1498,8 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         return;
     }
 
-    if (kind != AssetKind::Other) {
-        browser.RequestConsumeAsFieldReference(kind, GetPath());
-    }
+    if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
+
 }
 
 void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const {

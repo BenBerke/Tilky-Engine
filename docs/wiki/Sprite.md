@@ -19,6 +19,13 @@ position, which is the feet:
 
 The Transform's `scale.y` isn't used by sprites. New entities start at scale 32, a 32 × 32 sprite.
 
+### Several on one entity
+
+An entity can have several Sprites, all drawn. Each sits at the Transform position plus its
+`offset` (turned with the entity's rotation). They all use the Transform's scale. `entity.sprite`
+is the first one; `entity:GetComponents(Component.Sprite)` lists them all. See
+[Several components of one type](Entity.md#several-components-of-one-type).
+
 ### Facing the camera
 
 - **Normal sprites** (Is Static off) are **billboards**: they always turn to face the camera around
@@ -76,6 +83,7 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 | **Color** | `color` | `1, 1, 1, 1` | Tint. |
 | **Is Static** | | off | Editor only. |
 | **Is Active** | `isActive` | on | Off = not drawn. See [Is Active](#is-active). |
+| **Offset** | `offset` | `0, 0, 0` | See [Several on one entity](#several-on-one-entity). |
 
 ## Scripting
 
@@ -83,6 +91,7 @@ appear on the opposite sides from what you expected, swap E with W (and NE with 
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Sprite is gone. |
 | `isActive` | boolean | read/write | `false` hides the sprite. |
+| `offset` | Vector3 | read/write | Position relative to the Transform, turned with its rotation. See [Several on one entity](#several-on-one-entity). |
 | `color` | Vector4 | read/write | Tint, `0..1`. |
 | `sideCount` | integer | read/write | `0` single, `1` 8-sided, `2` 4-sided. Other values are ignored. |
 | `northTextureFileName` | string | read/write | Slot 0. |

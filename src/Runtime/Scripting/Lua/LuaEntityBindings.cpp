@@ -25,35 +25,72 @@ namespace {
         const char* name;
         ComponentType type;
         bool isUI;
-        bool (*has)(Entity&);
-        void (*add)(Level&, Entity&);
-        bool (*remove)(Entity&);
+        // Adds a new one (Transform/UITransform: returns the existing one) and returns it.
+        sol::object (*add)(Level&, Entity&, sol::state_view);
+        // Removes every component of this type.
+        bool (*removeAll)(Entity&);
+        // If `component` is this kind's Lua object, removes that one component
+        // and sets `matched`.
+        bool (*removeOne)(Entity&, const sol::object& component, bool& matched);
+        // The first one.
         sol::object (*get)(const ScriptEntity&, sol::state_view);
+        // All of them, in order.
+        sol::table (*getAll)(const ScriptEntity&, sol::state_view);
     };
 
+    // Per-type extras when Lua adds or removes a component.
     template<typename T>
-    bool HasComponentOf(Entity& entity) { return entity.HasComponent<T>(); }
-
-    template<typename T>
-    void AddComponentOf(Level&, Entity& entity) { entity.AddComponent<T>(); }
-
-    template<typename T>
-    bool RemoveComponentOf(Entity& entity) { return entity.RemoveComponent<T>(); }
+    void OnAdded(Level&, T&) {}
 
     // The game is already running when a script adds one, so its sound
     // source has to be made here instead of in AudioSystem::Start.
-    void AddAudioSource(Level& level, Entity& entity) {
-        AudioSystem::StartSource(level, *entity.AddComponent<ComponentAudioSource>());
-    }
+    void OnAdded(Level& level, ComponentAudioSource& audio) { AudioSystem::StartSource(level, audio); }
 
     // Starts unticked: a script switches to it by setting isActive = true.
-    void AddCamera(Level&, Entity& entity) {
-        entity.AddComponent<ComponentCamera>()->isActive = false;
+    void OnAdded(Level&, ComponentCamera& camera) { camera.isActive = false; }
+
+    template<typename T>
+    void OnRemoving(T&) {}
+
+    void OnRemoving(ComponentAudioSource& audio) { AudioSystem::DestroySource(audio); }
+
+    // The Lua handle for one component. Transform/UITransform handles are
+    // per entity; the others name an instance.
+    template<typename T, typename Wrapper>
+    Wrapper MakeWrapper(Level* level, const ID ownerID, const ComponentInstanceID instanceID) {
+        if constexpr (IsSingleComponent<T>) return Wrapper{level, ownerID};
+        else return Wrapper{level, ownerID, instanceID};
     }
 
-    bool RemoveAudioSource(Entity& entity) {
-        if (ComponentAudioSource* audio = entity.GetComponent<ComponentAudioSource>()) AudioSystem::DestroySource(*audio);
-        return entity.RemoveComponent<ComponentAudioSource>();
+    template<typename T, typename Wrapper>
+    sol::object AddComponentOf(Level& level, Entity& entity, const sol::state_view lua) {
+        T* component = entity.AddComponent<T>();
+        OnAdded(level, *component);
+        return sol::make_object(lua, MakeWrapper<T, Wrapper>(&level, entity.id, component->instanceID));
+    }
+
+    template<typename T>
+    bool RemoveAllComponentsOf(Entity& entity) {
+        for (T* component : entity.GetComponents<T>()) OnRemoving(*component);
+        return entity.RemoveComponent<T>();
+    }
+
+    template<typename T, typename Wrapper>
+    bool RemoveOneComponentOf(Entity& entity, const sol::object& object, bool& matched) {
+        if (!object.is<Wrapper>()) return false;
+        matched = true;
+
+        const Wrapper wrapper = object.as<Wrapper>();
+        if (wrapper.ownerID != entity.id) throw sol::error("RemoveComponent: that component belongs to another Entity");
+
+        if constexpr (IsSingleComponent<T>) {
+            return RemoveAllComponentsOf<T>(entity);
+        } else {
+            T* component = entity.GetComponentInstance<T>(wrapper.instanceID);
+            if (component == nullptr) return false;
+            OnRemoving(*component);
+            return entity.RemoveComponentInstance<T>(wrapper.instanceID);
+        }
     }
 
     template<auto Getter>
@@ -61,25 +98,37 @@ namespace {
         return sol::make_object(lua, (entity.*Getter)());
     }
 
-    template<typename T, auto Getter>
+    template<typename T, typename Wrapper>
+    sol::table GetAllComponentsOf(const ScriptEntity& self, sol::state_view lua) {
+        sol::table result = lua.create_table();
+        Entity* entity = self.GetEntity();
+        if (entity == nullptr) return result;
+
+        int index = 1;
+        for (const T* component : entity->GetComponents<T>())
+            result[index++] = MakeWrapper<T, Wrapper>(self.level, entity->id, component->instanceID);
+
+        return result;
+    }
+
+    template<typename T, typename Wrapper, auto Getter>
     constexpr LuaComponentKind Kind(const char* name, const ComponentType type, const bool isUI) {
-        return {name, type, isUI, &HasComponentOf<T>, &AddComponentOf<T>, &RemoveComponentOf<T>, &GetComponentOf<Getter>};
+        return {name, type, isUI, &AddComponentOf<T, Wrapper>, &RemoveAllComponentsOf<T>,
+                &RemoveOneComponentOf<T, Wrapper>, &GetComponentOf<Getter>, &GetAllComponentsOf<T, Wrapper>};
     }
 
     constexpr LuaComponentKind LUA_COMPONENT_KINDS[] = {
-        Kind<ComponentTransform, &ScriptEntity::GetTransform>("Transform", CMP_TRANSFORM, false),
-        Kind<ComponentSprite, &ScriptEntity::GetSprite>("Sprite", CMP_SPRITE, false),
-        {"AudioSource", CMP_AUDIO_SOURCE, false, &HasComponentOf<ComponentAudioSource>, &AddAudioSource,
-         &RemoveAudioSource, &GetComponentOf<&ScriptEntity::GetAudioSource>},
-        Kind<ComponentPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, false),
-        {"Camera", CMP_CAMERA, false, &HasComponentOf<ComponentCamera>, &AddCamera,
-         &RemoveComponentOf<ComponentCamera>, &GetComponentOf<&ScriptEntity::GetCamera>},
-        Kind<ComponentCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, false),
-        Kind<ComponentRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, false),
-        Kind<ComponentModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, false),
-        Kind<ComponentUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, true),
-        Kind<ComponentUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, true),
-        Kind<ComponentUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, true),
+        Kind<ComponentTransform, ScriptTransform, &ScriptEntity::GetTransform>("Transform", CMP_TRANSFORM, false),
+        Kind<ComponentSprite, ScriptSprite, &ScriptEntity::GetSprite>("Sprite", CMP_SPRITE, false),
+        Kind<ComponentAudioSource, ScriptAudioSource, &ScriptEntity::GetAudioSource>("AudioSource", CMP_AUDIO_SOURCE, false),
+        Kind<ComponentPlayerController, ScriptPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, false),
+        Kind<ComponentCamera, ScriptCamera, &ScriptEntity::GetCamera>("Camera", CMP_CAMERA, false),
+        Kind<ComponentCollider, ScriptCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, false),
+        Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, false),
+        Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, false),
+        Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, true),
+        Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, true),
+        Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, true),
     };
 
     // Takes a sol::object, not an int: sol would turn nil (a misspelled
@@ -159,9 +208,11 @@ namespace {
                 {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
                 {.name = "GetSector", .params = {}, .returnType = "Sector?", .doc = "The sector this Entity is standing in, or nil (outside the map, or no Transform)."},
                 {.name = "AddComponent", .params = {{"component", "Component"}}, .returnType = COMPONENT_TYPE,
-                 .doc = "Adds the component (e.g. Component.Sprite) and returns it. Returns the existing one if the Entity already has it."},
-                {.name = "RemoveComponent", .params = {{"component", "Component"}}, .returnType = "boolean",
-                 .doc = "Removes the component (e.g. Component.Collider). False if the Entity didn't have it."},
+                 .doc = "Adds a new component (e.g. Component.Sprite) after any it already has, and returns it. An Entity has only one Transform/UITransform: for those it returns the existing one."},
+                {.name = "GetComponents", .params = {{"component", "Component"}}, .returnType = "table",
+                 .doc = "Every component of that type on this Entity, in order (an empty table if none). entity.sprite etc. are the first one."},
+                {.name = "RemoveComponent", .params = {{"component", "Component|" + std::string(COMPONENT_TYPE)}}, .returnType = "boolean",
+                 .doc = "With a type (e.g. Component.Collider), removes every component of that type. With a component (e.g. entity.collider), removes just that one. False if there was nothing to remove."},
             }
         });
     }
@@ -423,27 +474,41 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             Entity* entity = self.GetEntity();
             if (entity == nullptr) return sol::make_object(state, sol::nil);
 
-            if (!kind.has(*entity)) {
-                if (kind.isUI && entity->HasComponent<ComponentTransform>())
-                    throw sol::error(std::string("Can't add ") + kind.name + " to a world entity (it has a Transform)");
+            if (kind.isUI && entity->HasComponent<ComponentTransform>())
+                throw sol::error(std::string("Can't add ") + kind.name + " to a world entity (it has a Transform)");
 
-                if (!kind.isUI && entity->HasComponent<ComponentUITransform>())
-                    throw sol::error(std::string("Can't add ") + kind.name + " to a UI entity (it has a UITransform)");
+            if (!kind.isUI && entity->HasComponent<ComponentUITransform>())
+                throw sol::error(std::string("Can't add ") + kind.name + " to a UI entity (it has a UITransform)");
 
-                kind.add(*self.level, *entity);
-            }
-
-            return kind.get(self, state);
+            return kind.add(*self.level, *entity, state);
         },
 
-        "RemoveComponent",
-        [](const ScriptEntity& self, const sol::object& type) -> bool {
-            const LuaComponentKind& kind = FindLuaComponentKind(type);
+        "GetComponents",
+        [](const ScriptEntity& self, const sol::object& type, const sol::this_state state) -> sol::table {
+            return FindLuaComponentKind(type).getAll(self, state);
+        },
 
+        // A Component value removes every component of that type; a
+        // component object removes just that one.
+        "RemoveComponent",
+        [](const ScriptEntity& self, const sol::object& typeOrComponent) -> bool {
             Entity* entity = self.GetEntity();
+
+            if (typeOrComponent.get_type() == sol::type::number) {
+                const LuaComponentKind& kind = FindLuaComponentKind(typeOrComponent);
+                return entity != nullptr && kind.removeAll(*entity);
+            }
+
             if (entity == nullptr) return false;
 
-            return kind.remove(*entity);
+            for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS) {
+                bool matched = false;
+                const bool removed = kind.removeOne(*entity, typeOrComponent, matched);
+                if (matched) return removed;
+            }
+
+            throw sol::error(std::string("RemoveComponent expects a Component value (e.g. Component.Sprite) or a component, got ") +
+                             sol::type_name(typeOrComponent.lua_state(), typeOrComponent.get_type()));
         }
     );
 }

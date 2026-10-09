@@ -157,9 +157,9 @@ namespace LevelSystem {
         );
 
         // A level saved with several ticked keeps the first of each.
-        if (const ComponentCamera *camera = GetActiveCamera(level)) level.ActivateCamera(camera->ownerID);
+        if (const ComponentCamera *camera = GetActiveCamera(level)) level.ActivateCamera(*camera);
         if (const ComponentPlayerController *controller = GetActivePlayerController(level))
-            level.ActivatePlayerController(controller->ownerID);
+            level.ActivatePlayerController(*controller);
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;
 
@@ -174,7 +174,7 @@ namespace LevelSystem {
         ComponentCamera *activeCamera = GetActiveCamera(level);
         if (activeCamera == nullptr && !level.cameras.components.empty()) {
             const ID cameraEntityID = level.cameras.components.front().ownerID;
-            level.ActivateCamera(cameraEntityID);
+            level.ActivateCamera(level.cameras.components.front());
             activeCamera = GetActiveCamera(level);
 
             spdlog::info(
@@ -234,8 +234,11 @@ namespace LevelSystem {
 
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
             ComponentRigidbody *playerRigidbody = level.rigidbodies.Get(ownerID);
-            ComponentCamera *ownCamera = level.cameras.Get(ownerID);
             const ComponentCamera *activeCamera = GetActiveCamera(level);
+            // The entity's own camera: the active one if it's on this entity, else its first.
+            ComponentCamera *ownCamera = activeCamera != nullptr && activeCamera->ownerID == ownerID
+                ? level.cameras.GetInstance(activeCamera->instanceID)
+                : level.cameras.Get(ownerID);
 
             if (playerTransform == nullptr || playerRigidbody == nullptr || (ownCamera == nullptr && activeCamera == nullptr)) [[unlikely]] {
                 if (reportedControllerID != ownerID) {
@@ -270,6 +273,9 @@ namespace LevelSystem {
 
             for (int i = 0; i < COLLISION_ITERATIONS; i++) {
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
+                    // Only an entity's first rigidbody simulates; the others are inert.
+                    if (level.rigidbodies.Get(r.ownerID) != &r) continue;
+
                     ComponentTransform *transform = level.transforms.Get(r.ownerID);
 
                     if (!transform) [[unlikely]] {
@@ -337,8 +343,6 @@ namespace LevelSystem {
                     // from the physical Y change in the renderer.
                     if (newHeight >= oldHeight) continue;
 
-                    ComponentCamera* camera = owner->GetComponent<ComponentCamera>();
-
                     const float distanceToStep = transform.position.y - newHeight;
 
                     const bool canStepDown = collider->stepSize > 0.0f &&
@@ -357,7 +361,9 @@ namespace LevelSystem {
 
                     transform.relativeHeight = 0.0f;
 
-                    if (camera != nullptr && camera->smoothStep) {
+                    for (ComponentCamera* camera : owner->GetComponents<ComponentCamera>()) {
+                        if (!camera->smoothStep) continue;
+
                         float currentVisualY =
                             previousTransformY;
 

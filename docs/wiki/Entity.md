@@ -67,7 +67,9 @@ nothing. Check `isValid` on any entity you keep around between frames.
 ### Components
 
 Each component has a `has...` flag and a property that returns the component, or `nil` if the
-entity doesn't have one.
+entity doesn't have one. An entity can have **several** components of the same type (every type
+except Transform and UI Transform). The property returns the **first** one, and
+`GetComponents` returns them all. See [Several components of one type](#several-components-of-one-type).
 
 | Flag | Component property | Page |
 |---|---|---|
@@ -98,8 +100,9 @@ Scripts can add and remove them with `AddComponent` and `RemoveComponent`. See
 | `HasTag(tag)` | boolean | `true` if the entity has `tag`. An unknown tag name returns `false`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. Raises an error if out of range. |
 | `GetSector()` | Sector or `nil` | The sector the entity stands in, or `nil` outside the map or without a Transform. See [Sector occupancy](Sector.md#occupancy). |
-| `AddComponent(component)` | the component | Adds a component, e.g. `Component.Sprite`, and returns it. See [Adding and removing components](#adding-and-removing-components). |
-| `RemoveComponent(component)` | boolean | Removes a component. `false` if the entity didn't have it. |
+| `AddComponent(component)` | the component | Adds a new component, e.g. `Component.Sprite`, after any it already has, and returns it. See [Adding and removing components](#adding-and-removing-components). |
+| `GetComponents(component)` | table | Every component of that type, in order, e.g. `entity:GetComponents(Component.AudioSource)`. An empty table if there are none. |
+| `RemoveComponent(component)` | boolean | With a type (`Component.Collider`), removes **every** component of that type. With a component (`entity.collider`), removes just that one. `false` if there was nothing to remove. |
 
 Script references (`Behaviour`) are covered on the [Script](Script.md#behaviour-references) page.
 
@@ -154,8 +157,9 @@ it more with [`AddComponent`](#adding-and-removing-components). It can't be give
 ## Adding and removing components
 
 ```lua
-local sprite = entity:AddComponent(Component.Sprite)   -- returns the Sprite
-entity:RemoveComponent(Component.Collider)             -- true if there was one
+local sprite = entity:AddComponent(Component.Sprite)   -- returns the new Sprite
+entity:RemoveComponent(sprite)                         -- removes that one Sprite
+entity:RemoveComponent(Component.Collider)             -- removes every Collider; true if there was one
 ```
 
 Components are picked from the global `Component` table. The script editor and VS Code suggest
@@ -167,14 +171,19 @@ its values as you type `Component.`:
 
 - The values are plain numbers. A misspelled one (`Component.Sprit`) is `nil`, and passing `nil` or
   a number that isn't in the table raises an error.
-- `AddComponent` returns the component, the same value as `entity.sprite`, `entity.collider`, and
-  so on. If the entity already has one, nothing changes and that one is returned.
+- `AddComponent` always adds a **new** component after the ones the entity already has, and
+  returns it. On an entity with no Sprite yet, that is the same value as `entity.sprite`.
+  Transform and UI Transform are the exception: an entity has only one, so for those the existing
+  one is returned.
 - A new component starts with its default settings, listed on its own page. Set what you need on
   the returned value. Only that component is added: unlike in the editor, adding
   `Component.PlayerController` doesn't also add a Rigidbody, Collider and Camera.
-- `RemoveComponent` returns `true` if it removed one and `false` if the entity didn't have it.
-  The component is gone straight away: `entity.collider` is `nil` from the next line on, and
-  component values you kept report `isValid == false`.
+- `RemoveComponent(Component.X)` removes **every** component of that type.
+  `RemoveComponent(component)` removes only the component you pass, which must belong to this
+  entity (another entity's raises an error). Either way it returns `true` if something was
+  removed and `false` if not. Removed components are gone straight away: `entity.collider` moves
+  on to the next Collider (or `nil`) from the next line on, and component values you kept report
+  `isValid == false`.
 - World components can't be added to a UI entity (one with a UI Transform), and UI components
   can't be added to a world entity (one with a Transform). Trying raises an error.
 - **Scripts** can't be added or removed this way, so there is no `Component.Script`.
@@ -194,6 +203,49 @@ Some components behave differently when added while the game runs:
   active camera leaves nothing to draw the level with until another is ticked.
 - **Audio Source**: `playOnStart` has nothing to wait for, so a new source never starts by itself.
   Call `Play()`, or set `looping` with a `soundFileName`.
+
+## Several components of one type
+
+Every component except Transform and UI Transform can be added more than once: two Audio Sources
+so footsteps don't cut off the voice, a Sprite plus a shadow Sprite, several Colliders making one
+shape.
+
+- **Order.** An entity's components of one type have an order. `entity.audioSource` and the other
+  component properties return the **first** one; `entity:GetComponents(Component.AudioSource)`
+  returns all of them in order. In the inspector each one has its own card. Drag a card onto
+  another of the same type to reorder them. The order is saved with the level.
+- **Offsets.** Sprite, Model, Collider and Audio Source have an `offset`: a position relative to the
+  [Transform](Transform.md), turned with the entity's rotation. Use it to place several of them
+  at different spots on one entity.
+- **References.** A `public AudioSource door` field (and the other component fields) points at one
+  exact component, so it keeps pointing at the right one when others are added, removed or
+  reordered. See [public fields](Script.md#public-fields).
+- **What duplicates do:**
+
+| Component | With several on one entity |
+|---|---|
+| Sprite, Model | Each is drawn, at its own offset. They all use the Transform's scale. |
+| Audio Source | Each plays its own sound at its own offset, so they don't cut each other off. |
+| Collider | Together they are one compound shape. Each sits at its offset and pushes the whole entity. Collision and trigger callbacks still fire once per pair of entities. See [Collider](Collider.md#several-on-one-entity). |
+| Rigidbody | Only the **first** one simulates. The others are kept but do nothing. |
+| Camera, Player Controller | Still only one active in the whole level, counting each component: ticking one unticks every other, including the ones on the same entity. |
+| UI Sprite, UI Text | Each is drawn in the UI Transform's rectangle. UI components have no offset. |
+
+```lua
+-- Scripts/Robot.lua: a voice that footsteps can't interrupt.
+local feet, voice
+
+function Start()
+    local sources = entity:GetComponents(Component.AudioSource)
+    feet, voice = sources[1], sources[2]
+    voice.offset = Vector3(0, 12, 0) -- at head height
+end
+
+function Speak()
+    voice.soundFileName = "Sounds/beep"
+    voice:Play()
+end
+```
 
 ```lua
 -- Scripts/Thrower.lua (on the player): F throws a ball with a sprite and a trigger collider.

@@ -20,10 +20,12 @@ void OpenGL::BuildGpuSprites() {
 
         GpuSprite gpuSprite{};
 
+        const Vector3 position = transform->LocalToWorld(spriteComponent.offset);
+
         gpuSprite.positionSize = {
-            transform->position.x,
-            transform->position.y,
-            transform->position.z,
+            position.x,
+            position.y,
+            position.z,
             transform->scale.z
         };
 

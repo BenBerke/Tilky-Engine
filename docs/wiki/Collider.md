@@ -22,7 +22,27 @@ Use spheres for now.
 
 The sphere rests **on** the entity's feet. Its centre is one radius above the
 [Transform](Transform.md) position, so an entity with `position.y == 0` and a radius of 8 has a
-sphere touching the floor at 0 with its centre at 8.
+sphere touching the floor at 0 with its centre at 8. A collider's `offset` moves it from the feet;
+see [Several on one entity](#several-on-one-entity).
+
+### Several on one entity
+
+An entity can have several Colliders. Together they make **one compound shape**:
+
+- Each sphere sits at the Transform position plus its `offset` (turned with the entity's rotation),
+  then one radius up, as above.
+- Each one is resolved against walls, other entities, the floor and the ceiling, and every push
+  moves the whole entity. The entity's top stays at its feet plus the Transform's `scale.y`
+  whichever collider is touching the ceiling.
+- Other entities collide with any of its active, non-trigger spheres, and triggers are touched by
+  any of them.
+- Collision and trigger callbacks still fire **once per pair of entities**, however many of their
+  colliders touch.
+- Each collider has its own Step Size; ray casts test every collider.
+- Floor and ceiling checks use the sector the entity's feet are in. A collider offset into another
+  sector isn't held by that sector's floor.
+
+`entity.collider` is the first one; `entity:GetComponents(Component.Collider)` lists them all.
 
 ## How it works
 
@@ -89,6 +109,7 @@ floors and ceilings no longer hold it in, and triggers don't notice it. The
 | **Is Trigger** | `isTrigger` | off | See [Triggers](#triggers). |
 | **Radius** (sphere) / **Scale** (AABB) | `scale` | `1, 1, 1` | Sphere radius is `scale.x`. |
 | **Step Size** | `stepSize` | `0` | See [Step Size](#step-size). |
+| **Offset** | `offset` | `0, 0, 0` | See [Several on one entity](#several-on-one-entity). |
 
 The default radius of `1` is tiny next to the default Transform scale of 32. Give characters a
 radius of about 6 to 10.
@@ -103,6 +124,7 @@ radius of about 6 to 10.
 | `isTrigger` | boolean | read/write | |
 | `scale` | Vector3 | read/write | Sphere radius is `scale.x`. |
 | `stepSize` | number | read/write | |
+| `offset` | Vector3 | read/write | Position relative to the Transform, turned with its rotation. See [Several on one entity](#several-on-one-entity). |
 
 ## Examples
 

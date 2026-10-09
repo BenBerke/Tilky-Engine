@@ -103,13 +103,16 @@ public <type> <name> = <default>
 | `Sector` | [Sector](Sector.md) or `nil` | `nil` | sector picker |
 | `Wall` | [Wall](Wall.md) or `nil` | `nil` | wall picker |
 | `Behaviour` / `Script` | [Behaviour](#behaviour-references) or `nil` | `nil` | picks one script on one entity |
-| `Transform`, `Sprite`, `Model`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component or `nil` | `nil` | entity picker (the entity must have that component) |
+| `Transform`, `Sprite`, `Model`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component or `nil` | `nil` | picks one component on one entity (an entity can have several) |
 | `Asset` / `Texture` | the texture's path as a string (`""` if unset) | `nil` | texture picker |
 
 List types (`number[]`) aren't supported.
 
 Reference fields (Entity, Sector, Wall, Behaviour, components) store the target's **ID**, so they
-survive renames. If the target is deleted, the field is `nil` when the level starts.
+survive renames. If the target is deleted, the field is `nil` when the level starts. A component
+field stores the exact component, so it still points at the same one when the entity's other
+components of that type are added, removed or reordered. Component fields saved before entities
+could have several components of a type load empty: pick the component again in the inspector.
 
 ```lua
 public number speed = 40

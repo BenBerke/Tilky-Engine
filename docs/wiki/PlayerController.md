@@ -25,7 +25,8 @@ The player entity needs:
 Only one Player Controller runs: the one with **Is Active** ticked.
 
 - **Ticking a controller's Is Active switches control to it** and unticks every other controller,
-  in the inspector or from a script (`playerController.isActive = true`).
+  including others on the same entity, in the inspector or from a script
+  (`playerController.isActive = true`).
 - The camera does **not** switch with it. To see through the new player too, also set its
   `camera.isActive = true`.
 - When control leaves a player, its horizontal velocity is set to `0`, so it stops instead of
