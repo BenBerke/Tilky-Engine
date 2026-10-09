@@ -119,6 +119,12 @@ namespace Editor {
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
         io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(),18.0f);
+
+        // Toolbar icons. Loaded on its own (not merged into the text font) so
+        // only the toolbar pushes it.
+        const fs::path iconFontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/FontAwesome6-Solid.otf");
+        if (std::error_code ec; fs::exists(iconFontPath, ec)) editorIconFont = io.Fonts->AddFontFromFileTTF(iconFontPath.string().c_str(), 16.0f);
+        else spdlog::warn("Icon font not found at {}, the toolbar will use text labels", iconFontPath.string());
         ApplyEditorTheme(currentTheme);
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);

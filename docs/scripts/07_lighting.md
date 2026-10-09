@@ -1,8 +1,8 @@
 # 07 - Lighting
 
 Every sector has a `light` property: a `Vector3` of red, green, blue in the range **0-255**
-(`255, 255, 255` is full white, `0, 0, 0` is dark). It returns a copy, so to change it, build a new
-`Vector3` and assign it back.
+(`255, 255, 255` is full white, `0, 0, 0` is dark). `sector.light.x = 0` changes one channel; a
+value stored in a variable is a copy, so assign it back after changing it.
 
 ```lua
 local base = sector.light                     -- copy
@@ -15,23 +15,16 @@ All scripts on this page are **sector scripts**.
 
 ## Flicker
 
-**Attach to:** a sector with a broken light.
+**Attach to:** a sector 
 
 Holds a random brightness for a random short time, then picks another.
 
 ```lua
 -- Scripts/Lighting/Flicker.lua (sector script)
----@field minBrightness number @ Min Brightness (0-1)
-minBrightness = 0.3
-
----@field maxBrightness number @ Max Brightness (0-1)
-maxBrightness = 1.0
-
----@field minInterval number @ Min Hold Time (s)
-minInterval = 0.03
-
----@field maxInterval number @ Max Hold Time (s)
-maxInterval = 0.15
+public number minBrightness = 0.3
+public number maxBrightness = 1.0
+public number minInterval = 0.03
+public number maxInterval = 0.15
 
 local base
 local timer = 0.0
@@ -62,14 +55,9 @@ end
 
 ```lua
 -- Scripts/Lighting/Pulse.lua (sector script)
----@field period number @ Period (s)
-period = 2.0
-
----@field minBrightness number @ Min Brightness (0-1)
-minBrightness = 0.35
-
----@field maxBrightness number @ Max Brightness (0-1)
-maxBrightness = 1.0
+public number period = 2.0
+public number minBrightness = 0.35
+public number maxBrightness = 1.0
 
 local base
 local clock = 0.0
@@ -95,20 +83,15 @@ end
 
 **Attach to:** a sector that should flash red while an alarm is on.
 
-The alarm is a channel in the shared `Scripts` table (the same trick the doors use), so any
-script can trigger it: `Scripts.channels = Scripts.channels or {}` then
-`Scripts.channels["alarm"] = true`.
+The alarm is a channel in the shared `Global` table (the same trick the doors use), so any
+script can trigger it: `Global.channels = Global.channels or {}` then
+`Global.channels["alarm"] = true`.
 
 ```lua
 -- Scripts/Lighting/AlarmStrobe.lua (sector script)
----@field channel string @ Channel
-channel = "alarm"
-
----@field flashesPerSecond number @ Flashes Per Second
-flashesPerSecond = 2
-
----@field alarmColor Vector3 @ Alarm Color
-alarmColor = Vector3(255, 0, 0)
+public string channel = "alarm"
+public number flashesPerSecond = 2
+public Vector3 alarmColor = Vector3(255, 0, 0)
 
 local base
 local clock = 0.0
@@ -119,7 +102,7 @@ function Start()
 end
 
 function Update()
-    local active = Scripts.channels ~= nil and Scripts.channels[channel] == true
+    local active = Global.channels ~= nil and Global.channels[channel] == true
 
     if not active then
         if wasActive then
@@ -163,11 +146,8 @@ Blends through a list of colors over a day.
 
 ```lua
 -- Scripts/Lighting/DayNight.lua (sector script)
----@field dayLength number @ Day Length (s)
-dayLength = 120
-
----@field startTime number @ Start Time (0-1, 0.5 = noon)
-startTime = 0.5
+public number dayLength = 120
+public number startTime = 0.5
 
 -- One entry per key moment of the day, evenly spaced from midnight (0) around to midnight (1).
 local KEYFRAMES = {
@@ -222,14 +202,9 @@ Press a key while standing in the sector to toggle its lights.
 
 ```lua
 -- Scripts/Lighting/LightSwitch.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field toggleKey string @ Toggle Key
-toggleKey = "F"
-
----@field offBrightness number @ Brightness When Off (0-1)
-offBrightness = 0.1
+public Entity player = nil
+public Key toggleKey = Key.F
+public number offBrightness = 0.1
 
 local base
 local lightsOn = true

@@ -28,7 +28,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!LevelManager::LoadFirstProjectLevel()) {
+    LevelSerialization::LevelExtraData extraData;
+
+    if (!LevelManager::LoadFirstProjectLevel(&extraData)) {
         std::cerr << "Failed to load startup level for the project\n";
         return 1;
     }

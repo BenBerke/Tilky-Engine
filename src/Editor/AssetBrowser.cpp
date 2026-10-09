@@ -14,8 +14,10 @@
 
 #include "imgui.h"
 
+#include "Headers/Editor/Editor.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -26,12 +28,34 @@ namespace fs = std::filesystem;
 
 namespace {
     // Every identifier the script editor's autocomplete can suggest: Lua
-    // keywords, the lifecycle function names a Behaviour can define, a
-    // handful of always-available globals, and - the main point - every
+    // keywords, Tilky's declaration keywords/field types/attributes (see
+    // LuaScriptCompiler), the lifecycle function names a Behaviour can
+    // define, a handful of always-available globals, and - the main point - every
     // type/property/method name registered with LuaBindingMetadata (see
     // that header), so autocomplete and the future generated LuaLS stubs
     // are driven by the same data instead of two hand-maintained lists.
     // Built once, lazily, on first use.
+    // Lua highlighting plus Tilky's declaration keywords (`public`) as
+    // keywords and its field types as known identifiers.
+    const TextEditor::LanguageDefinition& ScriptLanguageDefinition() {
+        static const TextEditor::LanguageDefinition definition = [] {
+            TextEditor::LanguageDefinition lua = TextEditor::LanguageDefinition::Lua();
+
+            for (const std::string& keyword : LuaScriptCompiler::DeclarationKeywordNames())
+                lua.mKeywords.insert(keyword);
+
+            for (const std::string& type : LuaScriptCompiler::FieldTypeNames()) {
+                TextEditor::Identifier identifier;
+                identifier.mDeclaration = "Field type";
+                lua.mIdentifiers.insert_or_assign(type, identifier);
+            }
+
+            return lua;
+        }();
+
+        return definition;
+    }
+
     const std::vector<std::string>& AutocompleteCandidates() {
         LevelSystem::EnsureScriptingInitialized();
 
@@ -41,15 +65,24 @@ namespace {
                 "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
                 "true", "until", "while",
                 "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
+                "OnEntityEnter", "OnEntityExit",
+                "OnCollisionEnter", "OnCollision", "OnCollisionExit",
+                "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
                 "entity", "sector",
-                "GameTime", "Input", "Game", "Debug", "Scripts", "mathT"
+                "GameTime", "Input", "Game", "Debug", "Global", "mathT"
             };
+
+            for (std::vector<std::string> names : {LuaScriptCompiler::DeclarationKeywordNames(),
+                                                   LuaScriptCompiler::FieldTypeNames(),
+                                                   LuaScriptCompiler::FieldAttributeNames()})
+                list.insert(list.end(), names.begin(), names.end());
 
             for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
                 list.push_back(type.name);
 
                 for (const LuaBindingMetadata::PropertyDoc& prop : type.properties) list.push_back(prop.name);
                 for (const LuaBindingMetadata::MethodDoc& method : type.methods) list.push_back(method.name);
+                for (const LuaBindingMetadata::EnumValueDoc& value : type.enumValues) list.push_back(value.name);
             }
 
             std::ranges::sort(list);
@@ -184,7 +217,13 @@ namespace {
     // without that, e.g. typing "mathT." would fail to resolve at all
     // against the registered type name "mathT", since the base lookup
     // used to be an exact-case match.
-    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(const std::vector<std::string>& chain) {
+    //
+    // A chain can also start at one of the script's own declarations
+    // (`public Entity target` makes `target.` resolve as Entity).
+    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(
+        const std::vector<std::string>& chain,
+        const std::vector<LuaScriptCompiler::DeclarationInfo>& declarations
+    ) {
         if (chain.empty()) return nullptr;
 
         const auto& typesByName = TypeDocsByName();
@@ -192,7 +231,13 @@ namespace {
 
         const std::string baseLower = LowerCopy(chain.front());
         const auto aliasIt = aliases.find(baseLower);
-        const std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
+        std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
+
+        const auto declaration = std::ranges::find(declarations, chain.front(), &LuaScriptCompiler::DeclarationInfo::name);
+        if (declaration != declarations.end()) {
+            if (declaration->luaType.empty()) return nullptr;
+            baseTypeName = declaration->luaType;
+        }
 
         const auto baseIt = typesByName.find(LowerCopy(baseTypeName));
         if (baseIt == typesByName.end()) return nullptr;
@@ -404,6 +449,18 @@ namespace {
 
         const fs::path destination = targetPath.parent_path() / finalName;
 
+        // A level renamed to the name of a level in another folder would make
+        // that name ambiguous - see LevelSerialization::FindLevelPath.
+        if (!targetIsDirectory && destination.extension() == AssetBrowser::kLevelFileExtension) {
+            for (const fs::path& existing : LevelSerialization::FindLevelFiles(destination.stem().string())) {
+                std::error_code equivEc;
+                if (!fs::equivalent(existing, targetPath, equivEc) || equivEc) {
+                    errorMessage = "A level with that name already exists.";
+                    return false;
+                }
+            }
+        }
+
         std::error_code destExistsEc;
         if (fs::exists(destination, destExistsEc)) {
             // On case-insensitive filesystems, a pure-case rename (e.g.
@@ -575,8 +632,10 @@ namespace {
         const fs::path fileName = BuildLevelFileName(levelName);
         const fs::path destination = destinationDirectory / fileName;
 
+        // Levels are found by name anywhere under Assets, so the name must be
+        // free project-wide, not just in this folder.
         std::error_code existsEc;
-        if (fs::exists(destination, existsEc)) {
+        if (fs::exists(destination, existsEc) || !LevelSerialization::FindLevelFiles(destination.stem().string()).empty()) {
             errorMessage = "A level with that name already exists.";
             return false;
         }
@@ -632,16 +691,13 @@ namespace {
 
         if (destination.extension() == ".lua") {
             file <<
-                R"lua(-- Fields declared like this show up (and become editable) in the Inspector.
--- The comment above each field is what gives it a type - see the Tilky
--- scripting docs for the full list (number, string, bool, Vector2/3/4,
--- Entity, Behaviour, an engine component name like Rigidbody, ...).
+                R"lua(-- `public` fields show up (and become editable) in the Inspector.
+-- The word after `public` is the field's type - see the Tilky scripting
+-- docs for the full list (number, int, bool, string, Vector2/3/4, Entity,
+-- Behaviour, an engine component name like Rigidbody, enum(...), Key, ...).
 
----@field speed number
-speed = 200
-
----@field target Entity
-target = nil
+public number speed = 200
+public Entity target = nil
 
 -- Called once, the first time this script becomes active.
 function Start()
@@ -652,7 +708,7 @@ end
 function Update()
     -- entity is this script's own Entity - every script gets one
     -- automatically, no lookup required.
-    -- entity.transform:addPosition(Vector3(0, 0, speed * GameTime.deltaTime))
+    -- entity.transform:AddPosition(Vector3(0, 0, speed * GameTime.deltaTime))
 
     -- Reading an Entity-reference field gives you a real Entity back,
     -- or nil if nothing is assigned in the Inspector.
@@ -727,7 +783,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -746,6 +802,7 @@ end
             { ".jpeg", RegisteredExtensionKind::Texture },
             { ".wav",  RegisteredExtensionKind::Sound   },
             { ".lua",  RegisteredExtensionKind::Script  },
+            { std::string(FlipbookIO::kExtension), RegisteredExtensionKind::Flipbook },
             { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
         };
 
@@ -767,6 +824,7 @@ end
             case AssetKind::Sound: return "wav";
             case AssetKind::Script: return "lua";
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
+            case AssetKind::Flipbook: return "fpk";
             default: return "file";
         }
     }
@@ -778,6 +836,7 @@ end
             case AssetKind::Sound: return IM_COL32(45, 70, 90, 255);
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
             case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
+            case AssetKind::Flipbook: return IM_COL32(100, 55, 75, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
     }
@@ -809,7 +868,7 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
         std::istreambuf_iterator<char>{}
     };
 
-    scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
+    scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
 
     scriptEditor.SetText(contents);
 
@@ -1090,6 +1149,18 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     ImGui::End();
 }
 
+const std::vector<LuaScriptCompiler::DeclarationInfo>& AssetBrowser::OpenScriptDeclarations() {
+    std::string text = scriptEditor.GetText();
+
+    if (text != declarationsSource) {
+        // Declarations that fail to compile are left out; the rest still help.
+        declarations = LuaScriptCompiler::Compile(text).declarations;
+        declarationsSource = std::move(text);
+    }
+
+    return declarations;
+}
+
 void AssetBrowser::UpdateAutocomplete() {
     if (!scriptEditorOpen || scriptEditor.IsReadOnly() ||
         !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
@@ -1123,15 +1194,16 @@ void AssetBrowser::UpdateAutocomplete() {
     // doesn't understand (plain identifier chains only - no calls,
     // indexing, or local-variable type inference).
     if (start > 0 && line[start - 1] == '.') {
-        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1));
+        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1), OpenScriptDeclarations());
 
         autocompleteMatches.clear();
 
         if (type != nullptr) {
             std::vector<std::string> memberNames;
-            memberNames.reserve(type->properties.size() + type->methods.size());
+            memberNames.reserve(type->properties.size() + type->methods.size() + type->enumValues.size());
             for (const LuaBindingMetadata::PropertyDoc& prop : type->properties) memberNames.push_back(prop.name);
             for (const LuaBindingMetadata::MethodDoc& method : type->methods) memberNames.push_back(method.name);
+            for (const LuaBindingMetadata::EnumValueDoc& value : type->enumValues) memberNames.push_back(value.name);
             std::ranges::sort(memberNames);
 
             const std::string wordLower = LowerCopy(word);
@@ -1173,7 +1245,13 @@ void AssetBrowser::UpdateAutocomplete() {
     // case-mismatched accept still inserts correctly-cased text.
     const std::string wordLower = LowerCopy(word);
 
-    for (const std::string& candidate : AutocompleteCandidates()) {
+    std::vector<std::string> candidates = AutocompleteCandidates();
+    for (const LuaScriptCompiler::DeclarationInfo& declaration : OpenScriptDeclarations())
+        candidates.push_back(declaration.name);
+    std::ranges::sort(candidates);
+    candidates.erase(std::ranges::unique(candidates).begin(), candidates.end());
+
+    for (const std::string& candidate : candidates) {
         if (candidate.size() <= word.size() || !StartsWithCaseInsensitive(candidate, wordLower)) continue;
 
         autocompleteMatches.push_back(candidate);
@@ -1387,6 +1465,50 @@ void AssetBrowser::DuplicateCurrentLine() {
 }
 
 // ============================================================================
+// Sound preview
+// ============================================================================
+
+namespace {
+    // OpenAL only runs while the game plays, so editor previews go through
+    // SDL's own audio. One preview at a time: starting another replaces it.
+    SDL_AudioStream* previewStream = nullptr;
+
+    void PlaySoundPreview(const std::filesystem::path& path) {
+        if (!SDL_WasInit(SDL_INIT_AUDIO) && !SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+            spdlog::error("Sound preview: SDL audio failed to start: {}", SDL_GetError());
+            return;
+        }
+
+        const std::u8string utf8Path = path.u8string();
+
+        SDL_AudioSpec spec;
+        Uint8* data = nullptr;
+        Uint32 length = 0;
+
+        if (!SDL_LoadWAV(reinterpret_cast<const char*>(utf8Path.c_str()), &spec, &data, &length)) {
+            spdlog::error("Sound preview: SDL_LoadWAV failed for {}: {}", path.string(), SDL_GetError());
+            return;
+        }
+
+        if (previewStream != nullptr) SDL_DestroyAudioStream(previewStream);
+
+        previewStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+
+        if (previewStream == nullptr) {
+            spdlog::error("Sound preview: no playback device: {}", SDL_GetError());
+            SDL_free(data);
+            return;
+        }
+
+        SDL_PutAudioStreamData(previewStream, data, static_cast<int>(length));
+        SDL_FlushAudioStream(previewStream);
+        SDL_free(data);
+
+        SDL_ResumeAudioStreamDevice(previewStream); // device streams start paused
+    }
+}
+
+// ============================================================================
 // AssetEntry hierarchy
 // ============================================================================
 
@@ -1423,10 +1545,14 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         browser.RequestOpenScript(GetPath());
         return;
     }
-
-    if (kind != AssetKind::Other) {
-        browser.RequestConsumeAsFieldReference(kind, GetPath());
+    if (kind == AssetKind::Flipbook) {
+        browser.RequestOpenFlipbook(GetPath());
+        return;
     }
+    if (kind == AssetKind::Sound) PlaySoundPreview(GetPath());
+
+    if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
+
 }
 
 void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const {
@@ -1487,6 +1613,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Script);
         case RegisteredExtensionKind::Model:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Model);
+        case RegisteredExtensionKind::Flipbook:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Flipbook);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1504,6 +1632,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Sound:   return "TILKY_ASSET_SOUND";
         case AssetKind::Script:  return "TILKY_ASSET_SCRIPT";
         case AssetKind::Model:   return "TILKY_ASSET_MODEL";
+        case AssetKind::Flipbook: return "TILKY_ASSET_FLIPBOOK";
         default:                 return "TILKY_ASSET_OTHER";
     }
 }
@@ -1514,14 +1643,11 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
 
         case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
-        case AssetKind::Sound: {
-            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetSoundsPath());
-            rel.replace_extension();
-            return rel.generic_string();
-        }
+        case AssetKind::Flipbook: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
+        case AssetKind::Sound:
         case AssetKind::Script: {
-            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetScriptsPath());
+            fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath());
             rel.replace_extension();
             return rel.generic_string();
         }
@@ -1702,7 +1828,14 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
     else {
         const std::string stem = sourceAbsolutePath.stem().string();
         const std::string ext = sourceAbsolutePath.extension().string();
-        for (int suffix = 2; fs::exists(destination); ++suffix)
+
+        // Level names must be free across the whole Assets folder, not just here.
+        const bool isLevel = ext == kLevelFileExtension;
+        const auto taken = [&] {
+            return fs::exists(destination) || (isLevel && !LevelSerialization::FindLevelFiles(destination.stem().string()).empty());
+        };
+
+        for (int suffix = 2; taken(); ++suffix)
             destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
     }
 
@@ -1871,8 +2004,8 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
     // offers more than one payload type at once - so probing all of them
     // here is how a drop target stays agnostic to which one a given
     // dragged entry happened to be offering.
-    static constexpr std::array<AssetKind, 4> kFieldReferenceKinds = {
-        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model
+    static constexpr std::array<AssetKind, 5> kFieldReferenceKinds = {
+        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model, AssetKind::Flipbook
     };
 
     for (const AssetKind kind : kFieldReferenceKinds) {
@@ -1943,7 +2076,18 @@ void AssetBrowser::NotifyAssetReferenceRenamed(
     if (oldReference == newReference) return;
 
     switch (kind) {
-        case AssetKind::Texture: LevelManager::RenameTextureReference(oldReference, newReference); break;
+        case AssetKind::Texture:
+            LevelManager::RenameTextureReference(oldReference, newReference);
+            // Flipbook frames name textures too: the files on disk and any
+            // flipbook open in the editor (which may have unsaved changes).
+            FlipbookIO::RenameTextureReferenceInProject(oldReference, newReference);
+            flipbookEditor.RenameTextureReference(oldReference, newReference);
+            break;
+        case AssetKind::Flipbook:
+            LevelManager::RenameFlipbookReference(oldReference, newReference);
+            FlipbookLibrary::Invalidate(oldReference);
+            flipbookEditor.OnFileMoved(oldAbsolutePath, newAbsolutePath);
+            break;
         case AssetKind::Sound:   LevelManager::RenameSoundReference(oldReference, newReference); break;
         case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
         case AssetKind::Model:   LevelManager::RenameModelReference(oldReference, newReference); break;
@@ -2265,7 +2409,16 @@ void AssetBrowser::DrawCreateFileModal() {
 
             fs::path createdFilePath;
             std::string error;
-            if (CreateGenericFileAsset(activeModal.destinationDirectory, enteredName, createdFilePath, error)) {
+            const bool created = CreateGenericFileAsset(activeModal.destinationDirectory, enteredName, createdFilePath, error);
+
+            // A .fpk has to be a valid (empty) flipbook from the start, or
+            // nothing can open it.
+            if (created && LowerCopy(createdFilePath.extension().string()) == FlipbookIO::kExtension) {
+                if (FlipbookIO::Save(createdFilePath, FlipbookAsset{}, &error)) RequestOpenFlipbook(createdFilePath);
+                else spdlog::error("Asset browser: {}", error);
+            }
+
+            if (created) {
                 const bool wasVisible = createdFilePath.parent_path() == currentDirectory;
                 activeModal.kind = AssetBrowserModalKind::None;
                 ImGui::CloseCurrentPopup();
@@ -2328,6 +2481,9 @@ void AssetBrowser::DrawRenameModal() {
                 if (pendingConfirmedPath.has_value() && *pendingConfirmedPath == oldPath) pendingConfirmedPath = newPath;
 
                 if (newPath != oldPath) NotifyAssetReferenceRenamed(renamedKind, oldPath, newPath);
+
+                if (!activeModal.targetIsDirectory && oldPath.extension() == kLevelFileExtension)
+                    Editor::LevelFileRenamed(oldPath.stem().string(), newPath.stem().string());
 
                 Refresh();
             }
@@ -2576,6 +2732,19 @@ void AssetBrowser::RequestCreateFile(const std::filesystem::path& destinationDir
     activeModal.justOpened = true;
 }
 
+void AssetBrowser::RequestOpenFlipbook(const std::filesystem::path& absolutePath) {
+    if (!IsPathWithinRoot(absolutePath)) {
+        lastOperationError = "Refused to open a flipbook outside the asset root: " + absolutePath.string();
+        return;
+    }
+
+    flipbookEditor.Open(absolutePath);
+}
+
+void AssetBrowser::DrawFlipbookEditorWindows() {
+    flipbookEditor.Draw();
+}
+
 void AssetBrowser::RequestOpenLevel(const std::filesystem::path& absolutePath) {
     if (!IsPathWithinRoot(absolutePath)) {
         lastOperationError = "Refused to open a level outside the asset root: " + absolutePath.string();
@@ -2600,5 +2769,6 @@ void AssetBrowser::RequestConsumeAsFieldReference(const AssetKind kind, const st
 
 void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {
     if (ImGui::MenuItem("Script (.lua)")) RequestCreateFile(destinationDirectory, ".lua");
+    if (ImGui::MenuItem("Flipbook (.fpk)")) RequestCreateFile(destinationDirectory, std::string(FlipbookIO::kExtension));
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
 }

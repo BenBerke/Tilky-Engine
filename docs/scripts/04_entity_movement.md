@@ -2,7 +2,7 @@
 
 Scripts for moving props, platforms, and characters around. Position is a `Vector3` where `x` and
 `z` are the ground plane and `y` is height. Move something by reading `transform.position`,
-building a new `Vector3`, and assigning it back (or use `transform:addPosition(...)` for relative
+building a new `Vector3`, and assigning it back (or use `transform:AddPosition(...)` for relative
 moves).
 
 Two ways to move something:
@@ -21,17 +21,10 @@ Two ways to move something:
 
 ```lua
 -- Scripts/Movement/Patrol.lua (entity script)
----@field pointA Entity @ Point A
-pointA = nil
-
----@field pointB Entity @ Point B
-pointB = nil
-
----@field speed number @ Speed
-speed = 30
-
----@field waitTime number @ Wait At Ends (s)
-waitTime = 1.0
+public Entity pointA = nil
+public Entity pointB = nil
+public number speed = 30
+public number waitTime = 1.0
 
 local transform
 local goingToB = true
@@ -66,7 +59,7 @@ function Update()
         waiting = waitTime
     else
         transform.position = Vector3(p.x + dx / dist * step, p.y, p.z + dz / dist * step)
-        transform.forward = Vector2(dx / dist, dz / dist)   -- face the way we're going
+        transform:LookDirection(Vector3(dx, 0, dz))   -- face the way we're going
     end
 end
 ```
@@ -74,8 +67,8 @@ end
 **Notes**
 
 - Movement stays on the ground plane and keeps the entity's own `y`.
-- `transform.forward` is a `Vector2` (`x`, `z`). Directional sprites use it to pick which side to
-  show.
+- `transform:LookDirection` turns the entity's `rotation` to face a direction (left and right only,
+  by default). Directional sprites use the rotation to pick which side to show.
 - Want a longer route? Replace the two points with a table of waypoints and an index.
 
 ---
@@ -86,14 +79,9 @@ end
 
 ```lua
 -- Scripts/Movement/Orbit.lua (entity script)
----@field center Entity @ Center (optional)
-center = nil
-
----@field radius number @ Radius
-radius = 40
-
----@field degreesPerSecond number @ Degrees Per Second
-degreesPerSecond = 90
+public Entity center = nil
+public number radius = 40
+public number degreesPerSecond = 90
 
 local transform
 local angle = 0.0
@@ -138,14 +126,9 @@ will fight the bobbing.
 
 ```lua
 -- Scripts/Movement/BobAndSpin.lua (entity script)
----@field bobHeight number @ Bob Height
-bobHeight = 3
-
----@field bobSpeed number @ Bob Speed
-bobSpeed = 2
-
----@field spinDegreesPerSecond number @ Spin (deg/s)
-spinDegreesPerSecond = 120
+public number bobHeight = 3
+public number bobSpeed = 2
+public number spinDegreesPerSecond = 120
 
 local transform
 local baseY = 0.0
@@ -188,14 +171,9 @@ any frame rate.
 
 ```lua
 -- Scripts/Movement/Follow.lua (entity script)
----@field target Entity @ Target
-target = nil
-
----@field followSpeed number @ Follow Speed (higher = snappier)
-followSpeed = 4
-
----@field offset Vector3 @ Offset
-offset = Vector3(0, 0, 0)
+public Entity target = nil
+public number followSpeed = 4
+public Vector3 offset = Vector3(0, 0, 0)
 
 local transform
 
@@ -228,8 +206,7 @@ end
 
 ```lua
 -- Scripts/Movement/KeyboardMover.lua (entity script)
----@field speed number @ Speed
-speed = 40
+public number speed = 40
 
 local transform
 
@@ -240,10 +217,10 @@ end
 function Update()
     local dx, dz = 0.0, 0.0
 
-    if Input.GetKey("Left") then dx = dx - 1 end
-    if Input.GetKey("Right") then dx = dx + 1 end
-    if Input.GetKey("Up") then dz = dz + 1 end
-    if Input.GetKey("Down") then dz = dz - 1 end
+    if Input.GetKey(Key.Left) then dx = dx - 1 end
+    if Input.GetKey(Key.Right) then dx = dx + 1 end
+    if Input.GetKey(Key.Up) then dz = dz + 1 end
+    if Input.GetKey(Key.Down) then dz = dz - 1 end
 
     if dx == 0 and dz == 0 then return end
 
@@ -251,14 +228,14 @@ function Update()
     local len = math.sqrt(dx * dx + dz * dz)
     local step = speed * GameTime.deltaTime
 
-    transform:addPosition(Vector3(dx / len * step, 0, dz / len * step))
-    transform.forward = Vector2(dx / len, dz / len)
+    transform:AddPosition(Vector3(dx / len * step, 0, dz / len * step))
+    transform:LookDirection(Vector3(dx, 0, dz))
 end
 ```
 
 **Notes**
 
 - `Input.GetKey` is true while held, `GetKeyDown` only on the frame it was pressed, and `GetKeyUp`
-  only on the frame it was released. Key names: letters `A`-`Z`, digits `0`-`9`, `Space`,
-  `Escape`, `Enter`, `Tab`, `Backspace`, `Left`/`Right`/`Up`/`Down`, `LShift`/`RShift`,
-  `LCtrl`/`RCtrl`, `LAlt`/`RAlt`. An unknown name simply returns `false`.
+  only on the frame it was released. Keys come from the `Key` table: `Key.A`-`Key.Z`,
+  `Key.Alpha0`-`Key.Alpha9`, `Key.Space`, `Key.Escape`, `Key.Enter`, `Key.Tab`, `Key.Backspace`,
+  `Key.Left`/`Right`/`Up`/`Down`, `Key.LShift`/`RShift`, `Key.LCtrl`/`RCtrl`, `Key.LAlt`/`RAlt`.

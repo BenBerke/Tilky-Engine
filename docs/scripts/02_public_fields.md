@@ -1,35 +1,40 @@
 # 02 - Public Fields
 
-Public fields are top-level variables that show up in the inspector. You declare one with a
-`---@field` comment **immediately above** its default value:
+Public fields are top-level variables that show up in the inspector. You declare one with
+`public`, a type, a name and a default value:
 
 ```text
----@field <name> <type> @ <Display Name>
-<name> = <default>
+public <type> <name> = <default>
 ```
 
-- The `@ Display Name` part is optional. Without it the variable name is shown.
-- Blank lines and ordinary `--` comments may sit between the annotation and the assignment, but
-  another `---@field` may not.
-- The default has to be a simple literal (`5`, `1.5`, `true`, `"text"`, `Vector3(0, 1, 0)`), since
-  the inspector reads it as text without running the script.
+- The inspector label comes from the name: `moveSpeed` shows as "Move Speed", `jump_key` as
+  "Jump Key".
+- `public` only works at the top level of the script, not inside a function or block, and not
+  together with `local`.
+- The default has to be a plain value (`5`, `1.5`, `true`, `"text"`, `Vector3(0, 1, 0)`, `nil`),
+  since the editor reads it without running the script. `= <default>` can be left out; the field
+  then starts at zero, empty or `nil`.
+- A mistake in a declaration (an unknown type, a default of the wrong type, ...) is a script error
+  shown in the inspector, like a syntax error.
 
 ## Supported types
 
-| Annotation | Lua value in the script | Default literal |
+| Type | Lua value in the script | Default value |
 |------------|-------------------------|-----------------|
 | `number` / `float` | number | `1.5` |
 | `int` / `integer` | number | `3` |
 | `bool` / `boolean` | boolean | `true` |
 | `string` | string | `"hello"` |
 | `Vector2` / `Vector3` / `Vector4` | vector | `Vector3(0, 1, 0)` |
-| `enum(A,B,C)` | integer, the option's position starting at `0` | the option's number, e.g. `1` |
+| `enum(A, B, C)` | integer, the option's position starting at `0` | one of the options, e.g. `B` |
+| `Key` | a [`Key`](../wiki/Input.md#keys) value | `Key.E` |
 | `Entity` | `Entity` (or `nil` if unassigned) | `nil` |
 | `Behaviour` | another script on some Entity (or `nil`) | `nil` |
 | `Wall` | `Wall` (or `nil` if unassigned) | `nil` |
 | `Sector` | `Sector` (or `nil` if unassigned) | `nil` |
-| `Transform`, `Sprite`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
+| `Transform`, `Sprite`, `Model`, `Flipbook`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
 | `Asset` / `Texture` | the asset's path as a string | `nil` |
+| `FlipbookAsset` | a `.fpk` flipbook's path as a string, for [`flipbook:Play`](../wiki/Flipbook.md#scripting) | `nil` |
 
 Array types (`number[]`) are not supported yet.
 
@@ -39,38 +44,17 @@ Array types (`number[]`) are not supported yet.
 
 ```lua
 -- Scripts/Examples/AllFieldTypes.lua (entity script)
----@field speed number @ Move Speed
-speed = 3.5
-
----@field lives int @ Lives
-lives = 3
-
----@field canFly bool @ Can Fly
-canFly = false
-
----@field title string @ Title
-title = "Boss"
-
----@field offset Vector3 @ Offset
-offset = Vector3(0, 10, 0)
-
----@field tint Vector4 @ Tint
-tint = Vector4(1, 0.5, 0.5, 1)
-
----@field mode enum(Idle,Patrol,Chase) @ Mode
-mode = 1
-
----@field target Entity @ Target
-target = nil
-
----@field targetTransform Transform @ Target Transform
-targetTransform = nil
-
----@field partner Behaviour @ Partner Script
-partner = nil
-
----@field icon Texture @ Icon
-icon = nil
+public number speed = 3.5
+public int lives = 3
+public bool canFly = false
+public string title = "Boss"
+public Vector3 offset = Vector3(0, 10, 0)
+public Vector4 tint = Vector4(1, 0.5, 0.5, 1)
+public enum(Idle, Patrol, Chase) mode = Patrol
+public Entity target = nil
+public Transform targetTransform = nil
+public Behaviour partner = nil
+public Texture icon = nil
 
 -- Enum values arrive as numbers, in the order they were listed above.
 local MODE_IDLE, MODE_PATROL, MODE_CHASE = 0, 1, 2
@@ -113,6 +97,9 @@ end
 - `Entity`, `Wall` and `Sector` fields can be filled by dragging a row from the Hierarchy onto the
   field. An entity can also be dragged straight off the level view; it snaps back to where it was
   when you drop it on the field. The dropdown still works too.
+- Component fields (`AudioSource`, `Sprite`, `Collider`, ...) work the same way: drop an entity on
+  the field and it picks that entity's **first** component of that type. An entity without one
+  isn't accepted. To pick a second or third one, use the dropdown.
 - A `Behaviour` field lets one script read and write another script's variables. See
   [Using another script's variables](#using-another-scripts-variables) below.
 - Sector scripts can't declare fields named `sector` or `entity`. Those names are reserved
@@ -130,11 +117,8 @@ functions, as if they were your own.
 
 ```lua
 -- Scripts/Examples/Generator.lua (entity script)
----@field power number @ Power
-power = 100
-
----@field running bool @ Running
-running = true
+public number power = 100
+public bool running = true
 
 -- Called from other scripts with a colon, so it takes `self` first.
 function Drain(self, amount)
@@ -145,11 +129,8 @@ end
 
 ```lua
 -- Scripts/Examples/Lamp.lua (entity script)
----@field generator Behaviour @ Generator
-generator = nil
-
----@field drainPerSecond number @ Drain Per Second
-drainPerSecond = 5
+public Behaviour generator = nil
+public number drainPerSecond = 5
 
 function Update()
     if generator == nil or not generator.isValid then return end
@@ -195,11 +176,8 @@ an `Entity` field, a raycast, a trigger and so on), ask it for the script by fil
 
 ```lua
 -- Scripts/Examples/Lamp.lua (entity script)
----@field generatorEntity Entity @ Generator Entity
-generatorEntity = nil
-
----@field drainPerSecond number @ Drain Per Second
-drainPerSecond = 5
+public Entity generatorEntity = nil
+public number drainPerSecond = 5
 
 local generator = nil
 

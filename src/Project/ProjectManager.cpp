@@ -26,10 +26,6 @@ namespace {
     fs::path currentProjectFile;
     fs::path currentProjectFolder;
     fs::path currentAssetsPath;
-    fs::path currentLevelsPath;
-    fs::path currentTexturesPath;
-    fs::path currentSoundsPath;
-    fs::path currentScriptsPath;
 
     std::string currentProjectName;
     std::string currentEngineVersion;
@@ -281,17 +277,9 @@ namespace ProjectManager {
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
 
         currentAssetsPath = currentProjectFolder / assetsFolder;
-        currentLevelsPath = currentAssetsPath / "Levels";
-        currentTexturesPath = currentAssetsPath / "Textures";
-        currentSoundsPath = currentAssetsPath / "Sounds";
-        currentScriptsPath = currentAssetsPath / "Scripts";
 
-        // Only Assets itself is required. Levels/Textures/Sounds/Scripts are
-        // still computed above (for anything that wants a sensible default
-        // location), but are no longer mandatory - a project simply doesn't
-        // have to keep assets in those specific subfolders anymore. Code
-        // that actually reads from one of these paths (e.g. LevelManager)
-        // already checks for its own existence before using it.
+        // Only Assets itself is required - every asset, levels and scripts
+        // included, may live in any folder under it.
         std::error_code assetsExistsEc;
         if (!fs::exists(currentAssetsPath, assetsExistsEc)) {
             spdlog::critical("Project is missing Assets folder: {}", currentAssetsPath.string());
@@ -315,14 +303,6 @@ namespace ProjectManager {
     fs::path GetProjectFolder() {return currentProjectFolder;}
 
     fs::path GetAssetsPath() {return currentAssetsPath;}
-
-    fs::path GetTexturesPath() {return currentTexturesPath;
-    }
-    fs::path GetLevelsPath() {return currentLevelsPath;}
-
-    fs::path GetSoundsPath() {return currentSoundsPath;}
-
-    fs::path GetScriptsPath() {return currentScriptsPath;}
 
     fs::path GetContentRootPath() {
 #ifdef TILKY_CONTENT_ROOT

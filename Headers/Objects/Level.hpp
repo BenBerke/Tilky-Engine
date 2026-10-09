@@ -12,6 +12,7 @@
 #include "Components.hpp"
 #include "Entity.hpp"
 #include "Loadables.hpp"
+#include "Sky.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;
@@ -61,6 +62,7 @@ struct Level {
     ListenerSettings listenerSettings;
     WorldSettings worldSettings;
     RendererSettings rendererSettings;
+    SkySettings sky;
 
     ComponentStorage<ComponentTransform> transforms;
     ComponentStorage<ComponentSprite> sprites;
@@ -71,6 +73,7 @@ struct Level {
     ColliderStorage colliders;
     ComponentStorage<ComponentRigidbody> rigidbodies;
     ComponentStorage<ComponentModel> models;
+    ComponentStorage<ComponentFlipbook> flipbooks;
 
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;
@@ -87,6 +90,14 @@ struct Level {
     ID CreateEntity(Entity& entity);
     void DestroyEntity(ID entityID);
     void DestroyEntity(const Entity& entity);
+
+    // Only one camera and one player controller are active in the whole
+    // level at a time, counting each component (an entity can have several).
+    // These tick the given one on and untick every other, including its
+    // siblings. Unticking the active one is a plain isActive = false, which
+    // leaves none active.
+    void ActivateCamera(const ComponentCamera& camera);
+    void ActivatePlayerController(const ComponentPlayerController& controller);
 
     Sector* GetSector(ID sectorID);
     const Sector* GetSector(ID sectorID) const;

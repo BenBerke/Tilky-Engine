@@ -30,11 +30,11 @@ namespace LevelManager {
         currentLevelIndex = -1;
     }
 
-    bool LoadLevelFromFile(const fs::path& levelFile) {
+    bool LoadLevelFromFile(const fs::path& levelFile, LevelSerialization::LevelExtraData* outExtraData) {
         Level loadedLevel;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(levelFile, loadedLevel, nullptr, &errorMessage)) {
+        if (!LevelSerialization::LoadLevelFromFile(levelFile, loadedLevel, outExtraData, &errorMessage)) {
             std::cerr << errorMessage << "\n";
             return false;
         }
@@ -48,37 +48,28 @@ namespace LevelManager {
     }
 
     bool LoadLevelByName(const std::string& levelName) {
-        return LoadLevelFromFile(LevelSerialization::BuildLevelPath(levelName));
-    }
+        std::string errorMessage;
+        const fs::path levelPath = LevelSerialization::FindLevelPath(levelName, &errorMessage);
 
-    bool LoadFirstProjectLevel() {
-        const fs::path levelsPath = ProjectManager::GetLevelsPath();
-
-        if (!fs::exists(levelsPath) || !fs::is_directory(levelsPath)) {
-            std::cerr << "Project levels folder does not exist: "
-                      << levelsPath.string()
-                      << "\n";
+        if (levelPath.empty()) {
+            std::cerr << errorMessage << "\n";
             return false;
         }
 
-        std::vector<fs::path> levelFiles;
+        return LoadLevelFromFile(levelPath);
+    }
 
-        for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
-            if (!entry.is_regular_file()) continue;
-
-            if (entry.path().extension() == ".bson") levelFiles.push_back(entry.path());
-        }
+    bool LoadFirstProjectLevel(LevelSerialization::LevelExtraData* outExtraData) {
+        const std::vector<fs::path> levelFiles = LevelSerialization::ListLevelFiles();
 
         if (levelFiles.empty()) {
             std::cerr << "No .bson level files found in: "
-                      << levelsPath.string()
+                      << ProjectManager::GetAssetsPath().string()
                       << "\n";
             return false;
         }
 
-        std::ranges::sort(levelFiles);
-
-        return LoadLevelFromFile(levelFiles.front());
+        return LoadLevelFromFile(levelFiles.front(), outExtraData);
     }
 
     // The reason its here is for legacy reasons
@@ -102,8 +93,10 @@ namespace LevelManager {
 
         Level& level = CurrentLevel();
 
-        for (Wall& wall : level.walls)
-            if (wall.textureFileName == oldReference) wall.textureFileName = newReference;
+        for (Wall& wall : level.walls) {
+            if (wall.top.texture == oldReference) wall.top.texture = newReference;
+            if (wall.bottom.texture == oldReference) wall.bottom.texture = newReference;
+        }
 
         for (Sector& sector : level.sectors)
             for (SectorFloor& floor : sector.floors) {
@@ -148,5 +141,27 @@ namespace LevelManager {
 
         for (ComponentModel& model : level.models.components)
             if (model.fileName == oldReference) model.fileName = newReference;
+    }
+
+    void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentFlipbook& flipbook : level.flipbooks.components)
+            if (flipbook.flipbookFileName == oldReference) flipbook.flipbookFileName = newReference;
+
+        // Scripts hold flipbooks in FlipbookAsset fields. Only a path ending
+        // in .fpk can be one, so a texture field with the same text can't match.
+        const auto renameInScript = [&](ScriptAttachmentData& script) {
+            for (auto& [name, value] : script.publicValues)
+                if (AssetRefValue* asset = std::get_if<AssetRefValue>(&value); asset != nullptr && asset->path == oldReference)
+                    asset->path = newReference;
+        };
+
+        for (ComponentScript& script : level.scripts.components) renameInScript(script);
+
+        for (Sector& sector : level.sectors)
+            for (SectorScript& script : sector.scripts) renameInScript(script);
     }
 }

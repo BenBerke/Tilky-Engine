@@ -1,7 +1,7 @@
 # 17 - Level Flow
 
 Scripts that tie a level together: getting from A to B, saving progress, and unlocking the exit.
-They communicate through the shared `Scripts` table, as described in
+They communicate through the shared `Global` table, as described in
 [05_doors.md](05_doors.md#switch-and-channel-door).
 
 ---
@@ -13,14 +13,9 @@ another teleporter for a two-way pair.
 
 ```lua
 -- Scripts/Flow/Teleporter.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field destination Entity @ Destination
-destination = nil
-
----@field radius number @ Trigger Radius
-radius = 16
+public Entity player = nil
+public Entity destination = nil
+public number radius = 16
 
 local function Teleport()
     -- Positions are measured at the feet, so the player lands where the destination stands.
@@ -31,7 +26,7 @@ local function Teleport()
     if rb ~= nil then rb.velocity = Vector3(0, 0, 0) end
 
     -- Tell the pad we arrived at not to send us straight back.
-    Scripts.teleportArrival = destination.id
+    Global.teleportArrival = destination.id
 end
 
 function Update()
@@ -43,8 +38,8 @@ function Update()
     local inside = math.sqrt(dx * dx + dz * dz) <= radius
 
     -- We are the pad the player just arrived at: stay quiet until they step off it.
-    if Scripts.teleportArrival == entity.id then
-        if not inside then Scripts.teleportArrival = nil end
+    if Global.teleportArrival == entity.id then
+        if not inside then Global.teleportArrival = nil end
         return
     end
 
@@ -72,11 +67,8 @@ player back at the last checkpoint (or where they started) if they fall out of t
 
 ```lua
 -- Scripts/Flow/Checkpoint.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field radius number @ Trigger Radius
-radius = 20
+public Entity player = nil
+public number radius = 20
 
 local reached = false
 
@@ -89,7 +81,7 @@ function Update()
 
     if math.sqrt(dx * dx + dz * dz) <= radius then
         reached = true
-        Scripts.checkpoint = p   -- the player's own position, so respawn heights are consistent
+        Global.checkpoint = p   -- the player's own position, so respawn heights are consistent
         Debug.Print("Checkpoint reached")
     end
 end
@@ -101,8 +93,7 @@ end
 
 ```lua
 -- Scripts/Flow/KillPlane.lua (entity script)
----@field killHeight number @ Kill Below Height
-killHeight = -200
+public number killHeight = -200
 
 local transform, rb
 local startPosition
@@ -116,7 +107,7 @@ end
 function Update()
     if transform.position.y >= killHeight then return end
 
-    transform.position = Scripts.checkpoint or startPosition
+    transform.position = Global.checkpoint or startPosition
     if rb ~= nil then rb.velocity = Vector3(0, 0, 0) end
 
     Debug.Print("You fell out of the world")
@@ -136,20 +127,17 @@ fallen. Any [ChannelDoor](05_doors.md#switch-and-channel-door) on that channel t
 
 ```lua
 -- Scripts/Flow/KillCounter.lua (entity script)
----@field killsRequired int @ Kills Required
-killsRequired = 3
-
----@field channel string @ Channel To Turn On
-channel = "exit"
+public int killsRequired = 3
+public string channel = "exit"
 
 -- Called by an enemy's Health script (its "Death Listener" field points at this script).
 function OnDeath(self, who)
-    Scripts.kills = (Scripts.kills or 0) + 1
-    Debug.Print(who.name .. " down (" .. Scripts.kills .. "/" .. killsRequired .. ")")
+    Global.kills = (Global.kills or 0) + 1
+    Debug.Print(who.name .. " down (" .. Global.kills .. "/" .. killsRequired .. ")")
 
-    if Scripts.kills >= killsRequired then
-        Scripts.channels = Scripts.channels or {}
-        Scripts.channels[channel] = true
+    if Global.kills >= killsRequired then
+        Global.channels = Global.channels or {}
+        Global.channels[channel] = true
         Debug.Print("The way out is open")
     end
 end
@@ -167,23 +155,16 @@ end
 Loads another level when the player reaches it. It can also require a channel to be on first, for
 example the `exit` channel the kill counter above turns on.
 
-> **Experimental:** `Game.LoadLevel` swaps the running level's data, and the engine's own code
-> carries a TODO about verifying this in a running game. Test it in your build before relying on
-> it. The script guards against calling it twice.
+`Game.LoadLevel` switches at the end of the frame, so the script stops checking once it has asked
+(`loading`). Only the `Global` table carries over to the next level. See
+[Game.LoadLevel](../wiki/Game.md#loadlevel).
 
 ```lua
 -- Scripts/Flow/LevelExit.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field nextLevel string @ Next Level Name
-nextLevel = ""
-
----@field requiredChannel string @ Required Channel (empty = none)
-requiredChannel = ""
-
----@field radius number @ Trigger Radius
-radius = 20
+public Entity player = nil
+public string nextLevel = ""
+public string requiredChannel = ""
+public number radius = 20
 
 local loading = false
 
@@ -191,7 +172,7 @@ function Update()
     if loading or player == nil or not player.isValid or nextLevel == "" then return end
 
     if requiredChannel ~= "" then
-        local unlocked = Scripts.channels ~= nil and Scripts.channels[requiredChannel] == true
+        local unlocked = Global.channels ~= nil and Global.channels[requiredChannel] == true
         if not unlocked then return end
     end
 

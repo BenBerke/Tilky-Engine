@@ -19,14 +19,9 @@ Hold a key to walk slowly with a lower eye height.
 
 ```lua
 -- Scripts/Player/Crouch.lua (entity script)
----@field crouchKey string @ Crouch Key
-crouchKey = "LCtrl"
-
----@field crouchSpeed number @ Crouch Speed
-crouchSpeed = 22
-
----@field crouchEyeHeight number @ Crouch Eye Height
-crouchEyeHeight = 6
+public Key crouchKey = Key.LCtrl
+public number crouchSpeed = 22
+public number crouchEyeHeight = 6
 
 local pc
 local standingSpeed, standingRunSpeed, standingEye
@@ -78,11 +73,8 @@ overwriting the vertical velocity.
 
 ```lua
 -- Scripts/Player/DoubleJump.lua (entity script)
----@field extraJumps int @ Extra Air Jumps
-extraJumps = 1
-
----@field jumpKey string @ Jump Key
-jumpKey = "Space"
+public int extraJumps = 1
+public Key jumpKey = Key.Space
 
 local rb, pc
 local jumpsLeft = 0
@@ -108,8 +100,9 @@ end
 
 **Notes**
 
-- `rb.velocity` returns a copy, so build a new `Vector3` and assign it back. Keeping `v.x` and
-  `v.z` preserves the controller's horizontal movement.
+- `local v = rb.velocity` is a copy, so build a new `Vector3` and assign it back. Keeping `v.x` and
+  `v.z` preserves the controller's horizontal movement. (`rb.velocity.y = pc.jumpPower` would also
+  work.)
 - Make the extra jump stronger or weaker than the first by using a different number instead of
   `pc.jumpPower`.
 
@@ -124,11 +117,8 @@ they leave.
 
 ```lua
 -- Scripts/Player/SpeedZone.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field multiplier number @ Speed Multiplier
-multiplier = 1.6
+public Entity player = nil
+public number multiplier = 1.6
 
 local pc
 local baseSpeed, baseRunSpeed
@@ -198,11 +188,8 @@ Launches the player upward when they stand on the sector.
 
 ```lua
 -- Scripts/Player/JumpPad.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field launchSpeed number @ Launch Speed
-launchSpeed = 160
+public Entity player = nil
+public number launchSpeed = 160
 
 local rb
 

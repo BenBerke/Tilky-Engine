@@ -19,9 +19,11 @@ void OpenGL::BuildGpuColliders() {
 
         GpuCollider gpuCollider;
 
-        gpuCollider.positionType.x = transform->position.x;
-        gpuCollider.positionType.y = transform->position.y;
-        gpuCollider.positionType.z = transform->position.z + transform->scale.z * .5f;
+        const Vector3 position = transform->LocalToWorld(collider.offset);
+
+        gpuCollider.positionType.x = position.x;
+        gpuCollider.positionType.y = position.y;
+        gpuCollider.positionType.z = position.z + transform->scale.z * .5f;
 
         gpuCollider.positionType.w = collider.type == COLLIDERTYPE_SPHERE ? 0.0f : 1.0f;
 

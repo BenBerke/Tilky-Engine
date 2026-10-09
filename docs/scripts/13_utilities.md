@@ -108,14 +108,9 @@ Easing functions take progress `t` in `0..1` and return a reshaped `0..1`. Feed 
 
 ```lua
 -- Scripts/Utils/TweenMover.lua (entity script)
----@field offset Vector3 @ Move By
-offset = Vector3(0, 0, 40)
-
----@field duration number @ One-way Duration (s)
-duration = 1.5
-
----@field easing enum(Linear,SmoothStep,EaseIn,EaseOut,Bounce) @ Easing
-easing = 1
+public Vector3 offset = Vector3(0, 0, 40)
+public number duration = 1.5
+public enum(Linear, SmoothStep, EaseIn, EaseOut, Bounce) easing = SmoothStep
 
 local function Linear(t) return t end
 local function SmoothStep(t) return t * t * (3 - 2 * t) end
@@ -181,15 +176,15 @@ end
 copy quietly reuses the first one's bus.
 
 Lets scripts talk **without knowing about each other**: one side calls `Emit("coinCollected", 5)`,
-any number of other scripts are told. The bus lives in the shared `Scripts` table.
+any number of other scripts are told. The bus lives in the shared `Global` table.
 
 ```lua
 -- Scripts/Utils/EventBus.lua (entity script)
 
 -- The bus is built when the script is loaded (before any script's Start), so every Start()
--- can already use Scripts.Events. Top-level code of *other* scripts can't rely on it, since
+-- can already use Global.Events. Top-level code of *other* scripts can't rely on it, since
 -- load order isn't guaranteed.
-local bus = Scripts.Events
+local bus = Global.Events
 
 if bus == nil then
     bus = { listeners = {}, nextHandle = 1 }
@@ -227,7 +222,7 @@ if bus == nil then
         end
     end
 
-    Scripts.Events = bus
+    Global.Events = bus
 end
 
 -- Demo: listen for "greeting" and send one.
@@ -253,17 +248,17 @@ end
 local handle
 
 function Start()
-    handle = Scripts.Events.Subscribe("coinCollected", function(amount)
+    handle = Global.Events.Subscribe("coinCollected", function(amount)
         Debug.Print("Collected " .. amount .. " coins")
     end)
 end
 
 function OnDestroy()
-    Scripts.Events.Unsubscribe("coinCollected", handle)
+    Global.Events.Unsubscribe("coinCollected", handle)
 end
 
 -- ...and wherever the coin is picked up:
-Scripts.Events.Emit("coinCollected", 5)
+Global.Events.Emit("coinCollected", 5)
 ```
 
 **Notes**
@@ -284,11 +279,8 @@ brings it back after a delay at its original spot.
 
 ```lua
 -- Scripts/Utils/Respawner.lua (entity script)
----@field target Entity @ Target
-target = nil
-
----@field respawnDelay number @ Respawn Delay (s)
-respawnDelay = 5
+public Entity target = nil
+public number respawnDelay = 5
 
 local spawnPosition
 local timer = 0.0

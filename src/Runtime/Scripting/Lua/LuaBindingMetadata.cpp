@@ -33,6 +33,19 @@ namespace LuaBindingMetadata {
 
         for (const TypeDoc& type : registeredTypes) {
             if (!type.doc.empty()) file << "---" << type.doc << "\n";
+
+            if (!type.enumValues.empty()) {
+                file << "---@enum " << type.name << "\n" << type.name << " = {\n";
+
+                for (const EnumValueDoc& value : type.enumValues) {
+                    if (!value.doc.empty()) file << "    ---" << value.doc << "\n";
+                    file << "    " << value.name << " = " << value.value << ",\n";
+                }
+
+                file << "}\n\n";
+                continue;
+            }
+
             file << "---@class " << type.name << "\n";
 
             for (const PropertyDoc& prop : type.properties) {
@@ -65,7 +78,7 @@ namespace LuaBindingMetadata {
 
         file << "---The Entity this script is attached to.\n---@type Entity\nentity = nil\n\n";
         file << "---Sector scripts only: the sector this script is attached to.\n---@type Sector\nsector = nil\n\n";
-        file << "---One table shared by every script in the level.\n---@type table\nScripts = {}\n";
+        file << "---One table shared by every script. Kept across level changes, empty again each time the game starts.\n---@type table\nGlobal = {}\n";
 
         return true;
     }

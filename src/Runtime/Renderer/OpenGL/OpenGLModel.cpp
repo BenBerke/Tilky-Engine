@@ -200,7 +200,7 @@ namespace {
                 out[column * 3 + row] = cofactor[row][column] * inverse;
     }
 
-    GpuModelInstance BuildModelInstance(const ComponentTransform& transform, const Level& level) {
+    GpuModelInstance BuildModelInstance(const ComponentTransform& transform, const Vector3& offset, const Level& level) {
         const Quaternion q = transform.rotation.Normalized();
 
         // Rotation matrix columns.
@@ -225,9 +225,11 @@ namespace {
             }
         }
 
-        instance.modelMatrix[12] = transform.position.x;
-        instance.modelMatrix[13] = transform.position.y;
-        instance.modelMatrix[14] = transform.position.z;
+        const Vector3 position = transform.LocalToWorld(offset);
+
+        instance.modelMatrix[12] = position.x;
+        instance.modelMatrix[13] = position.y;
+        instance.modelMatrix[14] = position.z;
         instance.modelMatrix[15] = 1.0f;
 
         instance.color = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -379,7 +381,7 @@ void OpenGL::BuildGpuModels() {
             instancesByBatch.emplace_back();
         }
 
-        instancesByBatch[batch->second].push_back(BuildModelInstance(*transform, level));
+        instancesByBatch[batch->second].push_back(BuildModelInstance(*transform, modelComponent.offset, level));
     }
 
     for (size_t i = 0; i < modelBatches.size(); ++i) {

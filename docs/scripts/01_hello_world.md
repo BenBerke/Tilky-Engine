@@ -10,8 +10,7 @@ fire.
 
 ```lua
 -- Scripts/Examples/HelloWorld.lua (entity script)
----@field greeting string @ Greeting
-greeting = "Hello from Tilky!"
+public string greeting = "Hello from Tilky!"
 
 function OnEnable()
     Debug.Print("[" .. entity.name .. "] OnEnable")

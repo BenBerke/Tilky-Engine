@@ -155,13 +155,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     {
         ZoneScopedN("Background");
-        //todo make this a world setting
-        //todo imrpove
-        constexpr float DEFAULT_PARALLAX = .0f;
-        constexpr float BACKGROUND_SCROLL = 1.0f;
-        //const float yaw = camera->yaw;
-        constexpr float yaw = .0f;
-        DrawBackground(-camera->pitch, yaw, camera->fov, DEFAULT_PARALLAX, BACKGROUND_SCROLL);
+        DrawBackground(*camera, level.sky);
     }
 
     {
@@ -173,7 +167,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glUniformMatrix4fv(projectionUniform, 1, GL_TRUE, camera->projection.Data());
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, atlasTexture);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
 
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 
@@ -321,6 +315,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
+            if (!sprite.isActive) continue;
+
             const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
             if (transform == nullptr) [[unlikely]] {

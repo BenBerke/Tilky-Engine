@@ -1,6 +1,7 @@
 #ifndef TILKY_ENGINE_OPENGLRENDERER_HPP
 #define TILKY_ENGINE_OPENGLRENDERER_HPP
 
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -65,9 +66,9 @@ namespace OpenGLRendererInternal {
         Vector4 heights;
         Vector4 data;
         //data.x = texture region/index;
-        //data.y = unused;
-        //data.z = texture anchor height;
-        //data.w = texture direction;
+        //data.y = 0 seen from the front sector, 1 from the back;
+        //data.z = texture anchor height (world height of V = 0);
+        //data.w = unused;
         Vector4 data2;
         //x = textureOffset.x
         //y = textureOffset.y
@@ -97,8 +98,8 @@ namespace OpenGLRendererInternal {
         Vector4 data;
         // data.x = sprite width / scale.x
         // data.y = sideCount
-        // data.z = forward.x
-        // data.w = forward.y
+        // data.z = facing.x (rotation's local +Z on the map)
+        // data.w = facing.z
 
         Vector4 rotation;
         // Quaternion: x, y, z, w
@@ -194,7 +195,16 @@ namespace OpenGLRendererInternal {
 
     struct GPUTextureRegion {
         Vector4 uvRect; // x = uMin, y = vMin, z = uMax, w = vMax
-        Vector4 data;   // x = valid, y/z/w unused for now
+        Vector4 data;   // x = valid, y = atlas page (texture array layer), z/w unused for now
+    };
+
+    // An image decoded to tightly packed RGBA8, kept between atlas rebuilds
+    // until its file changes on disk.
+    struct DecodedImage {
+        std::vector<unsigned char> pixels;
+        int width = 0;
+        int height = 0;
+        std::filesystem::file_time_type writeTime;
     };
 
     struct LoadedTextureSurface {
@@ -204,10 +214,11 @@ namespace OpenGLRendererInternal {
         int y = 0;
     };
 
-    // Min/mag filtering and mipmaps for the texture bound to GL_TEXTURE_2D,
-    // following the level's texture setting. Shared by the atlas and model
-    // textures so both look the same.
-    void ApplyTextureSampling(RendererTextureSettings setting);
+    // Min/mag filtering and mipmaps for the texture bound to `target`,
+    // following the level's texture setting. Shared by the atlas (a
+    // GL_TEXTURE_2D_ARRAY, one layer per page) and model textures so both
+    // look the same.
+    void ApplyTextureSampling(RendererTextureSettings setting, GLenum target = GL_TEXTURE_2D);
 }
 
 class OpenGL final : public IRenderer {
@@ -228,6 +239,7 @@ public:
     int CreateTexture(const std::string& fileName) override;
 
     bool CreateMap() override;
+    void ReloadMap() override;
 
     void RenderText(
         const Shader &shader,
@@ -263,6 +275,7 @@ public:
     }
 
     bool BuildTextureAtlasFromLevel();
+    const OpenGLRendererInternal::DecodedImage* GetDecodedImage(const std::filesystem::path& path);
 
     void BeginImGuiFrame() const override;
     void EndImGuiFrame() const override;
@@ -361,14 +374,13 @@ private:
     std::vector<GpuModelBatch> modelBatches;
 
     std::vector<GPUTexture> textures;
-    GLuint atlasTexture = 0;
+    GLuint atlasTexture = 0; // GL_TEXTURE_2D_ARRAY, one ATLAS_SIZE layer per page
+    std::unordered_map<std::string, OpenGLRendererInternal::DecodedImage> decodedImageCache; // keyed by absolute path
     GLuint textureRegionSSBO = 0;
 
     std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
-    int backgroundTextureIndex = -1;
     std::unordered_map<std::string, int> textureRegionIndexByName;
     std::unordered_map<std::string, int> textureIndexByName;
-    std::string backgroundTextureFileName;
 
     bool InitializeOpenGL();
     bool InitializeFont();
@@ -397,7 +409,9 @@ private:
     void BuildFlatTrianglesFromSectors();
     void RefreshFlatTrianglesIfLayoutChanged();
 
-    void DrawBackground(float pitch, float yaw, float horizontalFov, float parallaxStrength, float backgroundScroll);
+    // OpenGLBackground.cpp: the level's sky, drawn before the world.
+    void DrawBackground(const ComponentCamera& camera, const SkySettings& sky);
+    GLuint GetSkyTextureID(const std::string& fileName, GLint wrapS, GLint wrapT, Vector2* outSize);
     int GetOrCreateTextureIndex(const std::string& fileName);
     int GetTextureRegionIndex(const std::string& fileName) const;
 

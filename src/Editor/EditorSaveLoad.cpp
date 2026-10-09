@@ -320,26 +320,17 @@ namespace MapEditorInternal {
     }
 
     void UpdateLevels() {
-        const fs::path levelsPath = ProjectManager::GetLevelsPath();
+        Editor::maps.clear();
 
-        try {
-            Editor::maps.clear();
+        for (const fs::path& levelFile : LevelSerialization::ListLevelFiles()) {
+            const std::string levelName = levelFile.stem().string();
 
-            if (!fs::exists(levelsPath) ||
-                !fs::is_directory(levelsPath)) {
-                fs::create_directories(levelsPath);
-                return;
+            if (std::ranges::find(Editor::maps, levelName) != Editor::maps.end()) {
+                spdlog::error("More than one level is called \"{}\" (one is {}); rename all but one", levelName, levelFile.string());
+                continue;
             }
 
-            for (const fs::directory_entry& entry : fs::directory_iterator(levelsPath)) {
-                if (!entry.is_regular_file()) continue;
-                if (entry.path().extension() != ".bson") continue;
-
-                Editor::maps.push_back(entry.path().stem().string());
-            }
-        }
-        catch (const fs::filesystem_error& e) {
-            spdlog::critical("Error loading levels {}", e.what());
+            Editor::maps.push_back(levelName);
         }
     }
 
@@ -356,12 +347,11 @@ namespace MapEditorInternal {
         level.name = cleanName;
 
         LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName = Editor::backgroundTextureFileName;
 
-        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
         std::string errorMessage;
+        const fs::path path = LevelSerialization::ResolveLevelSavePath(cleanName, &errorMessage);
 
-        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
+        if (path.empty() || !LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
             spdlog::critical("Failed to save level to file {}", errorMessage);
             return false;
         }
@@ -385,18 +375,17 @@ namespace Editor {
         using namespace MapEditorInternal;
 
         const std::string cleanName = LevelSerialization::CleanLevelName(levelName);
-        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
-
         Level loadedLevel;
         LevelSerialization::LevelExtraData extraData;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(path, loadedLevel, &extraData, &errorMessage)) {
+        const fs::path path = LevelSerialization::FindLevelPath(cleanName, &errorMessage);
+
+        if (path.empty() || !LevelSerialization::LoadLevelFromFile(path, loadedLevel, &extraData, &errorMessage)) {
             spdlog::critical("{}", errorMessage);
             return false;
         }
 
-        backgroundTextureFileName = extraData.backgroundTextureFileName;
         currentMap = cleanName;
 
         // Dots are editor-session data scoped to whatever level is on
@@ -432,6 +421,19 @@ namespace Editor {
         return true;
     }
 
+    void LevelFileRenamed(const std::string& oldName, const std::string& newName) {
+        if (oldName == newName) return;
+
+        if (currentMap == oldName) {
+            currentMap = newName;
+            if (LevelManager::HasCurrentLevel()) LevelManager::CurrentLevel().name = newName;
+        }
+
+        if (ProjectManager::GetLastOpenLevelName() == oldName) ProjectManager::SetLastOpenLevelName(newName);
+
+        MapEditorInternal::UpdateLevels();
+    }
+
     // Creates a brand-new, empty level named levelName, saves it to disk, and
     // makes it the current level - the "start from scratch" counterpart to
     // LoadLevel() above. Unlike MapEditorInternal::Save(), which persists
@@ -455,17 +457,15 @@ namespace Editor {
         level.name = cleanName;
 
         LevelSerialization::LevelExtraData extraData;
-        extraData.backgroundTextureFileName.clear();
 
-        const fs::path path = LevelSerialization::BuildLevelPath(cleanName);
         std::string errorMessage;
+        const fs::path path = LevelSerialization::ResolveLevelSavePath(cleanName, &errorMessage);
 
-        if (!LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
+        if (path.empty() || !LevelSerialization::SaveLevelToFile(path, level, &extraData, &errorMessage)) {
             spdlog::critical("{}", errorMessage);
             return false;
         }
 
-        backgroundTextureFileName = extraData.backgroundTextureFileName;
         currentMap = cleanName;
 
         // Same editor-session reset as LoadLevel(): a brand-new level starts with

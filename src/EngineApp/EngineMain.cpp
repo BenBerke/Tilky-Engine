@@ -1,6 +1,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 #include "Headers/Editor/Editor.hpp"
@@ -178,11 +179,11 @@ namespace {
     }
 
     // Picks which level opens with this project: the level that was open last
-    // session (if it still loads), otherwise the first .bson level found in the
-    // project's Levels folder (ProjectManager::GetLevelsPath()), otherwise a
-    // brand-new "New Level" (see Editor::NewLevel). Whichever one succeeds is
-    // written back as the new "last open level" so next launch resumes it
-    // directly instead of falling through to the Levels-folder scan again.
+    // session (if it still loads), otherwise the first .bson level found
+    // anywhere under the project's Assets folder, otherwise a brand-new
+    // "New Level" (see Editor::NewLevel). Whichever one succeeds is written
+    // back as the new "last open level" so next launch resumes it directly
+    // instead of falling through to the Assets scan again.
     bool OpenStartupLevel() {
         std::string levelName = ProjectManager::GetLastOpenLevelName();
 
@@ -192,23 +193,16 @@ namespace {
         }
 
         if (levelName.empty()) {
-            const fs::path levelsFolder = ProjectManager::GetLevelsPath();
+            for (const fs::path& levelFile : LevelSerialization::ListLevelFiles()) {
+                const std::string foundName = levelFile.stem().string();
 
-            std::error_code ec;
-            if (fs::exists(levelsFolder, ec)) {
-                for (const auto& entry : fs::directory_iterator(levelsFolder, ec)) {
-                    if (!entry.is_regular_file() || entry.path().extension() != ".bson") continue;
-
-                    const std::string foundName = entry.path().stem().string();
-
-                    if (Editor::LoadLevel(foundName)) {
-                        levelName = foundName;
-                        spdlog::info("No last open level recorded. Opened existing level: {}", levelName);
-                        break;
-                    }
-
-                    spdlog::warn("Found level '{}' but failed to load it; trying another", foundName);
+                if (Editor::LoadLevel(foundName)) {
+                    levelName = foundName;
+                    spdlog::info("No last open level recorded. Opened existing level: {}", levelName);
+                    break;
                 }
+
+                spdlog::warn("Found level '{}' but failed to load it; trying another", foundName);
             }
         }
 

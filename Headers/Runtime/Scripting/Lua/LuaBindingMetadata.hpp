@@ -35,6 +35,13 @@ namespace LuaBindingMetadata {
         std::string doc;
     };
 
+    // One named value of an enum table (Component.Sprite, Key.Space, ...).
+    struct EnumValueDoc {
+        std::string name;
+        int value = 0;
+        std::string doc;
+    };
+
     struct TypeDoc {
         std::string name; // the Lua-visible type name, e.g. "Entity"
         std::string doc;
@@ -44,6 +51,11 @@ namespace LuaBindingMetadata {
         // GameTime): the LuaLS stub then declares it as a global and its
         // functions with `.` (mathT.Clamp(...)) instead of `:`.
         bool isGlobalTable = false;
+        // Non-empty for a global enum table (Component, Key): the stub
+        // declares it as a LuaLS `---@enum`, so a parameter typed with its
+        // name autocompletes to its values. Such a type has no
+        // properties/methods.
+        std::vector<EnumValueDoc> enumValues;
     };
 
     // Terse, positional constructors for RegisterType() call sites - a
@@ -69,6 +81,11 @@ namespace LuaBindingMetadata {
     // Same as Type(), for a global table/singleton - see TypeDoc::isGlobalTable.
     inline TypeDoc GlobalTable(std::string name, std::string doc, std::vector<PropertyDoc> properties = {}, std::vector<MethodDoc> methods = {}) {
         return {std::move(name), std::move(doc), std::move(properties), std::move(methods), true};
+    }
+
+    // A global table of named integers, see TypeDoc::enumValues.
+    inline TypeDoc Enum(std::string name, std::string doc, std::vector<EnumValueDoc> values) {
+        return {std::move(name), std::move(doc), {}, {}, true, std::move(values)};
     }
 
     // Registers one type's documentation. Call once per usertype, right

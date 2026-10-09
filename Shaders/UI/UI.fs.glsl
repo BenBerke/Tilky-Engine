@@ -5,7 +5,7 @@ in vec2 vUV;
 uniform vec4 uColor;
 uniform int uUseTexture;
 
-uniform sampler2D uAtlas;
+uniform sampler2DArray uAtlas; // one layer per atlas page
 uniform int uTextureIndex;
 uniform int uTextureCount;
 
@@ -39,7 +39,7 @@ vec4 SampleAtlas(int textureIndex, vec2 uv) {
     localUV
     );
 
-    return texture(uAtlas, atlasUV);
+    return texture(uAtlas, vec3(atlasUV, region.data.y));
 }
 
 void main() {

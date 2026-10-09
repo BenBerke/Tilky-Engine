@@ -8,12 +8,167 @@
 
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/Runtime/Sound/AudioSystem.hpp"
+
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace {
+    constexpr const char* COMPONENT_TYPE =
+        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|UITransform|UISprite|UIText";
+
+    // One row per component Lua can add or remove. Its value in the Lua
+    // `Component` table is its ComponentType. Script is left out: a script
+    // needs a file, and its running instances belong to LuaScriptRuntime.
+    // Which entities a component can be added to: world entities (with a
+    // Transform), UI entities (with a UITransform), or either.
+    enum class LuaComponentPlacement { World, UI, Any };
+
+    struct LuaComponentKind {
+        const char* name;
+        ComponentType type;
+        LuaComponentPlacement placement;
+        // Adds a new one (Transform/UITransform: returns the existing one) and returns it.
+        sol::object (*add)(Level&, Entity&, sol::state_view);
+        // Removes every component of this type.
+        bool (*removeAll)(Entity&);
+        // If `component` is this kind's Lua object, removes that one component
+        // and sets `matched`.
+        bool (*removeOne)(Entity&, const sol::object& component, bool& matched);
+        // The first one.
+        sol::object (*get)(const ScriptEntity&, sol::state_view);
+        // All of them, in order.
+        sol::table (*getAll)(const ScriptEntity&, sol::state_view);
+    };
+
+    // Per-type extras when Lua adds or removes a component.
+    template<typename T>
+    void OnAdded(Level&, T&) {}
+
+    // The game is already running when a script adds one, so its sound
+    // source has to be made here instead of in AudioSystem::Start.
+    void OnAdded(Level& level, ComponentAudioSource& audio) { AudioSystem::StartSource(level, audio); }
+
+    // Starts unticked: a script switches to it by setting isActive = true.
+    void OnAdded(Level&, ComponentCamera& camera) { camera.isActive = false; }
+
+    template<typename T>
+    void OnRemoving(T&) {}
+
+    void OnRemoving(ComponentAudioSource& audio) { AudioSystem::DestroySource(audio); }
+
+    // The Lua handle for one component. Transform/UITransform handles are
+    // per entity; the others name an instance.
+    template<typename T, typename Wrapper>
+    Wrapper MakeWrapper(Level* level, const ID ownerID, const ComponentInstanceID instanceID) {
+        if constexpr (IsSingleComponent<T>) return Wrapper{level, ownerID};
+        else return Wrapper{level, ownerID, instanceID};
+    }
+
+    template<typename T, typename Wrapper>
+    sol::object AddComponentOf(Level& level, Entity& entity, const sol::state_view lua) {
+        T* component = entity.AddComponent<T>();
+        OnAdded(level, *component);
+        return sol::make_object(lua, MakeWrapper<T, Wrapper>(&level, entity.id, component->instanceID));
+    }
+
+    template<typename T>
+    bool RemoveAllComponentsOf(Entity& entity) {
+        for (T* component : entity.GetComponents<T>()) OnRemoving(*component);
+        return entity.RemoveComponent<T>();
+    }
+
+    template<typename T, typename Wrapper>
+    bool RemoveOneComponentOf(Entity& entity, const sol::object& object, bool& matched) {
+        if (!object.is<Wrapper>()) return false;
+        matched = true;
+
+        const Wrapper wrapper = object.as<Wrapper>();
+        if (wrapper.ownerID != entity.id) throw sol::error("RemoveComponent: that component belongs to another Entity");
+
+        if constexpr (IsSingleComponent<T>) {
+            return RemoveAllComponentsOf<T>(entity);
+        } else {
+            T* component = entity.GetComponentInstance<T>(wrapper.instanceID);
+            if (component == nullptr) return false;
+            OnRemoving(*component);
+            return entity.RemoveComponentInstance<T>(wrapper.instanceID);
+        }
+    }
+
+    template<auto Getter>
+    sol::object GetComponentOf(const ScriptEntity& entity, const sol::state_view lua) {
+        return sol::make_object(lua, (entity.*Getter)());
+    }
+
+    template<typename T, typename Wrapper>
+    sol::table GetAllComponentsOf(const ScriptEntity& self, sol::state_view lua) {
+        sol::table result = lua.create_table();
+        Entity* entity = self.GetEntity();
+        if (entity == nullptr) return result;
+
+        int index = 1;
+        for (const T* component : entity->GetComponents<T>())
+            result[index++] = MakeWrapper<T, Wrapper>(self.level, entity->id, component->instanceID);
+
+        return result;
+    }
+
+    template<typename T, typename Wrapper, auto Getter>
+    constexpr LuaComponentKind Kind(const char* name, const ComponentType type, const LuaComponentPlacement placement) {
+        return {name, type, placement, &AddComponentOf<T, Wrapper>, &RemoveAllComponentsOf<T>,
+                &RemoveOneComponentOf<T, Wrapper>, &GetComponentOf<Getter>, &GetAllComponentsOf<T, Wrapper>};
+    }
+
+    constexpr LuaComponentKind LUA_COMPONENT_KINDS[] = {
+        Kind<ComponentTransform, ScriptTransform, &ScriptEntity::GetTransform>("Transform", CMP_TRANSFORM, LuaComponentPlacement::World),
+        Kind<ComponentSprite, ScriptSprite, &ScriptEntity::GetSprite>("Sprite", CMP_SPRITE, LuaComponentPlacement::World),
+        Kind<ComponentAudioSource, ScriptAudioSource, &ScriptEntity::GetAudioSource>("AudioSource", CMP_AUDIO_SOURCE, LuaComponentPlacement::World),
+        Kind<ComponentPlayerController, ScriptPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, LuaComponentPlacement::World),
+        Kind<ComponentCamera, ScriptCamera, &ScriptEntity::GetCamera>("Camera", CMP_CAMERA, LuaComponentPlacement::World),
+        Kind<ComponentCollider, ScriptCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, LuaComponentPlacement::World),
+        Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, LuaComponentPlacement::World),
+        Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, LuaComponentPlacement::World),
+        Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, LuaComponentPlacement::Any),
+        Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, LuaComponentPlacement::UI),
+        Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, LuaComponentPlacement::UI),
+        Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, LuaComponentPlacement::UI),
+    };
+
+    // Takes a sol::object, not an int: sol would turn nil (a misspelled
+    // Component.X) or a string into 0, which is Component.Transform.
+    const LuaComponentKind& FindLuaComponentKind(const sol::object& value) {
+        if (value.get_type() != sol::type::number)
+            throw sol::error(std::string("Expected a Component value, e.g. Component.Sprite, got ") +
+                             sol::type_name(value.lua_state(), value.get_type()));
+
+        const int type = value.as<int>();
+
+        static const std::unordered_map<int, const LuaComponentKind*> kindsByType = [] {
+            std::unordered_map<int, const LuaComponentKind*> map;
+            for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS) map.emplace(kind.type, &kind);
+            return map;
+        }();
+
+        const auto it = kindsByType.find(type);
+        if (it == kindsByType.end())
+            throw sol::error("Unknown component " + std::to_string(type) + " - use a value from the Component table, e.g. Component.Sprite");
+
+        return *it->second;
+    }
+
+    void RegisterComponentMetadata() {
+        std::vector<LuaBindingMetadata::EnumValueDoc> values;
+        for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS) values.push_back({kind.name, kind.type, {}});
+
+        LuaBindingMetadata::RegisterType(LuaBindingMetadata::Enum(
+            "Component", "Component types for Entity:AddComponent / Entity:RemoveComponent.", std::move(values)
+        ));
+    }
+
     // Registers Entity's documentation with LuaBindingMetadata (autocomplete
-    // + LuaLS stub). Only the PascalCase method spellings are listed; the
-    // camelCase aliases (getScript, hasTag, ...) are deliberately left out
-    // so autocomplete doesn't suggest every method twice.
+    // + LuaLS stub).
     void RegisterEntityMetadata() {
         LuaBindingMetadata::RegisterType({
             .name = "Entity",
@@ -39,6 +194,8 @@ namespace {
                 {.name = "rigidbody", .luaType = "Rigidbody?", .readOnly = true, .doc = "nil if this Entity has no Rigidbody."},
                 {.name = "hasModel", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Model."},
                 {.name = "model", .luaType = "Model?", .readOnly = true, .doc = "nil if this Entity has no Model."},
+                {.name = "hasFlipbook", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Flipbook."},
+                {.name = "flipbook", .luaType = "Flipbook?", .readOnly = true, .doc = "nil if this Entity has no Flipbook."},
                 {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
                 {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
                 {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
@@ -57,6 +214,12 @@ namespace {
                 {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this Entity has the given tag."},
                 {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
                 {.name = "GetSector", .params = {}, .returnType = "Sector?", .doc = "The sector this Entity is standing in, or nil (outside the map, or no Transform)."},
+                {.name = "AddComponent", .params = {{"component", "Component"}}, .returnType = COMPONENT_TYPE,
+                 .doc = "Adds a new component (e.g. Component.Sprite) after any it already has, and returns it. An Entity has only one Transform/UITransform: for those it returns the existing one."},
+                {.name = "GetComponents", .params = {{"component", "Component"}}, .returnType = "table",
+                 .doc = "Every component of that type on this Entity, in order (an empty table if none). entity.sprite etc. are the first one."},
+                {.name = "RemoveComponent", .params = {{"component", "Component|" + std::string(COMPONENT_TYPE)}}, .returnType = "boolean",
+                 .doc = "With a type (e.g. Component.Collider), removes every component of that type. With a component (e.g. entity.collider), removes just that one. False if there was nothing to remove."},
             }
         });
     }
@@ -68,6 +231,10 @@ namespace {
 // handle, matching every other ScriptXxx wrapper in LuaWrappers.hpp.
 void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
     RegisterEntityMetadata();
+    RegisterComponentMetadata();
+
+    sol::table component = lua.create_named_table("Component");
+    for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS) component[kind.name] = static_cast<int>(kind.type);
 
     lua.new_usertype<ScriptEntity>(
         "Entity",
@@ -90,8 +257,6 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // Queues this Entity for destruction; the actual removal happens
         // once, after every script has finished running this frame.
         "Destroy",
-        &ScriptEntity::Destroy,
-        "destroy",
         &ScriptEntity::Destroy,
 
         "hasTransform",
@@ -147,8 +312,6 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // ScriptEntity::HasScriptNamed).
         "HasScriptNamed",
         &ScriptEntity::HasScriptNamed,
-        "hasScriptNamed",
-        &ScriptEntity::HasScriptNamed,
 
         // Looks up an attached script (Behaviour) by name. Lua:
         //   local health = target:GetScript("Health")
@@ -159,20 +322,14 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         // forwarded straight into that script's own environment.
         "GetScript",
         &ScriptEntity::GetScript,
-        "getScript",
-        &ScriptEntity::GetScript,
 
         // Unambiguous lookup by the script's globally-unique instance id -
         // what a serialized Behaviour-reference field resolves through.
         "GetScriptById",
         &ScriptEntity::GetScriptById,
-        "getScriptById",
-        &ScriptEntity::GetScriptById,
 
         // Every script attached to this Entity, as Behaviour references.
         "GetScripts",
-        &ScriptEntity::GetScripts,
-        "getScripts",
         &ScriptEntity::GetScripts,
 
         "hasPlayerController",
@@ -245,6 +402,20 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             }
         ),
 
+        "hasFlipbook",
+        sol::property(&ScriptEntity::HasFlipbook),
+
+        "flipbook",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+
+                if (!entity.HasFlipbook()) return sol::nil;
+
+                return sol::make_object(luaState, entity.GetFlipbook());
+            }
+        ),
+
         "hasUITransform",
         sol::property(&ScriptEntity::HasUITransform),
 
@@ -294,12 +465,8 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
         "HasTag",
         &ScriptEntity::HasTag,
-        "hasTag",
-        &ScriptEntity::HasTag,
 
         "GetTag",
-        &ScriptEntity::GetTag,
-        "getTag",
         &ScriptEntity::GetTag,
 
         // The sector whose entitiesInside lists this Entity - the same
@@ -316,6 +483,53 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             return sol::make_object(state, ScriptSector{
                 entity.level, entity.level->sectors[transform->sectorIndex].id
             });
+        },
+
+        // World components can't go on a UI entity (one with a UITransform)
+        // and UI components can't go on a world entity (one with a
+        // Transform), same as in the editor. Flipbook goes on either.
+        "AddComponent",
+        [](const ScriptEntity& self, const sol::object& type, const sol::this_state state) -> sol::object {
+            const LuaComponentKind& kind = FindLuaComponentKind(type);
+
+            Entity* entity = self.GetEntity();
+            if (entity == nullptr) return sol::make_object(state, sol::nil);
+
+            if (kind.placement == LuaComponentPlacement::UI && entity->HasComponent<ComponentTransform>())
+                throw sol::error(std::string("Can't add ") + kind.name + " to a world entity (it has a Transform)");
+
+            if (kind.placement == LuaComponentPlacement::World && entity->HasComponent<ComponentUITransform>())
+                throw sol::error(std::string("Can't add ") + kind.name + " to a UI entity (it has a UITransform)");
+
+            return kind.add(*self.level, *entity, state);
+        },
+
+        "GetComponents",
+        [](const ScriptEntity& self, const sol::object& type, const sol::this_state state) -> sol::table {
+            return FindLuaComponentKind(type).getAll(self, state);
+        },
+
+        // A Component value removes every component of that type; a
+        // component object removes just that one.
+        "RemoveComponent",
+        [](const ScriptEntity& self, const sol::object& typeOrComponent) -> bool {
+            Entity* entity = self.GetEntity();
+
+            if (typeOrComponent.get_type() == sol::type::number) {
+                const LuaComponentKind& kind = FindLuaComponentKind(typeOrComponent);
+                return entity != nullptr && kind.removeAll(*entity);
+            }
+
+            if (entity == nullptr) return false;
+
+            for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS) {
+                bool matched = false;
+                const bool removed = kind.removeOne(*entity, typeOrComponent, matched);
+                if (matched) return removed;
+            }
+
+            throw sol::error(std::string("RemoveComponent expects a Component value (e.g. Component.Sprite) or a component, got ") +
+                             sol::type_name(typeOrComponent.lua_state(), typeOrComponent.get_type()));
         }
     );
 }

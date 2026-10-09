@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -102,6 +103,7 @@ namespace {
                     valueJson["type"] = "Component";
                     valueJson["entityId"] = typedValue.entityId;
                     valueJson["componentType"] = typedValue.componentType;
+                    valueJson["instanceId"] = typedValue.instanceId;
                 } else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     valueJson["type"] = "Behaviour";
                     valueJson["entityId"] = typedValue.entityId;
@@ -173,11 +175,16 @@ namespace {
             case ScriptValueType::Entity:
                 return EntityRefValue{valueJson.value("entityId", INVALID_ID)};
 
-            case ScriptValueType::Component:
+            case ScriptValueType::Component: {
+                // References saved before components had instance IDs name
+                // only (entity, type); they load empty and need reassigning.
+                if (!valueJson.contains("instanceId")) return ComponentRefValue{};
                 return ComponentRefValue{
                     valueJson.value("entityId", INVALID_ID),
-                    valueJson.value("componentType", -1)
+                    valueJson.value("componentType", -1),
+                    valueJson.value("instanceId", INVALID_COMPONENT_INSTANCE_ID)
                 };
+            }
 
             case ScriptValueType::Behaviour:
                 return BehaviourRefValue{
@@ -354,17 +361,61 @@ namespace {
         if (outExtraData == nullptr) return;
 
         *outExtraData = LevelSerialization::LevelExtraData{};
-
-        if (!levelData.contains("levelVars") || !levelData["levelVars"].is_object()) return;
-
-        outExtraData->backgroundTextureFileName = levelData["levelVars"].value("backgroundTextureFileName", std::string());
     }
 
     void SaveExtraData(json &levelData, const LevelSerialization::LevelExtraData *extraData) {
         if (extraData == nullptr) return;
 
-        levelData["levelVars"] = {
-            {"backgroundTextureFileName", extraData->backgroundTextureFileName}
+        levelData["levelVars"] = json::object();
+    }
+
+    // Same [x, y, z] array form sector lights use.
+    Vector3 LoadSkyColor(const json &skyJson, const char *field, const Vector3 &defaultValue) {
+        if (!skyJson.contains(field)) return defaultValue;
+
+        const json &vectorJson = skyJson.at(field);
+        if (!vectorJson.is_array() || vectorJson.size() != 3) return defaultValue;
+
+        return {vectorJson[0].get<float>(), vectorJson[1].get<float>(), vectorJson[2].get<float>()};
+    }
+
+    void LoadSky(const json &skyJson, SkySettings &sky) {
+        sky = SkySettings{};
+
+        if (const std::optional<SkyMode> mode = FindSkyModeByName(skyJson.value("mode", std::string())))
+            sky.mode = *mode;
+
+        sky.texture = skyJson.value("texture", std::string());
+
+        if (skyJson.contains("cubemapFaces") && skyJson["cubemapFaces"].is_object()) {
+            const json &facesJson = skyJson["cubemapFaces"];
+            for (const SkyFaceInfo &face : SKY_FACES)
+                sky.Face(face.face) = facesJson.value(face.name, std::string());
+        }
+
+        sky.rotation = skyJson.value("rotation", 0.0f);
+        sky.rotationSpeed = skyJson.value("rotationSpeed", 0.0f);
+        sky.horizonOffset = skyJson.value("horizonOffset", 0.0f);
+
+        sky.tint = LoadSkyColor(skyJson, "tint", sky.tint);
+        sky.fallbackColor = LoadSkyColor(skyJson, "fallbackColor", sky.fallbackColor);
+    }
+
+    json SaveSky(const SkySettings &sky) {
+        json facesJson = json::object();
+        for (const SkyFaceInfo &face : SKY_FACES) facesJson[face.name] = sky.Face(face.face);
+
+        const SkyModeInfo *mode = FindSkyMode(sky.mode);
+
+        return {
+            {"mode", mode != nullptr ? mode->name : SKY_MODES[0].name},
+            {"texture", sky.texture},
+            {"cubemapFaces", facesJson},
+            {"rotation", sky.rotation},
+            {"rotationSpeed", sky.rotationSpeed},
+            {"horizonOffset", sky.horizonOffset},
+            {"tint", {sky.tint.x, sky.tint.y, sky.tint.z}},
+            {"fallbackColor", {sky.fallbackColor.x, sky.fallbackColor.y, sky.fallbackColor.z}}
         };
     }
 
@@ -409,6 +460,9 @@ namespace {
 
             rendererSettings.textureSetting = rendererSettingsJson.value("textureSetting", PIXEL_ART_SHIMMERY);
         }
+
+        if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
+        else level.sky = SkySettings{};
     }
 
     void SaveLevelStats(json &levelData, const Level &level) {
@@ -434,7 +488,8 @@ namespace {
                 "rendererSettings", {
                     {"textureSetting", rendererSettings.textureSetting}
                 }
-            }
+            },
+            {"sky", SaveSky(level.sky)}
         };
     }
 
@@ -544,6 +599,36 @@ namespace {
         }
     }
 
+    void LoadWallSurface(const json &surfaceJson, WallSurface &surface) {
+        if (!surfaceJson.is_object()) return;
+
+        surface.texture = surfaceJson.value("texture", std::string{});
+
+        if (surfaceJson.contains("textureOffset") &&
+            surfaceJson.at("textureOffset").is_array() && surfaceJson.at("textureOffset").size() >= 2) {
+            surface.textureOffset = {
+                surfaceJson.at("textureOffset").at(0).get<float>(),
+                surfaceJson.at("textureOffset").at(1).get<float>()
+            };
+        }
+
+        if (surfaceJson.contains("textureScale") &&
+            surfaceJson.at("textureScale").is_array() && surfaceJson.at("textureScale").size() >= 2) {
+            surface.textureScale = {
+                surfaceJson.at("textureScale").at(0).get<float>(),
+                surfaceJson.at("textureScale").at(1).get<float>()
+            };
+        }
+
+        surface.flipTextureX = surfaceJson.value("flipX", false);
+        surface.flipTextureY = surfaceJson.value("flipY", false);
+
+        const std::string anchorName = surfaceJson.value("anchor", std::string{WALL_TEXTURE_ANCHORS[0].name});
+
+        if (const std::optional<WallTextureAnchor> anchor = FindWallTextureAnchorByName(anchorName)) surface.anchor = *anchor;
+        else spdlog::warn("Unknown wall texture anchor '{}', using {}", anchorName, WALL_TEXTURE_ANCHORS[0].name);
+    }
+
     void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
@@ -587,33 +672,11 @@ namespace {
                 end,
                 color,
                 LoadIDField(wallJson, "frontSector", INVALID_ID),
-                LoadIDField(wallJson, "backSector", INVALID_ID),
-                wallJson.value("textureFileName", std::string{})
+                LoadIDField(wallJson, "backSector", INVALID_ID)
             );
 
-            if (wallJson.contains("textureOffset") &&
-                wallJson.at("textureOffset").is_array() && wallJson.at("textureOffset").size() >= 2) {
-                wall.textureOffset = {
-                    wallJson.at("textureOffset").at(0).get<float>(),
-                    wallJson.at("textureOffset").at(1).get<float>()
-                };
-            }
-            else wall.textureOffset = {0.0f,0.0f};
-
-            if (wallJson.contains("textureScale") &&
-                wallJson.at("textureScale").is_array() && wallJson.at("textureScale").size() >= 2) {
-                wall.textureScale = {
-                    wallJson.at("textureScale").at(0).get<float>(),
-                    wallJson.at("textureScale").at(1).get<float>()
-                };
-            }
-            else wall.textureScale = {1.0f,1.0f};
-
-            if(wallJson.contains("flipX")) wall.flipTextureX = wallJson["flipX"].get<bool>();
-            else wall.flipTextureX = false;
-
-            if (wallJson.contains("flipY")) wall.flipTextureY = wallJson["flipY"].get<bool>();
-            else wall.flipTextureY = false;
+            if (wallJson.contains("top")) LoadWallSurface(wallJson.at("top"), wall.top);
+            if (wallJson.contains("bottom")) LoadWallSurface(wallJson.at("bottom"), wall.bottom);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
@@ -646,6 +709,19 @@ namespace {
         level.nextWallID = std::max(level.nextWallID,highestWallID + 1);
     }
 
+    json SaveWallSurface(const WallSurface &surface) {
+        const WallTextureAnchorInfo *anchor = FindWallTextureAnchor(surface.anchor);
+
+        return {
+            {"texture", surface.texture},
+            {"textureOffset", {surface.textureOffset.x, surface.textureOffset.y}},
+            {"textureScale", {surface.textureScale.x, surface.textureScale.y}},
+            {"flipX", surface.flipTextureX},
+            {"flipY", surface.flipTextureY},
+            {"anchor", anchor != nullptr ? anchor->name : WALL_TEXTURE_ANCHORS[0].name}
+        };
+    }
+
     void SaveWalls(json &levelData, const Level &level) {
         levelData["walls"] = json::array();
 
@@ -673,18 +749,10 @@ namespace {
                         wall.color.w
                     }
                 },
-                {"textureFileName", wall.textureFileName},
-                {
-                    "textureOffset", {
-                        wall.textureOffset.x,
-                        wall.textureOffset.y
-                    }
-                },
+                {"top", SaveWallSurface(wall.top)},
+                {"bottom", SaveWallSurface(wall.bottom)},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
-                {"textureScale", {wall.textureScale.x, wall.textureScale.y}},
-                    {"flipX", wall.flipTextureX},
-                {"flipY", wall.flipTextureY},
                 {"tags", wall.tags},
                 {"tagIds", wall.tagIds}
             });
@@ -1152,6 +1220,7 @@ namespace {
         level.colliders.Clear();
         level.rigidbodies.Clear();
         level.models.Clear();
+        level.flipbooks.Clear();
 
         level.ui_transforms.Clear();
         level.ui_sprites.Clear();
@@ -1170,7 +1239,9 @@ namespace {
                 Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentTransform& c = level.transforms.Add(ownerID);
+                if (level.transforms.Has(ownerID)) continue; // one per entity
+
+                ComponentTransform& c = level.transforms.Add(ownerID, transformJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_TRANSFORM);
 
                 c.position = {
@@ -1211,7 +1282,7 @@ namespace {
                     sideCountValue != SIDECOUNT_90 &&
                     sideCountValue != SIDECOUNT_45) continue;
 
-                ComponentSprite& c = level.sprites.Add(ownerID);
+                ComponentSprite& c = level.sprites.Add(ownerID, spriteJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
 
                 c.textureFileNames = textureFileNames;
                 c.sideCount = static_cast<SideCount>(sideCountValue);
@@ -1222,6 +1293,14 @@ namespace {
                     spriteJson["color"][3].get<float>()
                 };
                 c.isStatic = spriteJson.value("isStatic", false);
+                c.isActive = spriteJson.value("isActive", true);
+                if (spriteJson.contains("offset")) {
+                    c.offset = {
+                        spriteJson["offset"][0].get<float>(),
+                        spriteJson["offset"][1].get<float>(),
+                        spriteJson["offset"][2].get<float>()
+                    };
+                }
 
                 entity->componentsMask.set(CMP_SPRITE);
             }
@@ -1236,9 +1315,8 @@ namespace {
                 Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentAudioSource& c = level.audioSources.Add(ownerID);
+                ComponentAudioSource& c = level.audioSources.Add(ownerID, audioSourceJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
 
-                c.name = "entity_" + std::to_string(ownerID) + "_audio";
                 c.soundFileName = audioSourceJson.value("soundFileName", std::string{});
 
                 c.pitch = audioSourceJson.value("pitch", 1.0f);
@@ -1253,6 +1331,13 @@ namespace {
                 c.innerConeAngle = audioSourceJson.value("innerConeAngle",360.0f);
                 c.outerConeAngle = audioSourceJson.value("outerConeAngle",360.0f);
                 c.outerGain = audioSourceJson.value("outerGain", 0.0f);
+                if (audioSourceJson.contains("offset")) {
+                    c.offset = {
+                        audioSourceJson["offset"][0].get<float>(),
+                        audioSourceJson["offset"][1].get<float>(),
+                        audioSourceJson["offset"][2].get<float>()
+                    };
+                }
 
                 entity->componentsMask.set(CMP_AUDIO_SOURCE);
             }
@@ -1276,12 +1361,12 @@ namespace {
 
                 ScriptAttachmentSettingsFromJson(scriptJson, c);
 
-                // Keep the full saved path (project-relative, no extension) -
+                // Keep the full saved path (Assets-relative, no extension) -
                 // NOT just its stem. Reducing to the stem here used to drop
                 // any subfolder ("Scripts/Doors/Switch" -> "Switch"), so on
                 // the next load LuaScriptSystem would look for "Switch.lua"
-                // directly under Assets/Scripts and silently fail to find
-                // every script organized into a subfolder. Sector scripts
+                // directly under Assets and silently fail to find every
+                // script organized into a subfolder. Sector scripts
                 // (LoadSectorScripts below) never had this bug - they always
                 // kept the full path.
                 c.fileName = loadedName;
@@ -1299,7 +1384,9 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentUITransform &c = level.ui_transforms.Add(ownerID);
+                if (level.ui_transforms.Has(ownerID)) continue; // one per entity
+
+                ComponentUITransform &c = level.ui_transforms.Add(ownerID, transformJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_UI_TRANSFORM);
 
                 if (transformJson.contains("anchorMin")) {
@@ -1350,10 +1437,11 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentUISprite &c = level.ui_sprites.Add(ownerID);
+                ComponentUISprite &c = level.ui_sprites.Add(ownerID, spriteJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_UI_SPRITE);
 
                 c.texture = spriteJson.value("texture", "");
+                c.isActive = spriteJson.value("isActive", true);
             }
         }
 
@@ -1366,7 +1454,7 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentUIText &c = level.ui_texts.Add(ownerID);
+                ComponentUIText &c = level.ui_texts.Add(ownerID, textJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_UI_TEXT);
 
                 c.text = textJson.value("text", "");
@@ -1382,7 +1470,7 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentPlayerController &c = level.playerControllers.Add(ownerID);
+                ComponentPlayerController &c = level.playerControllers.Add(ownerID, controllerJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
 
                 entity->componentsMask.set(CMP_PLAYER_CONTROLLER);
 
@@ -1421,7 +1509,7 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentCamera &c = level.cameras.Add(ownerID);
+                ComponentCamera &c = level.cameras.Add(ownerID, cameraJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_CAMERA);
 
                 c.isActive = cameraJson.value("isActive", true);
@@ -1449,7 +1537,7 @@ namespace {
                 c.nearPlane = cameraJson.value("nearPlane", 0.1f);
                 c.farPlane = cameraJson.value("farPlane", 10000.0f);
                 c.smoothStep = cameraJson.value("smoothStep", false);
-                c.smoothingStrength = cameraJson.value("smoothingStrength", 1.0f);
+                c.smoothingStrength = cameraJson.value("smoothingStrength", 4.8f);
             }
         }
 
@@ -1462,7 +1550,11 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentCollider &c = level.colliders.Add(ownerID);
+                // Built whole and handed to InsertLoaded, which files it under the
+                // right part of the storage for its type and active state.
+                ComponentCollider c{};
+                c.ownerID = ownerID;
+                c.instanceID = colliderJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID);
                 entity->componentsMask.set(CMP_COLLIDER);
 
                 c.isActive = colliderJson.value("isActive", true);
@@ -1477,6 +1569,16 @@ namespace {
                         colliderJson["scale"][2].get<float>()
                     };
                 }
+
+                if (colliderJson.contains("offset")) {
+                    c.offset = {
+                        colliderJson["offset"][0].get<float>(),
+                        colliderJson["offset"][1].get<float>(),
+                        colliderJson["offset"][2].get<float>()
+                    };
+                }
+
+                level.colliders.InsertLoaded(c);
             }
         }
 
@@ -1490,7 +1592,7 @@ namespace {
                 Entity *entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentRigidbody &c = level.rigidbodies.Add(ownerID);
+                ComponentRigidbody &c = level.rigidbodies.Add(ownerID, rigidBodyJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_RIGIDBODY);
 
                 c.isStatic = rigidBodyJson.value("isStatic", true);
@@ -1509,12 +1611,50 @@ namespace {
                 Entity* entity = level.GetEntity(ownerID);
                 if (entity == nullptr) continue;
 
-                ComponentModel& c = level.models.Add(ownerID);
+                ComponentModel& c = level.models.Add(ownerID, modelJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
                 entity->componentsMask.set(CMP_MODEL);
 
                 c.fileName = modelJson.value("fileName", std::string{});
+                if (modelJson.contains("offset")) {
+                    c.offset = {
+                        modelJson["offset"][0].get<float>(),
+                        modelJson["offset"][1].get<float>(),
+                        modelJson["offset"][2].get<float>()
+                    };
+                }
             }
         }
+
+        if (componentsJson.contains("flipbooks")) {
+            for (const json& flipbookJson : componentsJson["flipbooks"]) {
+                const ID ownerID = flipbookJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                Entity* entity = level.GetEntity(ownerID);
+                if (entity == nullptr) continue;
+
+                ComponentFlipbook& c = level.flipbooks.Add(ownerID, flipbookJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
+                entity->componentsMask.set(CMP_FLIPBOOK);
+
+                c.flipbookFileName = flipbookJson.value("flipbookFileName", std::string{});
+                c.spriteInstanceID = flipbookJson.value("spriteInstanceID", INVALID_COMPONENT_INSTANCE_ID);
+                c.speed = flipbookJson.value("speed", 1.0f);
+            }
+        }
+    }
+
+    // A storage's components grouped by entity, each entity's in their own
+    // order, so the order (which one is "first") survives a save and load.
+    // Components whose owner isn't in the level are left out.
+    template<typename Storage>
+    auto InOwnerOrder(const Level& level, const Storage& storage) {
+        using T = std::remove_cvref_t<decltype(storage.components.front())>;
+        std::vector<std::reference_wrapper<const T>> result;
+        result.reserve(storage.components.size());
+        for (const Entity& entity : level.entities)
+            for (const T* component : storage.GetAll(entity.id)) result.emplace_back(*component);
+        return result;
     }
 
     void SaveComponents(json &levelData, const Level &level) {
@@ -1532,10 +1672,12 @@ namespace {
         componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
         componentsJson["models"] = json::array();
+        componentsJson["flipbooks"] = json::array();
 
-        for (const ComponentTransform& c : level.transforms.components) {
+        for (const ComponentTransform& c : InOwnerOrder(level, level.transforms)) {
             componentsJson["transforms"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"position", {c.position.x,c.position.y,c.position.z}},
                 {"rotation", {c.rotation.x,c.rotation.y,c.rotation.z,c.rotation.w}},
                 {"sectorIndex", c.sectorIndex},
@@ -1550,9 +1692,11 @@ namespace {
             componentsJson["scripts"].push_back(std::move(scriptJson));
         }
 
-        for (const ComponentAudioSource& c : level.audioSources.components) {
+        for (const ComponentAudioSource& c : InOwnerOrder(level, level.audioSources)) {
             componentsJson["audioSources"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
                 {"soundFileName", c.soundFileName},
                 {"pitch", c.pitch},
                 {"gain", c.gain},
@@ -1567,19 +1711,23 @@ namespace {
             });
         }
 
-        for (const ComponentSprite& c : level.sprites.components) {
+        for (const ComponentSprite& c : InOwnerOrder(level, level.sprites)) {
             componentsJson["sprites"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
                 {"textureFileNames", c.textureFileNames},
                 {"sideCount", static_cast<int>(c.sideCount)},
                 {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
-                {"isStatic", c.isStatic}
+                {"isStatic", c.isStatic},
+                {"isActive", c.isActive}
             });
         }
 
-        for (const ComponentUITransform &c: level.ui_transforms.components) {
+        for (const ComponentUITransform &c: InOwnerOrder(level, level.ui_transforms)) {
             componentsJson["uiTransforms"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
                 {"anchorMax", {c.anchorMax.x, c.anchorMax.y}},
                 {"pivot", {c.pivot.x, c.pivot.y}},
@@ -1589,23 +1737,27 @@ namespace {
             });
         }
 
-        for (const ComponentUISprite &c: level.ui_sprites.components) {
+        for (const ComponentUISprite &c: InOwnerOrder(level, level.ui_sprites)) {
             componentsJson["uiSprites"].push_back({
                 {"ownerID", c.ownerID},
-                {"texture", c.texture}
+                {"instanceID", c.instanceID},
+                {"texture", c.texture},
+                {"isActive", c.isActive}
             });
         }
 
-        for (const ComponentUIText &c: level.ui_texts.components) {
+        for (const ComponentUIText &c: InOwnerOrder(level, level.ui_texts)) {
             componentsJson["uiTexts"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"text", c.text}
             });
         }
 
-        for (const ComponentPlayerController &c: level.playerControllers.components) {
+        for (const ComponentPlayerController &c: InOwnerOrder(level, level.playerControllers)) {
             componentsJson["playerControllers"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"isActive", c.isActive},
                 {"velocity", {c.velocity.x, c.velocity.y, c.velocity.z}},
                 {"speed", c.speed},
@@ -1624,9 +1776,10 @@ namespace {
             });
         }
 
-        for (const ComponentCamera &c: level.cameras.components) {
+        for (const ComponentCamera &c: InOwnerOrder(level, level.cameras)) {
             componentsJson["cameras"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"isActive", c.isActive},
                 {"yaw", c.yaw},
                 {"pitch", c.pitch},
@@ -1641,9 +1794,11 @@ namespace {
             });
         }
 
-        for (const ComponentCollider &c: level.colliders.components) {
+        for (const ComponentCollider &c: InOwnerOrder(level, level.colliders)) {
             componentsJson["colliders"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
                 {"isActive", c.isActive},
                 {"isTrigger", c.isTrigger},
                 {"type", c.type},
@@ -1652,9 +1807,10 @@ namespace {
             });
         }
 
-        for (const ComponentRigidbody &c: level.rigidbodies.components) {
+        for (const ComponentRigidbody &c: InOwnerOrder(level, level.rigidbodies)) {
             componentsJson["rigidbodies"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
                 {"isStatic", c.isStatic},
                 {"mass", c.mass},
                 {"gravityScale", c.gravityScale},
@@ -1662,10 +1818,22 @@ namespace {
             });
         }
 
-        for (const ComponentModel& c : level.models.components) {
+        for (const ComponentModel& c : InOwnerOrder(level, level.models)) {
             componentsJson["models"].push_back({
                 {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
                 {"fileName", c.fileName}
+            });
+        }
+
+        for (const ComponentFlipbook& c : InOwnerOrder(level, level.flipbooks)) {
+            componentsJson["flipbooks"].push_back({
+                {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"flipbookFileName", c.flipbookFileName},
+                {"spriteInstanceID", c.spriteInstanceID},
+                {"speed", c.speed}
             });
         }
 
@@ -1739,9 +1907,57 @@ namespace LevelSerialization {
         return levelName;
     }
 
-    fs::path BuildLevelPath(const std::string& levelName) {
+    std::vector<fs::path> ListLevelFiles() {
+        std::vector<fs::path> levelFiles;
+        const fs::path assetsPath = ProjectManager::GetAssetsPath();
+
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_regular_file() && it->path().extension() == ".bson") levelFiles.push_back(it->path());
+        }
+
+        std::ranges::sort(levelFiles);
+        return levelFiles;
+    }
+
+    std::vector<fs::path> FindLevelFiles(const std::string& levelName) {
         const std::string cleanName = CleanLevelName(levelName);
-        return ProjectManager::GetLevelsPath() / (cleanName + ".bson");
+
+        std::vector<fs::path> matches;
+        for (fs::path& levelFile : ListLevelFiles())
+            if (levelFile.stem().string() == cleanName) matches.push_back(std::move(levelFile));
+
+        return matches;
+    }
+
+    fs::path FindLevelPath(const std::string& levelName, std::string* errorMessage) {
+        const std::string cleanName = CleanLevelName(levelName);
+        const std::vector<fs::path> matches = FindLevelFiles(cleanName);
+
+        if (matches.empty()) {
+            SetError(errorMessage, "There is no level called \"" + cleanName + "\" in the Assets folder");
+            return {};
+        }
+
+        if (matches.size() > 1) {
+            std::string message = "More than one level is called \"" + cleanName + "\"; rename all but one:";
+            for (const fs::path& match : matches) message += "\n  " + match.string();
+
+            SetError(errorMessage, message);
+            return {};
+        }
+
+        return matches.front();
+    }
+
+    fs::path ResolveLevelSavePath(const std::string& levelName, std::string* errorMessage) {
+        const std::string cleanName = CleanLevelName(levelName);
+        const std::vector<fs::path> matches = FindLevelFiles(cleanName);
+
+        if (matches.empty()) return ProjectManager::GetAssetsPath() / (cleanName + ".bson");
+        if (matches.size() == 1) return matches.front();
+
+        return FindLevelPath(cleanName, errorMessage); // reports the duplicates
     }
 
     bool LoadLevelFromFile(const fs::path& levelFile, Level& outLevel, LevelExtraData* outExtraData,std::string* errorMessage) {
@@ -1875,6 +2091,57 @@ namespace LevelSerialization {
         );
 
         file.close();
+
+        return true;
+    }
+}
+
+namespace LevelSerialization {
+    std::string ScriptPublicFieldsToJsonText(const std::vector<ScriptPublicField>& fields) {
+        json fieldsJson = json::array();
+
+        for (const ScriptPublicField& field : fields) {
+            json options = json::array();
+            for (const ScriptEnumOption& option : field.enumOptions)
+                options.push_back(json{{"name", option.name}, {"value", option.value}});
+
+            fieldsJson.push_back(json{
+                {"name", field.name},
+                {"type", ScriptValueTypeToString(field.type)},
+                {"default", ScriptValueToJson(field.defaultValue)},
+                {"displayName", field.displayName},
+                {"enumOptions", options},
+                {"componentType", field.componentType},
+                {"assetKind", static_cast<int>(field.assetKind)},
+            });
+        }
+
+        return fieldsJson.dump(1, '	');
+    }
+
+    bool ScriptPublicFieldsFromJsonText(const std::string& text, std::vector<ScriptPublicField>& outFields, std::string* errorMessage) {
+        outFields.clear();
+
+        try {
+            for (const json& fieldJson : json::parse(text)) {
+                ScriptPublicField field;
+                field.name = fieldJson.at("name").get<std::string>();
+                field.type = ScriptValueTypeFromString(fieldJson.at("type").get<std::string>());
+                field.defaultValue = ScriptValueFromJson(fieldJson.at("default"));
+                field.displayName = fieldJson.value("displayName", field.name);
+                field.componentType = fieldJson.value("componentType", -1);
+                field.assetKind = static_cast<ScriptAssetKind>(fieldJson.value("assetKind", 0));
+
+                for (const json& option : fieldJson.value("enumOptions", json::array()))
+                    field.enumOptions.push_back({option.at("name").get<std::string>(), option.at("value").get<int>()});
+
+                outFields.push_back(std::move(field));
+            }
+        } catch (const std::exception& exception) {
+            if (errorMessage != nullptr) *errorMessage = exception.what();
+            outFields.clear();
+            return false;
+        }
 
         return true;
     }

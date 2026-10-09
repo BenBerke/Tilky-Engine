@@ -74,12 +74,9 @@ namespace ProjectManager {
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\project.tilky
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets
     //
-    // It does NOT create Levels/Textures/Sounds/Scripts subfolders inside
-    // Assets. Assets may live in any folder under Assets, so nothing is
-    // pre-created at a fixed location - GetLevelsPath() / GetTexturesPath() /
-    // GetSoundsPath() / GetScriptsPath() below still return those
-    // conventional paths for anything that wants a sensible default, but
-    // the paths are not guaranteed to exist on disk.
+    // It does NOT create any subfolders inside Assets. Assets of every kind
+    // may live in any folder under Assets, so nothing is pre-created at a
+    // fixed location.
     void CreateProject(const fs::path &directory, const std::string &projectName);
 
     // Creates a new project folder inside the top-level Projects folder, then creates
@@ -113,17 +110,12 @@ namespace ProjectManager {
     // currentProjectFile    = ...\TestProject\project.tilky
     // currentProjectFolder  = ...\TestProject
     // currentAssetsPath     = ...\TestProject\Assets
-    // currentLevelsPath     = ...\TestProject\Assets\Levels
-    // currentTexturesPath   = ...\TestProject\Assets\Textures
     //
     // This also reads the project's "engineVersion" field (empty string if the
     // project predates it) - see GetProjectEngineVersion().
     //
     // Only the Assets folder itself must actually exist on disk for this to
-    // succeed. The Levels/Textures/Sounds/Scripts paths above are always
-    // computed, but no longer required to exist - assets may live anywhere
-    // under Assets, so a project missing one of those particular subfolders
-    // is still considered valid.
+    // succeed - assets may live anywhere under it.
     bool LoadProjectMetaData(const fs::path &path);
 
     // Returns whether a project has successfully been loaded into ProjectManager.
@@ -149,30 +141,6 @@ namespace ProjectManager {
     // Example:
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets
     fs::path GetAssetsPath();
-
-    // Returns the Textures folder of the currently loaded project.
-    // This is where project-specific texture files should be stored.
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Textures
-    fs::path GetTexturesPath();
-
-    // Returns the Levels folder of the currently loaded project.
-    // This is where project-specific level JSON files should be saved and loaded from.
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Levels
-    fs::path GetLevelsPath();
-
-    // Returns the Sounds folder of the currently loaded project.
-    // This is where project-specific sound files should be saved and loaded from.
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Sounds
-    fs::path GetSoundsPath();
-
-    // Returns the Scripts folder of the currently loaded project.
-    // This is where project-specific scripts files should be saved and loaded from.
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets\Scripts
-    fs::path GetScriptsPath();
 
     // Returns the folder where the currently running executable is located.
     // This comes from SDL_GetBasePath(), so in CLion it usually points to the build folder.

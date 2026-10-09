@@ -78,14 +78,9 @@ When the player steps on, the floor rises to 16 units below the ceiling over two
 
 ```lua
 -- Scripts/Platforms/OneShotLift.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field travelTime number @ Travel Time (s)
-travelTime = 2
-
----@field headroom number @ Space Left Under Ceiling
-headroom = 16
+public Entity player = nil
+public number travelTime = 2
+public number headroom = 16
 
 local started = false
 
@@ -114,17 +109,10 @@ Press the use key inside the sector to open the door, and again to close it.
 
 ```lua
 -- Scripts/Doors/BuiltinDoor.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field openHeight number @ Open Height
-openHeight = 40
-
----@field speed number @ Speed
-speed = 60
-
----@field useKey string @ Use Key
-useKey = "E"
+public Entity player = nil
+public number openHeight = 40
+public number speed = 60
+public Key useKey = Key.E
 
 local open = false
 
@@ -157,14 +145,9 @@ Rises while the player is standing on it and sinks back when they step off.
 
 ```lua
 -- Scripts/Platforms/Lift.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field rise number @ Rise Height
-rise = 32
-
----@field speed number @ Lift Speed
-speed = 30
+public Entity player = nil
+public number rise = 32
+public number speed = 30
 
 local MIN_GAP = 0.5
 
@@ -220,17 +203,10 @@ Stands still until the player is aboard and presses a key, then travels to the o
 
 ```lua
 -- Scripts/Platforms/Elevator.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field travel number @ Travel Distance
-travel = 64
-
----@field speed number @ Speed
-speed = 40
-
----@field callKey string @ Call Key
-callKey = "E"
+public Entity player = nil
+public number travel = 64
+public number speed = 40
+public Key callKey = Key.E
 
 local MIN_GAP = 0.5
 
@@ -300,26 +276,13 @@ it takes damage while it's crushing (see [10_health_and_damage.md](10_health_and
 
 ```lua
 -- Scripts/Platforms/Crusher.lua (sector script)
----@field crushedGap number @ Gap When Down
-crushedGap = 8
-
----@field downSpeed number @ Down Speed
-downSpeed = 120
-
----@field upSpeed number @ Up Speed
-upSpeed = 30
-
----@field pauseTop number @ Pause At Top (s)
-pauseTop = 1.5
-
----@field pauseBottom number @ Pause At Bottom (s)
-pauseBottom = 0.5
-
----@field damage number @ Damage Per Hit
-damage = 25
-
----@field hitInterval number @ Seconds Between Hits
-hitInterval = 0.5
+public number crushedGap = 8
+public number downSpeed = 120
+public number upSpeed = 30
+public number pauseTop = 1.5
+public number pauseBottom = 0.5
+public number damage = 25
+public number hitInterval = 0.5
 
 local MIN_GAP = 0.01
 local GOING_DOWN, WAIT_BOTTOM, GOING_UP, WAIT_TOP = 1, 2, 3, 4
@@ -421,14 +384,9 @@ After a delay the floor rises slowly to a maximum height. Combine with the damag
 
 ```lua
 -- Scripts/Platforms/RisingFloor.lua (sector script)
----@field startDelay number @ Start Delay (s)
-startDelay = 10
-
----@field riseSpeed number @ Rise Speed (units/s)
-riseSpeed = 2
-
----@field maxHeight number @ Max Height
-maxHeight = 30
+public number startDelay = 10
+public number riseSpeed = 2
+public number maxHeight = 30
 
 local MIN_GAP = 0.5
 

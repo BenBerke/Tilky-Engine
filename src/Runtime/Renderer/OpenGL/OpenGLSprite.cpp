@@ -2,6 +2,7 @@
 
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Sector.hpp"
 
 void OpenGL::BuildGpuSprites() {
@@ -10,6 +11,8 @@ void OpenGL::BuildGpuSprites() {
     Level& level = LevelManager::CurrentLevel();
 
     for (ComponentSprite& spriteComponent : level.sprites.components) {
+        if (!spriteComponent.isActive) continue;
+
         ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;
@@ -17,10 +20,12 @@ void OpenGL::BuildGpuSprites() {
 
         GpuSprite gpuSprite{};
 
+        const Vector3 position = transform->LocalToWorld(spriteComponent.offset);
+
         gpuSprite.positionSize = {
-            transform->position.x,
-            transform->position.y,
-            transform->position.z,
+            position.x,
+            position.y,
+            position.z,
             transform->scale.z
         };
 
@@ -52,11 +57,14 @@ void OpenGL::BuildGpuSprites() {
             GetTextureRegionIndex(spriteComponent.textureFileNames[7])
         };
 
+        // Directional sprites face the rotation's local +Z, flattened onto the map.
+        const Vector3 facing = QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward());
+
         gpuSprite.data = {
             transform->scale.x,
             static_cast<float>(spriteComponent.sideCount),
-            transform->forward.x,
-            transform->forward.y
+            facing.x,
+            facing.z
         };
 
         Quaternion rotation = Quaternion::Identity();

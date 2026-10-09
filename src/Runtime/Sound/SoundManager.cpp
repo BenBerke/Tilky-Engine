@@ -44,9 +44,13 @@ namespace {
         return extension == ".wav";
     }
 
+    // Sounds are keyed by their path inside Assets without the extension,
+    // matching the reference the inspector stores (AssetBrowser::ToAssetReference
+    // strips it). Stripping it here too means "Sounds/Doors/open" and
+    // "Sounds/Doors/open.wav" both find the sound.
     std::string NormalizeSoundFileName(const std::string& fileName) {
         if (fileName.empty()) return {};
-        return fs::path(fileName).lexically_normal().generic_string();
+        return fs::path(fileName).lexically_normal().replace_extension().generic_string();
     }
 }
 
@@ -171,6 +175,48 @@ namespace SoundManager {
         PlaySoundOnSource(sourceName, soundFileName);
     }
 
+    void StopSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSourceStop(iterator->second);
+        CheckALErrors("Failed to stop source");
+    }
+
+    void PauseSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSourcePause(iterator->second);
+        CheckALErrors("Failed to pause source");
+    }
+
+    bool ResumeSource(const std::string& sourceName) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return false;
+        }
+
+        ALint state = 0;
+        alGetSourcei(iterator->second, AL_SOURCE_STATE, &state);
+
+        // alSourcePlay on a stopped source would restart it, which is Play's job.
+        if (state != AL_PAUSED) return false;
+
+        alSourcePlay(iterator->second);
+        return CheckALErrors("Failed to resume source");
+    }
+
     void GenerateSounds() {
         for (const ALuint source: sources | std::views::values) {
             alSourceStop(source);
@@ -183,26 +229,17 @@ namespace SoundManager {
 
         buffers.clear();
 
-        const fs::path soundsPath = ProjectManager::GetSoundsPath();
+        // Sounds can live anywhere under Assets, like textures and models.
+        const fs::path assetsPath = ProjectManager::GetAssetsPath();
 
-        if (!fs::exists(soundsPath)) {
-            std::error_code error;
-            fs::create_directories(soundsPath, error);
-
-            if (error) {
-                spdlog::error("Failed to create Sounds folder {}: {}", soundsPath.string(), error.message());
-                return;
-            }
-        }
-
-        if (!fs::is_directory(soundsPath)) {
-            spdlog::error("Sounds path is not a directory: {}", soundsPath.string());
+        if (!fs::is_directory(assetsPath)) {
+            spdlog::error("Assets path is not a directory: {}", assetsPath.string());
             return;
         }
 
         std::error_code iteratorError;
 
-        for (fs::recursive_directory_iterator iterator(soundsPath, iteratorError);
+        for (fs::recursive_directory_iterator iterator(assetsPath, iteratorError);
              !iteratorError && iterator != fs::recursive_directory_iterator(); iterator.increment(iteratorError)) {
             const fs::directory_entry &entry = *iterator;
 
@@ -210,7 +247,7 @@ namespace SoundManager {
             if (!IsSupportedSoundExtension(entry.path().extension().string())) continue;
 
             std::error_code relativeError;
-            const fs::path relativePath = fs::relative(entry.path(), soundsPath, relativeError);
+            const fs::path relativePath = fs::relative(entry.path(), assetsPath, relativeError);
 
             if (relativeError) {
                 spdlog::error("Failed to create relative sound path for {}: {}", entry.path().string(),
@@ -236,7 +273,7 @@ namespace SoundManager {
             spdlog::info("Loaded sound '{}'", fileName);
         }
 
-        if (iteratorError) spdlog::error("Failed while scanning Sounds folder {}: {}", soundsPath.string(),
+        if (iteratorError) spdlog::error("Failed while scanning Assets folder {}: {}", assetsPath.string(),
                                          iteratorError.message());
 
         spdlog::info("Generated {} sound buffer(s)", buffers.size());
@@ -280,7 +317,10 @@ namespace SoundManager {
 
         SetListenerPosition({0.0f, 0.0f, 0.0f});
         SetListenerVelocity({0.0f, 0.0f, 0.0f});
-        SetListenerOrientation({0.0f, 0.0f, 0.0f});
+        // Same as a camera's default forward. A zero vector is not a valid
+        // orientation, and sounds started before a camera places the listener
+        // would play at full volume, unpositioned.
+        SetListenerOrientation({0.0f, 0.0f, 1.0f});
 
         spdlog::info("Sounds generated");
 
@@ -319,8 +359,6 @@ namespace SoundManager {
             alDeleteBuffers(1, &buffer);
             buffer = 0;
         }
-
-        buffers.clear();
 
         buffers.clear();
 
@@ -408,6 +446,18 @@ namespace SoundManager {
         CheckALErrors("Failed to set source position");
     }
 
+    void SetSourceDirection(const std::string& sourceName, const Vector3 direction) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSource3f(iterator->second, AL_DIRECTION, direction.x, direction.y, direction.z);
+        CheckALErrors("Failed to set source direction");
+    }
+
     void SetSourceLooping(const std::string& sourceName, const bool looping) {
         const auto iterator =sources.find(sourceName);
 
@@ -464,7 +514,7 @@ namespace SoundManager {
             return;
         }
 
-        alSourcef(iterator->second, AL_CONE_INNER_ANGLE, innerConeAngle);
+        alSourcef(iterator->second, AL_CONE_INNER_ANGLE, std::clamp(innerConeAngle, 0.0f, 360.0f));
         CheckALErrors("Failed to set AL_CONE_INNER_ANGLE");
     }
 
@@ -476,7 +526,7 @@ namespace SoundManager {
             return;
         }
 
-        alSourcef(iterator->second, AL_CONE_OUTER_ANGLE, outerConeAngle);
+        alSourcef(iterator->second, AL_CONE_OUTER_ANGLE, std::clamp(outerConeAngle, 0.0f, 360.0f));
         CheckALErrors("Failed to set AL_CONE_OUTER_ANGLE");
     }
 
@@ -488,7 +538,7 @@ namespace SoundManager {
             return;
         }
 
-        alSourcef(iterator->second, AL_CONE_OUTER_GAIN, outerGain);
+        alSourcef(iterator->second, AL_CONE_OUTER_GAIN, std::clamp(outerGain, 0.0f, 1.0f));
         CheckALErrors("Failed to set AL_CONE_OUTER_GAIN");
     }
 

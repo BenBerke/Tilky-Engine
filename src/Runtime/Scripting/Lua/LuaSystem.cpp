@@ -6,6 +6,7 @@
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
@@ -13,10 +14,13 @@
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
+#include "Headers/Runtime/Sound/AudioSystem.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <algorithm>
 #include <cctype>
@@ -25,6 +29,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <regex>
 #include <string>
@@ -44,23 +49,18 @@
 // load / reconcile / lifecycle code; the only differences are the owner
 // context (ScriptOwnerKind) and the owner globals injected into the
 // environment (`entity` for entities, `sector` + an unbound `entity`
-// for sectors - see InjectOwnerGlobals). A script
-// file's PUBLIC FIELDS are no longer declared through Public.Float/Int/Bool/
-// String(...) calls: they are plain top-level Lua variables, and their
-// schema (name/type/default/display name) is parsed directly out of the
-// script's `---@field` doc comments *without ever executing the script* -
-// see ExtractSchema. The same annotation syntax is what LuaLS already
-// understands, so this schema and future editor IDE hovers/autocomplete
-// share one source of truth (see the "LuaLS metadata" notes near the bottom
-// of this file / LuaBindingMetadata.hpp).
+// for sectors - see InjectOwnerGlobals). A script's PUBLIC FIELDS are
+// declared with `public <Type> <name> = <value>` at its top level.
+// LuaScriptCompiler turns the script into plain Lua plus that field schema
+// (name/type/default/display name) *without ever executing the script*; the
+// editor compiles from source (cached per file revision, see
+// LoadOrRefreshScriptAsset), the exported game loads the bytecode and field
+// manifest the exporter precompiled.
 //
 // Example script:
 //
-//   ---@field maxHealth number
-//   maxHealth = 100
-//
-//   ---@field target Entity
-//   target = nil
+//   public number maxHealth = 100
+//   public Entity target = nil
 //
 //   function Start()
 //       print(entity.name .. " has " .. maxHealth .. " HP")
@@ -68,7 +68,10 @@
 //
 // Lifecycle: Start, Update, FixedUpdate, OnEnable, OnDisable, OnDestroy.
 // Sector scripts also get OnEntityEnter(entity) / OnEntityExit(entity) - see
-// DispatchSectorOccupancyEvents.
+// DispatchSectorOccupancyEvents. Entity scripts also get
+// OnCollisionEnter(other) / OnCollision(other) / OnCollisionExit(other), the
+// same three as OnTrigger* for trigger colliders - see DispatchContactEvents -
+// and OnSectorChange(sector) - see DispatchSectorChangeEvents.
 // ============================================================================
 
 namespace {
@@ -83,9 +86,17 @@ namespace {
         fs::file_time_type lastWriteTime {};
         std::uint64_t schemaHash = 0;
 
-        // Result of compiling (not running) the script file, computed lazily
-        // for the inspector - see GetScriptLoadError. Reset whenever the
-        // asset is refreshed from disk.
+        // What Lua loads: the compiled plain-Lua source in the editor, the
+        // exported bytecode in the standalone game.
+        std::string chunk;
+
+        // LuaScriptCompiler's errors ("Scripts/Foo.lua:3: unknown type ..."),
+        // or the reason the exported files couldn't be read. Empty if fine.
+        std::string compileError;
+
+        // Result of loading (not running) the chunk, computed lazily for the
+        // inspector - see GetScriptLoadError. Reset whenever the asset is
+        // refreshed from disk.
         bool loadErrorChecked = false;
         std::string loadError;
     };
@@ -118,6 +129,15 @@ namespace {
         sol::protected_function onEntityEnterFunction;
         sol::protected_function onEntityExitFunction;
 
+        // Entity scripts only.
+        sol::protected_function onCollisionEnterFunction;
+        sol::protected_function onCollisionFunction;
+        sol::protected_function onCollisionExitFunction;
+        sol::protected_function onTriggerEnterFunction;
+        sol::protected_function onTriggerFunction;
+        sol::protected_function onTriggerExitFunction;
+        sol::protected_function onSectorChangeFunction;
+
         bool started = false;   // Start() has run at least once
         bool enabled = false;   // last computed effective-enabled state (script.enabled && owner.enabled)
         bool destroyed = false; // OnDestroy has already fired - guards against double teardown
@@ -133,6 +153,15 @@ namespace {
     // DispatchSectorOccupancyEvents ran. Diffed against
     // Sector::entitiesInside to find who entered and who left.
     std::unordered_map<ID, std::vector<ID>> lastSectorOccupants;
+
+    // Entity ID -> the sector ID (INVALID_ID = outside the map) it was in the
+    // last time DispatchSectorChangeEvents ran. Only entities that own a
+    // script are tracked.
+    std::unordered_map<ID, ID> lastEntitySectors;
+
+    // Last frame's contacts, sorted and unique - see DispatchContactEvents.
+    std::vector<PhysicsSystem::CollisionPair> lastCollisions;
+    std::vector<PhysicsSystem::CollisionPair> lastTriggers;
     std::unordered_map<std::string, ScriptAsset> scriptAssets; // keyed by assetId
 
     // Entity instances only. An entity script's ScriptInstanceID is unique
@@ -161,14 +190,14 @@ namespace {
     // ------------------------------------------------------------------
     // Script identity
     //
-    // A script's identity (ComponentScript::fileName) is a project-relative
-    // path under Assets/Scripts, without extension, using forward slashes -
-    // exactly what AssetBrowser::ToAssetReference(kind=Script) already
-    // produces. NormalizeScriptId only defends against callers that pass a
-    // raw OS path, backslashes, or a trailing ".lua" - it must NEVER reduce
-    // the value to just its filename stem, which was the previous bug that
-    // made "Scripts/Player/Health.lua" and "Scripts/Enemies/Health.lua"
-    // collide into the same identity ("Health").
+    // A script's identity (ComponentScript::fileName) is its path relative
+    // to Assets, without extension, using forward slashes - exactly what
+    // AssetBrowser::ToAssetReference(kind=Script) already produces. Scripts
+    // can live in any folder under Assets. NormalizeScriptId only defends
+    // against callers that pass a raw OS path, backslashes, or a trailing
+    // ".lua" - it must NEVER reduce the value to just its filename stem,
+    // which was the previous bug that made "Player/Health.lua" and
+    // "Enemies/Health.lua" collide into the same identity ("Health").
     // ------------------------------------------------------------------
 
     std::string NormalizeScriptId(const std::string& rawId) {
@@ -179,8 +208,24 @@ namespace {
         return p.generic_string();
     }
 
+    // The source script in the editor, the exporter's precompiled bytecode in
+    // the standalone game (its field manifest sits next to it, see
+    // GetScriptFieldsPathFromId).
     fs::path GetScriptPathFromId(const std::string& assetId) {
-        return ProjectManager::GetScriptsPath() / (assetId + ".lua");
+#ifdef TILKY_STANDALONE
+        return ProjectManager::GetAssetsPath() / (assetId + ".luac");
+#else
+        return ProjectManager::GetAssetsPath() / (assetId + ".lua");
+#endif
+    }
+
+    [[maybe_unused]] fs::path GetScriptFieldsPathFromId(const std::string& assetId) {
+        return ProjectManager::GetAssetsPath() / (assetId + ".fields.json");
+    }
+
+    // The name Lua errors use for a script: its Assets-relative path.
+    std::string ScriptChunkName(const std::string& assetId) {
+        return assetId + ".lua";
     }
 
     ScriptInstance* FindInstanceById(const ScriptInstanceID instanceId) {
@@ -369,6 +414,7 @@ namespace {
                 else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
                     HashCombine(seed, std::hash<int>{}(typedValue.componentType));
+                    HashCombine(seed, std::hash<std::uint64_t>{}(typedValue.instanceId));
                 }
                 else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
@@ -392,6 +438,9 @@ namespace {
             HashCombine(hash, std::hash<std::string>{}(field.name));
             HashCombine(hash, static_cast<std::uint64_t>(field.type));
             HashCombine(hash, static_cast<std::uint64_t>(field.componentType + 1));
+            // Only non-texture kinds, so existing scripts keep their hash.
+            if (field.assetKind != ScriptAssetKind::Texture)
+                HashCombine(hash, static_cast<std::uint64_t>(field.assetKind) + 1);
             HashScriptValue(hash, field.defaultValue);
 
             for (const ScriptEnumOption& option : field.enumOptions) {
@@ -404,294 +453,48 @@ namespace {
     }
 
     // ------------------------------------------------------------------
-    // Schema extraction (text-only - never executes the script)
+    // Script assets (compiled once per file revision, never executed here)
     // ------------------------------------------------------------------
 
-    std::string TrimCopy(std::string s) {
-        const auto notSpace = [](const unsigned char c) { return std::isspace(c) == 0; };
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), notSpace));
-        s.erase(std::find_if(s.rbegin(), s.rend(), notSpace).base(), s.end());
-        return s;
+    bool ReadWholeFile(const fs::path& path, std::string& out) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file) return false;
+        out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        return true;
     }
 
-    bool IsBlankOrPlainComment(const std::string& trimmed) {
-        if (trimmed.empty()) return true;
-        // A `--` comment that is NOT a `---@field` annotation is skipped
-        // over when looking for a field's default-value line.
-        return trimmed.rfind("--", 0) == 0 && trimmed.rfind("---@field", 0) != 0;
+#ifndef TILKY_STANDALONE
+    void CompileScriptAsset(ScriptAsset& asset) {
+        std::string source;
+        if (!ReadWholeFile(asset.path, source)) {
+            asset.compileError = fmt::format("{}: could not open the file", ScriptChunkName(asset.assetId));
+            return;
+        }
+
+        LuaScriptCompiler::Result compiled = LuaScriptCompiler::Compile(source);
+
+        std::vector<std::string> errors;
+        for (const LuaScriptCompiler::Diagnostic& error : compiled.errors)
+            errors.push_back(fmt::format("{}:{}: {}", ScriptChunkName(asset.assetId), error.line, error.message));
+
+        asset.compileError = fmt::format("{}", fmt::join(errors, "\n"));
+        asset.publicFields = std::move(compiled.publicFields);
+        asset.chunk = std::move(compiled.luaSource);
     }
+#else
+    void LoadExportedScriptAsset(ScriptAsset& asset) {
+        std::string fieldsText;
+        std::string error;
 
-    std::vector<std::string> SplitCommaList(const std::string& text) {
-        std::vector<std::string> parts;
-        std::string current;
-
-        for (const char c : text) {
-            if (c == ',') {
-                parts.push_back(TrimCopy(current));
-                current.clear();
-            } else current += c;
+        if (!ReadWholeFile(asset.path, asset.chunk)) {
+            asset.compileError = fmt::format("{}: could not open {}", ScriptChunkName(asset.assetId), asset.path.string());
+        } else if (!ReadWholeFile(GetScriptFieldsPathFromId(asset.assetId), fieldsText)) {
+            asset.compileError = fmt::format("{}: missing field manifest", ScriptChunkName(asset.assetId));
+        } else if (!LevelSerialization::ScriptPublicFieldsFromJsonText(fieldsText, asset.publicFields, &error)) {
+            asset.compileError = fmt::format("{}: bad field manifest: {}", ScriptChunkName(asset.assetId), error);
         }
-
-        if (!current.empty() || !parts.empty()) parts.push_back(TrimCopy(current));
-
-        return parts;
     }
-
-    // Friendly type names a `---@field` annotation can use for a component
-    // reference, mapped to the ComponentType (Components.hpp) they mean -
-    // matching the usertype names LuaComponentBindings.cpp already registers.
-    const std::unordered_map<std::string, int>& ComponentAnnotationTable() {
-        static const std::unordered_map<std::string, int> table = {
-            {"Transform",        CMP_TRANSFORM},
-            {"Sprite",           CMP_SPRITE},
-            {"AudioSource",      CMP_AUDIO_SOURCE},
-            {"PlayerController", CMP_PLAYER_CONTROLLER},
-            {"Camera",           CMP_CAMERA},
-            {"Collider",         CMP_COLLIDER},
-            {"Rigidbody",        CMP_RIGIDBODY},
-            {"Model",            CMP_MODEL},
-        };
-
-        return table;
-    }
-
-    bool IsReservedFieldName(const std::string& name) {
-        static const std::unordered_set<std::string> reserved = {
-            "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-            "OnEntityEnter", "OnEntityExit",
-            "entity", "sector", "Scripts", "GameTime", "Input", "Game", "Debug"
-        };
-
-        return reserved.contains(name);
-    }
-
-    // Parses the (already-trimmed) right-hand side of a `<name> = <rhs>`
-    // default-value line into a ScriptValue of the requested type. Plain
-    // text parsing only - schema extraction never runs Lua.
-    ScriptValue ParseDefaultLiteral(
-        const std::string& rawRhs,
-        const ScriptValueType type,
-        const std::vector<ScriptEnumOption>& enumOptions
-    ) {
-        const std::string rhs = TrimCopy(rawRhs);
-
-        switch (type) {
-            case ScriptValueType::Int: {
-                try { return ScriptValue{std::stoi(rhs)}; }
-                catch (...) { return ScriptValue{0}; }
-            }
-
-            case ScriptValueType::Float: {
-                try { return ScriptValue{std::stof(rhs)}; }
-                catch (...) { return ScriptValue{0.0f}; }
-            }
-
-            case ScriptValueType::Bool:
-                return ScriptValue{rhs == "true"};
-
-            case ScriptValueType::String: {
-                if (rhs.size() >= 2 &&
-                    (rhs.front() == '"' || rhs.front() == '\'') &&
-                    rhs.back() == rhs.front()) {
-                    return ScriptValue{rhs.substr(1, rhs.size() - 2)};
-                }
-
-                if (rhs.empty() || rhs == "nil") return ScriptValue{std::string{}};
-
-                return ScriptValue{rhs};
-            }
-
-            case ScriptValueType::Vector2:
-            case ScriptValueType::Vector3:
-            case ScriptValueType::Vector4: {
-                const std::size_t open = rhs.find_first_of("({");
-                const std::size_t close = rhs.find_last_of(")}");
-
-                std::vector<float> components;
-
-                if (open != std::string::npos && close != std::string::npos && close > open) {
-                    for (const std::string& part : SplitCommaList(rhs.substr(open + 1, close - open - 1))) {
-                        try { components.push_back(std::stof(part)); }
-                        catch (...) { components.push_back(0.0f); }
-                    }
-                }
-
-                const std::size_t wanted = type == ScriptValueType::Vector2 ? 2 : type == ScriptValueType::Vector3 ? 3 : 4;
-                components.resize(wanted, 0.0f);
-
-                if (type == ScriptValueType::Vector2) return ScriptValue{Vector2{components[0], components[1]}};
-                if (type == ScriptValueType::Vector3) return ScriptValue{Vector3{components[0], components[1], components[2]}};
-                return ScriptValue{Vector4{components[0], components[1], components[2], components[3]}};
-            }
-
-            case ScriptValueType::Enum: {
-                if (!enumOptions.empty()) {
-                    for (const ScriptEnumOption& option : enumOptions)
-                        if (option.name == rhs) return ScriptValue{option.value};
-
-                    try { return ScriptValue{std::stoi(rhs)}; }
-                    catch (...) {}
-
-                    return ScriptValue{enumOptions.front().value};
-                }
-
-                return ScriptValue{0};
-            }
-
-            case ScriptValueType::Entity: return ScriptValue{EntityRefValue{}};
-            case ScriptValueType::Component:  return ScriptValue{ComponentRefValue{}};
-            case ScriptValueType::Behaviour:  return ScriptValue{BehaviourRefValue{}};
-            case ScriptValueType::Asset:      return ScriptValue{AssetRefValue{}};
-            case ScriptValueType::Wall:       return ScriptValue{WallRefValue{}};
-            case ScriptValueType::Sector:     return ScriptValue{SectorRefValue{}};
-        }
-
-        return ScriptValue{0};
-    }
-
-    struct ParsedAnnotation {
-        std::string name;
-        ScriptValueType type {};
-        std::vector<ScriptEnumOption> enumOptions;
-        int componentType = -1;
-        std::string displayName;
-    };
-
-    // Parses one `---@field name Type[(args)] [@ Display Name]` line. This is
-    // standard LuaDoc/LuaLS syntax plus one small, backwards-compatible
-    // extension: `enum(OptionA,OptionB,...)` as a type name for enum fields.
-    // Returns std::nullopt (after logging why) for anything unrecognized or
-    // malformed - one bad annotation only skips that field, not the script.
-    std::optional<ParsedAnnotation> ParseFieldAnnotation(const std::string& line, const std::string& scriptId) {
-        static const std::regex pattern(
-            R"(^\s*---@field\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\[\])?(?:\(([^)]*)\))?\s*(?:@\s*(.*?))?\s*$)"
-        );
-
-        std::smatch match;
-        if (!std::regex_match(line, match, pattern)) return std::nullopt;
-
-        ParsedAnnotation result;
-        result.name = match[1].str();
-        const std::string typeName = match[2].str();
-        const bool isArray = match[3].matched;
-        const std::string args = match[4].str();
-        result.displayName = match[5].matched && !match[5].str().empty() ? match[5].str() : result.name;
-
-        if (isArray) {
-            spdlog::warn(
-                "Lua script '{}' field '{}' uses an array type ('{}[]') - list/array fields are not supported yet, skipping",
-                scriptId, result.name, typeName
-            );
-
-            return std::nullopt;
-        }
-
-        if (typeName == "int" || typeName == "integer") result.type = ScriptValueType::Int;
-        else if (typeName == "number" || typeName == "float") result.type = ScriptValueType::Float;
-        else if (typeName == "bool" || typeName == "boolean") result.type = ScriptValueType::Bool;
-        else if (typeName == "string") result.type = ScriptValueType::String;
-        else if (typeName == "Vector2") result.type = ScriptValueType::Vector2;
-        else if (typeName == "Vector3") result.type = ScriptValueType::Vector3;
-        else if (typeName == "Vector4") result.type = ScriptValueType::Vector4;
-        else if (typeName == "Entity") result.type = ScriptValueType::Entity;
-        else if (typeName == "Behaviour" || typeName == "Script") result.type = ScriptValueType::Behaviour;
-        else if (typeName == "Asset" || typeName == "Texture") result.type = ScriptValueType::Asset;
-        else if (typeName == "Wall") result.type = ScriptValueType::Wall;
-        else if (typeName == "Sector") result.type = ScriptValueType::Sector;
-        else if (typeName == "enum") {
-            result.type = ScriptValueType::Enum;
-
-            int nextValue = 0;
-            for (const std::string& optionName : SplitCommaList(args))
-                if (!optionName.empty()) result.enumOptions.push_back({optionName, nextValue++});
-
-            if (result.enumOptions.empty()) {
-                spdlog::warn("Lua script '{}' field '{}' is enum() with no options, skipping", scriptId, result.name);
-                return std::nullopt;
-            }
-        }
-        else if (const auto componentIt = ComponentAnnotationTable().find(typeName); componentIt != ComponentAnnotationTable().end()) {
-            result.type = ScriptValueType::Component;
-            result.componentType = componentIt->second;
-        }
-        else {
-            spdlog::warn("Lua script '{}' field '{}' has unrecognized type '{}', skipping", scriptId, result.name, typeName);
-            return std::nullopt;
-        }
-
-        return result;
-    }
-
-    // Reads the script's source text and builds its schema purely from
-    // `---@field` annotations - the script is never loaded into Lua or
-    // executed for this. Each field's default-value line is expected
-    // immediately below its annotation (blank lines and other comments are
-    // skipped over) as `<name> = <literal>`.
-    std::vector<ScriptPublicField> ExtractSchema(const std::string& scriptId, const fs::path& path) {
-        std::vector<ScriptPublicField> fields;
-        std::unordered_set<std::string> seenNames;
-
-        std::ifstream file(path);
-        if (!file.is_open()) {
-            spdlog::error("Failed to open Lua script for schema extraction '{}'", path.string());
-            return fields;
-        }
-
-        std::vector<std::string> lines;
-        for (std::string line; std::getline(file, line);) lines.push_back(line);
-
-        for (std::size_t i = 0; i < lines.size(); ++i) {
-            std::optional<ParsedAnnotation> annotation = ParseFieldAnnotation(lines[i], scriptId);
-            if (!annotation.has_value()) continue;
-
-            if (IsReservedFieldName(annotation->name)) {
-                spdlog::warn("Lua script '{}' declares reserved field name '{}', skipping", scriptId, annotation->name);
-                continue;
-            }
-
-            if (!seenNames.insert(annotation->name).second) {
-                spdlog::warn("Lua script '{}' declares duplicate field '{}', skipping", scriptId, annotation->name);
-                continue;
-            }
-
-            std::string rhs;
-            bool foundAssignment = false;
-
-            for (std::size_t j = i + 1; j < lines.size(); ++j) {
-                const std::string trimmed = TrimCopy(lines[j]);
-                if (IsBlankOrPlainComment(trimmed)) continue;
-
-                const std::regex assignPattern("^" + annotation->name + R"(\s*=\s*(.+?)\s*(?:--.*)?$)");
-                std::smatch assignMatch;
-
-                if (std::regex_match(trimmed, assignMatch, assignPattern)) {
-                    rhs = assignMatch[1].str();
-                    foundAssignment = true;
-                }
-
-                break;
-            }
-
-            if (!foundAssignment) {
-                spdlog::warn(
-                    "Lua script '{}' field '{}' has no '{} = <value>' assignment right after its ---@field comment, using a zero default",
-                    scriptId, annotation->name, annotation->name
-                );
-            }
-
-            ScriptPublicField field;
-            field.name = annotation->name;
-            field.type = annotation->type;
-            field.displayName = annotation->displayName;
-            field.enumOptions = annotation->enumOptions;
-            field.componentType = annotation->componentType;
-            field.defaultValue = ParseDefaultLiteral(rhs, annotation->type, annotation->enumOptions);
-
-            fields.push_back(std::move(field));
-        }
-
-        return fields;
-    }
+#endif
 
     ScriptAsset& LoadOrRefreshScriptAsset(const std::string& assetId, const fs::path& path) {
         const fs::file_time_type lastWriteTime = fs::last_write_time(path);
@@ -704,7 +507,11 @@ namespace {
         asset.assetId = assetId;
         asset.path = path;
         asset.lastWriteTime = lastWriteTime;
-        asset.publicFields = ExtractSchema(assetId, path);
+#ifndef TILKY_STANDALONE
+        CompileScriptAsset(asset);
+#else
+        LoadExportedScriptAsset(asset);
+#endif
         asset.schemaHash = HashPublicFields(asset.publicFields);
         // loadErrorChecked/loadError stay at their defaults - see GetScriptLoadError.
 
@@ -714,6 +521,10 @@ namespace {
     }
 
     void ReconcilePublicValues(ScriptAttachmentData& script, const ScriptAsset& asset, const std::string& ownerLabel) {
+        // A script that doesn't compile has an incomplete field list; keep
+        // the saved values until it's fixed instead of dropping them.
+        if (!asset.compileError.empty()) return;
+
         for (const ScriptPublicField& field : asset.publicFields) {
             const auto valueIt = script.publicValues.find(field.name);
 
@@ -735,16 +546,27 @@ namespace {
             }
         }
 
-        script.schemaHash = asset.schemaHash;
+        // Drop values for fields the script no longer declares.
+        std::erase_if(script.publicValues, [&asset](const auto& entry) {
+            return std::ranges::none_of(asset.publicFields, [&entry](const ScriptPublicField& field) {
+                return field.name == entry.first;
+            });
+        });
 
-        // Orphaned values (fields no longer declared by the script) are left
-        // alone here - the editor inspector shows them and lets the user
-        // remove them manually.
+        script.schemaHash = asset.schemaHash;
     }
 
     // ------------------------------------------------------------------
     // Reference resolution: serialized ScriptValue -> live Lua object
     // ------------------------------------------------------------------
+
+    // The referenced component, as long as it still exists on that entity.
+    template<typename Wrapper, typename Storage>
+    sol::object ResolveInstanceRef(const sol::state_view luaView, Level& level, Storage& storage, const ComponentRefValue& ref) {
+        const auto* component = storage.GetInstance(ref.instanceId);
+        if (component == nullptr || component->ownerID != ref.entityId) return sol::make_object(luaView, sol::nil);
+        return sol::make_object(luaView, Wrapper{&level, ref.entityId, ref.instanceId});
+    }
 
     sol::object ResolveComponentRef(const sol::state_view luaView, Level& level, const ComponentRefValue& ref) {
         if (ref.entityId == INVALID_ID) return sol::make_object(luaView, sol::nil);
@@ -754,33 +576,14 @@ namespace {
                 if (!level.transforms.Has(ref.entityId)) break;
                 return sol::make_object(luaView, ScriptTransform{&level, ref.entityId});
 
-            case CMP_SPRITE:
-                if (!level.sprites.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptSprite{&level, ref.entityId});
-
-            case CMP_AUDIO_SOURCE:
-                if (!level.audioSources.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptAudioSource{&level, ref.entityId});
-
-            case CMP_PLAYER_CONTROLLER:
-                if (!level.playerControllers.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptPlayerController{&level, ref.entityId});
-
-            case CMP_CAMERA:
-                if (!level.cameras.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptCamera{&level, ref.entityId});
-
-            case CMP_COLLIDER:
-                if (!level.colliders.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptCollider{&level, ref.entityId});
-
-            case CMP_RIGIDBODY:
-                if (!level.rigidbodies.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptRigidbody{&level, ref.entityId});
-
-            case CMP_MODEL:
-                if (!level.models.Has(ref.entityId)) break;
-                return sol::make_object(luaView, ScriptModel{&level, ref.entityId});
+            case CMP_SPRITE: return ResolveInstanceRef<ScriptSprite>(luaView, level, level.sprites, ref);
+            case CMP_AUDIO_SOURCE: return ResolveInstanceRef<ScriptAudioSource>(luaView, level, level.audioSources, ref);
+            case CMP_PLAYER_CONTROLLER: return ResolveInstanceRef<ScriptPlayerController>(luaView, level, level.playerControllers, ref);
+            case CMP_CAMERA: return ResolveInstanceRef<ScriptCamera>(luaView, level, level.cameras, ref);
+            case CMP_COLLIDER: return ResolveInstanceRef<ScriptCollider>(luaView, level, level.colliders, ref);
+            case CMP_RIGIDBODY: return ResolveInstanceRef<ScriptRigidbody>(luaView, level, level.rigidbodies, ref);
+            case CMP_MODEL: return ResolveInstanceRef<ScriptModel>(luaView, level, level.models, ref);
+            case CMP_FLIPBOOK: return ResolveInstanceRef<ScriptFlipbook>(luaView, level, level.flipbooks, ref);
 
             default: break;
         }
@@ -832,6 +635,32 @@ namespace {
     // Instance load / lifecycle
     // ------------------------------------------------------------------
 
+    struct LoadedChunk {
+        std::optional<sol::protected_function> function;
+        std::string error;
+    };
+
+    // Loads (doesn't run) a script asset's chunk. The editor only accepts
+    // source and the standalone game only bytecode, so a stray file of the
+    // other kind is an error rather than something run unchecked.
+    LoadedChunk LoadScriptChunk(const ScriptAsset& asset) {
+        if (!asset.compileError.empty()) return {std::nullopt, asset.compileError};
+
+#ifdef TILKY_STANDALONE
+        constexpr sol::load_mode mode = sol::load_mode::binary;
+#else
+        constexpr sol::load_mode mode = sol::load_mode::text;
+#endif
+        const sol::load_result loaded = lua.load(asset.chunk, "@" + ScriptChunkName(asset.assetId), mode);
+
+        if (!loaded.valid()) {
+            const sol::error error = loaded;
+            return {std::nullopt, error.what()};
+        }
+
+        return {loaded.get<sol::protected_function>(), {}};
+    }
+
     bool IsSectorOwnerGlobal(const std::string& name) {
         return name == "sector" || name == "entity";
     }
@@ -863,10 +692,11 @@ namespace {
         const ScriptOwnerKind ownerKind,
         const ID ownerID,
         ScriptAttachmentData& script,
-        const std::string& assetId,
-        const fs::path& path,
+        const ScriptAsset& asset,
         ScriptInstance& instance
     ) {
+        const std::string& assetId = asset.assetId;
+
         instance.ownerKind = ownerKind;
         instance.ownerID = ownerID;
         instance.instanceID = script.instanceID;
@@ -878,21 +708,16 @@ namespace {
         instance.environment = sol::environment(lua, sol::create, lua.globals());
 
         InjectOwnerGlobals(level, instance);
-        instance.environment["Scripts"] = lua["Scripts"];
+        instance.environment["Global"] = lua["Global"];
 
-        const sol::load_result loadedScript = lua.load_file(path.string());
+        LoadedChunk loadedScript = LoadScriptChunk(asset);
 
-        if (!loadedScript.valid()) {
-            // Strip the project path otherwise its too long and may not fit to the screen
-            const fs::path assetsPath = ProjectManager::GetProjectFolder() / "Assets";
-            const fs::path relativePath = fs::relative(path, assetsPath);
-
-            const sol::error error = loadedScript;
-            ReportScriptError(fmt::format("Failed to load Lua script '{}': {}", relativePath.generic_string(), error.what()));
+        if (!loadedScript.function) {
+            ReportScriptError(fmt::format("Failed to load Lua script '{}': {}", ScriptChunkName(assetId), loadedScript.error));
             return false;
         }
 
-        sol::protected_function scriptFunction = loadedScript;
+        sol::protected_function scriptFunction = std::move(*loadedScript.function);
         sol::set_environment(instance.environment, scriptFunction);
 
         // Running the script body sets every field to its own inline default
@@ -907,7 +732,7 @@ namespace {
 
         if (!result.valid()) {
             const sol::error error = result;
-            ReportScriptError(fmt::format("Failed to run Lua script '{}': {}", path.string(), error.what()));
+            ReportScriptError(fmt::format("Failed to run Lua script '{}': {}", ScriptChunkName(assetId), error.what()));
             return false;
         }
 
@@ -941,6 +766,16 @@ namespace {
         if (ownerKind == ScriptOwnerKind::Sector) {
             instance.onEntityEnterFunction = GetOptionalScriptFunction(instance.environment, "OnEntityEnter", assetId);
             instance.onEntityExitFunction  = GetOptionalScriptFunction(instance.environment, "OnEntityExit", assetId);
+        }
+
+        if (ownerKind == ScriptOwnerKind::Entity) {
+            instance.onCollisionEnterFunction = GetOptionalScriptFunction(instance.environment, "OnCollisionEnter", assetId);
+            instance.onCollisionFunction      = GetOptionalScriptFunction(instance.environment, "OnCollision", assetId);
+            instance.onCollisionExitFunction  = GetOptionalScriptFunction(instance.environment, "OnCollisionExit", assetId);
+            instance.onTriggerEnterFunction   = GetOptionalScriptFunction(instance.environment, "OnTriggerEnter", assetId);
+            instance.onTriggerFunction        = GetOptionalScriptFunction(instance.environment, "OnTrigger", assetId);
+            instance.onTriggerExitFunction    = GetOptionalScriptFunction(instance.environment, "OnTriggerExit", assetId);
+            instance.onSectorChangeFunction   = GetOptionalScriptFunction(instance.environment, "OnSectorChange", assetId);
         }
 
         return true;
@@ -989,7 +824,7 @@ namespace {
 
         ScriptInstance instance;
 
-        if (!LoadScriptIntoInstance(level, ownerKind, ownerID, script, assetId, path, instance)) return;
+        if (!LoadScriptIntoInstance(level, ownerKind, ownerID, script, asset, instance)) return;
 
         if (ownerKind == ScriptOwnerKind::Entity) instanceIndexById[instance.instanceID] = scriptInstances.size();
         scriptInstances.push_back(std::move(instance));
@@ -1008,6 +843,10 @@ namespace {
                 CallDestroy(instance);
             }
 
+            // Otherwise its OpenAL source outlives it and keeps playing where
+            // the entity died.
+            for (ComponentAudioSource* audio : level.audioSources.GetAll(entityId)) AudioSystem::DestroySource(*audio);
+
             level.DestroyEntity(entityId);
         }
 
@@ -1019,11 +858,120 @@ namespace {
         }
     }
 
+    // The ID of the sector the entity is in, or INVALID_ID when it is outside
+    // the map or has no transform.
+    ID GetEntitySectorID(Level& level, const ID entityID) {
+        const ComponentTransform* transform = level.transforms.Get(entityID);
+
+        if (transform == nullptr || transform->sectorIndex < 0 ||
+            transform->sectorIndex >= static_cast<int>(level.sectors.size()))
+            return INVALID_ID;
+
+        return level.sectors[transform->sectorIndex].id;
+    }
+
+    bool CollisionPairLess(const PhysicsSystem::CollisionPair& lhs, const PhysicsSystem::CollisionPair& rhs) {
+        return lhs.a != rhs.a ? lhs.a < rhs.a : lhs.b < rhs.b;
+    }
+
+    using ContactCallback = sol::protected_function ScriptInstance::*;
+
+    // One Enter/every-frame/Exit callback family, e.g. OnCollision*.
+    struct ContactCallbacks {
+        ContactCallback enter;
+        ContactCallback stay;
+        ContactCallback exit;
+        const char* enterName;
+        const char* stayName;
+        const char* exitName;
+    };
+
+    constexpr ContactCallbacks kCollisionCallbacks = {
+        &ScriptInstance::onCollisionEnterFunction,
+        &ScriptInstance::onCollisionFunction,
+        &ScriptInstance::onCollisionExitFunction,
+        "OnCollisionEnter", "OnCollision", "OnCollisionExit"
+    };
+
+    constexpr ContactCallbacks kTriggerCallbacks = {
+        &ScriptInstance::onTriggerEnterFunction,
+        &ScriptInstance::onTriggerFunction,
+        &ScriptInstance::onTriggerExitFunction,
+        "OnTriggerEnter", "OnTrigger", "OnTriggerExit"
+    };
+
+    // Diffs this frame's `contacts` against `last` (then replaces it) and
+    // fires `callbacks` on both entities of every pair, each getting the
+    // other one as its argument.
+    void DispatchContactSet(
+        Level& level,
+        const std::vector<PhysicsSystem::CollisionPair>& contacts,
+        std::vector<PhysicsSystem::CollisionPair>& last,
+        const ContactCallbacks& callbacks
+    ) {
+        if (contacts.empty() && last.empty()) return;
+
+        std::vector<PhysicsSystem::CollisionPair> now = contacts;
+        std::ranges::sort(now, CollisionPairLess);
+        now.erase(std::unique(now.begin(), now.end()), now.end());
+
+        std::vector<PhysicsSystem::CollisionPair> entered;
+        std::vector<PhysicsSystem::CollisionPair> exited;
+        std::ranges::set_difference(now, last, std::back_inserter(entered), CollisionPairLess);
+        std::ranges::set_difference(last, now, std::back_inserter(exited), CollisionPairLess);
+
+        last = now;
+
+        // Entity ID -> indices of its scripts that define any of these
+        // callbacks, so entities without one cost nothing below.
+        std::unordered_map<ID, std::vector<size_t>> listeners;
+
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            const ScriptInstance& instance = scriptInstances[i];
+            if (instance.ownerKind != ScriptOwnerKind::Entity) continue;
+
+            if ((instance.*callbacks.enter).valid() ||
+                (instance.*callbacks.stay).valid() ||
+                (instance.*callbacks.exit).valid())
+                listeners[instance.ownerID].push_back(i);
+        }
+
+        if (listeners.empty()) return;
+
+        const auto notify = [&](const ID self, const ID other, const ContactCallback callback, const char* stageName) {
+            const auto it = listeners.find(self);
+            if (it == listeners.end()) return;
+
+            for (const size_t index : it->second) {
+                const ScriptInstance& instance = scriptInstances[index];
+                if (instance.destroyed || !instance.enabled) continue;
+
+                CallLifecycle(instance, instance.*callback, stageName, ScriptEntity{&level, other});
+            }
+        };
+
+        const auto notifyBoth = [&](const std::vector<PhysicsSystem::CollisionPair>& pairs,
+                                    const ContactCallback callback, const char* stageName) {
+            for (const PhysicsSystem::CollisionPair& pair : pairs) {
+                notify(pair.a, pair.b, callback, stageName);
+                notify(pair.b, pair.a, callback, stageName);
+            }
+        };
+
+        // Exits first, then enters, then every contact that is touching this
+        // frame (enter frame included).
+        notifyBoth(exited, callbacks.exit, callbacks.exitName);
+        notifyBoth(entered, callbacks.enter, callbacks.enterName);
+        notifyBoth(now, callbacks.stay, callbacks.stayName);
+    }
+
     void RegisterGameTimeMetadata() {
         LuaBindingMetadata::RegisterType(LuaBindingMetadata::GlobalTable("GameTime", "Global frame-timing table.", {
             LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
             LuaBindingMetadata::Prop("fixedDeltaTime", "number", true, "The fixed step FixedUpdate() runs on."),
             LuaBindingMetadata::Prop("osTime", "integer", true, "Wall-clock time: whole seconds since the Unix epoch (1970-01-01 UTC)."),
+            LuaBindingMetadata::Prop("fps", "integer", true, "Get the current frames-per-second"),
+            LuaBindingMetadata::Prop("timeInSeconds", "integer", true, "Get the time in seconds since the engine started")
         }));
     }
 
@@ -1050,6 +998,16 @@ namespace {
                 // Convert duration since epoch to integer seconds
                 const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
                 return seconds;
+            }),
+
+            "fps",
+            sol::property([](const ScriptGameTime&) {
+                return GameTime::GetFPS();
+            }),
+
+            "timeInSeconds",
+            sol::property([](const ScriptGameTime&) {
+                return GameTime::timeInSeconds;
             })
         );
 
@@ -1172,7 +1130,10 @@ bool LuaScriptSystem::Initialize() {
 
         RegisterBindings(*this);
 
-        lua["Scripts"] = lua.create_table();
+        // Shared by every script. Made here and not in Start() so it lives as
+        // long as this Lua state - the whole game session, across level
+        // changes - and starts empty again only on the next Initialize().
+        lua["Global"] = lua.create_table();
 
         // Best-effort: regenerate the LuaLS stub file every time scripting
         // initializes, so it never drifts from the metadata registered
@@ -1180,7 +1141,8 @@ bool LuaScriptSystem::Initialize() {
         // LuaBindingMetadata.hpp's scope note. Failure here (e.g. no project
         // loaded yet) is non-fatal - it only affects editor autocomplete.
         if (ProjectManager::HasProject()) {
-            const fs::path stubDirectory = ProjectManager::GetScriptsPath() / ".luals";
+            // Project root, not Assets, so it is never exported or shown as an asset.
+            const fs::path stubDirectory = ProjectManager::GetProjectFolder() / ".luals";
             std::error_code ec;
             fs::create_directories(stubDirectory, ec);
 
@@ -1202,9 +1164,6 @@ void LuaScriptSystem::Start(Level& level) {
     pendingDestroys.clear();
     fixedUpdateAccumulator = 0.0f;
 
-    // Shared table for cross-script utilities/state.
-    lua["Scripts"] = lua.create_table();
-
     for (ComponentScript& script : level.scripts.components)
         InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);
 
@@ -1217,6 +1176,15 @@ void LuaScriptSystem::Start(Level& level) {
     // baseline - no OnEntityEnter for them.
     lastSectorOccupants.clear();
     for (const Sector& sector : level.sectors) lastSectorOccupants[sector.id] = sector.entitiesInside;
+
+    // Same for OnSectorChange: the sector an entity starts in is the baseline.
+    lastEntitySectors.clear();
+    for (const ScriptInstance& instance : scriptInstances)
+        if (instance.ownerKind == ScriptOwnerKind::Entity)
+            lastEntitySectors[instance.ownerID] = GetEntitySectorID(level, instance.ownerID);
+
+    lastCollisions.clear();
+    lastTriggers.clear();
 
     // First activation: OnEnable before Start, matching Unity's ordering on
     // an object's first activation.
@@ -1325,6 +1293,70 @@ void LuaScriptSystem::DispatchSectorOccupancyEvents(Level& level) {
     }
 }
 
+void LuaScriptSystem::DispatchSectorChangeEvents(Level& level) {
+    // Entity ID -> its new sector ID. Collected first, so an entity with
+    // several scripts is only compared once and every script sees the change.
+    std::vector<std::pair<ID, ID>> changed;
+
+    for (const ScriptInstance& instance : scriptInstances) {
+        if (instance.ownerKind != ScriptOwnerKind::Entity || instance.destroyed) continue;
+
+        const ID sectorID = GetEntitySectorID(level, instance.ownerID);
+        const auto [it, inserted] = lastEntitySectors.try_emplace(instance.ownerID, sectorID);
+
+        // First time this entity is seen: its current sector is the baseline.
+        if (inserted || it->second == sectorID) continue;
+
+        it->second = sectorID;
+        changed.emplace_back(instance.ownerID, sectorID);
+    }
+
+    for (const auto& [entityID, sectorID] : changed) {
+        const sol::object sectorObject = sectorID == INVALID_ID
+            ? sol::make_object(lua, sol::nil)
+            : sol::make_object(lua, ScriptSector{&level, sectorID});
+
+        // By index: a handler can't add instances, but keep it safe anyway.
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            const ScriptInstance& instance = scriptInstances[i];
+
+            if (instance.ownerKind != ScriptOwnerKind::Entity || instance.ownerID != entityID) continue;
+            if (instance.destroyed || !instance.enabled) continue;
+
+            CallLifecycle(instance, instance.onSectorChangeFunction, "OnSectorChange", sectorObject);
+        }
+    }
+}
+
+void LuaScriptSystem::DispatchContactEvents(Level& level, const PhysicsSystem::Contacts& contacts) {
+    DispatchContactSet(level, contacts.collisions, lastCollisions, kCollisionCallbacks);
+    DispatchContactSet(level, contacts.triggers, lastTriggers, kTriggerCallbacks);
+}
+
+bool LuaScriptSystem::DispatchEntityEvent(Level&, const ID entityID, const std::string& functionName,
+                                          const std::string& argument) {
+    bool defined = false;
+
+    // By index: a handler can attach a script, which can grow the vector.
+    for (size_t i = 0; i < scriptInstances.size(); ++i) {
+        if (scriptInstances[i].ownerKind != ScriptOwnerKind::Entity || scriptInstances[i].ownerID != entityID) continue;
+        if (scriptInstances[i].destroyed) continue;
+
+        const sol::object value = scriptInstances[i].environment[functionName];
+        if (value.get_type() != sol::type::function) continue;
+
+        defined = true;
+        if (!scriptInstances[i].enabled) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const sol::protected_function function = value.as<sol::protected_function>();
+        const ScriptInstance instance = scriptInstances[i];
+        CallLifecycle(instance, function, functionName.c_str(), argument);
+    }
+
+    return defined;
+}
+
 void LuaScriptSystem::Stop(Level&) {
     for (ScriptInstance& instance : scriptInstances) CallDestroy(instance);
 }
@@ -1335,6 +1367,9 @@ void LuaScriptSystem::FlushPendingDestroys(Level& level) {
 
 void LuaScriptSystem::Shutdown() {
     scriptInstances.clear();
+    lastEntitySectors.clear();
+    lastCollisions.clear();
+    lastTriggers.clear();
     instanceIndexById.clear();
     pendingDestroys.clear();
     scriptAssets.clear();
@@ -1391,26 +1426,13 @@ const std::string* LuaScriptSystem::GetScriptLoadError(const std::string& fileNa
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
 
-    // Compile only - load_file never runs the chunk - and only once per
+    // Compile only - loading never runs the chunk - and only once per
     // on-disk revision, so polling this from the inspector every frame is
     // cheap.
     if (!asset.loadErrorChecked) {
         asset.loadErrorChecked = true;
 
-        const sol::load_result loaded = lua.load_file(path.string());
-
-        if (!loaded.valid()) {
-            const sol::error error = loaded;
-            asset.loadError = error.what();
-
-            // Same shortening the runtime error path applies: the absolute
-            // project path is too long to show in the inspector.
-            const std::string fullPath = path.string();
-            const std::string shortPath = assetId + ".lua";
-
-            if (const std::size_t pos = asset.loadError.find(fullPath); pos != std::string::npos)
-                asset.loadError.replace(pos, fullPath.size(), shortPath);
-        }
+        asset.loadError = LoadScriptChunk(asset).error;
     }
 
     return asset.loadError.empty() ? nullptr : &asset.loadError;

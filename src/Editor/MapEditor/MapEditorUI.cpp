@@ -20,11 +20,13 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Editor/AssetBrowser.hpp"
+#include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Entity.hpp"
@@ -574,9 +576,67 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
-        DrawAssetField(Get("editor.background_texture").c_str(), Editor::backgroundTextureFileName, AssetKind::Texture,
-                       32.0f);
-        HoverTooltip(Get("settings.rendering.tooltip.background_texture").c_str());
+        // ---- Sky ----
+        {
+            SkySettings &sky = level.sky;
+
+            ImGui::TextUnformatted(Get("settings.rendering.sky.title").c_str());
+
+            const SkyModeInfo *selectedMode = FindSkyMode(sky.mode);
+            if (selectedMode == nullptr) selectedMode = &SKY_MODES[0];
+
+            if (ImGui::BeginCombo(Get("settings.rendering.sky.mode").c_str(), Get(selectedMode->labelKey).c_str())) {
+                for (const SkyModeInfo &mode : SKY_MODES) {
+                    const bool selected = mode.mode == sky.mode;
+
+                    if (ImGui::Selectable(Get(mode.labelKey).c_str(), selected)) sky.mode = mode.mode;
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(mode.tooltipKey).c_str());
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get(selectedMode->tooltipKey).c_str());
+
+            if (sky.mode == SkyMode::Cubemap) {
+                for (const SkyFaceInfo &face : SKY_FACES) {
+                    ImGui::PushID(face.name);
+                    DrawAssetField(Get(face.labelKey).c_str(), sky.Face(face.face), AssetKind::Texture, 32.0f);
+                    ImGui::PopID();
+                }
+                HoverTooltip(Get("settings.rendering.tooltip.sky.faces").c_str());
+            }
+            else {
+                DrawAssetField(Get("settings.rendering.sky.texture").c_str(), sky.texture, AssetKind::Texture, 32.0f);
+                HoverTooltip(Get("settings.rendering.tooltip.sky.texture").c_str());
+            }
+
+            ImGui::InputFloat(Get("settings.rendering.sky.rotation").c_str(), &sky.rotation, 1.0f, 15.0f, "%.1f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation").c_str());
+
+            ImGui::InputFloat(Get("settings.rendering.sky.rotation_speed").c_str(), &sky.rotationSpeed, 0.5f, 5.0f, "%.2f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation_speed").c_str());
+
+            ImGui::InputFloat(Get("settings.rendering.sky.horizon_offset").c_str(), &sky.horizonOffset, 1.0f, 5.0f, "%.1f");
+            HoverTooltip(Get("settings.rendering.tooltip.sky.horizon_offset").c_str());
+
+            // Stored 0..255, edited as 0..1 like sector light.
+            const auto colorField = [](const char *label, Vector3 &color) {
+                float normalized[3] = {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f};
+
+                if (ImGui::ColorEdit3(label, normalized,
+                                      ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_DisplayRGB |
+                                      ImGuiColorEditFlags_PickerHueWheel)) {
+                    color = {normalized[0] * 255.0f, normalized[1] * 255.0f, normalized[2] * 255.0f};
+                }
+            };
+
+            colorField(Get("settings.rendering.sky.tint").c_str(), sky.tint);
+            HoverTooltip(Get("settings.rendering.tooltip.sky.tint").c_str());
+
+            colorField(Get("settings.rendering.sky.fallback_color").c_str(), sky.fallbackColor);
+            HoverTooltip(Get("settings.rendering.tooltip.sky.fallback_color").c_str());
+        }
 
         ImGui::Spacing();
         {
@@ -736,11 +796,10 @@ namespace {
 
             PushDangerStyle();
             if (ImGui::Button(Get("common.delete").c_str(), ImVec2(90.0f, 0.0f))) {
-                const std::filesystem::path path =
-                        ProjectManager::GetLevelsPath() / (deleteLevelPending + ".bson");
+                const std::filesystem::path path = LevelSerialization::FindLevelPath(deleteLevelPending);
 
                 try {
-                    if (std::filesystem::remove(path)) {
+                    if (!path.empty() && std::filesystem::remove(path)) {
                         spdlog::info("Deleted level: {}", path.string());
                         if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
                         UpdateLevels();
@@ -968,11 +1027,19 @@ namespace {
             ImGui::SetNextItemWidth(260.0f);
             ImGui::InputText("##NewLevelName", newLevelNameBuf, IM_ARRAYSIZE(newLevelNameBuf));
 
-            const bool nameValid = newLevelNameBuf[0] != '\0';
+            // Level names are unique across the whole Assets folder, and
+            // Editor::maps already lists every one of them.
+            const bool nameEmpty = newLevelNameBuf[0] == '\0';
+            const bool nameTaken = !nameEmpty && std::ranges::find(Editor::maps, LevelSerialization::CleanLevelName(newLevelNameBuf)) != Editor::maps.end();
+            const bool nameValid = !nameEmpty && !nameTaken;
 
-            if (!nameValid) {
+            if (nameEmpty) {
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", Get("editor.name_required").c_str());
+            }
+            else if (nameTaken) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", Get("editor.level_name_taken").c_str());
             }
 
             ImGui::Spacing();
@@ -1340,41 +1407,6 @@ namespace {
 
             DrawTagsSection();
 
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ---- Build --------------------------------------------------------
-            SectionHeader(Get("editor.project.build").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            PushSuccessStyle();
-
-            if (FullWidthButton(Get("editor.export").c_str())) RunExporter();
-
-            PopSuccessStyle();
-
-            HoverTooltip(Get("editor.tooltip.export").c_str());
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ---- Application --------------------------------------------------
-            SectionHeader(Get("editor.project.application").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            PushDangerStyle();
-
-            if (FullWidthButton(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
-
-            PopDangerStyle();
-
-            HoverTooltip(Get("editor.tooltip.shutdown").c_str());
-
-            ImGui::Spacing();
 
             //todo TILKYTODO make an editor settings menu
 
@@ -1387,7 +1419,11 @@ namespace {
 
         ImGui::End();
 
-        // ---- Shutdown confirmation modal --------------------------------------
+        DrawCreateLevelModal();
+    }
+
+    // Asks before closing the editor. Opened from Project > Shutdown.
+    void DrawShutdownConfirmModal() {
         if (shutdownConfirmOpen) {
             ImGui::OpenPopup("##ShutdownConfirm");
             shutdownConfirmOpen = false;
@@ -1423,58 +1459,115 @@ namespace {
 
             ImGui::EndPopup();
         }
-
-        DrawCreateLevelModal();
     }
 
     // =========================================================================
-    //  User Settings floating button (top-left anchor)
+    //  Level actions - shared by the top menu bar and the toolbar
     // =========================================================================
 
-    void DrawUserSettingsButton() {
-        const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        constexpr float margin = 12.0f;
+    void SaveLevelFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            ShowNotification(Get("levels.notification.saved").c_str());
+        } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
+    }
 
-        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + margin, viewport->WorkPos.y + margin), ImGuiCond_Always,
-                                ImVec2(0.0f, 0.0f));
+    void SaveAndPlayFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
+            quit = true;
+            play = true;
+        }
+    }
 
-        ImGui::SetNextWindowBgAlpha(0.0f);
+    void OpenRuntimeEditorFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
+            switchToRuntime = true;
+        }
+    }
 
-        constexpr ImGuiWindowFlags overlayFlags =
-                ImGuiWindowFlags_NoDecoration |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_AlwaysAutoResize;
+    void SaveAndQuitFromEditor() {
+        if (Save(Editor::currentMap)) {
+            hasUnsavedChanges = false;
+            SDL_Log("%s", Editor::currentMap.c_str());
+            CancelActiveDrawing();
+            quit = true;
+        }
+    }
 
-        ImGui::Begin("##UserSettingsButtonOverlay", nullptr, overlayFlags);
+    // =========================================================================
+    //  Top menu bar: Project | Project Settings | User Settings
+    // =========================================================================
 
-        const bool wasOpen = userSettingsOpen;
-        if (wasOpen) PushAccentStyle();
+    void DrawMainMenuBar() {
+        if (ImGui::BeginMainMenuBar()) {
+            if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
+                if (ImGui::MenuItem(Get("editor.save").c_str())) SaveLevelFromEditor();
+                if (ImGui::MenuItem(Get("editor.save_and_quit").c_str())) SaveAndQuitFromEditor();
+                if (ImGui::MenuItem(Get("editor.export").c_str())) RunExporter();
 
-        const std::string buttonLabel = wasOpen ? Get("editor.user_settings_active") : Get("editor.user_settings");
-        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) userSettingsOpen = !userSettingsOpen;
+                ImGui::Separator();
 
-        if (wasOpen) PopAccentStyle();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.30f, 1.0f));
+                if (ImGui::MenuItem(Get("editor.shutdown").c_str())) shutdownConfirmOpen = true;
+                ImGui::PopStyleColor();
 
-        ImGui::End();
+                ImGui::EndMenu();
+            }
 
+            // Plain items, not menus: a click opens or closes the window.
+            if (ImGui::MenuItem(Get("editor.project_settings").c_str(), nullptr, projectSettingsOpen))
+                projectSettingsOpen = !projectSettingsOpen;
+
+            if (ImGui::MenuItem(Get("editor.user_settings").c_str(), nullptr, userSettingsOpen))
+                userSettingsOpen = !userSettingsOpen;
+
+            ImGui::EndMainMenuBar();
+        }
+
+        if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
+
+        DrawShutdownConfirmModal();
     }
 
     // =========================================================================
-    //  Project Settings floating button (bottom-right anchor)
+    //  Toolbar: square icon buttons, centred just below the menu bar
     // =========================================================================
 
-    void DrawProjectSettingsButton() {
-        const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        constexpr float margin = 12.0f;
+    // One square button. Shows `icon` (a Font Awesome glyph) when the icon
+    // font loaded, otherwise `fallback`; the full name and what it does go
+    // in the tooltip.
+    bool ToolbarButton(const char *id, const char *icon, const char *fallback, const std::string &name,
+                       const std::string &tooltip) {
+        constexpr float BUTTON_SIZE = 32.0f;
 
+        ImGui::PushID(id);
+
+        if (editorIconFont != nullptr) ImGui::PushFont(editorIconFont, 0.0f);
+        const bool pressed = ImGui::Button(editorIconFont != nullptr ? icon : fallback, ImVec2(BUTTON_SIZE, BUTTON_SIZE));
+        if (editorIconFont != nullptr) ImGui::PopFont();
+
+        HoverTooltip((name + "\n" + tooltip).c_str());
+
+        ImGui::PopID();
+        return pressed;
+    }
+
+    void DrawToolbar() {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        constexpr float margin = 6.0f;
+
+        // WorkPos is already below the main menu bar.
         ImGui::SetNextWindowPos(
-            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - margin,
-                   viewport->WorkPos.y + viewport->WorkSize.y - margin),
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
             ImGuiCond_Always,
-            ImVec2(1.0f, 1.0f)
+            ImVec2(0.5f, 0.0f)
         );
 
         ImGui::SetNextWindowBgAlpha(0.0f);
@@ -1484,23 +1577,34 @@ namespace {
                 ImGuiWindowFlags_NoMove |
                 ImGuiWindowFlags_NoSavedSettings |
                 ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoDocking |
                 ImGuiWindowFlags_AlwaysAutoResize;
 
-        ImGui::Begin("##ProjectSettingsButtonOverlay", nullptr, overlayFlags);
+        ImGui::Begin("##EditorToolbarOverlay", nullptr, overlayFlags);
 
-        const bool wasOpen = projectSettingsOpen;
-        if (wasOpen) PushAccentStyle();
+        if (ToolbarButton("save", ICON_FA_FLOPPY_DISK, "S", Get("editor.save"), Get("editor.tooltip.save")))
+            SaveLevelFromEditor();
 
-        const std::string buttonLabel =
-                wasOpen ? Get("editor.project_settings_active") : Get("editor.project_settings");
+        ImGui::SameLine();
 
-        if (ImGui::Button(buttonLabel.c_str(), ImVec2(180.0f, 0.0f))) projectSettingsOpen = !projectSettingsOpen;
+        PushSuccessStyle();
+        const bool playPressed = ToolbarButton("save_and_play", ICON_FA_PLAY, ">", Get("editor.save_and_play"),
+                                               Get("editor.tooltip.save_and_play"));
+        PopSuccessStyle();
+        if (playPressed) SaveAndPlayFromEditor();
 
-        if (wasOpen) PopAccentStyle();
+        ImGui::SameLine();
+
+        if (ToolbarButton("runtime_editor", ICON_FA_CUBE, "RT", Get("editor.runtime_editor"),
+                          Get("editor.tooltip.runtime_editor")))
+            OpenRuntimeEditorFromEditor();
+
+        ImGui::SameLine();
+
+        if (ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.switch_to_ui"), Get("editor.tooltip.switch_to_ui")))
+            currentState = STATE_UI;
 
         ImGui::End();
-
-        if (projectSettingsOpen) DrawProjectSettingsWindow();
     }
 
     // =========================================================================
@@ -1984,12 +2088,9 @@ namespace {
     };
 
     struct WallEditSnapshot {
-        std::string textureFileName;
         Vector4 color{};
-        Vector2 textureOffset{};
-        Vector2 textureScale{};
-        bool flipTextureX = false;
-        bool flipTextureY = false;
+        WallSurface top;
+        WallSurface bottom;
     };
 
     struct EntityTransformSnapshot {
@@ -2130,13 +2231,48 @@ namespace {
 
     [[nodiscard]] WallEditSnapshot CaptureWallEditSnapshot(const Wall &wall) {
         WallEditSnapshot snapshot;
-        snapshot.textureFileName = wall.textureFileName;
         snapshot.color = wall.color;
-        snapshot.textureOffset = wall.textureOffset;
-        snapshot.textureScale = wall.textureScale;
-        snapshot.flipTextureX = wall.flipTextureX;
-        snapshot.flipTextureY = wall.flipTextureY;
+        snapshot.top = wall.top;
+        snapshot.bottom = wall.bottom;
         return snapshot;
+    }
+
+    // Field by field, so an edit to the Top texture's offset doesn't also
+    // copy the primary's texture onto every selected wall.
+    bool ApplyWallSurfaceChange(const WallSurface &before, const WallSurface &after, WallSurface &target) {
+        bool wrote = false;
+
+        if (after.texture != before.texture) {
+            target.texture = after.texture;
+            wrote = true;
+        }
+
+        if (ValueChanged(before.textureOffset, after.textureOffset)) {
+            target.textureOffset = after.textureOffset;
+            wrote = true;
+        }
+
+        if (ValueChanged(before.textureScale, after.textureScale)) {
+            target.textureScale = after.textureScale;
+            wrote = true;
+        }
+
+        if (after.flipTextureX != before.flipTextureX) {
+            target.flipTextureX = after.flipTextureX;
+            wrote = true;
+        }
+
+        if (after.flipTextureY != before.flipTextureY) {
+            target.flipTextureY = after.flipTextureY;
+            wrote = true;
+        }
+
+        if (after.anchor != before.anchor) {
+            target.anchor = after.anchor;
+            wrote = true;
+        }
+
+        return wrote;
     }
 
     bool PropagateWallEdits(Level &level,
@@ -2146,16 +2282,9 @@ namespace {
                             const ID primaryID) {
         if (selection.size() <= 1) return false;
 
-        const bool textureChanged = primary.textureFileName != before.textureFileName;
         const bool colorChanged = ValueChanged(before.color, primary.color);
-        const bool offsetChanged = ValueChanged(before.textureOffset, primary.textureOffset);
-        const bool scaleChanged = ValueChanged(before.textureScale, primary.textureScale);
-        const bool flipXChanged = primary.flipTextureX != before.flipTextureX;
-        const bool flipYChanged = primary.flipTextureY != before.flipTextureY;
 
-        if (!textureChanged && !colorChanged && !offsetChanged &&
-            !scaleChanged && !flipXChanged && !flipYChanged)
-            return false;
+        bool changedAnything = false;
 
         for (const ID wallID: selection) {
             if (wallID == primaryID) continue;
@@ -2165,15 +2294,16 @@ namespace {
 
             Wall &target = level.walls[it->second];
 
-            if (textureChanged) target.textureFileName = primary.textureFileName;
-            if (colorChanged) target.color = primary.color;
-            if (offsetChanged) target.textureOffset = primary.textureOffset;
-            if (scaleChanged) target.textureScale = primary.textureScale;
-            if (flipXChanged) target.flipTextureX = primary.flipTextureX;
-            if (flipYChanged) target.flipTextureY = primary.flipTextureY;
+            if (colorChanged) {
+                target.color = primary.color;
+                changedAnything = true;
+            }
+
+            if (ApplyWallSurfaceChange(before.top, primary.top, target.top)) changedAnything = true;
+            if (ApplyWallSurfaceChange(before.bottom, primary.bottom, target.bottom)) changedAnything = true;
         }
 
-        return true;
+        return changedAnything;
     }
 
     // Entities: ComponentTransform only for now. Every other component's
@@ -2488,6 +2618,7 @@ namespace {
         ImGui::End();
 
         assetBrowser.DrawTextEditorWindow(scriptEditorFont);
+        assetBrowser.DrawFlipbookEditorWindows();
     }
 } // anonymous namespace
 
@@ -3164,6 +3295,7 @@ namespace MapEditorInternal {
     void DrawEditorUI() {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
+        DrawMainMenuBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
 
@@ -3379,75 +3511,12 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // ---- Action buttons -----------------------------------------------
-        SectionHeader(Get("editor.actions").c_str());
-        ImGui::Spacing();
-
-        PushAccentStyle();
-        if (FullWidthButton(Get("editor.save").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                ShowNotification(Get("levels.notification.saved").c_str());
-            } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
-        }
-        PopAccentStyle();
-        HoverTooltip(Get("editor.tooltip.save").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.runtime_editor").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
-                switchToRuntime = true;
-            }
-        }
-        HoverTooltip(Get("editor.tooltip.runtime_editor").c_str());
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        PushSuccessStyle();
-        if (FullWidthButton(Get("editor.save_and_play").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
-                quit = true;
-                play = true;
-            }
-        }
-        PopSuccessStyle();
-        HoverTooltip(Get("editor.tooltip.save_and_play").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.save_and_quit").c_str())) {
-            if (Save(Editor::currentMap)) {
-                hasUnsavedChanges = false;
-                SDL_Log("%s", Editor::currentMap.c_str());
-                CancelActiveDrawing();
-                quit = true;
-            }
-        }
-        HoverTooltip(Get("editor.tooltip.save_and_quit").c_str());
-
-        ImGui::Spacing();
-
-        if (FullWidthButton(Get("editor.switch_to_ui").c_str()))
-            currentState = STATE_UI;
-
-        HoverTooltip(Get("editor.tooltip.switch_to_ui").c_str());
-
         ImGui::End();
 
         // ---- Other panels -------------------------------------------------
         DrawWorldSettings();
         DrawHierarchyPanel(level);
-        DrawProjectSettingsButton();
-        DrawUserSettingsButton();
+        DrawToolbar();
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         DrawAssetBrowserPanel();

@@ -10,16 +10,23 @@
 #include <vector>
 #include <TextEditor.h>
 
+#include "Headers/Editor/FlipbookEditor.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
+
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
 // which drag-and-drop payload type it uses.
-//  - Texture: referenced by filename WITH extension (relative to the
-//    project's Textures folder), e.g. "brick01.png" or "ui/icon.png".
-//  - Sound / Script: referenced by name WITHOUT extension (relative to
-//    the Sounds / Scripts folder), matching how the engine already names
-//    scripts - e.g. "click" or "ui/click", extension implied.
+// Every kind can live in any folder under Assets.
+//  - Texture: referenced WITH extension, relative to Assets, e.g.
+//    "Textures/brick01.png" or "ui/icon.png".
+//  - Sound: referenced WITHOUT extension, relative to Assets, e.g.
+//    "Sounds/ui/click", extension implied.
+//  - Script: referenced WITHOUT extension, relative to Assets, e.g.
+//    "Scripts/Player" or "Enemies/Grunt", extension implied.
 //  - Model: referenced like a texture, relative to Assets WITH extension,
 //    e.g. "Models/crate.glb". Extensions come from
 //    ModelLoader::SupportedExtensions().
+//  - Flipbook: a sprite animation (.fpk), referenced like a texture,
+//    relative to Assets WITH extension, e.g. "Animations/walk.fpk".
 //
 // This is a different axis to AssetEntryType below: AssetKind is about
 // what a field widget should do with the asset (drag-drop payload type,
@@ -34,6 +41,7 @@ enum class AssetKind {
     Sound,
     Script,
     Model,
+    Flipbook,
     Other // shown for transparency, but not draggable/thumbnailed
 };
 
@@ -289,6 +297,12 @@ public:
     void RequestOpenScript(const std::filesystem::path& absolutePath);
     void DrawTextEditorWindow(ImFont* scriptEditorFont);
 
+    // Opens a .fpk in its own flipbook editor window (or focuses the one
+    // already showing it). Every editor that hosts this browser draws the
+    // windows with DrawFlipbookEditorWindows().
+    void RequestOpenFlipbook(const std::filesystem::path& absolutePath);
+    void DrawFlipbookEditorWindows();
+
     // The one place the expected level-file extension is spelled out, per
     // the "make it configurable in one obvious constant" requirement.
     // LevelEntry's registration, the Create Level modal, and
@@ -399,6 +413,8 @@ public:
 private:
     void SaveOpenScript();
 
+    FlipbookEditor flipbookEditor;
+
     TextEditor scriptEditor;
     std::filesystem::path openScriptPath;
 
@@ -414,6 +430,13 @@ private:
     void UpdateAutocomplete();
     void DrawAutocompletePopup();
     void AcceptAutocomplete(int index);
+
+    // The open script's own declarations (`public Entity target`), so their
+    // names are suggested and `target.` completes Entity members. Recompiled
+    // only when the text changed since the last lookup.
+    const std::vector<LuaScriptCompiler::DeclarationInfo>& OpenScriptDeclarations();
+    std::string declarationsSource;
+    std::vector<LuaScriptCompiler::DeclarationInfo> declarations;
 
     std::vector<std::string> autocompleteMatches;
     std::string autocompleteWordStart;

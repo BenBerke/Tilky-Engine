@@ -13,7 +13,11 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Components.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <set>
+#include <unordered_set>
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -27,7 +31,8 @@ namespace {
         std::set<std::string> uniqueNames;
 
         for (const Wall& wall : level.walls) {
-            if (!wall.textureFileName.empty()) uniqueNames.insert(wall.textureFileName);
+            if (!wall.top.texture.empty()) uniqueNames.insert(wall.top.texture);
+            if (!wall.bottom.texture.empty()) uniqueNames.insert(wall.bottom.texture);
         }
 
         for (const Sector& sector : level.sectors) {
@@ -45,43 +50,74 @@ namespace {
 
         return {uniqueNames.begin(), uniqueNames.end()};
     }
+
+    // Every image the Asset Browser shows as a texture, anywhere under
+    // Assets, as the same Assets-relative reference the browser hands out.
+    std::vector<std::string> CollectProjectImageFileNames() {
+        static const std::set<std::string> kImageExtensions = {".png", ".jpg", ".jpeg"};
+
+        const fs::path assetsPath = ProjectManager::GetAssetsPath();
+        std::vector<std::string> imageNames;
+
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
+            const std::string name = it->path().filename().string();
+
+            // Hidden entries aren't shown in the Asset Browser either.
+            if (!name.empty() && name.front() == '.') {
+                if (it->is_directory()) it.disable_recursion_pending();
+                continue;
+            }
+
+            if (!it->is_regular_file()) continue;
+
+            std::string extension = it->path().extension().string();
+            std::ranges::transform(extension, extension.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (kImageExtensions.contains(extension))
+                imageNames.push_back(it->path().lexically_relative(assetsPath).generic_string());
+        }
+
+        std::ranges::sort(imageNames);
+        return imageNames;
+    }
 }
 
 namespace OpenGLRendererInternal {
-    void ApplyTextureSampling(const RendererTextureSettings setting) {
+    void ApplyTextureSampling(const RendererTextureSettings setting, const GLenum target) {
         switch (setting) {
             case PIXEL_ART_SHIMMERY:
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 break;
             case PIXEL_ART_LESS_MOIRE:
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glGenerateMipmap(target);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 break;
             case PIXEL_ART_SMOOTH_DISTANCE:
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glGenerateMipmap(target);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 break;
             case REALISTIC_NORMAL:
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glGenerateMipmap(target);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                 break;
             case RETRO:
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glGenerateMipmap(target);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 break;
             case LOW_RES:
-                glGenerateMipmap(GL_TEXTURE_2D);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glGenerateMipmap(target);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                 break;
             default:
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 break;
         }
     }
@@ -253,8 +289,10 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     const Level& level = LevelManager::CurrentLevel();
 
-    std::vector<std::string> referencedFileNames =
-    CollectReferencedTextureFileNames(level);
+    // The level's own textures go first so they land on the first page, then
+    // every other image in Assets, so a texture first named at runtime (e.g.
+    // a sprite's texture set from Lua) is already in the atlas.
+    std::vector<std::string> referencedFileNames = CollectReferencedTextureFileNames(level);
 
     for (const ComponentUISprite& uiSprite : level.ui_sprites.components) {
         if (uiSprite.texture.empty()) continue;
@@ -263,19 +301,111 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
             == referencedFileNames.end()) referencedFileNames.push_back(uiSprite.texture);
     }
 
-    std::vector<LoadedTextureSurface> loadedSurfaces;
+    {
+        const std::set<std::string> alreadyListed(referencedFileNames.begin(), referencedFileNames.end());
+
+        for (std::string& imageName : CollectProjectImageFileNames())
+            if (!alreadyListed.contains(imageName)) referencedFileNames.push_back(std::move(imageName));
+    }
+
     textureRegions.clear();
     textureRegions.resize(referencedFileNames.size());
     textureRegionIndexByName.clear();
 
+    // Pass 1: decode (or reuse) each image and give it a spot. Images are
+    // packed in shelves; when a page is full the next one starts.
+    struct Placement {
+        const DecodedImage* image;
+        int page;
+        int x;
+        int y;
+    };
+
+    std::vector<Placement> placements;
+    placements.reserve(referencedFileNames.size());
+
+    std::unordered_set<std::string> stillOnDisk;
+
+    int page = 0;
     int cursorX = ATLAS_PADDING;
     int cursorY = ATLAS_PADDING;
     int shelfHeight = 0;
 
-    std::vector<unsigned char> atlasPixels(
-        ATLAS_SIZE * ATLAS_SIZE * 4,
-        0
-    );
+    GLint maxLayers = 0;
+    glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
+
+    for (int i = 0; i < static_cast<int>(referencedFileNames.size()); ++i) {
+        const std::string& fileName = referencedFileNames[i];
+        const fs::path path = ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal();
+
+        const DecodedImage* image = GetDecodedImage(path);
+        if (image == nullptr) continue;
+
+        stillOnDisk.insert(path.string());
+
+        const int textureWidth = image->width;
+        const int textureHeight = image->height;
+
+        if (textureWidth + ATLAS_PADDING * 2 > ATLAS_SIZE ||
+            textureHeight + ATLAS_PADDING * 2 > ATLAS_SIZE) {
+            spdlog::error("Texture '{}' is too large for atlas: {}x{}", fileName, textureWidth, textureHeight);
+            continue;
+        }
+
+        if (cursorX + textureWidth + ATLAS_PADDING > ATLAS_SIZE) {
+            cursorX = ATLAS_PADDING;
+            cursorY += shelfHeight + ATLAS_PADDING;
+            shelfHeight = 0;
+        }
+
+        if (cursorY + textureHeight + ATLAS_PADDING > ATLAS_SIZE) {
+            if (page + 1 >= maxLayers) {
+                spdlog::error("Texture atlas is full ({} pages). Could not add '{}'", maxLayers, fileName);
+                continue;
+            }
+
+            ++page;
+            cursorX = ATLAS_PADDING;
+            cursorY = ATLAS_PADDING;
+            shelfHeight = 0;
+        }
+
+        constexpr float halfTexel = .5f;
+
+        const float uMin = (cursorX + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMin = (cursorY + halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float uMax = (cursorX + textureWidth - halfTexel) / static_cast<float>(ATLAS_SIZE);
+        const float vMax = (cursorY + textureHeight - halfTexel) / static_cast<float>(ATLAS_SIZE);
+
+        textureRegions[i] = {
+            {uMin, vMin, uMax, vMax},
+            {1.0f, static_cast<float>(page), 0.0f, 0.0f}
+        };
+
+        // Only recorded once packing has actually succeeded, so a texture
+        // that failed to load/pack correctly resolves through
+        // GetTextureRegionIndex() to -1 ("no texture") instead of pointing
+        // at an unused, zero-initialized region slot.
+        textureRegionIndexByName[fileName] = i;
+
+        placements.push_back({image, page, cursorX, cursorY});
+
+        cursorX += textureWidth + ATLAS_PADDING;
+        shelfHeight = std::max(shelfHeight, textureHeight);
+    }
+
+    // Images deleted from disk since the last build don't need to stay decoded.
+    std::erase_if(decodedImageCache, [&](const auto& entry) { return !stillOnDisk.contains(entry.first); });
+
+    const int pageCount = page + 1;
+
+    // Pass 2: fill each page on the CPU and upload it as one layer.
+    glGenTextures(1, &atlasTexture);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
+
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, ATLAS_SIZE, ATLAS_SIZE, pageCount, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    std::vector<unsigned char> atlasPixels(ATLAS_SIZE * ATLAS_SIZE * 4);
 
     auto copyPixel = [&](int dstX, int dstY, int srcX, int srcY) {
         if (dstX < 0 || dstX >= ATLAS_SIZE || dstY < 0 || dstY >= ATLAS_SIZE) return;
@@ -288,142 +418,54 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         std::memcpy(dst, src, 4);
     };
 
-    for (int i = 0; i < static_cast<int>(referencedFileNames.size()); ++i) {
-        const std::string& fileName = referencedFileNames[i];
+    for (int currentPage = 0; currentPage < pageCount; ++currentPage) {
+        std::ranges::fill(atlasPixels, 0);
 
-        const std::filesystem::path path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
+        for (const Placement& placement : placements) {
+            if (placement.page != currentPage) continue;
 
-        SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
+            const int textureWidth = placement.image->width;
+            const int textureHeight = placement.image->height;
+            const int x0 = placement.x;
+            const int y0 = placement.y;
 
-        if (loadedSurface == nullptr) {
-            spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
-            continue;
-        }
+            for (int row = 0; row < textureHeight; ++row) {
+                const unsigned char* srcRow = placement.image->pixels.data() + row * textureWidth * 4;
+                unsigned char* dstRow = atlasPixels.data() + ((y0 + row) * ATLAS_SIZE + x0) * 4;
 
-        SDL_Surface* surface = SDL_ConvertSurface(
-            loadedSurface,
-            SDL_PIXELFORMAT_RGBA32
-        );
-
-        SDL_DestroySurface(loadedSurface);
-
-        if (surface == nullptr) {
-            spdlog::error("SDL_ConvertSurface failed for {}: {}", path.string(), SDL_GetError());
-            continue;
-        }
-
-        const int textureWidth = surface->w;
-        const int textureHeight = surface->h;
-
-        if (textureWidth + ATLAS_PADDING * 2 > ATLAS_SIZE ||
-            textureHeight + ATLAS_PADDING * 2 > ATLAS_SIZE) {
-            spdlog::error(
-                "Texture '{}' is too large for atlas: {}x{}",
-                fileName,
-                textureWidth,
-                textureHeight
-            );
-
-            SDL_DestroySurface(surface);
-            continue;
-        }
-
-        if (cursorX + textureWidth + ATLAS_PADDING > ATLAS_SIZE) {
-            cursorX = ATLAS_PADDING;
-            cursorY += shelfHeight + ATLAS_PADDING;
-            shelfHeight = 0;
-        }
-
-        if (cursorY + textureHeight + ATLAS_PADDING > ATLAS_SIZE) {
-            spdlog::error("Texture atlas is full. Could not add '{}'", fileName);
-            SDL_DestroySurface(surface);
-            continue;
-        }
-
-        for (int row = 0; row < textureHeight; ++row) {
-            const unsigned char* srcRow =
-                static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
-
-            unsigned char* dstRow = atlasPixels.data() +((cursorY + row) * ATLAS_SIZE + cursorX) * 4;
-
-            std::memcpy(dstRow, srcRow,textureWidth * 4);
-        }
-
-        constexpr float halfTexel = .5f;
-
-        const float uMin = (cursorX + halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float vMin = (cursorY + halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float uMax = (cursorX + textureWidth - halfTexel) / static_cast<float>(ATLAS_SIZE);
-        const float vMax = (cursorY + textureHeight - halfTexel) / static_cast<float>(ATLAS_SIZE);
-
-        textureRegions[i] = {
-            {uMin, vMin, uMax, vMax},
-            {1.0f, 0.0f, 0.0f, 0.0f}
-        };
-
-        // Only recorded once packing has actually succeeded, so a texture
-        // that failed to load/pack correctly resolves through
-        // GetTextureRegionIndex() to -1 ("no texture") instead of pointing
-        // at an unused, zero-initialized region slot.
-        textureRegionIndexByName[fileName] = i;
-
-        for (int pad = 1; pad <= ATLAS_PADDING; ++pad) {
-            // Left and right padding
-            for (int y = 0; y < textureHeight; ++y) {
-                copyPixel(cursorX - pad, y + cursorY, cursorX, y + cursorY);
-                copyPixel(cursorX + textureWidth - 1 + pad, y + cursorY, cursorX + textureWidth - 1, y + cursorY);
+                std::memcpy(dstRow, srcRow, textureWidth * 4);
             }
 
-            // Top and bottom padding
-            for (int x = 0; x < textureWidth; ++x) {
-                copyPixel(x + cursorX, cursorY - pad, x + cursorX, cursorY);
-                copyPixel(x + cursorX, cursorY + textureHeight - 1 + pad, x + cursorX, cursorY + textureHeight - 1);
-            }
+            for (int pad = 1; pad <= ATLAS_PADDING; ++pad) {
+                // Left and right padding
+                for (int y = 0; y < textureHeight; ++y) {
+                    copyPixel(x0 - pad, y + y0, x0, y + y0);
+                    copyPixel(x0 + textureWidth - 1 + pad, y + y0, x0 + textureWidth - 1, y + y0);
+                }
 
-            // Corners
-            for (int yPad = 1; yPad <= ATLAS_PADDING; ++yPad) {
-                copyPixel(cursorX - pad, cursorY - yPad, cursorX, cursorY);
-                copyPixel(cursorX + textureWidth - 1 + pad, cursorY - yPad, cursorX + textureWidth - 1, cursorY);
-                copyPixel(cursorX - pad, cursorY + textureHeight - 1 + yPad, cursorX, cursorY + textureHeight - 1);
-                copyPixel(cursorX + textureWidth - 1 + pad, cursorY + textureHeight - 1 + yPad, cursorX + textureWidth - 1, cursorY + textureHeight - 1);
+                // Top and bottom padding
+                for (int x = 0; x < textureWidth; ++x) {
+                    copyPixel(x + x0, y0 - pad, x + x0, y0);
+                    copyPixel(x + x0, y0 + textureHeight - 1 + pad, x + x0, y0 + textureHeight - 1);
+                }
+
+                // Corners
+                for (int yPad = 1; yPad <= ATLAS_PADDING; ++yPad) {
+                    copyPixel(x0 - pad, y0 - yPad, x0, y0);
+                    copyPixel(x0 + textureWidth - 1 + pad, y0 - yPad, x0 + textureWidth - 1, y0);
+                    copyPixel(x0 - pad, y0 + textureHeight - 1 + yPad, x0, y0 + textureHeight - 1);
+                    copyPixel(x0 + textureWidth - 1 + pad, y0 + textureHeight - 1 + yPad, x0 + textureWidth - 1, y0 + textureHeight - 1);
+                }
             }
         }
 
-        spdlog::info(
-            "Packed texture '{}' at atlas position {}, {} size {}x{}",
-            fileName,
-            cursorX,
-            cursorY,
-            textureWidth,
-            textureHeight
-        );
-
-        cursorX += textureWidth + ATLAS_PADDING;
-        shelfHeight = std::max(shelfHeight, textureHeight);
-
-        SDL_DestroySurface(surface);
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, currentPage, ATLAS_SIZE, ATLAS_SIZE, 1, GL_RGBA, GL_UNSIGNED_BYTE, atlasPixels.data());
     }
 
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glGenTextures(1, &atlasTexture);
-    glBindTexture(GL_TEXTURE_2D, atlasTexture);
-
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA8,
-        ATLAS_SIZE,
-        ATLAS_SIZE,
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        atlasPixels.data()
-    );
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    ApplyTextureSampling(level.rendererSettings.textureSetting);
+    ApplyTextureSampling(level.rendererSettings.textureSetting, GL_TEXTURE_2D_ARRAY);
 
     glGenBuffers(1, &textureRegionSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, textureRegionSSBO);
@@ -437,9 +479,58 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
 
-    spdlog::info("Created texture atlas with {} texture region(s)", textureRegions.size());
+    spdlog::info("Created texture atlas with {} texture region(s) on {} page(s)", placements.size(), pageCount);
 
     return true;
+}
+
+// Decodes an image to RGBA8 once and keeps it until the file changes on disk,
+// so rebuilding the atlas doesn't re-read every image in the project.
+// Returns nullptr if the file can't be loaded.
+const OpenGLRendererInternal::DecodedImage* OpenGL::GetDecodedImage(const fs::path& path) {
+    using namespace OpenGLRendererInternal;
+
+    std::error_code ec;
+    const fs::file_time_type writeTime = fs::last_write_time(path, ec);
+    if (ec) {
+        spdlog::error("Texture file does not exist: {}", path.string());
+        return nullptr;
+    }
+
+    const std::string key = path.string();
+
+    if (const auto found = decodedImageCache.find(key); found != decodedImageCache.end() && found->second.writeTime == writeTime)
+        return &found->second;
+
+    SDL_Surface* loadedSurface = IMG_Load(key.c_str());
+
+    if (loadedSurface == nullptr) {
+        spdlog::error("IMG_Load failed for {}: {}", key, SDL_GetError());
+        return nullptr;
+    }
+
+    SDL_Surface* surface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(loadedSurface);
+
+    if (surface == nullptr) {
+        spdlog::error("SDL_ConvertSurface failed for {}: {}", key, SDL_GetError());
+        return nullptr;
+    }
+
+    DecodedImage image;
+    image.width = surface->w;
+    image.height = surface->h;
+    image.writeTime = writeTime;
+    image.pixels.resize(static_cast<std::size_t>(image.width) * image.height * 4);
+
+    for (int row = 0; row < image.height; ++row) {
+        const unsigned char* srcRow = static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
+        std::memcpy(image.pixels.data() + static_cast<std::size_t>(row) * image.width * 4, srcRow, image.width * 4);
+    }
+
+    SDL_DestroySurface(surface);
+
+    return &(decodedImageCache[key] = std::move(image));
 }
 
 // Resolves a texture filename to its slot in the atlas built above.

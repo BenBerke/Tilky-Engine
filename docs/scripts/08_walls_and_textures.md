@@ -16,8 +16,10 @@ Useful `Wall` members:
 | Member | Type | Notes |
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
-| `wall.textureOffset` | `Vector2` | Scrolls the texture. Change it over time for moving surfaces |
-| `wall.textureFileName` | `string` | Swap the texture. `wall:clearTextureFileName()` removes it |
+| `wall.topTextureOffset`, `wall.bottomTextureOffset` | `Vector2` | Scrolls a texture. Change it over time for moving surfaces |
+| `wall.topTexture`, `wall.bottomTexture` | `string` | Swap a texture. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` remove it |
+| `wall.topAnchor`, `wall.bottomAnchor` | `WallAnchor` | Where a texture is pinned (`Auto`, `TopEdge`, `BottomEdge`, `World`) |
+| `wall.isPortal` | boolean | `true` if a sector is on both sides. Bottom only shows on portals |
 | `wall.start`, `wall["end"]`, `wall.length` | read-only | Endpoints (`Vector2`) and length. `end` is a Lua keyword, so use `wall["end"]` |
 | `wall.frontSector`, `wall.backSector` | integer IDs | `backSector` identifies the neighbour on a portal wall |
 | `wall:HasTag("Name")` | boolean | Tags are assigned in the editor |
@@ -33,14 +35,9 @@ settings, put it on the walls, and filter with `wall:HasTag(...)`.
 
 ```lua
 -- Scripts/Walls/ScrollingWall.lua (sector script)
----@field scrollX number @ Scroll X (per second)
-scrollX = 0.0
-
----@field scrollY number @ Scroll Y (per second)
-scrollY = 0.25
-
----@field onlyTag string @ Only Walls With Tag (empty = all)
-onlyTag = ""
+public number scrollX = 0.0
+public number scrollY = 0.25
+public string onlyTag = ""
 
 local walls = {}
 
@@ -58,8 +55,8 @@ function Update()
     local dt = GameTime.deltaTime
 
     for _, wall in ipairs(walls) do
-        local offset = wall.textureOffset
-        wall.textureOffset = Vector2(offset.x + scrollX * dt, offset.y + scrollY * dt)
+        local offset = wall.topTextureOffset
+        wall.topTextureOffset = Vector2(offset.x + scrollX * dt, offset.y + scrollY * dt)
     end
 end
 ```
@@ -77,27 +74,16 @@ end
 **Attach to:** the sector containing a wall tagged `Switch`.
 
 Looks at the wall and presses a key to flip it between an "off" and an "on" texture. It uses
-`Game.Raycast` from the camera to see which wall is being looked at.
+`camera:Raycast` from the camera to see which wall is being looked at.
 
 ```lua
 -- Scripts/Walls/TextureSwitch.lua (sector script)
----@field player Entity @ Player
-player = nil
-
----@field switchTag string @ Wall Tag
-switchTag = "Switch"
-
----@field offTexture Texture @ Off Texture
-offTexture = nil
-
----@field onTexture Texture @ On Texture
-onTexture = nil
-
----@field useKey string @ Use Key
-useKey = "E"
-
----@field useDistance number @ Use Distance
-useDistance = 40
+public Entity player = nil
+public string switchTag = "Switch"
+public Texture offTexture = nil
+public Texture onTexture = nil
+public Key useKey = Key.E
+public number useDistance = 40
 
 local switches = {}   -- wall -> on/off
 
@@ -121,13 +107,10 @@ function Update()
     if not Input.GetKeyDown(useKey) then return end
 
     local camera = player.camera
-    local pc = player.playerController
-    if camera == nil or pc == nil then return end
+    if camera == nil then return end
 
-    -- Cast a ray from the player's eyes (feet position + eye height) along the camera's forward direction.
-    local p = player.transform.position
-    local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
-    local hit = Game.Raycast(eyes, camera.forward, useDistance, player.id, false)
+    -- Cast a ray from the player's eyes through the middle of the screen.
+    local hit = camera:Raycast(useDistance, false)
     if hit == nil or hit.type ~= "Wall" then return end
 
     for _, s in ipairs(switches) do
@@ -135,7 +118,7 @@ function Update()
             s.on = not s.on
 
             local texture = s.on and onTexture or offTexture
-            if texture ~= nil then s.wall.textureFileName = texture end
+            if texture ~= nil then s.wall.topTexture = texture end
 
             Debug.Print("Switch is now " .. (s.on and "ON" or "OFF"))
             return
@@ -150,10 +133,10 @@ end
 - The fifth argument to `Raycast` (`false`) means entities don't need a collider to be hit.
   Walls are always hit.
 - Texture fields (`Texture`) hold the asset's path, which can be assigned directly to
-  `wall.textureFileName`.
+  `wall.topTexture` or `wall.bottomTexture`.
 - To make the switch *do* something, set a channel from
   [05_doors.md](05_doors.md) right where `s.on` changes:
-  `Scripts.channels = Scripts.channels or {}` then `Scripts.channels["door1"] = s.on`.
+  `Global.channels = Global.channels or {}` then `Global.channels["door1"] = s.on`.
 
 ---
 
@@ -165,11 +148,8 @@ Cycles the tint of walls through the rainbow with three phase-shifted sine waves
 
 ```lua
 -- Scripts/Walls/ColorCycle.lua (sector script)
----@field cyclesPerSecond number @ Cycles Per Second
-cyclesPerSecond = 0.25
-
----@field onlyTag string @ Only Walls With Tag (empty = all)
-onlyTag = ""
+public number cyclesPerSecond = 0.25
+public string onlyTag = ""
 
 local walls = {}
 local clock = 0.0

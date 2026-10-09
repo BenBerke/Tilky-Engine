@@ -8,18 +8,27 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <limits>
+#include <optional>
 #include <tuple>
 #include <vector>
 
 #include <sol/error.hpp>
+#include <spdlog/spdlog.h>
 
 #include "Headers/Math/Constants.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Headers/Math/Vector/Vector3Math.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
+#include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 // ---------------------------------------------------------
 // Audio Source
@@ -28,15 +37,29 @@
 struct ScriptAudioSource {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's AudioSources this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentAudioSource* GetComponent() const {
         if (level == nullptr) return nullptr;
 
-        return level->audioSources.Get(ownerID);
+        return level->audioSources.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentAudioSource* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentAudioSource* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] std::string GetName() const {
@@ -135,6 +158,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->referenceDistance = distance;
+        audio->SetSourceReferenceDistance(distance);
     }
 
     [[nodiscard]] float GetMaxDistance() const {
@@ -149,6 +173,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->maxDistance = distance;
+        audio->SetSourceMaxDistance(distance);
     }
 
     [[nodiscard]] float GetRollOffFactor() const {
@@ -163,6 +188,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->rollOffFactor = factor;
+        audio->SetSourceRollOffFactor(factor);
     }
 
     [[nodiscard]] float GetInnerConeAngle() const {
@@ -177,6 +203,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->innerConeAngle = angle;
+        audio->SetSourceInnerConeAngle(angle);
     }
 
     [[nodiscard]] float GetOuterConeAngle() const {
@@ -191,6 +218,7 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->outerConeAngle = angle;
+        audio->SetSourceOuterConeAngle(angle);
     }
 
     [[nodiscard]] float GetOuterGain() const {
@@ -205,13 +233,42 @@ struct ScriptAudioSource {
         if (audio == nullptr) return;
 
         audio->outerGain = gain;
+        audio->SetSourceOuterGain(gain);
     }
 
     void PlaySound() const {
-        const ComponentAudioSource* audio = GetComponent();
+        ComponentAudioSource* audio = GetComponent();
         if (audio == nullptr) return;
 
         audio->PlaySound();
+    }
+
+    void StopSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->StopSound();
+    }
+
+    void PauseSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->PauseSound();
+    }
+
+    void ResumeSound() const {
+        ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return;
+
+        audio->ResumeSound();
+    }
+
+    [[nodiscard]] bool IsPlaying() const {
+        const ComponentAudioSource* audio = GetComponent();
+        if (audio == nullptr) return false;
+
+        return audio->IsPlaying();
     }
 
     void SetSourcePosition(const Vector3& position) const {
@@ -282,18 +339,6 @@ struct ScriptTransform {
         transform->relativeHeight = height;
     }
 
-    [[nodiscard]] Vector2 GetForward() const {
-        const ComponentTransform* transform = GetComponent();
-        if (transform == nullptr) return {1.0f, 0.0f};
-        return transform->forward;
-    }
-
-    void SetForward(const Vector2& forward) const {
-        ComponentTransform* transform = GetComponent();
-        if (transform == nullptr) return;
-        transform->forward = forward;
-    }
-
     [[nodiscard]] int GetSectorIndex() const {
         const ComponentTransform* transform = GetComponent();
         if (transform == nullptr) return -1;
@@ -328,6 +373,73 @@ struct ScriptTransform {
 
         transform->isDirty = true;
     }
+
+    // Turns the entity so its local +Z faces point. Does nothing if point is
+    // on top of the entity.
+    void LookAt(const Vector3& point, const bool yawOnly) const {
+        const ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return;
+
+        LookDirection(point - transform->position, yawOnly);
+    }
+
+    // Turns the entity so its local +Z faces along direction. Does nothing
+    // for a direction with nothing to face.
+    void LookDirection(const Vector3& direction, const bool yawOnly) const {
+        ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return;
+
+        if (!QuaternionMath::LookRotation(direction, yawOnly, transform->rotation)) return;
+
+        transform->isDirty = true;
+    }
+
+    // ---- Directions, from rotation ----
+    // Right is local -X: with +Z ahead and +Y up, that is the screen's right
+    // (see Matrix4::LookAt), and the way the player strafes with D.
+
+    [[nodiscard]] Vector3 GetForward() const {
+        return RotateLocal(QuaternionMath::LocalForward());
+    }
+
+    [[nodiscard]] Vector3 GetRight() const {
+        return RotateLocal({-1.0f, 0.0f, 0.0f});
+    }
+
+    [[nodiscard]] Vector3 GetUp() const {
+        return RotateLocal({0.0f, 1.0f, 0.0f});
+    }
+
+    // ---- Distance / direction to a point ----
+    // The 2D versions ignore height (y). Directions are unit length, or zero
+    // when the point is on top of this transform.
+
+    [[nodiscard]] float DistanceTo(const Vector3& point) const {
+        return Vector3Math::Length(point - GetPosition());
+    }
+
+    [[nodiscard]] float DistanceTo2D(const Vector3& point) const {
+        Vector3 delta = point - GetPosition();
+        delta.y = 0.0f;
+        return Vector3Math::Length(delta);
+    }
+
+    [[nodiscard]] Vector3 DirectionTo(const Vector3& point) const {
+        return Vector3Math::Normalized(point - GetPosition());
+    }
+
+    [[nodiscard]] Vector3 DirectionTo2D(const Vector3& point) const {
+        Vector3 delta = point - GetPosition();
+        delta.y = 0.0f;
+        return Vector3Math::Normalized(delta);
+    }
+
+private:
+    [[nodiscard]] Vector3 RotateLocal(const Vector3& local) const {
+        const ComponentTransform* transform = GetComponent();
+        if (transform == nullptr) return local;
+        return QuaternionMath::Rotate(transform->rotation, local);
+    }
 };
 
 // ---------------------------------------------------------
@@ -337,6 +449,8 @@ struct ScriptTransform {
 struct ScriptSprite {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Sprites this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     static constexpr int TEXTURE_SLOT_COUNT = 8;
 
@@ -352,15 +466,38 @@ struct ScriptSprite {
     [[nodiscard]] ComponentSprite* GetComponent() const {
         if (level == nullptr) return nullptr;
 
-        return level->sprites.Get(ownerID);
+        return level->sprites.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
     }
 
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentSprite* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentSprite* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
+    }
+
     [[nodiscard]] static bool IsValidSlot(const int slot) {
         return slot >= 0 && slot < TEXTURE_SLOT_COUNT;
+    }
+
+    [[nodiscard]] bool GetIsActive() const {
+        const ComponentSprite* sprite = GetComponent();
+        return sprite != nullptr && sprite->isActive;
+    }
+
+    void SetIsActive(const bool active) const {
+        ComponentSprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->isActive = active;
     }
 
     [[nodiscard]] static bool IsValidSideCount(const int sideCount) {
@@ -517,10 +654,12 @@ struct ScriptSprite {
 struct ScriptRigidbody {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Rigidbodys this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentRigidbody* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->rigidbodies.Get(ownerID);
+        return level->rigidbodies.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -610,6 +749,22 @@ struct ScriptRigidbody {
         if (rb == nullptr) return;
         rb->AddVelocity(velocity);
     }
+
+    // velocity += impulse / mass, so heavier bodies move less. A mass of 0
+    // or less is treated as 1.
+    void AddImpulse(const Vector3& impulse) const {
+        ComponentRigidbody* rb = GetComponent();
+        if (rb == nullptr) return;
+
+        const float mass = rb->mass > 0.0f ? rb->mass : 1.0f;
+        rb->AddVelocity(impulse / mass);
+    }
+
+    void Stop() const {
+        ComponentRigidbody* rb = GetComponent();
+        if (rb == nullptr) return;
+        rb->velocity = {0.0f, 0.0f, 0.0f};
+    }
 };
 
 // ---------------------------------------------------------
@@ -619,14 +774,28 @@ struct ScriptRigidbody {
 struct ScriptModel {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Models this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentModel* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->models.Get(ownerID);
+        return level->models.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentModel* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentModel* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] std::string GetFileName() const {
@@ -649,20 +818,132 @@ struct ScriptModel {
 };
 
 // ---------------------------------------------------------
+// Flipbook
+// ---------------------------------------------------------
+
+struct ScriptFlipbook {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Flipbooks this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    [[nodiscard]] ComponentFlipbook* GetComponent() const {
+        if (level == nullptr) return nullptr;
+        return level->flipbooks.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] std::string GetFlipbookFileName() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return {};
+        return flipbook->flipbookFileName;
+    }
+
+    void SetFlipbookFileName(const std::string& fileName) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::SetFlipbookFileName(*flipbook, fileName);
+    }
+
+    [[nodiscard]] float GetSpeed() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return 1.0f;
+        return flipbook->speed;
+    }
+
+    void SetSpeed(const float speed) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        flipbook->speed = speed;
+    }
+
+    [[nodiscard]] bool IsPlaying() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        return flipbook != nullptr && flipbook->playing;
+    }
+
+    // Empty fileName = the current file. See FlipbookSystem::Play.
+    void Play(const std::string& fileName, const bool restart) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Play(*flipbook, fileName, restart);
+    }
+
+    void Pause() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Pause(*flipbook);
+    }
+
+    void Resume() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Resume(*flipbook);
+    }
+
+    void Stop() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Stop(*flipbook);
+    }
+
+    // An unknown name is reported (with the calling script's file and line)
+    // and leaves the frame as it was, rather than stopping the script.
+    void SetFrame(const std::string& frameName, const sol::this_state state) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        if (FlipbookSystem::SetFrame(*flipbook, frameName)) return;
+
+        lua_State* L = state;
+        luaL_where(L, 1);
+        const std::string where = lua_tostring(L, -1);
+        lua_pop(L, 1);
+
+        const std::string message = where + "Flipbook:SetFrame: '" + flipbook->flipbookFileName +
+                                    "' has no frame called '" + frameName + "'";
+        spdlog::error("{}", message);
+        EditorFunctions::Print(message, Vector3{200.0f, 60.0f, 60.0f}, 15.0f);
+    }
+
+    [[nodiscard]] std::string GetFrame() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return {};
+        return FlipbookSystem::GetFrameName(*flipbook);
+    }
+};
+
+// ---------------------------------------------------------
 // Collider
 // ---------------------------------------------------------
 
 struct ScriptCollider {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Colliders this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCollider* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->colliders.Get(ownerID);
+        return level->colliders.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentCollider* component = GetComponent();
+        if (component == nullptr) return {0.0f, 0.0f, 0.0f};
+        return component->offset;
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        ComponentCollider* component = GetComponent();
+        if (component == nullptr) return;
+        component->offset = offset;
     }
 
     [[nodiscard]] ColliderType GetType() const {
@@ -673,7 +954,7 @@ struct ScriptCollider {
 
     void SetType(const ColliderType type) const {
         if (level == nullptr) return;
-        level->colliders.SetType(ownerID, type);
+        level->colliders.SetType(instanceID, type);
     }
 
     [[nodiscard]] bool GetIsActive() const {
@@ -684,7 +965,7 @@ struct ScriptCollider {
 
     void SetIsActive(const bool active) const {
         if (level == nullptr) return;
-        level->colliders.SetActive(ownerID, active);
+        level->colliders.SetActive(instanceID, active);
     }
 
     [[nodiscard]] bool GetIsTrigger() const {
@@ -731,10 +1012,12 @@ struct ScriptCollider {
 struct ScriptPlayerController {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's PlayerControllers this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentPlayerController* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->playerControllers.Get(ownerID);
+        return level->playerControllers.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -750,7 +1033,9 @@ struct ScriptPlayerController {
     void SetIsActive(const bool active) const {
         ComponentPlayerController* pc = GetComponent();
         if (pc == nullptr) return;
-        pc->isActive = active;
+
+        if (active) level->ActivatePlayerController(*pc);
+        else pc->isActive = false;
     }
 
     [[nodiscard]] float GetSpeed() const {
@@ -875,10 +1160,12 @@ struct ScriptPlayerController {
 struct ScriptCamera {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Cameras this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCamera* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->cameras.Get(ownerID);
+        return level->cameras.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -894,7 +1181,9 @@ struct ScriptCamera {
     void SetIsActive(const bool active) const {
         ComponentCamera* camera = GetComponent();
         if (camera == nullptr) return;
-        camera->isActive = active;
+
+        if (active) level->ActivateCamera(*camera);
+        else camera->isActive = false;
     }
 
     [[nodiscard]] float GetYaw() const {
@@ -979,6 +1268,82 @@ struct ScriptCamera {
         const ComponentCamera* camera = GetComponent();
         if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
         return camera->target;
+    }
+
+    // Where the camera sees from: the owner's Transform, raised by the eye
+    // height of an active PlayerController on the same entity. This is the
+    // body's eye, without the renderer's stair smoothing.
+    [[nodiscard]] Vector3 GetEyePosition() const {
+        if (level == nullptr) return {0.0f, 0.0f, 0.0f};
+
+        const ComponentTransform* transform = level->transforms.Get(ownerID);
+        if (transform == nullptr) return {0.0f, 0.0f, 0.0f};
+
+        Vector3 eye = transform->position;
+
+        for (const ComponentPlayerController* controller : level->playerControllers.GetAll(ownerID))
+            if (controller->isActive) eye.y += controller->eyeHeight;
+
+        return eye;
+    }
+
+    // Unit vector through the middle of the screen. Built from yaw/pitch
+    // rather than read from `forward`, which only updates when a frame is drawn.
+    [[nodiscard]] Vector3 GetViewForward() const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
+        return CameraSystem::GetCameraForwardEngineSpace(camera->yaw, camera->pitch);
+    }
+
+    // World point -> screen, normalized: (0, 0) top-left, (1, 1) bottom-right,
+    // like UITransform anchors. Points off to the side give values outside
+    // 0..1. nullopt when the point is behind the camera.
+    [[nodiscard]] std::optional<Vector2> WorldToScreen(const Vector3& point) const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return std::nullopt;
+
+        Vector3 forward, right, up;
+        GetViewBasis(*camera, forward, right, up);
+
+        const Vector3 delta = point - GetEyePosition();
+        const float depth = Vector3Math::Dot(delta, forward);
+        if (depth <= Constants::Epsilon) return std::nullopt;
+
+        const float tanHalfFov = std::tan(camera->fov * 0.5f * Constants::DegToRad);
+        const float ndcX = Vector3Math::Dot(delta, right) / (depth * tanHalfFov * camera->aspectRatio);
+        const float ndcY = Vector3Math::Dot(delta, up) / (depth * tanHalfFov);
+
+        return Vector2{(ndcX + 1.0f) * 0.5f, (1.0f - ndcY) * 0.5f};
+    }
+
+    // Screen point (normalized, as WorldToScreen) -> unit direction of the
+    // ray from the eye through it.
+    [[nodiscard]] Vector3 ScreenToDirection(const float x, const float y) const {
+        const ComponentCamera* camera = GetComponent();
+        if (camera == nullptr) return {0.0f, 0.0f, 1.0f};
+
+        Vector3 forward, right, up;
+        GetViewBasis(*camera, forward, right, up);
+
+        const float tanHalfFov = std::tan(camera->fov * 0.5f * Constants::DegToRad);
+        const float ndcX = x * 2.0f - 1.0f;
+        const float ndcY = 1.0f - y * 2.0f;
+
+        return Vector3Math::Normalized(
+            forward + right * (ndcX * tanHalfFov * camera->aspectRatio) + up * (ndcY * tanHalfFov)
+        );
+    }
+
+private:
+    // Same axes as Matrix4::LookAt. Right comes from yaw alone so it stays
+    // defined when looking straight up or down.
+    static void GetViewBasis(const ComponentCamera& camera, Vector3& forward, Vector3& right, Vector3& up) {
+        forward = CameraSystem::GetCameraForwardEngineSpace(camera.yaw, camera.pitch);
+
+        const float yawRadians = camera.yaw * Constants::DegToRad;
+        right = {-std::cos(yawRadians), 0.0f, std::sin(yawRadians)};
+
+        up = Vector3Math::Cross(right, forward);
     }
 };
 
@@ -1091,10 +1456,12 @@ struct ScriptUITransform {
 struct ScriptUISprite {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's UISprites this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUISprite* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->ui_sprites.Get(ownerID);
+        return level->ui_sprites.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -1107,10 +1474,23 @@ struct ScriptUISprite {
         return sprite->texture;
     }
 
-    void SetTextureIndex(const int index) const {
+    // Despite the name this is the texture's path (relative to Assets, with
+    // extension), the same string the UI editor stores.
+    void SetTextureIndex(const std::string& texture) const {
         ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return;
-        sprite->texture = index;
+        sprite->texture = texture;
+    }
+
+    [[nodiscard]] bool GetIsActive() const {
+        const ComponentUISprite* sprite = GetComponent();
+        return sprite != nullptr && sprite->isActive;
+    }
+
+    void SetIsActive(const bool active) const {
+        ComponentUISprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->isActive = active;
     }
 };
 
@@ -1121,10 +1501,12 @@ struct ScriptUISprite {
 struct ScriptUIText {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's UITexts this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUIText* GetComponent() const {
         if (level == nullptr) return nullptr;
-        return level->ui_texts.Get(ownerID);
+        return level->ui_texts.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
@@ -1223,6 +1605,15 @@ struct ScriptEntity {
     Level* level = nullptr;
     ID ownerID = INVALID_ENTITY_ID;
 
+    // The instance ID of this entity's first component in `storage`, or
+    // INVALID_COMPONENT_INSTANCE_ID (an invalid handle) when it has none.
+    template<typename Storage>
+    [[nodiscard]] ComponentInstanceID FirstInstance(Storage Level::* storage) const {
+        if (level == nullptr) return INVALID_COMPONENT_INSTANCE_ID;
+        const auto* component = (level->*storage).Get(ownerID);
+        return component == nullptr ? INVALID_COMPONENT_INSTANCE_ID : component->instanceID;
+    }
+
     [[nodiscard]] Entity* GetEntity() const {
         if (level == nullptr || ownerID == INVALID_ENTITY_ID) return nullptr;
         return level->GetEntity(ownerID);
@@ -1290,10 +1681,10 @@ struct ScriptEntity {
     }
 
     // True if this Entity has an attached script whose asset id
-    // (ComponentScript::fileName, a project-relative path without extension -
+    // (ComponentScript::fileName, an Assets-relative path without extension -
     // see LuaScriptSystem's script identity notes) ends in `scriptName`.
     // Matching on the final path segment means both "Health" and
-    // "Player/Health" find a script stored at "Scripts/Player/Health.lua".
+    // "Player/Health" find a script stored at "Assets/Scripts/Player/Health.lua".
     // Use GetScriptById for an unambiguous lookup when several same-named
     // scripts might be attached.
     [[nodiscard]] bool HasScriptNamed(const std::string& scriptName) const {
@@ -1359,6 +1750,10 @@ struct ScriptEntity {
         return level != nullptr && level->models.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasFlipbook() const {
+        return level != nullptr && level->flipbooks.Has(ownerID);
+    }
+
     [[nodiscard]] bool HasUITransform() const {
         return level != nullptr && level->ui_transforms.Has(ownerID);
     }
@@ -1375,12 +1770,14 @@ struct ScriptEntity {
         return {level, ownerID};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptSprite GetSprite() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::sprites)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptAudioSource GetAudioSource() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::audioSources)};
     }
 
     // Looks up an attached script (Behaviour) by asset id, matching only the
@@ -1421,36 +1818,48 @@ struct ScriptEntity {
         return result;
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptPlayerController GetPlayerController() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::playerControllers)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCamera GetCamera() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::cameras)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCollider GetCollider() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::colliders)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptRigidbody GetRigidbody() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::rigidbodies)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptModel GetModel() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::models)};
+    }
+
+    // The first one; GetComponents lists them all.
+    [[nodiscard]] ScriptFlipbook GetFlipbook() const {
+        return {level, ownerID, FirstInstance(&Level::flipbooks)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {
         return {level, ownerID};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUISprite GetUISprite() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::ui_sprites)};
     }
 
+    // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUIText GetUIText() const {
-        return {level, ownerID};
+        return {level, ownerID, FirstInstance(&Level::ui_texts)};
     }
 };
 
@@ -1541,32 +1950,48 @@ struct ScriptWall {
         wall->color = value;
     }
 
-    [[nodiscard]] Vector2 GetTextureOffset() const {
-        const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid Wall");
-        return wall->textureOffset;
-    }
-
-    void SetTextureOffset(const Vector2& value) const {
+    [[nodiscard]] WallSurface& GetSurface(const WallSurfaceSlot slot) const {
         Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid Wall");
-        wall->textureOffset = value;
+        return wall->Surface(slot);
     }
 
-    [[nodiscard]] std::string GetTextureFileName() const {
+    [[nodiscard]] bool IsPortal() const {
         const Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid Wall");
-        return wall->textureFileName;
+        return wall->IsPortal();
     }
 
-    void SetTextureFileName(const std::string& value) const {
-        Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid Wall");
-        wall->textureFileName = value;
-    }
+    [[nodiscard]] std::string GetTopTexture() const { return GetSurface(WallSurfaceSlot::Top).texture; }
+    void SetTopTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Top).texture = value; }
+    void ClearTopTexture() const { SetTopTexture(""); }
 
-    void ClearTextureFileName() const {
-        SetTextureFileName("");
+    [[nodiscard]] std::string GetBottomTexture() const { return GetSurface(WallSurfaceSlot::Bottom).texture; }
+    void SetBottomTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Bottom).texture = value; }
+    void ClearBottomTexture() const { SetBottomTexture(""); }
+
+    [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).textureOffset; }
+    void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureOffset = value; }
+
+    [[nodiscard]] Vector2 GetBottomTextureOffset() const { return GetSurface(WallSurfaceSlot::Bottom).textureOffset; }
+    void SetBottomTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureOffset = value; }
+
+    [[nodiscard]] Vector2 GetTopTextureScale() const { return GetSurface(WallSurfaceSlot::Top).textureScale; }
+    void SetTopTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureScale = value; }
+
+    [[nodiscard]] Vector2 GetBottomTextureScale() const { return GetSurface(WallSurfaceSlot::Bottom).textureScale; }
+    void SetBottomTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureScale = value; }
+
+    [[nodiscard]] int GetTopAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Top).anchor); }
+    void SetTopAnchor(const int value) const { GetSurface(WallSurfaceSlot::Top).anchor = ToAnchor(value); }
+
+    [[nodiscard]] int GetBottomAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Bottom).anchor); }
+    void SetBottomAnchor(const int value) const { GetSurface(WallSurfaceSlot::Bottom).anchor = ToAnchor(value); }
+
+    static WallTextureAnchor ToAnchor(const int value) {
+        const std::optional<WallTextureAnchor> anchor = WallTextureAnchorFromInt(value);
+        if (!anchor) throw sol::error("Wall anchor expects a WallAnchor value, e.g. WallAnchor.TopEdge");
+        return *anchor;
     }
 
     [[nodiscard]] bool HasTag(const std::string& tag) const
@@ -2240,6 +2665,29 @@ struct ScriptSector {
         };
     }
 
+    // ---- Distance to the outline -------------------------------------------
+    // Map space (x, z), height ignored. Measured to the outer boundary and to
+    // every hole (child sector), and 0 while the entity is inside. Standing
+    // in a child sector counts as outside, same as ContainsEntity.
+
+    [[nodiscard]] float DistanceToSector(const ScriptEntity& entity) const {
+        return std::sqrt(DistanceToSectorSquared(entity));
+    }
+
+    [[nodiscard]] float DistanceToSectorSquared(const ScriptEntity& entity) const {
+        const ComponentTransform* transform = entity.GetTransform().GetComponent();
+        if (transform == nullptr) throw sol::error("Entity has no Transform");
+
+        const Sector& sector = RequireSector();
+        const Vector2 point{transform->position.x, transform->position.z};
+        if (Geometry::IsPointInPolygon(sector.vertices, sector.innerLoops, point)) return 0.0f;
+
+        float best = LoopDistanceSquared(sector.vertices, point);
+        for (const std::vector<Vector2>& hole : sector.innerLoops)
+            best = std::min(best, LoopDistanceSquared(hole, point));
+        return best;
+    }
+
     // ---- Heights at a point (slopes included) ------------------------------
 
     [[nodiscard]] float GetFloorHeightAt(const Vector2& point, const int luaIndex) const {
@@ -2257,6 +2705,32 @@ struct ScriptSector {
 private:
     static float TriangleArea(const Triangle& t) {
         return std::abs((t.b.x - t.a.x) * (t.c.y - t.a.y) - (t.c.x - t.a.x) * (t.b.y - t.a.y)) * 0.5f;
+    }
+
+    // Squared distance from `point` to the nearest edge of a closed loop.
+    // Infinity for an empty loop.
+    static float LoopDistanceSquared(const std::vector<Vector2>& loop, const Vector2& point) {
+        float best = std::numeric_limits<float>::infinity();
+        if (loop.empty()) return best;
+
+        Vector2 prev = loop.back();
+        for (const Vector2& cur : loop) {
+            const float ex = cur.x - prev.x;
+            const float ey = cur.y - prev.y;
+            const float lengthSquared = ex * ex + ey * ey;
+
+            float t = 0.0f;
+            if (lengthSquared > 0.0f)
+                t = std::clamp(((point.x - prev.x) * ex + (point.y - prev.y) * ey) / lengthSquared, 0.0f, 1.0f);
+
+            const float dx = point.x - (prev.x + ex * t);
+            const float dy = point.y - (prev.y + ey * t);
+            best = std::min(best, dx * dx + dy * dy);
+
+            prev = cur;
+        }
+
+        return best;
     }
 
     // Slopes are measured from an edge of this rectangle. Must match

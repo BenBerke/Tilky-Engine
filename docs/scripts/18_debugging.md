@@ -16,8 +16,11 @@ appears in the console and in the script's inspector panel.
 
 ## Autocomplete
 
-When scripting starts, the engine writes an API description to `Assets/Scripts/.luals/tilky_api.lua`.
-Editors using the Lua language server (LuaLS) can read it for autocomplete and hover docs. It
+When scripting starts, the engine writes an API description to `.luals/tilky_api.lua` in the project
+folder (next to `project.tilky`, outside `Assets`). Open the project folder in an editor that uses
+the Lua language server (LuaLS) and it reads it for autocomplete and hover docs, using the
+`.luarc.json` the launcher puts in new projects (see
+[Getting Started](../wiki/GettingStarted.md#13-working-in-an-external-editor)). It
 covers the bindings that have documentation registered, so some newer members may be missing from
 it.
 
@@ -35,14 +38,9 @@ Two hotkeys:
 
 ```lua
 -- Scripts/Debug/DebugTools.lua (entity script)
----@field infoKey string @ Player Info Key
-infoKey = "P"
-
----@field inspectKey string @ Inspect Key
-inspectKey = "I"
-
----@field range number @ Inspect Range
-range = 500
+public Key infoKey = Key.P
+public Key inspectKey = Key.I
+public number range = 500
 
 local camera, pc, transform
 
@@ -67,10 +65,8 @@ local function PrintPlayerInfo()
 end
 
 local function Inspect()
-    -- Start the ray at the player's eyes. requireCollider = false: see every entity, not only solid ones.
-    local p = transform.position
-    local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
-    local hit = Game.Raycast(eyes, camera.forward, range, entity.id, false)
+    -- A ray from the player's eyes. requireCollider = false: see every entity, not only solid ones.
+    local hit = camera:Raycast(range, false)
 
     if hit == nil then
         Debug.Print("Looking at nothing")
@@ -118,8 +114,8 @@ end
 - Sectors, walls, and Entities all have `tagCount` and `GetTag(i)`, which is why one
   `TagList` helper works for all three.
 - The function keys (`F1`...) aren't available to scripts, so debug hotkeys use letters.
-  `Input.GetAnyKeyDown()` returns the name of whatever key was pressed this frame, which is handy
-  for finding out what a key is called.
+  `Input.GetKeyName(Input.GetAnyKeyDown())` gives the name of whatever key was pressed this frame
+  (check `GetAnyKeyDown()` isn't `nil` first), which is handy for finding out what a key is called.
 
 ---
 

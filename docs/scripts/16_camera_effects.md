@@ -9,7 +9,7 @@ These scripts go on the Entity that holds the `Camera` component, which is norma
 | `yaw`, `pitch` | Look angles in degrees. The `PlayerController` changes these from the mouse every frame |
 | `forward` | Read-only `Vector3`, the direction the camera faces |
 | `nearPlane`, `farPlane`, `aspectRatio` | Projection settings |
-| `isActive` | Whether this camera is the one rendering |
+| `isActive` | Whether this camera is the one rendering. Setting it to `true` switches to it and unticks the others |
 
 ---
 
@@ -20,14 +20,9 @@ The change eases in and out instead of snapping.
 
 ```lua
 -- Scripts/Camera/FovEffects.lua (entity script)
----@field sprintFovBonus number @ Sprint FOV Bonus
-sprintFovBonus = 10
-
----@field zoomScale number @ Zoom FOV Multiplier (0.5 = 2x zoom)
-zoomScale = 0.5
-
----@field blendSpeed number @ Blend Speed
-blendSpeed = 8
+public number sprintFovBonus = 10
+public number zoomScale = 0.5
+public number blendSpeed = 8
 
 local cam
 local baseFov = 60.0
@@ -50,7 +45,7 @@ function Update()
 
     if Input.GetMouseButton(Input.MouseRight) then
         target = baseFov * zoomScale
-    elseif Input.GetKey("LShift") and Input.GetKey("W") then
+    elseif Input.GetKey(Key.LShift) and Input.GetKey(Key.W) then
         target = baseFov + sprintFovBonus   -- same condition the PlayerController sprints on
     end
 
@@ -68,14 +63,9 @@ Adds a gentle vertical sway while walking on the ground.
 
 ```lua
 -- Scripts/Camera/HeadBob.lua (entity script)
----@field bobHeight number @ Bob Height
-bobHeight = 0.6
-
----@field stepsPerUnit number @ Bob Cycles Per Unit Walked
-stepsPerUnit = 0.04
-
----@field blendSpeed number @ Fade Speed
-blendSpeed = 10
+public number bobHeight = 0.6
+public number stepsPerUnit = 0.04
+public number blendSpeed = 10
 
 local pc, rb
 local baseEye = 12.0
@@ -128,8 +118,7 @@ function, so an explosion, a landing, or a crusher can all rattle the camera.
 
 ```lua
 -- Scripts/Camera/ScreenShake.lua (entity script)
----@field testKey string @ Test Key (empty = none)
-testKey = "T"
+public Key testKey = Key.T
 
 local cam
 local strength = 0.0
@@ -155,7 +144,7 @@ end
 function Update()
     if cam == nil then return end
 
-    if testKey ~= "" and Input.GetKeyDown(testKey) then Shake(nil, 2.0, 0.4) end
+    if Input.GetKeyDown(testKey) then Shake(nil, 2.0, 0.4) end
 
     -- The mouse look keeps adding to yaw/pitch, so take back last frame's shake first.
     cam.yaw = cam.yaw - offsetYaw
@@ -179,8 +168,7 @@ end
 **Calling it from another script**
 
 ```lua
----@field shaker Behaviour @ Screen Shake Script
-shaker = nil
+public Behaviour shaker = nil
 
 -- ...when something explodes:
 if shaker ~= nil then shaker:Shake(3.0, 0.5) end

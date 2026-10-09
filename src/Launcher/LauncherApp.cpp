@@ -171,7 +171,7 @@ namespace {
     // ============================================================================
     void ClampLauncherWindowSizeToDisplay(int desiredWidth, int desiredHeight);
     void CenterLauncherWindowOnDisplay();
-    bool CopyLuaAutocompleteFiles(const fs::path& projectPath);
+    bool WriteLuaAutocompleteConfig(const fs::path& projectPath);
     bool RefreshLanguages();
 
     bool IsFilesystemSafeName(const std::string& name);
@@ -290,71 +290,30 @@ namespace {
     }
 
     // ============================================================================
-    // Lua autocomplete file copy (existing, unchanged)
+    // Lua autocomplete config
     // ============================================================================
-    bool CopyLuaAutocompleteFiles(const fs::path& projectPath) {
-        const fs::path autocompleteFolder =
-            ProjectManager::FindAssetPath(fs::path("EngineAssets") / "AutoComplete");
+    // Points LuaLS (VS Code etc.) at the API stub the engine regenerates into
+    // <project>/.luals every time scripting initializes. The stub itself
+    // appears the first time the project is opened in the engine.
+    bool WriteLuaAutocompleteConfig(const fs::path& projectPath) {
+        const fs::path luarcFile = projectPath / ".luarc.json";
 
-        if (!fs::exists(autocompleteFolder)) {
-            spdlog::error(
-                "AutoComplete folder does not exist: {}",
-                autocompleteFolder.string()
-            );
+        std::ofstream file(luarcFile, std::ios::trunc);
+
+        if (!file) {
+            spdlog::error("Failed to write Lua autocomplete config: {}", luarcFile.string());
             return false;
         }
 
-        const fs::path sourceApiFile = autocompleteFolder / "tilky_api.txt";
-        const fs::path sourceLuarcFile = autocompleteFolder / "luarc.txt";
+        file <<
+            "{\n"
+            "  \"workspace.library\": [\n"
+            "    \"./.luals\"\n"
+            "  ],\n"
+            "  \"workspace.checkThirdParty\": false\n"
+            "}\n";
 
-        if (!fs::exists(sourceApiFile)) {
-            spdlog::error(
-                "Lua autocomplete API file does not exist: {}",
-                sourceApiFile.string()
-            );
-            return false;
-        }
-
-        if (!fs::exists(sourceLuarcFile)) {
-            spdlog::error(
-                "Lua autocomplete config file does not exist: {}",
-                sourceLuarcFile.string()
-            );
-            return false;
-        }
-
-        const fs::path tilkyFolder = projectPath / ".tilky";
-        fs::create_directories(tilkyFolder);
-
-        const fs::path destinationApiFile = tilkyFolder / "tilky_api.lua";
-        const fs::path destinationLuarcFile = projectPath / ".luarc.json";
-
-        try {
-            fs::copy_file(
-                sourceApiFile,
-                destinationApiFile,
-                fs::copy_options::overwrite_existing
-            );
-
-            fs::copy_file(
-                sourceLuarcFile,
-                destinationLuarcFile,
-                fs::copy_options::overwrite_existing
-            );
-        }
-        catch (const std::exception& e) {
-            spdlog::error(
-                "Failed to copy Lua autocomplete files to project '{}': {}",
-                projectPath.string(),
-                e.what()
-            );
-            return false;
-        }
-
-        spdlog::info(
-            "Copied Lua autocomplete files to project: {}",
-            projectPath.string()
-        );
+        spdlog::info("Wrote Lua autocomplete config: {}", luarcFile.string());
 
         return true;
     }
@@ -1201,7 +1160,7 @@ namespace {
 
                 const fs::path projectPath = ProjectManager::GetDefaultProjectsFolder() / typedName;
 
-                CopyLuaAutocompleteFiles(projectPath);
+                WriteLuaAutocompleteConfig(projectPath);
 
                 // Pin to whichever installed version the user chose in the picker
                 // above (pre-selected at latest-installed-stable, mirroring the old

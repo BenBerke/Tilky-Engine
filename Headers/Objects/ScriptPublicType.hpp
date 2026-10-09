@@ -51,10 +51,12 @@ struct EntityRefValue {
 // A serialized reference to one engine component on one entity. componentType
 // is a ComponentType (Components.hpp) value, stored as int here to avoid a
 // circular include - Components.hpp already includes this header for
-// ScriptValue itself.
+// ScriptValue itself. instanceId picks which of the entity's components of
+// that type (ComponentInstanceID; unused for Transform, which is one per entity).
 struct ComponentRefValue {
     ID entityId = INVALID_ID;
     int componentType = -1;
+    ComponentInstanceID instanceId = INVALID_COMPONENT_INSTANCE_ID;
 
     friend bool operator==(const ComponentRefValue&, const ComponentRefValue&) = default;
 };
@@ -114,6 +116,14 @@ using ScriptValue = std::variant<
     SectorRefValue
 >;
 
+// Which kind of file an Asset-typed field accepts: `public Texture t` or
+// `public FlipbookAsset f`. Picks the Inspector's drag-drop kind; the stored
+// value is an AssetRefValue path either way.
+enum class ScriptAssetKind : std::uint8_t {
+    Texture,
+    Flipbook
+};
+
 // One named option of an Enum-typed field, e.g. `enum(Idle,Walk,Run)` parses
 // to {{"Idle",0},{"Walk",1},{"Run",2}}. The underlying ScriptValue is always
 // a plain int (the option's value).
@@ -122,9 +132,8 @@ struct ScriptEnumOption {
     int value = 0;
 };
 
-// One field of a script's schema, parsed from its `---@field` doc comments
-// (see LuaScriptSystem::ExtractSchema in LuaSystem.cpp) - never by executing
-// the script. This is intentionally plain data: the editor inspector, the
+// One field of a script's schema, from its `public <Type> <name> = <value>`
+// declarations (see LuaScriptCompiler) - never by executing the script. This is intentionally plain data: the editor inspector, the
 // serializer, and the future LuaLS stub generator all read the same struct.
 struct ScriptPublicField {
     std::string name;
@@ -133,17 +142,20 @@ struct ScriptPublicField {
     std::string displayName;
 
     // Only meaningful when type == Enum. Ordered name<->value table parsed
-    // from the field's `enum(...)` annotation.
+    // from the field's `enum(...)` type.
     std::vector<ScriptEnumOption> enumOptions;
 
     // Only meaningful when type == Component. Which ComponentType
     // (Components.hpp) the field accepts, e.g. CMP_RIGIDBODY for a field
-    // annotated `---@field body Rigidbody`. -1 if unresolved/invalid.
+    // declared `public Rigidbody body`. -1 if unresolved/invalid.
     int componentType = -1;
+
+    // Only meaningful when type == Asset.
+    ScriptAssetKind assetKind = ScriptAssetKind::Texture;
 
     // Reserved for future list/array field support (see the scripting
     // redesign notes). Always false today - the schema parser recognizes and
-    // rejects `Type[]` annotations with a warning instead of misinterpreting
+    // rejects `Type[]` declarations with an error instead of misinterpreting
     // them as a single value of an unknown type.
     bool isArray = false;
 };

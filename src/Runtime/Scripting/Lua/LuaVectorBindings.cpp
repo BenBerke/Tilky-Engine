@@ -4,6 +4,7 @@
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 #include "sol/sol.hpp"
 
 #include <fmt/format.h>
@@ -141,4 +142,41 @@ void LuaScriptSystem::RegisterVectorBindings(sol::state& lua) {
         sol::meta_function::equal_to, [](const Vector4& a, const Vector4& b) { return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w; },
         sol::meta_function::to_string, [](const Vector4& v) { return fmt::format("Vector4({}, {}, {}, {})", v.x, v.y, v.z, v.w); }
     );
+
+    // Target of the vector write-through pass in LuaScriptCompiler: `a.position.y = 5`
+    // runs as `__vref(a, "position").y = 5`. Reading the vector, changing it
+    // and assigning it back goes through the property's setter, so side
+    // effects (dirty flags, sector updates, ...) still happen. Plain tables
+    // work too: they hand back the same vector object.
+    lua.safe_script(fmt::format(R"lua(
+        local error, pcall, setmetatable = error, pcall, setmetatable
+
+        local function assign(owner, key, value) owner[key] = value end
+
+        local refMeta = {{
+            __index = function(ref, component)
+                return ref[1][ref[2]][component]
+            end,
+            __newindex = function(ref, component, value)
+                local owner, key = ref[1], ref[2]
+                local vector = owner[key]
+                if vector == nil then
+                    error("attempt to index a nil value (field '" .. key .. "')", 2)
+                end
+                vector[component] = value
+                -- Rethrow at the script's line, not this chunk's (e.g. a read-only property).
+                local ok, message = pcall(assign, owner, key, vector)
+                if not ok then
+                    error((tostring(message):gsub("^%(vector reference%):%d+: ", "")), 2)
+                end
+            end,
+        }}
+
+        {} = function(owner, key)
+            if owner == nil then
+                error("attempt to index a nil value (reading field '" .. key .. "')", 2)
+            end
+            return setmetatable({{owner, key}}, refMeta)
+        end
+    )lua", LuaScriptCompiler::kVectorRefFunction), "=(vector reference)");
 }

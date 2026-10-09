@@ -26,32 +26,15 @@ Idle --(sees target)--> Chase --(in range)--> Attack
 
 ```lua
 -- Scripts/AI/Enemy.lua (entity script)
----@field target Entity @ Target (the player)
-target = nil
-
----@field sightRange number @ Sight Range
-sightRange = 220
-
----@field attackRange number @ Attack Range
-attackRange = 24
-
----@field moveSpeed number @ Move Speed
-moveSpeed = 30
-
----@field attackDamage number @ Attack Damage
-attackDamage = 10
-
----@field attackCooldown number @ Attack Cooldown (s)
-attackCooldown = 1.2
-
----@field loseSightTime number @ Give Up After (s)
-loseSightTime = 3
-
----@field eyeHeight number @ Eye Height (above the enemy's feet)
-eyeHeight = 8
-
----@field aimHeight number @ Aim Height (above the target's feet)
-aimHeight = 8
+public Entity target = nil
+public number sightRange = 220
+public number attackRange = 24
+public number moveSpeed = 30
+public number attackDamage = 10
+public number attackCooldown = 1.2
+public number loseSightTime = 3
+public number eyeHeight = 8
+public number aimHeight = 8
 
 local IDLE, CHASE, ATTACK = "Idle", "Chase", "Attack"
 
@@ -67,7 +50,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform.forward = Vector2(dx / dist, dz / dist)
+        transform:LookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then
@@ -75,7 +58,7 @@ local function Steer(dx, dz, dist, speed)
         rb.velocity = Vector3(vx, v.y, vz)   -- keep v.y so gravity still works
     else
         local dt = GameTime.deltaTime
-        transform:addPosition(Vector3(vx * dt, 0, vz * dt))
+        transform:AddPosition(Vector3(vx * dt, 0, vz * dt))
     end
 end
 
@@ -181,20 +164,11 @@ Picks a random spot near home, walks to it, stands around for a moment, and repe
 
 ```lua
 -- Scripts/AI/Wander.lua (entity script)
----@field wanderRadius number @ Wander Radius
-wanderRadius = 60
-
----@field moveSpeed number @ Move Speed
-moveSpeed = 15
-
----@field minPause number @ Min Pause (s)
-minPause = 1
-
----@field maxPause number @ Max Pause (s)
-maxPause = 4
-
----@field maxWalkTime number @ Give Up Walking After (s)
-maxWalkTime = 6
+public number wanderRadius = 60
+public number moveSpeed = 15
+public number minPause = 1
+public number maxPause = 4
+public number maxWalkTime = 6
 
 local transform, rb
 local homeX, homeZ = 0.0, 0.0
@@ -208,7 +182,7 @@ local function Steer(dx, dz, dist, speed)
 
     if dist > 0.001 then
         vx, vz = dx / dist * speed, dz / dist * speed
-        transform.forward = Vector2(dx / dist, dz / dist)
+        transform:LookDirection(Vector3(dx, 0, dz))
     end
 
     if rb ~= nil then
@@ -216,7 +190,7 @@ local function Steer(dx, dz, dist, speed)
         rb.velocity = Vector3(vx, v.y, vz)
     else
         local dt = GameTime.deltaTime
-        transform:addPosition(Vector3(vx * dt, 0, vz * dt))
+        transform:AddPosition(Vector3(vx * dt, 0, vz * dt))
     end
 end
 

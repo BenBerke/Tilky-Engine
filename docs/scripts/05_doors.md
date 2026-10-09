@@ -2,29 +2,34 @@
 
 A door is just a **sector whose ceiling moves**. Build a small sector in the doorway, give it a
 floor at the normal floor height and a ceiling at (or just above) the floor, and attach one of
-these **sector scripts** to it. Raising `ceilingHeight` opens the door, lowering it closes it.
+these **sector scripts** to it.
 
-All of these scripts share the same building blocks:
+All of these scripts are built on one call, the sector's built-in ceiling mover
+([06_lifts_and_platforms.md](06_lifts_and_platforms.md) covers the whole family):
 
 ```lua
-local door = sector:GetFloor(1)         -- the sector's first floor/ceiling interval
-local current = door.ceilingHeight      -- read the current ceiling
-door.ceilingHeight = current + 1        -- move it (throws if it would go below the floor)
+sector:MoveCeilingToFloor(1, speed, openHeight)  -- open: ceiling heads to `openHeight` above the floor
+sector:MoveCeilingToFloor(1, speed)              -- close: ceiling heads down to the floor
 ```
+
+The engine runs the move by itself every frame, so a script only starts it when the door should
+change state. Starting a new move replaces the old one, so a door can reverse halfway.
 
 Things to know:
 
-- The scripts always treat "closed" as floor + `MIN_GAP`, so the door starts closing itself
-  in play mode even if the sector was drawn with a tall ceiling. Keep `openHeight` above that.
-- A ceiling must stay **above** the floor, so a closed door rests `MIN_GAP` (0.01) above the
-  floor. It can't be exactly zero.
-- With several floor intervals in one sector, the ceiling also must not rise past the next
-  interval's floor. That is why every script writes the ceiling through `pcall`: an invalid value
-  is reported once and the door stops, instead of erroring every frame.
+- The `gap` (third argument) is measured from the floor, and the ceiling moves *away* from the
+  floor if it is closer than `gap`. That is why the same call both opens a closed door and closes
+  an open one.
+- The scripts close the door in `Start`, so it closes itself in play mode even if the sector was
+  drawn with a tall ceiling.
+- A ceiling can never touch its floor, so a closed door rests 0.01 above the floor.
+- With several floor intervals in one sector, the engine stops the ceiling at the next interval's
+  floor instead of erroring.
+- A `speed` of 0 or less raises an error.
 - Scripts with a **player** field need the player assigned in the inspector. You could look it up
   with `Game.FindEntity("Player")` in `Start` instead, but then renaming the entity breaks it.
-- The distance helper below works on the sector's outline, so it works for a door of any shape.
-  It returns `0` while the player is inside the door sector.
+- `sector:DistanceToSector(player)` measures to the sector's outline, so it works for a door of
+  any shape. It returns `0` while the player is inside the door sector.
 
 ---
 
@@ -36,72 +41,17 @@ Opens when the player comes near, closes when they leave.
 
 ```lua
 -- Scripts/Doors/AutoDoor.lua (sector script)
----@field player Entity @ Player
-player = nil
+public Entity player = nil
+public number openHeight = 40
+public number speed = 60
+public number triggerDistance = 30
 
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
+local isOpen = false
 
----@field speed number @ Open/Close Speed
-speed = 60
-
----@field triggerDistance number @ Trigger Distance
-triggerDistance = 30
-
-local MIN_GAP = 0.01
-
-local door
-local closedCeiling, openCeiling
-local broken = false
-
-local function MoveToward(current, target, maxDelta)
-    if math.abs(target - current) <= maxDelta then return target end
-    if target > current then return current + maxDelta end
-    return current - maxDelta
-end
-
--- Distance from (px, pz) to the sector's outline; 0 when the point is inside.
-local function DistanceToSector(px, pz)
-    local n = sector.vertexCount
-    local best = math.huge
-    local inside = false
-    local prev = sector:GetVertex(n)
-
-    for i = 1, n do
-        local cur = sector:GetVertex(i)
-
-        -- Closest point on the edge prev -> cur.
-        local ex, ey = cur.x - prev.x, cur.y - prev.y
-        local lenSq = ex * ex + ey * ey
-        local t = 0
-        if lenSq > 0 then
-            t = ((px - prev.x) * ex + (pz - prev.y) * ey) / lenSq
-            t = math.max(0, math.min(1, t))
-        end
-        local dx, dz = px - (prev.x + ex * t), pz - (prev.y + ey * t)
-        best = math.min(best, math.sqrt(dx * dx + dz * dz))
-
-        -- Even-odd test for "is the point inside the polygon".
-        if (cur.y > pz) ~= (prev.y > pz)
-            and px < (prev.x - cur.x) * (pz - cur.y) / (prev.y - cur.y) + cur.x then
-            inside = not inside
-        end
-
-        prev = cur
-    end
-
-    if inside then return 0 end
-    return best
-end
-
-local function SetCeiling(height)
-    height = math.max(height, door.floorHeight + MIN_GAP)
-
-    local ok, err = pcall(function() door.ceilingHeight = height end)
-    if not ok then
-        broken = true
-        Debug.LogError("AutoDoor (sector " .. sector.id .. "): " .. tostring(err))
-    end
+-- Starts the ceiling moving; the engine finishes the move on its own.
+local function SetOpen(open)
+    isOpen = open
+    sector:MoveCeilingToFloor(1, speed, open and openHeight or 0)
 end
 
 function Start()
@@ -109,24 +59,15 @@ function Start()
         Debug.LogWarning("AutoDoor in sector " .. sector.id .. " has no player assigned")
     end
 
-    door = sector:GetFloor(1)
-    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
-    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
-    closedCeiling = door.floorHeight + MIN_GAP
-    openCeiling = door.floorHeight + openHeight
+    -- Close whatever ceiling height the sector was authored with.
+    SetOpen(false)
 end
 
 function Update()
-    if broken or player == nil or not player.isValid then return end
+    if player == nil or not player.isValid then return end
 
-    local p = player.transform.position
-    local wanted = closedCeiling
-    if DistanceToSector(p.x, p.z) <= triggerDistance then wanted = openCeiling end
-
-    local current = door.ceilingHeight
-    if current ~= wanted then
-        SetCeiling(MoveToward(current, wanted, speed * GameTime.deltaTime))
-    end
+    local near = sector:DistanceToSectorSquared(player) <= triggerDistance * triggerDistance
+    if near ~= isOpen then SetOpen(near) end
 end
 ```
 
@@ -134,6 +75,7 @@ end
 
 - `openHeight` is measured above the floor, so the script keeps working if you later move the
   door sector's floor in the editor.
+- The move is only started when `near` changes, not every frame.
 - The door doesn't close on the player because the distance is `0` while they're inside it.
 
 ---
@@ -148,107 +90,44 @@ give it a name like `red` to lock it until a matching key pickup
 
 ```lua
 -- Scripts/Doors/UseDoor.lua (sector script)
----@field player Entity @ Player
-player = nil
+public Entity player = nil
+public number openHeight = 40
+public number speed = 60
+public number useDistance = 28
+public Key useKey = Key.E
+public string requiredKey = ""
+public number autoCloseDelay = 4
 
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
-
----@field speed number @ Open/Close Speed
-speed = 60
-
----@field useDistance number @ Use Distance
-useDistance = 28
-
----@field useKey string @ Use Key
-useKey = "E"
-
----@field requiredKey string @ Required Key (empty = unlocked)
-requiredKey = ""
-
----@field autoCloseDelay number @ Auto-close After (s, 0 = never)
-autoCloseDelay = 4
-
-local MIN_GAP = 0.01
-
-local door
-local closedCeiling, openCeiling
 local isOpen = false
 local openTimer = 0.0
-local broken = false
 
-local function MoveToward(current, target, maxDelta)
-    if math.abs(target - current) <= maxDelta then return target end
-    if target > current then return current + maxDelta end
-    return current - maxDelta
-end
-
-local function DistanceToSector(px, pz)
-    local n = sector.vertexCount
-    local best = math.huge
-    local inside = false
-    local prev = sector:GetVertex(n)
-
-    for i = 1, n do
-        local cur = sector:GetVertex(i)
-        local ex, ey = cur.x - prev.x, cur.y - prev.y
-        local lenSq = ex * ex + ey * ey
-        local t = 0
-        if lenSq > 0 then
-            t = ((px - prev.x) * ex + (pz - prev.y) * ey) / lenSq
-            t = math.max(0, math.min(1, t))
-        end
-        local dx, dz = px - (prev.x + ex * t), pz - (prev.y + ey * t)
-        best = math.min(best, math.sqrt(dx * dx + dz * dz))
-
-        if (cur.y > pz) ~= (prev.y > pz)
-            and px < (prev.x - cur.x) * (pz - cur.y) / (prev.y - cur.y) + cur.x then
-            inside = not inside
-        end
-
-        prev = cur
-    end
-
-    if inside then return 0 end
-    return best
-end
-
--- Keys are collected into the shared Scripts table by the Pickup script.
+-- Keys are collected into the shared Global table by the Pickup script.
 local function HasKey()
     if requiredKey == "" then return true end
-    return Scripts.keys ~= nil and Scripts.keys[requiredKey] == true
+    return Global.keys ~= nil and Global.keys[requiredKey] == true
 end
 
-local function SetCeiling(height)
-    height = math.max(height, door.floorHeight + MIN_GAP)
-
-    local ok, err = pcall(function() door.ceilingHeight = height end)
-    if not ok then
-        broken = true
-        Debug.LogError("UseDoor (sector " .. sector.id .. "): " .. tostring(err))
-    end
+-- Starts the ceiling moving; the engine finishes the move on its own.
+local function SetOpen(open)
+    isOpen = open
+    sector:MoveCeilingToFloor(1, speed, open and openHeight or 0)
 end
 
 function Start()
-    door = sector:GetFloor(1)
-    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
-    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
-    closedCeiling = door.floorHeight + MIN_GAP
-    openCeiling = door.floorHeight + openHeight
+    -- Close whatever ceiling height the sector was authored with.
+    SetOpen(false)
 end
 
 function Update()
-    if broken or player == nil or not player.isValid then return end
+    if player == nil or not player.isValid then return end
 
-    local dt = GameTime.deltaTime
-    local p = player.transform.position
-    local distance = DistanceToSector(p.x, p.z)
+    local distance = sector:DistanceToSector(player)
 
     if Input.GetKeyDown(useKey) and distance <= useDistance then
         if isOpen then
-            isOpen = false
+            SetOpen(false)
         elseif HasKey() then
-            isOpen = true
+            SetOpen(true)
             openTimer = autoCloseDelay
         else
             Debug.Print("This door needs the " .. requiredKey .. " key")
@@ -257,14 +136,8 @@ function Update()
 
     -- Close by itself, but never while the player is standing in the doorway.
     if isOpen and autoCloseDelay > 0 and distance > 0 then
-        openTimer = openTimer - dt
-        if openTimer <= 0 then isOpen = false end
-    end
-
-    local wanted = isOpen and openCeiling or closedCeiling
-    local current = door.ceilingHeight
-    if current ~= wanted then
-        SetCeiling(MoveToward(current, wanted, speed * dt))
+        openTimer = openTimer - GameTime.deltaTime
+        if openTimer <= 0 then SetOpen(false) end
     end
 end
 ```
@@ -273,7 +146,7 @@ end
 
 ## Switch and channel door
 
-Two scripts that talk through the shared `Scripts` table. A **switch** flips a named *channel*,
+Two scripts that talk through the shared `Global` table. A **switch** flips a named *channel*,
 and any **channel door** listening on that channel follows it. Several doors can share a channel,
 and one switch can drive them all.
 
@@ -283,20 +156,13 @@ and one switch can drive them all.
 
 ```lua
 -- Scripts/Doors/Switch.lua (entity script)
----@field player Entity @ Player
-player = nil
-
----@field channel string @ Channel
-channel = "door1"
-
----@field useDistance number @ Use Distance
-useDistance = 24
-
----@field useKey string @ Use Key
-useKey = "E"
+public Entity player = nil
+public string channel = "door1"
+public number useDistance = 24
+public Key useKey = Key.E
 
 function Start()
-    Scripts.channels = Scripts.channels or {}
+    Global.channels = Global.channels or {}
 end
 
 function Update()
@@ -308,8 +174,8 @@ function Update()
     local dx, dz = p.x - s.x, p.z - s.z
 
     if math.sqrt(dx * dx + dz * dz) <= useDistance then
-        Scripts.channels[channel] = not Scripts.channels[channel]
-        Debug.Print("Switch '" .. channel .. "' is now " .. (Scripts.channels[channel] and "ON" or "OFF"))
+        Global.channels[channel] = not Global.channels[channel]
+        Debug.Print("Switch '" .. channel .. "' is now " .. (Global.channels[channel] and "ON" or "OFF"))
     end
 end
 ```
@@ -320,59 +186,34 @@ end
 
 ```lua
 -- Scripts/Doors/ChannelDoor.lua (sector script)
----@field channel string @ Channel
-channel = "door1"
+public string channel = "door1"
+public number openHeight = 40
+public number speed = 60
 
----@field openHeight number @ Open Height (above the floor)
-openHeight = 40
+local isOpen = false
 
----@field speed number @ Open/Close Speed
-speed = 60
-
-local MIN_GAP = 0.01
-
-local door
-local closedCeiling, openCeiling
-local broken = false
-
-local function MoveToward(current, target, maxDelta)
-    if math.abs(target - current) <= maxDelta then return target end
-    if target > current then return current + maxDelta end
-    return current - maxDelta
+-- Starts the ceiling moving; the engine finishes the move on its own.
+local function SetOpen(open)
+    isOpen = open
+    sector:MoveCeilingToFloor(1, speed, open and openHeight or 0)
 end
 
 function Start()
-    door = sector:GetFloor(1)
-    -- Closed is always "just above the floor", whatever ceiling the sector was authored with.
-    -- (Using the authored ceiling broke doors built tall: "open" ended up lower than "closed".)
-    closedCeiling = door.floorHeight + MIN_GAP
-    openCeiling = door.floorHeight + openHeight
+    -- Close whatever ceiling height the sector was authored with.
+    SetOpen(false)
 end
 
 function Update()
-    if broken then return end
-
-    local isOn = Scripts.channels ~= nil and Scripts.channels[channel] == true
-    local wanted = isOn and openCeiling or closedCeiling
-    local current = door.ceilingHeight
-
-    if current ~= wanted then
-        local height = math.max(MoveToward(current, wanted, speed * GameTime.deltaTime), door.floorHeight + MIN_GAP)
-
-        local ok, err = pcall(function() door.ceilingHeight = height end)
-        if not ok then
-            broken = true
-            Debug.LogError("ChannelDoor (sector " .. sector.id .. "): " .. tostring(err))
-        end
-    end
+    local isOn = Global.channels ~= nil and Global.channels[channel] == true
+    if isOn ~= isOpen then SetOpen(isOn) end
 end
 ```
 
 **Notes**
 
-- `Scripts` is shared by every script and cleared each time the level starts, so channels always
+- `Global` is shared by every script and starts empty each time the game starts, so channels always
   begin "off".
 - The switch and door never reference each other. Any script can flip a channel:
   [17_level_flow.md](17_level_flow.md) uses one to open an exit once enough enemies are dead.
-- `Scripts.channels[channel] = not Scripts.channels[channel]` works even the first time, because
+- `Global.channels[channel] = not Global.channels[channel]` works even the first time, because
   a missing key is `nil` and `not nil` is `true`.

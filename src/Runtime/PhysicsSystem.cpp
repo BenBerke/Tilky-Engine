@@ -475,14 +475,21 @@ namespace {
 
         const bool wallStartsAtFeet = spanBottom <= feetHeight + GROUND_CONTACT_SLOP;
 
-        const bool canStep =
+        const bool isClimbableStep =
                 stepSize > 0.0f &&
                 wallStartsAtFeet &&
                 stepHeight > Constants::Epsilon &&
-                stepHeight <= stepSize + Constants::Epsilon &&
-                velocityIntoWall < -Constants::Epsilon;
+                stepHeight <= stepSize + Constants::Epsilon;
 
-        if (canStep) {
+        // A step the body could climb never pushes it sideways: walking into
+        // it steps up, anything else leaves it alone. Right after stepping
+        // down (LevelSystem drops the body once its centre crosses the
+        // edge), the sphere still overhangs the step it left; pushing it out
+        // of that riser shoved the body - and the camera - forward by up to
+        // a full radius in one frame.
+        if (isClimbableStep && velocityIntoWall >= -Constants::Epsilon) return false;
+
+        if (isClimbableStep) {
             const float verticalCorrection = stepHeight + PENETRATION_SLOP;
 
             transform.AddPosition({0.0f, verticalCorrection, 0.0f});
@@ -513,7 +520,7 @@ namespace {
 }
 
 namespace PhysicsSystem {
-    void Run(Level& level) {
+    void Run(Level& level, Contacts& contacts) {
         ZoneScopedN("PhysicsSystem::Run");
 
         for (ComponentRigidbody& rigidbody : level.rigidbodies.components) {
@@ -624,25 +631,20 @@ namespace PhysicsSystem {
 
             const float selfRadius = std::max(0.0f, selfCollider.scale.x);
 
-            Vector3 selfPosition = {
-                selfTransform->position.x,
-                selfTransform->position.y + selfRadius,
-                selfTransform->position.z
+            // An entity's colliders form one compound shape: each one sits at
+            // its offset and pushes the whole entity.
+            const auto selfCentre = [&] {
+                const Vector3 base = selfTransform->LocalToWorld(selfCollider.offset);
+                return Vector3{base.x, base.y + selfRadius, base.z};
             };
+
+            Vector3 selfPosition = selfCentre();
 
             {
                 ZoneScopedN("Entity narrowphase");
 
                 for (const ID otherID : allEntities) {
                     if (otherID == selfCollider.ownerID) continue;
-
-                    ComponentCollider* otherCollider = level.colliders.Get(otherID);
-
-                    if (otherCollider == nullptr ||
-                        !otherCollider->isActive ||
-                        otherCollider->isTrigger ||
-                        otherCollider->type != COLLIDERTYPE_SPHERE) continue;
-
 
                     ComponentTransform* otherTransform = level.transforms.Get(otherID);
                     if (otherTransform == nullptr) [[unlikely]] continue;
@@ -652,53 +654,63 @@ namespace PhysicsSystem {
 
                     if (!otherIsStatic && selfCollider.ownerID > otherID) continue;
 
-                    const float otherRadius = std::max(0.0f, otherCollider->scale.x);
-                    const float radiusSum = selfRadius + otherRadius;
+                    for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
+                        const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
-                    const Vector3 otherPosition = {
-                        otherTransform->position.x,
-                        otherTransform->position.y + otherRadius,
-                        otherTransform->position.z
-                    };
+                        if (!otherCollider->isActive ||
+                            otherCollider->isTrigger ||
+                            otherCollider->type != COLLIDERTYPE_SPHERE) continue;
 
-                    const __m128 delta = _mm_sub_ps(selfPosition.reg, otherPosition.reg);
-                    const __m128 distanceSqReg = dot3_ss(delta, delta);
-                    const float distanceSq = _mm_cvtss_f32(distanceSqReg);
+                        const float otherRadius = std::max(0.0f, otherCollider->scale.x);
+                        const float radiusSum = selfRadius + otherRadius;
 
-                    if (distanceSq >= radiusSum * radiusSum) continue;
+                        const Vector3 otherBase = otherTransform->LocalToWorld(otherCollider->offset);
+                        const Vector3 otherPosition = {
+                            otherBase.x,
+                            otherBase.y + otherRadius,
+                            otherBase.z
+                        };
 
-                    const __m128 safeDistanceSq = _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
+                        const __m128 delta = _mm_sub_ps(selfPosition.reg, otherPosition.reg);
+                        const __m128 distanceSqReg = dot3_ss(delta, delta);
+                        const float distanceSq = _mm_cvtss_f32(distanceSqReg);
 
-                    __m128 inverseDistance = rsqrt_nr_ss(safeDistanceSq);
-                    inverseDistance = TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
+                        if (distanceSq >= radiusSum * radiusSum) continue;
 
-                    const float distance = distanceSq * _mm_cvtss_f32(inverseDistance);
-                    const float penetration = radiusSum - distance;
+                        const __m128 safeDistanceSq = _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
 
-                    if (penetration <= Constants::Epsilon) continue;
+                        __m128 inverseDistance = rsqrt_nr_ss(safeDistanceSq);
+                        inverseDistance = TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
 
-                    const __m128 calculatedDirection = _mm_mul_ps(delta, inverseDistance);
-                    const __m128 fallbackDirection = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
-                    const __m128 hasDirection = _mm_cmpgt_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
-                    const __m128 hasDirectionBroad = TILKY_MM_SHUFFLE_PS(hasDirection, hasDirection, _MM_SHUFFLE(0, 0, 0, 0));
-                    const __m128 pushDirection = blend_ps(fallbackDirection, calculatedDirection, hasDirectionBroad);
+                        const float distance = distanceSq * _mm_cvtss_f32(inverseDistance);
+                        const float penetration = radiusSum - distance;
 
-                    const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
-                    const __m128 correction = _mm_mul_ps(pushDirection, _mm_set1_ps(correctedPenetration));
+                        if (penetration <= Constants::Epsilon) continue;
 
-                    const float selfPush = otherIsStatic ? 1.0f : 0.5f;
+                        contacts.collisions.push_back({
+                            std::min(selfCollider.ownerID, otherID),
+                            std::max(selfCollider.ownerID, otherID)
+                        });
 
-                    selfTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(selfPush))));
+                        const __m128 calculatedDirection = _mm_mul_ps(delta, inverseDistance);
+                        const __m128 fallbackDirection = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
+                        const __m128 hasDirection = _mm_cmpgt_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
+                        const __m128 hasDirectionBroad = TILKY_MM_SHUFFLE_PS(hasDirection, hasDirection, _MM_SHUFFLE(0, 0, 0, 0));
+                        const __m128 pushDirection = blend_ps(fallbackDirection, calculatedDirection, hasDirectionBroad);
 
-                    if (!otherIsStatic)
-                        otherTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f))));
+                        const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
+                        const __m128 correction = _mm_mul_ps(pushDirection, _mm_set1_ps(correctedPenetration));
+
+                        const float selfPush = otherIsStatic ? 1.0f : 0.5f;
+
+                        selfTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(selfPush))));
+
+                        if (!otherIsStatic)
+                            otherTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f))));
 
 
-                    selfPosition = {
-                        selfTransform->position.x,
-                        selfTransform->position.y + selfRadius,
-                        selfTransform->position.z
-                    };
+                        selfPosition = selfCentre();
+                    }
                 }
             }
 
@@ -728,9 +740,13 @@ namespace PhysicsSystem {
             {
                 ZoneScopedN("Sector room clamp");
 
+                // This collider's bottom; the entity's feet when it has no offset.
+                const Vector3 colliderBase = selfTransform->LocalToWorld(selfCollider.offset);
+                const float baseAboveFeet = colliderBase.y - selfTransform->position.y;
+
                 const Vector2 feetPoint = {
-                    selfTransform->position.x,
-                    selfTransform->position.z
+                    colliderBase.x,
+                    colliderBase.z
                 };
 
                 if (sector.vertices.empty() || !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) continue;
@@ -773,9 +789,10 @@ namespace PhysicsSystem {
                     });
                 };
 
-                const float bodyHeight = std::max(std::abs(selfTransform->scale.y), selfRadius * 2.0f);
+                // The entity's top stays at feet + scale.y, whichever collider this is.
+                const float bodyHeight = std::max(std::abs(selfTransform->scale.y) - baseAboveFeet, selfRadius * 2.0f);
 
-                const float feetHeight = selfTransform->position.y;
+                const float feetHeight = colliderBase.y;
                 const float headHeight = feetHeight + bodyHeight;
 
                 const int floorIndex = FindBestSectorFloor(
@@ -799,7 +816,7 @@ namespace PhysicsSystem {
                 const Vector3 floorNormal = getFloorNormal(floor.floor);
                 const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
 
-                float correctedFeetHeight = selfTransform->position.y;
+                float correctedFeetHeight = feetHeight;
                 float correctedHeadHeight = correctedFeetHeight + bodyHeight;
 
                 if (correctedFeetHeight < floorHeight) {
@@ -842,7 +859,7 @@ namespace PhysicsSystem {
                         selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * groundSeparatingSpeed;
                 }
 
-                selfTransform->relativeHeight = correctedFeetHeight - floorHeight;
+                selfTransform->relativeHeight = correctedFeetHeight - baseAboveFeet - floorHeight;
             }
         }
 
@@ -913,6 +930,84 @@ namespace PhysicsSystem {
 
                 std::ranges::sort(allWalls, std::less<const Wall*>{});
                 allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
+            }
+        }
+
+        {
+            ZoneScopedN("Trigger overlaps");
+
+            // After every push-out above, so overlaps are tested at the
+            // frame's final positions. Triggers don't need a rigidbody -
+            // a static trigger volume is the common case.
+            for (const ComponentCollider& trigger : colliders.ActiveSpheres()) {
+                if (!trigger.isTrigger) continue;
+
+                const ComponentTransform* triggerTransform = level.transforms.Get(trigger.ownerID);
+                if (triggerTransform == nullptr) [[unlikely]] continue;
+
+                const int sectorIndex = triggerTransform->sectorIndex;
+                if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+                const Sector& sector = level.sectors[sectorIndex];
+
+                allEntities.clear();
+                allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
+
+                for (const Sector* neighbour : sector.neighbors) {
+                    if (neighbour == nullptr) [[unlikely]] continue;
+                    allEntities.insert(allEntities.end(), neighbour->entitiesInside.begin(), neighbour->entitiesInside.end());
+                }
+
+                std::ranges::sort(allEntities);
+                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
+
+                const float triggerRadius = std::max(0.0f, trigger.scale.x);
+
+                const Vector3 triggerBase = triggerTransform->LocalToWorld(trigger.offset);
+                const Vector3 triggerPosition = {
+                    triggerBase.x,
+                    triggerBase.y + triggerRadius,
+                    triggerBase.z
+                };
+
+                for (const ID otherID : allEntities) {
+                    if (otherID == trigger.ownerID) continue;
+
+                    const ComponentTransform* otherTransform = level.transforms.Get(otherID);
+                    if (otherTransform == nullptr) [[unlikely]] continue;
+
+                    // Any of the other entity's colliders counts; the pair is
+                    // reported per entity, and the caller dedupes (two
+                    // overlapping triggers, or several colliders, find each
+                    // other more than once).
+                    for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
+                        const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
+
+                        if (!otherCollider->isActive ||
+                            otherCollider->type != COLLIDERTYPE_SPHERE) continue;
+
+                        const float otherRadius = std::max(0.0f, otherCollider->scale.x);
+                        const float radiusSum = triggerRadius + otherRadius;
+
+                        const Vector3 otherBase = otherTransform->LocalToWorld(otherCollider->offset);
+                        const Vector3 otherPosition = {
+                            otherBase.x,
+                            otherBase.y + otherRadius,
+                            otherBase.z
+                        };
+
+                        const __m128 delta = _mm_sub_ps(triggerPosition.reg, otherPosition.reg);
+                        const float distanceSq = _mm_cvtss_f32(dot3_ss(delta, delta));
+
+                        if (distanceSq >= radiusSum * radiusSum) continue;
+
+                        contacts.triggers.push_back({
+                            std::min(trigger.ownerID, otherID),
+                            std::max(trigger.ownerID, otherID)
+                        });
+                        break;
+                    }
+                }
             }
         }
     }

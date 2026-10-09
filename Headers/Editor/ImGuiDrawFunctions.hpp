@@ -22,7 +22,9 @@ namespace ImGuiDrawFunctions {
 
         int selectedComponent = -1;
         int componentToAdd = CMP_SPRITE;
-        ScriptInstanceID selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
+        // Which instance of selectedComponent is being edited: a ScriptInstanceID
+        // for scripts, a ComponentInstanceID for everything else.
+        std::uint64_t selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
     };
 
     // ── Spacing utility ───────────────────────────────────────────────────────
@@ -46,6 +48,10 @@ namespace ImGuiDrawFunctions {
     void EndSection();
     bool DangerButton(const char *label);
     void DrawInspectorHeader(const char *kind, const char *detail = nullptr);
+
+    // The 8 directional texture slots, laid out as a compass for 90/45-degree
+    // sprites. Shared by the Sprite inspector and the flipbook editor.
+    void DrawDirectionalTextureSlots(std::array<std::string, 8>& textures, SideCount sideCount);
 
     // ── Runtime-only HUD overlay ──────────────────────────────────────────────
     // Compact keybind hint shown only in Runtime Editor.

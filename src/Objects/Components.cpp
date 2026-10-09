@@ -6,11 +6,17 @@
 
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Entity.hpp"
 
 void ComponentTransform::SetPosition(const Vector3 &position) {
     this->position = position;
     isDirty = true;
+}
+
+Vector3 ComponentTransform::LocalToWorld(const Vector3& offset) const {
+    if (offset.x == 0.0f && offset.y == 0.0f && offset.z == 0.0f) return position;
+    return position + QuaternionMath::Rotate(rotation, offset);
 }
 
 void ComponentTransform::AddPosition(const Vector3& position) {
@@ -57,9 +63,28 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
     return true;
 }
 
-void ComponentAudioSource::PlaySound() const {
+void ComponentAudioSource::PlaySound() {
     if (soundFileName.empty()) return;
+    isHeld = false;
     SoundManager::PlaySoundOnSource(name, soundFileName);
+}
+
+void ComponentAudioSource::StopSound() {
+    isHeld = true;
+    SoundManager::StopSource(name);
+}
+
+void ComponentAudioSource::PauseSound() {
+    isHeld = true;
+    SoundManager::PauseSource(name);
+}
+
+void ComponentAudioSource::ResumeSound() {
+    if (SoundManager::ResumeSource(name)) isHeld = false;
+}
+
+bool ComponentAudioSource::IsPlaying() const {
+    return SoundManager::IsSourcePlaying(name);
 }
 
 void ComponentAudioSource::SetSourcePitch(const float _pitch) const {
@@ -72,6 +97,30 @@ void ComponentAudioSource::SetSourceGain(const float _gain) const {
 
 void ComponentAudioSource::SetSourceLooping(const bool _looping) const {
     SoundManager::SetSourceLooping(this->name, _looping);
+}
+
+void ComponentAudioSource::SetSourceReferenceDistance(const float distance) const {
+    SoundManager::SetSourceReferenceDistance(this->name, distance);
+}
+
+void ComponentAudioSource::SetSourceMaxDistance(const float distance) const {
+    SoundManager::SetSourceMaxDistance(this->name, distance);
+}
+
+void ComponentAudioSource::SetSourceRollOffFactor(const float factor) const {
+    SoundManager::SetSourceRollOffFactor(this->name, factor);
+}
+
+void ComponentAudioSource::SetSourceInnerConeAngle(const float angle) const {
+    SoundManager::SetSourceInnerConeAngle(this->name, angle);
+}
+
+void ComponentAudioSource::SetSourceOuterConeAngle(const float angle) const {
+    SoundManager::SetSourceOuterConeAngle(this->name, angle);
+}
+
+void ComponentAudioSource::SetSourceOuterGain(const float _outerGain) const {
+    SoundManager::SetSourceOuterGain(this->name, _outerGain);
 }
 
 void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {

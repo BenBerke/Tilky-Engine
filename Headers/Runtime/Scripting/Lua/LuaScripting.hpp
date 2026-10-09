@@ -3,6 +3,7 @@
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Runtime/Scripting/IScripting.hpp"
+#include "Headers/Runtime/PhysicsSystem.hpp"
 
 #include <string>
 #include <vector>
@@ -27,6 +28,10 @@ public:
     static void RegisterComponentBindings(sol::state& lua);
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);
+
+    // The Lua Key table as enum options (name, scancode), for public fields
+    // typed `Key`. Defined in LuaInputBindings.cpp.
+    static std::vector<ScriptEnumOption> KeyEnumOptions();
     static void RegisterMathBindings(sol::state& lua);
 
     // A float in [0, 1] from the same generator as mathT.RandomF, so
@@ -38,6 +43,26 @@ public:
     // once per frame by LevelSystem::Update, after positions and sector
     // membership have been updated for the frame.
     void DispatchSectorOccupancyEvents(Level& level);
+
+    // Fires OnSectorChange(sector) on entity scripts whose entity is now in
+    // a different sector than at the last call (sector is nil once the
+    // entity leaves the map). Called by LevelSystem::Update right after
+    // DispatchSectorOccupancyEvents.
+    void DispatchSectorChangeEvents(Level& level);
+
+    // Fires OnCollisionEnter/OnCollision/OnCollisionExit(other) and
+    // OnTriggerEnter/OnTrigger/OnTriggerExit(other) on entity scripts, from
+    // this frame's contacts diffed against last frame's. `contacts` may hold
+    // duplicates. Called once per frame by LevelSystem::Update, after physics.
+    void DispatchContactEvents(Level& level, const PhysicsSystem::Contacts& contacts);
+
+    // Calls the global function `functionName(argument)` on every enabled
+    // script of entity `entityID` that defines one, e.g. a flipbook frame
+    // event. Looked up by name at call time, so it works for any function and
+    // after a script reloads. Returns false if none of the entity's scripts
+    // (enabled or not) defines it.
+    bool DispatchEntityEvent(Level& level, ID entityID, const std::string& functionName, const std::string& argument);
+
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
 

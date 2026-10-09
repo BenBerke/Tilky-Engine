@@ -4,6 +4,8 @@
 
 #ifndef TILKY_ENGINE_COMPONENTS_HPP
 #define TILKY_ENGINE_COMPONENTS_HPP
+#include <algorithm>
+#include <type_traits>
 #include <vector>
 #include <unordered_map>
 
@@ -27,6 +29,7 @@ enum ComponentType {
     CMP_COLLIDER,
     CMP_RIGIDBODY,
     CMP_MODEL,
+    CMP_FLIPBOOK,
 
     CMP_NORMAL_COUNT,
 
@@ -42,18 +45,23 @@ enum ComponentType {
 
 struct ComponentUIText {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     std::string text;
 };
 
 struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     std::string texture;
+
+    bool isActive = true; // false = not drawn
 };
 
 struct ComponentUITransform {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     Vector2 anchorMin = {0.5f, 0.5f};
     Vector2 anchorMax = {0.5f, 0.5f};
@@ -77,12 +85,18 @@ struct ComponentUITransform {
 // share its GPU data; see OpenGLModel.cpp.
 struct ComponentModel {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // Local position relative to the owner's Transform, turned with its
+    // rotation. Lets several of these sit at different spots on one entity.
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
 
     std::string fileName;
 };
 
 struct ComponentRigidbody {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     bool isStatic = false;
     float mass = 1.0f;
@@ -107,6 +121,11 @@ enum ColliderType {
 struct ComponentCollider {
     // Sphere Collider
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // Local position relative to the owner's Transform, turned with its
+    // rotation. Lets several of these sit at different spots on one entity.
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
 
     ColliderType type = COLLIDERTYPE_SPHERE;
 
@@ -121,6 +140,7 @@ struct ComponentCollider {
 
 struct ComponentPlayerController {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     // Physical player/camera-body position.
     // x = world/map X
@@ -142,7 +162,7 @@ struct ComponentPlayerController {
     float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;
 
-    //todo Max-Min pitch is acting weirdly
+    //todo TILKYTODO Max-Min pitch is acting weirdly
     float minPitch = -89.0f, maxPitch = 89.0f;
     float minYaw =  .0f, maxYaw = 360.0f;
 
@@ -157,6 +177,7 @@ struct ComponentPlayerController {
 
 struct ComponentCamera {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     bool isActive = true;
 
@@ -172,7 +193,7 @@ struct ComponentCamera {
     float farPlane = 10000.0f;
 
     bool smoothStep = true; // When true, smoothly move up/down steps instead of teleporting
-    float smoothingStrength = 1.0f;
+    float smoothingStrength = 4.8f;
 
     // Read-only, do not change in game via scripts
     float smoothStepStartY = 0.0f;
@@ -268,6 +289,27 @@ public:
         return true;
     }
 
+    // Moves a script to position newIndex among its owner's scripts. Scripts
+    // keep their per-owner order in `components` itself.
+    bool MoveOnOwner(const ScriptInstanceID instanceID, const size_t newIndex) {
+        const ComponentScript* script = GetByID(instanceID);
+        if (script == nullptr) return false;
+        const ID ownerID = script->ownerID;
+
+        std::vector<size_t> ownerIndices;
+        for (size_t i = 0; i < components.size(); ++i) if (components[i].ownerID == ownerID) ownerIndices.push_back(i);
+        if (newIndex >= ownerIndices.size()) return false;
+
+        const size_t from = static_cast<size_t>(script - components.data());
+        const size_t to = ownerIndices[newIndex];
+        if (from == to) return true;
+
+        ComponentScript moved = std::move(components[from]);
+        components.erase(components.begin() + static_cast<std::ptrdiff_t>(from));
+        components.insert(components.begin() + static_cast<std::ptrdiff_t>(to), std::move(moved));
+        return true;
+    }
+
     bool RemoveAll(const ID ownerID) {
         const std::size_t previousSize = components.size();
 
@@ -297,8 +339,13 @@ private:
 // OpenAL Audio source. What sound it will play can change during gameplay.
 struct ComponentAudioSource {
     ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
-    std::string name; // OpenAL source name, e.g. "entity_4_audio"
+    // Local position relative to the owner's Transform, turned with its
+    // rotation. Lets several of these sit at different spots on one entity.
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
+
+    std::string name; // OpenAL source name, e.g. "entity_4_audio_2" (owner, instance)
     std::string soundFileName;
 
     float pitch = 1.0f;
@@ -312,17 +359,40 @@ struct ComponentAudioSource {
     float rollOffFactor = 1.0f;       // How fast the sound fades (1.0 is "real")
 
     // Sound Cone (Directional audio behavior)
-    float innerConeAngle = 360.0f;    // Inside this yaw, sound is full volume
+    // The cone points along the owner's transform rotation (local +Z). Angles are the full
+    // cone width in degrees, 360 means no cone.
+    float innerConeAngle = 360.0f;    // Inside this cone, sound is full volume
     float outerConeAngle = 360.0f;    // Outside this, volume is 'outerGain'
     float outerGain = 0.0f;           // Volume multiplier outside the cone
 
-    void PlaySound() const;
+    // Runtime only, not saved. Set by StopSound/PauseSound so AudioSystem
+    // doesn't restart a looping source the script silenced; PlaySound and
+    // ResumeSound clear it.
+    bool isHeld = false;
+
+    void PlaySound();
+    void StopSound();
+    void PauseSound();
+    void ResumeSound();
+    [[nodiscard]] bool IsPlaying() const;
 
     void SetSourcePitch(float _pitch) const;
 
     void SetSourceGain(float _gain) const;
 
     void SetSourceLooping(bool _looping) const;
+
+    void SetSourceReferenceDistance(float distance) const;
+
+    void SetSourceMaxDistance(float distance) const;
+
+    void SetSourceRollOffFactor(float factor) const;
+
+    void SetSourceInnerConeAngle(float angle) const;
+
+    void SetSourceOuterConeAngle(float angle) const;
+
+    void SetSourceOuterGain(float _outerGain) const;
 
     void SetSourcePosition(const Vector3& position) const;
 
@@ -333,6 +403,7 @@ struct ComponentAudioSource {
 struct Sector;
 struct ComponentTransform {
     ID ownerID = -1;
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     /*
      * relativeHeight = height relative to the current sector floor
@@ -343,7 +414,6 @@ struct ComponentTransform {
     Quaternion rotation = Quaternion::Identity();
 
     float relativeHeight = 0.0f;
-    Vector2 forward = {1.0f, 0.0f};
 
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 
@@ -354,6 +424,9 @@ struct ComponentTransform {
     void AddPosition(const Vector3& position);
     void SetPosition(const Vector3& position);
     bool UpdateObjectSectorAndFloor(std::vector<Sector>& sectors);
+
+    // World position of a component offset (Sprite/Model/Collider/AudioSource::offset).
+    [[nodiscard]] Vector3 LocalToWorld(const Vector3& offset) const;
 };
 
 enum SideCount {
@@ -364,6 +437,11 @@ enum SideCount {
 
 struct ComponentSprite {
     ID ownerID = -1;
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // Local position relative to the owner's Transform, turned with its
+    // rotation. Lets several of these sit at different spots on one entity.
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
 
     std::array<std::string,8> textureFileNames;
 
@@ -372,73 +450,204 @@ struct ComponentSprite {
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
     bool isStatic;
+    bool isActive = true; // false = not uploaded to the sprite SSBO, so not drawn
 };
 
+// Plays a flipbook (.fpk, see FlipbookAsset.hpp) on one of the owner's
+// Sprites, or on a UI entity, one of its UI Sprites. It never draws
+// anything: while the game runs, FlipbookSystem copies the current frame's
+// textures into that sprite's textureFileNames (a UI Sprite gets slot 0).
+// The sprite's side count is left alone - the flipbook uses whatever the
+// sprite has.
+struct ComponentFlipbook {
+    ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // Assets-relative .fpk reference, extension included, e.g. "Animations/walk.fpk".
+    std::string flipbookFileName;
+
+    // The owner's sprite this drives - a ComponentSprite, or a
+    // ComponentUISprite when the owner is a UI entity. INVALID (or a sprite
+    // that's gone) means the owner's first one.
+    ComponentInstanceID spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    float speed = 1.0f; // playback rate multiplier, 1 = the flipbook's own timing
+
+    // Runtime only, not saved. Driven by FlipbookSystem and the Lua API.
+    int currentFrame = 0;
+    float frameTime = 0.0f;     // seconds spent on currentFrame
+    int pingPongDirection = 1;  // +1 forward, -1 backward (PingPong only)
+    bool playing = false;
+    bool applyPending = false;  // copy currentFrame to the sprite on the next update
+    bool eventPending = false;  // fire currentFrame's event on the next update
+};
+
+// Transform and UITransform place the entity, so there's only ever one.
+// Every other component can be added any number of times.
+template<typename T>
+inline constexpr bool IsSingleComponent = std::is_same_v<T, ComponentTransform> || std::is_same_v<T, ComponentUITransform>;
+
+// Holds every component of one type. An entity can own several (except
+// Transform/UITransform - see Entity::AddComponent); each gets an instanceID
+// that is unique within this storage and never reused while the level is
+// loaded, so references to "this exact AudioSource" survive siblings being
+// removed or reordered. `components` is in no particular order - systems
+// that just process everything iterate it directly. Per-owner order (which
+// one is "first", the inspector order) is kept in ownerToInstances.
 template<typename T>
 struct ComponentStorage {
     std::vector<T> components;
-    std::unordered_map<ID, size_t> entityToIndex;
 
-    T* Get(const ID id) {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return nullptr;
+    // The owner's first component, or nullptr.
+    T* Get(const ID ownerID) {
+        const auto it = ownerToInstances.find(ownerID);
+        if (it == ownerToInstances.end() || it->second.empty()) return nullptr;
+        return GetInstance(it->second.front());
+    }
+
+    const T* Get(const ID ownerID) const {
+        const auto it = ownerToInstances.find(ownerID);
+        if (it == ownerToInstances.end() || it->second.empty()) return nullptr;
+        return GetInstance(it->second.front());
+    }
+
+    T* GetInstance(const ComponentInstanceID instanceID) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return nullptr;
         return &components[it->second];
     }
 
-    const T* Get(ID id) const {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return nullptr;
+    const T* GetInstance(const ComponentInstanceID instanceID) const {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return nullptr;
         return &components[it->second];
     }
 
-    T& Add(const ID id) {
-        if (T* existing = Get(id)) return *existing;
-        T component {};
-        component.ownerID = id;
-
-        const size_t index = components.size();
-        components.push_back(component);
-        entityToIndex[id] = index;
-
-        return components.back();
+    // All of the owner's components, in order. The pointers are only valid
+    // until the next Add/Remove on this storage.
+    std::vector<T*> GetAll(const ID ownerID) {
+        std::vector<T*> result;
+        for (const ComponentInstanceID instanceID : InstancesOf(ownerID)) result.push_back(GetInstance(instanceID));
+        return result;
     }
 
-    bool Remove(const ID id) {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return false;
+    std::vector<const T*> GetAll(const ID ownerID) const {
+        std::vector<const T*> result;
+        for (const ComponentInstanceID instanceID : InstancesOf(ownerID)) result.push_back(GetInstance(instanceID));
+        return result;
+    }
+
+    // The owner's instance IDs, in order. Copy it before adding or removing.
+    const std::vector<ComponentInstanceID>& InstancesOf(const ID ownerID) const {
+        static const std::vector<ComponentInstanceID> none;
+        const auto it = ownerToInstances.find(ownerID);
+        return it == ownerToInstances.end() ? none : it->second;
+    }
+
+    // Position of instanceID among its owner's components (0 = first), or -1.
+    [[nodiscard]] int IndexOnOwner(const ComponentInstanceID instanceID) const {
+        const T* component = GetInstance(instanceID);
+        if (component == nullptr) return -1;
+        const std::vector<ComponentInstanceID>& list = InstancesOf(component->ownerID);
+        const auto it = std::find(list.begin(), list.end(), instanceID);
+        return it == list.end() ? -1 : static_cast<int>(it - list.begin());
+    }
+
+    [[nodiscard]] bool Has(const ID ownerID) const {
+        const auto it = ownerToInstances.find(ownerID);
+        return it != ownerToInstances.end() && !it->second.empty();
+    }
+
+    [[nodiscard]] size_t Count(const ID ownerID) const { return InstancesOf(ownerID).size(); }
+
+    // Always adds a new component, after the owner's existing ones.
+    // requestedID is kept when it's free (loading, undo), otherwise a new one
+    // is generated.
+    T& Add(const ID ownerID, const ComponentInstanceID requestedID = INVALID_COMPONENT_INSTANCE_ID) {
+        T component{};
+        component.ownerID = ownerID;
+        component.instanceID = requestedID;
+        return Insert(component);
+    }
+
+    // Adds a component that already has its data (loading, copy-paste).
+    // Keeps component.instanceID when it's free.
+    T& InsertLoaded(const T& component) { return Insert(component); }
+
+    bool RemoveInstance(const ComponentInstanceID instanceID) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return false;
 
         const size_t removeIndex = it->second;
+        const ID ownerID = components[removeIndex].ownerID;
         const size_t lastIndex = components.size() - 1;
 
         if (removeIndex != lastIndex) {
-            components[removeIndex] = components[lastIndex];
-
-            const ID movedOwnerID = components[removeIndex].ownerID;
-            entityToIndex[movedOwnerID] = removeIndex;
+            components[removeIndex] = std::move(components[lastIndex]);
+            instanceToIndex[components[removeIndex].instanceID] = removeIndex;
         }
 
         components.pop_back();
-        entityToIndex.erase(id);
+        instanceToIndex.erase(instanceID);
+        ForgetInstance(ownerID, instanceID);
 
         return true;
     }
 
-    bool Has(const ID id) const {
-        return entityToIndex.contains(id);
+    // Removes every component the owner has. False if it had none.
+    bool RemoveAll(const ID ownerID) {
+        const std::vector<ComponentInstanceID> list = InstancesOf(ownerID);
+        for (const ComponentInstanceID instanceID : list) RemoveInstance(instanceID);
+        return !list.empty();
+    }
+
+    // Moves instanceID to position newIndex among its owner's components.
+    bool MoveOnOwner(const ComponentInstanceID instanceID, const size_t newIndex) {
+        const T* component = GetInstance(instanceID);
+        if (component == nullptr) return false;
+        std::vector<ComponentInstanceID>& list = ownerToInstances[component->ownerID];
+        const auto it = std::find(list.begin(), list.end(), instanceID);
+        if (it == list.end() || newIndex >= list.size()) return false;
+        list.erase(it);
+        list.insert(list.begin() + static_cast<std::ptrdiff_t>(newIndex), instanceID);
+        return true;
     }
 
     void Clear() {
         components.clear();
-        entityToIndex.clear();
+        instanceToIndex.clear();
+        ownerToInstances.clear();
+        nextInstanceID = 1;
     }
 
-    T& InsertLoaded(const T& component) {
-        const size_t index = components.size();
+protected:
+    std::unordered_map<ComponentInstanceID, size_t> instanceToIndex;
+    std::unordered_map<ID, std::vector<ComponentInstanceID>> ownerToInstances;
+    ComponentInstanceID nextInstanceID = 1;
 
-        components.push_back(component);
-        entityToIndex[component.ownerID] = index;
+    T& Insert(T component) {
+        ComponentInstanceID instanceID = component.instanceID;
+        if (instanceID == INVALID_COMPONENT_INSTANCE_ID || instanceToIndex.contains(instanceID)) {
+            while (instanceToIndex.contains(nextInstanceID)) ++nextInstanceID;
+            instanceID = nextInstanceID++;
+        } else if (instanceID >= nextInstanceID) {
+            nextInstanceID = instanceID + 1;
+        }
+        component.instanceID = instanceID;
+
+        const ID ownerID = component.ownerID;
+        components.push_back(std::move(component));
+        instanceToIndex[instanceID] = components.size() - 1;
+        ownerToInstances[ownerID].push_back(instanceID);
 
         return components.back();
+    }
+
+    void ForgetInstance(const ID ownerID, const ComponentInstanceID instanceID) {
+        const auto it = ownerToInstances.find(ownerID);
+        if (it == ownerToInstances.end()) return;
+        std::erase(it->second, instanceID);
+        if (it->second.empty()) ownerToInstances.erase(it);
     }
 };
 
@@ -482,9 +691,9 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
 
     // ── Public mutators ──────────────────────────────────────────────
     // Call instead of directly writing collider.isActive
-    void SetActive(ID id, bool active) {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return;
+    void SetActive(const ComponentInstanceID instanceID, const bool active) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return;
         ComponentCollider& c = components[it->second];
         if (c.isActive == active) return;
         c.isActive = active;
@@ -492,9 +701,9 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     }
 
     // Call instead of directly writing collider.type
-    void SetType(ID id, const ColliderType type) {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return;
+    void SetType(const ComponentInstanceID instanceID, const ColliderType type) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return;
         ComponentCollider& c = components[it->second];
         if (c.type == type) return;
         if (!c.isActive) { c.type = type; return; } // inactive: just change the field
@@ -504,59 +713,58 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     }
 
     // ── Overrides that keep boundaries consistent ────────────────────
-    ComponentCollider& Add(ID id) {
-        if (ComponentCollider* existing = Get(id)) return *existing;
-
+    // New components default to an active sphere. They're appended at the
+    // back (the inactive region), then activated, which walks them through
+    // the inactive and box boundaries so the elements they displace stay in
+    // their regions.
+    ComponentCollider& Add(const ID ownerID, const ComponentInstanceID requestedID = INVALID_COMPONENT_INSTANCE_ID) {
         ComponentCollider comp{};
-        comp.ownerID  = id;
-        // New components default to active sphere — insert at firstBoxIndex
-        // so they land in the sphere region.
-        const size_t insertAt = firstBoxIndex;
-        components.push_back(comp);                     // append at back first
-        entityToIndex[id] = components.size() - 1;
-
-        // Then swap into the sphere slot
-        _swapElements(insertAt, components.size() - 1);
-        firstBoxIndex++;
-        firstInactiveIndex++;
-
-        return components[insertAt];
+        comp.ownerID = ownerID;
+        comp.instanceID = requestedID;
+        comp.isActive = false;
+        const ComponentInstanceID instanceID = Insert(comp).instanceID;
+        SetActive(instanceID, true);
+        return *GetInstance(instanceID);
     }
 
-    bool Remove(ID id) {
-        const auto it = entityToIndex.find(id);
-        if (it == entityToIndex.end()) return false;
+    // Keeps the loaded type/active state, placing it in the matching region.
+    ComponentCollider& InsertLoaded(const ComponentCollider& loaded) {
+        ComponentCollider comp = loaded;
+        const bool active = comp.isActive;
+        comp.isActive = false;
+        const ComponentInstanceID instanceID = Insert(comp).instanceID;
+        SetActive(instanceID, active);
+        return *GetInstance(instanceID);
+    }
 
-        size_t idx = it->second;
+    bool RemoveInstance(const ComponentInstanceID instanceID) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return false;
 
-        // Move active collider into inactive region first.
-        if (components[idx].isActive) {
-            _deactivateComponent(idx);
-            idx = entityToIndex[id];
-        }
+        // Move an active collider into the inactive region first, so the
+        // swap-with-last below never pulls an inactive one into an active region.
+        if (components[it->second].isActive) _deactivateComponent(it->second);
 
-        // Now idx is in inactive region. Remove by swap-with-last.
+        const size_t idx = instanceToIndex[instanceID];
+        const ID ownerID = components[idx].ownerID;
         const size_t last = components.size() - 1;
 
         if (idx != last) {
-            components[idx] = components[last];
-            entityToIndex[components[idx].ownerID] = idx;
+            components[idx] = std::move(components[last]);
+            instanceToIndex[components[idx].instanceID] = idx;
         }
 
         components.pop_back();
-        entityToIndex.erase(id);
+        instanceToIndex.erase(instanceID);
+        ForgetInstance(ownerID, instanceID);
 
         return true;
     }
 
-    ComponentCollider& InsertLoaded(const ComponentCollider& comp) {
-        ComponentStorage<ComponentCollider>::InsertLoaded(comp);
-
-        const size_t idx = entityToIndex[comp.ownerID];
-
-        if (comp.isActive) _activateComponent(idx);
-
-        return components[entityToIndex[comp.ownerID]];
+    bool RemoveAll(const ID ownerID) {
+        const std::vector<ComponentInstanceID> list = InstancesOf(ownerID);
+        for (const ComponentInstanceID instanceID : list) RemoveInstance(instanceID);
+        return !list.empty();
     }
 
     void Clear() {
@@ -569,8 +777,8 @@ private:
     void _swapElements(size_t a, size_t b) {
         if (a == b) return;
         std::swap(components[a], components[b]);
-        entityToIndex[components[a].ownerID] = a;
-        entityToIndex[components[b].ownerID] = b;
+        instanceToIndex[components[a].instanceID] = a;
+        instanceToIndex[components[b].instanceID] = b;
     }
 
     // Returns new index after promotion into sphere region

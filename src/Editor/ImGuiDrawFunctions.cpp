@@ -39,6 +39,7 @@
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
+#include "Headers/Objects/FlipbookAsset.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,21 +65,23 @@ namespace {
 
     // ── AddEditorComponent (unchanged logic, just moved inside anon ns) ───────
 
+    // Every component except Transform can be added again; each add makes a
+    // new instance after the existing ones.
     template<typename T>
     static void AddEditorComponent(Entity &entity) {
+        Level &level = LevelManager::CurrentLevel();
+
         if constexpr (std::is_same_v<T, ComponentPlayerController>) {
-            if (!entity.HasComponent<ComponentPlayerController>()) {
-                auto *pc = entity.AddComponent<ComponentPlayerController>();
-                if (!entity.HasComponent<ComponentRigidbody>())  entity.AddComponent<ComponentRigidbody>();
-                if (!entity.HasComponent<ComponentCollider>())    entity.AddComponent<ComponentCollider>();
-                if (!entity.HasComponent<ComponentCamera>())      entity.AddComponent<ComponentCamera>();
-                pc->isActive = true;
-            }
+            const ComponentInstanceID controllerID = entity.AddComponent<ComponentPlayerController>()->instanceID;
+            if (!entity.HasComponent<ComponentRigidbody>())  entity.AddComponent<ComponentRigidbody>();
+            if (!entity.HasComponent<ComponentCollider>())    entity.AddComponent<ComponentCollider>();
+            if (!entity.HasComponent<ComponentCamera>())      entity.AddComponent<ComponentCamera>();
+            // A player added in the editor takes over, camera and all.
+            level.ActivatePlayerController(*level.playerControllers.GetInstance(controllerID));
+            level.ActivateCamera(*entity.GetComponent<ComponentCamera>());
         } else if constexpr (std::is_same_v<T, ComponentCamera>) {
-            if (!entity.HasComponent<ComponentCamera>()) {
-                auto *cam = entity.AddComponent<ComponentCamera>();
-                cam->isActive = true;
-            }
+            // A camera added in the editor takes over.
+            level.ActivateCamera(*entity.AddComponent<ComponentCamera>());
         } else if constexpr (std::is_same_v<T, ComponentScript>) {
             // Deliberately unconditional: ScriptComponentStorage already
             // supports several scripts per Entity (each AddScript() call
@@ -92,8 +95,37 @@ namespace {
             script.publicValues.clear();
             script.schemaHash = 0;
         } else {
-            if (!entity.HasComponent<T>()) entity.AddComponent<T>();
+            if (!IsSingleComponent<T> || !entity.HasComponent<T>()) entity.AddComponent<T>();
         }
+    }
+
+    // Moves a component to `newIndex` among its entity's components of the
+    // same type (the inspector's drag-to-reorder). Index 0 is the "first" one
+    // that entity.<component> returns in Lua.
+    template<typename Storage>
+    static bool MoveInStorage(Storage &storage, const std::uint64_t instanceID, const size_t newIndex) {
+        return storage.MoveOnOwner(instanceID, newIndex);
+    }
+
+    static void MoveComponentInstance(const int componentType, const std::uint64_t instanceID, const size_t newIndex) {
+        Level &level = LevelManager::CurrentLevel();
+
+        switch (componentType) {
+    #define MOVE_COMPONENT_CASE(Type, Bit, Storage, LabelKey) \
+    case Bit: MoveInStorage(level.Storage, instanceID, newIndex); break;
+            TILKY_COMPONENTS(MOVE_COMPONENT_CASE)
+    #undef MOVE_COMPONENT_CASE
+            default: break;
+        }
+    }
+
+    // The instance IDs of the entity's components of one type, in order.
+    // Scripts use their ScriptInstanceIDs.
+    template<typename T>
+    static std::vector<std::uint64_t> ComponentInstancesOf(Entity &entity) {
+        std::vector<std::uint64_t> result;
+        for (const T *component : entity.GetComponents<T>()) result.push_back(component->instanceID);
+        return result;
     }
 
     static void AddEditorComponentByType(Entity &entity, const int componentType) {
@@ -157,15 +189,6 @@ namespace {
     // fields are combo-only. Asset fields (textures, etc.) get drag-and-drop
     // by reusing MapEditorInternal::DrawAssetField below, same as every other
     // texture/sound/script field in the inspector.
-
-    bool EntityHasComponentByType(Entity &entity, const int componentType) {
-        switch (componentType) {
-#define HAS_COMPONENT_CASE(Type, Bit, Storage, LabelKey) case Bit: return entity.HasComponent<Type>();
-            TILKY_NORMAL_COMPONENTS(HAS_COMPONENT_CASE)
-#undef HAS_COMPONENT_CASE
-            default: return false;
-        }
-    }
 
     std::string DescribeEntity(const Entity &entity) {
         char buf[160];
@@ -319,12 +342,35 @@ namespace {
         );
     }
 
+    // The entity's components of one type, in order.
+    std::vector<std::uint64_t> ComponentInstancesByType(Entity &entity, const int componentType) {
+        switch (componentType) {
+#define INSTANCES_CASE(Type, Bit, Storage, LabelKey) case Bit: return ComponentInstancesOf<Type>(entity);
+            TILKY_NORMAL_COMPONENTS(INSTANCES_CASE)
+#undef INSTANCES_CASE
+            default: return {};
+        }
+    }
+
+    // "Door (#4)", or "Door (#4) / Audio Source 2" when the entity has several.
+    std::string DescribeComponent(Entity &entity, const int componentType, const std::uint64_t instanceID) {
+        const std::vector<std::uint64_t> instances = ComponentInstancesByType(entity, componentType);
+        if (instances.size() < 2) return DescribeEntity(entity);
+
+        const auto it = std::ranges::find(instances, instanceID);
+        if (it == instances.end()) return DescribeEntity(entity);
+
+        return DescribeEntity(entity) + " / " + GetComponentDisplayName(componentType) + " " +
+               std::to_string(it - instances.begin() + 1);
+    }
+
+    // Picks one component (entity + instance): an entity can have several of a type.
     bool DrawComponentField(const char *label, ComponentRefValue &ref, const int componentType) {
         Level &level = LevelManager::CurrentLevel();
         ref.componentType = componentType;
 
-        const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
-        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+        Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
+        const std::string preview = current != nullptr ? DescribeComponent(*current, componentType, ref.instanceId) : "(None)";
 
         bool changed = false;
 
@@ -336,24 +382,58 @@ namespace {
         if (ImGui::BeginCombo("##componentPicker", preview.c_str())) {
             if (ImGui::Selectable("(None)", ref.entityId == INVALID_ID)) {
                 ref.entityId = INVALID_ID;
+                ref.instanceId = INVALID_COMPONENT_INSTANCE_ID;
                 changed = true;
             }
 
             for (Entity &candidate : level.entities) {
-                if (!EntityHasComponentByType(candidate, componentType)) continue;
+                for (const std::uint64_t instanceID : ComponentInstancesByType(candidate, componentType)) {
+                    const bool isSelected = candidate.id == ref.entityId && instanceID == ref.instanceId;
 
-                const bool isSelected = candidate.id == ref.entityId;
+                    ImGui::PushID(std::to_string(instanceID).c_str());
+                    if (ImGui::Selectable(DescribeComponent(candidate, componentType, instanceID).c_str(), isSelected)) {
+                        ref.entityId = candidate.id;
+                        ref.instanceId = instanceID;
+                        changed = true;
+                    }
+                    ImGui::PopID();
 
-                if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
-                    ref.entityId = candidate.id;
-                    changed = true;
+                    if (isSelected) ImGui::SetItemDefaultFocus();
                 }
-
-                if (isSelected) ImGui::SetItemDefaultFocus();
             }
 
             ImGui::EndCombo();
         }
+
+        // An entity dragged from the hierarchy or the level picks its first
+        // component of this type. Entities without one aren't accepted, so
+        // the field doesn't light up for them.
+        if (ImGui::BeginDragDropTarget()) {
+            const ImGuiPayload *active = ImGui::GetDragDropPayload();
+
+            if (active != nullptr && active->IsDataType(MapEditorInternal::ENTITY_REF_PAYLOAD)) {
+                MapEditorInternal::LevelObjectDragPayload dragged;
+                std::memcpy(&dragged, active->Data, sizeof(dragged));
+
+                Entity *candidate = level.GetEntity(dragged.id);
+                const std::vector<std::uint64_t> instances = candidate != nullptr
+                    ? ComponentInstancesByType(*candidate, componentType)
+                    : std::vector<std::uint64_t>{};
+
+                if (!instances.empty() && ImGui::AcceptDragDropPayload(MapEditorInternal::ENTITY_REF_PAYLOAD)) {
+                    ref.entityId = dragged.id;
+                    ref.instanceId = instances.front();
+                    changed = true;
+
+                    if (dragged.fromCanvas) MapEditorInternal::RevertCanvasEntityDrag();
+                }
+            }
+
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::GetDragDropPayload() == nullptr)
+            ImGuiDrawFunctions::Tooltip(Localisation::Get("editor.ref_field.tooltip.component").c_str());
 
         ImGui::PopID();
         return changed;
@@ -412,8 +492,8 @@ namespace {
     }
 
     // Script public-field editor. Dispatches on the field's schema type
-    // (parsed from the script's ---@field annotations - see
-    // LuaScriptSystem::ExtractSchema) to the matching typed control.
+    // (from the script's `public` declarations - see LuaScriptCompiler) to
+    // the matching typed control.
     void DrawScriptValueEditor(const ScriptPublicField &field, ScriptValue &value) {
         switch (field.type) {
             case ScriptValueType::Int: {
@@ -502,7 +582,10 @@ namespace {
             case ScriptValueType::Asset: {
                 AssetRefValue *av = std::get_if<AssetRefValue>(&value);
                 if (!av) return;
-                MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
+                if (field.assetKind == ScriptAssetKind::Flipbook)
+                    MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Flipbook);
+                else
+                    MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
                 break;
             }
             case ScriptValueType::Wall: {
@@ -551,6 +634,113 @@ namespace ImGuiDrawFunctions {
     }
 
     // Red "danger" delete button
+    // The 8 directional texture slots, laid out as a compass for 90/45-degree
+    // sprites. Shared by the Sprite inspector and the flipbook editor.
+    void DrawDirectionalTextureSlots(std::array<std::string, 8>& textures, const SideCount sideCount) {
+        constexpr float BOX_SIZE = 64.0f;
+        constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
+
+        auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
+            ImGui::PushID(slotIndex);
+            MapEditorInternal::DrawAssetField(label, textures[slotIndex], AssetKind::Texture, BOX_SIZE);
+            ImGui::PopID();
+        };
+
+        auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
+
+        constexpr float CELL_PADDING = 8.0f;
+        constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
+
+        if (sideCount == SIDECOUNT_SINGLE) {
+            ImGui::PushID("sprite_single");
+            DrawSpriteSlot(0, "Default");
+            ImGui::PopID();
+        } else if (sideCount == SIDECOUNT_90) {
+            ImGui::PushID("sprite_90");
+
+            if (ImGui::BeginTable(
+                "##sprite_90_table",
+                3,
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+            )) {
+                ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(0, "N");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(6, "W");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(2, "E");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(4, "S");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+
+                ImGui::EndTable();
+            }
+
+            ImGui::PopID();
+        }
+        else if (sideCount == SIDECOUNT_45) {
+            ImGui::PushID("sprite_45");
+
+            if (ImGui::BeginTable(
+                "##sprite_45_table",
+                3,
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+            )) {
+                ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(7, "NW");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(0, "N");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(1, "NE");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(6, "W");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(2, "E");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(5, "SW");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(4, "S");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(3, "SE");
+
+                ImGui::EndTable();
+            }
+
+            ImGui::PopID();
+        }
+    }
+
     bool DangerButton(const char *label) {
         ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
@@ -676,8 +866,8 @@ namespace ImGuiDrawFunctions {
     //  sector inspector's Scripts section
     // ─────────────────────────────────────────────────────────────────────────
     // Everything about one attached script except removing it (each caller
-    // owns that): file picker, enabled flag, compile error, public
-    // variables and orphaned values. Takes the owner-agnostic
+    // owns that): file picker, enabled flag, compile error and public
+    // variables. Takes the owner-agnostic
     // ScriptAttachmentData so entity and sector scripts get the exact same
     // controls. `ownerLabel` ("entity 4", "sector 2") only shows up in log
     // messages. Callers must have pushed an ID unique to this attachment.
@@ -695,6 +885,15 @@ namespace ImGuiDrawFunctions {
 
         if (ImGui::SmallButton("Refresh Fields")) {
             LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+        }
+
+        if (!script.fileName.empty()) {
+            ImGui::SameLine();
+
+            // fileName is the Assets-relative path without ".lua".
+            if (ImGui::SmallButton(Get("component.script.open_file").c_str()))
+                MapEditorInternal::assetBrowser.RequestOpenScript(ProjectManager::GetAssetsPath() / (script.fileName + ".lua"));
+            Tooltip(Get("editor.tooltip.component.script.open_file").c_str());
         }
 
         EndSection();
@@ -719,6 +918,14 @@ namespace ImGuiDrawFunctions {
 
         BeginSection("Public Variables");
 
+        // Drop values for fields the script no longer declares (e.g. after
+        // editing it while this inspector is open).
+        std::erase_if(script.publicValues, [fields](const auto &entry) {
+            return std::ranges::none_of(*fields, [&entry](const ScriptPublicField &field) {
+                return field.name == entry.first;
+            });
+        });
+
         for (const ScriptPublicField &field: *fields) {
             auto valueIt = script.publicValues.find(field.name);
 
@@ -728,46 +935,6 @@ namespace ImGuiDrawFunctions {
             }
 
             DrawScriptValueEditor(field, valueIt->second);
-        }
-
-        EndSection();
-
-        BeginSection("Orphaned Variables");
-
-        bool hasOrphans = false;
-
-        for (auto valueIt = script.publicValues.begin(); valueIt != script.publicValues.end();) {
-            const std::string &valueName = valueIt->first;
-
-            const bool existsInSchema = std::ranges::any_of(
-                *fields,
-                [&valueName](const ScriptPublicField &field) {
-                    return field.name == valueName;
-                }
-            );
-
-            if (existsInSchema) {
-                ++valueIt;
-                continue;
-            }
-
-            hasOrphans = true;
-
-            SmallMetaText("%s", valueName.c_str());
-
-            ImGui::SameLine();
-
-            const std::string delLabel = "Remove##orphan_" + valueName;
-
-            if (ImGui::SmallButton(delLabel.c_str())) {
-                valueIt = script.publicValues.erase(valueIt);
-            } else {
-                ++valueIt;
-            }
-        }
-
-        if (!hasOrphans) {
-            ImGui::TextDisabled("None");
         }
 
         EndSection();
@@ -1272,6 +1439,47 @@ namespace ImGuiDrawFunctions {
         ImGui::End();
         return deleteRequested;
     }
+    void DrawWallTextureField(const char *label, WallSurface &surface) {
+        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, 48.0f);
+        Tooltip(Get("editor.tooltip.wall.texture").c_str());
+    }
+
+    // `id` keeps the Top and Bottom widgets apart when both are shown.
+    void DrawWallSurfaceSettings(const char *id, WallSurface &surface, const bool draggable) {
+        ImGui::PushID(id);
+
+        FieldWidth(200.0f);
+        InputOrDrag2(Get("wall.texture_offset").c_str(), &surface.textureOffset.x, draggable);
+        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
+
+        InputOrDrag2(Get("wall.texture_scale").c_str(), &surface.textureScale.x, draggable);
+        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
+
+        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &surface.flipTextureX);
+        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &surface.flipTextureY);
+
+        const WallTextureAnchorInfo *selected = FindWallTextureAnchor(surface.anchor);
+        if (selected == nullptr) selected = &WALL_TEXTURE_ANCHORS[0];
+
+        FieldWidth(200.0f);
+
+        if (ImGui::BeginCombo(Get("wall.anchor").c_str(), Get(selected->labelKey).c_str())) {
+            for (const WallTextureAnchorInfo &anchor : WALL_TEXTURE_ANCHORS) {
+                const bool isSelected = anchor.anchor == surface.anchor;
+
+                if (ImGui::Selectable(Get(anchor.labelKey).c_str(), isSelected)) surface.anchor = anchor.anchor;
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(anchor.tooltipKey).c_str());
+                if (isSelected) ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+
+        Tooltip(Get(selected->tooltipKey).c_str());
+
+        ImGui::PopID();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
@@ -1322,13 +1530,12 @@ namespace ImGuiDrawFunctions {
         // ── Appearance ───────────────────────────────────────────────────────
         BeginSection("Appearance");
 
-        MapEditorInternal::DrawAssetField(
-            Get("wall.texture_index").c_str(),
-            wall.textureFileName,
-            AssetKind::Texture,
-            48.0f
-        );
-        Tooltip(Get("editor.tooltip.wall.texture").c_str());
+        // Only a portal has a step under the neighbour's floor, so only a
+        // portal gets a Bottom texture; a solid wall shows Top everywhere.
+        const bool portal = wall.IsPortal();
+
+        DrawWallTextureField(portal ? Get("wall.texture_top").c_str() : Get("wall.texture").c_str(), wall.top);
+        if (portal) DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
 
         FieldWidth(220.0f);
 
@@ -1348,15 +1555,14 @@ namespace ImGuiDrawFunctions {
         // ── Texture ───────────────────────────────────────────────────
         BeginSection("Texture");
 
-        FieldWidth(200.0f);
-        InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
+        if (portal) {
+            SmallMetaText("%s", Get("wall.texture_top").c_str());
+            DrawWallSurfaceSettings("Top", wall.top, draggable);
 
-        InputOrDrag2(Get("wall.texture_scale").c_str(), &wall.textureScale.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
-
-        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &wall.flipTextureX);
-        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &wall.flipTextureY);
+            SmallMetaText("%s", Get("wall.texture_bottom").c_str());
+            DrawWallSurfaceSettings("Bottom", wall.bottom, draggable);
+        }
+        else DrawWallSurfaceSettings("Top", wall.top, draggable);
 
         EndSection();
 
@@ -1437,23 +1643,26 @@ namespace ImGuiDrawFunctions {
         // ── Components list ──────────────────────────────────────────────────
         BeginSection("Components");
 
-        // Each component rendered as a card-like row: [name]  [Edit ▶]. For
-        // CMP_SCRIPT, `pushScriptInstanceID` additionally selects which
-        // attached ComponentScript instance the row's Edit button opens -
-        // ScriptComponentStorage already supports several scripts per
-        // Entity, so this list draws one row per instance rather than
-        // one row per component *type* (see the script-instance loop below,
-        // which replaces CMP_SCRIPT's entry in the TILKY_NORMAL_COMPONENTS
-        // macro pass).
+        // One card per component instance: [name]  [Edit]. An entity can have
+        // several of every type except Transform, so the Edit button selects
+        // the instance (`instanceID`; a ScriptInstanceID for scripts). Cards
+        // of the same type can be dragged onto each other to reorder them -
+        // the first one is what entity.<component> returns in Lua.
+        struct ComponentDragPayload {
+            int componentType;
+            std::uint64_t instanceID;
+        };
+
         auto DrawComponentCard = [&](
             const char *label,
             const int componentType,
-            const ScriptInstanceID pushScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID
+            const std::uint64_t instanceID,
+            const size_t indexInType
         ) {
             ImGui::PushID(componentType);
             // std::to_string, not a truncating cast to int - instance IDs are
             // 64-bit and must stay unique across every row in this list.
-            ImGui::PushID(std::to_string(pushScriptInstanceID).c_str());
+            ImGui::PushID(std::to_string(instanceID).c_str());
 
             // Subtle background for the row
             ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -1466,13 +1675,34 @@ namespace ImGuiDrawFunctions {
 
             ImGui::Spacing();
             ImGui::Indent(6.0f);
-            ImGui::TextUnformatted(label);
+            ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+
+            if (componentType != CMP_TRANSFORM) {
+                if (ImGui::BeginDragDropSource()) {
+                    const ComponentDragPayload payload{componentType, instanceID};
+                    ImGui::SetDragDropPayload("TILKY_COMPONENT", &payload, sizeof(payload));
+                    ImGui::TextUnformatted(label);
+                    ImGui::EndDragDropSource();
+                }
+
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload *dropped = ImGui::AcceptDragDropPayload("TILKY_COMPONENT")) {
+                        const auto *payload = static_cast<const ComponentDragPayload *>(dropped->Data);
+                        if (payload->componentType == componentType && payload->instanceID != instanceID)
+                            MoveComponentInstance(componentType, payload->instanceID, indexInType);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                Tooltip(Get("editor.tooltip.entity.component_drag").c_str());
+            }
+
             ImGui::SameLine(rowW - 56.0f);
 
             if (ImGui::SmallButton("Edit")) {
                 state.selectedComponent  = componentType;
                 state.editingComponent   = true;
-                state.selectedScriptInstanceID = pushScriptInstanceID;
+                state.selectedInstanceID = instanceID;
             }
 
             ImGui::Unindent(6.0f);
@@ -1481,24 +1711,35 @@ namespace ImGuiDrawFunctions {
             ImGui::PopID();
         };
 
-#define DRAW_ENTITY_COMPONENT_ROW(Type, Bit, Storage, LabelKey) \
-        if (Bit != CMP_SCRIPT && entity.HasComponent<Type>()) \
-            DrawComponentCard(Get(LabelKey).c_str(), Bit);
+        // "Sprite", or "Sprite 1", "Sprite 2"... when there are several.
+        auto DrawComponentCards = [&](const int componentType, const std::string &name, const std::vector<std::uint64_t> &instances) {
+            for (size_t i = 0; i < instances.size(); ++i) {
+                const std::string label = instances.size() > 1 ? name + " " + std::to_string(i + 1) : name;
+                DrawComponentCard(label.c_str(), componentType, instances[i], i);
+            }
+        };
 
-        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROW)
+#define DRAW_ENTITY_COMPONENT_ROWS(Type, Bit, Storage, LabelKey) \
+        if constexpr (Bit != CMP_SCRIPT) DrawComponentCards(Bit, Get(LabelKey), ComponentInstancesOf<Type>(entity));
 
-#undef DRAW_ENTITY_COMPONENT_ROW
+        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROWS)
 
-        // One row per attached script instance, not per component type -
-        // see DrawComponentCard's comment above.
-        for (ComponentScript *script : entity.GetScripts()) {
-            const std::string displayName = script->fileName.empty()
-                ? std::string("Script (unassigned)")
-                : std::filesystem::path(script->fileName).filename().string();
+#undef DRAW_ENTITY_COMPONENT_ROWS
 
-            const std::string label = script->enabled ? displayName : displayName + " (disabled)";
+        // Scripts are labelled by their file instead of the component name.
+        {
+            const std::vector<ComponentScript *> scripts = entity.GetScripts();
 
-            DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID);
+            for (size_t i = 0; i < scripts.size(); ++i) {
+                const ComponentScript *script = scripts[i];
+                const std::string displayName = script->fileName.empty()
+                    ? std::string("Script (unassigned)")
+                    : std::filesystem::path(script->fileName).filename().string();
+
+                const std::string label = script->enabled ? displayName : displayName + " (disabled)";
+
+                DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID, i);
+            }
         }
 
         EndSection();
@@ -1607,7 +1848,7 @@ namespace ImGuiDrawFunctions {
             return;
         }
 
-        const std::string componentName = GetComponentDisplayName(state.selectedComponent);
+        std::string componentName = GetComponentDisplayName(state.selectedComponent);
         const std::string windowTitle = componentName + "##component_editor";
 
         bool fallbackOpen = true;
@@ -1623,9 +1864,21 @@ namespace ImGuiDrawFunctions {
         }
 
         ImGui::PushID(state.selectedComponent);
+        ImGui::PushID(std::to_string(state.selectedInstanceID).c_str());
 
         bool closeRequested = false;
         auto CloseEditor    = [&]() { closeRequested = true; };
+
+        // Sprite/Model/Collider/AudioSource sit at an offset from the Transform.
+        auto DrawOffsetSection = [&](Vector3 &offset) {
+            BeginSection(Get("component.offset").c_str());
+            ImGui::TextDisabled("X                Y               Z");
+            FieldWidth(220.0f);
+            InputOrDrag3("##offset", &offset.x, draggable);
+            Tooltip(Get("editor.tooltip.component.offset").c_str());
+            ResetFloat3Button("rst_offset", &offset.x);
+            EndSection();
+        };
 
         // ── Summary header ────────────────────────────────────────────────────
         DrawInspectorHeader("Component", componentName.c_str());
@@ -1699,20 +1952,9 @@ namespace ImGuiDrawFunctions {
         //  Sprite
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_SPRITE) {
-            auto *c = entity.GetComponent<ComponentSprite>();
+            auto *c = entity.GetComponentInstance<ComponentSprite>(state.selectedInstanceID);
 
             if (c) {
-                constexpr float BOX_SIZE = 64.0f;
-                constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
-
-                auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
-                    ImGui::PushID(slotIndex);
-                    MapEditorInternal::DrawAssetField(label, c->textureFileNames[slotIndex], AssetKind::Texture, BOX_SIZE);
-                    ImGui::PopID();
-                };
-
-                auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
-
                 BeginSection("Rendering");
                 FieldWidth(160.0f);
 
@@ -1756,97 +1998,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                constexpr float CELL_PADDING = 8.0f;
-                constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
-
-                if (c->sideCount == SIDECOUNT_SINGLE) {
-                    ImGui::PushID("sprite_single");
-                    DrawSpriteSlot(0, "Default");
-                    ImGui::PopID();
-                } else if (c->sideCount == SIDECOUNT_90) {
-                    ImGui::PushID("sprite_90");
-
-                    if (ImGui::BeginTable(
-                        "##sprite_90_table",
-                        3,
-                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
-                    )) {
-                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(0, "N");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(6, "W");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(2, "E");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(4, "S");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-
-                        ImGui::EndTable();
-                    }
-
-                    ImGui::PopID();
-                }
-                else if (c->sideCount == SIDECOUNT_45) {
-                    ImGui::PushID("sprite_45");
-
-                    if (ImGui::BeginTable(
-                        "##sprite_45_table",
-                        3,
-                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
-                    )) {
-                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(7, "NW");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(0, "N");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(1, "NE");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(6, "W");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(2, "E");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(5, "SW");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(4, "S");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(3, "SE");
-
-                        ImGui::EndTable();
-                    }
-
-                    ImGui::PopID();
-                }
+                DrawDirectionalTextureSlots(c->textureFileNames, c->sideCount);
 
                 EndSection();
 
@@ -1869,13 +2021,17 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Checkbox(Get("component.sprite.is_static").c_str(), &c->isStatic);
                 Tooltip(Get("editor.tooltip.component.sprite.is_static").c_str());
+                ImGui::Checkbox(Get("component.sprite.is_active").c_str(), &c->isActive);
+                Tooltip(Get("editor.tooltip.component.sprite.is_active").c_str());
+
+                DrawOffsetSection(c->offset);
 
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
 
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentSprite>();
+                    entity.RemoveComponentInstance<ComponentSprite>(state.selectedInstanceID);
                     CloseEditor();
                 }
             }
@@ -1886,7 +2042,7 @@ namespace ImGuiDrawFunctions {
         //  Audio Source
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_AUDIO_SOURCE) {
-            auto *c = entity.GetComponent<ComponentAudioSource>();
+            auto *c = entity.GetComponentInstance<ComponentAudioSource>(state.selectedInstanceID);
             if (c) {
                 BeginSection("Sound");
                 MapEditorInternal::DrawAssetField("Sound", c->soundFileName, AssetKind::Sound);
@@ -1922,9 +2078,11 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.audio_source.outer_gain").c_str(),  &c->outerGain,      draggable, 0.01f);
                 EndSection();
 
+                DrawOffsetSection(c->offset);
+
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentAudioSource>();
+                    entity.RemoveComponentInstance<ComponentAudioSource>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Audio component missing"); }
@@ -1938,7 +2096,7 @@ namespace ImGuiDrawFunctions {
             // selected (see DrawEntityEditor's per-script row loop) rather
             // than always the first-by-owner script - an Entity may have
             // several scripts attached.
-            auto *c = entity.GetScript(state.selectedScriptInstanceID);
+            auto *c = entity.GetScript(state.selectedInstanceID);
 
             if (c) {
                 DrawScriptAttachmentFields(*c, "entity " + std::to_string(entity.id));
@@ -1948,8 +2106,8 @@ namespace ImGuiDrawFunctions {
                 ImGui::Spacing();
 
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveScript(state.selectedScriptInstanceID);
-                    state.selectedScriptInstanceID = INVALID_SCRIPT_INSTANCE_ID;
+                    entity.RemoveScript(state.selectedInstanceID);
+                    state.selectedInstanceID = INVALID_SCRIPT_INSTANCE_ID;
                     CloseEditor();
                 }
             }
@@ -1960,7 +2118,7 @@ namespace ImGuiDrawFunctions {
         //  Player Controller
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_PLAYER_CONTROLLER) {
-            auto *c = entity.GetComponent<ComponentPlayerController>();
+            auto *c = entity.GetComponentInstance<ComponentPlayerController>(state.selectedInstanceID);
             if (c) {
                 BeginSection("Movement");
                 FieldWidth(160.0f);
@@ -2009,13 +2167,14 @@ namespace ImGuiDrawFunctions {
                 BeginSection("State");
                 ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
                 Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
-                ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive);
+                if (ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive) && c->isActive)
+                    LevelManager::CurrentLevel().ActivatePlayerController(*c);
                 Tooltip(Get("editor.tooltip.component.player_controller.is_active").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentPlayerController>();
+                    entity.RemoveComponentInstance<ComponentPlayerController>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Player Controller component missing"); }
@@ -2025,7 +2184,7 @@ namespace ImGuiDrawFunctions {
         //  Camera
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_CAMERA) {
-            auto *c = entity.GetComponent<ComponentCamera>();
+            auto *c = entity.GetComponentInstance<ComponentCamera>(state.selectedInstanceID);
             if (c) {
                 BeginSection("Projection");
                 FieldWidth(160.0f);
@@ -2050,13 +2209,14 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.camera.smoothing_strength").c_str(), &c->smoothingStrength, draggable);
 
                 BeginSection("State");
-                ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive);
+                if (ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive) && c->isActive)
+                    LevelManager::CurrentLevel().ActivateCamera(*c);
                 Tooltip(Get("editor.tooltip.component.camera.is_active").c_str());
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentCamera>();
+                    entity.RemoveComponentInstance<ComponentCamera>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Camera component missing"); }
@@ -2066,7 +2226,7 @@ namespace ImGuiDrawFunctions {
         //  Collider
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_COLLIDER) {
-            auto *c = entity.GetComponent<ComponentCollider>();
+            auto *c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
             if (c) {
                 BeginSection("Shape");
 
@@ -2075,11 +2235,17 @@ namespace ImGuiDrawFunctions {
                     Get("component.collider.type.box")
                 };
                 const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
-                static int selectedColliderIndex = 0;
+                int selectedColliderIndex = c->type == COLLIDERTYPE_BOX ? 1 : 0;
 
                 FieldWidth(140.0f);
-                ImGui::Combo(Get("component.collider.type").c_str(),
-                             &selectedColliderIndex, items, IM_ARRAYSIZE(items));
+                if (ImGui::Combo(Get("component.collider.type").c_str(),
+                                 &selectedColliderIndex, items, IM_ARRAYSIZE(items))) {
+                    // Type decides where the collider sits in the storage, so it goes
+                    // through SetType. That can move the component, so fetch it again.
+                    LevelManager::CurrentLevel().colliders.SetType(
+                        state.selectedInstanceID, selectedColliderIndex == 1 ? COLLIDERTYPE_BOX : COLLIDERTYPE_SPHERE);
+                    c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                }
 
                 if (selectedColliderIndex == 0) {
                     FieldWidth(120.0f);
@@ -2100,12 +2266,19 @@ namespace ImGuiDrawFunctions {
                 Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
                 ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
                 Tooltip(Get("editor.tooltip.component.collider.is_trigger").c_str());
-                ImGui::Checkbox(Get("component.collider.is_active").c_str(), &c->isActive);
+                // Goes through SetActive so physics moves it in or out of the active colliders.
+                bool colliderActive = c->isActive;
+                if (ImGui::Checkbox(Get("component.collider.is_active").c_str(), &colliderActive)) {
+                    LevelManager::CurrentLevel().colliders.SetActive(state.selectedInstanceID, colliderActive);
+                    c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                }
                 EndSection();
+
+                DrawOffsetSection(c->offset);
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentCollider>();
+                    entity.RemoveComponentInstance<ComponentCollider>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else ImGui::TextDisabled("Collider component missing");
@@ -2115,8 +2288,11 @@ namespace ImGuiDrawFunctions {
         //  Rigidbody
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_RIGIDBODY) {
-            auto *c = entity.GetComponent<ComponentRigidbody>();
+            auto *c = entity.GetComponentInstance<ComponentRigidbody>(state.selectedInstanceID);
             if (c) {
+                if (entity.GetComponent<ComponentRigidbody>() != c)
+                    ImGui::TextWrapped("%s", Get("component.rigidbody.not_first").c_str());
+
                 BeginSection("Physics");
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.rigidbody.mass").c_str(),          &c->mass,         draggable);
@@ -2132,7 +2308,7 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentRigidbody>();
+                    entity.RemoveComponentInstance<ComponentRigidbody>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Rigidbody component missing"); }
@@ -2142,7 +2318,7 @@ namespace ImGuiDrawFunctions {
         //  Model
         // ════════════════════════════════════════════════════════════════════
         else if (state.selectedComponent == CMP_MODEL) {
-            auto *c = entity.GetComponent<ComponentModel>();
+            auto *c = entity.GetComponentInstance<ComponentModel>(state.selectedInstanceID);
             if (c) {
                 // Dependency scan of the selected file. Reading a model is not
                 // cheap, so it only reruns when the file changes or on Rescan.
@@ -2165,6 +2341,8 @@ namespace ImGuiDrawFunctions {
                 else ImGui::TextWrapped("%s", c->fileName.c_str());
 
                 EndSection();
+
+                DrawOffsetSection(c->offset);
 
                 if (!c->fileName.empty()) {
                     const bool rescan = ImGui::SmallButton(Get("component.model.rescan").c_str());
@@ -2214,10 +2392,127 @@ namespace ImGuiDrawFunctions {
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentModel>();
+                    entity.RemoveComponentInstance<ComponentModel>(state.selectedInstanceID);
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Model component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Flipbook
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_FLIPBOOK) {
+            auto *c = entity.GetComponentInstance<ComponentFlipbook>(state.selectedInstanceID);
+            if (c) {
+                // On a UI entity (the UI editor opens this same inspector) it
+                // drives a UI Sprite, which only ever shows slot 0.
+                const bool uiEntity = entity.HasComponent<ComponentUITransform>();
+
+                std::vector<ComponentInstanceID> sprites;
+                if (uiEntity) for (const ComponentUISprite *sprite : entity.GetComponents<ComponentUISprite>()) sprites.push_back(sprite->instanceID);
+                else for (const ComponentSprite *sprite : entity.GetComponents<ComponentSprite>()) sprites.push_back(sprite->instanceID);
+
+                BeginSection(Get("component.flipbook.section").c_str());
+
+                MapEditorInternal::DrawAssetField(Get("component.flipbook.file_name").c_str(), c->flipbookFileName, AssetKind::Flipbook);
+                Tooltip(Get("editor.tooltip.component.flipbook.file_name").c_str());
+
+                if (!c->flipbookFileName.empty() && ImGui::SmallButton(Get("component.flipbook.open_editor").c_str()))
+                    MapEditorInternal::assetBrowser.RequestOpenFlipbook(ProjectManager::GetAssetsPath() / c->flipbookFileName);
+
+                // Which of the entity's sprites it drives. "First sprite" follows
+                // whichever sprite is first, even after reordering.
+                int selectedSprite = -1;
+                for (int i = 0; i < static_cast<int>(sprites.size()); ++i)
+                    if (sprites[i] == c->spriteInstanceID) selectedSprite = i;
+
+                const auto spriteLabel = [&](const int index) {
+                    return index < 0
+                        ? Get("component.flipbook.first_sprite")
+                        : Get(uiEntity ? "editor.ui.sprite.title" : "component.sprite") + " " + std::to_string(index + 1);
+                };
+
+                FieldWidth(160.0f);
+                if (ImGui::BeginCombo(Get("component.flipbook.sprite").c_str(), spriteLabel(selectedSprite).c_str())) {
+                    if (ImGui::Selectable(spriteLabel(-1).c_str(), selectedSprite == -1))
+                        c->spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+                    for (int i = 0; i < static_cast<int>(sprites.size()); ++i) {
+                        ImGui::PushID(i);
+                        if (ImGui::Selectable(spriteLabel(i).c_str(), selectedSprite == i))
+                            c->spriteInstanceID = sprites[i];
+                        ImGui::PopID();
+                    }
+
+                    ImGui::EndCombo();
+                }
+                Tooltip(Get("editor.tooltip.component.flipbook.sprite").c_str());
+
+                FieldWidth(120.0f);
+                InputOrDrag(Get("component.flipbook.speed").c_str(), &c->speed, draggable, 0.01f);
+                Tooltip(Get("editor.tooltip.component.flipbook.speed").c_str());
+
+                EndSection();
+
+                // What the file holds, and anything that will show up blank in game.
+                BeginSection(Get("component.flipbook.info").c_str());
+
+                const ImVec4 warningColor = {0.95f, 0.65f, 0.30f, 1.0f};
+                const FlipbookAsset *asset = c->flipbookFileName.empty() ? nullptr : FlipbookLibrary::Get(c->flipbookFileName);
+
+                if (sprites.empty()) ImGui::TextColored(warningColor, "%s", Get("component.flipbook.no_sprite").c_str());
+
+                if (c->flipbookFileName.empty()) ImGui::TextDisabled("%s", Get("editor.none").c_str());
+                else if (asset == nullptr) ImGui::TextColored(warningColor, "%s", Get("component.flipbook.missing_file").c_str());
+                else {
+                    const char *loopModeKeys[] = {
+                        "flipbook_editor.loop_mode.once", "flipbook_editor.loop_mode.loop", "flipbook_editor.loop_mode.ping_pong"
+                    };
+
+                    ImGui::Text("%s: %d", Get("flipbook_editor.frames").c_str(), static_cast<int>(asset->frames.size()));
+                    ImGui::Text("%s: %.2f", Get("flipbook_editor.fps").c_str(), asset->fps);
+                    ImGui::Text("%s: %s", Get("flipbook_editor.loop_mode").c_str(), Get(loopModeKeys[static_cast<int>(asset->loopMode)]).c_str());
+                    if (asset->playOnStart) ImGui::TextUnformatted(Get("flipbook_editor.play_on_start").c_str());
+
+                    // The slots the driven sprite actually draws: a UI Sprite
+                    // only slot 0, a Sprite whatever its side count uses.
+                    if (!sprites.empty()) {
+                        static constexpr int SINGLE_SLOTS[] = {0};
+                        static constexpr int SIDE_90_SLOTS[] = {0, 2, 4, 6};
+                        static constexpr int SIDE_45_SLOTS[] = {0, 1, 2, 3, 4, 5, 6, 7};
+                        static constexpr const char *SIDE_NAMES[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+
+                        std::span<const int> usedSlots = SINGLE_SLOTS;
+
+                        if (!uiEntity) {
+                            const ComponentInstanceID targetID = sprites[std::max(selectedSprite, 0)];
+                            const ComponentSprite *target = entity.GetComponentInstance<ComponentSprite>(targetID);
+
+                            if (target != nullptr && target->sideCount == SIDECOUNT_90) usedSlots = SIDE_90_SLOTS;
+                            else if (target != nullptr && target->sideCount == SIDECOUNT_45) usedSlots = SIDE_45_SLOTS;
+                        }
+
+                        for (const FlipbookFrame &frame : asset->frames) {
+                            std::string missing;
+
+                            for (const int slot : usedSlots)
+                                if (frame.textures[slot].empty()) missing += std::string(missing.empty() ? "" : ", ") + SIDE_NAMES[slot];
+
+                            if (!missing.empty())
+                                ImGui::TextColored(warningColor, "%s '%s': %s", Get("component.flipbook.missing_sides").c_str(),
+                                                   frame.name.c_str(), missing.c_str());
+                        }
+                    }
+                }
+
+                EndSection();
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
+                    entity.RemoveComponentInstance<ComponentFlipbook>(state.selectedInstanceID);
+                    CloseEditor();
+                }
+            } else { ImGui::TextDisabled("Flipbook component missing"); }
         }
 
         // ── Close button (only when delete was not pressed) ───────────────────
@@ -2232,6 +2527,7 @@ namespace ImGuiDrawFunctions {
             if (open) *open = false;
         }
 
+        ImGui::PopID();
         ImGui::PopID();
         ImGui::End();
     }

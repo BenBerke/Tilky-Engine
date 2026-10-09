@@ -7,7 +7,7 @@ Everything a Lua script can do with a sector.
 | Where from | How |
 |---|---|
 | A script attached to the sector | the global `sector` |
-| A public field | `---@field door Sector` |
+| A public field | `public Sector door` |
 | A point in the map  | `Game.GetSectorAt(position)` |
 | An entity  | `entity:GetSector()` |
 | A raycast hit | `hit.sector` |
@@ -55,6 +55,31 @@ Returns the sector the entity is standing in. It returns `nil` if the entity is 
 or has no Transform (UI entities, for example). This is the same membership `ContainsEntity` and
 `OnEntityEnter` use.
 
+## OnSectorChange
+
+A callback you **define** in a script attached to an entity. The engine calls it when that entity
+ends up in a different sector.
+
+```lua
+function OnSectorChange(sector) end
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `sector` | `Sector?` | The sector the entity is in now, or `nil` if it left the map. |
+
+- It fires at the end of the frame the entity crossed over, right after the sectors'
+  `OnEntityExit` / `OnEntityEnter`.
+- The sector the entity starts the level in does not count as a change.
+- It only runs on **entity** scripts, and only while the script is enabled. On a sector script it
+  is ignored. `OnSectorChange` is a reserved name, so you can't use it for a public field.
+
+```lua
+function OnSectorChange(sector)
+    if sector ~= nil and sector:HasTag("water") then Debug.Print(entity.name .. " is swimming") end
+end
+```
+
 ---
 
 ## Properties
@@ -100,8 +125,7 @@ sector:ContainsEntity(entity) -> boolean
 Returns `true` if `entity` is inside this sector.
 
 ```lua
----@field player Entity
-player = nil
+public Entity player = nil
 
 function Update()
     if sector:ContainsEntity(player) then sector:FadeLight(Vector3(255, 80, 80), 0.5) end
@@ -206,8 +230,7 @@ function OnEntityExit(entity) end
 
 ```lua
 -- Trap room: slam the door behind the player, reopen it when the room is clear.
----@field door Sector
-door = nil
+public Sector door = nil
 
 function OnEntityEnter(entity)
     if entity.hasPlayerController then door:MoveCeilingToFloor(1, 200) end
@@ -230,7 +253,7 @@ sector:GetFloor(floorIndex) -> SectorFloor
 
 One floor/ceiling interval. `SectorFloor` has `floorHeight`, `ceilingHeight`, `floorColor`,
 `ceilingColor`, `floorTexture` and `ceilingTexture` (all read/write), plus `index`, `isValid`,
-`clearFloorTexture()` and `clearCeilingTexture()`. Writing a height raises an error if the floor
+`ClearFloorTexture()` and `ClearCeilingTexture()`. Writing a height raises an error if the floor
 would reach its ceiling or overlap another interval.
 
 ### GetFloorHeightAt 
@@ -454,6 +477,43 @@ Returns **two** values: the minimum and maximum corner of the sector's bounding 
 ```lua
 local min, max = sector:GetBounds()
 local width, depth = max.x - min.x, max.y - min.y
+```
+
+### DistanceToSector
+
+```lua
+sector:DistanceToSector(entity) -> number
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `entity` | Entity | Measured from its transform's `x` and `z`. Height is ignored. |
+
+Distance from the entity to the nearest edge of the sector's outline. Returns `0` while the entity
+is inside the sector. Child sectors cut out of this one count as **outside**, same as
+`ContainsEntity`, and their edges count as part of the outline. Works for a sector of any shape.
+Raises an error if the entity has no Transform.
+
+```lua
+-- Open a door when the player comes within 30 units of it.
+if sector:DistanceToSector(player) <= 30 then
+    sector:MoveCeilingToFloor(1, 60, 40)
+end
+```
+
+### DistanceToSectorSquared
+
+```lua
+sector:DistanceToSectorSquared(entity) -> number
+```
+
+`DistanceToSector` squared, without the square root. Compare it against a squared range when you
+only need "is it within range":
+
+```lua
+if sector:DistanceToSectorSquared(player) <= range * range then
+    -- in range
+end
 ```
 
 ### RandomPointInside

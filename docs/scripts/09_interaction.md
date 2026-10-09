@@ -18,18 +18,23 @@ Two useful engine features for interaction:
   hit. With `false` any entity can be hit, using a box the size of its transform's `scale`.
   Passing the shooter's own `id` as `ignoredEntityID` stops the ray from hitting them.
 
+- `camera:Raycast(length, requireCollider)` is the same ray, already aimed for you: it starts at
+  the camera's eyes, goes through the middle of the screen, and ignores the camera's own entity.
+  It returns the same table. Both scripts below use it.
+
 - Any script can be called by another script (`someScript:FunctionName()`), which lets you build
   a tiny "interface" system: anything that defines `Interact` can be used.
 
 An Entity's `transform.position` is at its **feet**. The player's eyes (and camera) sit
-`playerController.eyeHeight` above that, so a ray meant to follow the player's gaze starts at
-`position.y + eyeHeight` and travels along `camera.forward`. Both scripts below do exactly that.
+`playerController.eyeHeight` above that. `camera:Raycast` already starts there
+(`camera:GetEyePosition()`), so you only need the eye height when building a ray yourself with
+`Game.Raycast`.
 
 ---
 
 ## Interactor: look at it and press E
 
-**Attach to:** the player (needs a `Camera` and a `PlayerController`).
+**Attach to:** the player (needs a `Camera`).
 
 Casts a ray from the player's eyes every frame. If the entity it hits has a script that defines an
 `Interact` function, pressing the key calls it. An optional UI label shows a prompt such as
@@ -37,33 +42,20 @@ Casts a ray from the player's eyes every frame. If the entity it hits has a scri
 
 ```lua
 -- Scripts/Interaction/Interactor.lua (entity script)
----@field range number @ Reach
-range = 48
+public number range = 48
+public Key interactKey = Key.E
+public Entity promptLabel = nil
 
----@field interactKey string @ Interact Key
-interactKey = "E"
-
----@field promptLabel Entity @ Prompt Label (optional, needs a UIText)
-promptLabel = nil
-
-local camera, pc, transform, label
+local camera, label
 
 function Start()
     camera = entity.camera
-    pc = entity.playerController
-    transform = entity.transform
 
     if promptLabel ~= nil then label = promptLabel.uiText end
 
-    if camera == nil or pc == nil then
-        Debug.LogError("Interactor: " .. entity.name .. " needs a Camera and a PlayerController")
+    if camera == nil then
+        Debug.LogError("Interactor: " .. entity.name .. " needs a Camera")
     end
-end
-
--- The ray starts at the player's eyes: feet position plus eye height.
-local function EyePosition()
-    local p = transform.position
-    return Vector3(p.x, p.y + pc.eyeHeight, p.z)
 end
 
 local function SetPrompt(text)
@@ -82,7 +74,7 @@ local function Examine(target, use)
             if use then script:Interact(entity) end   -- `entity` is the player (this script's Entity)
 
             -- The target script can provide a `prompt` string of its own.
-            return "[" .. interactKey .. "] " .. (script.prompt or "Interact")
+            return "[" .. Input.GetKeyName(interactKey) .. "] " .. (script.prompt or "Interact")
         end
     end
 
@@ -90,10 +82,10 @@ local function Examine(target, use)
 end
 
 function Update()
-    if camera == nil or pc == nil then return end
+    if camera == nil then return end
 
     -- requireCollider = true: only things with a Collider can be interacted with.
-    local hit = Game.Raycast(EyePosition(), camera.forward, range, entity.id, true)
+    local hit = camera:Raycast(range, true)
 
     local prompt = nil
     if hit ~= nil and hit.entity ~= nil then
@@ -124,11 +116,8 @@ Toggles a channel that doors, alarms, and lights can listen to
 
 ```lua
 -- Scripts/Interaction/Lever.lua (entity script)
----@field channel string @ Channel
-channel = "door1"
-
----@field prompt string @ Prompt
-prompt = "Pull lever"
+public string channel = "door1"
+public string prompt = "Pull lever"
 
 local isOn = false
 
@@ -136,8 +125,8 @@ local isOn = false
 function Interact(self, who)
     isOn = not isOn
 
-    Scripts.channels = Scripts.channels or {}
-    Scripts.channels[channel] = isOn
+    Global.channels = Global.channels or {}
+    Global.channels[channel] = isOn
 
     Debug.Print(who.name .. " turned '" .. channel .. "' " .. (isOn and "on" or "off"))
 end
@@ -153,7 +142,7 @@ end
 
 ## Hitscan weapon
 
-**Attach to:** the player (needs a `Camera` and a `PlayerController`).
+**Attach to:** the player (needs a `Camera`).
 
 Left mouse fires an instant ray from the player's eyes. It supports fire rate, ammo, and reloading, and damages
 anything hit that has a `Health` script
@@ -161,25 +150,14 @@ anything hit that has a `Health` script
 
 ```lua
 -- Scripts/Interaction/Hitscan.lua (entity script)
----@field damage number @ Damage
-damage = 20
+public number damage = 20
+public number range = 400
+public number fireDelay = 0.25
+public int magazineSize = 8
+public number reloadTime = 1.5
+public Entity ammoLabel = nil
 
----@field range number @ Range
-range = 400
-
----@field fireDelay number @ Seconds Between Shots
-fireDelay = 0.25
-
----@field magazineSize int @ Magazine Size
-magazineSize = 8
-
----@field reloadTime number @ Reload Time (s)
-reloadTime = 1.5
-
----@field ammoLabel Entity @ Ammo Label (optional, needs a UIText)
-ammoLabel = nil
-
-local camera, pc, transform, label
+local camera, label
 local ammo = 0
 local cooldown = 0.0
 local reloading = 0.0
@@ -199,10 +177,7 @@ local function Fire()
     ammo = ammo - 1
     cooldown = fireDelay
 
-    local p = transform.position
-    local eyes = Vector3(p.x, p.y + pc.eyeHeight, p.z)
-
-    local hit = Game.Raycast(eyes, camera.forward, range, entity.id, true)
+    local hit = camera:Raycast(range, true)
     if hit == nil then return end
 
     if hit.entity ~= nil and hit.entity:HasScriptNamed("Health") then
@@ -213,19 +188,17 @@ end
 
 function Start()
     camera = entity.camera
-    pc = entity.playerController
-    transform = entity.transform
     ammo = magazineSize
 
     if ammoLabel ~= nil then label = ammoLabel.uiText end
 
-    if camera == nil or pc == nil then
-        Debug.LogError("Hitscan: " .. entity.name .. " needs a Camera and a PlayerController")
+    if camera == nil then
+        Debug.LogError("Hitscan: " .. entity.name .. " needs a Camera")
     end
 end
 
 function Update()
-    if camera == nil or pc == nil then return end
+    if camera == nil then return end
 
     local dt = GameTime.deltaTime
     cooldown = math.max(0, cooldown - dt)
@@ -234,7 +207,7 @@ function Update()
         reloading = reloading - dt
         if reloading <= 0 then ammo = magazineSize end
     else
-        local wantsReload = Input.GetKeyDown("R") and ammo < magazineSize
+        local wantsReload = Input.GetKeyDown(Key.R) and ammo < magazineSize
         if wantsReload or (ammo == 0 and Input.GetMouseButtonDown(Input.MouseLeft)) then
             reloading = reloadTime
         elseif cooldown <= 0 and ammo > 0 and Input.GetMouseButton(Input.MouseLeft) then

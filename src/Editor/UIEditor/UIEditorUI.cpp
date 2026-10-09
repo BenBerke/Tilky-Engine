@@ -103,11 +103,11 @@ namespace {
     // types - that would be inventing infrastructure you didn't ask for.
     // ---------------------------------------------------------------------
 
-    // Script is the odd one out: an entity can carry several script
-    // instances, so it is always addable and is edited through the Map
-    // Editor's own component editor (see uiScriptEditorState below) rather
-    // than DrawUIComponentEditor().
-    enum class UIComponentType { Transform, Text, Sprite, Script };
+    // Script and Flipbook are the odd ones out: they aren't UI-only
+    // components, so they're edited through the Map Editor's own component
+    // editor (see uiScriptEditorState below) rather than
+    // DrawUIComponentEditor(). On a UI entity a Flipbook animates a UI Sprite.
+    enum class UIComponentType { Transform, Text, Sprite, Script, Flipbook };
 
     const char* UIComponentDisplayNameKey(const UIComponentType type) {
         switch (type) {
@@ -115,6 +115,7 @@ namespace {
             case UIComponentType::Text: return "editor.ui.text.title";
             case UIComponentType::Sprite: return "editor.ui.sprite.title";
             case UIComponentType::Script: return "component.script";
+            case UIComponentType::Flipbook: return "component.flipbook";
         }
         return "";
     }
@@ -125,6 +126,7 @@ namespace {
             case UIComponentType::Text: return entity.HasComponent<ComponentUIText>();
             case UIComponentType::Sprite: return entity.HasComponent<ComponentUISprite>();
             case UIComponentType::Script: return !entity.GetScripts().empty();
+            case UIComponentType::Flipbook: return entity.HasComponent<ComponentFlipbook>();
         }
         return false;
     }
@@ -134,6 +136,8 @@ namespace {
     // the add-component combo's own transient state.
     struct UIEntityInspectorState {
         int selectedComponent = -1;
+        // Which Text/Sprite is being edited - an entity can have several.
+        ComponentInstanceID selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
         bool editingComponent = false;
         bool addingComponent = false;
         int componentToAdd = 0;
@@ -141,9 +145,9 @@ namespace {
 
     UIEntityInspectorState uiEntityInspectorState;
 
-    // A UI entity is a normal entity, so it can carry scripts too. Their
-    // editor is the Map Editor's shared component editor - public fields,
-    // Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
+    // A UI entity is a normal entity, so it can carry scripts and flipbooks
+    // too. Their editor is the Map Editor's shared component editor - public
+    // fields, Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
     ImGuiDrawFunctions::EntityInspectorState uiScriptEditorState;
 
     void ResetUIInspectorState() {
@@ -619,6 +623,9 @@ namespace {
         if (DrawAssetField(Get("editor.ui.sprite.texture").c_str(), sprite.texture, AssetKind::Texture, 32.0f))
             changed = true;
 
+        if (ImGui::Checkbox(Get("editor.ui.sprite.is_active").c_str(), &sprite.isActive))
+            changed = true;
+
         if (!sprite.texture.empty() && preview == nullptr) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.35f, 1.0f));
             ImGui::TextWrapped("%s", Get("editor.ui.sprite.missing_texture").c_str());
@@ -638,7 +645,17 @@ namespace {
     // real DrawEntityEditor() and its "Add Component" block.
     // ---------------------------------------------------------------------
 
-    bool DrawUIComponentCard(const char* label, const std::string& rowID) {
+    // Cards of the same kind can be dragged onto each other to reorder them
+    // (the first one is what entity.uiText etc. return in Lua). Without a
+    // `move` function the card isn't draggable.
+    struct UIComponentDragPayload {
+        int kind;
+        std::uint64_t instanceID;
+    };
+
+    bool DrawUIComponentCard(const char* label, const std::string& rowID, const int dragKind = -1,
+                             const std::uint64_t instanceID = 0, const size_t indexInKind = 0,
+                             void (*move)(std::uint64_t, size_t) = nullptr) {
         ImGui::PushID(rowID.c_str());
 
         const ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -650,7 +667,30 @@ namespace {
 
         ImGui::Spacing();
         ImGui::Indent(6.0f);
-        ImGui::TextUnformatted(label);
+        ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+
+        if (move != nullptr) {
+            if (ImGui::BeginDragDropSource()) {
+                const UIComponentDragPayload payload{dragKind, instanceID};
+                ImGui::SetDragDropPayload("TILKY_UI_COMPONENT", &payload, sizeof(payload));
+                ImGui::TextUnformatted(label);
+                ImGui::EndDragDropSource();
+            }
+
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload("TILKY_UI_COMPONENT")) {
+                    const auto* payload = static_cast<const UIComponentDragPayload*>(dropped->Data);
+                    if (payload->kind == dragKind && payload->instanceID != instanceID) {
+                        move(payload->instanceID, indexInKind);
+                        uiHasUnsavedChanges = true;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGuiDrawFunctions::Tooltip(Get("editor.tooltip.entity.component_drag").c_str());
+        }
+
         ImGui::SameLine(rowW - 56.0f);
 
         const bool editPressed = ImGui::SmallButton("Edit");
@@ -661,30 +701,85 @@ namespace {
         return editPressed;
     }
 
+    void MoveUIText(const std::uint64_t instanceID, const size_t index) {
+        LevelManager::CurrentLevel().ui_texts.MoveOnOwner(instanceID, index);
+    }
+
+    void MoveUISprite(const std::uint64_t instanceID, const size_t index) {
+        LevelManager::CurrentLevel().ui_sprites.MoveOnOwner(instanceID, index);
+    }
+
+    void MoveScript(const std::uint64_t instanceID, const size_t index) {
+        LevelManager::CurrentLevel().scripts.MoveOnOwner(instanceID, index);
+    }
+
+    void MoveFlipbook(const std::uint64_t instanceID, const size_t index) {
+        LevelManager::CurrentLevel().flipbooks.MoveOnOwner(instanceID, index);
+    }
+
     void DrawUIComponentsSection(Entity& entity, UIEntityInspectorState& state) {
         ImGuiDrawFunctions::BeginSection("Components");
 
-        for (const UIComponentType type : {UIComponentType::Transform, UIComponentType::Text, UIComponentType::Sprite}) {
-            if (!UIEntityHasComponent(entity, type)) continue;
-
-            if (DrawUIComponentCard(Get(UIComponentDisplayNameKey(type)).c_str(),
-                                    std::to_string(static_cast<int>(type)))) {
-                state.selectedComponent = static_cast<int>(type);
-                state.editingComponent = true;
-            }
+        if (UIEntityHasComponent(entity, UIComponentType::Transform) &&
+            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Transform)).c_str(), "transform")) {
+            state.selectedComponent = static_cast<int>(UIComponentType::Transform);
+            state.selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+            state.editingComponent = true;
         }
 
+        // One card per Text/Sprite: "Text", or "Text 1", "Text 2"... when there are several.
+        const auto drawCards = [&](const UIComponentType type, const std::vector<std::uint64_t>& instances,
+                                   void (*move)(std::uint64_t, size_t)) {
+            const std::string name = Get(UIComponentDisplayNameKey(type));
+            for (size_t i = 0; i < instances.size(); ++i) {
+                const std::string label = instances.size() > 1 ? name + " " + std::to_string(i + 1) : name;
+                const std::string rowID = std::to_string(static_cast<int>(type)) + "_" + std::to_string(instances[i]);
+
+                if (DrawUIComponentCard(label.c_str(), rowID, static_cast<int>(type), instances[i], i, move)) {
+                    state.selectedComponent = static_cast<int>(type);
+                    state.selectedInstanceID = instances[i];
+                    state.editingComponent = true;
+                }
+            }
+        };
+
+        std::vector<std::uint64_t> texts, sprites;
+        for (const ComponentUIText* text : entity.GetComponents<ComponentUIText>()) texts.push_back(text->instanceID);
+        for (const ComponentUISprite* sprite : entity.GetComponents<ComponentUISprite>()) sprites.push_back(sprite->instanceID);
+        drawCards(UIComponentType::Text, texts, &MoveUIText);
+        drawCards(UIComponentType::Sprite, sprites, &MoveUISprite);
+
         // One row per script instance, same as the Map Editor's list.
-        for (ComponentScript* script : entity.GetScripts()) {
+        const std::vector<ComponentScript*> scripts = entity.GetScripts();
+        for (size_t i = 0; i < scripts.size(); ++i) {
+            const ComponentScript* script = scripts[i];
             const std::string displayName = script->fileName.empty()
                 ? std::string("Script (unassigned)")
                 : std::filesystem::path(script->fileName).filename().string();
             const std::string label = script->enabled ? displayName : displayName + " (disabled)";
 
-            if (DrawUIComponentCard(label.c_str(), "script" + std::to_string(script->instanceID))) {
+            if (DrawUIComponentCard(label.c_str(), "script" + std::to_string(script->instanceID),
+                                    static_cast<int>(UIComponentType::Script), script->instanceID, i, &MoveScript)) {
                 uiScriptEditorState.selectedComponent = CMP_SCRIPT;
                 uiScriptEditorState.editingComponent = true;
-                uiScriptEditorState.selectedScriptInstanceID = script->instanceID;
+                uiScriptEditorState.selectedInstanceID = script->instanceID;
+            }
+        }
+
+        // Flipbooks open in the same shared editor as scripts.
+        const std::vector<ComponentFlipbook*> flipbooks = entity.GetComponents<ComponentFlipbook>();
+        for (size_t i = 0; i < flipbooks.size(); ++i) {
+            const ComponentFlipbook* flipbook = flipbooks[i];
+            const std::string name = Get(UIComponentDisplayNameKey(UIComponentType::Flipbook));
+            const std::string label = flipbook->flipbookFileName.empty()
+                ? name
+                : name + ": " + std::filesystem::path(flipbook->flipbookFileName).filename().string();
+
+            if (DrawUIComponentCard(label.c_str(), "flipbook" + std::to_string(flipbook->instanceID),
+                                    static_cast<int>(UIComponentType::Flipbook), flipbook->instanceID, i, &MoveFlipbook)) {
+                uiScriptEditorState.selectedComponent = CMP_FLIPBOOK;
+                uiScriptEditorState.editingComponent = true;
+                uiScriptEditorState.selectedInstanceID = flipbook->instanceID;
             }
         }
 
@@ -701,13 +796,11 @@ namespace {
             ImGui::PushID("ui_add_component_combo");
 
             // Transform is never offered here, matching how CMP_TRANSFORM
-            // is skipped in the real Add Component combo.
-            std::vector<UIComponentType> addable;
-            if (!UIEntityHasComponent(entity, UIComponentType::Text)) addable.push_back(UIComponentType::Text);
-            if (!UIEntityHasComponent(entity, UIComponentType::Sprite)) addable.push_back(UIComponentType::Sprite);
-            // Always addable - an entity can hold several scripts - so this
-            // list is never empty.
-            addable.push_back(UIComponentType::Script);
+            // is skipped in the real Add Component combo. The rest can be
+            // added any number of times.
+            const std::vector<UIComponentType> addable = {
+                UIComponentType::Text, UIComponentType::Sprite, UIComponentType::Script, UIComponentType::Flipbook
+            };
 
             if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
                 state.componentToAdd = 0;
@@ -729,6 +822,7 @@ namespace {
                 if (addable[state.componentToAdd] == UIComponentType::Text) entity.AddComponent<ComponentUIText>();
                 else if (addable[state.componentToAdd] == UIComponentType::Sprite) entity.AddComponent<ComponentUISprite>();
                 else if (addable[state.componentToAdd] == UIComponentType::Script) entity.AddScript().enabled = true;
+                else if (addable[state.componentToAdd] == UIComponentType::Flipbook) entity.AddComponent<ComponentFlipbook>();
                 state.addingComponent = false;
                 state.componentToAdd = 0;
                 uiHasUnsavedChanges = true;
@@ -835,6 +929,7 @@ namespace {
         }
 
         ImGui::PushID(state.selectedComponent);
+        ImGui::PushID(std::to_string(state.selectedInstanceID).c_str());
 
         bool closeRequested = false;
 
@@ -855,13 +950,13 @@ namespace {
             else ImGui::TextDisabled("Transform component missing");
         }
         else if (componentType == UIComponentType::Text) {
-            if (auto* text = entity.GetComponent<ComponentUIText>()) {
+            if (auto* text = entity.GetComponentInstance<ComponentUIText>(state.selectedInstanceID)) {
                 DrawUITextInspector(*text);
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
                 if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentUIText>();
+                    entity.RemoveComponentInstance<ComponentUIText>(state.selectedInstanceID);
                     uiHasUnsavedChanges = true;
                     closeRequested = true;
                 }
@@ -869,13 +964,13 @@ namespace {
             else ImGui::TextDisabled("Text component missing");
         }
         else if (componentType == UIComponentType::Sprite) {
-            if (ComponentUISprite* sprite = entity.GetComponent<ComponentUISprite>()) {
+            if (ComponentUISprite* sprite = entity.GetComponentInstance<ComponentUISprite>(state.selectedInstanceID)) {
                 DrawUISpriteInspector(*sprite);
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
                 if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str())) {
-                    entity.RemoveComponent<ComponentUISprite>();
+                    entity.RemoveComponentInstance<ComponentUISprite>(state.selectedInstanceID);
                     uiHasUnsavedChanges = true;
                     closeRequested = true;
                 }
@@ -894,6 +989,7 @@ namespace {
             state.selectedComponent = -1;
         }
 
+        ImGui::PopID();
         ImGui::PopID();
         ImGui::End();
     }
@@ -1254,6 +1350,7 @@ namespace {
         ImGui::End();
 
         assetBrowser.DrawTextEditorWindow(scriptEditorFont);
+        assetBrowser.DrawFlipbookEditorWindows();
     }
 
     // ---------------------------------------------------------------------

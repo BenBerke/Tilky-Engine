@@ -23,7 +23,7 @@ flat in vec2 vSurfaceSize;
 in vec3 vModelNormal;
 in vec2 vModelUV;
 
-uniform sampler2D uAtlas;
+uniform sampler2DArray uAtlas; // one layer per atlas page
 uniform int uTextureCount;
 
 // Models sample their own texture (unit 1) instead of the atlas.
@@ -82,10 +82,10 @@ vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
         vec2 dx = dFdx(uv) * regionSize;
         vec2 dy = dFdy(uv) * regionSize;
 
-        return textureGrad(uAtlas, atlasUV, dx, dy);
+        return textureGrad(uAtlas, vec3(atlasUV, region.data.y), dx, dy);
     }
 
-    return texture(uAtlas, atlasUV);
+    return texture(uAtlas, vec3(atlasUV, region.data.y));
 }
 
 float GetDistanceLight() {

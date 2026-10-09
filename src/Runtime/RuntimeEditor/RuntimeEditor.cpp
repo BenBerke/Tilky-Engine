@@ -7,6 +7,7 @@
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Map/WallPieces.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
@@ -119,6 +120,7 @@ namespace {
     struct SurfaceRef {
         RayHitType type = RayHitType::None;
         int wallIndex = -1;
+        WallSurfaceSlot wallSlot = WallSurfaceSlot::Top; // the wall texture under the cursor
         int sectorIndex = -1;
         int floorIndex = -1;
     };
@@ -258,7 +260,7 @@ namespace {
                 if (hoveredSurface.wallIndex < 0 ||
                     hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return {};
 
-                return level.walls[hoveredSurface.wallIndex].textureFileName;
+                return level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture;
             }
 
             case RayHitType::SectorFloor:
@@ -289,7 +291,7 @@ namespace {
                 if (hoveredSurface.wallIndex < 0 ||
                     hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
 
-                level.walls[hoveredSurface.wallIndex].textureFileName = textureFileName;
+                level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture = textureFileName;
                 return true;
             }
 
@@ -305,8 +307,6 @@ namespace {
 
                 SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
 
-                // Walls name this field textureFileName; SectorSurface calls it
-                // texture. Same contents - a bare asset file name.
                 if (hoveredSurface.type == RayHitType::SectorFloor)
                     sectorFloor.floor.texture = textureFileName;
                 else
@@ -320,7 +320,7 @@ namespace {
         }
     }
 
-    // Wall::textureOffset and SectorSurface::textureOffset are the same idea
+    // WallSurface::textureOffset and SectorSurface::textureOffset are the same idea
     // living in two structs, so the bounds checks happen here once instead of
     // at the call site. Returns false for entities and for stale indices.
     bool AddUvOffset(Level& level, const SurfaceRef& surface, const Vector2 delta) {
@@ -329,10 +329,10 @@ namespace {
                 if (surface.wallIndex < 0 ||
                     surface.wallIndex >= static_cast<int>(level.walls.size())) return false;
 
-                Wall& wall = level.walls[surface.wallIndex];
+                WallSurface& wallSurface = level.walls[surface.wallIndex].Surface(surface.wallSlot);
 
-                wall.textureOffset.x += delta.x;
-                wall.textureOffset.y += delta.y;
+                wallSurface.textureOffset.x += delta.x;
+                wallSurface.textureOffset.y += delta.y;
 
                 return true;
             }
@@ -380,8 +380,8 @@ namespace {
     //    gl_FrontFacing handling), and the offset is added after scale/flip:
     //        u = (+/-)s * scale.x / tileSize + offset.x / tileSize
     //    so with no flip a larger offset.x slides the texture toward start,
-    //    i.e. against the wall direction. flipTextureX (or a negative
-    //    scale.x) reverses that.
+    //    i.e. against the wall direction. The dragged surface's
+    //    flipTextureX (or a negative scale.x) reverses that.
     //  - The view's right vector is cross(forward, up) =
     //    (-cos yaw, 0, sin yaw), the same basis GetMouseRayDirection uses.
     //
@@ -389,6 +389,7 @@ namespace {
     // the ray's hit point stands in for "a point on the wall".
     float ComputeWallHorizontalDragSign(
         const Wall& wall,
+        const WallSurface& surface,
         const Vector3 hitPosition,
         const Vector3 cameraPosition,
         const ComponentCamera& camera,
@@ -429,8 +430,8 @@ namespace {
 
         // Which way along start -> end the texture slides when offset.x grows.
         float textureSlide = -1.0f;
-        if (wall.flipTextureX) textureSlide = -textureSlide;
-        if (wall.textureScale.x < 0.0f) textureSlide = -textureSlide;
+        if (surface.flipTextureX) textureSlide = -textureSlide;
+        if (surface.textureScale.x < 0.0f) textureSlide = -textureSlide;
 
         return (screenSlide > 0.0f ? 1.0f : -1.0f) * textureSlide;
     }
@@ -569,6 +570,12 @@ namespace RuntimeEditorUi {
 
             ImGui::End();
         }
+
+        // Outside the check above, so open scripts and flipbooks don't vanish
+        // while looking around. No code font: the map editor's belongs to its
+        // own ImGui context, so the script editor uses the default one here.
+        MapEditorInternal::assetBrowser.DrawTextEditorWindow(nullptr);
+        MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
 
         // ── Drop textures straight onto geometry ─────────────────────────────
         // The 3D view is not an ImGui window, so there is no item to hang a
@@ -811,6 +818,15 @@ namespace RuntimeEditor {
 
             if (hit->type == RayHitType::Wall) {
                 hoveredSurface.wallIndex = FindWallIndex(level, hit->wall);
+
+                if (hit->wall != nullptr) {
+                    hoveredSurface.wallSlot = WallPieces::SlotAtHeight(
+                        level,
+                        *hit->wall,
+                        {hit->position.x, hit->position.z},
+                        hit->position.y
+                    );
+                }
             }
             else if (hit->type == RayHitType::SectorFloor || hit->type == RayHitType::SectorCeiling) {
                 hoveredSurface.sectorIndex = FindSectorIndex(level, hit->sector);
@@ -842,8 +858,11 @@ namespace RuntimeEditor {
                 hit.has_value() &&
                 uvDragSurface.wallIndex >= 0 &&
                 uvDragSurface.wallIndex < static_cast<int>(level.walls.size())) {
+                const Wall& dragWall = level.walls[uvDragSurface.wallIndex];
+
                 lastWallDragHorizontalSign = ComputeWallHorizontalDragSign(
-                    level.walls[uvDragSurface.wallIndex],
+                    dragWall,
+                    dragWall.Surface(uvDragSurface.wallSlot),
                     hit->position,
                     rayOrigin,
                     *camera,
@@ -1006,9 +1025,9 @@ namespace RuntimeEditor {
             const float uvScaleDelta = wheel * UV_SCALE_STEP;
 
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
-                Wall& wall = *hit->wall;
-                wall.textureScale.x += uvScaleDelta;
-                wall.textureScale.y += uvScaleDelta;
+                WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);
+                wallSurface.textureScale.x += uvScaleDelta;
+                wallSurface.textureScale.y += uvScaleDelta;
             }
             else if ((hit->type == RayHitType::SectorFloor ||
                       hit->type == RayHitType::SectorCeiling) &&
