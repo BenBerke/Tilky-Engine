@@ -319,6 +319,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Map/LevelManager.cpp
         src/Map/LevelSerialization.cpp
         src/Map/MapQueries.cpp
+        src/Map/WallPieces.cpp
 
         src/UISytem.cpp
 
@@ -334,6 +335,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Map/LevelManager.hpp
         Headers/Map/LevelSerialization.hpp
         Headers/Map/MapQueries.hpp
+        Headers/Map/WallPieces.hpp
 
         Headers/Math/Geometry/Geometry.hpp
         Headers/Math/Vector/Vector2Math.hpp

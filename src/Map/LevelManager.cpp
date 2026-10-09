@@ -93,8 +93,10 @@ namespace LevelManager {
 
         Level& level = CurrentLevel();
 
-        for (Wall& wall : level.walls)
-            if (wall.textureFileName == oldReference) wall.textureFileName = newReference;
+        for (Wall& wall : level.walls) {
+            if (wall.top.texture == oldReference) wall.top.texture = newReference;
+            if (wall.bottom.texture == oldReference) wall.bottom.texture = newReference;
+        }
 
         for (Sector& sector : level.sectors)
             for (SectorFloor& floor : sector.floors) {

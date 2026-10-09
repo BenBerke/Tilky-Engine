@@ -1242,6 +1242,47 @@ namespace ImGuiDrawFunctions {
         ImGui::End();
         return deleteRequested;
     }
+    void DrawWallTextureField(const char *label, WallSurface &surface) {
+        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, 48.0f);
+        Tooltip(Get("editor.tooltip.wall.texture").c_str());
+    }
+
+    // `id` keeps the Top and Bottom widgets apart when both are shown.
+    void DrawWallSurfaceSettings(const char *id, WallSurface &surface, const bool draggable) {
+        ImGui::PushID(id);
+
+        FieldWidth(200.0f);
+        InputOrDrag2(Get("wall.texture_offset").c_str(), &surface.textureOffset.x, draggable);
+        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
+
+        InputOrDrag2(Get("wall.texture_scale").c_str(), &surface.textureScale.x, draggable);
+        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
+
+        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &surface.flipTextureX);
+        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &surface.flipTextureY);
+
+        const WallTextureAnchorInfo *selected = FindWallTextureAnchor(surface.anchor);
+        if (selected == nullptr) selected = &WALL_TEXTURE_ANCHORS[0];
+
+        FieldWidth(200.0f);
+
+        if (ImGui::BeginCombo(Get("wall.anchor").c_str(), Get(selected->labelKey).c_str())) {
+            for (const WallTextureAnchorInfo &anchor : WALL_TEXTURE_ANCHORS) {
+                const bool isSelected = anchor.anchor == surface.anchor;
+
+                if (ImGui::Selectable(Get(anchor.labelKey).c_str(), isSelected)) surface.anchor = anchor.anchor;
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(anchor.tooltipKey).c_str());
+                if (isSelected) ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+
+        Tooltip(Get(selected->tooltipKey).c_str());
+
+        ImGui::PopID();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
@@ -1292,13 +1333,12 @@ namespace ImGuiDrawFunctions {
         // ── Appearance ───────────────────────────────────────────────────────
         BeginSection("Appearance");
 
-        MapEditorInternal::DrawAssetField(
-            Get("wall.texture_index").c_str(),
-            wall.textureFileName,
-            AssetKind::Texture,
-            48.0f
-        );
-        Tooltip(Get("editor.tooltip.wall.texture").c_str());
+        // Only a portal has a step under the neighbour's floor, so only a
+        // portal gets a Bottom texture; a solid wall shows Top everywhere.
+        const bool portal = wall.IsPortal();
+
+        DrawWallTextureField(portal ? Get("wall.texture_top").c_str() : Get("wall.texture").c_str(), wall.top);
+        if (portal) DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
 
         FieldWidth(220.0f);
 
@@ -1318,15 +1358,14 @@ namespace ImGuiDrawFunctions {
         // ── Texture ───────────────────────────────────────────────────
         BeginSection("Texture");
 
-        FieldWidth(200.0f);
-        InputOrDrag2(Get("wall.texture_offset").c_str(), &wall.textureOffset.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
+        if (portal) {
+            SmallMetaText("%s", Get("wall.texture_top").c_str());
+            DrawWallSurfaceSettings("Top", wall.top, draggable);
 
-        InputOrDrag2(Get("wall.texture_scale").c_str(), &wall.textureScale.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
-
-        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &wall.flipTextureX);
-        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &wall.flipTextureY);
+            SmallMetaText("%s", Get("wall.texture_bottom").c_str());
+            DrawWallSurfaceSettings("Bottom", wall.bottom, draggable);
+        }
+        else DrawWallSurfaceSettings("Top", wall.top, draggable);
 
         EndSection();
 

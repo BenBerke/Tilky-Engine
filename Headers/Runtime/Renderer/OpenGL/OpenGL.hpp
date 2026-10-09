@@ -66,9 +66,9 @@ namespace OpenGLRendererInternal {
         Vector4 heights;
         Vector4 data;
         //data.x = texture region/index;
-        //data.y = unused;
-        //data.z = texture anchor height;
-        //data.w = texture direction;
+        //data.y = 0 seen from the front sector, 1 from the back;
+        //data.z = texture anchor height (world height of V = 0);
+        //data.w = unused;
         Vector4 data2;
         //x = textureOffset.x
         //y = textureOffset.y

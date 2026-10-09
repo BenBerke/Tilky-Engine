@@ -8,12 +8,11 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Map/WallPieces.hpp"
 
 namespace {
     using OpenGLRendererInternal::GpuWall;
     using OpenGLRendererInternal::GpuFlatTriangle;
-
-    constexpr float MIN_WALL_HEIGHT = 0.0001f;
 
     // Everything that decides how many flat triangle instances exist and which
     // (sector, floor) each one points at. Cheap enough to compare every frame.
@@ -30,310 +29,21 @@ namespace {
         return signature;
     }
 
-    enum class WallSpanSide {
-        Front,
-        Back
-    };
-
-    // Axis aligned bounds of a sector's triangulated area, in map XY.
-    // This must match GetSectorBounds() in Rendering_vs.glsl exactly -
-    // the shader derives slope offsets from the same rectangle, so any
-    // difference here shows up as a seam between a sloped flat and the
-    // wall that is supposed to close it.
-    struct SectorBounds {
-        float minX = 0.0f;
-        float minY = 0.0f;
-        float maxX = 0.0f;
-        float maxY = 0.0f;
-        bool valid = false;
-    };
-
-    SectorBounds ComputeSectorBounds(const Sector& sector) {
-        SectorBounds bounds;
-
-        for (const Triangle& triangle : sector.triangles) {
-            const Vector2 points[3] = {triangle.a, triangle.b, triangle.c};
-
-            for (const Vector2& point : points) {
-                if (!bounds.valid) {
-                    bounds.minX = point.x;
-                    bounds.maxX = point.x;
-                    bounds.minY = point.y;
-                    bounds.maxY = point.y;
-                    bounds.valid = true;
-
-                    continue;
-                }
-
-                bounds.minX = std::min(bounds.minX, point.x);
-                bounds.maxX = std::max(bounds.maxX, point.x);
-                bounds.minY = std::min(bounds.minY, point.y);
-                bounds.maxY = std::max(bounds.maxY, point.y);
-            }
-        }
-
-        return bounds;
-    }
-
-    // Walls are visited once per side, so most sectors get looked up
-    // several times per rebuild. Bounds are pure triangle data, so
-    // computing them once per sector is enough.
-    class SectorBoundsCache {
-    public:
-        const SectorBounds& Get(const Sector* sector) {
-            if (sector == nullptr) return emptyBounds;
-
-            const auto existing = cache.find(sector);
-
-            if (existing != cache.end()) return existing->second;
-
-            return cache.emplace(sector, ComputeSectorBounds(*sector)).first->second;
-        }
-
-    private:
-        std::unordered_map<const Sector*, SectorBounds> cache;
-        SectorBounds emptyBounds;
-    };
-
-    // Mirrors GetSlopeOffset() in Rendering_vs.glsl. slopeStrength is used
-    // as a direct height-per-unit gradient here because that is what the
-    // shader does
-    float GetSlopeOffset(const Vector2& point, const SectorBounds& bounds, const SlopeDirection slopeDirection, const float slopeStrength) {
-        if (!bounds.valid || slopeStrength == 0.0f) return 0.0f;
-
-        const float gradient = slopeStrength * Constants::DegToRad;
-
-        switch (slopeDirection) {
-            case PLUS_X: return (point.x - bounds.minX) * gradient;
-            case MINUS_X: return (bounds.maxX - point.x) * gradient;
-            case PLUS_Z: return (point.y - bounds.minY) * gradient;
-            case MINUS_Z: return (bounds.maxY - point.y) * gradient;
-        }
-
-        return 0.0f;
-    }
-
-    float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point) {
-        return surface.height + GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
-    }
-
-    struct SectorSample {
-        const Sector* sector = nullptr;
-        SectorBounds bounds;
-    };
-
-    // The three points along the wall we evaluate slopes at. Start and end
-    // give the geometry, middle decides the topology (which spans exist).
-    struct WallSamplePoints {
-        Vector2 start;
-        Vector2 middle;
-        Vector2 end;
-    };
-
-    // One floor or ceiling plane, sampled at each of those three points.
-    struct HeightSample {
-        float start = 0.0f;
-        float middle = 0.0f;
-        float end = 0.0f;
-    };
-
-    struct WallSpan {
-        HeightSample bottom;
-        HeightSample top;
-        WallSpanSide side;
-    };
-
-    bool IsSectorOpenAtHeight(
-        const SectorSample& sample,
-        const Vector2& point,
-        const float height
-    ) {
-        if (sample.sector == nullptr) return false;
-
-        for (const SectorFloor& floor: sample.sector->floors) {
-            const float floorHeight = GetSurfaceHeight(floor.floor, sample.bounds, point);
-            const float ceilingHeight = GetSurfaceHeight(floor.ceiling, sample.bounds, point);
-
-            if (height > floorHeight + MIN_WALL_HEIGHT &&
-                height < ceilingHeight - MIN_WALL_HEIGHT) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    void AddSectorHeights(
-        const SectorSample& sample,
-        const WallSamplePoints& points,
-        std::vector<HeightSample>& heights
-    ) {
-        if (sample.sector == nullptr) return;
-
-        for (const SectorFloor& floor: sample.sector->floors) {
-            for (const SectorSurface* surface: {&floor.floor, &floor.ceiling}) {
-                heights.push_back({
-                    GetSurfaceHeight(*surface, sample.bounds, points.start),
-                    GetSurfaceHeight(*surface, sample.bounds, points.middle),
-                    GetSurfaceHeight(*surface, sample.bounds, points.end)
-                });
-            }
-        }
-    }
-
-    void SortAndRemoveDuplicateHeights(std::vector<HeightSample>& heights) {
-        std::ranges::sort(
-            heights,
-            [](const HeightSample& a, const HeightSample& b) {
-                return a.middle < b.middle;
-            }
-        );
-
-        // Two planes only count as the same plane if they agree along the
-        // whole wall - equal in the middle but diverging at the ends is a
-        // real gap that still needs covering.
-        heights.erase(
-            std::unique(
-                heights.begin(),
-                heights.end(),
-                [](const HeightSample& a, const HeightSample& b) {
-                    return std::abs(a.start - b.start) <= MIN_WALL_HEIGHT &&
-                           std::abs(a.middle - b.middle) <= MIN_WALL_HEIGHT &&
-                           std::abs(a.end - b.end) <= MIN_WALL_HEIGHT;
-                }
-            ),
-            heights.end()
-        );
-    }
-
-    void PushOrMergeWallSpan(
-        std::vector<WallSpan>& spans,
-        const HeightSample& bottom,
-        const HeightSample& top,
-        const WallSpanSide side
-    ) {
-        if (!spans.empty()) {
-            WallSpan& previous = spans.back();
-
-            if (previous.side == side &&
-                std::abs(previous.top.start - bottom.start) <= MIN_WALL_HEIGHT &&
-                std::abs(previous.top.middle - bottom.middle) <= MIN_WALL_HEIGHT &&
-                std::abs(previous.top.end - bottom.end) <= MIN_WALL_HEIGHT) {
-                previous.top = top;
-
-                return;
-            }
-        }
-
-        spans.push_back({bottom, top, side});
-    }
-
-    struct SpanProbe {
-        Vector2 point;
-        float bottom = 0.0f;
-        float top = 0.0f;
-    };
-
-    // Slopes can make a slab pinch to nothing at one end while still being
-    // open at the other, so the openness test runs where the slab is
-    // thickest rather than always at the wall's middle.
-    SpanProbe PickThickestProbe(
-        const HeightSample& bottom,
-        const HeightSample& top,
-        const WallSamplePoints& points
-    ) {
-        const SpanProbe probes[3] = {
-            {points.start, bottom.start, top.start},
-            {points.middle, bottom.middle, top.middle},
-            {points.end, bottom.end, top.end}
-        };
-
-        SpanProbe best = probes[0];
-
-        for (int i = 1; i < 3; ++i) {
-            if (probes[i].top - probes[i].bottom > best.top - best.bottom) {
-                best = probes[i];
-            }
-        }
-
-        return best;
-    }
-
-    std::vector<WallSpan> BuildWallSpans(
-        const SectorSample& frontSector,
-        const SectorSample& backSector,
-        const WallSamplePoints& points
-    ) {
-        std::vector<HeightSample> heights;
-
-        AddSectorHeights(frontSector, points, heights);
-        AddSectorHeights(backSector, points, heights);
-
-        SortAndRemoveDuplicateHeights(heights);
-
-        std::vector<WallSpan> spans;
-
-        for (size_t i = 0; i + 1 < heights.size(); ++i) {
-            const HeightSample& bottom = heights[i];
-            const HeightSample& top = heights[i + 1];
-
-            const SpanProbe probe = PickThickestProbe(bottom, top, points);
-
-            if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
-
-            const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
-
-            const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
-
-            const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
-
-            if (frontOpen == backOpen) continue;
-
-            PushOrMergeWallSpan(spans, bottom, top,
-            frontOpen ? WallSpanSide::Front : WallSpanSide::Back
-            );
-        }
-
-        return spans;
-    }
-
     void PushGpuWallPiece(
         std::vector<GpuWall>& gpuWalls,
         const Wall& wall,
-        const HeightSample& bottom,
-        const HeightSample& top,
-        const Vector4& color,
-        const float textureRegionIndex,
-        const WallSpanSide side
+        const WallPieces::WallPiece& piece,
+        const float textureRegionIndex
     ) {
-        const float bottomStart = bottom.start;
-        const float bottomEnd = bottom.end;
-
-        // Crossing slopes could invert a quad at one end; clamping keeps
-        // the piece degenerate there instead of flipping it inside out.
-        const float topStart = std::max(top.start, bottomStart);
-        const float topEnd = std::max(top.end, bottomEnd);
-
-        if (topStart - bottomStart <= MIN_WALL_HEIGHT &&
-            topEnd - bottomEnd <= MIN_WALL_HEIGHT) {
-            return;
-        }
-
-        const bool frontSide = side == WallSpanSide::Front;
-
-        // A single world height so the texture keeps a constant vertical
-        // alignment; the sloped edges cut it instead of skewing it.
-        const float textureAnchorHeight = frontSide ? std::max(topStart, topEnd) : std::min(bottomStart, bottomEnd);
-
-        const float textureDirection = frontSide ? -1.0f : 1.0f;
+        const WallSurface& surface = wall.Surface(piece.slot);
 
         GpuWall gpuWall{};
 
         gpuWall.data = {
             textureRegionIndex,
-            frontSide ? 0.0f : 1.0f,
-            textureAnchorHeight,
-            textureDirection
+            piece.frontFacing ? 0.0f : 1.0f,
+            piece.anchorHeight,
+            0.0f
         };
 
         gpuWall.startEnd = {
@@ -343,29 +53,29 @@ namespace {
             wall.end.y
         };
 
-        gpuWall.color = color;
+        gpuWall.color = wall.color;
 
         // heights.xy = bottom/top at the start point
         // heights.zw = bottom/top at the end point
         gpuWall.heights = {
-            bottomStart,
-            topStart,
-            bottomEnd,
-            topEnd
+            piece.bottomStart,
+            piece.topStart,
+            piece.bottomEnd,
+            piece.topEnd
         };
 
         // data2.xy = texture offset; data2.zw = independent X/Y scale.
         gpuWall.data2 = {
-            wall.textureOffset.x,
-            wall.textureOffset.y,
-            wall.textureScale.x,
-            wall.textureScale.y
+            surface.textureOffset.x,
+            surface.textureOffset.y,
+            surface.textureScale.x,
+            surface.textureScale.y
         };
 
         // Store flip flags as floats to match the GPU vec4 layout.
         gpuWall.data3 = {
-            wall.flipTextureX ? 1.0f : 0.0f,
-            wall.flipTextureY ? 1.0f : 0.0f,
+            surface.flipTextureX ? 1.0f : 0.0f,
+            surface.flipTextureY ? 1.0f : 0.0f,
             0.0f,
             0.0f
         };
@@ -380,55 +90,22 @@ void OpenGL::BuildGpuWallsFromMap() {
 
     gpuWalls.clear();
 
-    SectorBoundsCache boundsCache;
+    WallPieces::SectorBoundsCache boundsCache;
+    std::vector<WallPieces::WallPiece> pieces;
 
     for (const Wall& wall : level.walls) {
-        const float textureRegionIndex = static_cast<float>(GetTextureRegionIndex(wall.textureFileName));
+        const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
+        const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture));
 
-        const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
+        pieces.clear();
+        WallPieces::Build(level, wall, boundsCache, pieces);
 
-        const Sector* backSectorPtr = MapQueries::GetSectorByID(level, wall.backSector);
-
-        if (frontSectorPtr == backSectorPtr) backSectorPtr = nullptr;
-
-        const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
-
-        const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
-
-        const WallSamplePoints points{
-            wall.start,
-            Vector2{
-                (wall.start.x + wall.end.x) * 0.5f,
-                (wall.start.y + wall.end.y) * 0.5f
-            },
-            wall.end
-        };
-
-        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, points);
-
-        if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr) {
+        for (const WallPieces::WallPiece& piece : pieces) {
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
-                HeightSample{0.0f, 0.0f, 0.0f},
-                HeightSample{32.0f, 32.0f, 32.0f},
-                wall.color,
-                textureRegionIndex,
-                WallSpanSide::Front
-            );
-
-            continue;
-        }
-
-        for (const WallSpan& span : spans) {
-            PushGpuWallPiece(
-                gpuWalls,
-                wall,
-                span.bottom,
-                span.top,
-                wall.color,
-                textureRegionIndex,
-                span.side
+                piece,
+                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex
             );
         }
     }

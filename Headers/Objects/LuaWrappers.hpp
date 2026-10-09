@@ -1756,32 +1756,48 @@ struct ScriptWall {
         wall->color = value;
     }
 
-    [[nodiscard]] Vector2 GetTextureOffset() const {
-        const Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid Wall");
-        return wall->textureOffset;
-    }
-
-    void SetTextureOffset(const Vector2& value) const {
+    [[nodiscard]] WallSurface& GetSurface(const WallSurfaceSlot slot) const {
         Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid Wall");
-        wall->textureOffset = value;
+        return wall->Surface(slot);
     }
 
-    [[nodiscard]] std::string GetTextureFileName() const {
+    [[nodiscard]] bool IsPortal() const {
         const Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid Wall");
-        return wall->textureFileName;
+        return wall->IsPortal();
     }
 
-    void SetTextureFileName(const std::string& value) const {
-        Wall* wall = GetWall();
-        if (wall == nullptr) throw sol::error("Invalid Wall");
-        wall->textureFileName = value;
-    }
+    [[nodiscard]] std::string GetTopTexture() const { return GetSurface(WallSurfaceSlot::Top).texture; }
+    void SetTopTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Top).texture = value; }
+    void ClearTopTexture() const { SetTopTexture(""); }
 
-    void ClearTextureFileName() const {
-        SetTextureFileName("");
+    [[nodiscard]] std::string GetBottomTexture() const { return GetSurface(WallSurfaceSlot::Bottom).texture; }
+    void SetBottomTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Bottom).texture = value; }
+    void ClearBottomTexture() const { SetBottomTexture(""); }
+
+    [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).textureOffset; }
+    void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureOffset = value; }
+
+    [[nodiscard]] Vector2 GetBottomTextureOffset() const { return GetSurface(WallSurfaceSlot::Bottom).textureOffset; }
+    void SetBottomTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureOffset = value; }
+
+    [[nodiscard]] Vector2 GetTopTextureScale() const { return GetSurface(WallSurfaceSlot::Top).textureScale; }
+    void SetTopTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureScale = value; }
+
+    [[nodiscard]] Vector2 GetBottomTextureScale() const { return GetSurface(WallSurfaceSlot::Bottom).textureScale; }
+    void SetBottomTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureScale = value; }
+
+    [[nodiscard]] int GetTopAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Top).anchor); }
+    void SetTopAnchor(const int value) const { GetSurface(WallSurfaceSlot::Top).anchor = ToAnchor(value); }
+
+    [[nodiscard]] int GetBottomAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Bottom).anchor); }
+    void SetBottomAnchor(const int value) const { GetSurface(WallSurfaceSlot::Bottom).anchor = ToAnchor(value); }
+
+    static WallTextureAnchor ToAnchor(const int value) {
+        const std::optional<WallTextureAnchor> anchor = WallTextureAnchorFromInt(value);
+        if (!anchor) throw sol::error("Wall anchor expects a WallAnchor value, e.g. WallAnchor.TopEdge");
+        return *anchor;
     }
 
     [[nodiscard]] bool HasTag(const std::string& tag) const

@@ -47,9 +47,9 @@ struct Wall {
     vec4 heights;
     vec4 data;
 //data.x = texture region/index;
-//data.y = unused;
-//data.z = texture anchor height;
-//data.w = texture direction;
+//data.y = 0.0 seen from the front sector, 1.0 from the back;
+//data.z = texture anchor height (world height of V = 0);
+//data.w = unused;
     vec4 data2;
 // data2.xy = texture offset in map units
 // data2.zw = independent X/Y UV scale (1.0 = normal)
@@ -614,12 +614,10 @@ void renderFlat() {
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
-float GetWallV(float height, float anchorHeight, float direction) {
-    if (direction < 0.0) {
-        return (anchorHeight - height) / tileSize;
-    }
-
-    return (height - anchorHeight) / tileSize;
+// V grows downward from the anchor on both faces, so a texture reads
+// upright whichever side the wall is seen from.
+float GetWallV(float height, float anchorHeight) {
+    return (anchorHeight - height) / tileSize;
 }
 
 void renderWall() {
@@ -640,14 +638,13 @@ void renderWall() {
     float wallLength = length(wallEnd2D - wallStart2D);
 
     float textureAnchorHeight = wall.data.z;
-    float textureDirection = wall.data.w;
 
     // The anchor stays a single world height, so the texture keeps a
     // constant vertical alignment and the sloped edges just cut it.
-    float bottomStartV = GetWallV(bottomStartHeight, textureAnchorHeight, textureDirection);
-    float topStartV = GetWallV(topStartHeight, textureAnchorHeight, textureDirection);
-    float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight, textureDirection);
-    float topEndV = GetWallV(topEndHeight, textureAnchorHeight, textureDirection);
+    float bottomStartV = GetWallV(bottomStartHeight, textureAnchorHeight);
+    float topStartV = GetWallV(topStartHeight, textureAnchorHeight);
+    float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight);
+    float topEndV = GetWallV(topEndHeight, textureAnchorHeight);
 
     float rightU = wallLength / tileSize;
 

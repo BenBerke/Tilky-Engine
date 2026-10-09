@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "EntityTypes.hpp"
@@ -17,6 +19,62 @@
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector3.hpp"
 #include "../Math/Vector/Vector4.hpp"
+
+// Which world height a wall texture's V = 0 sits at. The texture stays
+// pinned there while the piece's edges move, so a moving edge either
+// carries the texture with it (the anchored edge) or slides over it.
+enum class WallTextureAnchor : int {
+    Auto = 0,       // TopEdge, except an upper piece (under the neighbour's ceiling) uses BottomEdge
+    TopEdge = 1,
+    BottomEdge = 2,
+    World = 3,      // world height 0: the texture never moves
+};
+
+struct WallTextureAnchorInfo {
+    WallTextureAnchor anchor;
+    const char* name;     // level files and the Lua WallAnchor table
+    const char* labelKey; // editor label (localisation key)
+    const char* tooltipKey;
+};
+
+inline constexpr std::array WALL_TEXTURE_ANCHORS = {
+    WallTextureAnchorInfo{WallTextureAnchor::Auto, "Auto", "wall.anchor.auto", "editor.tooltip.wall.anchor.auto"},
+    WallTextureAnchorInfo{WallTextureAnchor::TopEdge, "TopEdge", "wall.anchor.top_edge", "editor.tooltip.wall.anchor.top_edge"},
+    WallTextureAnchorInfo{WallTextureAnchor::BottomEdge, "BottomEdge", "wall.anchor.bottom_edge", "editor.tooltip.wall.anchor.bottom_edge"},
+    WallTextureAnchorInfo{WallTextureAnchor::World, "World", "wall.anchor.world", "editor.tooltip.wall.anchor.world"},
+};
+
+inline const WallTextureAnchorInfo* FindWallTextureAnchor(const WallTextureAnchor anchor) {
+    for (const WallTextureAnchorInfo& info : WALL_TEXTURE_ANCHORS) if (info.anchor == anchor) return &info;
+    return nullptr;
+}
+
+inline std::optional<WallTextureAnchor> FindWallTextureAnchorByName(const std::string_view name) {
+    for (const WallTextureAnchorInfo& info : WALL_TEXTURE_ANCHORS) if (name == info.name) return info.anchor;
+    return std::nullopt;
+}
+
+inline std::optional<WallTextureAnchor> WallTextureAnchorFromInt(const int value) {
+    for (const WallTextureAnchorInfo& info : WALL_TEXTURE_ANCHORS) if (static_cast<int>(info.anchor) == value) return info.anchor;
+    return std::nullopt;
+}
+
+// One texture and its placement. A wall has two: Top covers a solid wall
+// and, on a portal, everything except the step under the neighbour's
+// floor, which uses Bottom.
+struct WallSurface {
+    std::string texture;
+    Vector2 textureOffset = {0.0f, 0.0f};
+    Vector2 textureScale = {1.0f, 1.0f};
+    bool flipTextureX = false;
+    bool flipTextureY = false;
+    WallTextureAnchor anchor = WallTextureAnchor::Auto;
+};
+
+enum class WallSurfaceSlot {
+    Top,
+    Bottom
+};
 
 struct Wall {
     ID id = INVALID_ID;
@@ -28,11 +86,9 @@ struct Wall {
 
     Vector2 start, end;
     Vector4 color;
-    Vector2 textureOffset;
 
-    Vector2 textureScale = {1.0f, 1.0f};
-    bool flipTextureX = false;
-    bool flipTextureY = false;
+    WallSurface top;
+    WallSurface bottom;
 
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
     // Should be -1 if there is no sector
@@ -41,7 +97,6 @@ struct Wall {
     // Stable ID of the sector that is to the back or to the right of the Wall in top down view
     // Should be -1 if there is no sector
     ID backSector   = INVALID_ID;
-    std::string textureFileName;
 
     // Read only — do not change
     Vector2 dir, normal, vector;
@@ -70,17 +125,30 @@ struct Wall {
     const Vector4 color,
     const ID fs = INVALID_ID,
     const ID bs = INVALID_ID,
-    std::string textureFileName = {},
+    std::string topTexture = {},
     const int floor = 0 // Currently unused
     )
     : start(start),
       end(end),
       color(color),
       frontSector(fs),
-      backSector(bs),
-      textureFileName(std::move(textureFileName))
+      backSector(bs)
     {
+        top.texture = std::move(topTexture);
         RefreshDerived();
+    }
+
+    // A sector on both sides: the wall can show a Bottom texture too.
+    [[nodiscard]] bool IsPortal() const {
+        return frontSector != INVALID_ID && backSector != INVALID_ID && frontSector != backSector;
+    }
+
+    [[nodiscard]] WallSurface& Surface(const WallSurfaceSlot slot) {
+        return slot == WallSurfaceSlot::Bottom ? bottom : top;
+    }
+
+    [[nodiscard]] const WallSurface& Surface(const WallSurfaceSlot slot) const {
+        return slot == WallSurfaceSlot::Bottom ? bottom : top;
     }
 
     // Recomputes dir/normal/vector/lengthSq/length from the current

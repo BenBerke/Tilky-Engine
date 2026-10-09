@@ -592,6 +592,36 @@ namespace {
         }
     }
 
+    void LoadWallSurface(const json &surfaceJson, WallSurface &surface) {
+        if (!surfaceJson.is_object()) return;
+
+        surface.texture = surfaceJson.value("texture", std::string{});
+
+        if (surfaceJson.contains("textureOffset") &&
+            surfaceJson.at("textureOffset").is_array() && surfaceJson.at("textureOffset").size() >= 2) {
+            surface.textureOffset = {
+                surfaceJson.at("textureOffset").at(0).get<float>(),
+                surfaceJson.at("textureOffset").at(1).get<float>()
+            };
+        }
+
+        if (surfaceJson.contains("textureScale") &&
+            surfaceJson.at("textureScale").is_array() && surfaceJson.at("textureScale").size() >= 2) {
+            surface.textureScale = {
+                surfaceJson.at("textureScale").at(0).get<float>(),
+                surfaceJson.at("textureScale").at(1).get<float>()
+            };
+        }
+
+        surface.flipTextureX = surfaceJson.value("flipX", false);
+        surface.flipTextureY = surfaceJson.value("flipY", false);
+
+        const std::string anchorName = surfaceJson.value("anchor", std::string{WALL_TEXTURE_ANCHORS[0].name});
+
+        if (const std::optional<WallTextureAnchor> anchor = FindWallTextureAnchorByName(anchorName)) surface.anchor = *anchor;
+        else spdlog::warn("Unknown wall texture anchor '{}', using {}", anchorName, WALL_TEXTURE_ANCHORS[0].name);
+    }
+
     void LoadWalls(const json &levelData, Level &level) {
         level.walls.clear();
 
@@ -635,33 +665,11 @@ namespace {
                 end,
                 color,
                 LoadIDField(wallJson, "frontSector", INVALID_ID),
-                LoadIDField(wallJson, "backSector", INVALID_ID),
-                wallJson.value("textureFileName", std::string{})
+                LoadIDField(wallJson, "backSector", INVALID_ID)
             );
 
-            if (wallJson.contains("textureOffset") &&
-                wallJson.at("textureOffset").is_array() && wallJson.at("textureOffset").size() >= 2) {
-                wall.textureOffset = {
-                    wallJson.at("textureOffset").at(0).get<float>(),
-                    wallJson.at("textureOffset").at(1).get<float>()
-                };
-            }
-            else wall.textureOffset = {0.0f,0.0f};
-
-            if (wallJson.contains("textureScale") &&
-                wallJson.at("textureScale").is_array() && wallJson.at("textureScale").size() >= 2) {
-                wall.textureScale = {
-                    wallJson.at("textureScale").at(0).get<float>(),
-                    wallJson.at("textureScale").at(1).get<float>()
-                };
-            }
-            else wall.textureScale = {1.0f,1.0f};
-
-            if(wallJson.contains("flipX")) wall.flipTextureX = wallJson["flipX"].get<bool>();
-            else wall.flipTextureX = false;
-
-            if (wallJson.contains("flipY")) wall.flipTextureY = wallJson["flipY"].get<bool>();
-            else wall.flipTextureY = false;
+            if (wallJson.contains("top")) LoadWallSurface(wallJson.at("top"), wall.top);
+            if (wallJson.contains("bottom")) LoadWallSurface(wallJson.at("bottom"), wall.bottom);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
@@ -694,6 +702,19 @@ namespace {
         level.nextWallID = std::max(level.nextWallID,highestWallID + 1);
     }
 
+    json SaveWallSurface(const WallSurface &surface) {
+        const WallTextureAnchorInfo *anchor = FindWallTextureAnchor(surface.anchor);
+
+        return {
+            {"texture", surface.texture},
+            {"textureOffset", {surface.textureOffset.x, surface.textureOffset.y}},
+            {"textureScale", {surface.textureScale.x, surface.textureScale.y}},
+            {"flipX", surface.flipTextureX},
+            {"flipY", surface.flipTextureY},
+            {"anchor", anchor != nullptr ? anchor->name : WALL_TEXTURE_ANCHORS[0].name}
+        };
+    }
+
     void SaveWalls(json &levelData, const Level &level) {
         levelData["walls"] = json::array();
 
@@ -721,18 +742,10 @@ namespace {
                         wall.color.w
                     }
                 },
-                {"textureFileName", wall.textureFileName},
-                {
-                    "textureOffset", {
-                        wall.textureOffset.x,
-                        wall.textureOffset.y
-                    }
-                },
+                {"top", SaveWallSurface(wall.top)},
+                {"bottom", SaveWallSurface(wall.bottom)},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
-                {"textureScale", {wall.textureScale.x, wall.textureScale.y}},
-                    {"flipX", wall.flipTextureX},
-                {"flipY", wall.flipTextureY},
                 {"tags", wall.tags},
                 {"tagIds", wall.tagIds}
             });

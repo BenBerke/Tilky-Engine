@@ -31,7 +31,8 @@ namespace {
         std::set<std::string> uniqueNames;
 
         for (const Wall& wall : level.walls) {
-            if (!wall.textureFileName.empty()) uniqueNames.insert(wall.textureFileName);
+            if (!wall.top.texture.empty()) uniqueNames.insert(wall.top.texture);
+            if (!wall.bottom.texture.empty()) uniqueNames.insert(wall.bottom.texture);
         }
 
         for (const Sector& sector : level.sectors) {

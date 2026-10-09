@@ -24,6 +24,28 @@ Every wall has a direction, from `start` to `end`. Looking down on the map:
 
 A one-sided wall has only one of them set; the other is invalid (`4294967295`).
 
+## Top and bottom textures
+
+A wall has two textures, **Top** and **Bottom**, each with its own offset, scale, flip and anchor.
+
+- A **solid** wall (a sector on one side only) shows only Top. The inspector calls it **Texture**.
+- A **portal** shows Bottom on the step under the neighbouring room's floor, and Top on everything
+  else: the wall above the neighbour's ceiling, and any slab between two of its floors.
+
+### Anchor
+
+The anchor is the height a texture is pinned to. When a floor or ceiling moves, a texture pinned
+to the moving edge moves with it; otherwise the edge slides over a texture that stays put.
+
+| Anchor | Lua | Pinned to |
+|---|---|---|
+| **Auto** | `WallAnchor.Auto` | The top edge, except the wall above a neighbour's ceiling, which uses its bottom edge. Doors and lifts carry their textures with them. |
+| **Top Edge** | `WallAnchor.TopEdge` | The piece's top edge. |
+| **Bottom Edge** | `WallAnchor.BottomEdge` | The piece's bottom edge. |
+| **World** | `WallAnchor.World` | World height 0. The texture never moves; use it for door tracks or to line up neighbouring walls. |
+
+The offset is added on top of the anchor. Textures read upright from both sides of a wall.
+
 ## Collision
 
 Physics tests entity colliders against the solid parts of each wall. An opening is passable as
@@ -37,11 +59,12 @@ instead of being blocked. See [Collider](Collider.md#step-size).
 |---|---|---|
 | **Name** | | Editor only. Scripts can't read it. |
 | **Front Sector** / **Back Sector** | `frontSector` / `backSector` | Set by the map topology. Read-only. |
-| **Texture Index** | `textureFileName` | Texture drawn on the solid parts. Empty means colour only. |
+| **Texture** (solid) / **Top**, **Bottom** (portal) | `topTexture`, `bottomTexture` | Texture drawn on the solid parts. Empty means colour only. |
 | **Wall Color** | `color` | Tint, `Vector4`, `0..1` per channel. |
-| **UV Offset** | `textureOffset` | Shifts the texture, in texture repeats: `1.0` moves it by one whole image. |
-| **UV Scale** | | How many times the texture repeats. `2.0` means twice as many repeats. Editor only. |
+| **UV Offset** | `topTextureOffset`, `bottomTextureOffset` | Shifts the texture, in map units: `32` moves it by one repeat at scale `1`. |
+| **UV Scale** | `topTextureScale`, `bottomTextureScale` | How many times the texture repeats. `2.0` means twice as many repeats. |
 | **Flip U** / **Flip V** | | Mirror the texture horizontally or vertically. Editor only. |
+| **Anchor** | `topAnchor`, `bottomAnchor` | See [Anchor](#anchor). |
 | **Tags** | `HasTag`, `GetTag`, `tagCount` | Read-only from scripts. |
 
 The sector's light also darkens the wall (see [Sector](Sector.md#light)).
@@ -75,16 +98,24 @@ check `isValid`.
 | `length` | number | read-only | Length in map units. |
 | `frontSector` | integer | read-only | **ID** of the front sector. |
 | `backSector` | integer | read-only | **ID** of the back sector. |
+| `isPortal` | boolean | read-only | `true` if there is a sector on both sides, so `bottomTexture` can show. |
 | `color` | Vector4 | read/write | Tint, `0..1`. |
-| `textureOffset` | Vector2 | read/write | Texture shift in repeats. Change it over time to scroll. |
-| `textureFileName` | string | read/write | Texture path relative to `Assets`, e.g. `"Textures/brick.png"`. |
+| `topTexture` | string | read/write | Top texture path relative to `Assets`, e.g. `"Textures/brick.png"`. |
+| `bottomTexture` | string | read/write | Bottom texture path. Only shows on a portal. |
+| `topTextureOffset` | Vector2 | read/write | Top texture shift in map units. Change it over time to scroll. |
+| `bottomTextureOffset` | Vector2 | read/write | Bottom texture shift in map units. |
+| `topTextureScale` | Vector2 | read/write | Top texture repeats per 32 map units. |
+| `bottomTextureScale` | Vector2 | read/write | Bottom texture repeats per 32 map units. |
+| `topAnchor` | WallAnchor | read/write | Where the top texture is pinned, e.g. `WallAnchor.World`. |
+| `bottomAnchor` | WallAnchor | read/write | Where the bottom texture is pinned. |
 | `tagCount` | integer | read-only | |
 
 ### Methods
 
 | Method | Returns | Description |
 |---|---|---|
-| `ClearTextureFileName()` | | Removes the texture. |
+| `ClearTopTexture()` | | Removes the top texture. |
+| `ClearBottomTexture()` | | Removes the bottom texture. |
 | `HasTag(tag)` | boolean | `true` if the wall has `tag`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. |
 
@@ -136,7 +167,7 @@ end
 function Update()
     local step = speed * GameTime.deltaTime
     for _, wall in ipairs(walls) do
-        wall.textureOffset = wall.textureOffset + step
+        wall.topTextureOffset = wall.topTextureOffset + step
     end
 end
 ```
@@ -161,7 +192,7 @@ function Update()
     if hit == nil or hit.wall == nil or not hit.wall:HasTag("switch") then return end
 
     -- An unassigned Texture field is an empty string, not nil.
-    if onTexture ~= nil and onTexture ~= "" then hit.wall.textureFileName = onTexture end
+    if onTexture ~= nil and onTexture ~= "" then hit.wall.topTexture = onTexture end
     if door ~= nil then door:MoveCeilingTo(1, door.floorHeight + 40, 60) end
 end
 ```

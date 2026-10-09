@@ -16,8 +16,10 @@ Useful `Wall` members:
 | Member | Type | Notes |
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
-| `wall.textureOffset` | `Vector2` | Scrolls the texture. Change it over time for moving surfaces |
-| `wall.textureFileName` | `string` | Swap the texture. `wall:ClearTextureFileName()` removes it |
+| `wall.topTextureOffset`, `wall.bottomTextureOffset` | `Vector2` | Scrolls a texture. Change it over time for moving surfaces |
+| `wall.topTexture`, `wall.bottomTexture` | `string` | Swap a texture. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` remove it |
+| `wall.topAnchor`, `wall.bottomAnchor` | `WallAnchor` | Where a texture is pinned (`Auto`, `TopEdge`, `BottomEdge`, `World`) |
+| `wall.isPortal` | boolean | `true` if a sector is on both sides. Bottom only shows on portals |
 | `wall.start`, `wall["end"]`, `wall.length` | read-only | Endpoints (`Vector2`) and length. `end` is a Lua keyword, so use `wall["end"]` |
 | `wall.frontSector`, `wall.backSector` | integer IDs | `backSector` identifies the neighbour on a portal wall |
 | `wall:HasTag("Name")` | boolean | Tags are assigned in the editor |
@@ -53,8 +55,8 @@ function Update()
     local dt = GameTime.deltaTime
 
     for _, wall in ipairs(walls) do
-        local offset = wall.textureOffset
-        wall.textureOffset = Vector2(offset.x + scrollX * dt, offset.y + scrollY * dt)
+        local offset = wall.topTextureOffset
+        wall.topTextureOffset = Vector2(offset.x + scrollX * dt, offset.y + scrollY * dt)
     end
 end
 ```
@@ -116,7 +118,7 @@ function Update()
             s.on = not s.on
 
             local texture = s.on and onTexture or offTexture
-            if texture ~= nil then s.wall.textureFileName = texture end
+            if texture ~= nil then s.wall.topTexture = texture end
 
             Debug.Print("Switch is now " .. (s.on and "ON" or "OFF"))
             return
@@ -131,7 +133,7 @@ end
 - The fifth argument to `Raycast` (`false`) means entities don't need a collider to be hit.
   Walls are always hit.
 - Texture fields (`Texture`) hold the asset's path, which can be assigned directly to
-  `wall.textureFileName`.
+  `wall.topTexture` or `wall.bottomTexture`.
 - To make the switch *do* something, set a channel from
   [05_doors.md](05_doors.md) right where `s.on` changes:
   `Global.channels = Global.channels or {}` then `Global.channels["door1"] = s.on`.

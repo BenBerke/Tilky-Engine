@@ -2050,12 +2050,9 @@ namespace {
     };
 
     struct WallEditSnapshot {
-        std::string textureFileName;
         Vector4 color{};
-        Vector2 textureOffset{};
-        Vector2 textureScale{};
-        bool flipTextureX = false;
-        bool flipTextureY = false;
+        WallSurface top;
+        WallSurface bottom;
     };
 
     struct EntityTransformSnapshot {
@@ -2196,13 +2193,48 @@ namespace {
 
     [[nodiscard]] WallEditSnapshot CaptureWallEditSnapshot(const Wall &wall) {
         WallEditSnapshot snapshot;
-        snapshot.textureFileName = wall.textureFileName;
         snapshot.color = wall.color;
-        snapshot.textureOffset = wall.textureOffset;
-        snapshot.textureScale = wall.textureScale;
-        snapshot.flipTextureX = wall.flipTextureX;
-        snapshot.flipTextureY = wall.flipTextureY;
+        snapshot.top = wall.top;
+        snapshot.bottom = wall.bottom;
         return snapshot;
+    }
+
+    // Field by field, so an edit to the Top texture's offset doesn't also
+    // copy the primary's texture onto every selected wall.
+    bool ApplyWallSurfaceChange(const WallSurface &before, const WallSurface &after, WallSurface &target) {
+        bool wrote = false;
+
+        if (after.texture != before.texture) {
+            target.texture = after.texture;
+            wrote = true;
+        }
+
+        if (ValueChanged(before.textureOffset, after.textureOffset)) {
+            target.textureOffset = after.textureOffset;
+            wrote = true;
+        }
+
+        if (ValueChanged(before.textureScale, after.textureScale)) {
+            target.textureScale = after.textureScale;
+            wrote = true;
+        }
+
+        if (after.flipTextureX != before.flipTextureX) {
+            target.flipTextureX = after.flipTextureX;
+            wrote = true;
+        }
+
+        if (after.flipTextureY != before.flipTextureY) {
+            target.flipTextureY = after.flipTextureY;
+            wrote = true;
+        }
+
+        if (after.anchor != before.anchor) {
+            target.anchor = after.anchor;
+            wrote = true;
+        }
+
+        return wrote;
     }
 
     bool PropagateWallEdits(Level &level,
@@ -2212,16 +2244,9 @@ namespace {
                             const ID primaryID) {
         if (selection.size() <= 1) return false;
 
-        const bool textureChanged = primary.textureFileName != before.textureFileName;
         const bool colorChanged = ValueChanged(before.color, primary.color);
-        const bool offsetChanged = ValueChanged(before.textureOffset, primary.textureOffset);
-        const bool scaleChanged = ValueChanged(before.textureScale, primary.textureScale);
-        const bool flipXChanged = primary.flipTextureX != before.flipTextureX;
-        const bool flipYChanged = primary.flipTextureY != before.flipTextureY;
 
-        if (!textureChanged && !colorChanged && !offsetChanged &&
-            !scaleChanged && !flipXChanged && !flipYChanged)
-            return false;
+        bool changedAnything = false;
 
         for (const ID wallID: selection) {
             if (wallID == primaryID) continue;
@@ -2231,15 +2256,16 @@ namespace {
 
             Wall &target = level.walls[it->second];
 
-            if (textureChanged) target.textureFileName = primary.textureFileName;
-            if (colorChanged) target.color = primary.color;
-            if (offsetChanged) target.textureOffset = primary.textureOffset;
-            if (scaleChanged) target.textureScale = primary.textureScale;
-            if (flipXChanged) target.flipTextureX = primary.flipTextureX;
-            if (flipYChanged) target.flipTextureY = primary.flipTextureY;
+            if (colorChanged) {
+                target.color = primary.color;
+                changedAnything = true;
+            }
+
+            if (ApplyWallSurfaceChange(before.top, primary.top, target.top)) changedAnything = true;
+            if (ApplyWallSurfaceChange(before.bottom, primary.bottom, target.bottom)) changedAnything = true;
         }
 
-        return true;
+        return changedAnything;
     }
 
     // Entities: ComponentTransform only for now. Every other component's
