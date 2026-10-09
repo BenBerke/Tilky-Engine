@@ -168,7 +168,9 @@ its values as you type `Component.`:
 
 | World entities | UI entities |
 |---|---|
-| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText` |
+| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText`, `Component.Flipbook` |
+
+`Component.Flipbook` is the only one that goes on both: on a UI entity it animates a UI Sprite.
 
 - The values are plain numbers. A misspelled one (`Component.Sprit`) is `nil`, and passing `nil` or
   a number that isn't in the table raises an error.

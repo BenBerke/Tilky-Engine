@@ -115,12 +115,18 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(rigidbodies, copy.id, entity.id, entity.componentsMask, CMP_RIGIDBODY);
     CopyComponents(models, copy.id, entity.id, entity.componentsMask, CMP_MODEL);
     CopyComponents(flipbooks, copy.id, entity.id, entity.componentsMask, CMP_FLIPBOOK);
+    CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
+    CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
+    CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
 
-    // A copied flipbook still names the original's sprite. Point it at the
-    // copy's sprite in the same position instead.
+    // A copied flipbook still names the original's sprite (a UI Sprite on a
+    // UI entity). Point it at the copy's sprite in the same position instead.
     {
-        const std::vector<ComponentInstanceID> originalSprites = sprites.InstancesOf(copy.id);
-        const std::vector<ComponentInstanceID> copiedSprites = sprites.InstancesOf(entity.id);
+        const bool uiEntity = ui_transforms.Has(copy.id);
+        const std::vector<ComponentInstanceID> originalSprites =
+            uiEntity ? ui_sprites.InstancesOf(copy.id) : sprites.InstancesOf(copy.id);
+        const std::vector<ComponentInstanceID> copiedSprites =
+            uiEntity ? ui_sprites.InstancesOf(entity.id) : sprites.InstancesOf(entity.id);
 
         for (ComponentFlipbook* flipbook : flipbooks.GetAll(entity.id)) {
             const auto it = std::ranges::find(originalSprites, flipbook->spriteInstanceID);
@@ -131,10 +137,6 @@ ID Level::CreateEntity(Entity& copy) {
                 : INVALID_COMPONENT_INSTANCE_ID;
         }
     }
-
-    CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
-    CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
-    CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
 
     // Copies every attached script (not just the first), each getting its
     // own new instance ID via AddScript()/ScriptComponentStorage::Add - see

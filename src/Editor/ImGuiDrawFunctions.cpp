@@ -2365,7 +2365,13 @@ namespace ImGuiDrawFunctions {
         else if (state.selectedComponent == CMP_FLIPBOOK) {
             auto *c = entity.GetComponentInstance<ComponentFlipbook>(state.selectedInstanceID);
             if (c) {
-                const std::vector<ComponentSprite *> sprites = entity.GetComponents<ComponentSprite>();
+                // On a UI entity (the UI editor opens this same inspector) it
+                // drives a UI Sprite, which only ever shows slot 0.
+                const bool uiEntity = entity.HasComponent<ComponentUITransform>();
+
+                std::vector<ComponentInstanceID> sprites;
+                if (uiEntity) for (const ComponentUISprite *sprite : entity.GetComponents<ComponentUISprite>()) sprites.push_back(sprite->instanceID);
+                else for (const ComponentSprite *sprite : entity.GetComponents<ComponentSprite>()) sprites.push_back(sprite->instanceID);
 
                 BeginSection(Get("component.flipbook.section").c_str());
 
@@ -2379,12 +2385,12 @@ namespace ImGuiDrawFunctions {
                 // whichever sprite is first, even after reordering.
                 int selectedSprite = -1;
                 for (int i = 0; i < static_cast<int>(sprites.size()); ++i)
-                    if (sprites[i]->instanceID == c->spriteInstanceID) selectedSprite = i;
+                    if (sprites[i] == c->spriteInstanceID) selectedSprite = i;
 
                 const auto spriteLabel = [&](const int index) {
                     return index < 0
                         ? Get("component.flipbook.first_sprite")
-                        : Get("component.sprite") + " " + std::to_string(index + 1);
+                        : Get(uiEntity ? "editor.ui.sprite.title" : "component.sprite") + " " + std::to_string(index + 1);
                 };
 
                 FieldWidth(160.0f);
@@ -2395,7 +2401,7 @@ namespace ImGuiDrawFunctions {
                     for (int i = 0; i < static_cast<int>(sprites.size()); ++i) {
                         ImGui::PushID(i);
                         if (ImGui::Selectable(spriteLabel(i).c_str(), selectedSprite == i))
-                            c->spriteInstanceID = sprites[i]->instanceID;
+                            c->spriteInstanceID = sprites[i];
                         ImGui::PopID();
                     }
 
@@ -2429,19 +2435,23 @@ namespace ImGuiDrawFunctions {
                     ImGui::Text("%s: %s", Get("flipbook_editor.loop_mode").c_str(), Get(loopModeKeys[static_cast<int>(asset->loopMode)]).c_str());
                     if (asset->playOnStart) ImGui::TextUnformatted(Get("flipbook_editor.play_on_start").c_str());
 
-                    // The slots the driven sprite's side count actually draws.
-                    const ComponentSprite *target = selectedSprite >= 0 ? sprites[selectedSprite]
-                                                  : sprites.empty() ? nullptr : sprites.front();
-
-                    if (target != nullptr) {
+                    // The slots the driven sprite actually draws: a UI Sprite
+                    // only slot 0, a Sprite whatever its side count uses.
+                    if (!sprites.empty()) {
                         static constexpr int SINGLE_SLOTS[] = {0};
                         static constexpr int SIDE_90_SLOTS[] = {0, 2, 4, 6};
                         static constexpr int SIDE_45_SLOTS[] = {0, 1, 2, 3, 4, 5, 6, 7};
                         static constexpr const char *SIDE_NAMES[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
 
                         std::span<const int> usedSlots = SINGLE_SLOTS;
-                        if (target->sideCount == SIDECOUNT_90) usedSlots = SIDE_90_SLOTS;
-                        else if (target->sideCount == SIDECOUNT_45) usedSlots = SIDE_45_SLOTS;
+
+                        if (!uiEntity) {
+                            const ComponentInstanceID targetID = sprites[std::max(selectedSprite, 0)];
+                            const ComponentSprite *target = entity.GetComponentInstance<ComponentSprite>(targetID);
+
+                            if (target != nullptr && target->sideCount == SIDECOUNT_90) usedSlots = SIDE_90_SLOTS;
+                            else if (target != nullptr && target->sideCount == SIDECOUNT_45) usedSlots = SIDE_45_SLOTS;
+                        }
 
                         for (const FlipbookFrame &frame : asset->frames) {
                             std::string missing;

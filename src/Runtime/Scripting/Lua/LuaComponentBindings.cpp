@@ -71,7 +71,7 @@ namespace {
             Method("ClearFileName"),
         }));
 
-        RegisterType(Type("Flipbook", "Plays a flipbook (.fpk) on one of the Entity's Sprites by swapping its textures.", {
+        RegisterType(Type("Flipbook", "Plays a flipbook (.fpk) on one of the Entity's Sprites (or UI Sprites, on a UI entity) by swapping its textures.", {
             Prop("isValid", "boolean", true),
             Prop("isPlaying", "boolean", true, "True while frames are advancing (false when paused, stopped or a Once flipbook finished)."),
             Prop("flipbookFileName", "string", false, "The .fpk file relative to Assets, with extension (e.g. \"Animations/walk.fpk\"). Changing it rewinds to the first frame without changing whether it plays."),

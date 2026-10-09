@@ -48,6 +48,11 @@ function Update()
 end
 ```
 
+### Animating an image
+
+Add a [Flipbook](Flipbook.md#on-ui-entities) to the same entity. It swaps the image's texture
+frame by frame, using slot 0 (N) of each frame in the `.fpk` file.
+
 ### Showing and hiding an image
 
 Set `isActive`. (`entity.enabled` only affects scripts, so it won't hide the image.) A

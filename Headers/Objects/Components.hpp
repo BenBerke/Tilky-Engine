@@ -454,8 +454,9 @@ struct ComponentSprite {
 };
 
 // Plays a flipbook (.fpk, see FlipbookAsset.hpp) on one of the owner's
-// Sprites. It never draws anything: while the game runs, FlipbookSystem
-// copies the current frame's textures into that sprite's textureFileNames.
+// Sprites, or on a UI entity, one of its UI Sprites. It never draws
+// anything: while the game runs, FlipbookSystem copies the current frame's
+// textures into that sprite's textureFileNames (a UI Sprite gets slot 0).
 // The sprite's side count is left alone - the flipbook uses whatever the
 // sprite has.
 struct ComponentFlipbook {
@@ -465,8 +466,9 @@ struct ComponentFlipbook {
     // Assets-relative .fpk reference, extension included, e.g. "Animations/walk.fpk".
     std::string flipbookFileName;
 
-    // The owner's sprite this drives. INVALID (or a sprite that's gone) means
-    // the owner's first sprite.
+    // The owner's sprite this drives - a ComponentSprite, or a
+    // ComponentUISprite when the owner is a UI entity. INVALID (or a sprite
+    // that's gone) means the owner's first one.
     ComponentInstanceID spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     float speed = 1.0f; // playback rate multiplier, 1 = the flipbook's own timing

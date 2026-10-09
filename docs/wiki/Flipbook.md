@@ -3,9 +3,10 @@
 **Inspector name:** Flipbook · **Lua:** `entity.flipbook` · **Public field type:** `Flipbook`
 (the component) and `FlipbookAsset` (a `.fpk` file)
 
-A Flipbook animates a [Sprite](Sprite.md): a walking monster, a burning torch, a spinning coin. The
-animation itself lives in a **flipbook file** (`.fpk`) that you make in the editor. The Flipbook
-component plays that file on one of the entity's sprites.
+A Flipbook animates a [Sprite](Sprite.md): a walking monster, a burning torch, a spinning coin. On
+a UI entity it animates a [UI Sprite](UISprite.md) instead: a blinking icon, an animated
+crosshair. The animation itself lives in a **flipbook file** (`.fpk`) that you make in the editor.
+The Flipbook component plays that file on one of the entity's sprites.
 
 A Flipbook never draws anything itself. While the game runs, it copies the current frame's
 textures into the sprite, and the sprite draws them as usual.
@@ -43,15 +44,27 @@ sprite only shows N, E, S and W. See [Sprite: Directions](Sprite.md#directions).
 So one file can drive sprites with different direction levels. The Flipbook inspector warns about
 frames that are missing a texture the sprite will actually show.
 
+### On UI entities
+
+The same component works on UI entities. Add it in the **UI Editor** with **Add Component >
+Flipbook**, or from a script with `entity:AddComponent(Component.Flipbook)`. It animates one of
+the entity's UI Sprites, and everything else on this page applies unchanged: same `.fpk` files,
+same settings, same frame events, same `entity.flipbook` in Lua.
+
+A UI Sprite shows one picture, so it only uses each frame's **slot 0 (N)**. For a UI flipbook,
+fill in N on every frame and leave the rest empty. While it plays, the UI Sprite's `textureIndex`
+is overwritten at every frame change.
+
 ### Which sprite
 
-An entity can have several Sprites. The inspector's **Sprite** dropdown picks the one this
-Flipbook animates. **First sprite** (the default) always means whichever sprite is first, even
+An entity can have several Sprites (or UI Sprites). The inspector's **Sprite** dropdown picks the
+one this Flipbook animates. **First sprite** (the default) always means whichever sprite is first, even
 after you reorder them. An entity can have several Flipbooks, for example one per sprite.
 
 ### When it runs
 
-Flipbooks only play in the game. In the editors, a sprite shows its own textures.
+Flipbooks only play in the game. In the editors (including the UI Editor's canvas), a sprite
+shows its own textures.
 
 Each frame, after every script's `Update`, every Flipbook advances and copies its frame into its
 sprite. A `Play()` call in `Update` is visible on the same frame. If the game stalls, playback

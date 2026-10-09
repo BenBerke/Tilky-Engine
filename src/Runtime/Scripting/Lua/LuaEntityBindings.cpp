@@ -21,10 +21,14 @@ namespace {
     // One row per component Lua can add or remove. Its value in the Lua
     // `Component` table is its ComponentType. Script is left out: a script
     // needs a file, and its running instances belong to LuaScriptRuntime.
+    // Which entities a component can be added to: world entities (with a
+    // Transform), UI entities (with a UITransform), or either.
+    enum class LuaComponentPlacement { World, UI, Any };
+
     struct LuaComponentKind {
         const char* name;
         ComponentType type;
-        bool isUI;
+        LuaComponentPlacement placement;
         // Adds a new one (Transform/UITransform: returns the existing one) and returns it.
         sol::object (*add)(Level&, Entity&, sol::state_view);
         // Removes every component of this type.
@@ -112,24 +116,24 @@ namespace {
     }
 
     template<typename T, typename Wrapper, auto Getter>
-    constexpr LuaComponentKind Kind(const char* name, const ComponentType type, const bool isUI) {
-        return {name, type, isUI, &AddComponentOf<T, Wrapper>, &RemoveAllComponentsOf<T>,
+    constexpr LuaComponentKind Kind(const char* name, const ComponentType type, const LuaComponentPlacement placement) {
+        return {name, type, placement, &AddComponentOf<T, Wrapper>, &RemoveAllComponentsOf<T>,
                 &RemoveOneComponentOf<T, Wrapper>, &GetComponentOf<Getter>, &GetAllComponentsOf<T, Wrapper>};
     }
 
     constexpr LuaComponentKind LUA_COMPONENT_KINDS[] = {
-        Kind<ComponentTransform, ScriptTransform, &ScriptEntity::GetTransform>("Transform", CMP_TRANSFORM, false),
-        Kind<ComponentSprite, ScriptSprite, &ScriptEntity::GetSprite>("Sprite", CMP_SPRITE, false),
-        Kind<ComponentAudioSource, ScriptAudioSource, &ScriptEntity::GetAudioSource>("AudioSource", CMP_AUDIO_SOURCE, false),
-        Kind<ComponentPlayerController, ScriptPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, false),
-        Kind<ComponentCamera, ScriptCamera, &ScriptEntity::GetCamera>("Camera", CMP_CAMERA, false),
-        Kind<ComponentCollider, ScriptCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, false),
-        Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, false),
-        Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, false),
-        Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, false),
-        Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, true),
-        Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, true),
-        Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, true),
+        Kind<ComponentTransform, ScriptTransform, &ScriptEntity::GetTransform>("Transform", CMP_TRANSFORM, LuaComponentPlacement::World),
+        Kind<ComponentSprite, ScriptSprite, &ScriptEntity::GetSprite>("Sprite", CMP_SPRITE, LuaComponentPlacement::World),
+        Kind<ComponentAudioSource, ScriptAudioSource, &ScriptEntity::GetAudioSource>("AudioSource", CMP_AUDIO_SOURCE, LuaComponentPlacement::World),
+        Kind<ComponentPlayerController, ScriptPlayerController, &ScriptEntity::GetPlayerController>("PlayerController", CMP_PLAYER_CONTROLLER, LuaComponentPlacement::World),
+        Kind<ComponentCamera, ScriptCamera, &ScriptEntity::GetCamera>("Camera", CMP_CAMERA, LuaComponentPlacement::World),
+        Kind<ComponentCollider, ScriptCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, LuaComponentPlacement::World),
+        Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, LuaComponentPlacement::World),
+        Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, LuaComponentPlacement::World),
+        Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, LuaComponentPlacement::Any),
+        Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, LuaComponentPlacement::UI),
+        Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, LuaComponentPlacement::UI),
+        Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, LuaComponentPlacement::UI),
     };
 
     // Takes a sol::object, not an int: sol would turn nil (a misspelled
@@ -483,7 +487,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
         // World components can't go on a UI entity (one with a UITransform)
         // and UI components can't go on a world entity (one with a
-        // Transform), same as in the editor.
+        // Transform), same as in the editor. Flipbook goes on either.
         "AddComponent",
         [](const ScriptEntity& self, const sol::object& type, const sol::this_state state) -> sol::object {
             const LuaComponentKind& kind = FindLuaComponentKind(type);
@@ -491,10 +495,10 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             Entity* entity = self.GetEntity();
             if (entity == nullptr) return sol::make_object(state, sol::nil);
 
-            if (kind.isUI && entity->HasComponent<ComponentTransform>())
+            if (kind.placement == LuaComponentPlacement::UI && entity->HasComponent<ComponentTransform>())
                 throw sol::error(std::string("Can't add ") + kind.name + " to a world entity (it has a Transform)");
 
-            if (!kind.isUI && entity->HasComponent<ComponentUITransform>())
+            if (kind.placement == LuaComponentPlacement::World && entity->HasComponent<ComponentUITransform>())
                 throw sol::error(std::string("Can't add ") + kind.name + " to a UI entity (it has a UITransform)");
 
             return kind.add(*self.level, *entity, state);

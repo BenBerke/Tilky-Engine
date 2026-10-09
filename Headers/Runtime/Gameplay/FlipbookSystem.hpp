@@ -11,7 +11,8 @@
 #include "Headers/Objects/Level.hpp"
 
 /// Plays every ComponentFlipbook: advances frames and copies the current
-/// frame's textures into the driven sprite. Only runs during Play and
+/// frame's textures into the driven sprite - a Sprite on a world entity, or
+/// a UI Sprite (slot 0 only) on a UI entity. Only runs during Play and
 /// Standalone (LevelSystem), never in the editors, so the sprite textures it
 /// overwrites are never saved - Play works on a copy of the level.
 namespace FlipbookSystem {
@@ -27,8 +28,14 @@ namespace FlipbookSystem {
     // once every flipbook has been advanced.
     void Update(Level& level, float deltaTime, const EventDispatcher& dispatch);
 
+    // True if the flipbook's owner is a UI entity (it has a UITransform), so
+    // it drives a UI Sprite instead of a Sprite.
+    bool DrivesUISprite(const Level& level, const ComponentFlipbook& flipbook);
+
     // The sprite `flipbook` drives: its chosen one, or the owner's first.
+    // Only one of these applies, depending on DrivesUISprite.
     ComponentSprite* FindDrivenSprite(Level& level, const ComponentFlipbook& flipbook);
+    ComponentUISprite* FindDrivenUISprite(Level& level, const ComponentFlipbook& flipbook);
 
     // --- Playback control, shared by the Lua API ---------------------------
 

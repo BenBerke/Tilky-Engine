@@ -103,11 +103,11 @@ namespace {
     // types - that would be inventing infrastructure you didn't ask for.
     // ---------------------------------------------------------------------
 
-    // Script is the odd one out: an entity can carry several script
-    // instances, so it is always addable and is edited through the Map
-    // Editor's own component editor (see uiScriptEditorState below) rather
-    // than DrawUIComponentEditor().
-    enum class UIComponentType { Transform, Text, Sprite, Script };
+    // Script and Flipbook are the odd ones out: they aren't UI-only
+    // components, so they're edited through the Map Editor's own component
+    // editor (see uiScriptEditorState below) rather than
+    // DrawUIComponentEditor(). On a UI entity a Flipbook animates a UI Sprite.
+    enum class UIComponentType { Transform, Text, Sprite, Script, Flipbook };
 
     const char* UIComponentDisplayNameKey(const UIComponentType type) {
         switch (type) {
@@ -115,6 +115,7 @@ namespace {
             case UIComponentType::Text: return "editor.ui.text.title";
             case UIComponentType::Sprite: return "editor.ui.sprite.title";
             case UIComponentType::Script: return "component.script";
+            case UIComponentType::Flipbook: return "component.flipbook";
         }
         return "";
     }
@@ -125,6 +126,7 @@ namespace {
             case UIComponentType::Text: return entity.HasComponent<ComponentUIText>();
             case UIComponentType::Sprite: return entity.HasComponent<ComponentUISprite>();
             case UIComponentType::Script: return !entity.GetScripts().empty();
+            case UIComponentType::Flipbook: return entity.HasComponent<ComponentFlipbook>();
         }
         return false;
     }
@@ -143,9 +145,9 @@ namespace {
 
     UIEntityInspectorState uiEntityInspectorState;
 
-    // A UI entity is a normal entity, so it can carry scripts too. Their
-    // editor is the Map Editor's shared component editor - public fields,
-    // Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
+    // A UI entity is a normal entity, so it can carry scripts and flipbooks
+    // too. Their editor is the Map Editor's shared component editor - public
+    // fields, Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
     ImGuiDrawFunctions::EntityInspectorState uiScriptEditorState;
 
     void ResetUIInspectorState() {
@@ -711,6 +713,10 @@ namespace {
         LevelManager::CurrentLevel().scripts.MoveOnOwner(instanceID, index);
     }
 
+    void MoveFlipbook(const std::uint64_t instanceID, const size_t index) {
+        LevelManager::CurrentLevel().flipbooks.MoveOnOwner(instanceID, index);
+    }
+
     void DrawUIComponentsSection(Entity& entity, UIEntityInspectorState& state) {
         ImGuiDrawFunctions::BeginSection("Components");
 
@@ -760,6 +766,23 @@ namespace {
             }
         }
 
+        // Flipbooks open in the same shared editor as scripts.
+        const std::vector<ComponentFlipbook*> flipbooks = entity.GetComponents<ComponentFlipbook>();
+        for (size_t i = 0; i < flipbooks.size(); ++i) {
+            const ComponentFlipbook* flipbook = flipbooks[i];
+            const std::string name = Get(UIComponentDisplayNameKey(UIComponentType::Flipbook));
+            const std::string label = flipbook->flipbookFileName.empty()
+                ? name
+                : name + ": " + std::filesystem::path(flipbook->flipbookFileName).filename().string();
+
+            if (DrawUIComponentCard(label.c_str(), "flipbook" + std::to_string(flipbook->instanceID),
+                                    static_cast<int>(UIComponentType::Flipbook), flipbook->instanceID, i, &MoveFlipbook)) {
+                uiScriptEditorState.selectedComponent = CMP_FLIPBOOK;
+                uiScriptEditorState.editingComponent = true;
+                uiScriptEditorState.selectedInstanceID = flipbook->instanceID;
+            }
+        }
+
         ImGuiDrawFunctions::EndSection();
     }
 
@@ -776,7 +799,7 @@ namespace {
             // is skipped in the real Add Component combo. The rest can be
             // added any number of times.
             const std::vector<UIComponentType> addable = {
-                UIComponentType::Text, UIComponentType::Sprite, UIComponentType::Script
+                UIComponentType::Text, UIComponentType::Sprite, UIComponentType::Script, UIComponentType::Flipbook
             };
 
             if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
@@ -799,6 +822,7 @@ namespace {
                 if (addable[state.componentToAdd] == UIComponentType::Text) entity.AddComponent<ComponentUIText>();
                 else if (addable[state.componentToAdd] == UIComponentType::Sprite) entity.AddComponent<ComponentUISprite>();
                 else if (addable[state.componentToAdd] == UIComponentType::Script) entity.AddScript().enabled = true;
+                else if (addable[state.componentToAdd] == UIComponentType::Flipbook) entity.AddComponent<ComponentFlipbook>();
                 state.addingComponent = false;
                 state.componentToAdd = 0;
                 uiHasUnsavedChanges = true;

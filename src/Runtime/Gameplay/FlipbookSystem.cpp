@@ -50,6 +50,19 @@ namespace {
 }
 
 namespace FlipbookSystem {
+    bool DrivesUISprite(const Level& level, const ComponentFlipbook& flipbook) {
+        return level.ui_transforms.Has(flipbook.ownerID);
+    }
+
+    ComponentUISprite* FindDrivenUISprite(Level& level, const ComponentFlipbook& flipbook) {
+        if (flipbook.spriteInstanceID != INVALID_COMPONENT_INSTANCE_ID) {
+            ComponentUISprite* chosen = level.ui_sprites.GetInstance(flipbook.spriteInstanceID);
+            if (chosen != nullptr && chosen->ownerID == flipbook.ownerID) return chosen;
+        }
+
+        return level.ui_sprites.Get(flipbook.ownerID);
+    }
+
     ComponentSprite* FindDrivenSprite(Level& level, const ComponentFlipbook& flipbook) {
         if (flipbook.spriteInstanceID != INVALID_COMPONENT_INSTANCE_ID) {
             ComponentSprite* chosen = level.sprites.GetInstance(flipbook.spriteInstanceID);
@@ -123,8 +136,15 @@ namespace FlipbookSystem {
             }
 
             if (flipbook.applyPending) {
-                if (ComponentSprite* sprite = FindDrivenSprite(level, flipbook))
-                    sprite->textureFileNames = asset->frames[flipbook.currentFrame].textures;
+                const FlipbookFrame& frame = asset->frames[flipbook.currentFrame];
+
+                // A UI Sprite has one picture: the frame's first (N) slot.
+                if (DrivesUISprite(level, flipbook)) {
+                    if (ComponentUISprite* uiSprite = FindDrivenUISprite(level, flipbook)) uiSprite->texture = frame.textures[0];
+                }
+                else if (ComponentSprite* sprite = FindDrivenSprite(level, flipbook)) {
+                    sprite->textureFileNames = frame.textures;
+                }
 
                 flipbook.applyPending = false;
             }

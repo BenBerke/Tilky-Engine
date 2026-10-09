@@ -260,7 +260,7 @@
   "component.model.embedded": "embedded",
   "&Context_58": "Shown next to a texture or file the model refers to that could not be found on disk.",
   "component.model.missing": "missing",
-  "&Context_59": "A flipbook component plays a sprite animation (.fpk file) by swapping the textures of one of the entity's sprites.",
+  "&Context_59": "A flipbook component plays a sprite animation (.fpk file) by swapping the textures of one of the entity's sprites (or UI sprites, on a UI entity).",
   "component.flipbook": "Flipbook",
   "component.flipbook.section": "Flipbook",
   "component.flipbook.file_name": "Flipbook File",
