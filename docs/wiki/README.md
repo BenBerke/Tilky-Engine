@@ -27,6 +27,7 @@ Components are what give an entity its behaviour. Add them in the entity inspect
 | [Transform](Transform.md) | Transform | Position, rotation and scale. Nearly every other component needs one. |
 | [Sprite](Sprite.md) | Sprite | A flat image in the world: billboards and 4- or 8-direction sprites. |
 | [Model](Model.md) | Model | A 3D model file (`.glb`, `.gltf`, `.obj`, ...). |
+| [Flipbook](Flipbook.md) | Flipbook | Plays a sprite animation (`.fpk` file) on one of the entity's sprites. |
 | [Audio Source](AudioSource.md) | Audio Source | Plays a sound from the entity's position. |
 | [Script](Script.md) | Custom Script | Attaches a Lua script. |
 | [Player Controller](PlayerController.md) | Player Controller | Built-in first-person movement and mouse look. |

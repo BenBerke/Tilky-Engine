@@ -142,4 +142,26 @@ namespace LevelManager {
         for (ComponentModel& model : level.models.components)
             if (model.fileName == oldReference) model.fileName = newReference;
     }
+
+    void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentFlipbook& flipbook : level.flipbooks.components)
+            if (flipbook.flipbookFileName == oldReference) flipbook.flipbookFileName = newReference;
+
+        // Scripts hold flipbooks in FlipbookAsset fields. Only a path ending
+        // in .fpk can be one, so a texture field with the same text can't match.
+        const auto renameInScript = [&](ScriptAttachmentData& script) {
+            for (auto& [name, value] : script.publicValues)
+                if (AssetRefValue* asset = std::get_if<AssetRefValue>(&value); asset != nullptr && asset->path == oldReference)
+                    asset->path = newReference;
+        };
+
+        for (ComponentScript& script : level.scripts.components) renameInScript(script);
+
+        for (Sector& sector : level.sectors)
+            for (SectorScript& script : sector.scripts) renameInScript(script);
+    }
 }

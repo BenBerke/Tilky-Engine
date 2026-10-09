@@ -274,9 +274,11 @@ set(TILKY_RUNTIME_SOURCES
         src/Objects/Entity.cpp
         src/Objects/Components.cpp
         src/Objects/Level.cpp
+        src/Objects/FlipbookAsset.cpp
 
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/Gameplay/GameFunctions.cpp
+        src/Runtime/Gameplay/FlipbookSystem.cpp
 
         src/Runtime/RuntimeSession.cpp
         src/Runtime/LevelSystem.cpp
@@ -330,6 +332,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Sector.hpp
         Headers/Objects/Wall.hpp
         Headers/Objects/Loadables.hpp
+        Headers/Objects/FlipbookAsset.hpp
         Headers/Objects/LuaWrappers.hpp
 
         Headers/Map/LevelManager.hpp
@@ -349,6 +352,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp
         Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Gameplay/GameFunctions.hpp
+        Headers/Runtime/Gameplay/FlipbookSystem.hpp
 
         Headers/Runtime/Renderer/IRenderer.hpp
         Headers/Runtime/Renderer/RendererBackend.hpp
@@ -516,6 +520,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/Editor.cpp
         src/Editor/EditorTextureCache.cpp
         src/Editor/AssetBrowser.cpp
+        src/Editor/FlipbookEditor.cpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp
@@ -527,6 +532,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/UIEditor/UiEditorDraw.cpp
 
         Headers/Editor/AssetBrowser.hpp
+        Headers/Editor/FlipbookEditor.hpp
         Headers/Editor/EditorTextureCache.hpp
         Headers/Editor/ImGuiDrawFunctions.hpp
 

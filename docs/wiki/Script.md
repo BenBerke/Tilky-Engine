@@ -103,8 +103,9 @@ public <type> <name> = <default>
 | `Sector` | [Sector](Sector.md) or `nil` | `nil` | sector picker |
 | `Wall` | [Wall](Wall.md) or `nil` | `nil` | wall picker |
 | `Behaviour` / `Script` | [Behaviour](#behaviour-references) or `nil` | `nil` | picks one script on one entity |
-| `Transform`, `Sprite`, `Model`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component or `nil` | `nil` | picks one component on one entity (an entity can have several) |
+| `Transform`, `Sprite`, `Model`, `Flipbook`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component or `nil` | `nil` | picks one component on one entity (an entity can have several) |
 | `Asset` / `Texture` | the texture's path as a string (`""` if unset) | `nil` | texture picker |
+| `FlipbookAsset` | the `.fpk` file's path as a string (`""` if unset), ready for [`flipbook:Play`](Flipbook.md#scripting) | `nil` | flipbook picker |
 
 List types (`number[]`) aren't supported.
 

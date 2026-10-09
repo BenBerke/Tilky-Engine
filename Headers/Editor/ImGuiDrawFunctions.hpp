@@ -49,6 +49,10 @@ namespace ImGuiDrawFunctions {
     bool DangerButton(const char *label);
     void DrawInspectorHeader(const char *kind, const char *detail = nullptr);
 
+    // The 8 directional texture slots, laid out as a compass for 90/45-degree
+    // sprites. Shared by the Sprite inspector and the flipbook editor.
+    void DrawDirectionalTextureSlots(std::array<std::string, 8>& textures, SideCount sideCount);
+
     // ── Runtime-only HUD overlay ──────────────────────────────────────────────
     // Compact keybind hint shown only in Runtime Editor.
     // Call once per frame after all other ImGui windows.

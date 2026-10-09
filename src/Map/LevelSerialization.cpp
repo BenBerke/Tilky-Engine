@@ -1220,6 +1220,7 @@ namespace {
         level.colliders.Clear();
         level.rigidbodies.Clear();
         level.models.Clear();
+        level.flipbooks.Clear();
 
         level.ui_transforms.Clear();
         level.ui_sprites.Clear();
@@ -1623,6 +1624,24 @@ namespace {
                 }
             }
         }
+
+        if (componentsJson.contains("flipbooks")) {
+            for (const json& flipbookJson : componentsJson["flipbooks"]) {
+                const ID ownerID = flipbookJson.value("ownerID", INVALID_ENTITY_ID);
+
+                if (ownerID == INVALID_ENTITY_ID) continue;
+
+                Entity* entity = level.GetEntity(ownerID);
+                if (entity == nullptr) continue;
+
+                ComponentFlipbook& c = level.flipbooks.Add(ownerID, flipbookJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
+                entity->componentsMask.set(CMP_FLIPBOOK);
+
+                c.flipbookFileName = flipbookJson.value("flipbookFileName", std::string{});
+                c.spriteInstanceID = flipbookJson.value("spriteInstanceID", INVALID_COMPONENT_INSTANCE_ID);
+                c.speed = flipbookJson.value("speed", 1.0f);
+            }
+        }
     }
 
     // A storage's components grouped by entity, each entity's in their own
@@ -1653,6 +1672,7 @@ namespace {
         componentsJson["colliders"] = json::array();
         componentsJson["rigidbodies"] = json::array();
         componentsJson["models"] = json::array();
+        componentsJson["flipbooks"] = json::array();
 
         for (const ComponentTransform& c : InOwnerOrder(level, level.transforms)) {
             componentsJson["transforms"].push_back({
@@ -1804,6 +1824,16 @@ namespace {
                 {"instanceID", c.instanceID},
                 {"offset", {c.offset.x, c.offset.y, c.offset.z}},
                 {"fileName", c.fileName}
+            });
+        }
+
+        for (const ComponentFlipbook& c : InOwnerOrder(level, level.flipbooks)) {
+            componentsJson["flipbooks"].push_back({
+                {"ownerID", c.ownerID},
+                {"instanceID", c.instanceID},
+                {"flipbookFileName", c.flipbookFileName},
+                {"spriteInstanceID", c.spriteInstanceID},
+                {"speed", c.speed}
             });
         }
 
@@ -2082,6 +2112,7 @@ namespace LevelSerialization {
                 {"displayName", field.displayName},
                 {"enumOptions", options},
                 {"componentType", field.componentType},
+                {"assetKind", static_cast<int>(field.assetKind)},
             });
         }
 
@@ -2099,6 +2130,7 @@ namespace LevelSerialization {
                 field.defaultValue = ScriptValueFromJson(fieldJson.at("default"));
                 field.displayName = fieldJson.value("displayName", field.name);
                 field.componentType = fieldJson.value("componentType", -1);
+                field.assetKind = static_cast<ScriptAssetKind>(fieldJson.value("assetKind", 0));
 
                 for (const json& option : fieldJson.value("enumOptions", json::array()))
                     field.enumOptions.push_back({option.at("name").get<std::string>(), option.at("value").get<int>()});

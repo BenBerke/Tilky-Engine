@@ -1326,6 +1326,7 @@ namespace {
         ImGui::End();
 
         assetBrowser.DrawTextEditorWindow(scriptEditorFont);
+        assetBrowser.DrawFlipbookEditorWindows();
     }
 
     // ---------------------------------------------------------------------

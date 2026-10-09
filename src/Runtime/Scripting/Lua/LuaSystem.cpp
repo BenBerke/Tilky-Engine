@@ -438,6 +438,9 @@ namespace {
             HashCombine(hash, std::hash<std::string>{}(field.name));
             HashCombine(hash, static_cast<std::uint64_t>(field.type));
             HashCombine(hash, static_cast<std::uint64_t>(field.componentType + 1));
+            // Only non-texture kinds, so existing scripts keep their hash.
+            if (field.assetKind != ScriptAssetKind::Texture)
+                HashCombine(hash, static_cast<std::uint64_t>(field.assetKind) + 1);
             HashScriptValue(hash, field.defaultValue);
 
             for (const ScriptEnumOption& option : field.enumOptions) {
@@ -580,6 +583,7 @@ namespace {
             case CMP_COLLIDER: return ResolveInstanceRef<ScriptCollider>(luaView, level, level.colliders, ref);
             case CMP_RIGIDBODY: return ResolveInstanceRef<ScriptRigidbody>(luaView, level, level.rigidbodies, ref);
             case CMP_MODEL: return ResolveInstanceRef<ScriptModel>(luaView, level, level.models, ref);
+            case CMP_FLIPBOOK: return ResolveInstanceRef<ScriptFlipbook>(luaView, level, level.flipbooks, ref);
 
             default: break;
         }
@@ -1327,6 +1331,30 @@ void LuaScriptSystem::DispatchSectorChangeEvents(Level& level) {
 void LuaScriptSystem::DispatchContactEvents(Level& level, const PhysicsSystem::Contacts& contacts) {
     DispatchContactSet(level, contacts.collisions, lastCollisions, kCollisionCallbacks);
     DispatchContactSet(level, contacts.triggers, lastTriggers, kTriggerCallbacks);
+}
+
+bool LuaScriptSystem::DispatchEntityEvent(Level&, const ID entityID, const std::string& functionName,
+                                          const std::string& argument) {
+    bool defined = false;
+
+    // By index: a handler can attach a script, which can grow the vector.
+    for (size_t i = 0; i < scriptInstances.size(); ++i) {
+        if (scriptInstances[i].ownerKind != ScriptOwnerKind::Entity || scriptInstances[i].ownerID != entityID) continue;
+        if (scriptInstances[i].destroyed) continue;
+
+        const sol::object value = scriptInstances[i].environment[functionName];
+        if (value.get_type() != sol::type::function) continue;
+
+        defined = true;
+        if (!scriptInstances[i].enabled) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const sol::protected_function function = value.as<sol::protected_function>();
+        const ScriptInstance instance = scriptInstances[i];
+        CallLifecycle(instance, function, functionName.c_str(), argument);
+    }
+
+    return defined;
 }
 
 void LuaScriptSystem::Stop(Level&) {

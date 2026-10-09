@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <sol/error.hpp>
+#include <spdlog/spdlog.h>
 
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/Geometry/Geometry.hpp"
@@ -26,6 +27,8 @@
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
+#include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 // ---------------------------------------------------------
 // Audio Source
@@ -811,6 +814,104 @@ struct ScriptModel {
 
     void ClearFileName() const {
         SetFileName("");
+    }
+};
+
+// ---------------------------------------------------------
+// Flipbook
+// ---------------------------------------------------------
+
+struct ScriptFlipbook {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Flipbooks this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    [[nodiscard]] ComponentFlipbook* GetComponent() const {
+        if (level == nullptr) return nullptr;
+        return level->flipbooks.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] std::string GetFlipbookFileName() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return {};
+        return flipbook->flipbookFileName;
+    }
+
+    void SetFlipbookFileName(const std::string& fileName) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::SetFlipbookFileName(*flipbook, fileName);
+    }
+
+    [[nodiscard]] float GetSpeed() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return 1.0f;
+        return flipbook->speed;
+    }
+
+    void SetSpeed(const float speed) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        flipbook->speed = speed;
+    }
+
+    [[nodiscard]] bool IsPlaying() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        return flipbook != nullptr && flipbook->playing;
+    }
+
+    // Empty fileName = the current file. See FlipbookSystem::Play.
+    void Play(const std::string& fileName, const bool restart) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Play(*flipbook, fileName, restart);
+    }
+
+    void Pause() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Pause(*flipbook);
+    }
+
+    void Resume() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Resume(*flipbook);
+    }
+
+    void Stop() const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        FlipbookSystem::Stop(*flipbook);
+    }
+
+    // An unknown name is reported (with the calling script's file and line)
+    // and leaves the frame as it was, rather than stopping the script.
+    void SetFrame(const std::string& frameName, const sol::this_state state) const {
+        ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return;
+        if (FlipbookSystem::SetFrame(*flipbook, frameName)) return;
+
+        lua_State* L = state;
+        luaL_where(L, 1);
+        const std::string where = lua_tostring(L, -1);
+        lua_pop(L, 1);
+
+        const std::string message = where + "Flipbook:SetFrame: '" + flipbook->flipbookFileName +
+                                    "' has no frame called '" + frameName + "'";
+        spdlog::error("{}", message);
+        EditorFunctions::Print(message, Vector3{200.0f, 60.0f, 60.0f}, 15.0f);
+    }
+
+    [[nodiscard]] std::string GetFrame() const {
+        const ComponentFlipbook* flipbook = GetComponent();
+        if (flipbook == nullptr) return {};
+        return FlipbookSystem::GetFrameName(*flipbook);
     }
 };
 
@@ -1649,6 +1750,10 @@ struct ScriptEntity {
         return level != nullptr && level->models.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasFlipbook() const {
+        return level != nullptr && level->flipbooks.Has(ownerID);
+    }
+
     [[nodiscard]] bool HasUITransform() const {
         return level != nullptr && level->ui_transforms.Has(ownerID);
     }
@@ -1736,6 +1841,11 @@ struct ScriptEntity {
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptModel GetModel() const {
         return {level, ownerID, FirstInstance(&Level::models)};
+    }
+
+    // The first one; GetComponents lists them all.
+    [[nodiscard]] ScriptFlipbook GetFlipbook() const {
+        return {level, ownerID, FirstInstance(&Level::flipbooks)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {

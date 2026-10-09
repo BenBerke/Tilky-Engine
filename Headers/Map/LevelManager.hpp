@@ -32,6 +32,8 @@ namespace LevelManager {
     void RenameSoundReference(const std::string& oldReference, const std::string& newReference);
     void RenameScriptReference(const std::string& oldReference, const std::string& newReference);
     void RenameModelReference(const std::string& oldReference, const std::string& newReference);
+    // Flipbook components and script fields typed FlipbookAsset.
+    void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference);
 }
 
 #endif // TILKY_ENGINE_LEVELMANAGER_H

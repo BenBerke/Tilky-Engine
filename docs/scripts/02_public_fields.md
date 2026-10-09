@@ -32,8 +32,9 @@ public <type> <name> = <default>
 | `Behaviour` | another script on some Entity (or `nil`) | `nil` |
 | `Wall` | `Wall` (or `nil` if unassigned) | `nil` |
 | `Sector` | `Sector` (or `nil` if unassigned) | `nil` |
-| `Transform`, `Sprite`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
+| `Transform`, `Sprite`, `Model`, `Flipbook`, `AudioSource`, `PlayerController`, `Camera`, `Collider`, `Rigidbody` | that component (or `nil`) | `nil` |
 | `Asset` / `Texture` | the asset's path as a string | `nil` |
+| `FlipbookAsset` | a `.fpk` flipbook's path as a string, for [`flipbook:Play`](../wiki/Flipbook.md#scripting) | `nil` |
 
 Array types (`number[]`) are not supported yet.
 

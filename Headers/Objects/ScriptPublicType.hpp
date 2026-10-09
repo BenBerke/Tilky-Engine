@@ -116,6 +116,14 @@ using ScriptValue = std::variant<
     SectorRefValue
 >;
 
+// Which kind of file an Asset-typed field accepts: `public Texture t` or
+// `public FlipbookAsset f`. Picks the Inspector's drag-drop kind; the stored
+// value is an AssetRefValue path either way.
+enum class ScriptAssetKind : std::uint8_t {
+    Texture,
+    Flipbook
+};
+
 // One named option of an Enum-typed field, e.g. `enum(Idle,Walk,Run)` parses
 // to {{"Idle",0},{"Walk",1},{"Run",2}}. The underlying ScriptValue is always
 // a plain int (the option's value).
@@ -141,6 +149,9 @@ struct ScriptPublicField {
     // (Components.hpp) the field accepts, e.g. CMP_RIGIDBODY for a field
     // declared `public Rigidbody body`. -1 if unresolved/invalid.
     int componentType = -1;
+
+    // Only meaningful when type == Asset.
+    ScriptAssetKind assetKind = ScriptAssetKind::Texture;
 
     // Reserved for future list/array field support (see the scripting
     // redesign notes). Always false today - the schema parser recognizes and

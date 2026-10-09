@@ -71,6 +71,22 @@ namespace {
             Method("ClearFileName"),
         }));
 
+        RegisterType(Type("Flipbook", "Plays a flipbook (.fpk) on one of the Entity's Sprites by swapping its textures.", {
+            Prop("isValid", "boolean", true),
+            Prop("isPlaying", "boolean", true, "True while frames are advancing (false when paused, stopped or a Once flipbook finished)."),
+            Prop("flipbookFileName", "string", false, "The .fpk file relative to Assets, with extension (e.g. \"Animations/walk.fpk\"). Changing it rewinds to the first frame without changing whether it plays."),
+            Prop("speed", "number", false, "Playback rate. 1 = the flipbook's own timing, 2 = twice as fast, 0 = frozen."),
+        }, {
+            Method("Play", {Param("flipbook", "string?"), Param("restart", "boolean?")}, {},
+                   "Plays the given .fpk (or the current one). Does nothing if it is already playing, unless restart is true. A different file starts from its first frame."),
+            Method("Pause", {}, {}, "Stops advancing frames and keeps the current one. Resume continues."),
+            Method("Resume", {}, {}, "Continues from the current frame."),
+            Method("Stop", {}, {}, "Stops and rewinds to the first frame, which the Sprite then shows."),
+            Method("SetFrame", {Param("frameName", "string")}, {},
+                   "Jumps to the frame with this name without firing its event. An unknown name is reported and changes nothing."),
+            Method("GetFrame", {}, "string", "Name of the frame being shown (empty if there is no flipbook)."),
+        }));
+
         RegisterType(Type("Collider", "Sphere or box collision volume.", {
             Prop("isValid", "boolean", true),
             Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
@@ -340,6 +356,30 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             ),
 
             "ClearFileName", &ScriptModel::ClearFileName
+        );
+
+        lua.new_usertype<ScriptFlipbook>(
+            "Flipbook",
+
+            "isValid", sol::property(&ScriptFlipbook::IsValid),
+            "isPlaying", sol::property(&ScriptFlipbook::IsPlaying),
+
+            "flipbookFileName", sol::property(
+                &ScriptFlipbook::GetFlipbookFileName,
+                &ScriptFlipbook::SetFlipbookFileName
+            ),
+
+            "speed", sol::property(&ScriptFlipbook::GetSpeed, &ScriptFlipbook::SetSpeed),
+
+            "Play", [](const ScriptFlipbook& self, const sol::optional<std::string>& fileName,
+                       const sol::optional<bool> restart) {
+                self.Play(fileName.value_or(""), restart.value_or(false));
+            },
+            "Pause", &ScriptFlipbook::Pause,
+            "Resume", &ScriptFlipbook::Resume,
+            "Stop", &ScriptFlipbook::Stop,
+            "SetFrame", &ScriptFlipbook::SetFrame,
+            "GetFrame", &ScriptFlipbook::GetFrame
         );
 
         lua.new_usertype<ScriptCollider>(

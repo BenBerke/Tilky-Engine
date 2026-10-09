@@ -149,6 +149,7 @@ namespace {
         ScriptValueType type;
         std::string_view luaType;  // runtime usertype, for editor member completion
         int componentType = -1;    // type == Component only
+        ScriptAssetKind assetKind = ScriptAssetKind::Texture; // type == Asset only
     };
 
     // `enum(A, B, C)` and `Key` are handled on top of this table - see ParseType.
@@ -169,6 +170,7 @@ namespace {
             {"Script",           ScriptValueType::Behaviour, "Behaviour"},
             {"Asset",            ScriptValueType::Asset,     ""},
             {"Texture",          ScriptValueType::Asset,     ""},
+            {"FlipbookAsset",    ScriptValueType::Asset,     "",                 -1, ScriptAssetKind::Flipbook},
             {"Wall",             ScriptValueType::Wall,      "Wall"},
             {"Sector",           ScriptValueType::Sector,    "Sector"},
             {"Key",              ScriptValueType::Enum,      ""},
@@ -181,6 +183,7 @@ namespace {
             {"Collider",         ScriptValueType::Component, "Collider",         CMP_COLLIDER},
             {"Rigidbody",        ScriptValueType::Component, "Rigidbody",        CMP_RIGIDBODY},
             {"Model",            ScriptValueType::Component, "Model",            CMP_MODEL},
+            {"Flipbook",         ScriptValueType::Component, "Flipbook",         CMP_FLIPBOOK},
         };
         return types;
     }
@@ -276,6 +279,7 @@ namespace {
         field.name = declaration.name;
         field.type = declaration.type->type;
         field.componentType = declaration.type->componentType;
+        field.assetKind = declaration.type->assetKind;
         field.enumOptions = declaration.enumOptions;
         field.defaultValue = declaration.defaultValue;
         field.displayName = LuaScriptCompiler::DisplayNameFromIdentifier(declaration.name);

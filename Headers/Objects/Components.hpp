@@ -29,6 +29,7 @@ enum ComponentType {
     CMP_COLLIDER,
     CMP_RIGIDBODY,
     CMP_MODEL,
+    CMP_FLIPBOOK,
 
     CMP_NORMAL_COUNT,
 
@@ -452,11 +453,37 @@ struct ComponentSprite {
     bool isActive = true; // false = not uploaded to the sprite SSBO, so not drawn
 };
 
+// Plays a flipbook (.fpk, see FlipbookAsset.hpp) on one of the owner's
+// Sprites. It never draws anything: while the game runs, FlipbookSystem
+// copies the current frame's textures into that sprite's textureFileNames.
+// The sprite's side count is left alone - the flipbook uses whatever the
+// sprite has.
+struct ComponentFlipbook {
+    ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // Assets-relative .fpk reference, extension included, e.g. "Animations/walk.fpk".
+    std::string flipbookFileName;
+
+    // The owner's sprite this drives. INVALID (or a sprite that's gone) means
+    // the owner's first sprite.
+    ComponentInstanceID spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    float speed = 1.0f; // playback rate multiplier, 1 = the flipbook's own timing
+
+    // Runtime only, not saved. Driven by FlipbookSystem and the Lua API.
+    int currentFrame = 0;
+    float frameTime = 0.0f;     // seconds spent on currentFrame
+    int pingPongDirection = 1;  // +1 forward, -1 backward (PingPong only)
+    bool playing = false;
+    bool applyPending = false;  // copy currentFrame to the sprite on the next update
+    bool eventPending = false;  // fire currentFrame's event on the next update
+};
+
 // Transform and UITransform place the entity, so there's only ever one.
 // Every other component can be added any number of times.
 template<typename T>
-inline constexpr bool IsSingleComponent =
-    std::is_same_v<T, ComponentTransform> || std::is_same_v<T, ComponentUITransform>;
+inline constexpr bool IsSingleComponent = std::is_same_v<T, ComponentTransform> || std::is_same_v<T, ComponentUITransform>;
 
 // Holds every component of one type. An entity can own several (except
 // Transform/UITransform - see Entity::AddComponent); each gets an instanceID

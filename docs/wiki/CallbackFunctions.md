@@ -21,6 +21,7 @@ them for public fields.
 | [`OnSectorChange(sector)`](#onsectorchange) | ✓ | | This entity moved into a different sector |
 | [`OnEntityEnter(entity)`](#onentityenter--onentityexit) | | ✓ | An entity entered this sector |
 | [`OnEntityExit(entity)`](#onentityenter--onentityexit) | | ✓ | An entity left this sector |
+| [Flipbook frame events](#flipbook-frame-events) | ✓ | | A [Flipbook](Flipbook.md) reached a frame with an event function |
 
 If a callback is defined on the wrong kind of script (for example `OnEntityEnter` on an entity
 script), it is silently ignored.
@@ -336,18 +337,42 @@ end
 
 ---
 
+## Flipbook frame events
+
+```lua
+function Footstep(frameName) end   -- any name you type into the frame
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `frameName` | string | The name of the frame that was reached. |
+
+Unlike the callbacks above, the function's name is up to you: it's whatever you type into a
+frame's **Event function** box in the flipbook editor. When a [Flipbook](Flipbook.md) reaches that
+frame, the function is called on every enabled script on the entity that defines it.
+
+- It fires each time playback reaches the frame, including every time a loop comes back to it,
+  and for frames skipped over in a slow frame. `SetFrame` doesn't fire it.
+- The callback names in the table above can't be used as event functions.
+- If no script on the entity defines it, a warning is logged once.
+
+See [Flipbook: Frame events](Flipbook.md#frame-events).
+
+---
+
 ## Order within one frame
 
 | # | Step | Callbacks |
 |---|---|---|
 | 1 | Scripts | For each script in turn: `OnEnable`/`Start` or `OnDisable` if its active state changed, then `Update`. Then all `FixedUpdate` steps. |
 | 2 | Sector movement | Floor/ceiling moves and light fades advance. |
-| 3 | Player controller | WASD movement, jumping, mouse look. |
-| 4 | Physics | Gravity, velocity, collisions. |
-| 5 | Sector membership | Every moved entity is assigned to the sector it's in now. |
-| 6 | Sector events | `OnEntityExit`, `OnEntityEnter` (sector scripts), then `OnSectorChange` (entity scripts). |
-| 7 | Contact events | `OnCollisionExit`, `OnCollisionEnter`, `OnCollision`, then `OnTriggerExit`, `OnTriggerEnter`, `OnTrigger`. |
-| 8 | Destroys | Entities queued with `Destroy()` run `OnDestroy` and are removed. |
+| 3 | Flipbooks | Every [Flipbook](Flipbook.md) advances and updates its sprite, then frame events fire. |
+| 4 | Player controller | WASD movement, jumping, mouse look. |
+| 5 | Physics | Gravity, velocity, collisions. |
+| 6 | Sector membership | Every moved entity is assigned to the sector it's in now. |
+| 7 | Sector events | `OnEntityExit`, `OnEntityEnter` (sector scripts), then `OnSectorChange` (entity scripts). |
+| 8 | Contact events | `OnCollisionExit`, `OnCollisionEnter`, `OnCollision`, then `OnTriggerExit`, `OnTriggerEnter`, `OnTrigger`. |
+| 9 | Destroys | Entities queued with `Destroy()` run `OnDestroy` and are removed. |
 
 In step 1, entity scripts run before sector scripts. Something a script does in
 `Update` (moving an entity, starting a door) is already reflected in the events at the end of the

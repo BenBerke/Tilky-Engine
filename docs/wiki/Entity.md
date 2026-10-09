@@ -76,6 +76,7 @@ except Transform and UI Transform). The property returns the **first** one, and
 | `hasTransform` | `transform` | [Transform](Transform.md) |
 | `hasSprite` | `sprite` | [Sprite](Sprite.md) |
 | `hasModel` | `model` | [Model](Model.md) |
+| `hasFlipbook` | `flipbook` | [Flipbook](Flipbook.md) |
 | `hasAudioSource` | `audioSource` | [Audio Source](AudioSource.md) |
 | `hasPlayerController` | `playerController` | [Player Controller](PlayerController.md) |
 | `hasCamera` | `camera` | [Camera](Camera.md) |
@@ -167,7 +168,7 @@ its values as you type `Component.`:
 
 | World entities | UI entities |
 |---|---|
-| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText` |
+| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText` |
 
 - The values are plain numbers. A misspelled one (`Component.Sprit`) is `nil`, and passing `nil` or
   a number that isn't in the table raises an error.

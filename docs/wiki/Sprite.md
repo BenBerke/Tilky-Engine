@@ -148,6 +148,10 @@ end
 
 Only change the texture when the frame actually changes, not every frame.
 
+For anything more than a simple loop (a picture per direction, different timings per frame,
+sounds on certain frames, switching between walk and idle) use a [Flipbook](Flipbook.md) instead.
+While a Flipbook plays on a sprite, it overwrites that sprite's textures.
+
 ### Flash red when hurt
 
 ```lua

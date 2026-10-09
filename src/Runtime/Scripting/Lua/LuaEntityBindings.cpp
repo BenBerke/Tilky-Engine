@@ -16,7 +16,7 @@
 
 namespace {
     constexpr const char* COMPONENT_TYPE =
-        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|UITransform|UISprite|UIText";
+        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|UITransform|UISprite|UIText";
 
     // One row per component Lua can add or remove. Its value in the Lua
     // `Component` table is its ComponentType. Script is left out: a script
@@ -126,6 +126,7 @@ namespace {
         Kind<ComponentCollider, ScriptCollider, &ScriptEntity::GetCollider>("Collider", CMP_COLLIDER, false),
         Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, false),
         Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, false),
+        Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, false),
         Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, true),
         Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, true),
         Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, true),
@@ -189,6 +190,8 @@ namespace {
                 {.name = "rigidbody", .luaType = "Rigidbody?", .readOnly = true, .doc = "nil if this Entity has no Rigidbody."},
                 {.name = "hasModel", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Model."},
                 {.name = "model", .luaType = "Model?", .readOnly = true, .doc = "nil if this Entity has no Model."},
+                {.name = "hasFlipbook", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Flipbook."},
+                {.name = "flipbook", .luaType = "Flipbook?", .readOnly = true, .doc = "nil if this Entity has no Flipbook."},
                 {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
                 {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
                 {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
@@ -392,6 +395,20 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
                 if (!entity.HasModel()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetModel());
+            }
+        ),
+
+        "hasFlipbook",
+        sol::property(&ScriptEntity::HasFlipbook),
+
+        "flipbook",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+
+                if (!entity.HasFlipbook()) return sol::nil;
+
+                return sol::make_object(luaState, entity.GetFlipbook());
             }
         ),
 

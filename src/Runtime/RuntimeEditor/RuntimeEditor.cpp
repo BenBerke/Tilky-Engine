@@ -571,6 +571,9 @@ namespace RuntimeEditorUi {
             ImGui::End();
         }
 
+        // Outside the check above, so open flipbooks don't vanish while looking around.
+        MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
+
         // ── Drop textures straight onto geometry ─────────────────────────────
         // The 3D view is not an ImGui window, so there is no item to hang a
         // BeginDragDropTarget() off. Watch the live payload instead and apply it

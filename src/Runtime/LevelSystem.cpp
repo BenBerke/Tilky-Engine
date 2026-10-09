@@ -21,6 +21,7 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
+#include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
 namespace {
@@ -194,6 +195,9 @@ namespace LevelSystem {
             ZoneScopedN("Scripting System Start");
             scriptingSystem.Start(level);
         }
+
+        // After scripts, so a first-frame event finds their functions.
+        FlipbookSystem::Start(level);
         // Future level start systems will run here.
     }
 
@@ -211,6 +215,15 @@ namespace LevelSystem {
             // After scripts, so a move started this frame already moves.
             ZoneScopedN("Sector Movement");
             level.UpdateSectorMovement(GameTime::deltaTime);
+        }
+
+        {
+            // After scripts, so a Play() from this frame's Update shows this frame.
+            ZoneScopedN("Flipbooks");
+            FlipbookSystem::Update(level, GameTime::deltaTime,
+                [&level](const ID entityID, const std::string& functionName, const std::string& frameName) {
+                    return scriptingSystem.DispatchEntityEvent(level, entityID, functionName, frameName);
+                });
         }
 
         // Only here, so the sky spins while the game runs and never in the editor.

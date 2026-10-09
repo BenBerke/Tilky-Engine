@@ -73,6 +73,15 @@ namespace {
         transform.resolvedSize = {};
     }
 
+    void ResetCopiedRuntimeState(ComponentFlipbook& flipbook) {
+        flipbook.currentFrame = 0;
+        flipbook.frameTime = 0.0f;
+        flipbook.pingPongDirection = 1;
+        flipbook.playing = false;
+        flipbook.applyPending = false;
+        flipbook.eventPending = false;
+    }
+
     // Copies every component of one type, in order, each with a new instance ID.
     template<typename Storage>
     void CopyComponents(Storage& storage, const ID from, const ID to, ComponentMask& mask, const int bit) {
@@ -105,6 +114,24 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(colliders, copy.id, entity.id, entity.componentsMask, CMP_COLLIDER);
     CopyComponents(rigidbodies, copy.id, entity.id, entity.componentsMask, CMP_RIGIDBODY);
     CopyComponents(models, copy.id, entity.id, entity.componentsMask, CMP_MODEL);
+    CopyComponents(flipbooks, copy.id, entity.id, entity.componentsMask, CMP_FLIPBOOK);
+
+    // A copied flipbook still names the original's sprite. Point it at the
+    // copy's sprite in the same position instead.
+    {
+        const std::vector<ComponentInstanceID> originalSprites = sprites.InstancesOf(copy.id);
+        const std::vector<ComponentInstanceID> copiedSprites = sprites.InstancesOf(entity.id);
+
+        for (ComponentFlipbook* flipbook : flipbooks.GetAll(entity.id)) {
+            const auto it = std::ranges::find(originalSprites, flipbook->spriteInstanceID);
+            const size_t index = static_cast<size_t>(it - originalSprites.begin());
+
+            flipbook->spriteInstanceID = index < copiedSprites.size()
+                ? copiedSprites[index]
+                : INVALID_COMPONENT_INSTANCE_ID;
+        }
+    }
+
     CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
     CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
     CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
@@ -141,6 +168,7 @@ void Level::DestroyEntity(const ID entityID) {
 
     sprites.RemoveAll(entityID);
     models.RemoveAll(entityID);
+    flipbooks.RemoveAll(entityID);
     audioSources.RemoveAll(entityID);
     scripts.RemoveAll(entityID);
     playerControllers.RemoveAll(entityID);

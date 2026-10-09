@@ -17,6 +17,7 @@
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -782,7 +783,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -801,6 +802,7 @@ end
             { ".jpeg", RegisteredExtensionKind::Texture },
             { ".wav",  RegisteredExtensionKind::Sound   },
             { ".lua",  RegisteredExtensionKind::Script  },
+            { std::string(FlipbookIO::kExtension), RegisteredExtensionKind::Flipbook },
             { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
         };
 
@@ -822,6 +824,7 @@ end
             case AssetKind::Sound: return "wav";
             case AssetKind::Script: return "lua";
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
+            case AssetKind::Flipbook: return "fpk";
             default: return "file";
         }
     }
@@ -833,6 +836,7 @@ end
             case AssetKind::Sound: return IM_COL32(45, 70, 90, 255);
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
             case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
+            case AssetKind::Flipbook: return IM_COL32(100, 55, 75, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
     }
@@ -1541,6 +1545,10 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         browser.RequestOpenScript(GetPath());
         return;
     }
+    if (kind == AssetKind::Flipbook) {
+        browser.RequestOpenFlipbook(GetPath());
+        return;
+    }
     if (kind == AssetKind::Sound) PlaySoundPreview(GetPath());
 
     if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
@@ -1605,6 +1613,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Script);
         case RegisteredExtensionKind::Model:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Model);
+        case RegisteredExtensionKind::Flipbook:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Flipbook);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1622,6 +1632,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Sound:   return "TILKY_ASSET_SOUND";
         case AssetKind::Script:  return "TILKY_ASSET_SCRIPT";
         case AssetKind::Model:   return "TILKY_ASSET_MODEL";
+        case AssetKind::Flipbook: return "TILKY_ASSET_FLIPBOOK";
         default:                 return "TILKY_ASSET_OTHER";
     }
 }
@@ -1631,6 +1642,8 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
         case AssetKind::Texture:return RelativeOrFallback(absolutePath,ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
+
+        case AssetKind::Flipbook: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound:
         case AssetKind::Script: {
@@ -1991,8 +2004,8 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
     // offers more than one payload type at once - so probing all of them
     // here is how a drop target stays agnostic to which one a given
     // dragged entry happened to be offering.
-    static constexpr std::array<AssetKind, 4> kFieldReferenceKinds = {
-        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model
+    static constexpr std::array<AssetKind, 5> kFieldReferenceKinds = {
+        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model, AssetKind::Flipbook
     };
 
     for (const AssetKind kind : kFieldReferenceKinds) {
@@ -2063,7 +2076,18 @@ void AssetBrowser::NotifyAssetReferenceRenamed(
     if (oldReference == newReference) return;
 
     switch (kind) {
-        case AssetKind::Texture: LevelManager::RenameTextureReference(oldReference, newReference); break;
+        case AssetKind::Texture:
+            LevelManager::RenameTextureReference(oldReference, newReference);
+            // Flipbook frames name textures too: the files on disk and any
+            // flipbook open in the editor (which may have unsaved changes).
+            FlipbookIO::RenameTextureReferenceInProject(oldReference, newReference);
+            flipbookEditor.RenameTextureReference(oldReference, newReference);
+            break;
+        case AssetKind::Flipbook:
+            LevelManager::RenameFlipbookReference(oldReference, newReference);
+            FlipbookLibrary::Invalidate(oldReference);
+            flipbookEditor.OnFileMoved(oldAbsolutePath, newAbsolutePath);
+            break;
         case AssetKind::Sound:   LevelManager::RenameSoundReference(oldReference, newReference); break;
         case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
         case AssetKind::Model:   LevelManager::RenameModelReference(oldReference, newReference); break;
@@ -2385,7 +2409,16 @@ void AssetBrowser::DrawCreateFileModal() {
 
             fs::path createdFilePath;
             std::string error;
-            if (CreateGenericFileAsset(activeModal.destinationDirectory, enteredName, createdFilePath, error)) {
+            const bool created = CreateGenericFileAsset(activeModal.destinationDirectory, enteredName, createdFilePath, error);
+
+            // A .fpk has to be a valid (empty) flipbook from the start, or
+            // nothing can open it.
+            if (created && LowerCopy(createdFilePath.extension().string()) == FlipbookIO::kExtension) {
+                if (FlipbookIO::Save(createdFilePath, FlipbookAsset{}, &error)) RequestOpenFlipbook(createdFilePath);
+                else spdlog::error("Asset browser: {}", error);
+            }
+
+            if (created) {
                 const bool wasVisible = createdFilePath.parent_path() == currentDirectory;
                 activeModal.kind = AssetBrowserModalKind::None;
                 ImGui::CloseCurrentPopup();
@@ -2699,6 +2732,19 @@ void AssetBrowser::RequestCreateFile(const std::filesystem::path& destinationDir
     activeModal.justOpened = true;
 }
 
+void AssetBrowser::RequestOpenFlipbook(const std::filesystem::path& absolutePath) {
+    if (!IsPathWithinRoot(absolutePath)) {
+        lastOperationError = "Refused to open a flipbook outside the asset root: " + absolutePath.string();
+        return;
+    }
+
+    flipbookEditor.Open(absolutePath);
+}
+
+void AssetBrowser::DrawFlipbookEditorWindows() {
+    flipbookEditor.Draw();
+}
+
 void AssetBrowser::RequestOpenLevel(const std::filesystem::path& absolutePath) {
     if (!IsPathWithinRoot(absolutePath)) {
         lastOperationError = "Refused to open a level outside the asset root: " + absolutePath.string();
@@ -2723,5 +2769,6 @@ void AssetBrowser::RequestConsumeAsFieldReference(const AssetKind kind, const st
 
 void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {
     if (ImGui::MenuItem("Script (.lua)")) RequestCreateFile(destinationDirectory, ".lua");
+    if (ImGui::MenuItem("Flipbook (.fpk)")) RequestCreateFile(destinationDirectory, std::string(FlipbookIO::kExtension));
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
 }

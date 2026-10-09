@@ -39,6 +39,7 @@
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
+#include "Headers/Objects/FlipbookAsset.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -551,7 +552,10 @@ namespace {
             case ScriptValueType::Asset: {
                 AssetRefValue *av = std::get_if<AssetRefValue>(&value);
                 if (!av) return;
-                MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
+                if (field.assetKind == ScriptAssetKind::Flipbook)
+                    MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Flipbook);
+                else
+                    MapEditorInternal::DrawAssetField(field.displayName.c_str(), av->path, AssetKind::Texture, 48.0f);
                 break;
             }
             case ScriptValueType::Wall: {
@@ -600,6 +604,113 @@ namespace ImGuiDrawFunctions {
     }
 
     // Red "danger" delete button
+    // The 8 directional texture slots, laid out as a compass for 90/45-degree
+    // sprites. Shared by the Sprite inspector and the flipbook editor.
+    void DrawDirectionalTextureSlots(std::array<std::string, 8>& textures, const SideCount sideCount) {
+        constexpr float BOX_SIZE = 64.0f;
+        constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
+
+        auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
+            ImGui::PushID(slotIndex);
+            MapEditorInternal::DrawAssetField(label, textures[slotIndex], AssetKind::Texture, BOX_SIZE);
+            ImGui::PopID();
+        };
+
+        auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
+
+        constexpr float CELL_PADDING = 8.0f;
+        constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
+
+        if (sideCount == SIDECOUNT_SINGLE) {
+            ImGui::PushID("sprite_single");
+            DrawSpriteSlot(0, "Default");
+            ImGui::PopID();
+        } else if (sideCount == SIDECOUNT_90) {
+            ImGui::PushID("sprite_90");
+
+            if (ImGui::BeginTable(
+                "##sprite_90_table",
+                3,
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+            )) {
+                ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(0, "N");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(6, "W");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(2, "E");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(4, "S");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+
+                ImGui::EndTable();
+            }
+
+            ImGui::PopID();
+        }
+        else if (sideCount == SIDECOUNT_45) {
+            ImGui::PushID("sprite_45");
+
+            if (ImGui::BeginTable(
+                "##sprite_45_table",
+                3,
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
+                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+            )) {
+                ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+                ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(7, "NW");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(0, "N");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(1, "NE");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(6, "W");
+                ImGui::TableNextColumn();
+                DrawEmptySlot();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(2, "E");
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(5, "SW");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(4, "S");
+                ImGui::TableNextColumn();
+                DrawSpriteSlot(3, "SE");
+
+                ImGui::EndTable();
+            }
+
+            ImGui::PopID();
+        }
+    }
+
     bool DangerButton(const char *label) {
         ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
@@ -1805,17 +1916,6 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponentInstance<ComponentSprite>(state.selectedInstanceID);
 
             if (c) {
-                constexpr float BOX_SIZE = 64.0f;
-                constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
-
-                auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
-                    ImGui::PushID(slotIndex);
-                    MapEditorInternal::DrawAssetField(label, c->textureFileNames[slotIndex], AssetKind::Texture, BOX_SIZE);
-                    ImGui::PopID();
-                };
-
-                auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
-
                 BeginSection("Rendering");
                 FieldWidth(160.0f);
 
@@ -1859,97 +1959,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::Separator();
                 ImGui::Spacing();
 
-                constexpr float CELL_PADDING = 8.0f;
-                constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
-
-                if (c->sideCount == SIDECOUNT_SINGLE) {
-                    ImGui::PushID("sprite_single");
-                    DrawSpriteSlot(0, "Default");
-                    ImGui::PopID();
-                } else if (c->sideCount == SIDECOUNT_90) {
-                    ImGui::PushID("sprite_90");
-
-                    if (ImGui::BeginTable(
-                        "##sprite_90_table",
-                        3,
-                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
-                    )) {
-                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(0, "N");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(6, "W");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(2, "E");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(4, "S");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-
-                        ImGui::EndTable();
-                    }
-
-                    ImGui::PopID();
-                }
-                else if (c->sideCount == SIDECOUNT_45) {
-                    ImGui::PushID("sprite_45");
-
-                    if (ImGui::BeginTable(
-                        "##sprite_45_table",
-                        3,
-                        ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                        ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
-                    )) {
-                        ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-                        ImGui::TableSetupColumn("C2", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(7, "NW");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(0, "N");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(1, "NE");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(6, "W");
-                        ImGui::TableNextColumn();
-                        DrawEmptySlot();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(2, "E");
-
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(5, "SW");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(4, "S");
-                        ImGui::TableNextColumn();
-                        DrawSpriteSlot(3, "SE");
-
-                        ImGui::EndTable();
-                    }
-
-                    ImGui::PopID();
-                }
+                DrawDirectionalTextureSlots(c->textureFileNames, c->sideCount);
 
                 EndSection();
 
@@ -2347,6 +2357,113 @@ namespace ImGuiDrawFunctions {
                     CloseEditor();
                 }
             } else { ImGui::TextDisabled("Model component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Flipbook
+        // ════════════════════════════════════════════════════════════════════
+        else if (state.selectedComponent == CMP_FLIPBOOK) {
+            auto *c = entity.GetComponentInstance<ComponentFlipbook>(state.selectedInstanceID);
+            if (c) {
+                const std::vector<ComponentSprite *> sprites = entity.GetComponents<ComponentSprite>();
+
+                BeginSection(Get("component.flipbook.section").c_str());
+
+                MapEditorInternal::DrawAssetField(Get("component.flipbook.file_name").c_str(), c->flipbookFileName, AssetKind::Flipbook);
+                Tooltip(Get("editor.tooltip.component.flipbook.file_name").c_str());
+
+                if (!c->flipbookFileName.empty() && ImGui::SmallButton(Get("component.flipbook.open_editor").c_str()))
+                    MapEditorInternal::assetBrowser.RequestOpenFlipbook(ProjectManager::GetAssetsPath() / c->flipbookFileName);
+
+                // Which of the entity's sprites it drives. "First sprite" follows
+                // whichever sprite is first, even after reordering.
+                int selectedSprite = -1;
+                for (int i = 0; i < static_cast<int>(sprites.size()); ++i)
+                    if (sprites[i]->instanceID == c->spriteInstanceID) selectedSprite = i;
+
+                const auto spriteLabel = [&](const int index) {
+                    return index < 0
+                        ? Get("component.flipbook.first_sprite")
+                        : Get("component.sprite") + " " + std::to_string(index + 1);
+                };
+
+                FieldWidth(160.0f);
+                if (ImGui::BeginCombo(Get("component.flipbook.sprite").c_str(), spriteLabel(selectedSprite).c_str())) {
+                    if (ImGui::Selectable(spriteLabel(-1).c_str(), selectedSprite == -1))
+                        c->spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+                    for (int i = 0; i < static_cast<int>(sprites.size()); ++i) {
+                        ImGui::PushID(i);
+                        if (ImGui::Selectable(spriteLabel(i).c_str(), selectedSprite == i))
+                            c->spriteInstanceID = sprites[i]->instanceID;
+                        ImGui::PopID();
+                    }
+
+                    ImGui::EndCombo();
+                }
+                Tooltip(Get("editor.tooltip.component.flipbook.sprite").c_str());
+
+                FieldWidth(120.0f);
+                InputOrDrag(Get("component.flipbook.speed").c_str(), &c->speed, draggable, 0.01f);
+                Tooltip(Get("editor.tooltip.component.flipbook.speed").c_str());
+
+                EndSection();
+
+                // What the file holds, and anything that will show up blank in game.
+                BeginSection(Get("component.flipbook.info").c_str());
+
+                const ImVec4 warningColor = {0.95f, 0.65f, 0.30f, 1.0f};
+                const FlipbookAsset *asset = c->flipbookFileName.empty() ? nullptr : FlipbookLibrary::Get(c->flipbookFileName);
+
+                if (sprites.empty()) ImGui::TextColored(warningColor, "%s", Get("component.flipbook.no_sprite").c_str());
+
+                if (c->flipbookFileName.empty()) ImGui::TextDisabled("%s", Get("editor.none").c_str());
+                else if (asset == nullptr) ImGui::TextColored(warningColor, "%s", Get("component.flipbook.missing_file").c_str());
+                else {
+                    const char *loopModeKeys[] = {
+                        "flipbook_editor.loop_mode.once", "flipbook_editor.loop_mode.loop", "flipbook_editor.loop_mode.ping_pong"
+                    };
+
+                    ImGui::Text("%s: %d", Get("flipbook_editor.frames").c_str(), static_cast<int>(asset->frames.size()));
+                    ImGui::Text("%s: %.2f", Get("flipbook_editor.fps").c_str(), asset->fps);
+                    ImGui::Text("%s: %s", Get("flipbook_editor.loop_mode").c_str(), Get(loopModeKeys[static_cast<int>(asset->loopMode)]).c_str());
+                    if (asset->playOnStart) ImGui::TextUnformatted(Get("flipbook_editor.play_on_start").c_str());
+
+                    // The slots the driven sprite's side count actually draws.
+                    const ComponentSprite *target = selectedSprite >= 0 ? sprites[selectedSprite]
+                                                  : sprites.empty() ? nullptr : sprites.front();
+
+                    if (target != nullptr) {
+                        static constexpr int SINGLE_SLOTS[] = {0};
+                        static constexpr int SIDE_90_SLOTS[] = {0, 2, 4, 6};
+                        static constexpr int SIDE_45_SLOTS[] = {0, 1, 2, 3, 4, 5, 6, 7};
+                        static constexpr const char *SIDE_NAMES[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+
+                        std::span<const int> usedSlots = SINGLE_SLOTS;
+                        if (target->sideCount == SIDECOUNT_90) usedSlots = SIDE_90_SLOTS;
+                        else if (target->sideCount == SIDECOUNT_45) usedSlots = SIDE_45_SLOTS;
+
+                        for (const FlipbookFrame &frame : asset->frames) {
+                            std::string missing;
+
+                            for (const int slot : usedSlots)
+                                if (frame.textures[slot].empty()) missing += std::string(missing.empty() ? "" : ", ") + SIDE_NAMES[slot];
+
+                            if (!missing.empty())
+                                ImGui::TextColored(warningColor, "%s '%s': %s", Get("component.flipbook.missing_sides").c_str(),
+                                                   frame.name.c_str(), missing.c_str());
+                        }
+                    }
+                }
+
+                EndSection();
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) {
+                    entity.RemoveComponentInstance<ComponentFlipbook>(state.selectedInstanceID);
+                    CloseEditor();
+                }
+            } else { ImGui::TextDisabled("Flipbook component missing"); }
         }
 
         // ── Close button (only when delete was not pressed) ───────────────────
