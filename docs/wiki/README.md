@@ -36,7 +36,7 @@ Components are what give an entity its behaviour. Add them in the entity inspect
 | [Rigidbody](Rigidbody.md) | Rigidbody | Velocity and gravity, so physics can move the entity. |
 | [UI Transform](UITransform.md) | UI Transform | Where a UI element sits on screen. |
 | [UI Sprite](UISprite.md) | Image | A picture on the HUD. |
-| [UI Text](UIText.md) | Text | A text label on the HUD. |
+| [UI Text](UIText.md) | Text | A text label on the HUD, in any `.ttf`/`.otf` font and size. |
 
 ## Built-in Lua tables
 

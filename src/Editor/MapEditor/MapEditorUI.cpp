@@ -1407,6 +1407,27 @@ namespace {
 
             DrawTagsSection();
 
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- UI ---------------------------------------------------------------
+            SectionHeader(Get("editor.project.ui").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Saved to project.tilky when the edit is finished, not every keystroke.
+            static float referenceHeightEdit = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
+            static bool editingReferenceHeight = false;
+            if (!editingReferenceHeight) referenceHeightEdit = ProjectManager::GetUIReferenceHeight();
+
+            ImGui::SetNextItemWidth(120.0f);
+            ImGui::InputFloat(Get("editor.project.ui_reference_height").c_str(), &referenceHeightEdit, 0.0f, 0.0f, "%.0f");
+            editingReferenceHeight = ImGui::IsItemActive();
+            if (ImGui::IsItemDeactivatedAfterEdit() && !ProjectManager::SetUIReferenceHeight(referenceHeightEdit))
+                ShowNotification(Get("editor.project.ui_reference_height_failed").c_str(), /*isError=*/true);
+            HoverTooltip(Get("editor.tooltip.project.ui_reference_height").c_str());
+
 
             //todo TILKYTODO make an editor settings menu
 

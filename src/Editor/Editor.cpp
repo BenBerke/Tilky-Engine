@@ -246,6 +246,8 @@ namespace Editor {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
 
+        DestroyUIPreviewFonts();
+
         if (font) {
             TTF_CloseFont(font);
             font = nullptr;

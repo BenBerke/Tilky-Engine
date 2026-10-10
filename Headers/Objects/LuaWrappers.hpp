@@ -1548,6 +1548,30 @@ struct ScriptUIText {
         if (text == nullptr) return;
         text->text = value;
     }
+
+    [[nodiscard]] std::string GetFont() const {
+        const ComponentUIText* text = GetComponent();
+        if (text == nullptr) return {};
+        return text->font;
+    }
+
+    void SetFont(const std::string& value) const {
+        ComponentUIText* text = GetComponent();
+        if (text == nullptr) return;
+        text->font = value;
+    }
+
+    [[nodiscard]] float GetFontSize() const {
+        const ComponentUIText* text = GetComponent();
+        if (text == nullptr) return DEFAULT_UI_FONT_SIZE;
+        return text->fontSize;
+    }
+
+    void SetFontSize(const float value) const {
+        ComponentUIText* text = GetComponent();
+        if (text == nullptr) return;
+        text->fontSize = value;
+    }
 };
 
 // ---------------------------------------------------------

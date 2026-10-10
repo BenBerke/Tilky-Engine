@@ -2,6 +2,7 @@
 #define TILKY_ENGINE_OPENGLRENDERER_HPP
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -38,17 +39,46 @@ namespace OpenGLRendererInternal {
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
 
+    // Pixel size RenderTextRaw's scale 1 stands for (the console and debug text).
     inline constexpr float UI_FONT_SIZE = 48.0f;
+    // Inset of UI Text from its rectangle's top-left, at the project's UI Reference Height.
     inline constexpr float UI_TEXT_PADDING = 8.0f;
+
+    // Glyphs are rasterized the first time they're drawn, into single-channel
+    // GLYPH_PAGE_SIZE square atlas pages. When GLYPH_MAX_PAGES are full the
+    // whole atlas is dropped and refilled with whatever is drawn next.
+    inline constexpr int GLYPH_PAGE_SIZE = 1024;
+    inline constexpr int GLYPH_MAX_PAGES = 8;
+    inline constexpr int GLYPH_PADDING = 2;
+    inline constexpr unsigned MAX_GLYPH_PIXEL_SIZE = 512;
 
     inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
 
-    // Glyph Characters
-    struct Character {
-        unsigned int textureID = 0;
-        Vector2 Size;
-        Vector2 Bearing;
-        unsigned int Advance = 0;
+    // One rasterized glyph: a font face, a pixel size and a glyph index
+    // (not a character, so fallback and "missing" glyphs share the cache).
+    struct GlyphKey {
+        FT_Face face = nullptr;
+        unsigned pixelSize = 0;
+        unsigned glyphIndex = 0;
+
+        bool operator==(const GlyphKey&) const = default;
+    };
+
+    struct GlyphKeyHash {
+        size_t operator()(const GlyphKey& key) const noexcept {
+            size_t hash = std::hash<const void*>{}(key.face);
+            hash ^= std::hash<unsigned>{}(key.pixelSize) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            hash ^= std::hash<unsigned>{}(key.glyphIndex) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            return hash;
+        }
+    };
+
+    struct Glyph {
+        int page = -1;              // atlas page, -1 = nothing to draw (spaces)
+        Vector4 uv;                 // uMin, vMin, uMax, vMax
+        Vector2 size;               // bitmap size in pixels
+        Vector2 bearing;            // left, top: from the pen position to the bitmap's top-left
+        float advance = 0.0f;       // pixels to the next pen position
     };
 
     // Structs that will be pushed to the GPU
@@ -283,7 +313,8 @@ public:
     [[nodiscard]] ImTextureID GetImGuiTextureID(const std::string& fileName) override;
 
 private:
-    using Character = OpenGLRendererInternal::Character;
+    using Glyph = OpenGLRendererInternal::Glyph;
+    using GlyphKey = OpenGLRendererInternal::GlyphKey;
     using GpuFlatTriangle = OpenGLRendererInternal::GpuFlatTriangle;
     using GpuWall = OpenGLRendererInternal::GpuWall;
     using GpuSprite = OpenGLRendererInternal::GpuSprite;
@@ -321,8 +352,18 @@ private:
     GLint viewUniform = -1;
     GLint projectionUniform = -1;
 
+    // ---- Text (OpenGLText.cpp) ----
     FT_Library ft = nullptr;
-    FT_Face face = nullptr;
+    FT_Face defaultFontFace = nullptr; // EngineAssets/Fonts/Notosans.ttf, also the fallback for missing characters
+    // Project fonts by absolute path. nullptr = failed to load (not retried
+    // until RefreshTexturesFromLevel).
+    std::unordered_map<std::string, FT_Face> fontFaces;
+    std::unordered_map<GlyphKey, Glyph, OpenGLRendererInternal::GlyphKeyHash> glyphCache;
+    std::vector<GLuint> glyphPages; // GL_TEXTURE_2D, GL_R8
+    int glyphCursorX = 0;
+    int glyphCursorY = 0;
+    int glyphShelfHeight = 0;
+    std::unordered_set<std::string> warnedMissingCharacters; // "font|codepoint", warned once
 
     GLuint flatSSBO = 0;
     GLsizei flatTriangleCount = 0;
@@ -345,8 +386,6 @@ private:
     GLint modelHasTextureUniform = -1;
     GLint modelTextureUniform = -1;
     GLint cameraWorldPosUniform = -1;
-
-    std::map<char, Character> Characters;
 
     std::vector<GpuWall> gpuWalls;
     GLsizei gpuWallCount = 0;
@@ -421,6 +460,28 @@ private:
     void DestroyAllTextures();
 
     void RenderUIText(const ComponentUIText& text, const ComponentUITransform& transform);
+
+    // OpenGLText.cpp: fonts and the glyph atlas.
+    FT_Face GetFontFace(const std::string& fontReference);
+    static void SetFontPixelSize(FT_Face face, unsigned pixelSize);
+    const Glyph* GetGlyph(FT_Face face, unsigned pixelSize, unsigned glyphIndex, const std::function<void()>& beforeAtlasReset);
+    bool PackGlyph(int width, int height, int& page, int& x, int& y);
+    void AddGlyphPage();
+    void ResetGlyphAtlas();
+    void ReloadFonts();
+    void DestroyFonts();
+    // Draws UTF-8 text with its first line's baseline at baselineY. '\n'
+    // starts a new line; characters the face lacks come from the default font.
+    void RenderTextString(
+        const Shader& shader,
+        FT_Face face,
+        unsigned pixelSize,
+        const std::string& text,
+        float x,
+        float baselineY,
+        float xStretch,
+        Vector3 color
+    );
 
     static constexpr int SECTOR_FLOOR_COUNT = 3;
     static constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;

@@ -43,11 +43,23 @@ enum ComponentType {
 
 // region UI Components
 
+// UI Text's Font Size when nothing else is set: the size all text used
+// before Font Size existed, at the default 1080 UI Reference Height.
+inline constexpr float DEFAULT_UI_FONT_SIZE = 48.0f;
+
 struct ComponentUIText {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     std::string text;
+
+    // Font file relative to Assets, with its extension (e.g. "Fonts/title.ttf").
+    // Empty = the engine's default font.
+    std::string font;
+
+    // Glyph size in pixels at the project's UI Reference Height; the drawn
+    // size scales with the window's height.
+    float fontSize = DEFAULT_UI_FONT_SIZE;
 };
 
 struct ComponentUISprite {

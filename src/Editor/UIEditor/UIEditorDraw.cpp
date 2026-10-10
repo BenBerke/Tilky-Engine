@@ -12,8 +12,14 @@
 
 #include <SDL3_ttf/SDL_ttf.h>
 
+#include <spdlog/spdlog.h>
+
+#include "Headers/Project/ProjectManager.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 
@@ -241,21 +247,75 @@ namespace {
         SDL_RenderGeometry(renderer, texture, vertices, 4, indices, 6);
     }
 
+    // ---------------------------------------------------------------------
+    // Text preview fonts. Each UI Text is previewed in its own Font at its
+    // Font Size, scaled like the game does (window height / the project's
+    // UI Reference Height) and then by the canvas zoom. SDL_ttf caches
+    // glyphs per size, so every (file, pixel size) pair gets its own
+    // TTF_Font; the shared editor `font` is never resized.
+    // ---------------------------------------------------------------------
+
+    constexpr size_t MAX_PREVIEW_FONTS = 32;     // zooming walks through many sizes
+    constexpr Uint64 FAILED_FONT_RETRY_MS = 2000; // a missing font may be imported meanwhile
+
+    std::unordered_map<std::string, TTF_Font*> previewFonts;   // "path|size"
+    std::unordered_map<std::string, Uint64> failedPreviewFonts; // path -> when it failed
+
+    std::string PreviewFontPath(const std::string& reference) {
+        const std::filesystem::path path = reference.empty()
+            ? ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf")
+            : ProjectManager::GetAssetsPath() / reference;
+        return path.lexically_normal().generic_string();
+    }
+
+    // The font for `reference` at `pixelSize`, or the default font if it can't be opened.
+    TTF_Font* GetPreviewFont(const std::string& reference, const int pixelSize) {
+        const std::string path = PreviewFontPath(reference);
+        const std::string key = path + "|" + std::to_string(pixelSize);
+
+        if (const auto it = previewFonts.find(key); it != previewFonts.end()) return it->second;
+
+        const auto fallback = [&]() { return reference.empty() ? nullptr : GetPreviewFont("", pixelSize); };
+
+        if (const auto failed = failedPreviewFonts.find(path); failed != failedPreviewFonts.end()) {
+            if (SDL_GetTicks() - failed->second < FAILED_FONT_RETRY_MS) return fallback();
+            failedPreviewFonts.erase(failed);
+        }
+
+        if (previewFonts.size() >= MAX_PREVIEW_FONTS) DestroyUIPreviewFonts();
+
+        TTF_Font* opened = TTF_OpenFont(path.c_str(), static_cast<float>(pixelSize));
+        if (opened == nullptr) {
+            spdlog::warn("UI Editor: could not open font '{}': {}", path, SDL_GetError());
+            failedPreviewFonts[path] = SDL_GetTicks();
+            return fallback();
+        }
+
+        // The game's text renderer doesn't kern either.
+        TTF_SetFontKerning(opened, false);
+        previewFonts.emplace(key, opened);
+        return opened;
+    }
+
     void DrawUITextEntity(const ComponentUIText& text, const ComponentUITransform& transform) {
-        if (text.text.empty() || textEngine == nullptr || font == nullptr) return;
+        if (text.text.empty() || textEngine == nullptr) return;
 
-        const float requiredFontSize = UI_FONT_SIZE * uiCanvasZoom;
-        if (std::abs(TTF_GetFontSize(font) - requiredFontSize) > 0.01f)
-            if (!TTF_SetFontSize(font, requiredFontSize)) return;
+        const float windowScale = static_cast<float>(screenHeight) / std::max(1.0f, ProjectManager::GetUIReferenceHeight());
+        const float pixelSize = text.fontSize * windowScale * uiCanvasZoom;
+        if (!(pixelSize >= 0.5f)) return;
 
-        TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.text.c_str(), text.text.size());
+        TTF_Font* previewFont = GetPreviewFont(text.font, std::clamp(static_cast<int>(std::lround(pixelSize)), 1, 512));
+        if (previewFont == nullptr) return;
+
+        TTF_Text* renderedText = TTF_CreateText(textEngine, previewFont, text.text.c_str(), text.text.size());
         if (renderedText == nullptr) return;
 
         TTF_SetTextColor(renderedText, 255, 255, 255, 255);
 
+        const float padding = UI_TEXT_PADDING * windowScale;
         const Vector2 screenPos = UICanvasToScreen({
-            transform.resolvedPosition.x + UI_TEXT_PADDING,
-            transform.resolvedPosition.y + UI_TEXT_PADDING
+            transform.resolvedPosition.x + padding,
+            transform.resolvedPosition.y + padding
         });
 
         TTF_DrawRendererText(renderedText, screenPos.x, screenPos.y);
@@ -339,6 +399,11 @@ namespace {
 }
 
 namespace MapEditorInternal {
+    void DestroyUIPreviewFonts() {
+        for (TTF_Font* previewFont : previewFonts | std::views::values) TTF_CloseFont(previewFont);
+        previewFonts.clear();
+    }
+
     void UIEditorDraw() {
         Level& level = LevelManager::CurrentLevel();
 

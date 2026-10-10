@@ -1458,6 +1458,8 @@ namespace {
                 entity->componentsMask.set(CMP_UI_TEXT);
 
                 c.text = textJson.value("text", "");
+                c.font = textJson.value("font", "");
+                c.fontSize = textJson.value("fontSize", DEFAULT_UI_FONT_SIZE);
             }
         }
 
@@ -1752,7 +1754,9 @@ namespace {
             componentsJson["uiTexts"].push_back({
                 {"ownerID", c.ownerID},
                 {"instanceID", c.instanceID},
-                {"text", c.text}
+                {"text", c.text},
+                {"font", c.font},
+                {"fontSize", c.fontSize}
             });
         }
 

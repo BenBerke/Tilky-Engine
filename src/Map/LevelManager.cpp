@@ -143,6 +143,15 @@ namespace LevelManager {
             if (model.fileName == oldReference) model.fileName = newReference;
     }
 
+    void RenameFontReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (ComponentUIText& text : level.ui_texts.components)
+            if (text.font == oldReference) text.font = newReference;
+    }
+
     void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference) {
         if (!HasCurrentLevel()) return;
 

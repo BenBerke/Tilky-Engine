@@ -11,6 +11,9 @@
 namespace fs = std::filesystem;
 
 namespace ProjectManager {
+    // Window height UI Text's Font Size is measured at, when a project doesn't set one.
+    inline constexpr float DEFAULT_UI_REFERENCE_HEIGHT = 1080.0f;
+
     // Launches the engine executable with --project <projectFile>. Returns true if
     // the process was successfully spawned.
     // engineDirectory selects which installed copy of the engine to run:
@@ -230,6 +233,15 @@ namespace ProjectManager {
     // project.tilky couldn't be read/written, or if no project is currently
     // loaded.
     bool SetLastOpenLevelName(const std::string &levelName);
+
+    // The window height UI Text Font Sizes are given at ("uiReferenceHeight"
+    // in project.tilky, default DEFAULT_UI_REFERENCE_HEIGHT). Text is drawn at
+    // fontSize * windowHeight / this.
+    float GetUIReferenceHeight();
+
+    // Patches "uiReferenceHeight" into the loaded project's project.tilky, the
+    // same one-field patch as SetLastOpenLevelName(). Values below 1 become 1.
+    bool SetUIReferenceHeight(float height);
 
     std::string GetCurrentLanguageInLauncher();
 

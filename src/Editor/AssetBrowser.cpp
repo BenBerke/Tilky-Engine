@@ -783,7 +783,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Font, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -802,6 +802,8 @@ end
             { ".jpeg", RegisteredExtensionKind::Texture },
             { ".wav",  RegisteredExtensionKind::Sound   },
             { ".lua",  RegisteredExtensionKind::Script  },
+            { ".ttf",  RegisteredExtensionKind::Font    },
+            { ".otf",  RegisteredExtensionKind::Font    },
             { std::string(FlipbookIO::kExtension), RegisteredExtensionKind::Flipbook },
             { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
         };
@@ -825,6 +827,7 @@ end
             case AssetKind::Script: return "lua";
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
             case AssetKind::Flipbook: return "fpk";
+            case AssetKind::Font: return LowerCopy(entry.GetPath().extension().string());
             default: return "file";
         }
     }
@@ -837,6 +840,7 @@ end
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
             case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
             case AssetKind::Flipbook: return IM_COL32(100, 55, 75, 255);
+            case AssetKind::Font: return IM_COL32(85, 85, 45, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
     }
@@ -1615,6 +1619,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Model);
         case RegisteredExtensionKind::Flipbook:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Flipbook);
+        case RegisteredExtensionKind::Font:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Font);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1633,6 +1639,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Script:  return "TILKY_ASSET_SCRIPT";
         case AssetKind::Model:   return "TILKY_ASSET_MODEL";
         case AssetKind::Flipbook: return "TILKY_ASSET_FLIPBOOK";
+        case AssetKind::Font:    return "TILKY_ASSET_FONT";
         default:                 return "TILKY_ASSET_OTHER";
     }
 }
@@ -1644,6 +1651,8 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
         case AssetKind::Model: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Flipbook: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
+
+        case AssetKind::Font: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound:
         case AssetKind::Script: {
@@ -2004,8 +2013,8 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
     // offers more than one payload type at once - so probing all of them
     // here is how a drop target stays agnostic to which one a given
     // dragged entry happened to be offering.
-    static constexpr std::array<AssetKind, 5> kFieldReferenceKinds = {
-        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model, AssetKind::Flipbook
+    static constexpr std::array<AssetKind, 6> kFieldReferenceKinds = {
+        AssetKind::Texture, AssetKind::Sound, AssetKind::Script, AssetKind::Model, AssetKind::Flipbook, AssetKind::Font
     };
 
     for (const AssetKind kind : kFieldReferenceKinds) {
@@ -2091,6 +2100,7 @@ void AssetBrowser::NotifyAssetReferenceRenamed(
         case AssetKind::Sound:   LevelManager::RenameSoundReference(oldReference, newReference); break;
         case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
         case AssetKind::Model:   LevelManager::RenameModelReference(oldReference, newReference); break;
+        case AssetKind::Font:    LevelManager::RenameFontReference(oldReference, newReference); break;
         default: break; // AssetKind::Other already handled above; AssetKind::Folder does not exist as a GetAssetKind() value
     }
 }

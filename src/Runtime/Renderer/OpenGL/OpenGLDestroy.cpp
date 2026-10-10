@@ -12,14 +12,7 @@ void OpenGL::Shutdown() {
     DestroyAllModelAssets();
     DestroyEditorCamera();
 
-    for (auto &glyph: Characters | std::views::values) {
-        if (glyph.textureID != 0) {
-            glDeleteTextures(1, &glyph.textureID);
-            glyph.textureID = 0;
-        }
-    }
-
-    Characters.clear();
+    DestroyFonts();
 
     if (sectorSSBO != 0) {
         glDeleteBuffers(1, &sectorSSBO);

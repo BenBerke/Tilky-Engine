@@ -532,14 +532,21 @@ namespace {
         if (changed) uiHasUnsavedChanges = true;
     }
 
+    // Characters, not bytes: a UTF-8 continuation byte doesn't start one.
+    int CountCharacters(const std::string& text) {
+        return static_cast<int>(std::ranges::count_if(text, [](const char c) {
+            return (static_cast<unsigned char>(c) & 0xC0) != 0x80;
+        }));
+    }
+
     void DrawUITextInspector(ComponentUIText& text) {
         ImGuiDrawFunctions::BeginSection("Text");
 
         ImGuiDrawFunctions::SmallMetaText("%s: %d", Get("editor.ui.text.char_count").c_str(),
-                                           static_cast<int>(text.text.size()));
+                                           CountCharacters(text.text));
 
         const ImVec2 editorMin = ImGui::GetCursorScreenPos();
-        const bool changed = ImGui::InputTextMultiline(
+        bool changed = ImGui::InputTextMultiline(
             "##UITextEditor",
             &text.text,
             ImVec2(-FLT_MIN, ImGui::GetTextLineHeightWithSpacing() * 6.0f),
@@ -555,7 +562,25 @@ namespace {
         }
 
         Spacing();
-        if (ImGui::SmallButton(Get("editor.ui.text.clear").c_str())) text.text.clear();
+        if (ImGui::SmallButton(Get("editor.ui.text.clear").c_str())) {
+            text.text.clear();
+            changed = true;
+        }
+
+        ImGuiDrawFunctions::EndSection();
+
+        ImGuiDrawFunctions::BeginSection("Font");
+
+        // Drop a .ttf/.otf from the Asset Browser. Empty = the engine's default font.
+        if (DrawAssetField(Get("editor.ui.text.font").c_str(), text.font, AssetKind::Font)) changed = true;
+        if (text.font.empty()) ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.text.default_font").c_str());
+
+        ImGui::SetNextItemWidth(120.0f);
+        if (ImGui::DragFloat(Get("editor.ui.text.font_size").c_str(), &text.fontSize, 0.25f, 0.0f, 1000.0f, "%.1f")) {
+            text.fontSize = std::max(0.0f, text.fontSize);
+            changed = true;
+        }
+        HoverTooltip(Get("editor.tooltip.ui.text.font_size").c_str());
 
         ImGuiDrawFunctions::EndSection();
 

@@ -27,6 +27,8 @@
 //    ModelLoader::SupportedExtensions().
 //  - Flipbook: a sprite animation (.fpk), referenced like a texture,
 //    relative to Assets WITH extension, e.g. "Animations/walk.fpk".
+//  - Font: a .ttf/.otf for UI Text, referenced like a texture, relative
+//    to Assets WITH extension, e.g. "Fonts/title.ttf".
 //
 // This is a different axis to AssetEntryType below: AssetKind is about
 // what a field widget should do with the asset (drag-drop payload type,
@@ -42,6 +44,7 @@ enum class AssetKind {
     Script,
     Model,
     Flipbook,
+    Font,
     Other // shown for transparency, but not draggable/thumbnailed
 };
 

@@ -3,6 +3,7 @@
 //
 #include "Headers/Project/ProjectManager.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +31,7 @@ namespace {
     std::string currentProjectName;
     std::string currentEngineVersion;
     std::string currentLastOpenLevelName;
+    float currentUIReferenceHeight = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
 }
 
 namespace ProjectManager {
@@ -274,6 +276,8 @@ namespace ProjectManager {
         // Editor::currentMap use - no path or extension.
         currentLastOpenLevelName = projectData.value("lastOpenLevel", std::string());
 
+        currentUIReferenceHeight = (std::max)(1.0f, projectData.value("uiReferenceHeight", DEFAULT_UI_REFERENCE_HEIGHT));
+
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
 
         currentAssetsPath = currentProjectFolder / assetsFolder;
@@ -506,6 +510,48 @@ namespace ProjectManager {
 
         spdlog::info("Set last open level for '{}' to '{}'", currentProjectName, levelName);
 
+        return true;
+    }
+
+    float GetUIReferenceHeight() {
+        return currentUIReferenceHeight;
+    }
+
+    bool SetUIReferenceHeight(const float height) {
+        if (currentProjectFile.empty()) {
+            spdlog::error("Cannot set UI reference height - no project is currently loaded.");
+            return false;
+        }
+
+        const float clamped = (std::max)(1.0f, height);
+        json projectData;
+
+        {
+            std::ifstream inFile(currentProjectFile);
+            if (!inFile.is_open()) {
+                spdlog::error("Cannot set UI reference height - failed to open project file: {}", currentProjectFile.string());
+                return false;
+            }
+
+            try { inFile >> projectData; }
+            catch (const std::exception& e) {
+                spdlog::error("Cannot set UI reference height - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
+                return false;
+            }
+        }
+
+        projectData["uiReferenceHeight"] = clamped;
+
+        std::ofstream outFile(currentProjectFile);
+        if (!outFile.is_open()) {
+            spdlog::error("Cannot set UI reference height - failed to open project file for writing: {}", currentProjectFile.string());
+            return false;
+        }
+
+        outFile << projectData.dump(4);
+        outFile.close();
+
+        currentUIReferenceHeight = clamped;
         return true;
     }
 

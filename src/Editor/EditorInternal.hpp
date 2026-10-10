@@ -674,6 +674,8 @@ namespace MapEditorInternal {
     void DrawEditorUI();
 
     void UIEditorDraw();
+    // Closes the fonts the UI canvas opened to preview UI Text. Before TTF_Quit().
+    void DestroyUIPreviewFonts();
     void DrawUIEditorUI();
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 

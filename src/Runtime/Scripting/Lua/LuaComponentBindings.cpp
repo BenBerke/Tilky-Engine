@@ -160,7 +160,9 @@ namespace {
 
         RegisterType(Type("UIText", "A UI element's text label.", {
             Prop("isValid", "boolean", true),
-            Prop("text", "string"),
+            Prop("text", "string", false, "UTF-8. A new line (\\n) starts a new line of text."),
+            Prop("font", "string", false, "The font file's path relative to Assets, with extension (e.g. \"Fonts/title.ttf\"). \"\" = the engine's default font."),
+            Prop("fontSize", "number", false, "Glyph size in pixels at the project's UI Reference Height; scales with the window height. 0 or less hides the text."),
         }));
 
         RegisterType(Type("Transform", "Position/rotation/scale in world space.", {
@@ -616,6 +618,16 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         "text", sol::property(
             &ScriptUIText::GetText,
             &ScriptUIText::SetText
+        ),
+
+        "font", sol::property(
+            &ScriptUIText::GetFont,
+            &ScriptUIText::SetFont
+        ),
+
+        "fontSize", sol::property(
+            &ScriptUIText::GetFontSize,
+            &ScriptUIText::SetFontSize
         )
     );
 
