@@ -239,7 +239,7 @@ function Update(deltaTime)
     local transform = Self:GetTransform()
     local rigidbody = Self:GetRigidbody()
 
-    if Input.IsKeyDown("W") then
+    if Input.IsKeyDown(Key.W) then
         rigidbody:AddVelocity(Vector3(0.0, 0.0, 5.0))
     end
 end
