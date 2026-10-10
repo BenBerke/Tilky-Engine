@@ -163,6 +163,7 @@ namespace {
             Prop("text", "string", false, "UTF-8. A new line (\\n) starts a new line of text."),
             Prop("font", "string", false, "The font file's path relative to Assets, with extension (e.g. \"Fonts/title.ttf\"). \"\" = the engine's default font."),
             Prop("fontSize", "number", false, "Glyph size in pixels at the project's UI Reference Height; scales with the window height. 0 or less hides the text."),
+            Prop("color", "Vector4", false, "RGBA, each 0..1. Alpha below 1 makes the text see-through."),
         }));
 
         RegisterType(Type("Transform", "Position/rotation/scale in world space.", {
@@ -628,6 +629,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         "fontSize", sol::property(
             &ScriptUIText::GetFontSize,
             &ScriptUIText::SetFontSize
+        ),
+
+        "color", sol::property(
+            &ScriptUIText::GetColor,
+            &ScriptUIText::SetColor
         )
     );
 

@@ -480,7 +480,7 @@ private:
         float x,
         float baselineY,
         float xStretch,
-        Vector3 color
+        Vector4 color // RGBA 0..1
     );
 
     static constexpr int SECTOR_FLOOR_COUNT = 3;

@@ -9,8 +9,11 @@ A Text component draws text on the HUD: scores, ammo counts, messages, timers.
 - The text starts at the **top-left** corner of the entity's [UI Transform](UITransform.md)
   rectangle, inset from the left and top edges (8 pixels at the
   [UI Reference Height](#size-and-the-ui-reference-height)).
-- It is drawn in **white**, in its **Font** (the engine's default font, Noto Sans, when none is set)
-  at its **Font Size**.
+- It is drawn in its **Color** (white by default), in its **Font** (the engine's default font,
+  Noto Sans, when none is set) at its **Font Size**.
+- **Color** is RGBA, each channel `0..1`, like a [Sprite](Sprite.md)'s. Unlike sprites and UI
+  images, text really is blended: an alpha of `0.5` makes it half see-through, and `0` hides it.
+  Sector light never affects it.
 - The UI Transform's size is only used to find that corner: text isn't scaled to fit, isn't wrapped
   and isn't clipped. Long text runs past the rectangle.
 - A new line (`\n`, or Enter in the inspector) starts a new line of text, one line height below.
@@ -71,6 +74,7 @@ In the **UI Editor**: **Add Text Component**.
 | **Text** | `text` | empty | What to show. Enter starts a new line. |
 | **Font** | `font` | empty (default font) | A `.ttf` / `.otf` from the Asset Browser. See [Fonts](#fonts). |
 | **Font Size** | `fontSize` | `48` | Pixels at the UI Reference Height. See [Size](#size-and-the-ui-reference-height). |
+| **Color** | `color` | `1, 1, 1, 1` | RGBA, `0..1`. Alpha below `1` makes the text see-through. |
 
 ## Scripting
 
@@ -80,14 +84,33 @@ In the **UI Editor**: **Add Text Component**.
 | `text` | string | read/write | Shown from the next frame. UTF-8; `\n` starts a new line. |
 | `font` | string | read/write | Font path relative to `Assets`, with its extension, e.g. `"Fonts/title.ttf"`. `""` = the default font. |
 | `fontSize` | number | read/write | Pixels at the project's UI Reference Height. `0` or less hides the text. |
+| `color` | Vector4 | read/write | RGBA, each `0..1`. `color.w` is the alpha. |
 
 ```lua
 -- A title that's bigger and uses its own font.
 local title = entity.uiText
 title.font = "Fonts/title.ttf"
 title.fontSize = 96
+title.color = Vector4(1, 0.8, 0.2, 1) -- gold
 title.text = "Level 1\nThe Hangar"
 ```
+
+### Fade text out
+
+```lua
+-- Scripts/UI/FadeOut.lua (UI entity with a Text): fades the text out over `duration` seconds.
+public number duration = 2
+
+local elapsed = 0
+
+function Update()
+    elapsed = elapsed + GameTime.deltaTime
+    local c = entity.uiText.color
+    entity.uiText.color = Vector4(c.x, c.y, c.z, math.max(0, 1 - elapsed / duration))
+end
+```
+
+A colour read from `color` is a copy, so change it and assign it back, as above.
 
 Changing `font` or `fontSize` often is fine: each font is loaded once, and characters at a new size
 are prepared the first time they're drawn.

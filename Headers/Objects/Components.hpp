@@ -60,6 +60,9 @@ struct ComponentUIText {
     // Glyph size in pixels at the project's UI Reference Height; the drawn
     // size scales with the window's height.
     float fontSize = DEFAULT_UI_FONT_SIZE;
+
+    // RGBA, each 0..1. Alpha below 1 makes the text see-through.
+    Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct ComponentUISprite {

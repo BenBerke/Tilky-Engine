@@ -694,6 +694,8 @@
   "editor.ui.text.default_font": "Empty: the engine's default font",
   "editor.ui.text.font_size": "Font Size",
   "editor.tooltip.ui.text.font_size": "Text height in pixels at the project's UI Reference Height (Project Settings). It scales with the window's height.",
+  "editor.ui.text.color": "Color",
+  "editor.tooltip.ui.text.color": "Text colour, RGBA 0..1. Alpha below 1 makes the text see-through.",
   "editor.ui.transform.anchor_max": "Anchor Max",
   "editor.ui.transform.anchor_min": "Anchor Min",
   "editor.ui.transform.anchor_presets": "Presets",

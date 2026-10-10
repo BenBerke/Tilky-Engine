@@ -364,7 +364,7 @@ void OpenGL::RenderTextString(
     float x,
     float baselineY,
     const float xStretch,
-    const Vector3 color
+    const Vector4 color
 ) {
     if (face == nullptr || pixelSize == 0 || text.empty() || screenWidth <= 0 || screenHeight <= 0) return;
 
@@ -380,7 +380,13 @@ void OpenGL::RenderTextString(
 
     glActiveTexture(GL_TEXTURE0);
     glUniform1i(glGetUniformLocation(shader.ID, "text"), 0);
-    glUniform3f(glGetUniformLocation(shader.ID, "textColor"), color.x / 255.0f, color.y / 255.0f, color.z / 255.0f);
+    glUniform4f(
+        glGetUniformLocation(shader.ID, "textColor"),
+        std::clamp(color.x, 0.0f, 1.0f),
+        std::clamp(color.y, 0.0f, 1.0f),
+        std::clamp(color.z, 0.0f, 1.0f),
+        std::clamp(color.w, 0.0f, 1.0f)
+    );
 
     glBindVertexArray(textVAO);
     glBindBuffer(GL_ARRAY_BUFFER, textVBO);
@@ -489,7 +495,8 @@ void OpenGL::RenderText(
     const Vector3 color
 ) {
     if (scale.y <= 0.0f) return;
-    RenderTextString(shader, defaultFontFace, PixelSizeFor(OpenGLRendererInternal::UI_FONT_SIZE * scale.y), text, x, y, scale.x / scale.y, color);
+    const Vector4 rgba(color.x / 255.0f, color.y / 255.0f, color.z / 255.0f, 1.0f);
+    RenderTextString(shader, defaultFontFace, PixelSizeFor(OpenGLRendererInternal::UI_FONT_SIZE * scale.y), text, x, y, scale.x / scale.y, rgba);
 }
 
 void OpenGL::RenderTextRaw(
@@ -507,7 +514,7 @@ void OpenGL::RenderUIText(
     const ComponentUIText& text,
     const ComponentUITransform& transform
 ) {
-    if (text.text.empty()) return;
+    if (text.text.empty() || text.color.w <= 0.0f) return;
 
     const float referenceHeight = std::max(1.0f, ProjectManager::GetUIReferenceHeight());
     const float windowScale = static_cast<float>(screenHeight) / referenceHeight;
@@ -530,6 +537,6 @@ void OpenGL::RenderUIText(
         transform.resolvedPosition.x + padding,
         transform.resolvedPosition.y + padding + ascender,
         1.0f,
-        {255.0f, 255.0f, 255.0f}
+        text.color
     );
 }

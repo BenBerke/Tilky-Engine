@@ -298,7 +298,7 @@ namespace {
     }
 
     void DrawUITextEntity(const ComponentUIText& text, const ComponentUITransform& transform) {
-        if (text.text.empty() || textEngine == nullptr) return;
+        if (text.text.empty() || textEngine == nullptr || text.color.w <= 0.0f) return;
 
         const float windowScale = static_cast<float>(screenHeight) / std::max(1.0f, ProjectManager::GetUIReferenceHeight());
         const float pixelSize = text.fontSize * windowScale * uiCanvasZoom;
@@ -310,7 +310,10 @@ namespace {
         TTF_Text* renderedText = TTF_CreateText(textEngine, previewFont, text.text.c_str(), text.text.size());
         if (renderedText == nullptr) return;
 
-        TTF_SetTextColor(renderedText, 255, 255, 255, 255);
+        const auto channel = [](const float value) {
+            return static_cast<Uint8>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+        };
+        TTF_SetTextColor(renderedText, channel(text.color.x), channel(text.color.y), channel(text.color.z), channel(text.color.w));
 
         const float padding = UI_TEXT_PADDING * windowScale;
         const Vector2 screenPos = UICanvasToScreen({

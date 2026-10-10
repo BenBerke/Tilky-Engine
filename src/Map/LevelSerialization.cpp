@@ -1460,6 +1460,16 @@ namespace {
                 c.text = textJson.value("text", "");
                 c.font = textJson.value("font", "");
                 c.fontSize = textJson.value("fontSize", DEFAULT_UI_FONT_SIZE);
+
+                if (textJson.contains("color") && textJson["color"].is_array() && textJson["color"].size() == 4) {
+                    const json &colorJson = textJson["color"];
+                    c.color = {
+                        colorJson[0].get<float>(),
+                        colorJson[1].get<float>(),
+                        colorJson[2].get<float>(),
+                        colorJson[3].get<float>()
+                    };
+                }
             }
         }
 
@@ -1756,7 +1766,8 @@ namespace {
                 {"instanceID", c.instanceID},
                 {"text", c.text},
                 {"font", c.font},
-                {"fontSize", c.fontSize}
+                {"fontSize", c.fontSize},
+                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
             });
         }
 

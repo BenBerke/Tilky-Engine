@@ -582,6 +582,14 @@ namespace {
         }
         HoverTooltip(Get("editor.tooltip.ui.text.font_size").c_str());
 
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::ColorEdit4(
+            Get("editor.ui.text.color").c_str(),
+            &text.color.x,
+            ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Float
+        )) changed = true;
+        HoverTooltip(Get("editor.tooltip.ui.text.color").c_str());
+
         ImGuiDrawFunctions::EndSection();
 
         if (changed) uiHasUnsavedChanges = true;

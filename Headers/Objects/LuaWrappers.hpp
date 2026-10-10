@@ -1572,6 +1572,18 @@ struct ScriptUIText {
         if (text == nullptr) return;
         text->fontSize = value;
     }
+
+    [[nodiscard]] Vector4 GetColor() const {
+        const ComponentUIText* text = GetComponent();
+        if (text == nullptr) return {1.0f, 1.0f, 1.0f, 1.0f};
+        return text->color;
+    }
+
+    void SetColor(const Vector4& value) const {
+        ComponentUIText* text = GetComponent();
+        if (text == nullptr) return;
+        text->color = value;
+    }
 };
 
 // ---------------------------------------------------------
