@@ -104,7 +104,9 @@ namespace {
             Prop("runningSpeed", "number"),
             Prop("jumpPower", "number"),
             Prop("eyeHeight", "number"),
-            Prop("friction", "number"),
+            Prop("acceleration", "number", false, "Units/s^2 the horizontal velocity speeds up toward the move direction while a movement key is held."),
+            Prop("deceleration", "number", false, "Units/s^2 the horizontal velocity slows toward zero with no movement key held."),
+            Prop("airControl", "number", false, "Multiplies acceleration and deceleration while airborne. 1 = full control, 0 = none."),
             Prop("sensitivityX", "number"),
             Prop("sensitivityY", "number"),
             Prop("noClip", "boolean"),
@@ -445,9 +447,19 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
                 &ScriptPlayerController::SetEyeHeight
             ),
 
-            "friction", sol::property(
-                &ScriptPlayerController::GetFriction,
-                &ScriptPlayerController::SetFriction
+            "acceleration", sol::property(
+                &ScriptPlayerController::GetAcceleration,
+                &ScriptPlayerController::SetAcceleration
+            ),
+
+            "deceleration", sol::property(
+                &ScriptPlayerController::GetDeceleration,
+                &ScriptPlayerController::SetDeceleration
+            ),
+
+            "airControl", sol::property(
+                &ScriptPlayerController::GetAirControl,
+                &ScriptPlayerController::SetAirControl
             ),
 
             "sensitivityX", sol::property(

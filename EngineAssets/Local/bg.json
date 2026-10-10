@@ -122,7 +122,6 @@
   "component.player_controller.speed": "Скорост",
   "component.player_controller.running_speed": "Скорост на бягане",
   "component.player_controller.eye_height": "Височина на очите",
-  "component.player_controller.friction": "Триене",
   "component.player_controller.sensitivity_x": "Чувствителност X",
   "component.player_controller.sensitivity_y": "Чувствителност Y",
   "component.player_controller.min_pitch": "Мин. наклон",

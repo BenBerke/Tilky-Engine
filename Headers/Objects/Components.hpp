@@ -159,7 +159,6 @@ struct ComponentPlayerController {
     // Eye height above the current floor.
     float eyeHeight = 12.0f;
 
-    float friction = 0.8f;
     float sensitivityX = .5f, sensitivityY = .5f;
 
     //todo TILKYTODO Max-Min pitch is acting weirdly
@@ -167,6 +166,10 @@ struct ComponentPlayerController {
     float minYaw =  .0f, maxYaw = 360.0f;
 
     bool noClip = false;
+
+    float acceleration = 80.f;
+    float deceleration = 60.0f;
+    float airControl = .3f;
 
     // Read only, do not change
     Vector3 velocity = {0.0f, 0.0f, 0.0f};

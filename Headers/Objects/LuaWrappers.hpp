@@ -1086,16 +1086,40 @@ struct ScriptPlayerController {
         pc->eyeHeight = eyeHeight;
     }
 
-    [[nodiscard]] float GetFriction() const {
+    [[nodiscard]] float GetAcceleration() const {
         const ComponentPlayerController* pc = GetComponent();
-        if (pc == nullptr) return 0.8f;
-        return pc->friction;
+        if (pc == nullptr) return 80.0f;
+        return pc->acceleration;
     }
 
-    void SetFriction(const float friction) const {
+    void SetAcceleration(const float acceleration) const {
         ComponentPlayerController* pc = GetComponent();
         if (pc == nullptr) return;
-        pc->friction = friction;
+        pc->acceleration = acceleration;
+    }
+
+    [[nodiscard]] float GetDeceleration() const {
+        const ComponentPlayerController* pc = GetComponent();
+        if (pc == nullptr) return 60.0f;
+        return pc->deceleration;
+    }
+
+    void SetDeceleration(const float deceleration) const {
+        ComponentPlayerController* pc = GetComponent();
+        if (pc == nullptr) return;
+        pc->deceleration = deceleration;
+    }
+
+    [[nodiscard]] float GetAirControl() const {
+        const ComponentPlayerController* pc = GetComponent();
+        if (pc == nullptr) return 0.3f;
+        return pc->airControl;
+    }
+
+    void SetAirControl(const float airControl) const {
+        ComponentPlayerController* pc = GetComponent();
+        if (pc == nullptr) return;
+        pc->airControl = airControl;
     }
 
     [[nodiscard]] float GetSensitivityX() const {

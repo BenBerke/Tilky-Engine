@@ -210,9 +210,10 @@ function OnCollisionEnter(other)
 end
 ```
 
-Pushing the **player** sideways this way doesn't work: the built-in
-[Player Controller](PlayerController.md#movement) sets the player's horizontal velocity itself every
-frame. Upward velocity is kept, so launches and jump pads work.
+Pushing the **player** sideways works, but only briefly: the built-in
+[Player Controller](PlayerController.md#movement) pulls the player's horizontal velocity back toward
+what the movement keys ask for, at its Acceleration / Deceleration rate. Upward velocity is kept,
+so launches and jump pads work.
 
 ---
 

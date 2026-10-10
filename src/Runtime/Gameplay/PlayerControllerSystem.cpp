@@ -18,6 +18,7 @@
 
 namespace {
     double jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+    Vector2 input = {.0f, .0f};
 }
 
 namespace PlayerControllerSystem {
@@ -32,7 +33,8 @@ namespace PlayerControllerSystem {
     ) {
         (void)sectors;
 
-        Vector2 input = {0.0f, 0.0f};
+        // Reset every frame, otherwise input accumulates forever.
+        input = {0.0f, 0.0f};
 
         if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
         if (InputManager::GetKey(SDL_SCANCODE_S)) input.y -= 1.0f;
@@ -92,16 +94,31 @@ namespace PlayerControllerSystem {
         const Vector2 forward = {yawSin, yawCos};
         const Vector2 right = {yawCos, -yawSin};
 
-        if (input.x != 0.0f || input.y != 0.0f) {
-            const Vector2 moveDirection = Vector2Math::Normalized(right * input.x + forward * input.y);
-            const Vector2 desiredVelocity = moveDirection * controller.currentSpeed;
+        // Smooth horizontal movement: accelerate toward the target velocity,
+        // decelerate toward zero when there's no input.
+        const Vector2 currentVelocity = {rigidbody.velocity.x, rigidbody.velocity.z};
+        Vector2 targetVelocity = {0.0f, 0.0f};
 
-            rigidbody.velocity.x = desiredVelocity.x;
-            rigidbody.velocity.z = desiredVelocity.y;
+        const bool hasInput = input.x != 0.0f || input.y != 0.0f;
+        if (hasInput) {
+            const Vector2 moveDirection = Vector2Math::Normalized(right * input.x + forward * input.y);
+            targetVelocity = moveDirection * controller.currentSpeed;
         }
-        else {
-            rigidbody.velocity.x = 0.0f;
-            rigidbody.velocity.z = 0.0f;
-        }
+
+        const float rate = hasInput ? controller.acceleration : controller.deceleration;
+        const float control = rigidbody.isGrounded ? 1.0f : controller.airControl;
+        const float dt = GameTime::deltaTime;
+        const float maxDelta = rate * control * dt;
+
+        // Move velocity toward the target by at most maxDelta.
+        // Constant-rate approach (not a lerp), so it doesn't get mushy near the target.
+        const Vector2 diff = targetVelocity - currentVelocity;
+        const float diffLen = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+
+        Vector2 newVelocity = targetVelocity;
+        if (diffLen > maxDelta && diffLen > 0.0f) newVelocity = currentVelocity + diff * (maxDelta / diffLen);
+
+        rigidbody.velocity.x = newVelocity.x;
+        rigidbody.velocity.z = newVelocity.y;
     }
 }

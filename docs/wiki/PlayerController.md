@@ -52,12 +52,20 @@ Every frame, while it is active:
 - "Forward" is the direction the player's **own** [Camera](Camera.md) faces (its `yaw`), flattened
   onto the ground, even while another entity's camera is in use. A player without a Camera of its
   own uses the active camera's instead.
-- The controller sets the Rigidbody's **horizontal** velocity directly to `speed` (or
-  `runningSpeed`) in the direction of the keys. When no movement key is held, the horizontal
-  velocity is set to `0`: the player stops instantly, with no sliding.
-- This happens every frame, so **anything else that changes the player's horizontal velocity is
-  overwritten**. Knockback or conveyor belts pushing the player sideways need to move the Transform
-  instead, or turn the controller off for a moment.
+- The keys give a **target** horizontal velocity: `speed` (or `runningSpeed`) in the direction of
+  the keys, or zero when no movement key is held.
+- Every frame the Rigidbody's **horizontal** velocity moves toward that target by at most
+  **Acceleration** × `deltaTime` while a movement key is held, or **Deceleration** × `deltaTime`
+  when none is. It changes at a steady rate and stops exactly on the target, without overshooting
+  it. With the defaults, reaching walking speed (`46`) from a standstill takes about `46 / 80 ≈
+  0.6` seconds, and stopping from it takes about `46 / 60 ≈ 0.8` seconds.
+- While the Rigidbody isn't grounded, both rates are multiplied by **Air Control**. Below `1` the
+  player keeps most of their momentum in the air and can only steer a little. `0` gives no control
+  at all until they land.
+- For the old instant start and stop, set Acceleration and Deceleration very high (e.g. `100000`).
+- Other things can push the player sideways (knockback, explosions, conveyor belts): the push is
+  added to the velocity, then pulled back toward the target at the same rates. A small
+  Deceleration lets a push carry the player further.
 - **Vertical** velocity is left alone, apart from jumping. Gravity, falling, jump pads and
   launches all work normally.
 
@@ -104,7 +112,9 @@ the player's eye position, facing where they look.
 | **Jump Strength** | `jumpPower` | `100` | Upward speed at the start of a jump. |
 | **Jump Buffer Milliseconds** | | `5` | How early before landing a jump press is kept. Editor only. |
 | **Eye Height** | `eyeHeight` | `12` | Camera height above the feet. |
-| **Friction** | `friction` | `0.8` | **Not used** by the built-in movement, which always stops instantly. |
+| **Acceleration** | `acceleration` | `80` | Units/s² the player speeds up while a movement key is held. See [Movement](#movement). |
+| **Deceleration** | `deceleration` | `60` | Units/s² the player slows down with no movement key held. |
+| **Air Control** | `airControl` | `0.3` | Multiplies both rates while airborne. `1` = full control, `0` = none. |
 | **Sensitivity X** / **Y** | `sensitivityX` / `sensitivityY` | `0.5` | Degrees per mouse unit. |
 | **Min Pitch** / **Max Pitch** | | `-89` / `89` | Editor only. |
 | **Min Yaw** / **Max Yaw** | | `0` / `360` | Editor only. |
@@ -120,7 +130,9 @@ the player's eye position, facing where they look.
 | `runningSpeed` | number | read/write | |
 | `jumpPower` | number | read/write | |
 | `eyeHeight` | number | read/write | Takes effect on the next frame. |
-| `friction` | number | read/write | Unused. See above. |
+| `acceleration` | number | read/write | Units/s². |
+| `deceleration` | number | read/write | Units/s². |
+| `airControl` | number | read/write | Multiplier while airborne. |
 | `sensitivityX` | number | read/write | |
 | `sensitivityY` | number | read/write | |
 | `noClip` | boolean | read/write | |

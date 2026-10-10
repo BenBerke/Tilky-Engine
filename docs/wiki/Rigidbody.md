@@ -85,8 +85,10 @@ moves a heavy body less than a light one.
 `rigidbody.velocity.y = 50` changes just the vertical speed. A velocity stored in a variable is a
 copy, so assign it back after changing it.
 
-On the **player**, the [Player Controller](PlayerController.md#movement) overwrites the horizontal
-velocity every frame. Vertical changes (jump pads, launches) work; horizontal pushes don't.
+On the **player**, the [Player Controller](PlayerController.md#movement) pulls the horizontal
+velocity back toward what the movement keys ask for every frame, at its Acceleration /
+Deceleration rate, so horizontal pushes fade out. Vertical changes (jump pads, launches) work
+normally.
 
 ## Examples
 

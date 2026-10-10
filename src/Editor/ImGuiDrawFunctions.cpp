@@ -2122,12 +2122,13 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Movement");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.speed").c_str(),         &c->speed,        draggable);
+                InputOrDrag(Get("component.player_controller.speed").c_str(), &c->speed, draggable);
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
-               // FieldWidth(-1.0f); // full width slider
-                ImGui::SliderFloat(Get("component.player_controller.friction").c_str(), &c->friction, 0.0f, 1.0f);
-                Tooltip(Get("editor.tooltip.component.player_controller.friction").c_str());
+                InputOrDrag(Get("component.player_controller.acceleration").c_str(), &c->acceleration, draggable);
+                InputOrDrag(Get("component.player_controller.deceleration").c_str(), &c->deceleration, draggable);
+                InputOrDrag(Get("component.player_controller.air_control").c_str(), &c->airControl, draggable);
+
                 EndSection();
 
                 BeginSection("Jumping");

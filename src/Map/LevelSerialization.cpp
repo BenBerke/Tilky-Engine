@@ -1479,7 +1479,6 @@ namespace {
                 c.runningSpeed = controllerJson.value("runningSpeed", 90.0f);
                 c.jumpPower = controllerJson.value("jumpPower", 100.0f);
                 c.eyeHeight = controllerJson.value("eyeHeight", 12.0f);
-                c.friction = controllerJson.value("friction", 0.8f);
                 c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
                 c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
                 c.maxPitch = controllerJson.value("maxPitch", 89.0f);
@@ -1488,6 +1487,9 @@ namespace {
                 c.minYaw = controllerJson.value("minYaw", .0f);
                 c.noClip = controllerJson.value("noClip", false);
                 c.jumpBufferMs = controllerJson.value("jumpBufferMs", 100.0f);
+                c.acceleration = controllerJson.value("acceleration", 80.0f);
+                c.deceleration = controllerJson.value("deceleration", 60.0f);
+                c.airControl = controllerJson.value("airControl", .3f);
 
                 if (controllerJson.contains("velocity")) {
                     c.velocity = {
@@ -1764,7 +1766,6 @@ namespace {
                 {"jumpPower", c.jumpPower},
                 {"runningSpeed", c.runningSpeed},
                 {"eyeHeight", c.eyeHeight},
-                {"friction", c.friction},
                 {"sensitivityX", c.sensitivityX},
                 {"sensitivityY", c.sensitivityY},
                 {"minPitch", c.minPitch},
@@ -1772,7 +1773,10 @@ namespace {
                 {"minYaw", c.minYaw},
                 {"maxYaw", c.maxYaw},
                 {"noClip", c.noClip},
-                {"jumpBufferMs", c.jumpBufferMs}
+                {"jumpBufferMs", c.jumpBufferMs},
+                {"acceleration", c.acceleration},
+                {"deceleration", c.deceleration},
+                {"airControl", c.airControl}
             });
         }
 
