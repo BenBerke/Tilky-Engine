@@ -804,7 +804,8 @@ namespace {
                         if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
                         UpdateLevels();
                         ShowNotification(Get("levels.notification.deleted").c_str());
-                    } else {
+                    }
+                    else {
                         spdlog::error("File not found: {}", path.string());
                         ShowNotification(Get("levels.notification.delete_failed_file_not_found").c_str(), /*isError=*/
                                          true);
@@ -3370,12 +3371,18 @@ namespace MapEditorInternal {
             ImGui::Spacing();
 
             if (DrawAssetField(
-                Get("editor.new_sector.wall_texture").c_str(),
-                wallTexture,
+                Get("editor.new_sector.wall_top_texture").c_str(),
+                wallTopTexture,
                 AssetKind::Texture,
                 32.0f
-            ))
-                hasUnsavedChanges = true;
+            )) hasUnsavedChanges = true;
+
+            if (DrawAssetField(
+                Get("editor.new_sector.wall_bottom_texture").c_str(),
+                wallBottomTexture,
+                AssetKind::Texture,
+                32.0f
+            )) hasUnsavedChanges = true;
 
 
             if (DrawAssetField(
@@ -3383,17 +3390,14 @@ namespace MapEditorInternal {
                 ceilTexture,
                 AssetKind::Texture,
                 32.0f
-            ))
-                hasUnsavedChanges = true;
+            )) hasUnsavedChanges = true;
 
             if (DrawAssetField(
                 Get("editor.new_sector.floor_texture").c_str(),
                 floorTexture,
                 AssetKind::Texture,
                 32.0f
-            ))
-                hasUnsavedChanges = true;
-
+            )) hasUnsavedChanges = true;
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -3497,7 +3501,8 @@ namespace MapEditorInternal {
 
             ImGui::Spacing();
 
-            pendingSectorParams.wallTexture = wallTexture;
+            pendingSectorParams.wallTopTexture = wallTopTexture;
+            pendingSectorParams.wallBottomTexture = wallBottomTexture;
             pendingSectorParams.lightValue = lightValue;
             pendingSectorParams.wallColor = wallColor;
 

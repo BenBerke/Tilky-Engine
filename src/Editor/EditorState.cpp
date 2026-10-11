@@ -60,7 +60,8 @@ namespace MapEditorInternal {
     Entity entityInClipboard;
 
     //-- Sector to be created variables
-    std::string wallTexture;
+    std::string wallTopTexture;
+    std::string wallBottomTexture;
     std::string ceilTexture;
     std::string floorTexture;
 

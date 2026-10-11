@@ -32,7 +32,8 @@ Scripts only run while the game is playing, and the game only plays if the level
 **camera**. The quickest setup is a player:
 
 1. Draw at least one sector so there is floor to stand on.
-2. Create an entity and name it `Player`.
+2. Switch to **Entity Mode** (`Q` cycles modes), point at the map and press `E` to create an
+   entity there. Name it `Player`.
 3. Add these components: **Transform**, **Rigidbody**, **Collider** (Sphere), **Camera** and
    **Player Controller**.
 4. In the Player Controller, tick **Is Active**.

@@ -190,8 +190,11 @@ if(TILKY_ENABLE_TRACY)
                 "${TRACY_DIR}/public"
         )
 
+        # Generator expression so multi-config generators (Visual Studio, used
+        # by CI) also strip Tracy from Release/MinSizeRel, where
+        # CMAKE_BUILD_TYPE is empty at configure time.
         target_compile_definitions(TracyClient PUBLIC
-                TRACY_ENABLE
+                $<$<NOT:$<CONFIG:Release,MinSizeRel>>:TRACY_ENABLE>
         )
 
         if(WIN32)
@@ -781,7 +784,9 @@ function(configure_tilky_engine_executable target_name)
 
     if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
         target_link_libraries(${target_name} PRIVATE TracyClient)
-        target_compile_definitions(${target_name} PRIVATE TRACY_ENABLE)
+        target_compile_definitions(${target_name} PRIVATE
+                $<$<NOT:$<CONFIG:Release,MinSizeRel>>:TRACY_ENABLE>
+        )
     endif()
 
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")

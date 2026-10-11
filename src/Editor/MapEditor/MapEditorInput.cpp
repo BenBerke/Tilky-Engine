@@ -701,23 +701,12 @@ namespace MapEditorInternal {
                             BeginCanvasEntityHold(level);
                         }
                     }
-                    else if (MultiSelectModifierHeld() || RangeSelectModifierHeld()) {
-                        // Modifier + empty space is a deselect gesture, not
-                        // "spawn an entity here" - otherwise a slightly
-                        // missed Shift-click silently creates one.
-                        ClearEntitySelection();
-                    }
-                    else {
-                        static constexpr bool isUIEntity = false;
-                        const ID id = level.CreateEntity(isUIEntity);
+                    // Empty space clears the selection, same as Geometry
+                    // Mode. Creating an entity is the E key's job (see
+                    // below), so a missed click never spawns one.
+                    else ClearEntitySelection();
 
-                        SelectEntity(id);
-
-                        auto *t = selectedEntity.GetComponent<ComponentTransform>();
-                        if (t != nullptr) t->SetPosition({mouseWorld.x, 0.0f, mouseWorld.y});
-                    }
-
-                    // Left click only selects/places/moves — it must never
+                    // Left click only selects/moves — it must never
                     // open the inspector
                     // editingEntity is intentionally NOT set here.
                 }
@@ -778,6 +767,20 @@ namespace MapEditorInternal {
 
             if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelActiveDrawing();
             if (InputManager::GetKeyDown(SDL_SCANCODE_F)) FocusCameraOnSelection();
+
+            // E places a new entity under the cursor. Only while the cursor
+            // is on the canvas - over a panel there is no world point to
+            // place it at.
+            if (currentMode == MODE_ENTITY && !mouseBlockedByImGui && !holdingEntity &&
+                InputManager::GetKeyDown(SDL_SCANCODE_E)) {
+                static constexpr bool isUIEntity = false;
+                const ID id = level.CreateEntity(isUIEntity);
+
+                SelectEntity(id);
+
+                auto *t = selectedEntity.GetComponent<ComponentTransform>();
+                if (t != nullptr) t->SetPosition({mouseWorld.x, 0.0f, mouseWorld.y});
+            }
 
             // Drawing-tool shortcuts - all Sector Mode only, and all
             // no-ops when nothing relevant is in progress (ConfirmActiveDrawing/

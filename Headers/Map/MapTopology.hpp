@@ -59,7 +59,8 @@ namespace MapTopology {
     // MapEditorInternal::PendingSectorParams field-for-field without
     // this module depending on the editor.
     struct NewSectorParams {
-        std::string wallTexture;
+        std::string wallTopTexture;
+        std::string wallBottomTexture;
 
         std::vector<SectorFloor> floors = {
             {

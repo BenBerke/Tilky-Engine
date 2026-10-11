@@ -330,7 +330,8 @@ cmake --build . --config Release
 | Key        | Action                           |
 | :--------- | :------------------------------- |
 | `Q`        | Cycle editor modes               |
-| `LMB`      | Place or move objects            |
+| `LMB`      | Draw, select or move objects     |
+| `E`        | Create an entity at the cursor (Entity Mode) |
 | `RMB`      | Edit objects                     |
 | `MMB`      | Pan the editor camera            |
 | `Scroll`   | Zoom in or out                   |

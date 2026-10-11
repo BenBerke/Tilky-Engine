@@ -399,7 +399,8 @@ namespace MapEditorInternal {
 
         PendingSectorParams BuildPendingSectorParams() {
             PendingSectorParams params;
-            params.wallTexture = wallTexture;
+            params.wallTopTexture = wallTopTexture;
+            params.wallBottomTexture = wallBottomTexture;
             params.floors = {
                 {
                     {floorHeight, floorColor, floorTexture},
@@ -1538,7 +1539,8 @@ namespace MapEditorInternal {
         Level& level = LevelManager::CurrentLevel();
 
         MapTopology::NewSectorParams topologyParams;
-        topologyParams.wallTexture = params.wallTexture;
+        topologyParams.wallTopTexture = params.wallTopTexture;
+        topologyParams.wallBottomTexture = params.wallBottomTexture;
         topologyParams.floors = params.floors;
         topologyParams.lightValue = params.lightValue;
         topologyParams.wallColor = params.wallColor;
@@ -1578,7 +1580,7 @@ namespace MapEditorInternal {
 
     namespace {
         // Same base values every other new sector gets (BuildPendingSectorParams
-        // reads the current wallTexture/floorTexture/ceilTexture/colors/
+        // reads the current wallTop/BottomTexture/floorTexture/ceilTexture/colors/
         // light globals), with just this one step's floor/ceiling heights
         // substituted in - preserves every applicable pending sector and
         // wall setting per step, as the Rectangle tool would for a single
@@ -1587,7 +1589,8 @@ namespace MapEditorInternal {
             const PendingSectorParams base = BuildPendingSectorParams();
 
             MapTopology::NewSectorParams params;
-            params.wallTexture = base.wallTexture;
+            params.wallTopTexture = base.wallTopTexture;
+            params.wallBottomTexture = base.wallBottomTexture;
             params.floors = base.floors;
 
             if (params.floors.empty()) params.floors.resize(1);
@@ -1707,15 +1710,11 @@ namespace MapEditorInternal {
     void DeleteDot(const ID dotID) {
         const auto it = dotIDToIndex.find(dotID);
 
-        if (it == dotIDToIndex.end()) {
-            return;
-        }
+        if (it == dotIDToIndex.end()) return;
 
         const int index = it->second;
 
-        if (index < 0 || index >= static_cast<int>(dots.size())) {
-            return;
-        }
+        if (index < 0 || index >= static_cast<int>(dots.size())) return;
 
         dots.erase(dots.begin() + index);
 

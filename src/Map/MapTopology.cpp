@@ -273,7 +273,8 @@ namespace {
         if (FindMatchingWall(walls, a, b) >= 0) return;
 
         const Vector4 color = params.wallColor;
-        Wall wall(a, b, color, INVALID_ID, INVALID_ID, params.wallTexture);
+        Wall wall(a, b, color, INVALID_ID, INVALID_ID, params.wallTopTexture);
+        wall.bottom.texture = params.wallBottomTexture;
         wall.id = nextWallID++;
 
         walls.push_back(wall);

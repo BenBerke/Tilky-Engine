@@ -141,7 +141,8 @@ namespace MapEditorInternal {
     // Snapshot of the sector-creation parameters from the Editor menu, taken
     // the instant a chain starts
     struct PendingSectorParams {
-        std::string wallTexture;
+        std::string wallTopTexture;
+        std::string wallBottomTexture;
 
         std::vector<SectorFloor> floors = {
             {
@@ -273,7 +274,8 @@ namespace MapEditorInternal {
     extern Entity entityInClipboard;
 
     //-- Sector to be created variables
-    extern std::string wallTexture;
+    extern std::string wallTopTexture;
+    extern std::string wallBottomTexture;
     extern std::string ceilTexture;
     extern std::string floorTexture;
 

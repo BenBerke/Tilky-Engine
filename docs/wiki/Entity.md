@@ -20,6 +20,10 @@ UI entities are listed separately in the Hierarchy. They have no Transform, so t
 
 ## In the editor
 
+In **Entity Mode**, press `E` to create a world entity under the cursor. Left click selects an
+entity and dragging moves it (Ctrl/Shift click adds to the selection); left clicking empty space
+deselects. Right click opens an entity's settings.
+
 | Field | What it does |
 |---|---|
 | **Name** | Display name. `Game.FindEntity("Name")` looks entities up by it. Names don't have to be unique. |
