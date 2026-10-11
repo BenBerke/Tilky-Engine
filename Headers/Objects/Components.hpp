@@ -436,7 +436,7 @@ struct ComponentTransform {
     Vector3 scale = {32.0f, 32.0f, 32.0f};
 
     int sectorIndex = -1; // Stores the index of the sector in level.sectors vector. Allows for fast lookup
-    ID sectorId = -1; // Stores the absoulete ID of the sector, this should be for things like scripting
+    ID sectorId = std::numeric_limits<ID>::max(); // Stores the absoulete ID of the sector, this should be for things like scripting
     bool isDirty = false;
 
     void AddPosition(const Vector3& position);

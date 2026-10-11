@@ -38,12 +38,23 @@ namespace {
     // Records every file the importer opens besides the model itself, so .mtl
     // libraries, .gltf buffers and similar side files can be reported and
     // exported. Assimp does not expose that list any other way.
-    class RecordingIOSystem final : public Assimp::DefaultIOSystem {
+    // Wraps DefaultIOSystem instead of deriving from it: newer Assimp marks it final.
+    class RecordingIOSystem final : public Assimp::IOSystem {
     public:
         explicit RecordingIOSystem(fs::path modelPath) : modelPath(std::move(modelPath)) {}
 
+        bool Exists(const char* file) const override { return inner.Exists(file); }
+
+        char getOsSeparator() const override { return inner.getOsSeparator(); }
+
+        bool ComparePaths(const char* first, const char* second) const override {
+            return inner.ComparePaths(first, second);
+        }
+
+        void Close(Assimp::IOStream* stream) override { inner.Close(stream); }
+
         Assimp::IOStream* Open(const char* file, const char* mode) override {
-            Assimp::IOStream* stream = DefaultIOSystem::Open(file, mode);
+            Assimp::IOStream* stream = inner.Open(file, mode);
 
             const fs::path path = Utf8ToPath(file).lexically_normal();
 
@@ -59,6 +70,7 @@ namespace {
         std::vector<fs::path> missing;
 
     private:
+        Assimp::DefaultIOSystem inner;
         fs::path modelPath;
 
         [[nodiscard]] bool IsModel(const fs::path& path) const {
