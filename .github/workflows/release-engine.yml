@@ -32,7 +32,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ImGui, Tracy and ImGuiColorTextEdit are Git submodules, so they must
+      # ImGui and Tracy are Git submodules, so they must
       # also be downloaded.
       - name: Checkout repository
         uses: actions/checkout@v4
