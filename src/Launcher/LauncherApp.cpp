@@ -20,6 +20,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Launcher/EngineVersionManager.hpp"
+#include "Headers/Launcher/SampleProjectManager.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_render.h>
@@ -45,6 +46,11 @@ namespace {
     // short local alias is worth it.
     EngineVersionManager::EngineVersionManager& EVM() {
         return EngineVersionManager::EngineVersionManager::Instance();
+    }
+
+    // Same idea for the sample-project installer.
+    SampleProjectManager::SampleProjectManager& Samples() {
+        return SampleProjectManager::SampleProjectManager::Instance();
     }
 
     // ============================================================================
@@ -158,6 +164,11 @@ namespace {
     std::vector<std::string> versionPendingRemovalReferencingProjects;
     bool versionPendingRemovalProcessRunning = false;
 
+    // ============================================================================
+    // Sample projects modal (downloadable example projects, see SampleProjectManager)
+    // ============================================================================
+    bool wantOpenSampleProjectsPopup = false;
+
     std::vector<Toast> toasts;
 
     std::mutex dialogResultMutex;
@@ -229,6 +240,8 @@ namespace {
     void DrawEngineVersionsModal();
     void DrawRemoveVersionConfirmModal();
     void PushEngineVersionInstallToasts();
+    void DrawSampleProjectsModal();
+    void HandleSampleInstallEvents();
     std::string LocalizedInstallPhaseLabel(EngineVersionManager::InstallPhase phase);
     void DrawVersionProgressInline(const EngineVersionManager::InstallProgress& progress);
     void DrawProjectCard(ProjectEntry& entry, float cardWidth);
@@ -1014,6 +1027,11 @@ namespace {
             wantOpenEngineVersionsPopup = true;
         }
 
+        ImGui::SameLine();
+        if (ImGui::Button(Localisation::Get("launcher.samples_button").c_str())) {
+            wantOpenSampleProjectsPopup = true;
+        }
+
         ImGui::Spacing();
         ImGui::TextUnformatted(Localisation::Get("launcher.projects").c_str());
         ImGui::Spacing();
@@ -1404,6 +1422,150 @@ namespace {
                 );
             }
         }
+    }
+
+    // ============================================================================
+    // Sample projects - download a ready-made project (e.g. the Tilky Showcase)
+    // into the default projects folder.
+    // ============================================================================
+
+    // Drains SampleProjectManager::PollEvents(): a finished install is pinned to
+    // the newest installed stable engine (the same default Create Project uses)
+    // unless the sample pins a version itself, then added to the list, selected
+    // and announced.
+    void HandleSampleInstallEvents() {
+        for (const auto& event : Samples().PollEvents()) {
+            if (!event.success) {
+                PushToast(Localisation::Get("launcher.toast_sample_install_failed") + " " + event.name + ": " + event.errorMessage,
+                          ToastLevel::Error);
+                continue;
+            }
+
+            std::string pinnedVersion;
+            try {
+                std::ifstream tilkyFile(event.installedFolder / "project.tilky");
+                const json data = json::parse(tilkyFile);
+                pinnedVersion = data.value("engineVersion", std::string());
+            } catch (const std::exception& e) {
+                spdlog::warn("Couldn't read the installed sample's project.tilky: {}", e.what());
+            }
+
+            if (pinnedVersion.empty()) {
+                if (const std::optional<std::string> latest = EVM().GetLatestInstalledStableVersion()) {
+                    ProjectManager::SetProjectEngineVersion(event.installedFolder, *latest);
+                }
+            }
+
+            selectedProjectPath = event.installedFolder;
+            projectListDirty = true;
+            PushToast(Localisation::Get("launcher.toast_sample_installed") + " " + event.installedFolder.filename().string(),
+                      ToastLevel::Success);
+        }
+    }
+
+    void DrawSampleProjectsModal() {
+        const std::string popupId = Localisation::Get("launcher.samples_title") + "###sample_projects_modal";
+
+        if (wantOpenSampleProjectsPopup) {
+            ImGui::OpenPopup(popupId.c_str());
+            wantOpenSampleProjectsPopup = false;
+            Samples().RefreshManifestAsync(); // no-op if a fetch is already in flight
+        }
+
+        ImGui::SetNextWindowSize(ImVec2(620.0f, 420.0f), ImGuiCond_Appearing);
+        const ImGuiIO& io = ImGui::GetIO();
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+        if (!ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) return;
+
+        ImGui::TextWrapped("%s", Localisation::Get("launcher.samples_intro").c_str());
+        ImGui::Spacing();
+
+        if (Samples().IsManifestLoading()) {
+            ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_checking").c_str());
+        }
+
+        const std::optional<std::string> manifestError = Samples().GetManifestError();
+        if (manifestError) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+            ImGui::TextWrapped("%s: %s", Localisation::Get("launcher.samples_manifest_error").c_str(), manifestError->c_str());
+            ImGui::PopStyleColor();
+
+            ImGui::SameLine();
+            if (ImGui::SmallButton(Localisation::Get("launcher.evm_retry").c_str())) Samples().RefreshManifestAsync();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        const std::vector<SampleProjectManager::SampleInfo> samples = Samples().GetSamples();
+
+        if (samples.empty() && !Samples().IsManifestLoading() && !manifestError) {
+            ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_none").c_str());
+        }
+
+        if (ImGui::BeginChild("##sample_projects_list", ImVec2(0.0f, -36.0f), true)) {
+            for (const SampleProjectManager::SampleInfo& sample : samples) {
+                ImGui::PushID(sample.id.c_str());
+
+                const bool installing = Samples().IsInstalling(sample.id);
+                const SampleProjectManager::InstallProgress progress =
+                    installing ? Samples().GetInstallProgress(sample.id) : SampleProjectManager::InstallProgress{};
+
+                ImGui::BeginGroup();
+
+                std::string headline = sample.name;
+                if (!sample.version.empty()) headline += "  v" + sample.version;
+                ImGui::TextUnformatted(headline.c_str());
+
+                if (sample.sizeBytes > 0) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(%s)", FormatFileSize(sample.sizeBytes).c_str());
+                }
+
+                if (!sample.description.empty()) ImGui::TextWrapped("%s", sample.description.c_str());
+
+                if (!sample.minEngineVersion.empty()) {
+                    ImGui::TextDisabled("%s v%s", Localisation::Get("launcher.samples_requires_engine").c_str(),
+                                        sample.minEngineVersion.c_str());
+                }
+
+                if (progress.phase == SampleProjectManager::InstallPhase::Failed && !progress.errorMessage.empty()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+                    ImGui::TextWrapped("%s", progress.errorMessage.c_str());
+                    ImGui::PopStyleColor();
+                }
+
+                if (installing) {
+                    DrawVersionProgressInline(progress);
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(Localisation::Get("common.cancel").c_str())) Samples().CancelInstall(sample.id);
+                } else {
+                    // Installing again never overwrites: the copy lands next to the
+                    // existing folder as "<name> (2)".
+                    const std::string& label = Localisation::Get(sample.installed ? "launcher.samples_install_copy"
+                                                                                  : "launcher.samples_install");
+                    if (ImGui::SmallButton(label.c_str())) Samples().Install(sample.id);
+
+                    if (sample.installed) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_already_installed").c_str());
+                    }
+                }
+
+                ImGui::EndGroup();
+                ImGui::Separator();
+
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndChild();
+
+        ImGui::Spacing();
+        if (ImGui::Button(Localisation::Get("launcher.evm_close").c_str())) ImGui::CloseCurrentPopup();
+
+        ImGui::EndPopup();
     }
 
     // ============================================================================
@@ -2052,6 +2214,7 @@ namespace LauncherApp {
         projectListDirty = true;
 
         EVM().Initialize();
+        Samples().Initialize();
 
         launcherStarted = true;
     }
@@ -2095,6 +2258,7 @@ namespace LauncherApp {
 
         UpdateToasts(ImGui::GetIO().DeltaTime);
         PushEngineVersionInstallToasts();
+        HandleSampleInstallEvents();
 
         ImGui::SetNextWindowSize(ImVec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight)), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -2118,6 +2282,7 @@ namespace LauncherApp {
         DrawDeleteConfirmModal();
         DrawEngineVersionsModal();
         DrawRemoveVersionConfirmModal();
+        DrawSampleProjectsModal();
 
         ImGui::End();
 
@@ -2157,6 +2322,7 @@ namespace LauncherApp {
         // worker threads running any longer than necessary while the rest of this
         // function runs.
         EVM().Shutdown();
+        Samples().Shutdown();
 
         if (logo != nullptr) {
             SDL_DestroyTexture(logo);

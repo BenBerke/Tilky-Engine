@@ -612,10 +612,14 @@ endif()
 set(TILKY_LAUNCHER_SOURCES
         src/Launcher/LauncherApp.cpp
         src/Launcher/EngineVersionManager.cpp
+        src/Launcher/ArchiveInstaller.cpp
+        src/Launcher/SampleProjectManager.cpp
         src/Launcher/Sha256.cpp
 
         Headers/Launcher/LauncherApp.hpp
         Headers/Launcher/EngineVersionManager.hpp
+        Headers/Launcher/ArchiveInstaller.hpp
+        Headers/Launcher/SampleProjectManager.hpp
         Headers/Launcher/Sha256.hpp
         Headers/Runtime/Scripting/IScripting.hpp
 )

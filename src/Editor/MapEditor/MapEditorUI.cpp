@@ -3055,9 +3055,13 @@ namespace MapEditorInternal {
             staircaseCalcMode = STAIRCASE_CALC_STEP_HEIGHT;
         HoverTooltip(Get("editor.tooltip.staircase.calc_mode.step_height").c_str());
 
+        ImGui::SameLine();
+
         if (ImGui::RadioButton((Get("editor.staircase.calc_mode.target_height") + "##StaircaseCalcTargetHeight").c_str(), &calcModeInt, STAIRCASE_CALC_TARGET_HEIGHT))
             staircaseCalcMode = STAIRCASE_CALC_TARGET_HEIGHT;
         HoverTooltip(Get("editor.tooltip.staircase.calc_mode.target_height").c_str());
+
+        ImGui::SameLine();
 
         if (ImGui::RadioButton((Get("editor.staircase.calc_mode.step_count") + "##StaircaseCalcStepCount").c_str(), &calcModeInt, STAIRCASE_CALC_STEP_COUNT))
             staircaseCalcMode = STAIRCASE_CALC_STEP_COUNT;

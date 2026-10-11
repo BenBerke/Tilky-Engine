@@ -297,8 +297,14 @@ class AssetBrowser {
 public:
     using ThumbnailProvider = std::function<ImTextureID(const std::string&)>;
 
+    // Opens a .lua script, or a plain text file (see IsPlainTextFile), in
+    // the shared script editor. Text files get no highlighting and none of
+    // the Lua-only tools (autocomplete, comment toggling, bracket pairing).
     void RequestOpenScript(const std::filesystem::path& absolutePath);
     void DrawTextEditorWindow(ImFont* scriptEditorFont);
+
+    // Files the script editor opens as plain text: .txt, .md and .json.
+    [[nodiscard]] static bool IsPlainTextFile(const std::filesystem::path& path);
 
     // Opens a .fpk in its own flipbook editor window (or focuses the one
     // already showing it). Every editor that hosts this browser draws the
@@ -423,6 +429,9 @@ private:
 
     bool scriptEditorOpen = false;
     bool scriptEditorDirty = false;
+    // False while a plain text file is open: switches off highlighting and
+    // the Lua-only editor tools.
+    bool openFileIsLua = true;
 
     // Autocomplete for the script editor - see DrawTextEditorWindow() in
     // AssetBrowser.cpp. Suggestions come from Lua keywords/lifecycle

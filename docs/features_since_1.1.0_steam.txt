@@ -1,0 +1,108 @@
+[h1]What's New Since 1.1.0[/h1]
+
+Everything added to Tilky Engine between version 1.1.0 (2 Sep 2026) and 10 Oct 2026.
+
+[hr][/hr]
+
+[h2]Major Additions[/h2]
+
+[h3]Lua Scripting Overhaul[/h3]
+[list]
+[*][b]Public fields:[/b] declare variables in a script and edit them in the inspector. They support ranges, dropdowns, vectors, and references to entities, walls, sectors, components and other scripts. You can fill reference fields by dragging objects from the hierarchy.
+[*][b]Sector scripts:[/b] attach scripts to sectors as well as entities.
+[*][b]Large new API:[/b] move floors and ceilings, fade lights, detect entities entering or leaving sectors, raycast, look at targets, apply impulses, control sounds, and more.
+[*][b]Smarter script editor:[/b] autocomplete, better highlighting, and shortcuts such as Ctrl+/ to comment a line and Ctrl+D to duplicate it.
+[/list]
+
+[code]
+public number speed = 15
+public Entity target = nil
+[/code]
+
+[h3]Staircase Tool[/h3]
+Drag one rectangle to generate a whole staircase. Set the step height, the target height or the step count, and the tool works out the rest. You can also choose the direction and whether ceilings rise with the steps.
+
+[h3]Skybox[/h3]
+Each level can have its own sky: a cubemap, a panorama, or a classic DOOM-style cylinder. You can rotate it, tint it and set it to spin slowly while the game runs.
+
+[h3]Flipbook Animations[/h3]
+A new Flipbook editor for creating sprite animations, with 8 directions per frame, a live preview, loop modes and per-frame timing. Frames can also call functions in your scripts, for example to play a sound on each footstep. Flipbooks work on both world sprites and UI sprites.
+
+[h3]Multiple Components per Entity[/h3]
+An entity can now have several components of the same type, such as two sprites, several colliders or multiple sound sources. Each one has its own offset, and you can drag components to reorder them.
+
+[h3]Two Textures per Wall[/h3]
+Walls now have separate [b]Top[/b] and [b]Bottom[/b] textures. You can also choose how each texture is anchored, so doors and lifts carry their textures with them and neighbouring walls line up.
+
+[h3]Sector Parenting[/h3]
+Give a sector a parent, and it follows every change made to that parent: heights, lighting and textures all move together. This is useful for platforms, pillars and lifts.
+
+[h3]Tags[/h3]
+Create tags for your project and attach them to sectors, walls and entities. Scripts can then find and react to anything with a given tag.
+
+[h3]3D Models [i](Experimental)[/i][/h3]
+Place 3D models (.obj, .fbx, .gltf, ...) in your levels. Their textures are imported automatically.
+
+[h3]Extensive Wiki[/h3]
+New documentation: a full wiki page for every scripting type, plus step-by-step scripting tutorials.
+
+[hr][/hr]
+
+[h2]Smaller Additions[/h2]
+
+[h3]Editor[/h3]
+[list]
+[*]Multi-select walls, sectors and entities, then edit them together.
+[*]New toolbar with icon buttons, and a reorganised top menu.
+[*][b]User Settings[/b] window where you can customise editor colours and camera speed.
+[*]WASD camera movement in the map editor.
+[*]Hold Ctrl to ignore grid snapping, and press 1–6 to switch drawing tools.
+[*]Right-click undoes the last vertex while you draw a sector.
+[*]Left-click moves walls; right-click opens them in the inspector.
+[*]Name your walls and sectors.
+[*]Floor and ceiling textures can be offset, scaled and flipped.
+[*]Walls have UV scale and flip options.
+[*][b]Open File[/b] button on script components.
+[*]Double-click a .txt, .md or .json file to edit it in the built-in script editor, as plain text without highlighting. Right-click any script or text file for [b]Open in Text Editor[/b].
+[*]New [b]Create File → Text (.txt)[/b] option; the new file opens straight away.
+[/list]
+
+[h3]3D Editor[/h3]
+[list]
+[*]Drag textures from the Asset Browser straight onto walls, floors and ceilings.
+[*]Left-drag on a surface to slide its texture into place.
+[/list]
+
+[h3]UI[/h3]
+[list]
+[*]Custom fonts, font sizes and text colours for UI text.
+[*]UI entities now appear in the hierarchy.
+[*]Sprites and UI sprites can be toggled on and off.
+[/list]
+
+[h3]Gameplay[/h3]
+[list]
+[*]The Player Controller now has acceleration, deceleration and air control.
+[/list]
+
+[h3]Assets[/h3]
+[list]
+[*]JPG textures are supported.
+[*]Sounds can be previewed in the Asset Browser.
+[/list]
+
+[h3]Languages[/h3]
+[list]
+[*]Spanish translation (thanks to [b]ZainX38[/b]!).
+[/list]
+
+[hr][/hr]
+
+[h2]Fixes[/h2]
+[list]
+[*]Fixed sectors with holes.
+[*]Fixed camera stepping on stairs.
+[*]Fixed floor and sector lighting.
+[*]Fixed texture previews in the 3D editor.
+[*]Fixed the Player Controller and Camera not updating correctly.
+[/list]

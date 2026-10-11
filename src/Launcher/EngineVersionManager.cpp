@@ -10,15 +10,10 @@
 #include <string_view>
 
 #include <cpr/cpr.h>
-#include <minizip-ng/mz.h>
-#include <minizip-ng/mz_os.h>
-#include <minizip-ng/mz_strm.h>
-#include <minizip-ng/mz_zip.h>
-#include <minizip-ng/mz_zip_rw.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
-#include "Headers/Launcher/Sha256.hpp"
+#include "Headers/Launcher/ArchiveInstaller.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 #include <chrono>
@@ -73,11 +68,6 @@ namespace EngineVersionManager {
 #else
         constexpr const char* CURRENT_PLATFORM = "unknown";
 #endif
-
-        std::string LowercaseHexDigest(std::string s) {
-            std::transform(s.begin(), s.end(), s.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            return s;
-        }
 
         bool EndsWith(const std::string_view text, const std::string_view suffix) {
             return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -594,71 +584,35 @@ namespace EngineVersionManager {
         setProgress(InstallPhase::Downloading, 0.0f);
         spdlog::info("Installing engine version {}: downloading {}", version, info.downloadUrl);
 
-        {
-            std::ofstream outFile(partFile, std::ios::binary | std::ios::trunc);
-            if (!outFile.is_open()) {
-                setFailed("could not open .part file for writing: " + partFile.string());
-                return;
-            }
+        std::string error;
 
-            cpr::Session session;
-            session.SetUrl(cpr::Url{info.downloadUrl});
-            session.SetTimeout(cpr::Timeout{DOWNLOAD_TIMEOUT_MS});
-            session.SetConnectTimeout(cpr::ConnectTimeout{CONNECT_TIMEOUT_MS});
-            session.SetRedirect(cpr::Redirect{true}); // GitHub Release assets redirect to blob storage
+        const bool downloaded = ArchiveInstaller::Download(info.downloadUrl, partFile, DOWNLOAD_TIMEOUT_MS,
+            [this, &version](const float fraction) -> bool {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto it = installs_.find(version);
+                if (it == installs_.end()) return false; // entry gone (Shutdown()) - abort the transfer
+                it->second->fraction = fraction;
+                return !it->second->cancelRequested.load();
+            }, error);
 
-            session.SetProgressCallback(cpr::ProgressCallback{
-                [this, &version](const cpr::cpr_pf_arg_t downloadTotal, const cpr::cpr_pf_arg_t downloadNow,
-                                  cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, intptr_t) -> bool {
-                    const float fraction = downloadTotal > 0
-                        ? static_cast<float>(static_cast<double>(downloadNow) / static_cast<double>(downloadTotal))
-                        : 0.0f;
+        if (isCancelled()) {
+            CleanupTempInstallArtifacts(version);
+            setFailed("install cancelled");
+            return;
+        }
 
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    const auto it = installs_.find(version);
-                    if (it == installs_.end()) return false; // entry gone (Shutdown()) - abort the transfer
-                    it->second->fraction = fraction;
-                    return !it->second->cancelRequested.load(); // false aborts the transfer (libcurl convention)
-                }
-            });
-
-            const cpr::Response response = session.Download(outFile);
-            outFile.close();
-
-            if (isCancelled()) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("install cancelled");
-                return;
-            }
-
-            if (response.error.code != cpr::ErrorCode::OK) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("download error: " + response.error.message);
-                return;
-            }
-
-            if (response.status_code != 200) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("download failed with HTTP status " + std::to_string(response.status_code));
-                return;
-            }
+        if (!downloaded) {
+            CleanupTempInstallArtifacts(version);
+            setFailed(error);
+            return;
         }
 
         // ---- Verify SHA-256 ----
         setProgress(InstallPhase::VerifyingHash, 0.0f);
 
-        const std::optional<std::string> actualHash = TilkySha256::HashFile(partFile);
-        if (!actualHash) {
+        if (!ArchiveInstaller::VerifySha256(partFile, info.sha256, error)) {
             CleanupTempInstallArtifacts(version);
-            setFailed("could not read the downloaded file to verify its hash");
-            return;
-        }
-
-        if (info.sha256.empty()) {
-            spdlog::warn("Engine version {} manifest entry has no sha256 - skipping hash verification", version);
-        } else if (LowercaseHexDigest(info.sha256) != *actualHash) {
-            CleanupTempInstallArtifacts(version);
-            setFailed("hash mismatch: expected " + info.sha256 + ", got " + *actualHash);
+            setFailed(error);
             return;
         }
 
@@ -679,77 +633,17 @@ namespace EngineVersionManager {
             return;
         }
 
-        {
-            struct ExtractProgressContext {
-                EngineVersionManager* self;
-                const std::string* version;
-                int32_t totalEntries;
-                int32_t extractedEntries;
-            };
+        const bool extracted = ArchiveInstaller::ExtractZip(partFile, installingDir,
+            [this, &version](const float fraction) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto it = installs_.find(version);
+                if (it != installs_.end()) it->second->fraction = fraction;
+            }, error);
 
-            // Pre-count entries so the per-entry callback below can report "N of M" as
-            // a fraction - mz_zip_reader_save_all() only calls back once an entry has
-            // finished extracting, it doesn't report byte-level progress.
-            int32_t totalEntries = 0;
-            {
-                void* countReader = mz_zip_reader_create();
-                if (countReader != nullptr && mz_zip_reader_open_file(countReader, partFile.string().c_str()) == MZ_OK) {
-                    int32_t navResult = mz_zip_reader_goto_first_entry(countReader);
-                    while (navResult == MZ_OK) {
-                        ++totalEntries;
-                        navResult = mz_zip_reader_goto_next_entry(countReader);
-                    }
-                    mz_zip_reader_close(countReader);
-                }
-                if (countReader != nullptr) mz_zip_reader_delete(&countReader);
-            }
-
-            void* reader = mz_zip_reader_create();
-            if (reader == nullptr) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("could not create ZIP reader");
-                return;
-            }
-
-            ExtractProgressContext progressCtx{this, &version, totalEntries, 0};
-
-            mz_zip_reader_set_entry_cb(reader, &progressCtx,
-                [](void*, void* userdata, mz_zip_file*, const char*) -> int32_t {
-                    auto* ctx = static_cast<ExtractProgressContext*>(userdata);
-                    ctx->extractedEntries++;
-                    const float fraction = ctx->totalEntries > 0
-                        ? static_cast<float>(ctx->extractedEntries) / static_cast<float>(ctx->totalEntries)
-                        : 0.0f;
-
-                    std::lock_guard<std::mutex> lock(ctx->self->mutex_);
-                    const auto it = ctx->self->installs_.find(*ctx->version);
-                    if (it != ctx->self->installs_.end()) it->second->fraction = fraction;
-
-                    return MZ_OK;
-                }
-            );
-
-            const int32_t openResult = mz_zip_reader_open_file(reader, partFile.string().c_str());
-            int32_t extractResult = MZ_STREAM_ERROR;
-
-            if (openResult == MZ_OK) {
-                extractResult = mz_zip_reader_save_all(reader, installingDir.string().c_str());
-                mz_zip_reader_close(reader);
-            }
-
-            mz_zip_reader_delete(&reader);
-
-            if (openResult != MZ_OK) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("could not open the downloaded ZIP (it may be corrupt) - minizip-ng error " + std::to_string(openResult));
-                return;
-            }
-
-            if (extractResult != MZ_OK) {
-                CleanupTempInstallArtifacts(version);
-                setFailed("ZIP extraction failed - minizip-ng error " + std::to_string(extractResult));
-                return;
-            }
+        if (!extracted) {
+            CleanupTempInstallArtifacts(version);
+            setFailed(error);
+            return;
         }
 
         if (isCancelled()) {

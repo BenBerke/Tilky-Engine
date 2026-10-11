@@ -849,21 +849,28 @@ end
 // ============================================================================
 // Text Editor
 // ============================================================================
+bool AssetBrowser::IsPlainTextFile(const std::filesystem::path& path) {
+    const std::string extension = LowerCopy(path.extension().string());
+    return extension == ".txt" || extension == ".md" || extension == ".json";
+}
+
 void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) {
     if (!IsPathWithinRoot(absolutePath)) {
-        lastOperationError = "Refused to open a script outside the asset root: " + absolutePath.string();
+        lastOperationError = "Refused to open a file outside the asset root: " + absolutePath.string();
         return;
     }
 
-    if (LowerCopy(absolutePath.extension().string()) != ".lua") {
-        lastOperationError = "Only Lua scripts can be opened.";
+    const bool isLua = LowerCopy(absolutePath.extension().string()) == ".lua";
+
+    if (!isLua && !IsPlainTextFile(absolutePath)) {
+        lastOperationError = "Only Lua scripts and text files (.txt, .md, .json) can be opened.";
         return;
     }
 
     std::ifstream file(absolutePath, std::ios::binary);
     if (!file.is_open()) {
         lastOperationError =
-            "Could not open script: " + absolutePath.string();
+            "Could not open file: " + absolutePath.string();
         return;
     }
 
@@ -872,10 +879,15 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
         std::istreambuf_iterator<char>{}
     };
 
-    scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
+    // One editor serves both kinds, so set the colorizer every time a file
+    // is opened: Lua highlighting for scripts, none for plain text.
+    if (isLua) scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
+    else scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition());
+    scriptEditor.SetColorizerEnable(isLua);
 
     scriptEditor.SetText(contents);
 
+    openFileIsLua = isLua;
     openScriptPath = absolutePath;
     scriptEditorOpen = true;
     scriptEditorDirty = false;
@@ -889,14 +901,14 @@ void AssetBrowser::SaveOpenScript() {
     std::ofstream file(openScriptPath, std::ios::binary | std::ios::trunc);
 
     if (!file.is_open()) {
-        lastOperationError = "Could not save script: " + openScriptPath.string();
+        lastOperationError = "Could not save file: " + openScriptPath.string();
         return;
     }
 
     file << scriptEditor.GetText();
 
     if (!file.good()) {
-        lastOperationError = "Failed while writing script: " + openScriptPath.string();
+        lastOperationError = "Failed while writing file: " + openScriptPath.string();
         return;
     }
 
@@ -937,7 +949,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         }
 
         if (ImGui::BeginMenu("Edit")) {
-            if (ImGui::MenuItem("Toggle Line Comment", "Ctrl+/")) ToggleLineComment();
+            if (ImGui::MenuItem("Toggle Line Comment", "Ctrl+/", false, openFileIsLua)) ToggleLineComment();
             if (ImGui::MenuItem("Duplicate Line", "Ctrl+D")) DuplicateCurrentLine();
 
             ImGui::EndMenu();
@@ -1019,7 +1031,9 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     const std::vector<ImWchar> typedChars(io.InputQueueCharacters.begin(), io.InputQueueCharacters.end());
     bool autoCloseHandled = false;
 
-    if (windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly() && !scriptEditor.HasSelection()) {
+    // Bracket/quote pairing is for code only: in prose an apostrophe
+    // ("don't") would get a stray closing quote.
+    if (openFileIsLua && windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly() && !scriptEditor.HasSelection()) {
         static const std::unordered_set<ImWchar> kClosers = {')', ']', '}', '"', '\''};
 
         if (kClosers.contains(typedChars[0])) {
@@ -1047,7 +1061,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         deleteWordLeft = ImGui::IsKeyPressed(ImGuiKey_Backspace);
         deleteWordRight = ImGui::IsKeyPressed(ImGuiKey_Delete);
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Slash)) ToggleLineComment();
+        if (ImGui::IsKeyPressed(ImGuiKey_Slash)) { if (openFileIsLua) ToggleLineComment(); }
         else if (ImGui::IsKeyPressed(ImGuiKey_D)) DuplicateCurrentLine();
     }
 
@@ -1069,7 +1083,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     // between the pair - unless part 1 above already fully handled this
     // exact keystroke as a type-over (relevant for quotes, which are their
     // own opener AND closer).
-    if (!autoCloseHandled && windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly()) {
+    if (openFileIsLua && !autoCloseHandled && windowFocused && typedChars.size() == 1 && !scriptEditor.IsReadOnly()) {
         static const std::unordered_map<ImWchar, char> kOpenToClose = {
             {'(', ')'}, {'[', ']'}, {'{', '}'}, {'"', '"'}, {'\'', '\''},
         };
@@ -1116,7 +1130,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         autocompleteActive = false;
     } else if (autocompleteAccept && !autocompleteMatches.empty()) {
         AcceptAutocomplete(autocompleteSelectedIndex);
-    } else if (autocompleteNavDelta == 0 && !autocompleteClickPending &&
+    } else if (openFileIsLua && autocompleteNavDelta == 0 && !autocompleteClickPending &&
                (!autocompleteActive || scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged())) {
         // Only re-derive suggestions from the buffer when something that
         // should actually invalidate the current list happened: the text
@@ -1553,6 +1567,10 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         browser.RequestOpenFlipbook(GetPath());
         return;
     }
+    if (kind == AssetKind::Other && AssetBrowser::IsPlainTextFile(GetPath())) {
+        browser.RequestOpenScript(GetPath());
+        return;
+    }
     if (kind == AssetKind::Sound) PlaySoundPreview(GetPath());
 
     if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
@@ -1565,6 +1583,10 @@ void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const
 }
 
 void GenericFileEntry::DrawContextMenu(AssetBrowser& browser) {
+    if (kind == AssetKind::Script || AssetBrowser::IsPlainTextFile(GetPath())) {
+        if (ImGui::MenuItem("Open in Text Editor")) browser.RequestOpenScript(GetPath());
+        ImGui::Separator();
+    }
     DrawRenameAndDeleteMenuItems(browser);
 }
 
@@ -2428,6 +2450,9 @@ void AssetBrowser::DrawCreateFileModal() {
                 else spdlog::error("Asset browser: {}", error);
             }
 
+            // A new text file opens straight away, ready to type into.
+            if (created && IsPlainTextFile(createdFilePath)) RequestOpenScript(createdFilePath);
+
             if (created) {
                 const bool wasVisible = createdFilePath.parent_path() == currentDirectory;
                 activeModal.kind = AssetBrowserModalKind::None;
@@ -2780,5 +2805,6 @@ void AssetBrowser::RequestConsumeAsFieldReference(const AssetKind kind, const st
 void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {
     if (ImGui::MenuItem("Script (.lua)")) RequestCreateFile(destinationDirectory, ".lua");
     if (ImGui::MenuItem("Flipbook (.fpk)")) RequestCreateFile(destinationDirectory, std::string(FlipbookIO::kExtension));
+    if (ImGui::MenuItem("Text (.txt)")) RequestCreateFile(destinationDirectory, ".txt");
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
 }
