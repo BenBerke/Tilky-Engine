@@ -26,20 +26,25 @@ This minute long walkthrough demonstrates the UI layout, texture and sector work
   </a>
 </p>
 
-## 🔬 Systems Optimization & Performance Showcase
+## 🔬 Example Project Showcase
 
-This demonstration showcases the physics and collision stress tests, proving sub-linear time complexity under heavy load.
+Doom's first level (E1M1) remade from scratch in Tilky Engine
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=cR_EaVp9ymU">
-    <img src="https://img.youtube.com/vi/cR_EaVp9ymU/maxresdefault.jpg" alt="Collision System Performance" width="700">
+  <a href="https://www.youtube.com/watch?v=4jTljLHOTcw">
+    <img src="https://img.youtube.com/vi/4jTljLHOTcw/maxresdefault.jpg" alt="But can it run DOOM?" width="700">
   </a>
 </p>
 
+Showcase levels that can be installed directly through the launcher
+
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/76ba6573-6561-4394-96f5-809ba7211b12" width="48%" alt="Editor Screenshot 1" />
-  <img src="https://github.com/user-attachments/assets/552930c9-3a2f-4785-8e4d-3f1520b710de" width="48%" alt="Editor Screenshot 2" />
+  <a href="https://www.youtube.com/watch?v=sqfCeQslgs4">
+    <img src="https://img.youtube.com/vi/sqfCeQslgs4/maxresdefault.jpg" alt="Showcase Project" width="700">
+  </a>
 </p>
+
+<img width="1917" height="1171" alt="Screenshot 2026-10-11 214935" src="https://github.com/user-attachments/assets/d7a204d7-ad88-45d4-8078-8e2dfb74de77" />
 
 ---
 
@@ -56,6 +61,11 @@ The sector architecture supports:
 * **Sloped Surfaces:** Floors and ceilings support configurable slope directions and strengths.
 * **True 3D Perspective:** Walls, floors, ceilings, sprites, and entities are rendered inside a complete 3D scene.
 * **RGBA Surface Colors:** Walls, floors, ceilings, and sprites support color tinting and alpha transparency.
+* **Upper and Lower Wall Textures:** Walls between sectors of different heights get separate top and bottom textures, each with its own scale, offset, and flipping.
+* **Sector Lighting:** Every sector carries a light color that scripts can fade and flicker at runtime.
+* **Sector Hierarchy:** Sectors can be organized into parent and child groups.
+* **Skyboxes:** Each level can have a cubemap, panoramic, or classic DOOM-style cylinder sky.
+* **3D Models:** `.glb`, `.gltf`, `.obj`, `.fbx`, `.dae`, `.3ds`, `.ply`, and `.stl` models load through Assimp, with embedded or external textures and backface culling.
 * **Modern GPU Pipeline:** OpenGL shaders and SSBO-backed scene data are used for efficient rendering.
 
 ### Entity Component System
@@ -65,10 +75,14 @@ Tilky Engine uses a data-oriented entity component architecture based on entity 
 Available systems include:
 
 * Transform components with position, scale, and quaternion rotation.
-* Sprite rendering components.
+* Sprite, Model, and Flipbook (frame animation) rendering components.
 * Rigidbody and collision components.
+* Camera and Player Controller components, with acceleration-based movement.
 * Audio related components.
 * Lua script components.
+* UI components: UI Transform, UI Sprite, and UI Text with custom fonts and colors.
+* Multiple components of the same type on one entity.
+* Project-wide tags on entities, walls, and sectors.
 * Component serialization and project loading.
 * Fast component lookup through entity ownership IDs.
 
@@ -104,6 +118,7 @@ The launcher acts as the entry point for the toolchain.
 * Manage project assets and settings.
 * Associate projects with specific engine versions.
 * Download and install engine versions directly from GitHub Releases.
+* Download sample projects to learn from.
 * Switch projects between installed engine versions.
 * Launch projects using the correct editor build.
 * Access releases without requiring users to manually browse or download files from GitHub.
@@ -112,7 +127,9 @@ The launcher acts as the entry point for the toolchain.
 
 The Dear ImGui-powered editor provides dedicated editing modes for sectors, walls, entities, and project content.
 
-* Draw walls and construct sectors visually.
+* Draw walls and construct sectors visually with freehand, rectangle, regular polygon, circle, curve, and staircase tools.
+* Multi-select and move vertices, walls, sectors, and entities.
+* Name, tag, and attach scripts to sectors and walls.
 * Add multiple floor and ceiling levels to sectors.
 * Configure floor and ceiling heights.
 * Create sloped floors and ceilings.
@@ -121,7 +138,11 @@ The Dear ImGui-powered editor provides dedicated editing modes for sectors, wall
 * Edit position, scale, and unrestricted quaternion-based rotation.
 * Configure sprite direction modes and static rotation.
 * Edit RGBA colors and transparency.
-* Assign textures, scripts, and audio assets.
+* Assign textures, scripts, and audio assets, or drag and drop textures straight onto walls and surfaces.
+* Edit texture scale, offsets, and flipping for walls, floors, and ceilings.
+* Browse level and UI entities in the hierarchy.
+* Build sprite animations in the Flipbook Editor.
+* Per-user editor settings that persist between sessions.
 * Test the current project directly inside the runtime.
 * Use a runtime editor and free camera for in-game inspection.
 
@@ -133,7 +154,7 @@ The integrated asset browser provides project-level file management without leav
 * Create files and folders.
 * Rename and delete assets.
 * Use file and folder context menus.
-* Preview supported image assets.
+* Preview supported image assets (PNG, JPG, and more) and play audio files.
 * Drag and drop assets into compatible editor fields.
 * Open Lua scripts directly inside the editor.
 * Validate asset paths against the project root.
@@ -143,6 +164,9 @@ The integrated asset browser provides project-level file management without leav
 Lua scripts can be edited directly inside Tilky Engine.
 
 * Lua syntax highlighting.
+* Autocomplete for the full engine API.
+* Compile errors shown in the inspector before you press play.
+* Shortcuts such as `Ctrl + S`, `Ctrl + /` (toggle comment), and `Ctrl + D` (duplicate line).
 * Script loading and saving.
 * Unsaved-change tracking.
 * Keyboard focus and text input handling.
@@ -171,6 +195,7 @@ Projects can be packaged into standalone builds using the integrated export pipe
 * Build the standalone runtime.
 * Copy required runtime libraries.
 * Package project assets and data.
+* Precompile Lua scripts to bytecode.
 * Generate a distributable project directory.
 * Launch exported projects independently from the editor.
 * Rebuild the standalone executable as part of the development configuration.
@@ -195,6 +220,7 @@ Tilky Engine includes localization support for both the editor and projects.
 * Editor and launcher localization.
 * External translation-generation tooling.
 * Support for adding community translations.
+* Available languages: English, Turkish, Spanish, Russian, Kazakh, Polish, and Bulgarian.
 
 ### Performance Profiling
 
@@ -214,36 +240,49 @@ Instrumented systems include:
 
 ## 📜 Lua Scripting
 
-Gameplay logic can be attached to entities using Lua scripts through sol2.
+Gameplay logic can be attached to entities and sectors using Lua scripts through sol2.
 
 The scripting environment supports:
 
-* Entity-owned scripts.
-* Startup and per-frame update callbacks.
-* Public script variables.
-* Vector and mathematical types.
-* Input handling.
-* Component property access.
-* Physics and collision functions.
-* Logging functions for information, warnings, errors, and critical failures.
+* Entity scripts and sector scripts (doors, lifts, traps, flickering lights).
+* Lifecycle callbacks: `Start`, `Update`, `FixedUpdate`, `OnEnable`, `OnDisable`, and `OnDestroy`.
+* Collision, trigger, sector-change, and sector-occupancy callbacks.
+* `public` fields that appear in the inspector, including entity, asset, and enum types.
+* Vector, quaternion, and `mathT` math helpers.
+* Keyboard and mouse input.
+* Component property access, raycasts, and entity lookup by name or tag.
+* Sector API for moving floors and ceilings, fading lights, and changing textures.
+* Logging to the in-game console and the engine log.
 * Runtime Lua error reporting.
 
 Example:
 
 ```lua
+public number jumpStrength = 300
+public AudioSource jumpSound = nil
+
+local rigidbody
+
 function Start()
-    Debug.Info("Script started")
+    rigidbody = entity.rigidbody
+    Debug.Print("Hello from " .. entity.name)
 end
 
-function Update(deltaTime)
-    local transform = Self:GetTransform()
-    local rigidbody = Self:GetRigidbody()
+function Update()
+    if Input.GetKeyDown(Key.Space) then
+        rigidbody:AddImpulse(Vector3(0, jumpStrength, 0))
+        if jumpSound ~= nil then jumpSound:Play() end
+    end
+end
 
-    if Input.IsKeyDown(Key.W) then
-        rigidbody:AddVelocity(Vector3(0.0, 0.0, 5.0))
+function OnTriggerEnter(other)
+    if other:HasTag("Pickup") then
+        other:Destroy()
     end
 end
 ```
+
+The full scripting reference lives in [`docs/wiki`](docs/wiki/README.md), starting with [Getting Started](docs/wiki/GettingStarted.md). Ready-to-use example scripts are in [`docs/scripts`](docs/scripts/README.md).
 
 ---
 
@@ -276,29 +315,22 @@ end
 
 * A **C++20-compatible compiler**.
 * **CMake**.
-* **vcpkg** for dependency management.
-* External libraries cloned into `External/`:
-
-  * `glad`
-  * `imgui`
-  * `tracy`
+* **vcpkg** for dependency management. Dependencies are listed in `vcpkg.json` and installed automatically during configuration.
+* Bundled in `External/`: `glad` and `ImGuiColorTextEdit` are part of the repository, while `imgui` and `tracy` are Git submodules.
 
 ### Building
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/TilkyEngine.git
-cd TilkyEngine
-
-# Initialize submodules
-git submodule update --init --recursive
+# Clone the repository with its submodules
+git clone --recursive https://github.com/BenBerke/Tilky-Engine.git
+cd Tilky-Engine
 
 # Generate and build
-mkdir build
-cd build
-cmake ..
-cmake --build . --config Release
+cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --target Tilky_All
 ```
+
+Pass `-DTILKY_ENABLE_TRACY=OFF` to build without the Tracy profiler.
 
 ### CMake Targets
 
@@ -327,16 +359,25 @@ cmake --build . --config Release
 
 ### Hotkeys
 
-| Key        | Action                           |
-| :--------- | :------------------------------- |
-| `Q`        | Cycle editor modes               |
-| `LMB`      | Draw, select or move objects     |
-| `E`        | Create an entity at the cursor (Entity Mode) |
-| `RMB`      | Edit objects                     |
-| `MMB`      | Pan the editor camera            |
-| `Scroll`   | Zoom in or out                   |
-| `Ctrl + Z` | Undo action                      |
-| `Escape`   | Release the mouse in the runtime |
+| Key                        | Action                                                        |
+| :------------------------- | :------------------------------------------------------------ |
+| `Q`                        | Cycle editor modes                                            |
+| `LMB`                      | Draw, select or move objects                                  |
+| `Ctrl + LMB`               | Add to or remove from the selection                           |
+| `Shift + LMB`              | Range select                                                  |
+| `RMB`                      | Edit objects, or cancel the last vertex while drawing         |
+| `E`                        | Create an entity at the cursor (Entity Mode)                  |
+| `F`                        | Focus the camera on the selection                             |
+| `WASD` / Arrow keys        | Move or step the editor camera                                |
+| `MMB`                      | Pan the editor camera                                         |
+| `Scroll` / `+` / `-`       | Zoom in or out                                                |
+| `1` – `6`                  | Freehand, rectangle, polygon, circle, curve, staircase tool (Sector Mode) |
+| `Enter` / `Space`          | Finish the current shape (Sector Mode)                        |
+| `Backspace`                | Remove the last drawn point (Sector Mode)                     |
+| `[` / `]`                  | Fewer or more polygon sides (Sector Mode)                     |
+| `Alt`                      | Flip which end of a staircase is the bottom (Sector Mode)     |
+| `Escape`                   | Cancel drawing (Sector Mode), or release the mouse in the runtime |
+| `Ctrl + Z`                 | Undo action                                                   |
 
 ---
 
@@ -359,6 +400,14 @@ cmake --build . --config Release
 * [x] **Automated Release Pipeline:** Added GitHub Actions packaging, GitHub Release uploads, and launcher-readable version metadata.
 * [x] **Localization Toolchain:** Developed a pipeline for generating and loading translator-friendly JSON localization assets.
 * [x] **Tracy Profiler Instrumentation:** Integrated source-level profiling across rendering, physics, collision, and scripting systems.
+* [x] **3D Model Support:** Added Assimp-based model loading for glTF, OBJ, FBX, and other common formats.
+* [x] **Flipbook Animation:** Added `.fpk` flipbook assets, a Flipbook Editor, and animated sprites and UI sprites.
+* [x] **Skyboxes:** Added cubemap, panoramic, and cylinder sky modes.
+* [x] **Upper and Lower Wall Textures:** Added separate top and bottom textures for walls between sectors.
+* [x] **Sector Scripting and Tags:** Added sector scripts, occupancy callbacks, the Sector API, and project-wide tags.
+* [x] **Lua Autocomplete:** Added engine-API autocomplete to the embedded Lua editor.
+* [x] **Advanced Drawing Tools:** Added rectangle, polygon, circle, curve, and staircase sector tools.
+* [x] **Scripting Wiki:** Wrote a full scripting reference and a library of example scripts in `docs/`.
 
 ## 🔨 Future Milestones
 
