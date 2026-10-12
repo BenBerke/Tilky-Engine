@@ -910,5 +910,11 @@
   "sector.parent_cycle_error": "Can't use this sector as the parent: it is this sector or one of its children.",
   "sector.child_count": "Child sectors",
   "wall.tags": "Tags",
-  "entity.tags": "Tags"
+  "entity.tags": "Tags",
+  "editor.user_settings.ui_design": "UI Design",
+  "editor.tooltip.user_settings.ui_design": "How the editor's panels and menus look. Press Save to keep it for next time.",
+  "editor.design.dark": "Dark",
+  "editor.design.light": "Light",
+  "editor.design.midnight": "Midnight",
+  "editor.design.classic": "Classic"
 }

@@ -42,7 +42,6 @@ namespace MapEditorInternal {
     Mode currentMode = MODE_GEOMETRY;
     State currentState = STATE_MAP;
 
-    EditorTheme currentTheme = THEME_DARK;
     bool textureViewMode = false;
 
     std::vector<Action> actions;

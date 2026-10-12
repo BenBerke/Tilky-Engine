@@ -274,7 +274,8 @@ bool OpenGL::InitImGui() const {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    EditorStyle::ApplyDark();
+    // Whatever design the editor had, so the runtime editor matches it.
+    EditorStyle::Apply(EditorStyle::ActiveDesign());
 
     ImGui_ImplSDL3_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init("#version 430");

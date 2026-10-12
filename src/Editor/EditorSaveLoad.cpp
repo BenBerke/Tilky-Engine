@@ -11,6 +11,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -202,6 +203,9 @@ namespace MapEditorInternal {
 
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
             cameraStepSize = settings.value("cameraStepSize", 50.0f);
+
+            // An id no design has (or none, from older settings files) gets the default.
+            EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
         }
         catch (std::exception& e) {
             spdlog::error("Error while loading user settings {}", e.what());
@@ -282,7 +286,8 @@ namespace MapEditorInternal {
                      SerializeColor(backgroundColor)}
                 }},
                    {"cameraSpeed", cameraSpeed},
-                {"cameraStepSize", cameraStepSize}
+                {"cameraStepSize", cameraStepSize},
+                {"editorDesign", EditorStyle::ActiveDesign()}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

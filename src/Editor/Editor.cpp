@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/UISystem.hpp"
+#include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -128,7 +129,8 @@ namespace Editor {
         const fs::path iconFontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/FontAwesome6-Solid.otf");
         if (std::error_code ec; fs::exists(iconFontPath, ec)) editorIconFont = io.Fonts->AddFontFromFileTTF(iconFontPath.string().c_str(), 16.0f);
         else spdlog::warn("Icon font not found at {}, the toolbar will use text labels", iconFontPath.string());
-        ApplyEditorTheme(currentTheme);
+        // The saved design replaces this once LoadUserSettings() below runs.
+        EditorStyle::Apply(EditorStyle::ActiveDesign());
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
         ImGui_ImplSDLRenderer3_Init(renderer);

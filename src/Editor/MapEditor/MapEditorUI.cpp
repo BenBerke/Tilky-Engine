@@ -1442,6 +1442,23 @@ namespace {
             ImGui::Separator();
             ImGui::Spacing();
 
+            // Every design in EditorStyle::Designs() is listed here; picking
+            // one applies it straight away, and Save below keeps it.
+            const EditorStyle::Design *activeDesign = EditorStyle::FindDesign(EditorStyle::ActiveDesign());
+
+            if (ImGui::BeginCombo(Get("editor.user_settings.ui_design").c_str(),
+                                  activeDesign != nullptr ? Get(activeDesign->labelKey).c_str() : "")) {
+                for (const EditorStyle::Design &design : EditorStyle::Designs()) {
+                    const bool selected = &design == activeDesign;
+
+                    if (ImGui::Selectable(Get(design.labelKey).c_str(), selected)) EditorStyle::Apply(design.id);
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get("editor.tooltip.user_settings.ui_design").c_str());
+
             ImGui::SliderFloat(Get("editor.user_settings.camera_speed").c_str(), &cameraSpeed, MIN_CAM_SPEED, MAX_CAM_SPEED);
             ImGui::SliderFloat(Get("editor.user_settings.camera_step_size").c_str(), &cameraStepSize, MIN_STEP_SIZE, MAX_STEP_SIZE);
 
@@ -1539,12 +1556,6 @@ namespace {
 
 
             //todo TILKYTODO make an editor settings menu
-
-            // bool lightModeActive = (currentTheme == THEME_LIGHT);
-            // if (ImGui::Checkbox(Get("editor.light_mode").c_str(), &lightModeActive)) {
-            //     currentTheme = lightModeActive ? THEME_LIGHT : THEME_DARK;
-            //     ApplyEditorTheme(currentTheme);
-            // }
         }
 
         ImGui::End();
@@ -2933,11 +2944,6 @@ namespace MapEditorInternal {
         currentMode = static_cast<Mode>((currentMode + 1) % MODE_COUNT);
 
         if (previousMode == MODE_SECTOR) CancelActiveDrawing();
-    }
-
-    void ApplyEditorTheme(const EditorTheme theme) {
-        if (theme == THEME_DARK) EditorStyle::ApplyDark();
-        else EditorStyle::ApplyLight();
     }
 
     void QueueLevelLoad(const std::string &levelName) {

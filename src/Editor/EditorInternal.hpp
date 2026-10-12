@@ -73,11 +73,6 @@ namespace MapEditorInternal {
         STATE_COUNT,
     };
 
-    enum EditorTheme {
-        THEME_DARK,
-        THEME_LIGHT
-    };
-
     // Sector Mode's geometry-building tools. DRAWTOOL_FREEHAND covers the
     // pre-existing point-by-point chain (including its manualSectorMode
     // sub-toggle, which is unchanged); the rest are additive.
@@ -260,7 +255,6 @@ namespace MapEditorInternal {
     extern Mode currentMode;
     extern State currentState;
 
-    extern EditorTheme currentTheme;
     extern bool textureViewMode;
 
     extern int currentFloor;
@@ -682,7 +676,6 @@ namespace MapEditorInternal {
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
     void ChangeMode();
-    void ApplyEditorTheme(EditorTheme theme);
 
     bool Save(const std::string& saveTo);
 
