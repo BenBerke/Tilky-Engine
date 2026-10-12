@@ -79,10 +79,12 @@ namespace {
             // A player added in the editor takes over, camera and all.
             level.ActivatePlayerController(*level.playerControllers.GetInstance(controllerID));
             level.ActivateCamera(*entity.GetComponent<ComponentCamera>());
-        } else if constexpr (std::is_same_v<T, ComponentCamera>) {
+        }
+        else if constexpr (std::is_same_v<T, ComponentCamera>) {
             // A camera added in the editor takes over.
             level.ActivateCamera(*entity.AddComponent<ComponentCamera>());
-        } else if constexpr (std::is_same_v<T, ComponentScript>) {
+        }
+        else if constexpr (std::is_same_v<T, ComponentScript>) {
             // Deliberately unconditional: ScriptComponentStorage already
             // supports several scripts per Entity (each AddScript() call
             // gets its own fresh instance ID), so "Add Component -> Script"
@@ -94,9 +96,8 @@ namespace {
             script.fileName.clear();
             script.publicValues.clear();
             script.schemaHash = 0;
-        } else {
-            if (!IsSingleComponent<T> || !entity.HasComponent<T>()) entity.AddComponent<T>();
         }
+        else if (!IsSingleComponent<T> || !entity.HasComponent<T>()) entity.AddComponent<T>();
     }
 
     // Moves a component to `newIndex` among its entity's components of the
@@ -2135,9 +2136,9 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection("Jumping");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.jump_power").c_str(),      &c->jumpPower,     draggable);
+                InputOrDrag(Get("component.player_controller.jump_power").c_str(), &c->jumpPower, draggable);
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(),  &c->jumpBufferMs,  draggable);
+                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(), &c->jumpBufferMs, draggable);
                 Tooltip(Get("editor.tooltip.component.player_controller.jump_buffer").c_str());
                 EndSection();
 

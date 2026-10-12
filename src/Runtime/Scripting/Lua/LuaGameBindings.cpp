@@ -42,6 +42,9 @@ namespace {
                 "Returns nil on miss, else a table with type/typeID/position/distance/"
                 "entityID/wallID/sectorID and (whichever applies) entity/wall/sector."
             ),
+            Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
+                   "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
+                   "entities don't. Much cheaper than Raycast for sight checks."),
             Method("CreateEntity", {Param("isUIEntity", "boolean?")}, "Entity",
                    "Adds a new empty Entity named \"Entity\" to the level and returns it. It starts with a Transform "
                    "at the origin, or a UITransform when `isUIEntity` is true."),
@@ -287,6 +290,10 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
                           ));
                       }
     );
+
+    game.set_function("LineOfSight", [](const Vector3& from, const Vector3& to) {
+        return GameFunctions::LineOfSight(LevelManager::CurrentLevel(), from, to);
+    });
 }
 
 sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optional<RayHit> &hit) {

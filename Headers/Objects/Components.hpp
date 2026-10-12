@@ -13,6 +13,7 @@
 #include "../Objects/Sector.hpp"
 #include "EntityTypes.hpp"
 #include "ScriptPublicType.hpp"
+#include "VectorIndexCache.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include <span>
 
@@ -140,7 +141,7 @@ struct ComponentCollider {
 
     // Local position relative to the owner's Transform, turned with its
     // rotation. Lets several of these sit at different spots on one entity.
-    Vector3 offset = {0.0f, 0.0f, 0.0f};
+    Vector3 offset = {0.0f, 4.0f, 0.0f};
 
     ColliderType type = COLLIDERTYPE_SPHERE;
 
@@ -148,9 +149,9 @@ struct ComponentCollider {
     bool isTrigger = false;
 
     // Type = Box -> Use these values as AABB; Type = Sphere -> Use size.x as the radius
-    Vector3 scale = {1.0f, 1.0f, 1.0f};
+    Vector3 scale = {3.0f, 3.0f, 3.0f};
 
-    float stepSize = 0.0f;
+    float stepSize = 8.0f;
 };
 
 struct ComponentPlayerController {
@@ -167,7 +168,7 @@ struct ComponentPlayerController {
     float speed = 46.0f;
     float runningSpeed = 90.0f;
 
-    float jumpPower = 100.0f;
+    float jumpPower = 30.0f;
 
     unsigned int jumpBufferMs = 5;
 
@@ -182,8 +183,8 @@ struct ComponentPlayerController {
 
     bool noClip = false;
 
-    float acceleration = 80.f;
-    float deceleration = 60.0f;
+    float acceleration = 480.f;
+    float deceleration = 570.0f;
     float airControl = .3f;
 
     // Read only, do not change
@@ -247,20 +248,20 @@ public:
         ComponentScript& script = components.emplace_back();
         script.ownerID = ownerID;
         script.instanceID = instanceID;
+        indexCache.Set(instanceID, components.size() - 1);
 
         return script;
     }
 
+    // Hashed: the script system resolves every script through this each frame.
     ComponentScript* GetByID(const ScriptInstanceID instanceID) {
-        for (ComponentScript& script : components)  if (script.instanceID == instanceID) return &script;
-
-        return nullptr;
+        const std::size_t index = indexCache.Find(components, instanceID, InstanceIDOf);
+        return index == decltype(indexCache)::npos ? nullptr : &components[index];
     }
 
     [[nodiscard]] const ComponentScript* GetByID(const ScriptInstanceID instanceID) const {
-        for (const ComponentScript& script : components) if (script.instanceID == instanceID) return &script;
-
-        return nullptr;
+        const std::size_t index = indexCache.Find(components, instanceID, InstanceIDOf);
+        return index == decltype(indexCache)::npos ? nullptr : &components[index];
     }
 
     ComponentScript* GetFirstByOwner(const ID ownerID) {
@@ -304,6 +305,7 @@ public:
         if (it == components.end()) return false;
 
         components.erase(it);
+        indexCache.Clear();
         return true;
     }
 
@@ -325,6 +327,7 @@ public:
         ComponentScript moved = std::move(components[from]);
         components.erase(components.begin() + static_cast<std::ptrdiff_t>(from));
         components.insert(components.begin() + static_cast<std::ptrdiff_t>(to), std::move(moved));
+        indexCache.Clear();
         return true;
     }
 
@@ -337,16 +340,23 @@ public:
             }
         );
 
-        return components.size() != previousSize;
+        if (components.size() == previousSize) return false;
+
+        indexCache.Clear();
+        return true;
     }
 
     void Clear() {
         components.clear();
+        indexCache.Clear();
         nextInstanceID = 1;
     }
 
 private:
     ScriptInstanceID nextInstanceID = 1;
+    VectorIndexCache<ScriptInstanceID> indexCache;
+
+    static ScriptInstanceID InstanceIDOf(const ComponentScript& script) { return script.instanceID; }
 
     ScriptInstanceID GenerateID() {
         while (GetByID(nextInstanceID) != nullptr) ++nextInstanceID;

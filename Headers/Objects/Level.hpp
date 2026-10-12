@@ -13,6 +13,7 @@
 #include "Entity.hpp"
 #include "Loadables.hpp"
 #include "Sky.hpp"
+#include "VectorIndexCache.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;
@@ -153,6 +154,10 @@ struct Level {
     // that walk, since it was edited directly and passes its own change on.
     [[nodiscard]] std::vector<SectorValuesSnapshot> SnapshotParentSectorValues() const;
     void PropagateSnapshottedSectorChanges(const std::vector<SectorValuesSnapshot>& before);
+
+private:
+    // id -> index into `entities`, for GetEntity. See VectorIndexCache.
+    VectorIndexCache<ID> entityIndexCache;
 };
 
 #endif // TILKY_ENGINE_LEVEL_H

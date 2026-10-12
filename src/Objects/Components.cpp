@@ -34,9 +34,12 @@ bool ComponentTransform::UpdateObjectSectorAndFloor(std::vector<Sector>& sectors
 
     const bool oldSectorValid = oldSector >= 0 && oldSector < static_cast<int>(sectors.size());
 
+    // The old sector as the hint: an entity is almost always still in it or
+    // in one of its neighbours, so this skips the scan of every sector.
     const int newSector = MapQueries::FindSectorContainingPoint(
         sectors,
-        { position.x, position.z }
+        { position.x, position.z },
+        oldSectorValid ? oldSector : -1
     );
 
     if (newSector < 0 || newSector >= static_cast<int>(sectors.size())) {

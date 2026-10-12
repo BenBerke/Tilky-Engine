@@ -40,6 +40,8 @@
 #include <variant>
 #include <vector>
 
+#include "tracy/Tracy.hpp"
+
 // ============================================================================
 // Tilky Lua scripting runtime
 //
@@ -1159,19 +1161,25 @@ bool LuaScriptSystem::Initialize() {
 }
 
 void LuaScriptSystem::Start(Level& level) {
-    scriptInstances.clear();
-    instanceIndexById.clear();
-    pendingDestroys.clear();
-    fixedUpdateAccumulator = 0.0f;
 
-    for (ComponentScript& script : level.scripts.components)
-        InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);
+    ZoneScopedN("Scripting::Start");
+    {
+        ZoneScopedN("Scripting::Clear");
+        scriptInstances.clear();
+        instanceIndexById.clear();
+        pendingDestroys.clear();
+        fixedUpdateAccumulator = 0.0f;
+    }
+    {
+        ZoneScopedN("Scripting::Init");
+        for (ComponentScript& script : level.scripts.components)
+            InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);
 
-    // Sector scripts come after every entity script, in sector order.
-    for (Sector& sector : level.sectors)
-        for (SectorScript& script : sector.scripts)
-            InstantiateScript(level, ScriptOwnerKind::Sector, sector.id, script);
-
+        // Sector scripts come after every entity script, in sector order.
+        for (Sector& sector : level.sectors)
+            for (SectorScript& script : sector.scripts)
+                InstantiateScript(level, ScriptOwnerKind::Sector, sector.id, script);
+    }
     // Whoever is already inside a sector when the level starts is the
     // baseline - no OnEntityEnter for them.
     lastSectorOccupants.clear();
@@ -1188,14 +1196,17 @@ void LuaScriptSystem::Start(Level& level) {
 
     // First activation: OnEnable before Start, matching Unity's ordering on
     // an object's first activation.
-    for (ScriptInstance& instance : scriptInstances) {
-        const ScriptAttachmentData* script = ResolveAttachment(level, instance);
-        if (!EffectiveEnabled(level, instance, script)) continue;
+    {
+        ZoneScopedN("Scripting::CallStart");
+        for (ScriptInstance& instance : scriptInstances) {
+            const ScriptAttachmentData* script = ResolveAttachment(level, instance);
+            if (!EffectiveEnabled(level, instance, script)) continue;
 
-        instance.enabled = true;
-        CallLifecycle(instance, instance.onEnableFunction, "OnEnable");
-        CallLifecycle(instance, instance.startFunction, "Start");
-        instance.started = true;
+            instance.enabled = true;
+            CallLifecycle(instance, instance.onEnableFunction, "OnEnable");
+            CallLifecycle(instance, instance.startFunction, "Start");
+            instance.started = true;
+        }
     }
 }
 
@@ -1233,21 +1244,27 @@ void LuaScriptSystem::Update(Level& level) {
         }
 
         if (!instance.enabled) continue;
-
-        CallLifecycle(instance, instance.updateFunction, "Update");
+        {
+            ZoneScopedN("Scripting::CallUpdate");
+            ZoneText(instance.scriptId.c_str(), instance.scriptId.size());
+            CallLifecycle(instance, instance.updateFunction, "Update");
+        }
     }
 
-    fixedUpdateAccumulator += GameTime::deltaTime;
-    int fixedSteps = 0;
+    {
+        ZoneScopedN("Scripting::FixedUpdate");
+        fixedUpdateAccumulator += GameTime::deltaTime;
+        int fixedSteps = 0;
 
-    while (fixedUpdateAccumulator >= kFixedTimeStep && fixedSteps < kMaxFixedStepsPerFrame) {
-        for (ScriptInstance& instance : scriptInstances) {
-            if (instance.destroyed || !instance.enabled) continue;
-            CallLifecycle(instance, instance.fixedUpdateFunction, "FixedUpdate");
+        while (fixedUpdateAccumulator >= kFixedTimeStep && fixedSteps < kMaxFixedStepsPerFrame) {
+            for (ScriptInstance& instance : scriptInstances) {
+                if (instance.destroyed || !instance.enabled) continue;
+                CallLifecycle(instance, instance.fixedUpdateFunction, "FixedUpdate");
+            }
+
+            fixedUpdateAccumulator -= kFixedTimeStep;
+            ++fixedSteps;
         }
-
-        fixedUpdateAccumulator -= kFixedTimeStep;
-        ++fixedSteps;
     }
 
     // Deliberately NOT flushing pendingDestroys here - see

@@ -7,14 +7,18 @@
 
 #include <algorithm>
 
+namespace {
+    ID EntityIDOf(const Entity& entity) { return entity.id; }
+}
+
 Entity* Level::GetEntity(const ID entityID) {
-    for (Entity& entity : entities) if (entity.id == entityID) return &entity;
-    return nullptr;
+    const size_t index = entityIndexCache.Find(entities, entityID, EntityIDOf);
+    return index == VectorIndexCache<ID>::npos ? nullptr : &entities[index];
 }
 
 const Entity* Level::GetEntity(const ID entityID) const {
-    for (const Entity& entity : entities) if (entity.id == entityID) return &entity;
-    return nullptr;
+    const size_t index = entityIndexCache.Find(entities, entityID, EntityIDOf);
+    return index == VectorIndexCache<ID>::npos ? nullptr : &entities[index];
 }
 
 ID Level::CreateEntity(const bool uiEntity) {
@@ -24,6 +28,7 @@ ID Level::CreateEntity(const bool uiEntity) {
     entity.attachedLevelId = id;
 
     entities.push_back(entity);
+    entityIndexCache.Set(entity.id, entities.size() - 1);
 
     const ID newId = entity.id;
 
@@ -156,6 +161,7 @@ ID Level::CreateEntity(Entity& copy) {
     }
 
     entities.push_back(entity);
+    entityIndexCache.Set(entity.id, entities.size() - 1);
 
     return entity.id;
 }
@@ -185,6 +191,7 @@ void Level::DestroyEntity(const ID entityID) {
     std::erase_if(entities, [entityID](const Entity& entity) {
         return entity.id == entityID;
     });
+    entityIndexCache.Clear();
 }
 
 void Level::ActivateCamera(const ComponentCamera& camera) {

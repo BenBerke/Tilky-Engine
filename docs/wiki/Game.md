@@ -21,6 +21,7 @@ end
 | [`GetEntities()`](#finding-entities) | list of `Entity` | Every entity in the level. |
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider)`](#raycast) | table or `nil` | What a line hits first. |
+| [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
 | [`SetSkyMode(mode)`, `GetSkyMode()`](#sky) | `SkyMode` | How the sky image wraps around the camera. |
 | [`SetSkyTexture(path)`, `GetSkyTexture()`](#sky) | string | The image for Equirectangular and Cylinder skies. |
@@ -201,6 +202,43 @@ function Update()
         if health.isValid then health:TakeDamage(damage) end
     elseif hit.wall ~= nil then
         Debug.Print("Hit a wall at", hit.position)
+    end
+end
+```
+
+---
+
+## LineOfSight
+
+```lua
+Game.LineOfSight(from, to)   -- boolean
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `from` | `Vector3` | One end of the line. |
+| `to` | `Vector3` | The other end. |
+
+`true` when nothing solid is between `from` and `to`. Walls (their solid parts, the same as for
+[`Raycast`](#raycast)), floors and ceilings block the line. **Entities never do**, so there is no
+entity to ignore. If `from` and `to` are the same point, the result is `true`.
+
+Use it for "can this enemy see the player?" checks. It is much cheaper than calling `Raycast`
+again and again to step past every entity standing in between.
+
+```lua
+-- Scripts/Guard.lua: notice the player when there is a clear line to their eyes.
+public Entity player
+public number eyeHeight = 12
+
+function Update()
+    if player == nil then return end
+
+    local eyes = entity.transform.position + Vector3(0, eyeHeight, 0)
+    local target = player.transform.position + Vector3(0, eyeHeight, 0)
+
+    if Game.LineOfSight(eyes, target) then
+        Debug.Print("I see you")
     end
 end
 ```
