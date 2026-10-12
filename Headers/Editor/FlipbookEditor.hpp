@@ -60,7 +60,6 @@ private:
         int previewFrame = 0;
         int previewDirection = 1;
         float previewTime = 0.0f;
-        int previewSlot = 0; // which of the 8 textures the preview shows
     };
 
     // A frame operation picked while drawing the list, applied once the list

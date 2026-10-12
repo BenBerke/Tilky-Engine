@@ -32,9 +32,6 @@ namespace {
     const ImVec4 FLIPBOOK_ERROR_COLOR = {0.95f, 0.35f, 0.30f, 1.0f};
     const ImVec4 FLIPBOOK_UNSAVED_COLOR = {0.95f, 0.80f, 0.35f, 1.0f};
 
-    // In ComponentSprite::textureFileNames order.
-    constexpr std::array<const char*, 8> FLIPBOOK_SIDE_NAMES = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
-
     // Same safety cap as the game (FlipbookSystem) for a stalled frame.
     constexpr int MAX_PREVIEW_STEPS_PER_FRAME = 256;
 
@@ -211,9 +208,13 @@ void FlipbookEditor::DrawPreview(Document& document) {
         }
     }
 
-    const FlipbookFrame& frame = asset.frames[document.previewFrame];
+    FlipbookFrame& frame = document.asset.frames[document.previewFrame];
 
-    MapEditorInternal::DrawTextureThumbnailBox(frame.textures[document.previewSlot], 128.0f);
+    // All 8 sides of the shown frame, same widget as the Edit window, so a
+    // texture can be dropped straight onto the side it belongs to.
+    const std::array<std::string, 8> texturesBefore = frame.textures;
+    ImGuiDrawFunctions::DrawDirectionalTextureSlots(frame.textures, SIDECOUNT_45);
+    if (frame.textures != texturesBefore) document.dirty = true;
 
     ImGui::SameLine();
     ImGui::BeginGroup();
@@ -239,11 +240,6 @@ void FlipbookEditor::DrawPreview(Document& document) {
 
     ImGui::Text("%s %d / %d", Get("flipbook_editor.frame").c_str(), document.previewFrame + 1, frameCount);
     ImGui::TextUnformatted(frame.name.c_str());
-
-    ImGui::SetNextItemWidth(80.0f);
-    ImGui::Combo(Get("flipbook_editor.preview_side").c_str(), &document.previewSlot, FLIPBOOK_SIDE_NAMES.data(),
-                 static_cast<int>(FLIPBOOK_SIDE_NAMES.size()));
-    ImGuiDrawFunctions::Tooltip(Get("editor.tooltip.flipbook_editor.preview_side").c_str());
 
     ImGui::EndGroup();
     ImGui::Spacing();
@@ -285,8 +281,12 @@ void FlipbookEditor::DrawFrameList(Document& document) {
             }
         }
         else {
-            const bool selected = document.editingFrame == frame.name;
-            ImGui::Selectable(frame.name.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(160.0f, 0.0f));
+            const bool selected = !document.previewPlaying && document.previewFrame == i;
+
+            // Picks the frame the preview shows (and takes texture drops) while stopped.
+            if (ImGui::Selectable(frame.name.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(160.0f, 0.0f)) &&
+                !document.previewPlaying)
+                document.previewFrame = i;
 
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 document.renamingFrame = frame.name;

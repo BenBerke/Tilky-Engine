@@ -637,8 +637,10 @@ namespace ImGuiDrawFunctions {
     // The 8 directional texture slots, laid out as a compass for 90/45-degree
     // sprites. Shared by the Sprite inspector and the flipbook editor.
     void DrawDirectionalTextureSlots(std::array<std::string, 8>& textures, const SideCount sideCount) {
-        constexpr float BOX_SIZE = 64.0f;
-        constexpr float SLOT_HEIGHT = 64.0f + 18.0f + 24.0f + 22.0f + 8.0f;
+        constexpr float BOX_SIZE = 48.0f;
+        // A filled slot: box, side label, Clear button. Empty cells reserve
+        // the same so rows don't jump when a slot is cleared.
+        const float SLOT_HEIGHT = BOX_SIZE + ImGui::GetStyle().ItemSpacing.y + 2.0f * ImGui::GetTextLineHeightWithSpacing();
 
         auto DrawSpriteSlot = [&](const int slotIndex, const char *label) {
             ImGui::PushID(slotIndex);
@@ -648,7 +650,7 @@ namespace ImGuiDrawFunctions {
 
         auto DrawEmptySlot = [&]() {ImGui::Dummy(ImVec2(BOX_SIZE, SLOT_HEIGHT));};
 
-        constexpr float CELL_PADDING = 8.0f;
+        constexpr float CELL_PADDING = 4.0f;
         constexpr float COLUMN_WIDTH = BOX_SIZE + CELL_PADDING;
 
         if (sideCount == SIDECOUNT_SINGLE) {

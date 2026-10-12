@@ -4,7 +4,7 @@
 
 Inspired by classic 90s engines such as *Doom* and *Build Engine*, Tilky Engine uses a specialized 3D rendering pipeline where maps are constructed from topological sectors, textured walls, floors, ceilings, slopes, sprites, and entities.
 
-Tilky Engine is designed as a complete development environment rather than only a  rendering library. It includes a project launcher, visual level editor, asset browser, embedded Lua editor, OpenGL runtime, custom physics, OpenAL audio, engine version management, automated releases, localization tooling, profiling, and standalone project exporting.
+Tilky Engine is designed as a complete development environment rather than only a   rendering library. It includes a project launcher, visual level editor, asset browser, embedded Lua editor, OpenGL runtime, custom physics, OpenAL audio, engine version management, automated releases, localization tooling, profiling, and standalone project exporting.
 
 ## 🚀 Download Tilky Engine
 
