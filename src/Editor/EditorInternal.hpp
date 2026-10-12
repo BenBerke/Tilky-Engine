@@ -892,6 +892,16 @@ namespace MapEditorInternal {
     // header. Defined in MapEditorUI.cpp.
     void DrawCountBadge(int count);
 
+    // The type marker in front of a hierarchy row, in a fixed-width slot so
+    // the names line up: `icon` (a Font Awesome glyph) when the icon font
+    // loaded, otherwise the bracketed `fallback`. `color` is for the dark
+    // theme and is darkened for the light one. Defined in MapEditorUI.cpp.
+    void DrawHierarchyTypeIcon(const char* icon, const char* fallback, const ImVec4& color);
+
+    // Square "clear" button for the end of a search field: an X icon when
+    // the icon font loaded, otherwise a plain "x". Defined in MapEditorUI.cpp.
+    bool ClearSearchButton(const char* id);
+
     // Hierarchy row text for both editors: "Name  (#id)" once the object
     // is named, "Sector #id" / "Wall #id" until then. Always the stable
     // ID, so it matches the inspector header. Defined in MapEditorUI.cpp.

@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include "imgui.h"
+#include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -829,6 +830,20 @@ end
             case AssetKind::Flipbook: return "fpk";
             case AssetKind::Font: return LowerCopy(entry.GetPath().extension().string());
             default: return "file";
+        }
+    }
+
+    // Font Awesome glyph for a tile without a thumbnail.
+    const char* EntryIcon(const AssetEntry& entry) {
+        if (entry.GetType() == AssetEntryType::Level) return ICON_FA_MAP;
+
+        switch (entry.GetAssetKind()) {
+            case AssetKind::Sound: return ICON_FA_FILE_AUDIO;
+            case AssetKind::Script: return ICON_FA_FILE_CODE;
+            case AssetKind::Model: return ICON_FA_CUBE;
+            case AssetKind::Flipbook: return ICON_FA_FILM;
+            case AssetKind::Font: return ICON_FA_FONT;
+            default: return ICON_FA_FILE;
         }
     }
 
@@ -1968,7 +1983,29 @@ void AssetBrowser::DrawBreadcrumbs() {
     const bool atRoot = (currentDirectory == rootDirectory);
 
     ImGui::BeginDisabled(atRoot);
-    if (ImGui::Button("^ Up"))
+    bool upPressed;
+
+    if (iconFont != nullptr) {
+        // Icon and word as one button: the arrow from the icon font, the
+        // rest in the normal font, laid out by hand inside the frame.
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+        const float iconSize = ImGui::GetFontSize() * 0.75f;
+        const ImVec2 textSize = ImGui::CalcTextSize("Up");
+        const ImVec2 padding = ImGui::GetStyle().FramePadding;
+        const float gap = 5.0f;
+
+        upPressed = ImGui::Button("##Up", ImVec2(padding.x * 2.0f + iconSize + gap + textSize.x, ImGui::GetFrameHeight()));
+
+        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(iconFont, iconSize,
+                          ImVec2(cursor.x + padding.x, cursor.y + (ImGui::GetFrameHeight() - iconSize) * 0.5f),
+                          textColor, ICON_FA_ARROW_UP);
+        drawList->AddText(ImVec2(cursor.x + padding.x + iconSize + gap, cursor.y + padding.y), textColor, "Up");
+    }
+    else upPressed = ImGui::Button("^ Up");
+
+    if (upPressed)
         NavigateToParent();
     ImGui::EndDisabled();
 
@@ -2020,11 +2057,23 @@ void AssetBrowser::DrawBreadcrumbs() {
 }
 
 void AssetBrowser::DrawSearchBar() {
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
+    const float clearSize = ImGui::GetFrameHeight();
+
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - clearSize - 4.0f);
     ImGui::InputTextWithHint("##AssetBrowserSearch", "Search this folder...", searchBuffer, sizeof(searchBuffer));
 
     ImGui::SameLine(0.0f, 4.0f);
-    if (ImGui::SmallButton("x")) searchBuffer[0] = '\0';
+
+    bool clearPressed;
+
+    if (iconFont != nullptr) {
+        ImGui::PushFont(iconFont, ImGui::GetFontSize() * 0.75f);
+        clearPressed = ImGui::Button(ICON_FA_XMARK "##ClearSearch", ImVec2(clearSize, clearSize));
+        ImGui::PopFont();
+    }
+    else clearPressed = ImGui::Button("x##ClearSearch", ImVec2(clearSize, clearSize));
+
+    if (clearPressed) searchBuffer[0] = '\0';
 }
 
 bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDirectory) {
@@ -2209,34 +2258,61 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     if (!isDirectory && thumbnailProvider)
         if (const std::optional<std::string> reference = entry.GetThumbnailReference()) texture = thumbnailProvider(*reference);
 
+    // A big icon centred in the tile, `caption` under it (if any).
+    const auto drawTileIcon = [&](const char* icon, const ImU32 color, const char* caption) {
+        ImGui::PushFont(iconFont, tileSize * 0.42f);
+        const ImVec2 iconSize = ImGui::CalcTextSize(icon);
+        ImGui::PopFont();
+
+        const ImVec2 captionSize = caption != nullptr ? ImGui::CalcTextSize(caption) : ImVec2(0.0f, 0.0f);
+        const float gap = caption != nullptr ? 2.0f : 0.0f;
+        const float top = topLeft.y + (tileSize - iconSize.y - gap - captionSize.y) * 0.5f;
+
+        drawList->AddText(iconFont, tileSize * 0.42f, ImVec2(topLeft.x + (tileSize - iconSize.x) * 0.5f, top), color, icon);
+
+        if (caption != nullptr)
+            drawList->AddText(
+                ImVec2(topLeft.x + (tileSize - captionSize.x) * 0.5f, top + iconSize.y + gap),
+                IM_COL32(220, 220, 220, 255),
+                caption
+            );
+    };
+
     if (texture != ImTextureID{}) drawList->AddImage(texture, topLeft, boxMax);
     else if (isDirectory) {
-        drawList->AddRectFilled(topLeft, boxMax, IM_COL32(90, 78, 45, 255), 4.0f);
-        drawList->AddRect(topLeft, boxMax, IM_COL32(150, 130, 80, 255), 4.0f);
+        if (iconFont != nullptr) drawTileIcon(ICON_FA_FOLDER, IM_COL32(232, 188, 84, 255), nullptr);
+        else {
+            drawList->AddRectFilled(topLeft, boxMax, IM_COL32(90, 78, 45, 255), 4.0f);
+            drawList->AddRect(topLeft, boxMax, IM_COL32(150, 130, 80, 255), 4.0f);
 
-        constexpr const char* folderLabel = "[dir]";
-        const ImVec2 folderLabelSize = ImGui::CalcTextSize(folderLabel);
-        drawList->AddText(
-            ImVec2(topLeft.x + (tileSize - folderLabelSize.x) * 0.5f, topLeft.y + (tileSize - folderLabelSize.y) * 0.5f),
-            IM_COL32(230, 220, 190, 255),
-            folderLabel
-        );
+            constexpr const char* folderLabel = "[dir]";
+            const ImVec2 folderLabelSize = ImGui::CalcTextSize(folderLabel);
+            drawList->AddText(
+                ImVec2(topLeft.x + (tileSize - folderLabelSize.x) * 0.5f, topLeft.y + (tileSize - folderLabelSize.y) * 0.5f),
+                IM_COL32(230, 220, 190, 255),
+                folderLabel
+            );
+        }
     }
     else {
         drawList->AddRectFilled(topLeft, boxMax, EntryTileTint(entry), 4.0f);
-        drawList->AddRect(topLeft, boxMax, IM_COL32(150, 150, 150, 255), 4.0f);
+        drawList->AddRect(topLeft, boxMax, IM_COL32(150, 150, 150, 120), 4.0f);
 
         const std::string tag = EntryVisualTag(entry);
-        const ImVec2 tagSize = ImGui::CalcTextSize(tag.c_str());
-        drawList->AddText(
-            {topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f},
-            IM_COL32(220, 220, 220, 255),
-            tag.c_str()
-        );
+
+        if (iconFont != nullptr) drawTileIcon(EntryIcon(entry), IM_COL32(235, 235, 235, 255), tag.c_str());
+        else {
+            const ImVec2 tagSize = ImGui::CalcTextSize(tag.c_str());
+            drawList->AddText(
+                {topLeft.x + (tileSize - tagSize.x) * 0.5f, topLeft.y + (tileSize - tagSize.y) * 0.5f},
+                IM_COL32(220, 220, 220, 255),
+                tag.c_str()
+            );
+        }
     }
 
     if (isSelected)
-        drawList->AddRect(topLeft, boxMax, IM_COL32(90, 170, 250, 255), 4.0f, 0, 2.5f);
+        drawList->AddRect(topLeft, boxMax, ImGui::GetColorU32(ImGuiCol_CheckMark), 4.0f, 0, 2.5f);
 
     if (isDropHighlighted)
         drawList->AddRect(topLeft, boxMax, IM_COL32(120, 220, 120, 255), 4.0f, 0, 3.0f);
@@ -2246,7 +2322,7 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
 
     drawList->AddText(
         {topLeft.x + (tileSize - nameSize.x) * 0.5f, topLeft.y + tileSize + 4.0f},
-        IM_COL32(220, 220, 220, 255),
+        ImGui::GetColorU32(ImGuiCol_Text),
         name.c_str()
     );
 

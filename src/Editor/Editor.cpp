@@ -118,7 +118,10 @@ namespace Editor {
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-        io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(),18.0f);
+        // The editor's own text font. The script editor's monospace font is
+        // added first, so without this it would be the default for the whole UI.
+        if (ImFont* uiFont = io.Fonts->AddFontFromFileTTF(fontPath.string().c_str(), 18.0f))
+            io.FontDefault = uiFont;
 
         // Toolbar icons. Loaded on its own (not merged into the text font) so
         // only the toolbar pushes it.

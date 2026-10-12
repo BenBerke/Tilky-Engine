@@ -7,6 +7,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include "Headers/Objects/Wall.hpp"
@@ -273,7 +274,7 @@ bool OpenGL::InitImGui() const {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    ImGui::StyleColorsDark();
+    EditorStyle::ApplyDark();
 
     ImGui_ImplSDL3_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init("#version 430");

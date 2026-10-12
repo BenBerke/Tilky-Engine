@@ -333,6 +333,10 @@ public:
     // predetermined path.
     void SetRootDirectory(const std::filesystem::path& root);
 
+    // Font Awesome font for the folder/file tile icons. Without one (the
+    // runtime editor) tiles keep their text labels.
+    void SetIconFont(ImFont* font) { iconFont = font; }
+
     // Re-scans the CURRENT directory only. Safe to call any time from
     // outside the entries grid's own draw pass - e.g. from a user-facing
     // "Refresh" button after files changed on disk, or after this
@@ -573,6 +577,8 @@ private:
     char searchBuffer[128] = "";
 
     std::filesystem::path selectedFile;
+
+    ImFont* iconFont = nullptr;
 
     std::optional<std::filesystem::path> pendingConfirmedPath;
     AssetKind pendingConfirmedKind = AssetKind::Other;

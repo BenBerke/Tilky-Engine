@@ -5,6 +5,7 @@
 #include "../EditorInternal.hpp"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -21,6 +22,7 @@
 
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
+#include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
@@ -63,20 +65,53 @@ static void PushSuccessStyle() {
 static void PopSuccessStyle() { ImGui::PopStyleColor(3); }
 
 static void PushAccentStyle() {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.13f, 0.28f, 0.52f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Button, EditorStyle::AccentShade(-0.15f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, EditorStyle::Accent());
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, EditorStyle::AccentShade(-0.30f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
 }
 
-static void PopAccentStyle() { ImGui::PopStyleColor(3); }
+static void PopAccentStyle() { ImGui::PopStyleColor(4); }
 
-// Coloured ">> Label" used as a lightweight section heading.
+// One button of a pick-one group (modes, drawing tools): the selected one in
+// the accent colour, the others in the theme's normal button colours.
+static void PushToggleStyle(const bool selected) {
+    if (selected) {
+        PushAccentStyle();
+        return;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Button));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+}
+
+static void PopToggleStyle() { ImGui::PopStyleColor(4); }
+
+// Accent-barred label used as a lightweight section heading.
 static void SectionHeader(const char *label) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.75f, 1.00f, 1.00f));
-    ImGui::TextUnformatted(">>");
-    ImGui::PopStyleColor();
-    ImGui::SameLine(0.0f, 6.0f);
+    // A short accent bar in front of the label, in the theme's accent colour.
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const float height = ImGui::GetTextLineHeight();
+
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImVec2(start.x, start.y + 1.0f),
+        ImVec2(start.x + 3.0f, start.y + height - 1.0f),
+        ImGui::GetColorU32(ImGuiCol_CheckMark),
+        1.5f
+    );
+
+    ImGui::Indent(10.0f);
     ImGui::TextUnformatted(label);
+    ImGui::Unindent(10.0f);
+}
+
+// Grey help text that wraps to the panel instead of running off its edge.
+static void HintText(const char *text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
 }
 
 // Tooltip shown after a short hover. Call immediately after the widget.
@@ -290,16 +325,68 @@ namespace MapEditorInternal {
         char buf[16];
         std::snprintf(buf, sizeof(buf), " %d ", count);
 
+        ImVec4 badge = EditorStyle::Accent();
+        badge.w = 0.55f;
+
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.38f, 0.60f, 0.80f));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.92f, 1.00f, 1.00f));
+        ImGui::PushStyleColor(ImGuiCol_Button, badge);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, badge);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, badge);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 1.0f));
         ImGui::SmallButton(buf);
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(4);
+    }
+
+    void DrawHierarchyTypeIcon(const char *icon, const char *fallback, const ImVec4 &color) {
+        // Pastel colours read well on the dark theme but wash out on the
+        // light one, so darken them when the window background is light.
+        const ImVec4 &background = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+        const bool lightTheme = background.x + background.y + background.z > 1.5f;
+        const ImVec4 shown = lightTheme
+                                 ? ImVec4(color.x * 0.55f, color.y * 0.55f, color.z * 0.55f, color.w)
+                                 : color;
+
+        if (editorIconFont == nullptr) {
+            ImGui::PushStyleColor(ImGuiCol_Text, shown);
+            ImGui::TextUnformatted(fallback);
+            ImGui::PopStyleColor();
+            return;
+        }
+
+        const float slotWidth = ImGui::GetFontSize() * 1.2f;
+        const float lineHeight = ImGui::GetTextLineHeight();
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+
+        ImGui::PushFont(editorIconFont, ImGui::GetFontSize() * 0.8f);
+        const ImVec2 iconSize = ImGui::CalcTextSize(icon);
+        ImGui::GetWindowDrawList()->AddText(
+            ImVec2(start.x + (slotWidth - iconSize.x) * 0.5f, start.y + (lineHeight - iconSize.y) * 0.5f),
+            ImGui::GetColorU32(shown),
+            icon
+        );
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(slotWidth, lineHeight));
+    }
+
+    bool ClearSearchButton(const char *id) {
+        ImGui::PushID(id);
+
+        const float size = ImGui::GetFrameHeight();
+        bool pressed;
+
+        if (editorIconFont != nullptr) {
+            ImGui::PushFont(editorIconFont, ImGui::GetFontSize() * 0.75f);
+            pressed = ImGui::Button(ICON_FA_XMARK, ImVec2(size, size));
+            ImGui::PopFont();
+        }
+        else pressed = ImGui::Button("x", ImVec2(size, size));
+
+        ImGui::PopID();
+        return pressed;
     }
 
     // Makes the hierarchy row just drawn draggable onto a matching
@@ -713,7 +800,7 @@ namespace {
             }
 
             HoverTooltip(Get("settings.rendering.tooltip.texture_preset").c_str());
-            ImGui::TextDisabled("%s", Get(selectedPreset->tooltipKey).c_str());
+            HintText(Get(selectedPreset->tooltipKey).c_str());
         }
 
         ImGui::End();
@@ -726,57 +813,74 @@ namespace {
 
     void DrawLevelsChildPanel() {
         const float childHeight = std::min(
-            static_cast<float>(Editor::maps.size()) * 28.0f + 8.0f,
+            static_cast<float>(Editor::maps.size()) * ImGui::GetFrameHeightWithSpacing() +
+            ImGui::GetStyle().WindowPadding.y * 2.0f,
             180.0f
         );
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.14f, 1.00f));
+        ImVec4 listBackground = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+        listBackground.w *= 0.45f;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, listBackground);
         ImGui::BeginChild("##LevelsList", ImVec2(0.0f, childHeight), /*border=*/true);
 
         if (Editor::maps.empty()) {
             ImGui::TextDisabled("%s", Get("levels.none_found").c_str());
         }
 
-        for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
-            ImGui::PushID(i);
+        // Name column stretches and clips; the buttons keep their own column,
+        // so a long level name can no longer run underneath them.
+        if (!Editor::maps.empty() && ImGui::BeginTable("##LevelsTable", 2, ImGuiTableFlags_None)) {
+            constexpr float buttonWidth = 52.0f;
 
-            const std::string &name = Editor::maps[i];
-            const bool isCurrent = (Editor::currentMap == name);
+            ImGui::TableSetupColumn("##Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed,
+                                    buttonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x);
 
-            // Accent the active level name
-            if (isCurrent)
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 1.00f, 1.00f));
+            for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
+                ImGui::PushID(i);
 
-            const float available = ImGui::GetContentRegionAvail().x;
-            const float buttonWidth = 52.0f;
+                const std::string &name = Editor::maps[i];
+                const bool isCurrent = (Editor::currentMap == name);
 
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("  %s%s", isCurrent ? "* " : "  ", name.c_str());
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
 
-            if (isCurrent) ImGui::PopStyleColor();
+                // Accent the active level name
+                if (isCurrent) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
-            ImGui::SameLine(available - buttonWidth * 2.0f - 4.0f);
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("%s%s", isCurrent ? "* " : "  ", name.c_str());
 
-            PushAccentStyle();
-            if (ImGui::Button(Get("levels.load_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                if (!Editor::currentMap.empty()) Save(Editor::currentMap);
-                QueueLevelLoad(name);
-                spdlog::info("Queued level load: {}", name);
+                if (isCurrent) ImGui::PopStyleColor();
+
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", name.c_str());
+
+                ImGui::TableNextColumn();
+
+                PushAccentStyle();
+                if (ImGui::Button(Get("levels.load_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                    if (!Editor::currentMap.empty()) Save(Editor::currentMap);
+                    QueueLevelLoad(name);
+                    spdlog::info("Queued level load: {}", name);
+                }
+                PopAccentStyle();
+                HoverTooltip(Get("levels.tooltip.load").c_str());
+
+                ImGui::SameLine();
+
+                PushDangerStyle();
+                if (ImGui::Button(Get("levels.delete_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
+                    deleteLevelPending = name;
+                    deleteLevelConfirmOpen = true;
+                }
+                PopDangerStyle();
+                HoverTooltip(Get("levels.tooltip.delete").c_str());
+
+                ImGui::PopID();
             }
-            PopAccentStyle();
-            HoverTooltip(Get("levels.tooltip.load").c_str());
 
-            ImGui::SameLine();
-
-            PushDangerStyle();
-            if (ImGui::Button(Get("levels.delete_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                deleteLevelPending = name;
-                deleteLevelConfirmOpen = true;
-            }
-            PopDangerStyle();
-            HoverTooltip(Get("levels.tooltip.delete").c_str());
-
-            ImGui::PopID();
+            ImGui::EndTable();
         }
 
         ImGui::EndChild();
@@ -913,11 +1017,15 @@ namespace {
         std::optional<std::pair<std::string, TagId> > tagPendingDeletion;
 
         const float childHeight = std::min(
-            static_cast<float>(sortedTags.size()) * 28.0f + 8.0f,
+            static_cast<float>(sortedTags.size()) * ImGui::GetFrameHeightWithSpacing() +
+            ImGui::GetStyle().WindowPadding.y * 2.0f,
             180.0f
         );
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.14f, 1.00f));
+        ImVec4 listBackground = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+        listBackground.w *= 0.45f;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, listBackground);
         ImGui::BeginChild("##TagsList", ImVec2(0.0f, std::max(childHeight, 32.0f)), /*border=*/true);
 
         if (sortedTags.empty())
@@ -1638,12 +1746,12 @@ namespace {
         ImGui::Begin(Get("editor.hierarchy").c_str());
 
         // Search bar
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 4.0f);
         ImGui::InputText("##HierarchySearch", hierarchySearchBuf, sizeof(hierarchySearchBuf));
         HoverTooltip(Get("editor.hierarchy.tooltip.filter").c_str());
 
         ImGui::SameLine(0.0f, 4.0f);
-        if (ImGui::SmallButton("x")) hierarchySearchBuf[0] = '\0';
+        if (ClearSearchButton("ClearHierarchySearch")) hierarchySearchBuf[0] = '\0';
         HoverTooltip(Get("editor.hierarchy.tooltip.clear_filter").c_str());
 
         const std::string searchLower = [&] {
@@ -1720,9 +1828,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(sector.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
-                    ImGui::TextUnformatted("[S]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(ICON_FA_DRAW_POLYGON, "[S]", ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
 
                     ImGui::SameLine(0.0f, 6.0f);
 
@@ -1794,9 +1900,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(wall.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
-                    ImGui::TextUnformatted("[W]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(ICON_FA_GRIP_LINES_VERTICAL, "[W]", ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
 
                     ImGui::SameLine(0.0f, 6.0f);
 
@@ -1861,7 +1965,7 @@ namespace {
         // normal entity (scripts, tags, ...), the UI Editor just owns its
         // on-screen layout.
         auto drawEntitySection = [&](const std::string &header, const bool uiEntities,
-                                     const char *tag, const ImVec4 &tagColor) {
+                                     const char *icon, const char *tag, const ImVec4 &tagColor) {
             int count = 0;
             for (Entity &entity: level.entities)
                 if (entity.HasComponent<ComponentUITransform>() == uiEntities) ++count;
@@ -1882,9 +1986,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(entity.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, tagColor);
-                    ImGui::TextUnformatted(tag);
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(icon, tag, tagColor);
 
                     ImGui::SameLine(0.0f, 6.0f);
 
@@ -1942,8 +2044,8 @@ namespace {
             }
         };
 
-        drawEntitySection(Get("editor.hierarchy.entities"), false, "[E]", ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
-        drawEntitySection(Get("editor.hierarchy.ui_entities"), true, "[UI]", ImVec4(0.95f, 0.80f, 1.00f, 1.00f));
+        drawEntitySection(Get("editor.hierarchy.entities"), false, ICON_FA_CUBE, "[E]", ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
+        drawEntitySection(Get("editor.hierarchy.ui_entities"), true, ICON_FA_DISPLAY, "[UI]", ImVec4(0.95f, 0.80f, 1.00f, 1.00f));
 
         // Dots deliberately have no hierarchy section: they are internal
         // snap anchors, not user-facing objects (see EditorInternal.hpp).
@@ -1964,16 +2066,7 @@ namespace {
         {
             const bool active = (currentMode == MODE_GEOMETRY);
 
-            if (active) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            }
-            else {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
-            }
+            PushToggleStyle(active);
 
             if (ImGui::Button(Get("mode.geometry").c_str(), ImVec2(buttonWidth, 0.0f))) {
                 if (currentMode != MODE_GEOMETRY) {
@@ -1984,7 +2077,7 @@ namespace {
                 }
             }
 
-            ImGui::PopStyleColor(3);
+            PopToggleStyle();
         }
 
         ImGui::SameLine(0.0f, 4.0f);
@@ -1993,20 +2086,12 @@ namespace {
         {
             const bool active = (currentMode == MODE_SECTOR);
 
-            if (active) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
-            }
+            PushToggleStyle(active);
 
             if (ImGui::Button(Get("mode.sector").c_str(), ImVec2(buttonWidth, 0.0f)))
                 if (currentMode != MODE_SECTOR) currentMode = MODE_SECTOR;
 
-            ImGui::PopStyleColor(3);
+            PopToggleStyle();
         }
 
         ImGui::SameLine(0.0f, 4.0f);
@@ -2015,15 +2100,7 @@ namespace {
         {
             const bool active = (currentMode == MODE_ENTITY);
 
-            if (active) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
-            }
+            PushToggleStyle(active);
 
             if (ImGui::Button(Get("mode.entity").c_str(), ImVec2(buttonWidth, 0.0f))) {
                 if (currentMode != MODE_ENTITY) {
@@ -2034,7 +2111,7 @@ namespace {
                 }
             }
 
-            ImGui::PopStyleColor(3);
+            PopToggleStyle();
         }
 
         // In-progress sector chain reminder
@@ -2048,7 +2125,7 @@ namespace {
                                                 : Get("editor.sector_chain_placing_plural");
 
             ImGui::Text(placingText.c_str(), n);
-            ImGui::TextDisabled("%s", Get("editor.sector_chain_hint").c_str());
+            HintText(Get("editor.sector_chain_hint").c_str());
             ImGui::PopStyleColor();
         }
     }
@@ -2620,6 +2697,7 @@ namespace {
         // browser rather than wiring it through Editor::Start().
         if (!assetBrowserInitialized) {
             assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
+            assetBrowser.SetIconFont(editorIconFont);
             assetBrowserInitialized = true;
         }
 
@@ -2858,60 +2936,8 @@ namespace MapEditorInternal {
     }
 
     void ApplyEditorTheme(const EditorTheme theme) {
-        if (theme == THEME_DARK) {
-            ImGui::StyleColorsDark();
-            return;
-        }
-
-        ImGui::StyleColorsLight();
-
-        ImGuiStyle &style = ImGui::GetStyle();
-        ImVec4 *colors = style.Colors;
-
-        colors[ImGuiCol_Text] = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
-        colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.45f, 0.47f, 1.00f);
-        colors[ImGuiCol_WindowBg] = ImVec4(0.94f, 0.94f, 0.95f, 1.00f);
-        colors[ImGuiCol_ChildBg] = ImVec4(0.97f, 0.97f, 0.98f, 1.00f);
-        colors[ImGuiCol_PopupBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
-        colors[ImGuiCol_Border] = ImVec4(0.55f, 0.55f, 0.58f, 0.60f);
-        colors[ImGuiCol_FrameBg] = ImVec4(0.86f, 0.86f, 0.88f, 1.00f);
-        colors[ImGuiCol_FrameBgHovered] = ImVec4(0.78f, 0.84f, 0.97f, 1.00f);
-        colors[ImGuiCol_FrameBgActive] = ImVec4(0.68f, 0.78f, 0.97f, 1.00f);
-        colors[ImGuiCol_TitleBg] = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
-        colors[ImGuiCol_TitleBgActive] = ImVec4(0.70f, 0.78f, 0.95f, 1.00f);
-        colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.90f, 0.90f, 0.91f, 0.75f);
-        colors[ImGuiCol_MenuBarBg] = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
-        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.90f, 0.90f, 0.91f, 1.00f);
-        colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.65f, 0.65f, 0.68f, 1.00f);
-        colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.55f, 0.55f, 0.58f, 1.00f);
-        colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.45f, 0.45f, 0.48f, 1.00f);
-        colors[ImGuiCol_CheckMark] = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
-        colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.55f, 0.90f, 1.00f);
-        colors[ImGuiCol_SliderGrabActive] = ImVec4(0.20f, 0.45f, 0.85f, 1.00f);
-        colors[ImGuiCol_Button] = ImVec4(0.82f, 0.82f, 0.85f, 1.00f);
-        colors[ImGuiCol_ButtonHovered] = ImVec4(0.72f, 0.80f, 0.96f, 1.00f);
-        colors[ImGuiCol_ButtonActive] = ImVec4(0.60f, 0.72f, 0.95f, 1.00f);
-        colors[ImGuiCol_Header] = ImVec4(0.75f, 0.80f, 0.93f, 1.00f);
-        colors[ImGuiCol_HeaderHovered] = ImVec4(0.68f, 0.76f, 0.95f, 1.00f);
-        colors[ImGuiCol_HeaderActive] = ImVec4(0.58f, 0.70f, 0.95f, 1.00f);
-        colors[ImGuiCol_Separator] = ImVec4(0.60f, 0.60f, 0.63f, 0.60f);
-        colors[ImGuiCol_SeparatorHovered] = ImVec4(0.40f, 0.55f, 0.85f, 0.78f);
-        colors[ImGuiCol_SeparatorActive] = ImVec4(0.30f, 0.50f, 0.85f, 1.00f);
-        colors[ImGuiCol_ResizeGrip] = ImVec4(0.60f, 0.60f, 0.63f, 0.40f);
-        colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.40f, 0.55f, 0.85f, 0.65f);
-        colors[ImGuiCol_ResizeGripActive] = ImVec4(0.30f, 0.50f, 0.85f, 0.90f);
-        colors[ImGuiCol_Tab] = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
-        colors[ImGuiCol_TabHovered] = ImVec4(0.70f, 0.78f, 0.96f, 1.00f);
-        colors[ImGuiCol_TabActive] = ImVec4(0.72f, 0.80f, 0.97f, 1.00f);
-        colors[ImGuiCol_TabUnfocused] = ImVec4(0.85f, 0.85f, 0.87f, 1.00f);
-        colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.80f, 0.84f, 0.93f, 1.00f);
-        colors[ImGuiCol_DockingPreview] = ImVec4(0.30f, 0.50f, 0.85f, 0.55f);
-        colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.88f, 0.88f, 0.90f, 1.00f);
-        colors[ImGuiCol_PlotLines] = ImVec4(0.30f, 0.30f, 0.33f, 1.00f);
-        colors[ImGuiCol_PlotHistogram] = ImVec4(0.80f, 0.55f, 0.10f, 1.00f);
-        colors[ImGuiCol_TextSelectedBg] = ImVec4(0.30f, 0.55f, 0.90f, 0.35f);
-        colors[ImGuiCol_DragDropTarget] = ImVec4(0.90f, 0.70f, 0.10f, 0.90f);
-        colors[ImGuiCol_NavHighlight] = ImVec4(0.30f, 0.55f, 0.90f, 0.80f);
+        if (theme == THEME_DARK) EditorStyle::ApplyDark();
+        else EditorStyle::ApplyLight();
     }
 
     void QueueLevelLoad(const std::string &levelName) {
@@ -3012,32 +3038,24 @@ namespace MapEditorInternal {
                                                  ? Get("editor.geometry.selected_singular")
                                                  : Get("editor.geometry.selected_plural");
 
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.86f, 1.00f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
             ImGui::Text(selectedText.c_str(), selectedCount);
             ImGui::PopStyleColor();
         }
 
-        ImGui::TextDisabled("%s", Get("editor.geometry.hint.select").c_str());
-        ImGui::TextDisabled("%s", Get("editor.geometry.hint.drag").c_str());
-        ImGui::TextDisabled("%s", Get("editor.geometry.hint.delete").c_str());
+        HintText(Get("editor.geometry.hint.select").c_str());
+        HintText(Get("editor.geometry.hint.drag").c_str());
+        HintText(Get("editor.geometry.hint.delete").c_str());
     }
 
     void DrawToolButton(const char *label, const DrawTool tool, const float width) {
         const bool active = (currentDrawTool == tool);
 
-        if (active) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.26f, 0.26f, 0.32f, 1.00f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.68f, 0.82f, 1.00f));
-        }
+        PushToggleStyle(active);
 
         if (ImGui::Button(label, ImVec2(width, 0.0f))) SetActiveDrawTool(tool);
 
-        ImGui::PopStyleColor(3);
+        PopToggleStyle();
     }
 
     // Staircase tool's settings: calculation mode, only the fields that
@@ -3126,7 +3144,7 @@ namespace MapEditorInternal {
         HoverTooltip(Get("editor.tooltip.staircase.reverse_rise").c_str());
 
         ImGui::Spacing();
-        ImGui::TextDisabled("%s", Get("editor.draw.hint.staircase").c_str());
+        HintText(Get("editor.draw.hint.staircase").c_str());
 
         // ---- Live calculated values - same plan the preview draws ------
         if (!staircaseHasFirstCorner) return;
@@ -3229,13 +3247,13 @@ namespace MapEditorInternal {
                     if (ImGui::Button(Get("editor.manual_sector.clear_selected_dots").c_str()))
                         ClearManualSectorSelection();
                     ImGui::EndDisabled();
-                } else ImGui::TextDisabled("%s", Get("editor.draw.hint.freehand").c_str());
+                } else HintText(Get("editor.draw.hint.freehand").c_str());
 
                 break;
             }
 
             case DRAWTOOL_RECTANGLE:
-                ImGui::TextDisabled("%s", Get("editor.draw.hint.rectangle").c_str());
+                HintText(Get("editor.draw.hint.rectangle").c_str());
                 break;
 
             case DRAWTOOL_POLYGON: {
@@ -3254,7 +3272,7 @@ namespace MapEditorInternal {
                 if (ImGui::Button(Get("editor.draw.hexagon").c_str())) polygonSideCount = 6;
                 HoverTooltip(Get("editor.tooltip.draw.hexagon").c_str());
 
-                ImGui::TextDisabled("%s", Get("editor.draw.hint.polygon").c_str());
+                HintText(Get("editor.draw.hint.polygon").c_str());
                 break;
             }
 
@@ -3269,7 +3287,7 @@ namespace MapEditorInternal {
                 circleSegments = std::max(circleSegments, 3);
                 HoverTooltip(Get("editor.tooltip.draw.segments").c_str());
 
-                ImGui::TextDisabled("%s", Get("editor.draw.hint.circle").c_str());
+                HintText(Get("editor.draw.hint.circle").c_str());
                 break;
 
             case DRAWTOOL_CURVE:
@@ -3283,7 +3301,7 @@ namespace MapEditorInternal {
                 curveSubdivisions = std::max(curveSubdivisions, 1);
                 HoverTooltip(Get("editor.tooltip.draw.subdivisions").c_str());
 
-                ImGui::TextDisabled("%s", Get("editor.draw.hint.curve").c_str());
+                HintText(Get("editor.draw.hint.curve").c_str());
                 break;
 
             case DRAWTOOL_STAIRCASE:
@@ -3295,23 +3313,23 @@ namespace MapEditorInternal {
 
         ImGui::Spacing();
 
-        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.general").c_str());
+        HintText(Get("editor.draw.shortcuts.general").c_str());
 
         // Ctrl's meaning is the same for every tool (temporarily ignore
         // the grid - see ResolveSnapPointExcluding), so it's shown
         // unconditionally; Shift's meaning is tool-specific.
-        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.no_snap").c_str());
+        HintText(Get("editor.draw.shortcuts.no_snap").c_str());
 
         if (currentDrawTool == DRAWTOOL_STAIRCASE) {
-            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.staircase_constrain").c_str());
-            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.staircase_reverse").c_str());
+            HintText(Get("editor.draw.shortcuts.staircase_constrain").c_str());
+            HintText(Get("editor.draw.shortcuts.staircase_reverse").c_str());
         }
-        else ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.constrain").c_str());
+        else HintText(Get("editor.draw.shortcuts.constrain").c_str());
 
         if (currentDrawTool == DRAWTOOL_POLYGON)
-            ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.sides").c_str());
+            HintText(Get("editor.draw.shortcuts.sides").c_str());
 
-        ImGui::TextDisabled("%s", Get("editor.draw.shortcuts.tools").c_str());
+        HintText(Get("editor.draw.shortcuts.tools").c_str());
     }
 
     // =========================================================================
@@ -3327,9 +3345,22 @@ namespace MapEditorInternal {
 
         Level &level = LevelManager::CurrentLevel();
 
-        // Append * to the title bar when the level has unsaved changes
+        // Append * to the title bar when the level has unsaved changes. The
+        // ### part keeps the window's ID the same either way, so it doesn't
+        // jump to a different saved position when the * appears.
         std::string panelTitle = Get("editor.title");
         if (hasUnsavedChanges) panelTitle += "  *";
+        panelTitle += "###EditorPanel";
+
+        // Layouts saved before the ### ID still have this panel under its
+        // plain title; start it there instead of at the default spot. Only
+        // matters until the new ID has saved settings of its own.
+        if (const ImGuiWindowSettings *previous = ImGui::FindWindowSettingsByID(ImHashStr(Get("editor.title").c_str()))) {
+            // Saved positions are relative to the viewport they were saved in.
+            const ImVec2 position(previous->ViewportPos.x + previous->Pos.x, previous->ViewportPos.y + previous->Pos.y);
+            ImGui::SetNextWindowPos(position, ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(previous->Size.x, previous->Size.y), ImGuiCond_FirstUseEver);
+        }
 
         ImGui::Begin(panelTitle.c_str());
 
@@ -3339,13 +3370,9 @@ namespace MapEditorInternal {
         DrawMode();
         ImGui::Spacing();
 
-        // ---- Theme / view toggles ----------------------------------------
+        // ---- View toggles -------------------------------------------------
         ImGui::Separator();
         ImGui::Spacing();
-
-        HoverTooltip(Get("editor.tooltip.theme_toggle").c_str());
-
-        ImGui::SameLine(0.0f, 16.0f);
 
         ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
         HoverTooltip(Get("editor.tooltip.texture_view_mode").c_str());
@@ -3524,22 +3551,14 @@ namespace MapEditorInternal {
         }
 
         // ---- Inspector ----------------------------------------------------
-        ImGui::Separator();
-        ImGui::Spacing();
+        // Each inspector is a window of its own, so nothing is drawn into
+        // this panel here.
         DrawSelectionInspectors(level);
-        ImGui::Spacing();
 
         // ---- Floor selector -----------------------------------------------
-        ImGui::Separator();
-        ImGui::Spacing();
-
         //ImGui::SetNextItemWidth(80.0f);
         //ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
         //HoverTooltip("Active editor floor / Z-layer.");
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
 
         ImGui::End();
 

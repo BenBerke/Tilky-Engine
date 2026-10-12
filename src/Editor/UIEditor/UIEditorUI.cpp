@@ -10,6 +10,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include "src/Editor/EditorInternal.hpp"
+#include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
@@ -47,11 +48,20 @@ namespace {
     // ---------------------------------------------------------------------
 
     void SectionHeader(const char* label) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.75f, 1.00f, 1.00f));
-        ImGui::TextUnformatted(">>");
-        ImGui::PopStyleColor();
-        ImGui::SameLine(0.0f, 6.0f);
+        // A short accent bar in front of the label, in the theme's accent colour.
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+        const float height = ImGui::GetTextLineHeight();
+
+        ImGui::GetWindowDrawList()->AddRectFilled(
+            ImVec2(start.x, start.y + 1.0f),
+            ImVec2(start.x + 3.0f, start.y + height - 1.0f),
+            ImGui::GetColorU32(ImGuiCol_CheckMark),
+            1.5f
+        );
+
+        ImGui::Indent(10.0f);
         ImGui::TextUnformatted(label);
+        ImGui::Unindent(10.0f);
     }
 
     void HoverTooltip(const char* text) {
@@ -1131,12 +1141,12 @@ namespace {
 
         Spacing();
 
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 28.0f);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 4.0f);
         ImGui::InputText("##UIHierarchySearch", uiHierarchySearchBuf, sizeof(uiHierarchySearchBuf));
         HoverTooltip(Get("editor.ui.hierarchy.tooltip_filter").c_str());
 
         ImGui::SameLine(0.0f, 4.0f);
-        if (ImGui::SmallButton("x")) uiHierarchySearchBuf[0] = '\0';
+        if (ClearSearchButton("ClearUIHierarchySearch")) uiHierarchySearchBuf[0] = '\0';
         HoverTooltip(Get("editor.ui.hierarchy.tooltip_clear_filter").c_str());
 
         const std::string searchLower = [&] {
@@ -1197,9 +1207,11 @@ namespace {
                     const bool hasText = entityText != nullptr && !entityText->text.empty();
                     const bool hasSprite = entitySprite != nullptr && !entitySprite->texture.empty();
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
-                    ImGui::TextUnformatted(hasText && hasSprite ? "[T+S]" : hasText ? "[T]" : hasSprite ? "[S]" : "[.]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(
+                        hasText && hasSprite ? ICON_FA_LAYER_GROUP : hasText ? ICON_FA_FONT : hasSprite ? ICON_FA_IMAGE : ICON_FA_SQUARE,
+                        hasText && hasSprite ? "[T+S]" : hasText ? "[T]" : hasSprite ? "[S]" : "[.]",
+                        ImVec4(0.70f, 0.85f, 1.00f, 1.00f)
+                    );
                     ImGui::SameLine(0.0f, 6.0f);
 
                     const bool selected = selectedUIEntityID == entity.id;
@@ -1244,9 +1256,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(sector.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
-                    ImGui::TextUnformatted("[S]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(ICON_FA_DRAW_POLYGON, "[S]", ImVec4(0.70f, 0.85f, 1.00f, 1.00f));
                     ImGui::SameLine(0.0f, 6.0f);
 
                     const bool selected = std::ranges::find(selectedSectors, sector.id) != selectedSectors.end();
@@ -1279,9 +1289,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(wall.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
-                    ImGui::TextUnformatted("[W]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(ICON_FA_GRIP_LINES_VERTICAL, "[W]", ImVec4(1.00f, 0.65f, 0.65f, 1.00f));
                     ImGui::SameLine(0.0f, 6.0f);
 
                     const bool selected = std::ranges::find(selectedWalls, wall.id) != selectedWalls.end();
@@ -1322,9 +1330,7 @@ namespace {
 
                     ImGui::PushID(static_cast<int>(entity.id));
 
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
-                    ImGui::TextUnformatted("[E]");
-                    ImGui::PopStyleColor();
+                    DrawHierarchyTypeIcon(ICON_FA_CUBE, "[E]", ImVec4(0.70f, 1.00f, 0.70f, 1.00f));
                     ImGui::SameLine(0.0f, 6.0f);
 
                     const bool selected = std::ranges::find(selectedEntities, entity.id) != selectedEntities.end();

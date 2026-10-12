@@ -621,7 +621,7 @@ namespace ImGuiDrawFunctions {
         ImVec2 size = ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeightWithSpacing() + style.FramePadding.y * 2.0f);
         ImDrawList *dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                          IM_COL32(60, 80, 110, 160), 4.0f);
+                          ImGui::GetColorU32(ImGuiCol_Header), 4.0f);
         ImGui::Indent(style.FramePadding.x);
         ImGui::Spacing();
         if (detail && detail[0] != '\0')
@@ -754,13 +754,13 @@ namespace ImGuiDrawFunctions {
     }
 
     // (No-op closer kept for readability parity)
-    inline void EndSection() { ImGui::Spacing(); }
+    void EndSection() { ImGui::Spacing(); }
 
     // Standard field input width – call before the next widget
-    inline void FieldWidth(const float width) { ImGui::SetNextItemWidth(width); }
+    void FieldWidth(const float width) { ImGui::SetNextItemWidth(width); }
 
     // Section header with SeparatorText (falls back gracefully)
-    inline void BeginSection(const char *label) {
+    void BeginSection(const char *label) {
         ImGui::Spacing();
         ImGui::SeparatorText(label);
     }
@@ -1674,7 +1674,7 @@ namespace ImGuiDrawFunctions {
 
             ImDrawList *dl = ImGui::GetWindowDrawList();
             dl->AddRectFilled(rowMin, ImVec2(rowMin.x + rowW, rowMin.y + rowH),
-                              IM_COL32(40, 50, 65, 130), 3.0f);
+                              ImGui::GetColorU32(ImGuiCol_FrameBg, 0.6f), 3.0f);
 
             ImGui::Spacing();
             ImGui::Indent(6.0f);
