@@ -754,13 +754,13 @@ namespace ImGuiDrawFunctions {
     }
 
     // (No-op closer kept for readability parity)
-    void EndSection() { ImGui::Spacing(); }
+    inline void EndSection() { ImGui::Spacing(); }
 
     // Standard field input width – call before the next widget
-    void FieldWidth(const float width) { ImGui::SetNextItemWidth(width); }
+    inline void FieldWidth(const float width) { ImGui::SetNextItemWidth(width); }
 
     // Section header with SeparatorText (falls back gracefully)
-    void BeginSection(const char *label) {
+    inline void BeginSection(const char *label) {
         ImGui::Spacing();
         ImGui::SeparatorText(label);
     }
@@ -2128,8 +2128,11 @@ namespace ImGuiDrawFunctions {
                 InputOrDrag(Get("component.player_controller.speed").c_str(), &c->speed, draggable);
                 FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.acceleration").c_str(), &c->acceleration, draggable);
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.deceleration").c_str(), &c->deceleration, draggable);
+                FieldWidth(160.0f);
                 InputOrDrag(Get("component.player_controller.air_control").c_str(), &c->airControl, draggable);
 
                 EndSection();
