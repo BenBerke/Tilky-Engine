@@ -452,7 +452,7 @@ Contributions are welcome. Bug reports, feature requests, documentation improvem
 
 * **Ilya Brezhnev** — Russian and Kazakh
 * **ThatGuyMiki** — Polish
-
+* **ZainX38** - Spanish
 ### Special Thanks
 
 * **Roger Peterson** — Community management, bug testing, and feature suggestions.
