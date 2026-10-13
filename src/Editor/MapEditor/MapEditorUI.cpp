@@ -1459,6 +1459,11 @@ namespace {
             }
             HoverTooltip(Get("editor.tooltip.user_settings.ui_design").c_str());
 
+            SectionHeader(Get("editor.user_settings.editor_controls").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+
             ImGui::SliderFloat(Get("editor.user_settings.camera_speed").c_str(), &cameraSpeed, MIN_CAM_SPEED, MAX_CAM_SPEED);
             ImGui::SliderFloat(Get("editor.user_settings.camera_step_size").c_str(), &cameraStepSize, MIN_STEP_SIZE, MAX_STEP_SIZE);
 
