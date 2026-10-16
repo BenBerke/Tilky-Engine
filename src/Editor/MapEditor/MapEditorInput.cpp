@@ -630,6 +630,40 @@ namespace MapEditorInternal {
         return editingEntity ? inspectorPinnedDuringCanvasDrag : INVALID_ID;
     }
 
+    // Copies the clipboard's entities that still exist. The primary lands
+    // under the cursor and the rest keep their offsets from it; heights are
+    // kept. The copies become the selection.
+    void PasteEntityClipboard(Level& level, const Vector2& mouseWorld) {
+        std::erase_if(entityClipboard, [&level](const ID id) { return level.GetEntity(id) == nullptr; });
+        if (entityClipboard.empty()) return;
+
+        // Offsets are measured from the first copied entity that has a transform.
+        const ComponentTransform* anchor = nullptr;
+        for (const ID id : entityClipboard)
+            if ((anchor = level.transforms.Get(id)) != nullptr) break;
+
+        const Vector2 offset = anchor != nullptr
+            ? Vector2{mouseWorld.x - anchor->position.x, mouseWorld.y - anchor->position.z}
+            : Vector2{0.0f, 0.0f};
+
+        std::vector<ID> pasted;
+        pasted.reserve(entityClipboard.size());
+
+        for (const ID id : entityClipboard) {
+            // CreateEntity can grow the entity list, so copy before calling it.
+            Entity original = *level.GetEntity(id);
+            const ID copyID = level.CreateEntity(original);
+
+            if (ComponentTransform* transform = level.transforms.Get(copyID))
+                transform->SetPosition({transform->position.x + offset.x, transform->position.y, transform->position.z + offset.y});
+
+            pasted.push_back(copyID);
+        }
+
+        SelectEntity(pasted.front());
+        selectedEntities = pasted;
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -859,15 +893,20 @@ namespace MapEditorInternal {
             actions.pop_back();
         }
 
-        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_C)) [[unlikely]] {
-            if (editingEntity || holdingEntity) {
-                entityInClipboard = selectedEntity;
-                hasEntityInClipboard = true;
-            }
-        }
+        // Not while a text field has the keyboard: Ctrl+C/V there are its own.
+        if (!keyboardBlockedByImgui && currentMode == MODE_ENTITY) {
+            if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_C) && !selectedEntities.empty()) [[unlikely]] {
+                // Any selection, not only a dragged or inspected entity.
+                // The primary goes first: paste places it under the cursor.
+                entityClipboard.assign(1, selectedEntity.id);
 
-        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]]
-            if (hasEntityInClipboard) level.CreateEntity(entityInClipboard);
+                for (const ID id : selectedEntities)
+                    if (id != selectedEntity.id) entityClipboard.push_back(id);
+            }
+
+            if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]]
+                PasteEntityClipboard(level, mouseWorld);
+        }
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) [[unlikely]] {
             if (!selectedEntities.empty()) {

@@ -888,7 +888,7 @@
   "editor.entity_mode.hint.edit": "Right click an entity to open its inspector.",
   "editor.entity_mode.hint.move": "Drag an entity with the left mouse button to move it. Dragging one entity in a selection moves all of them.",
   "editor.entity_mode.hint.select": "Ctrl/Shift click to multi-select. Click empty space to deselect. Delete removes the selected entities.",
-  "editor.entity_mode.hint.copy": "Ctrl+C copies the selected entity, Ctrl+V pastes a copy.",
+  "editor.entity_mode.hint.copy": "Ctrl+C copies the selected entities, Ctrl+V pastes them at the cursor.",
   "editor.entity_mode.hint.focus": "Press F to center the view on the selection.",
   "editor.project.tags": "Tags",
   "editor.project.ui": "UI",

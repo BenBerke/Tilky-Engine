@@ -55,8 +55,7 @@ namespace MapEditorInternal {
     bool shutdown = false;
     bool switchToRuntime = false;
 
-    bool hasEntityInClipboard = false;
-    Entity entityInClipboard;
+    std::vector<ID> entityClipboard;
 
     //-- Sector to be created variables
     std::string wallTopTexture;

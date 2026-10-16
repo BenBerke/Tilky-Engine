@@ -264,8 +264,9 @@ namespace MapEditorInternal {
     extern bool shutdown;
     extern bool switchToRuntime;
 
-    extern bool hasEntityInClipboard;
-    extern Entity entityInClipboard;
+    // Entities Ctrl+C copied, primary first. Ctrl+V copies whichever of
+    // them still exist, so it reflects edits made after copying.
+    extern std::vector<ID> entityClipboard;
 
     //-- Sector to be created variables
     extern std::string wallTopTexture;
