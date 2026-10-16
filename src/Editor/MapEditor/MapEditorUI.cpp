@@ -3063,6 +3063,23 @@ namespace MapEditorInternal {
         HintText(Get("editor.geometry.hint.delete").c_str());
     }
 
+    // Entity Mode's panel: just the controls, like Geometry Mode's.
+    void DrawEntityModePanel() {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        SectionHeader(Get("editor.entity_mode.title").c_str());
+        ImGui::Spacing();
+
+        HintText(Get("editor.entity_mode.hint.create").c_str());
+        HintText(Get("editor.entity_mode.hint.edit").c_str());
+        HintText(Get("editor.entity_mode.hint.move").c_str());
+        HintText(Get("editor.entity_mode.hint.select").c_str());
+        HintText(Get("editor.entity_mode.hint.copy").c_str());
+        HintText(Get("editor.entity_mode.hint.focus").c_str());
+    }
+
     void DrawToolButton(const char *label, const DrawTool tool, const float width) {
         const bool active = (currentDrawTool == tool);
 
@@ -3399,6 +3416,9 @@ namespace MapEditorInternal {
 
         // ---- Geometry Mode hints (only visible in Geometry mode) ---------
         if (currentMode == MODE_GEOMETRY) DrawGeometryModePanel();
+
+        // ---- Entity Mode hints (only visible in Entity mode) -------------
+        if (currentMode == MODE_ENTITY) DrawEntityModePanel();
 
         // ---- Sector creation params (only visible in Sector mode) ---------
         if (currentMode == MODE_SECTOR) {
