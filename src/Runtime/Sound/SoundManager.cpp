@@ -30,6 +30,9 @@ namespace {
     ALCcontext* context = nullptr;
 
     std::unordered_map<std::string, ALuint> buffers;
+    // When each buffer's file was last written, so GenerateSounds() only
+    // re-decodes files that changed since it last ran.
+    std::unordered_map<std::string, fs::file_time_type> bufferWriteTimes;
     std::unordered_map<std::string, ALuint> sources;
 
     bool IsSupportedSoundExtension(std::string extension) {
@@ -223,17 +226,25 @@ namespace SoundManager {
             alSourcei(source, AL_BUFFER, 0);
         }
 
-        for (auto &[fileName, buffer]: buffers) {
-            if (buffer != 0) alDeleteBuffers(1, &buffer);
-        }
-
+        // Unchanged files keep their buffer; the rest are deleted below.
+        std::unordered_map<std::string, ALuint> previousBuffers = std::move(buffers);
+        std::unordered_map<std::string, fs::file_time_type> previousWriteTimes = std::move(bufferWriteTimes);
         buffers.clear();
+        bufferWriteTimes.clear();
+
+        int reusedCount = 0;
+
+        const auto deleteUnusedPrevious = [&] {
+            for (auto &[fileName, buffer]: previousBuffers)
+                if (buffer != 0) alDeleteBuffers(1, &buffer);
+        };
 
         // Sounds can live anywhere under Assets, like textures and models.
         const fs::path assetsPath = ProjectManager::GetAssetsPath();
 
         if (!fs::is_directory(assetsPath)) {
             spdlog::error("Assets path is not a directory: {}", assetsPath.string());
+            deleteUnusedPrevious();
             return;
         }
 
@@ -262,6 +273,19 @@ namespace SoundManager {
                 continue;
             }
 
+            std::error_code timeError;
+            const fs::file_time_type writeTime = entry.last_write_time(timeError);
+
+            if (const auto previous = previousBuffers.find(fileName);
+                !timeError && previous != previousBuffers.end() && previous->second != 0 &&
+                previousWriteTimes[fileName] == writeTime) {
+                buffers.emplace(fileName, previous->second);
+                bufferWriteTimes.emplace(fileName, writeTime);
+                previousBuffers.erase(previous);
+                ++reusedCount;
+                continue;
+            }
+
             ALuint buffer = 0;
 
             if (!LoadWAVToOpenALBuffer(entry.path().string().c_str(), buffer)) {
@@ -270,13 +294,16 @@ namespace SoundManager {
             }
 
             buffers.emplace(fileName, buffer);
+            if (!timeError) bufferWriteTimes.emplace(fileName, writeTime);
             spdlog::info("Loaded sound '{}'", fileName);
         }
 
         if (iteratorError) spdlog::error("Failed while scanning Assets folder {}: {}", assetsPath.string(),
                                          iteratorError.message());
 
-        spdlog::info("Generated {} sound buffer(s)", buffers.size());
+        deleteUnusedPrevious();
+
+        spdlog::info("Generated {} sound buffer(s), {} reused unchanged", buffers.size(), reusedCount);
     }
 
     bool InitializeOpenAL() {
@@ -346,6 +373,26 @@ namespace SoundManager {
         spdlog::info("Destroyed OpenAL source '{}'", sourceName);
     }
 
+    void BeginSession() {
+        // Picks up sounds added or edited since the last session.
+        GenerateSounds();
+
+        SetListenerPosition({0.0f, 0.0f, 0.0f});
+        SetListenerVelocity({0.0f, 0.0f, 0.0f});
+        SetListenerOrientation({0.0f, 0.0f, 1.0f});
+    }
+
+    void EndSession() {
+        // Sources a script made without an audio component outlive
+        // AudioSystem::Shutdown, so clear whatever is left.
+        for (const ALuint source : sources | std::views::values) {
+            alSourceStop(source);
+            alDeleteSources(1, &source);
+        }
+
+        sources.clear();
+    }
+
     void DestroyOpenAL() {
         for (ALuint source : sources | std::views::values) {
             alSourceStop(source);
@@ -361,6 +408,7 @@ namespace SoundManager {
         }
 
         buffers.clear();
+        bufferWriteTimes.clear();
 
         if (context != nullptr) {
             alcMakeContextCurrent(nullptr);

@@ -69,6 +69,9 @@ namespace InputManager {
             switch (event.type) {
                 case SDL_EVENT_MOUSE_WHEEL: mouseWheelScrollAmount += event.wheel.y; break;
                 case SDL_EVENT_QUIT: quitRequested = true; break;
+                // The engine keeps a hidden window next to the visible one,
+                // so closing a window doesn't end SDL; treat it as a quit.
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED: quitRequested = true; break;
                 case SDL_EVENT_DROP_BEGIN: externalDragActive = true; break;
 
                 case SDL_EVENT_DROP_POSITION:

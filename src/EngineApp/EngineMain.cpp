@@ -93,19 +93,13 @@ namespace {
                 break;
 
             case EngineMode::PLAY:
-                started = RuntimeSession::Start(
-                    Localisation::Get("screen.title.engine"),
-                    RuntimeSession::PLAY
-                );
+                started = RuntimeSession::Start(RuntimeSession::PLAY);
 
                 if (started) spdlog::info("Starting the game loop");
                 break;
 
             case EngineMode::RUNTIME_EDITOR:
-                started = RuntimeSession::Start(
-                    Localisation::Get("screen.title.engine"),
-                    RuntimeSession::EDITOR
-                );
+                started = RuntimeSession::Start(RuntimeSession::EDITOR);
 
                 if (started) spdlog::info("Starting the runtime editor loop");
 
@@ -128,7 +122,7 @@ namespace {
 
         switch (currentMode) {
             case EngineMode::EDITOR:
-                Editor::Destroy();
+                Editor::Stop();
                 if (prepareEditorLevelForRuntime) Editor::LoadLevel(Editor::currentMap);
                 break;
 
@@ -276,10 +270,16 @@ namespace {
         return true;
     }
 
+    // Shift+F1 leaves Play / the runtime editor, same as closing its window.
+    bool StopKeyPressed() {
+        const bool shiftHeld = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+        return shiftHeld && InputManager::GetKeyDown(SDL_SCANCODE_F1);
+    }
+
     bool UpdateRuntimeMode() {
         RuntimeSession::Update();
 
-        if (!InputManager::QuitRequested()) return true;
+        if (!InputManager::QuitRequested() && !StopKeyPressed()) return true;
 
         return SwitchMode(EngineMode::EDITOR);
     }
@@ -305,6 +305,19 @@ int main(const int argc, char** argv) {
 
     if (!FindProjectArgument(argc, argv, projectFile)) return 1;
     if (!LoadProject(projectFile)) return 1;
+
+    // Both windows are made once and only hidden/shown when switching modes.
+    // A window's close button reports SDL_EVENT_WINDOW_CLOSE_REQUESTED (see
+    // InputManager); SDL's own quit-on-last-window-close would otherwise send
+    // SDL_EVENT_QUIT for the game window once the editor's is hidden.
+    SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
+
+    if (!Editor::Initialize()) return 1;
+
+    // Without it the editor still works; Play reports the failure.
+    if (!RuntimeSession::Initialize(Localisation::Get("screen.title.engine")))
+        spdlog::critical("Failed to create the game window. Play and the runtime editor are unavailable");
+
     if (!StartMode(EngineMode::EDITOR)) return 1;
 
     InputManager::Initialize(Editor::GetWindow());
@@ -317,6 +330,10 @@ int main(const int argc, char** argv) {
 
     // Covers unexpected exits where a mode is still running.
     StopCurrentMode(false);
+
+    // The runtime first: Editor::Destroy() ends with SDL_Quit.
+    RuntimeSession::Destroy();
+    Editor::Destroy();
 
     spdlog::info("Engine shutdown complete");
     spdlog::shutdown();

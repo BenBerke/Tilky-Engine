@@ -161,45 +161,54 @@ namespace MapEditorInternal {
                 spdlog::error("Unsupported user settings format version: {}", formatVersion);
                 return false;
             }
-            const nlohmann::json &colors = settings.at("colors");
+            // A missing or malformed colour keeps its current value, so a file
+            // saved before a setting existed still loads everything else.
+            static const nlohmann::json NO_COLORS = nlohmann::json::object();
+            const auto colorsIt = settings.find("colors");
+            const nlohmann::json &colors = colorsIt != settings.end() && colorsIt->is_object() ? *colorsIt : NO_COLORS;
 
-            auto LoadColor3 = [&](const char *key) -> Vector3 {
-                return {
-                    colors.at(key).at(0).get<float>(),
-                    colors.at(key).at(1).get<float>(),
-                    colors.at(key).at(2).get<float>()
-                };
+            auto ReadColor = [&](const char *key, float *out, const std::size_t count) {
+                const auto it = colors.find(key);
+                if (it == colors.end() || !it->is_array() || it->size() < count) return;
+
+                for (std::size_t i = 0; i < count; ++i)
+                    if (!(*it)[i].is_number()) return;
+
+                for (std::size_t i = 0; i < count; ++i) out[i] = (*it)[i].get<float>();
             };
 
-            auto LoadColor4 = [&](const char *key) -> Vector4 {
-                return {
-                    colors.at(key).at(0).get<float>(),
-                    colors.at(key).at(1).get<float>(),
-                    colors.at(key).at(2).get<float>(),
-                    colors.at(key).at(3).get<float>()
-                };
+            auto LoadColor3 = [&](const char *key, Vector3 &color) {
+                float values[3] = {color.x, color.y, color.z};
+                ReadColor(key, values, 3);
+                color = {values[0], values[1], values[2]};
+            };
+
+            auto LoadColor4 = [&](const char *key, Vector4 &color) {
+                float values[4] = {color.x, color.y, color.z, color.w};
+                ReadColor(key, values, 4);
+                color = {values[0], values[1], values[2], values[3]};
             };
 
             using namespace MapEditorInternal;
-            normalEntityColor = LoadColor3("normalEntityColor");
-            highlightedEntityColor = LoadColor3("highlightedEntityColor");
-            spriteEntityColor = LoadColor3("spriteEntityColor");
-            normalWallColor = LoadColor3("normalWallColor");
-            highlightedWallColor = LoadColor3("highlightedWallColor");
-            hoveredSectorColor = LoadColor3("hoveredSectorColor");
-            highlightedSectorColor = LoadColor3("highlightedSectorColor");
-            snapIndicatorColor = LoadColor3("snapIndicatorColor");
-            kValidLineColor = LoadColor3("validLineColor");
-            kInvalidLineColor = LoadColor3("invalidLineColor");
-            kAnchorColor = LoadColor3("anchorColor");
-            kValidFillColor = LoadColor4("validFillColor");
-            kInvalidFillColor = LoadColor4("invalidFillColor");
-            normalHandleColor = LoadColor3("normalHandleColor");
-            highlightedHandleColor = LoadColor3("highlightedHandleColor");
-            handleOutlineColor = LoadColor3("handleOutlineColor");
-            themeTextColor = LoadColor3("themeTextColor");
-            gridColor = LoadColor3("gridColor");
-            backgroundColor = LoadColor3("backgroundColor");
+            LoadColor3("normalEntityColor", normalEntityColor);
+            LoadColor3("highlightedEntityColor", highlightedEntityColor);
+            LoadColor3("spriteEntityColor", spriteEntityColor);
+            LoadColor3("normalWallColor", normalWallColor);
+            LoadColor3("highlightedWallColor", highlightedWallColor);
+            LoadColor3("hoveredSectorColor", hoveredSectorColor);
+            LoadColor3("highlightedSectorColor", highlightedSectorColor);
+            LoadColor3("snapIndicatorColor", snapIndicatorColor);
+            LoadColor3("validLineColor", kValidLineColor);
+            LoadColor3("invalidLineColor", kInvalidLineColor);
+            LoadColor3("anchorColor", kAnchorColor);
+            LoadColor4("validFillColor", kValidFillColor);
+            LoadColor4("invalidFillColor", kInvalidFillColor);
+            LoadColor3("normalHandleColor", normalHandleColor);
+            LoadColor3("highlightedHandleColor", highlightedHandleColor);
+            LoadColor3("handleOutlineColor", handleOutlineColor);
+            LoadColor3("themeTextColor", themeTextColor);
+            LoadColor3("gridColor", gridColor);
+            LoadColor3("backgroundColor", backgroundColor);
 
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
             cameraStepSize = settings.value("cameraStepSize", 50.0f);

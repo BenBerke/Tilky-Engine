@@ -256,8 +256,11 @@ public:
     OpenGL() = default;
     ~OpenGL() override = default;
 
-    bool Initialize(std::string windowName) override;
+    bool Initialize(std::string windowName, bool startHidden) override;
     void Shutdown() override;
+
+    void SetWindowVisible(bool visible) override;
+    void MakeCurrent() override;
 
     void BeginFrame() override;
     void Update(bool renderDebug, bool renderUI) override;
@@ -328,6 +331,8 @@ private:
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
+    ImGuiContext* imguiContext = nullptr;
+    bool windowShownOnce = false;
 
     GLuint VAO = 0;
     GLuint wallSSBO = 0;
@@ -416,6 +421,9 @@ private:
     GLuint atlasTexture = 0; // GL_TEXTURE_2D_ARRAY, one ATLAS_SIZE layer per page
     std::unordered_map<std::string, OpenGLRendererInternal::DecodedImage> decodedImageCache; // keyed by absolute path
     GLuint textureRegionSSBO = 0;
+    // Fingerprint of the image list, their file times and the sampling
+    // setting the atlas was built from; an unchanged one skips the rebuild.
+    size_t atlasSignature = 0;
 
     std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
     std::unordered_map<std::string, int> textureRegionIndexByName;
@@ -424,8 +432,8 @@ private:
     bool InitializeOpenGL();
     bool InitializeFont();
 
-    bool InitSDL(const std::string& windowName);
-    bool InitImGui() const;
+    bool InitSDL(const std::string& windowName, bool startHidden);
+    bool InitImGui();
     bool InitProjection();
     bool InitUI();
     bool InitText();

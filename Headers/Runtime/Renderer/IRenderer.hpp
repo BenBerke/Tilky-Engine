@@ -12,8 +12,22 @@ class IRenderer {
 public:
     virtual ~IRenderer() = default;
 
-    virtual bool Initialize(std::string windowName) = 0;
+    // startHidden: the engine creates the game window once at launch and
+    // shows it with SetWindowVisible(true) for each Play session.
+    virtual bool Initialize(std::string windowName, bool startHidden) = 0;
     virtual void Shutdown() = 0;
+
+    virtual void SetWindowVisible(bool visible) = 0;
+
+    // Makes this renderer's graphics and ImGui contexts current. The editor
+    // keeps its own alive next to them, so call this before using either.
+    virtual void MakeCurrent() = 0;
+
+    // Session state that shouldn't outlive one Play / runtime editor session.
+    void EndSession() {
+        useEditorCamera = false;
+        DestroyEditorCamera();
+    }
 
     virtual void BeginFrame() = 0;
     virtual void Update(bool renderDebug, bool renderUI) = 0;

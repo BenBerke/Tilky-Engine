@@ -2713,9 +2713,13 @@ namespace {
         // browser rather than wiring it through Editor::Start().
         if (!assetBrowserInitialized) {
             assetBrowser.SetRootDirectory(ProjectManager::GetAssetsPath());
-            assetBrowser.SetIconFont(editorIconFont);
             assetBrowserInitialized = true;
         }
+
+        // Every frame, not in the one-time init: the editor's ImGui context
+        // (and its fonts) is rebuilt after each play session, and the browser
+        // outlives it, so a pointer kept from the first frame dangles.
+        assetBrowser.SetIconFont(editorIconFont);
 
         ImGui::Begin(Get("editor.asset_browser").c_str());
 

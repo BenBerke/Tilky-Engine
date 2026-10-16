@@ -792,8 +792,11 @@ namespace PhysicsSystem {
                 // The entity's top stays at feet + scale.y, whichever collider this is.
                 const float bodyHeight = std::max(std::abs(selfTransform->scale.y) - baseAboveFeet, selfRadius * 2.0f);
 
-                const float feetHeight = colliderBase.y;
-                const float headHeight = feetHeight + bodyHeight;
+                // Feet rest on the floor, not the collider's base: gravity
+                // stops at relativeHeight 0 (feet on the floor), so grounding
+                // against an offset collider's base never saw the ground.
+                const float feetHeight = selfTransform->position.y;
+                const float headHeight = colliderBase.y + bodyHeight;
 
                 const int floorIndex = FindBestSectorFloor(
                     sector,
@@ -817,7 +820,7 @@ namespace PhysicsSystem {
                 const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
 
                 float correctedFeetHeight = feetHeight;
-                float correctedHeadHeight = correctedFeetHeight + bodyHeight;
+                float correctedHeadHeight = headHeight;
 
                 if (correctedFeetHeight < floorHeight) {
                     const float correction = floorHeight - correctedFeetHeight;
@@ -859,7 +862,7 @@ namespace PhysicsSystem {
                         selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * groundSeparatingSpeed;
                 }
 
-                selfTransform->relativeHeight = correctedFeetHeight - baseAboveFeet - floorHeight;
+                selfTransform->relativeHeight = correctedFeetHeight - floorHeight;
             }
         }
 

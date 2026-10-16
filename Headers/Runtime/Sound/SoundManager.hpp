@@ -16,6 +16,11 @@ namespace SoundManager {
     bool InitializeOpenAL();
     void DestroyOpenAL();
 
+    // Per Play session in the engine, which keeps the device open between them.
+    // Begin reloads sounds changed on disk; End stops and deletes every source.
+    void BeginSession();
+    void EndSession();
+
     void GenerateSounds();
 
     bool CreateSource(const std::string& name);

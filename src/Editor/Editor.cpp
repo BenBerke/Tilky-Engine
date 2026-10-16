@@ -22,6 +22,11 @@ namespace MapEditorInternal {
     int screenHeight = 960;
 }
 
+namespace {
+    ImGuiContext* imguiContext = nullptr;
+    bool shownOnce = false;
+}
+
 namespace Editor {
     std::vector<Level> levels;
     ID currentLevels = 0;
@@ -52,9 +57,35 @@ namespace Editor {
         hoveredWallID = INVALID_ID;
         draggingWallGeometry = false;
 
+        ImGui::SetCurrentContext(imguiContext);
+
+        UpdateLevels();
+
+        if (!LevelManager::HasCurrentLevel()) {
+            LevelManager::loadedLevels.emplace_back();
+            LevelManager::currentLevelIndex = 0;
+        }
+
+        if (!LoadUserSettings()) spdlog::error("Unable to load user settings");
+        if (!LoadProjectSettings()) spdlog::error("Unable to load project settings");
+
+        SDL_ShowWindow(window);
+
+        if (!shownOnce) {
+            // Later shows keep whatever size and position the user left it at.
+            SDL_MaximizeWindow(window);
+            shownOnce = true;
+        }
+
+        SDL_RaiseWindow(window);
+    }
+
+    bool Initialize() {
+        using namespace MapEditorInternal;
+
         if (SDL_Init(SDL_INIT_VIDEO) == false) {
             spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
-            return;
+            return false;
         }
 
         //const SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
@@ -69,13 +100,14 @@ namespace Editor {
                 Localisation::Get("screen.title.level_editor").c_str(),
                 screenWidth,
                 screenHeight,
-                SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED,
+                // Hidden until Start() shows it; maximized on that first show.
+                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN,
                 &window,
                 &renderer
             ) == false) {
             spdlog::critical("MapEditor Window or Renderer failed", SDL_GetError());
             SDL_Quit();
-            return;
+            return false;
         }
         SDL_SetWindowFullscreenMode(window, nullptr);
 
@@ -91,7 +123,7 @@ namespace Editor {
         if (!TTF_Init()) {
             spdlog::critical("TTF_Init failed {}", SDL_GetError());
             SDL_Quit();
-            return;
+            return false;
         }
 
         const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
@@ -103,13 +135,16 @@ namespace Editor {
             spdlog::critical("TTF_OpenFont failed {}", SDL_GetError());
             TTF_Quit();
             SDL_Quit();
-            return;
+            return false;
         }
 
         textEngine = TTF_CreateRendererTextEngine(renderer);
 
         IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
+        // Lives until Destroy(), next to the runtime's own context, so both
+        // set theirs current before touching ImGui.
+        imguiContext = ImGui::CreateContext();
+        ImGui::SetCurrentContext(imguiContext);
 
         ImGuiIO &io = ImGui::GetIO();
 
@@ -126,28 +161,31 @@ namespace Editor {
 
         // Toolbar icons. Loaded on its own (not merged into the text font) so
         // only the toolbar pushes it.
+        editorIconFont = nullptr;
         const fs::path iconFontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/FontAwesome6-Solid.otf");
         if (std::error_code ec; fs::exists(iconFontPath, ec)) editorIconFont = io.Fonts->AddFontFromFileTTF(iconFontPath.string().c_str(), 16.0f);
         else spdlog::warn("Icon font not found at {}, the toolbar will use text labels", iconFontPath.string());
-        // The saved design replaces this once LoadUserSettings() below runs.
+        // The saved design replaces this once LoadUserSettings() in Start() runs.
         EditorStyle::Apply(EditorStyle::ActiveDesign());
 
         ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
         ImGui_ImplSDLRenderer3_Init(renderer);
 
-        UpdateLevels();
+        return true;
+    }
 
-        if (!LevelManager::HasCurrentLevel()) {
-            LevelManager::loadedLevels.emplace_back();
-            LevelManager::currentLevelIndex = 0;
-        }
-
-        if (!LoadUserSettings()) spdlog::error("Unable to load user settings");
-        if (!LoadProjectSettings()) spdlog::error("Unable to load project settings");
+    void Stop() {
+        using namespace MapEditorInternal;
+#ifndef TILKY_STANDALONE
+        LevelManager::CurrentLevel().editorCamPos = cameraPos;
+#endif
+        SDL_HideWindow(window);
     }
 
     void Update() {
         using namespace MapEditorInternal;
+
+        ImGui::SetCurrentContext(imguiContext);
 
         if (ProcessPendingLevelLoad()) [[unlikely]] {
 #ifndef TILKY_STANDALONE
@@ -244,12 +282,14 @@ namespace Editor {
 
     void Destroy() {
         using namespace MapEditorInternal;
-#ifndef TILKY_STANDALONE
-        LevelManager::CurrentLevel().editorCamPos = cameraPos;
-#endif
+
+        if (imguiContext == nullptr) return;
+
+        ImGui::SetCurrentContext(imguiContext);
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
-        ImGui::DestroyContext();
+        ImGui::DestroyContext(imguiContext);
+        imguiContext = nullptr;
 
         DestroyUIPreviewFonts();
 

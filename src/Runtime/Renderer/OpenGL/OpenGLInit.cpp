@@ -208,7 +208,7 @@ bool OpenGL::InitializeOpenGL() {
     return true;
 }
 
-bool OpenGL::InitSDL(const std::string& windowName) {
+bool OpenGL::InitSDL(const std::string& windowName, const bool startHidden) {
     using namespace OpenGLRendererInternal;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -219,11 +219,12 @@ bool OpenGL::InitSDL(const std::string& windowName) {
         return false;
     }
 
+    // A hidden window is maximized the first time SetWindowVisible shows it.
     window = SDL_CreateWindow(
         windowName.c_str(),
         screenWidth,
         screenHeight,
-        WINDOW_FLAGS
+        startHidden ? SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN : WINDOW_FLAGS
     );
 
     if (window == nullptr) {
@@ -267,9 +268,12 @@ bool OpenGL::InitSDL(const std::string& windowName) {
     return true;
 }
 
-bool OpenGL::InitImGui() const {
+bool OpenGL::InitImGui() {
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    // In the engine the editor's context already exists, and CreateContext
+    // only makes the new one current when none is.
+    imguiContext = ImGui::CreateContext();
+    ImGui::SetCurrentContext(imguiContext);
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -287,7 +291,6 @@ bool OpenGL::InitImGui() const {
 
 bool OpenGL::BuildTextureAtlasFromLevel() {
     using namespace OpenGLRendererInternal;
-    DestroyAllTextures();
 
     const Level& level = LevelManager::CurrentLevel();
 
@@ -309,6 +312,30 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         for (std::string& imageName : CollectProjectImageFileNames())
             if (!alreadyListed.contains(imageName)) referencedFileNames.push_back(std::move(imageName));
     }
+
+    // The engine keeps the atlas between Play sessions; it only has to be
+    // rebuilt when an image, the image order or the sampling changed.
+    size_t signature = std::hash<int>{}(static_cast<int>(level.rendererSettings.textureSetting));
+
+    const auto combine = [&signature](const size_t value) {
+        signature ^= value + 0x9e3779b97f4a7c15ULL + (signature << 6) + (signature >> 2);
+    };
+
+    for (const std::string& fileName : referencedFileNames) {
+        combine(std::hash<std::string>{}(fileName));
+
+        std::error_code ec;
+        const fs::file_time_type writeTime =
+            fs::last_write_time(ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal(), ec);
+        combine(ec ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count())));
+    }
+
+    if (atlasTexture != 0 && signature == atlasSignature) {
+        spdlog::info("Texture atlas unchanged, reusing it");
+        return true;
+    }
+
+    DestroyAllTextures();
 
     textureRegions.clear();
     textureRegions.resize(referencedFileNames.size());
@@ -480,6 +507,8 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     );
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
+
+    atlasSignature = signature;
 
     spdlog::info("Created texture atlas with {} texture region(s) on {} page(s)", placements.size(), pageCount);
 
@@ -742,8 +771,8 @@ bool OpenGL::InitText() {
     return true;
 }
 
-bool OpenGL::Initialize(const std::string windowName) {
-    if (!InitSDL(windowName)) {
+bool OpenGL::Initialize(const std::string windowName, const bool startHidden) {
+    if (!InitSDL(windowName, startHidden)) {
         spdlog::critical("Renderer initialization stopped at InitSDL");
         return false;
     }
@@ -770,7 +799,7 @@ bool OpenGL::Initialize(const std::string windowName) {
         return false;
     }
 
-    SDL_SetWindowRelativeMouseMode(window, true);
+    if (!startHidden) SDL_SetWindowRelativeMouseMode(window, true);
 
     spdlog::info("OpenGL renderer initialized successfully");
 

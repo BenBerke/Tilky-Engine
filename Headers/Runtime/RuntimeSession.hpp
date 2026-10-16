@@ -19,10 +19,18 @@ namespace RuntimeSession {
 #ifdef TILKY_STANDALONE
     bool Start(const std::string& windowName);
 #else
-    bool Start(const std::string& windowName, RuntimeType runtimeType);
+    // Once at engine start: the hidden game window, its GL/ImGui contexts,
+    // the texture atlas and the OpenAL device. All of it lives until Destroy().
+    bool Initialize(const std::string& windowName);
+    // Once at engine exit, before Editor::Destroy() (which calls SDL_Quit).
+    void Destroy();
+
+    // Shows the game window and starts a Play / runtime editor session.
+    bool Start(RuntimeType runtimeType);
 #endif
 
     void Update();
+    // Ends the session. In the engine this hides the window and keeps it.
     void Shutdown();
 }
 

@@ -2,6 +2,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include "imgui.h"
+#include "Headers/Editor/EditorStyle.hpp"
+
 void OpenGL::BeginFrame() {
     glEnable(GL_DEPTH_TEST);
 
@@ -23,6 +26,38 @@ void OpenGL::EndFrame() {
     }
 
     SDL_GL_SwapWindow(window);
+}
+
+void OpenGL::MakeCurrent() {
+    if (window != nullptr && glContext != nullptr && SDL_GL_GetCurrentContext() != glContext)
+        SDL_GL_MakeCurrent(window, glContext);
+
+    if (imguiContext != nullptr) ImGui::SetCurrentContext(imguiContext);
+}
+
+void OpenGL::SetWindowVisible(const bool visible) {
+    if (window == nullptr) return;
+
+    if (!visible) {
+        SDL_SetWindowRelativeMouseMode(window, false);
+        SDL_HideWindow(window);
+        return;
+    }
+
+    MakeCurrent();
+
+    // The editor's design may have changed since the last session.
+    if (imguiContext != nullptr) EditorStyle::Apply(EditorStyle::ActiveDesign());
+
+    SDL_ShowWindow(window);
+
+    if (!windowShownOnce) {
+        // Later sessions reopen at whatever size and position it was left.
+        SDL_MaximizeWindow(window);
+        windowShownOnce = true;
+    }
+
+    SDL_RaiseWindow(window);
 }
 
 void OpenGL::OnResize(const int width, const int height) {

@@ -57,8 +57,10 @@ namespace {
     int fps = 0;
 #endif
 
-    bool StartRenderer(const std::string& windowName, const bool useEditorCamera) {
-        ZoneScopedN("StartRenderer");
+    // Creates the renderer and its window. The engine does this once at
+    // launch, hidden; the standalone game once per run, visible.
+    bool CreateRenderer(const std::string& windowName, const bool startHidden) {
+        ZoneScopedN("CreateRenderer");
         // TODO: TILKY_TODO Try Vulkan first when Vulkan support is ready.
         renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
 
@@ -67,14 +69,23 @@ namespace {
             return false;
         }
 
-        renderer->SetUseEditorCamera(useEditorCamera);
-
-        if (!renderer->Initialize(windowName)) {
+        if (!renderer->Initialize(windowName, startHidden)) {
             spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
 
             renderer.reset();
             return false;
         }
+
+        return true;
+    }
+
+#ifdef TILKY_STANDALONE
+    bool StartRenderer(const std::string& windowName, const bool useEditorCamera) {
+        ZoneScopedN("StartRenderer");
+
+        if (!CreateRenderer(windowName, false)) return false;
+
+        renderer->SetUseEditorCamera(useEditorCamera);
 
         if (!renderer->CreateMap()) {
             spdlog::critical("Failed to create renderer map");
@@ -87,6 +98,53 @@ namespace {
 
         return true;
     }
+#else
+    // Whether CreateMap() has made the map's GPU buffers; later sessions
+    // only refill them.
+    bool mapCreated = false;
+
+    // Readies the persistent renderer for this session's level and shows it.
+    bool StartRenderer(const bool useEditorCamera) {
+        ZoneScopedN("StartRenderer");
+
+        if (!renderer) {
+            spdlog::critical("The game window failed to initialize at engine start; check the log above");
+            return false;
+        }
+
+        renderer->MakeCurrent();
+        renderer->SetUseEditorCamera(useEditorCamera);
+
+        if (!mapCreated) {
+            // The atlas built at engine start is reused if no image changed since.
+            renderer->RefreshTexturesFromLevel();
+
+            if (!renderer->CreateMap()) {
+                spdlog::critical("Failed to create renderer map");
+                return false;
+            }
+
+            mapCreated = true;
+        }
+        else renderer->ReloadMap();
+
+        renderer->SetWindowVisible(true);
+        return true;
+    }
+
+    // Ends the session without destroying the window, GL context or atlas.
+    void StopRenderer() {
+        if (!renderer) return;
+
+        renderer->MakeCurrent();
+        renderer->EndSession();
+
+        InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
+        SDL_ShowCursor();
+
+        renderer->SetWindowVisible(false);
+    }
+#endif
 
     void PrepareRuntimeLevel(Level& level) {
         MapQueries::RebuildSectorRuntimeLinks(level);
@@ -96,10 +154,15 @@ namespace {
     }
 
     bool StartGameSystems(Level& level) {
+#ifdef TILKY_STANDALONE
         if (!SoundManager::InitializeOpenAL()) {
             spdlog::critical("Failed to initialize OpenAL");
             return false;
         }
+#else
+        // The device was opened at engine start and stays open between sessions.
+        SoundManager::BeginSession();
+#endif
 
         AudioSystem::Start(level);
         LevelSystem::Start(level);
@@ -152,7 +215,11 @@ namespace {
     void ShutdownGameSystems(Level& level) {
         LevelSystem::Shutdown(level);
         AudioSystem::Shutdown(level);
+#ifdef TILKY_STANDALONE
         SoundManager::DestroyOpenAL();
+#else
+        SoundManager::EndSession();
+#endif
     }
 
     void ShutdownRenderer() {
@@ -262,7 +329,7 @@ namespace {
         );
     }
 
-    bool StartEditor(Level& level, const std::string& windowName) {
+    bool StartEditor(Level& level) {
         relativeMouseMode = true;
         editorLevelSnapshot.reset();
 
@@ -271,7 +338,7 @@ namespace {
         for (ComponentTransform& transform : level.transforms.components)
             transform.UpdateObjectSectorAndFloor(level.sectors);
 
-        if (!StartRenderer(windowName, true)) return false;
+        if (!StartRenderer(true)) return false;
 
         RuntimeEditor::Start(level, *renderer);
 
@@ -279,7 +346,7 @@ namespace {
         return true;
     }
 
-    bool StartPlay(Level& level, const std::string& windowName) {
+    bool StartPlay(Level& level) {
         relativeMouseMode = true;
 
         editorLevelSnapshot = std::make_unique<Level>(level);
@@ -288,14 +355,14 @@ namespace {
 
         PrepareRuntimeLevel(level);
 
-        if (!StartRenderer(windowName, false)) {
+        if (!StartRenderer(false)) {
             editorLevelSnapshot.reset();
             return false;
         }
 
         if (!StartGameSystems(level)) {
             editorLevelSnapshot.reset();
-            ShutdownRenderer();
+            StopRenderer();
             return false;
         }
 
@@ -434,7 +501,25 @@ namespace RuntimeSession {
 
 #else
 
-    bool Start(const std::string& windowName, const RuntimeType runtimeType) {
+    bool Initialize(const std::string& windowName) {
+        // Hidden until a session shows it.
+        if (!CreateRenderer(windowName, true)) return false;
+
+        if (!SoundManager::InitializeOpenAL()) {
+            spdlog::critical("Failed to initialize OpenAL");
+            return false;
+        }
+
+        return true;
+    }
+
+    void Destroy() {
+        ShutdownRenderer();
+        mapCreated = false;
+        SoundManager::DestroyOpenAL();
+    }
+
+    bool Start(const RuntimeType runtimeType) {
         if (!LevelManager::HasCurrentLevel()) {
             spdlog::critical("No current level loaded");
             return false;
@@ -445,11 +530,11 @@ namespace RuntimeSession {
         switch (runtimeType) {
             case EDITOR:
                 activeRuntimeType = EDITOR;
-                return StartEditor(level, windowName);
+                return StartEditor(level);
 
             case PLAY:
                 activeRuntimeType = PLAY;
-                return StartPlay(level, windowName);
+                return StartPlay(level);
 
             case STANDALONE:
                 spdlog::critical("STANDALONE cannot be selected at runtime. Build the Tilky_Standalone target instead.");
@@ -466,6 +551,10 @@ namespace RuntimeSession {
         if (!renderer || !LevelManager::HasCurrentLevel()) return;
 
         ZoneScoped;
+
+#ifndef TILKY_STANDALONE
+        renderer->MakeCurrent();
+#endif
 
         GameTime::Update();
 
@@ -487,7 +576,11 @@ namespace RuntimeSession {
 
     void Shutdown() {
         if (!LevelManager::HasCurrentLevel()) {
+#ifdef TILKY_STANDALONE
             ShutdownRenderer();
+#else
+            StopRenderer();
+#endif
             return;
         }
 
@@ -495,14 +588,15 @@ namespace RuntimeSession {
 
 #ifdef TILKY_STANDALONE
         ShutdownStandalone(level);
+        ShutdownRenderer();
 #else
         switch (activeRuntimeType) {
             case EDITOR: ShutdownEditor(level); break;
             case PLAY: ShutdownPlay(level); break;
             case STANDALONE: spdlog::critical("Invalid runtime type in Tilky_Engine");break;
         }
-#endif
 
-        ShutdownRenderer();
+        StopRenderer();
+#endif
     } // Shutdown
 }

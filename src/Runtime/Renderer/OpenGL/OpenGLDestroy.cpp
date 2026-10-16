@@ -7,7 +7,9 @@
 #include "imgui_impl_opengl3.h"
 
 void OpenGL::Shutdown() {
-    // Textures must be deleted while the OpenGL context still exists.
+    // Textures must be deleted while the OpenGL context still exists, and is current.
+    MakeCurrent();
+
     DestroyAllTextures();
     DestroyAllModelAssets();
     DestroyEditorCamera();
@@ -89,10 +91,12 @@ void OpenGL::Shutdown() {
     flatLayoutSignature = 0;
     spriteCount = 0;
 
-    if (ImGui::GetCurrentContext() != nullptr) {
+    if (imguiContext != nullptr) {
+        ImGui::SetCurrentContext(imguiContext);
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
-        ImGui::DestroyContext();
+        ImGui::DestroyContext(imguiContext);
+        imguiContext = nullptr;
     }
 
     if (glContext != nullptr) {
