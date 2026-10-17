@@ -129,6 +129,8 @@ void OpenGL::BuildGpuWallsFromMap() {
     const float wallContrast = level.rendererSettings.wallContrast;
 
     for (const Wall& wall : level.walls) {
+        if (IsWallCulled(level, wall)) continue;
+
         const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
         const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture));
 
@@ -168,9 +170,12 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
     Level& level = LevelManager::CurrentLevel();
 
     flatTriangles.clear();
+    flatSectorRanges.assign(level.sectors.size(), {});
 
     for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
         const Sector& sector = level.sectors[sectorIndex];
+
+        flatSectorRanges[sectorIndex].first = static_cast<GLint>(flatTriangles.size());
 
         for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
             for (const Triangle& triangle : sector.triangles) {
@@ -213,6 +218,8 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
                 }
             }
         }
+
+        flatSectorRanges[sectorIndex].count = static_cast<GLsizei>(flatTriangles.size()) - flatSectorRanges[sectorIndex].first;
     }
 
     flatTriangleCount = static_cast<GLsizei>(flatTriangles.size());
@@ -354,6 +361,7 @@ bool OpenGL::CreateMap() {
     // Not fatal when missing: the driver drops uniforms a shader never reads.
     cameraWorldPosUniform = glGetUniformLocation(projectionShader->ID, "uCameraWorldPos");
     modelInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uModelInstanceOffset");
+    flatInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uFlatInstanceOffset");
     modelLocalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocal");
     modelLocalNormalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocalNormal");
     modelBaseColorUniform = glGetUniformLocation(projectionShader->ID, "uModelBaseColor");

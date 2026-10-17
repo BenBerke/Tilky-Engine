@@ -160,6 +160,10 @@ uniform vec3 uCameraWorldPos;
 // Model draw: first instance of the current batch, and the node transform
 // (plus unit-box normalization) of the mesh being drawn.
 uniform int uModelInstanceOffset;
+
+// Flat draw: first triangle of the current run. Play mode draws only the
+// visible sectors' runs of the flat triangle buffer.
+uniform int uFlatInstanceOffset;
 uniform mat4 uModelLocal;
 uniform mat3 uModelLocalNormal;
 
@@ -524,7 +528,7 @@ float slopeStrength
 }
 
 void renderFlat() {
-    FlatTriangle triangle = flatTriangles[gl_InstanceID];
+    FlatTriangle triangle = flatTriangles[uFlatInstanceOffset + gl_InstanceID];
 
     vec4 point =
     gl_VertexID == 0

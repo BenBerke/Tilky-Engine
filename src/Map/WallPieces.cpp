@@ -20,33 +20,6 @@ namespace WallPieces {
             Back
         };
 
-        SectorBounds ComputeSectorBounds(const Sector& sector) {
-            SectorBounds bounds;
-
-            for (const Triangle& triangle : sector.triangles) {
-                const Vector2 points[3] = {triangle.a, triangle.b, triangle.c};
-
-                for (const Vector2& point : points) {
-                    if (!bounds.valid) {
-                        bounds.minX = point.x;
-                        bounds.maxX = point.x;
-                        bounds.minY = point.y;
-                        bounds.maxY = point.y;
-                        bounds.valid = true;
-
-                        continue;
-                    }
-
-                    bounds.minX = std::min(bounds.minX, point.x);
-                    bounds.maxX = std::max(bounds.maxX, point.x);
-                    bounds.minY = std::min(bounds.minY, point.y);
-                    bounds.maxY = std::max(bounds.maxY, point.y);
-                }
-            }
-
-            return bounds;
-        }
-
         // Mirrors GetSlopeOffset() in Rendering_vs.glsl. slopeStrength is used
         // as a direct height-per-unit gradient here because that is what the
         // shader does
@@ -64,11 +37,40 @@ namespace WallPieces {
 
             return 0.0f;
         }
+    }
 
-        float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point) {
-            return surface.height + GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
+    SectorBounds ComputeSectorBounds(const Sector& sector) {
+        SectorBounds bounds;
+
+        for (const Triangle& triangle : sector.triangles) {
+            const Vector2 points[3] = {triangle.a, triangle.b, triangle.c};
+
+            for (const Vector2& point : points) {
+                if (!bounds.valid) {
+                    bounds.minX = point.x;
+                    bounds.maxX = point.x;
+                    bounds.minY = point.y;
+                    bounds.maxY = point.y;
+                    bounds.valid = true;
+
+                    continue;
+                }
+
+                bounds.minX = std::min(bounds.minX, point.x);
+                bounds.maxX = std::max(bounds.maxX, point.x);
+                bounds.minY = std::min(bounds.minY, point.y);
+                bounds.maxY = std::max(bounds.maxY, point.y);
+            }
         }
 
+        return bounds;
+    }
+
+    float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point) {
+        return surface.height + GetSlopeOffset(point, bounds, surface.slopeDirection, surface.slopeStrength);
+    }
+
+    namespace {
         struct SectorSample {
             const Sector* sector = nullptr;
             SectorBounds bounds;

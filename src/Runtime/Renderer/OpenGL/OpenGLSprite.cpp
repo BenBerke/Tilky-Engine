@@ -16,6 +16,7 @@ void OpenGL::BuildGpuSprites() {
         ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;
+        if (IsEntityCulled(*transform)) continue;
 
 
         GpuSprite gpuSprite{};

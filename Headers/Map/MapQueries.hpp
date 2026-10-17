@@ -6,6 +6,7 @@
 #include "Headers/Objects/Wall.hpp"
 
 struct Level;
+struct Matrix4;
 
 namespace MapQueries {
     int FindSectorContainingPoint(
@@ -29,6 +30,32 @@ namespace MapQueries {
     void RebuildSectorRuntimeLinks(Level& level);
 
     void BuildPvs(Level& level);
+
+    // Every sector the camera can see into from `cameraSectorIndex` (an index
+    // into level.sectors, as ComponentTransform::sectorIndex stores), its own
+    // sector included. Floods out through portal walls, shrinking a screen
+    // rectangle at each one, so the result is conservative: a listed sector
+    // can still be hidden, but a visible one is never left out. Openings use
+    // the current floor and ceiling heights, so a closed door hides what is
+    // behind it. A floor or ceiling whose color alpha is below 1 is
+    // see-through and never closes an opening.
+    //
+    // viewProjection maps a world point to clip space as
+    // viewProjection * (x, y, z, 1), i.e. projection * view. screenWidth and
+    // screenHeight are the viewport in pixels; rectangles are kept in whole
+    // pixels.
+    //
+    // `out` is cleared, then filled in level.sectors order. With an invalid
+    // sector index or screen size nothing can be culled, so every sector is
+    // listed. Needs RebuildSectorRuntimeLinks (sector.walls).
+    void GetVisibleSectors(
+        const Level& level,
+        int cameraSectorIndex,
+        const Matrix4& viewProjection,
+        float screenWidth,
+        float screenHeight,
+        std::vector<const Sector*>& out
+    );
 
     inline std::array<Vector3, 4> CalculateWallQuad3D(
         const Wall& wall,

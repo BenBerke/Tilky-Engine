@@ -367,6 +367,7 @@ void OpenGL::BuildGpuModels() {
         const ComponentTransform* transform = level.transforms.Get(modelComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;
+        if (IsEntityCulled(*transform)) continue;
 
         GpuModelAsset* asset = AcquireModelAsset(modelComponent.fileName);
 

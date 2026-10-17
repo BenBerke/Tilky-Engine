@@ -10,11 +10,121 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/UISystem.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "tracy/Tracy.hpp"
+
+void OpenGL::UpdateVisibleSectors(
+    const Level& level,
+    const ComponentCamera& camera,
+    const ComponentTransform& renderCameraTransform
+) {
+    const size_t sectorCount = level.sectors.size();
+
+    // The camera entity's own sector as the hint - it's almost always right.
+    const int cameraSector = MapQueries::FindSectorContainingPoint(
+        level.sectors,
+        {renderCameraTransform.position.x, renderCameraTransform.position.z},
+        renderCameraTransform.sectorIndex
+    );
+
+    MapQueries::GetVisibleSectors(
+        level,
+        cameraSector,
+        camera.projection * camera.view,
+        static_cast<float>(screenWidth),
+        static_cast<float>(screenHeight),
+        visibleSectors
+    );
+
+    sectorVisible.assign(sectorCount, 0);
+    sectorShowsEntities.assign(sectorCount, 0);
+
+    for (const Sector* sector : visibleSectors) {
+        const size_t index = static_cast<size_t>(sector - level.sectors.data());
+
+        sectorVisible[index] = 1;
+        sectorShowsEntities[index] = 1;
+
+        for (const Sector* neighbour : sector->neighbors)
+            if (neighbour != nullptr) sectorShowsEntities[static_cast<size_t>(neighbour - level.sectors.data())] = 1;
+    }
+
+    visibilityCulling = true;
+}
+
+// Indices the culling data doesn't cover (outside every sector, or a level
+// that changed size since the last frame) are drawn, never hidden.
+bool OpenGL::IsSectorCulled(const int sectorIndex) const {
+    return visibilityCulling &&
+           sectorIndex >= 0 &&
+           sectorIndex < static_cast<int>(sectorVisible.size()) &&
+           !sectorVisible[sectorIndex];
+}
+
+// A wall is seen from one of its sectors, so it is hidden only when every
+// sector it has is. A wall with no sector at all is always drawn.
+bool OpenGL::IsWallCulled(const Level& level, const Wall& wall) const {
+    if (!visibilityCulling) return false;
+
+    bool hasSector = false;
+
+    for (const ID sectorID : {wall.frontSector, wall.backSector}) {
+        const Sector* sector = MapQueries::GetSectorByID(level, sectorID);
+        if (sector == nullptr) continue;
+
+        hasSector = true;
+        if (!IsSectorCulled(static_cast<int>(sector - level.sectors.data()))) return false;
+    }
+
+    return hasSector;
+}
+
+bool OpenGL::IsEntityCulled(const ComponentTransform& transform) const {
+    return visibilityCulling &&
+           transform.sectorIndex >= 0 &&
+           transform.sectorIndex < static_cast<int>(sectorShowsEntities.size()) &&
+           !sectorShowsEntities[transform.sectorIndex];
+}
+
+// One instanced draw per run of visible sectors that sit next to each other
+// in flatTriangles; everything in one draw when nothing is culled.
+void OpenGL::DrawFlats() const {
+    if (!visibilityCulling || flatSectorRanges.size() != sectorVisible.size()) {
+        glUniform1i(flatInstanceOffsetUniform, 0);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 3, flatTriangleCount);
+        return;
+    }
+
+    GLint runFirst = 0;
+    GLsizei runCount = 0;
+
+    const auto flush = [&] {
+        if (runCount <= 0) return;
+
+        glUniform1i(flatInstanceOffsetUniform, runFirst);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 3, runCount);
+        runCount = 0;
+    };
+
+    for (size_t index = 0; index < flatSectorRanges.size(); ++index) {
+        const FlatSectorRange& range = flatSectorRanges[index];
+
+        if (!sectorVisible[index] || range.count <= 0) continue;
+
+        if (runCount > 0 && runFirst + runCount == range.first) runCount += range.count;
+        else {
+            flush();
+            runFirst = range.first;
+            runCount = range.count;
+        }
+    }
+
+    flush();
+}
 
 void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     using namespace OpenGLRendererInternal;
@@ -154,6 +264,13 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 
     {
+        ZoneScopedN("Visible Sectors");
+
+        visibilityCulling = false;
+        if (!useEditorCamera) UpdateVisibleSectors(level, *camera, renderCameraTransform);
+    }
+
+    {
         ZoneScopedN("Background");
         DrawBackground(*camera, level.sky);
     }
@@ -203,7 +320,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDepthFunc(GL_GREATER);
         glUniform1i(renderModeUniform, RENDER_FLAT);
 
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 3, flatTriangleCount);
+        DrawFlats();
     }
 
     {

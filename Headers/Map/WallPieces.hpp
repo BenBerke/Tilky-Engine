@@ -40,6 +40,12 @@ namespace WallPieces {
         SectorBounds emptyBounds;
     };
 
+    // What SectorBoundsCache stores, computed directly.
+    SectorBounds ComputeSectorBounds(const Sector& sector);
+
+    // Height of a floor or ceiling at map point `point`, slope included.
+    float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point);
+
     struct WallPiece {
         // Heights at the wall's start and end points.
         float bottomStart = 0.0f;

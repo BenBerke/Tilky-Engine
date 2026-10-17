@@ -397,6 +397,25 @@ private:
 
     std::vector<GpuFlatTriangle> flatTriangles;
 
+    // Each sector's run of flatTriangles, by sector index -
+    // BuildFlatTrianglesFromSectors writes them sector by sector.
+    struct FlatSectorRange {
+        GLint first = 0;
+        GLsizei count = 0;
+    };
+    std::vector<FlatSectorRange> flatSectorRanges;
+    GLint flatInstanceOffsetUniform = -1;
+
+    // Visibility culling, decided each frame by UpdateVisibleSectors. Only on
+    // with the game camera (Play and the standalone game); the runtime
+    // editor's camera always draws everything.
+    bool visibilityCulling = false;
+    std::vector<const Sector*> visibleSectors;
+    std::vector<uint8_t> sectorVisible; // by sector index
+    // Visible or next to a visible sector: an entity standing by a portal
+    // can reach into the sector the camera sees.
+    std::vector<uint8_t> sectorShowsEntities;
+
     // Fingerprint of the sector/floor/triangle layout flatTriangles was built
     // from. Floors can be added or removed while the level is live, so the
     // instance list has to follow them.
@@ -455,6 +474,13 @@ private:
 
     void BuildFlatTrianglesFromSectors();
     void RefreshFlatTrianglesIfLayoutChanged();
+
+    // OpenGLUpdate.cpp: visibility culling.
+    void UpdateVisibleSectors(const Level& level, const ComponentCamera& camera, const ComponentTransform& renderCameraTransform);
+    [[nodiscard]] bool IsSectorCulled(int sectorIndex) const;
+    [[nodiscard]] bool IsWallCulled(const Level& level, const Wall& wall) const;
+    [[nodiscard]] bool IsEntityCulled(const ComponentTransform& transform) const;
+    void DrawFlats() const;
 
     // OpenGLBackground.cpp: the level's sky, drawn before the world.
     void DrawBackground(const ComponentCamera& camera, const SkySettings& sky);
