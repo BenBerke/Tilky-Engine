@@ -278,6 +278,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Objects/Components.cpp
         src/Objects/Level.cpp
         src/Objects/FlipbookAsset.cpp
+        src/Objects/Prefab.cpp
 
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/Gameplay/GameFunctions.cpp
@@ -336,6 +337,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Wall.hpp
         Headers/Objects/Loadables.hpp
         Headers/Objects/FlipbookAsset.hpp
+        Headers/Objects/Prefab.hpp
         Headers/Objects/LuaWrappers.hpp
 
         Headers/Map/LevelManager.hpp
@@ -524,6 +526,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/EditorTextureCache.cpp
         src/Editor/AssetBrowser.cpp
         src/Editor/FlipbookEditor.cpp
+        src/Editor/PrefabEditor.cpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp
@@ -536,6 +539,7 @@ set(TILKY_EDITOR_SOURCES
 
         Headers/Editor/AssetBrowser.hpp
         Headers/Editor/FlipbookEditor.hpp
+        Headers/Editor/PrefabEditor.hpp
         Headers/Editor/EditorTextureCache.hpp
         Headers/Editor/ImGuiDrawFunctions.hpp
 

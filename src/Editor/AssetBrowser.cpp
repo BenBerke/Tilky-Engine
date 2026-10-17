@@ -19,6 +19,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -784,7 +785,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Font, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Font, Prefab, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -806,6 +807,7 @@ end
             { ".ttf",  RegisteredExtensionKind::Font    },
             { ".otf",  RegisteredExtensionKind::Font    },
             { std::string(FlipbookIO::kExtension), RegisteredExtensionKind::Flipbook },
+            { std::string(Prefab::kExtension), RegisteredExtensionKind::Prefab },
             { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
         };
 
@@ -828,6 +830,7 @@ end
             case AssetKind::Script: return "lua";
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
             case AssetKind::Flipbook: return "fpk";
+            case AssetKind::Prefab: return "prefab";
             case AssetKind::Font: return LowerCopy(entry.GetPath().extension().string());
             default: return "file";
         }
@@ -842,6 +845,7 @@ end
             case AssetKind::Script: return ICON_FA_FILE_CODE;
             case AssetKind::Model: return ICON_FA_CUBE;
             case AssetKind::Flipbook: return ICON_FA_FILM;
+            case AssetKind::Prefab: return ICON_FA_CUBES;
             case AssetKind::Font: return ICON_FA_FONT;
             default: return ICON_FA_FILE;
         }
@@ -855,6 +859,7 @@ end
             case AssetKind::Script: return IM_COL32(55, 80, 55, 255);
             case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
             case AssetKind::Flipbook: return IM_COL32(100, 55, 75, 255);
+            case AssetKind::Prefab: return IM_COL32(45, 85, 95, 255);
             case AssetKind::Font: return IM_COL32(85, 85, 45, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
@@ -1571,6 +1576,10 @@ void DirectoryEntry::DrawContextMenu(AssetBrowser& browser) {
         browser.DrawCreateFileSubmenuItems(GetPath());
         ImGui::EndMenu();
     }
+    if (ImGui::BeginMenu("Prefabs")) {
+        browser.DrawCreatePrefabSubmenuItems(GetPath());
+        ImGui::EndMenu();
+    }
 }
 
 void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
@@ -1580,6 +1589,10 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
     }
     if (kind == AssetKind::Flipbook) {
         browser.RequestOpenFlipbook(GetPath());
+        return;
+    }
+    if (kind == AssetKind::Prefab) {
+        browser.RequestOpenPrefab(GetPath());
         return;
     }
     if (kind == AssetKind::Other && AssetBrowser::IsPlainTextFile(GetPath())) {
@@ -1658,6 +1671,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Flipbook);
         case RegisteredExtensionKind::Font:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Font);
+        case RegisteredExtensionKind::Prefab:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Prefab);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1677,6 +1692,7 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Model:   return "TILKY_ASSET_MODEL";
         case AssetKind::Flipbook: return "TILKY_ASSET_FLIPBOOK";
         case AssetKind::Font:    return "TILKY_ASSET_FONT";
+        case AssetKind::Prefab:  return "TILKY_ASSET_PREFAB";
         default:                 return "TILKY_ASSET_OTHER";
     }
 }
@@ -1690,6 +1706,8 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
         case AssetKind::Flipbook: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Font: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
+
+        case AssetKind::Prefab: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
         case AssetKind::Sound:
         case AssetKind::Script: {
@@ -2172,6 +2190,11 @@ void AssetBrowser::NotifyAssetReferenceRenamed(
         case AssetKind::Script:  LevelManager::RenameScriptReference(oldReference, newReference); break;
         case AssetKind::Model:   LevelManager::RenameModelReference(oldReference, newReference); break;
         case AssetKind::Font:    LevelManager::RenameFontReference(oldReference, newReference); break;
+        case AssetKind::Prefab:
+            LevelManager::RenamePrefabReference(oldReference, newReference);
+            Prefab::Invalidate(oldReference);
+            prefabEditor.OnFileMoved(oldAbsolutePath, newAbsolutePath);
+            break;
         default: break; // AssetKind::Other already handled above; AssetKind::Folder does not exist as a GetAssetKind() value
     }
 }
@@ -2339,6 +2362,10 @@ void AssetBrowser::DrawEmptySpaceContextMenu() {
         if (ImGui::MenuItem("Create Level")) RequestCreateLevel(currentDirectory);
         if (ImGui::BeginMenu("Create File")) {
             DrawCreateFileSubmenuItems(currentDirectory);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Prefabs")) {
+            DrawCreatePrefabSubmenuItems(currentDirectory);
             ImGui::EndMenu();
         }
         ImGui::Separator();
@@ -2523,6 +2550,13 @@ void AssetBrowser::DrawCreateFileModal() {
             // nothing can open it.
             if (created && LowerCopy(createdFilePath.extension().string()) == FlipbookIO::kExtension) {
                 if (FlipbookIO::Save(createdFilePath, FlipbookAsset{}, &error)) RequestOpenFlipbook(createdFilePath);
+                else spdlog::error("Asset browser: {}", error);
+            }
+
+            // Same for a .prefab: it starts as an entity named after the file.
+            if (created && LowerCopy(createdFilePath.extension().string()) == Prefab::kExtension) {
+                const Level prefab = Prefab::MakeEmpty(createdFilePath.stem().string(), activeModal.createUIPrefab);
+                if (LevelSerialization::SavePrefabToFile(createdFilePath, prefab, &error)) RequestOpenPrefab(createdFilePath);
                 else spdlog::error("Asset browser: {}", error);
             }
 
@@ -2856,6 +2890,19 @@ void AssetBrowser::DrawFlipbookEditorWindows() {
     flipbookEditor.Draw();
 }
 
+void AssetBrowser::RequestOpenPrefab(const std::filesystem::path& absolutePath) {
+    if (!IsPathWithinRoot(absolutePath)) {
+        lastOperationError = "Refused to open a prefab outside the asset root: " + absolutePath.string();
+        return;
+    }
+
+    prefabEditor.Open(absolutePath);
+}
+
+void AssetBrowser::DrawPrefabEditorWindows() {
+    prefabEditor.Draw();
+}
+
 void AssetBrowser::RequestOpenLevel(const std::filesystem::path& absolutePath) {
     if (!IsPathWithinRoot(absolutePath)) {
         lastOperationError = "Refused to open a level outside the asset root: " + absolutePath.string();
@@ -2883,4 +2930,14 @@ void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &desti
     if (ImGui::MenuItem("Flipbook (.fpk)")) RequestCreateFile(destinationDirectory, std::string(FlipbookIO::kExtension));
     if (ImGui::MenuItem("Text (.txt)")) RequestCreateFile(destinationDirectory, ".txt");
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
+}
+
+void AssetBrowser::DrawCreatePrefabSubmenuItems(const std::filesystem::path& destinationDirectory) {
+    if (ImGui::MenuItem("Empty Prefab")) RequestCreatePrefab(destinationDirectory, false);
+    if (ImGui::MenuItem("Empty UI Prefab")) RequestCreatePrefab(destinationDirectory, true);
+}
+
+void AssetBrowser::RequestCreatePrefab(const std::filesystem::path& destinationDirectory, const bool uiEntity) {
+    RequestCreateFile(destinationDirectory, std::string(Prefab::kExtension));
+    if (activeModal.kind == AssetBrowserModalKind::CreateFile) activeModal.createUIPrefab = uiEntity;
 }

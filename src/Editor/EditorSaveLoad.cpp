@@ -11,6 +11,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -213,6 +214,11 @@ namespace MapEditorInternal {
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
             cameraStepSize = settings.value("cameraStepSize", 50.0f);
 
+            hierarchyVisible = settings.value("hierarchyVisible", true);
+            editorPanelVisible = settings.value("editorPanelVisible", true);
+            worldSettingsVisible = settings.value("worldSettingsVisible", true);
+            assetBrowserVisible = settings.value("assetBrowserVisible", true);
+
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
         }
@@ -296,7 +302,11 @@ namespace MapEditorInternal {
                 }},
                    {"cameraSpeed", cameraSpeed},
                 {"cameraStepSize", cameraStepSize},
-                {"editorDesign", EditorStyle::ActiveDesign()}
+                {"editorDesign", EditorStyle::ActiveDesign()},
+                {"hierarchyVisible", hierarchyVisible},
+                {"editorPanelVisible", editorPanelVisible},
+                {"worldSettingsVisible", worldSettingsVisible},
+                {"assetBrowserVisible", assetBrowserVisible}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());
@@ -359,6 +369,9 @@ namespace MapEditorInternal {
         }
 
         level.name = cleanName;
+
+        // Saved override lists must match what the instances hold now.
+        Prefab::RefreshAllOverrides(level);
 
         LevelSerialization::LevelExtraData extraData;
 

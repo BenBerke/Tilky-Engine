@@ -49,6 +49,11 @@ namespace LuaScriptRuntime {
     // LuaSystem.cpp.
     void QueueEntityDestroy(ID entityId);
 
+    // Game.CreateEntity(entity) spawns an entity with scripts mid-Update;
+    // their instances are created at the start of the next script Update
+    // (creating them now would grow scriptInstances under its own loop).
+    void QueueEntityScriptsStart(ID entityId);
+
     // Converts one serialized field value into the live Lua object a script
     // actually sees when the field is seeded at instance-load time:
     // primitives/math types pass through as themselves; EntityRefValue /

@@ -2,6 +2,8 @@
 // Created by berke on 6/22/2026.
 //
 
+#include "Headers/Objects/Prefab.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
@@ -45,9 +47,10 @@ namespace {
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
-            Method("CreateEntity", {Param("isUIEntity", "boolean?")}, "Entity",
-                   "Adds a new empty Entity named \"Entity\" to the level and returns it. It starts with a Transform "
-                   "at the origin, or a UITransform when `isUIEntity` is true."),
+            Method("CreateEntity", {Param("isUIEntityOrEntity", "boolean|Entity?")}, "Entity?",
+                   "Adds a new Entity to the level and returns it. With nothing or a boolean it is empty, named \"Entity\", "
+                   "with a Transform at the origin (a UITransform when true). Given an Entity it is a copy of it, scripts "
+                   "and all - pass an Entity field holding a prefab to spawn that prefab."),
             Method("FindEntity", {Param("name", "string")}, "Entity?", "First Entity with this exact name, or nil."),
             Method("FindEntities", {Param("name", "string")}, "Entity[]", "Every Entity with this exact name."),
             Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
@@ -164,10 +167,33 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
     game[sol::metatable_key] = gameMeta;
 
-    game.set_function("CreateEntity", [](const sol::optional<bool> isUIEntity) -> ScriptEntity {
+    // Game.CreateEntity(), Game.CreateEntity(isUIEntity), or
+    // Game.CreateEntity(entity): a copy of an entity - a prefab instance
+    // when `entity` came from an Entity field holding a prefab.
+    game.set_function("CreateEntity", [](sol::this_state state, const sol::object argument) -> sol::object {
         Level& level = LevelManager::CurrentLevel();
 
-        return {&level, level.CreateEntity(isUIEntity.value_or(false))};
+        if (argument.is<ScriptEntity>()) {
+            const ScriptEntity source = argument.as<ScriptEntity>();
+            Entity* original = source.GetEntity();
+            if (original == nullptr) return sol::make_object(state, sol::nil);
+
+            ID newID = INVALID_ID;
+            if (const std::string prefab = Prefab::ScriptCopyReference(source.level); !prefab.empty())
+                newID = Prefab::Instantiate(level, *source.level, prefab);
+            else if (source.level == &level) {
+                Entity copy = *original; // CreateEntity can grow the entity list
+                newID = level.CreateEntity(copy);
+            }
+
+            if (newID == INVALID_ID) return sol::make_object(state, sol::nil);
+
+            LuaScriptRuntime::QueueEntityScriptsStart(newID);
+            return sol::make_object(state, ScriptEntity{&level, newID});
+        }
+
+        const bool isUIEntity = argument.is<bool>() && argument.as<bool>();
+        return sol::make_object(state, ScriptEntity{&level, level.CreateEntity(isUIEntity)});
     });
 
     game.set_function("FindEntity", [](sol::this_state state, const std::string& name) -> sol::object {

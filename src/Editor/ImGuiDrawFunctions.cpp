@@ -40,6 +40,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
+#include "Headers/Objects/Prefab.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,9 +272,11 @@ namespace {
         Level &level = LevelManager::CurrentLevel();
 
         const Entity *current = ref.entityId == INVALID_ID ? nullptr : level.GetEntity(ref.entityId);
-        const std::string preview = current != nullptr ? DescribeEntity(*current) : "(None)";
+        const std::string preview = !ref.prefab.empty() ? "Prefab: " + std::filesystem::path(ref.prefab).stem().string()
+                                  : current != nullptr ? DescribeEntity(*current) : "(None)";
 
-        return DrawLevelObjectRefField(
+        // Picking a level entity (or None) replaces a prefab.
+        bool changed = DrawLevelObjectRefField(
             label, ref.entityId, preview,
             MapEditorInternal::ENTITY_REF_PAYLOAD, "editor.ref_field.tooltip.entity",
             [&level](ID &id, bool &changed) {
@@ -289,6 +292,19 @@ namespace {
                 }
             }
         );
+        if (changed) ref.prefab.clear();
+
+        // A .prefab dragged from the Asset Browser onto the same combo.
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab))) {
+                ref.prefab = AssetBrowser::ToAssetReference(static_cast<const char *>(payload->Data), AssetKind::Prefab);
+                ref.entityId = INVALID_ID;
+                changed = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        return changed;
     }
 
     bool DrawWallField(const char *label, WallRefValue &ref) {
@@ -877,12 +893,18 @@ namespace ImGuiDrawFunctions {
     static void DrawScriptAttachmentFields(ScriptAttachmentData &script, const std::string &ownerLabel) {
         BeginSection("Script File");
 
-        if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), script.fileName, AssetKind::Script)) {
-            LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+        {
+            PrefabField prefabField("fileName");
+            if (MapEditorInternal::DrawAssetField(Get("component.script.file_name").c_str(), script.fileName, AssetKind::Script)) {
+                LevelSystem::ReconcileScriptPublicValues(script, ownerLabel);
+            }
+            Tooltip(Get("editor.tooltip.component.script.file").c_str());
         }
-        Tooltip(Get("editor.tooltip.component.script.file").c_str());
 
-        ImGui::Checkbox(Get("component.script.enabled").c_str(), &script.enabled);
+        {
+            PrefabField prefabField("enabled");
+            ImGui::Checkbox(Get("component.script.enabled").c_str(), &script.enabled);
+        }
 
         ImGui::SameLine();
 
@@ -937,6 +959,7 @@ namespace ImGuiDrawFunctions {
                 valueIt = script.publicValues.find(field.name);
             }
 
+            PrefabField prefabField("publicValues/" + field.name);
             DrawScriptValueEditor(field, valueIt->second);
         }
 
@@ -1611,16 +1634,226 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Prefab instance marks
+    // ─────────────────────────────────────────────────────────────────────────
+    namespace {
+        constexpr ImVec4 PREFAB_OVERRIDE_TEXT = {0.55f, 0.78f, 1.0f, 1.0f};
+        constexpr ImU32 PREFAB_OVERRIDE_BAR = IM_COL32(60, 150, 255, 255);
+
+        // A prefab action picked in the inspector. Run by EndPrefabFields
+        // (or at the end of the entity window), after the widgets that might
+        // still hold pointers into the component storages are done.
+        struct PrefabAction {
+            enum class Kind { None, RevertPath, ApplyPath, RevertComponent, ApplyComponent, RestoreComponent, RevertAll, ApplyAll, Unpack };
+            Kind kind = Kind::None;
+            ID entityID = INVALID_ID;
+            std::string path;
+            int componentType = -1;
+            std::uint64_t instanceID = 0;
+        };
+
+        struct PrefabFieldContext {
+            bool active = false;
+            ID entityID = INVALID_ID;
+            std::string pathPrefix; // "entity/" or "<key>/<prefab id>/"
+            std::vector<std::string> overridden;
+        };
+
+        PrefabFieldContext prefabFieldContext;
+        PrefabAction pendingPrefabAction;
+
+        void RunPendingPrefabAction() {
+            const PrefabAction action = pendingPrefabAction;
+            pendingPrefabAction = {};
+            if (action.kind == PrefabAction::Kind::None) return;
+
+            Level& level = LevelManager::CurrentLevel();
+            Entity* entity = level.GetEntity(action.entityID);
+            if (entity == nullptr || !entity->prefabLink.IsInstance()) return;
+
+            std::string error;
+            bool ok = true;
+
+            switch (action.kind) {
+                case PrefabAction::Kind::RevertPath: Prefab::RevertOverride(level, *entity, action.path); break;
+                case PrefabAction::Kind::ApplyPath: ok = Prefab::ApplyOverride(level, *entity, action.path, &error); break;
+                case PrefabAction::Kind::RevertComponent: Prefab::RevertComponent(level, *entity, action.componentType, action.instanceID); break;
+                case PrefabAction::Kind::ApplyComponent: ok = Prefab::ApplyComponent(level, *entity, action.componentType, action.instanceID, &error); break;
+                case PrefabAction::Kind::RestoreComponent: Prefab::RestoreComponent(level, *entity, action.componentType, action.instanceID); break;
+                case PrefabAction::Kind::RevertAll: Prefab::RevertAll(level, *entity); break;
+                case PrefabAction::Kind::ApplyAll: ok = Prefab::ApplyAll(level, *entity, &error); break;
+                case PrefabAction::Kind::Unpack: Prefab::Unpack(*entity); break;
+                case PrefabAction::Kind::None: break;
+            }
+
+            if (!ok) spdlog::error("Prefab: {}", error);
+        }
+
+        // Revert / Apply to Prefab for one component, on its card or window.
+        void DrawPrefabComponentMenuItems(const Entity& entity, const int componentType, const std::uint64_t instanceID) {
+            const bool added = Prefab::PrefabInstanceIDOf(entity, componentType, instanceID) == 0;
+            const bool overridden = added || !Prefab::ComponentOverrides(LevelManager::CurrentLevel(), entity, componentType, instanceID).empty();
+
+            if (ImGui::MenuItem(added ? "Remove (Revert)" : "Revert", nullptr, false, overridden))
+                pendingPrefabAction = {PrefabAction::Kind::RevertComponent, entity.id, {}, componentType, instanceID};
+            if (ImGui::MenuItem(added ? "Add to Prefab" : "Apply to Prefab", nullptr, false, overridden))
+                pendingPrefabAction = {PrefabAction::Kind::ApplyComponent, entity.id, {}, componentType, instanceID};
+        }
+    }
+
+    void BeginPrefabFields(Entity &entity, const int componentType, const std::uint64_t instanceID) {
+        prefabFieldContext = {};
+        if (!entity.prefabLink.IsInstance()) return;
+
+        if (componentType < 0) {
+            prefabFieldContext.active = true;
+            prefabFieldContext.entityID = entity.id;
+            prefabFieldContext.pathPrefix = "entity/";
+            prefabFieldContext.overridden = Prefab::EntityOverrides(entity);
+            return;
+        }
+
+        const std::uint64_t prefabID = Prefab::PrefabInstanceIDOf(entity, componentType, instanceID);
+        if (prefabID == 0) return; // added on the instance: the whole component is the override
+
+        prefabFieldContext.active = true;
+        prefabFieldContext.entityID = entity.id;
+        prefabFieldContext.pathPrefix = std::string(Prefab::ComponentKey(componentType)) + "/" + std::to_string(prefabID) + "/";
+        prefabFieldContext.overridden = Prefab::ComponentOverrides(LevelManager::CurrentLevel(), entity, componentType, instanceID);
+    }
+
+    void EndPrefabFields() {
+        prefabFieldContext = {};
+        RunPendingPrefabAction();
+    }
+
+    PrefabField::PrefabField(std::string fieldName) : field(std::move(fieldName)) {
+        active = prefabFieldContext.active;
+        if (!active) return;
+
+        overridden = std::ranges::find(prefabFieldContext.overridden, field) != prefabFieldContext.overridden.end();
+        startY = ImGui::GetCursorScreenPos().y;
+        if (overridden) ImGui::PushStyleColor(ImGuiCol_Text, PREFAB_OVERRIDE_TEXT);
+    }
+
+    PrefabField::~PrefabField() {
+        if (!active) return;
+        if (overridden) ImGui::PopStyleColor();
+
+        const float endY = ImGui::GetCursorScreenPos().y - ImGui::GetStyle().ItemSpacing.y;
+        if (endY <= startY) return;
+
+        const ImVec2 windowPos = ImGui::GetWindowPos();
+        const float windowWidth = ImGui::GetWindowWidth();
+
+        if (overridden)
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(windowPos.x + 2.0f, startY),
+                                                      ImVec2(windowPos.x + 5.0f, endY), PREFAB_OVERRIDE_BAR);
+
+        const std::string popupID = "prefab_field_menu_" + field;
+
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+            ImGui::IsMouseHoveringRect(ImVec2(windowPos.x, startY), ImVec2(windowPos.x + windowWidth, endY)) &&
+            ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+            ImGui::OpenPopup(popupID.c_str());
+
+        if (ImGui::BeginPopup(popupID.c_str())) {
+            const std::string path = prefabFieldContext.pathPrefix + field;
+            ImGui::TextDisabled("%s", field.c_str());
+            if (ImGui::MenuItem("Revert", nullptr, false, overridden))
+                pendingPrefabAction = {PrefabAction::Kind::RevertPath, prefabFieldContext.entityID, path};
+            if (ImGui::MenuItem("Apply to Prefab", nullptr, false, overridden))
+                pendingPrefabAction = {PrefabAction::Kind::ApplyPath, prefabFieldContext.entityID, path};
+            ImGui::EndPopup();
+        }
+    }
+
+    void DrawPrefabInstanceBar(Entity &entity) {
+        if (!entity.prefabLink.IsInstance()) return;
+
+        ImGui::PushID("prefab_instance_bar");
+
+        ImGui::TextColored(PREFAB_OVERRIDE_TEXT, "Prefab: %s", entity.prefabLink.prefab.c_str());
+        if (Prefab::Get(entity.prefabLink.prefab) == nullptr)
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Prefab file missing - keeping the last saved values.");
+
+        if (ImGui::SmallButton("Open"))
+            MapEditorInternal::assetBrowser.RequestOpenPrefab(ProjectManager::GetAssetsPath() / entity.prefabLink.prefab);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Apply All")) pendingPrefabAction = {PrefabAction::Kind::ApplyAll, entity.id};
+        Tooltip("Writes every override, added and removed component into the prefab, so every instance gets them.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Revert All")) pendingPrefabAction = {PrefabAction::Kind::RevertAll, entity.id};
+        Tooltip("Drops every override, removes added components and brings back removed ones.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Unpack")) pendingPrefabAction = {PrefabAction::Kind::Unpack, entity.id};
+        Tooltip("Turns this into a plain entity that no longer follows the prefab.");
+
+        // Prefab components this instance removed, each restorable.
+        for (const PrefabRemovedComponent& removed : entity.prefabLink.removed) {
+            ImGui::PushID(std::to_string(removed.componentType).c_str());
+            ImGui::PushID(std::to_string(removed.prefabInstanceID).c_str());
+            ImGui::TextDisabled("Removed: %s", GetComponentDisplayName(removed.componentType).c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Restore"))
+                pendingPrefabAction = {PrefabAction::Kind::RestoreComponent, entity.id, {}, removed.componentType, removed.prefabInstanceID};
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+
+        ImGui::Separator();
+        ImGui::PopID();
+    }
+
+    std::string PrefabCardLabel(const Entity &entity, const int componentType, const std::uint64_t instanceID, const std::string &label) {
+        if (!entity.prefabLink.IsInstance() || componentType == CMP_TRANSFORM || componentType == CMP_UI_TRANSFORM) return label;
+        return Prefab::PrefabInstanceIDOf(entity, componentType, instanceID) == 0 ? "+ " + label : label;
+    }
+
+    void DrawPrefabCardMarks(const Entity &entity, const int componentType, const std::uint64_t instanceID) {
+        if (!entity.prefabLink.IsInstance()) return;
+
+        const bool added = Prefab::PrefabInstanceIDOf(entity, componentType, instanceID) == 0 &&
+                           componentType != CMP_TRANSFORM && componentType != CMP_UI_TRANSFORM;
+        const bool overridden = added ||
+            !Prefab::ComponentOverrides(LevelManager::CurrentLevel(), entity, componentType, instanceID).empty();
+
+        if (overridden) {
+            const ImVec2 min = ImGui::GetItemRectMin();
+            const ImVec2 max = ImGui::GetItemRectMax();
+            const float x = ImGui::GetWindowPos().x + 2.0f;
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x, min.y), ImVec2(x + 3.0f, max.y), PREFAB_OVERRIDE_BAR);
+        }
+
+        if (componentType == CMP_TRANSFORM || componentType == CMP_UI_TRANSFORM) return;
+
+        if (ImGui::BeginPopupContextItem("prefab_card_menu")) {
+            DrawPrefabComponentMenuItems(entity, componentType, instanceID);
+            ImGui::EndPopup();
+        }
+    }
+
+    void FlushPrefabActions() {
+        RunPendingPrefabAction();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Entity Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawEntityEditor(Entity &entity, EntityInspectorState &state, bool *open, const bool draggable) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(Get("entity.title").c_str(), open, kInspectorFlags)) {
+        const std::string entityWindowTitle = state.windowTitle.empty() ? Get("entity.title") : state.windowTitle;
+        if (!ImGui::Begin(entityWindowTitle.c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
+
+        if (state.drawExtras) state.drawExtras();
+
+        DrawPrefabInstanceBar(entity);
+        BeginPrefabFields(entity, -1, 0);
 
         // ── Identity card ────────────────────────────────────────────────────
         {
@@ -1639,8 +1872,11 @@ namespace ImGuiDrawFunctions {
         // Entity-level active state (Lua: entity.enabled). Disabling
         // an Entity pauses every attached script's ticking without
         // touching each script's own enabled flag - see Entity::enabled.
-        ImGui::Checkbox("Enabled", &entity.enabled);
-        Tooltip("Disables every attached script on this Entity (OnDisable fires) without changing each script's own Enabled checkbox.");
+        {
+            PrefabField prefabField("enabled");
+            ImGui::Checkbox("Enabled", &entity.enabled);
+            Tooltip("Disables every attached script on this Entity (OnDisable fires) without changing each script's own Enabled checkbox.");
+        }
         EndSection();
 
         // ── Components list ──────────────────────────────────────────────────
@@ -1678,7 +1914,9 @@ namespace ImGuiDrawFunctions {
 
             ImGui::Spacing();
             ImGui::Indent(6.0f);
-            ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+            const std::string cardLabel = PrefabCardLabel(entity, componentType, instanceID, label);
+            ImGui::Selectable(cardLabel.c_str(), false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+            DrawPrefabCardMarks(entity, componentType, instanceID);
 
             if (componentType != CMP_TRANSFORM) {
                 if (ImGui::BeginDragDropSource()) {
@@ -1806,10 +2044,16 @@ namespace ImGuiDrawFunctions {
             entityTagError.clear();
         }
 
-        DrawTagsEditor(entity.tags, entity.tagIds, newEntityTagBuf, sizeof(newEntityTagBuf), entityTagError);
+        {
+            PrefabField prefabField("tags");
+            DrawTagsEditor(entity.tags, entity.tagIds, newEntityTagBuf, sizeof(newEntityTagBuf), entityTagError);
+        }
 
         ImGui::PopID();
         EndSection();
+
+        // Runs a Revert/Apply picked from the bar, a card or a field.
+        EndPrefabFields();
 
         // ── Actions ──────────────────────────────────────────────────────────
         ImGui::Spacing();
@@ -1818,17 +2062,19 @@ namespace ImGuiDrawFunctions {
 
         ImGui::PushID("entity_buttons");
 
-        if (DangerButton(Get("common.delete").c_str())
-            || InputManager::GetKeyDown(SDL_SCANCODE_DELETE))
-        {
-            deleteRequested            = true;
-            state.editingComponent     = false;
-            state.selectedComponent    = -1;
-            if (open) *open = false;
-        }
-        Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
+        if (state.allowDelete) {
+            if (DangerButton(Get("common.delete").c_str())
+                || InputManager::GetKeyDown(SDL_SCANCODE_DELETE))
+            {
+                deleteRequested            = true;
+                state.editingComponent     = false;
+                state.selectedComponent    = -1;
+                if (open) *open = false;
+            }
+            Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
 
-        ImGui::SameLine();
+            ImGui::SameLine();
+        }
         if (ImGui::Button(Get("common.close").c_str())) {
             state.editingComponent  = false;
             state.selectedComponent = -1;
@@ -1852,7 +2098,7 @@ namespace ImGuiDrawFunctions {
         }
 
         std::string componentName = GetComponentDisplayName(state.selectedComponent);
-        const std::string windowTitle = componentName + "##component_editor";
+        const std::string windowTitle = componentName + "##component_editor" + state.windowIdSuffix;
 
         bool fallbackOpen = true;
         bool *windowOpen = open ? open : &fallbackOpen;
@@ -1869,22 +2115,31 @@ namespace ImGuiDrawFunctions {
         ImGui::PushID(state.selectedComponent);
         ImGui::PushID(std::to_string(state.selectedInstanceID).c_str());
 
+        BeginPrefabFields(entity, state.selectedComponent, state.selectedInstanceID);
+
         bool closeRequested = false;
         auto CloseEditor    = [&]() { closeRequested = true; };
 
         // Sprite/Model/Collider/AudioSource sit at an offset from the Transform.
         auto DrawOffsetSection = [&](Vector3 &offset) {
-            BeginSection(Get("component.offset").c_str());
-            ImGui::TextDisabled("X                Y               Z");
-            FieldWidth(220.0f);
-            InputOrDrag3("##offset", &offset.x, draggable);
-            Tooltip(Get("editor.tooltip.component.offset").c_str());
-            ResetFloat3Button("rst_offset", &offset.x);
-            EndSection();
+            {
+                PrefabField prefabField("offset");
+                BeginSection(Get("component.offset").c_str());
+                ImGui::TextDisabled("X                Y               Z");
+                FieldWidth(220.0f);
+                InputOrDrag3("##offset", &offset.x, draggable);
+                Tooltip(Get("editor.tooltip.component.offset").c_str());
+                ResetFloat3Button("rst_offset", &offset.x);
+                EndSection();
+            }
         };
 
         // ── Summary header ────────────────────────────────────────────────────
         DrawInspectorHeader("Component", componentName.c_str());
+
+        if (entity.prefabLink.IsInstance() && state.selectedComponent != CMP_TRANSFORM &&
+            Prefab::PrefabInstanceIDOf(entity, state.selectedComponent, state.selectedInstanceID) == 0)
+            ImGui::TextColored(ImVec4(0.55f, 0.78f, 1.0f, 1.0f), "+ Added to this instance (not in the prefab)");
 
         // ════════════════════════════════════════════════════════════════════
         //  Transform
@@ -1928,16 +2183,19 @@ namespace ImGuiDrawFunctions {
 
                 EndSection();
 
-                BeginSection("Scale");
-                ImGui::TextDisabled("X                Y               Z");
-                FieldWidth(220.0f);
+                {
+                    PrefabField prefabField("scale");
+                    BeginSection("Scale");
+                    ImGui::TextDisabled("X                Y               Z");
+                    FieldWidth(220.0f);
 
-                if (InputOrDrag3("##scale", &c->scale.x, draggable)) {
-                    c->isDirty = true;
+                    if (InputOrDrag3("##scale", &c->scale.x, draggable)) {
+                        c->isDirty = true;
+                    }
+
+                    ResetFloat3Button("rst_scale", &c->scale.x);
+                    EndSection();
                 }
-
-                ResetFloat3Button("rst_scale", &c->scale.x);
-                EndSection();
 
                 ImGui::Spacing();
                 ImGui::Separator();
@@ -1981,51 +2239,66 @@ namespace ImGuiDrawFunctions {
                     sided45Text.c_str()
                 };
 
-                ImGui::Text("%s", Get("component.sprite.directional").c_str());
-                ImGui::SameLine();
+                {
+                    PrefabField prefabField("sideCount");
+                    ImGui::Text("%s", Get("component.sprite.directional").c_str());
+                    ImGui::SameLine();
 
-                ImGui::SetNextItemWidth(160.0f);
+                    ImGui::SetNextItemWidth(160.0f);
 
-                if (ImGui::Combo("##sprite_direction_mode", &directionMode, directionModes, 3)) {
-                    if (directionMode == 0) c->sideCount = SIDECOUNT_SINGLE;
-                    else if (directionMode == 1) c->sideCount = SIDECOUNT_90;
-                    else if (directionMode == 2) c->sideCount = SIDECOUNT_45;
+                    if (ImGui::Combo("##sprite_direction_mode", &directionMode, directionModes, 3)) {
+                        if (directionMode == 0) c->sideCount = SIDECOUNT_SINGLE;
+                        else if (directionMode == 1) c->sideCount = SIDECOUNT_90;
+                        else if (directionMode == 2) c->sideCount = SIDECOUNT_45;
+                    }
                 }
 
                 ImGui::Spacing();
 
-                if (ImGui::SmallButton("Clear All")) for (std::string& name : c->textureFileNames) name.clear();
+                {
+                    PrefabField prefabField("textureFileNames");
+                    if (ImGui::SmallButton("Clear All")) for (std::string& name : c->textureFileNames) name.clear();
 
 
-                ImGui::Spacing();
-                ImGui::Separator();
-                ImGui::Spacing();
+                    ImGui::Spacing();
+                    ImGui::Separator();
+                    ImGui::Spacing();
 
-                DrawDirectionalTextureSlots(c->textureFileNames, c->sideCount);
+                    DrawDirectionalTextureSlots(c->textureFileNames, c->sideCount);
+                }
 
                 EndSection();
 
                 ImGui::Spacing();
 
-                ImGui::Text("%s", Get("component.sprite.color").c_str());
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(160.0f);
+                {
+                    PrefabField prefabField("color");
+                    ImGui::Text("%s", Get("component.sprite.color").c_str());
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(160.0f);
 
-                if (ImGui::ColorEdit4(
-                    Get("wall.color").c_str(),
-                    &c->color.x,
-                    ImGuiColorEditFlags_AlphaBar |
-                    ImGuiColorEditFlags_AlphaPreviewHalf |
-                    ImGuiColorEditFlags_HDR |
-                    ImGuiColorEditFlags_Float
-                )) {}
+                    if (ImGui::ColorEdit4(
+                        Get("wall.color").c_str(),
+                        &c->color.x,
+                        ImGuiColorEditFlags_AlphaBar |
+                        ImGuiColorEditFlags_AlphaPreviewHalf |
+                        ImGuiColorEditFlags_HDR |
+                        ImGuiColorEditFlags_Float
+                    )) {}
+                }
 
                 ImGui::Spacing();
 
-                ImGui::Checkbox(Get("component.sprite.is_static").c_str(), &c->isStatic);
-                Tooltip(Get("editor.tooltip.component.sprite.is_static").c_str());
-                ImGui::Checkbox(Get("component.sprite.is_active").c_str(), &c->isActive);
-                Tooltip(Get("editor.tooltip.component.sprite.is_active").c_str());
+                {
+                    PrefabField prefabField("isStatic");
+                    ImGui::Checkbox(Get("component.sprite.is_static").c_str(), &c->isStatic);
+                    Tooltip(Get("editor.tooltip.component.sprite.is_static").c_str());
+                }
+                {
+                    PrefabField prefabField("isActive");
+                    ImGui::Checkbox(Get("component.sprite.is_active").c_str(), &c->isActive);
+                    Tooltip(Get("editor.tooltip.component.sprite.is_active").c_str());
+                }
 
                 DrawOffsetSection(c->offset);
 
@@ -2048,37 +2321,70 @@ namespace ImGuiDrawFunctions {
             auto *c = entity.GetComponentInstance<ComponentAudioSource>(state.selectedInstanceID);
             if (c) {
                 BeginSection("Sound");
-                MapEditorInternal::DrawAssetField("Sound", c->soundFileName, AssetKind::Sound);
-                Tooltip(Get("editor.tooltip.component.audio_source.sound").c_str());
+                {
+                    PrefabField prefabField("soundFileName");
+                    MapEditorInternal::DrawAssetField("Sound", c->soundFileName, AssetKind::Sound);
+                    Tooltip(Get("editor.tooltip.component.audio_source.sound").c_str());
+                }
                 FieldWidth(120.0f);
-                InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable, 0.01f);
+                {
+                    PrefabField prefabField("pitch");
+                    InputOrDrag(Get("component.audio_source.pitch").c_str(), &c->pitch, draggable, 0.01f);
+                }
                 FieldWidth(120.0f);
-                InputOrDrag(Get("component.audio_source.gain").c_str(),  &c->gain,  draggable, 0.01f);
-                ImGui::Checkbox(Get("component.audio_source.looping").c_str(),       &c->looping);
-                ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &c->playOnStart);
+                {
+                    PrefabField prefabField("gain");
+                    InputOrDrag(Get("component.audio_source.gain").c_str(),  &c->gain,  draggable, 0.01f);
+                }
+                {
+                    PrefabField prefabField("looping");
+                    ImGui::Checkbox(Get("component.audio_source.looping").c_str(),       &c->looping);
+                }
+                {
+                    PrefabField prefabField("playOnStart");
+                    ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &c->playOnStart);
+                }
                 EndSection();
 
                 BeginSection("Attenuation");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.ref_distance").c_str(), &c->referenceDistance, draggable, 0.1f);
-                Tooltip(Get("editor.tooltip.component.audio_source.ref_distance").c_str());
+                {
+                    PrefabField prefabField("referenceDistance");
+                    InputOrDrag(Get("component.audio_source.ref_distance").c_str(), &c->referenceDistance, draggable, 0.1f);
+                    Tooltip(Get("editor.tooltip.component.audio_source.ref_distance").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.max_distance").c_str(), &c->maxDistance,       draggable, 1.0f);
-                Tooltip(Get("editor.tooltip.component.audio_source.max_distance").c_str());
+                {
+                    PrefabField prefabField("maxDistance");
+                    InputOrDrag(Get("component.audio_source.max_distance").c_str(), &c->maxDistance,       draggable, 1.0f);
+                    Tooltip(Get("editor.tooltip.component.audio_source.max_distance").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.rolloff").c_str(),       &c->rollOffFactor,     draggable, 0.01f);
-                Tooltip(Get("editor.tooltip.component.audio_source.rolloff").c_str());
+                {
+                    PrefabField prefabField("rollOffFactor");
+                    InputOrDrag(Get("component.audio_source.rolloff").c_str(),       &c->rollOffFactor,     draggable, 0.01f);
+                    Tooltip(Get("editor.tooltip.component.audio_source.rolloff").c_str());
+                }
                 EndSection();
 
                 BeginSection("Cone");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.inner_angle").c_str(), &c->innerConeAngle, draggable, 1.0f);
-                Tooltip(Get("editor.tooltip.component.audio_source.inner_angle").c_str());
+                {
+                    PrefabField prefabField("innerConeAngle");
+                    InputOrDrag(Get("component.audio_source.inner_angle").c_str(), &c->innerConeAngle, draggable, 1.0f);
+                    Tooltip(Get("editor.tooltip.component.audio_source.inner_angle").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.outer_angle").c_str(), &c->outerConeAngle, draggable, 1.0f);
-                Tooltip(Get("editor.tooltip.component.audio_source.outer_angle").c_str());
+                {
+                    PrefabField prefabField("outerConeAngle");
+                    InputOrDrag(Get("component.audio_source.outer_angle").c_str(), &c->outerConeAngle, draggable, 1.0f);
+                    Tooltip(Get("editor.tooltip.component.audio_source.outer_angle").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.audio_source.outer_gain").c_str(),  &c->outerGain,      draggable, 0.01f);
+                {
+                    PrefabField prefabField("outerGain");
+                    InputOrDrag(Get("component.audio_source.outer_gain").c_str(),  &c->outerGain,      draggable, 0.01f);
+                }
                 EndSection();
 
                 DrawOffsetSection(c->offset);
@@ -2125,58 +2431,106 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Movement");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.speed").c_str(), &c->speed, draggable);
+                {
+                    PrefabField prefabField("speed");
+                    InputOrDrag(Get("component.player_controller.speed").c_str(), &c->speed, draggable);
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
+                {
+                    PrefabField prefabField("runningSpeed");
+                    InputOrDrag(Get("component.player_controller.running_speed").c_str(), &c->runningSpeed, draggable);
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.acceleration").c_str(), &c->acceleration, draggable);
+                {
+                    PrefabField prefabField("acceleration");
+                    InputOrDrag(Get("component.player_controller.acceleration").c_str(), &c->acceleration, draggable);
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.deceleration").c_str(), &c->deceleration, draggable);
+                {
+                    PrefabField prefabField("deceleration");
+                    InputOrDrag(Get("component.player_controller.deceleration").c_str(), &c->deceleration, draggable);
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.air_control").c_str(), &c->airControl, draggable);
+                {
+                    PrefabField prefabField("airControl");
+                    InputOrDrag(Get("component.player_controller.air_control").c_str(), &c->airControl, draggable);
+                }
 
                 EndSection();
 
                 BeginSection("Jumping");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.jump_power").c_str(), &c->jumpPower, draggable);
+                {
+                    PrefabField prefabField("jumpPower");
+                    InputOrDrag(Get("component.player_controller.jump_power").c_str(), &c->jumpPower, draggable);
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(), &c->jumpBufferMs, draggable);
-                Tooltip(Get("editor.tooltip.component.player_controller.jump_buffer").c_str());
+                {
+                    PrefabField prefabField("jumpBufferMs");
+                    InputOrDrag(Get("component.player_controller.jump_buffer_ms").c_str(), &c->jumpBufferMs, draggable);
+                    Tooltip(Get("editor.tooltip.component.player_controller.jump_buffer").c_str());
+                }
                 EndSection();
 
                 BeginSection("Camera");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
-                Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
+                {
+                    PrefabField prefabField("eyeHeight");
+                    InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
+                    Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
-                    &c->sensitivityX, 0.001f, 2.0f);
+                {
+                    PrefabField prefabField("sensitivityX");
+                    ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
+                        &c->sensitivityX, 0.001f, 2.0f);
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
-                                   &c->sensitivityY, 0.001f, 2.0f);
+                {
+                    PrefabField prefabField("sensitivityY");
+                    ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
+                                       &c->sensitivityY, 0.001f, 2.0f);
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.max_pitch").c_str(),
-                                   &c->maxPitch, 0.0f, 360.0f);
+                {
+                    PrefabField prefabField("maxPitch");
+                    ImGui::SliderFloat(Get("component.player_controller.max_pitch").c_str(),
+                                       &c->maxPitch, 0.0f, 360.0f);
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.min_pitch").c_str(),
-                                   &c->minPitch, 0.0f, 360.0f);
+                {
+                    PrefabField prefabField("minPitch");
+                    ImGui::SliderFloat(Get("component.player_controller.min_pitch").c_str(),
+                                       &c->minPitch, 0.0f, 360.0f);
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.max_yaw").c_str(),
-                                   &c->maxYaw, 0.0f, 360.0f);
+                {
+                    PrefabField prefabField("maxYaw");
+                    ImGui::SliderFloat(Get("component.player_controller.max_yaw").c_str(),
+                                       &c->maxYaw, 0.0f, 360.0f);
+                }
                 //FieldWidth(-1.0f);
-                ImGui::SliderFloat(Get("component.player_controller.min_yaw").c_str(),
-                                   &c->minYaw, 0.0f, 360.0f);
+                {
+                    PrefabField prefabField("minYaw");
+                    ImGui::SliderFloat(Get("component.player_controller.min_yaw").c_str(),
+                                       &c->minYaw, 0.0f, 360.0f);
+                }
                 if (c->minYaw < .0f) c->minYaw = 0.0f;
 
                 EndSection();
 
                 BeginSection("State");
-                ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
-                Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
-                if (ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive) && c->isActive)
-                    LevelManager::CurrentLevel().ActivatePlayerController(*c);
-                Tooltip(Get("editor.tooltip.component.player_controller.is_active").c_str());
+                {
+                    PrefabField prefabField("noClip");
+                    ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
+                    Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
+                }
+                {
+                    PrefabField prefabField("isActive");
+                    if (ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive) && c->isActive)
+                        LevelManager::CurrentLevel().ActivatePlayerController(*c);
+                    Tooltip(Get("editor.tooltip.component.player_controller.is_active").c_str());
+                }
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -2195,30 +2549,51 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Projection");
                 FieldWidth(160.0f);
-                ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
-                Tooltip(Get("editor.tooltip.component.camera.fov").c_str());
+                {
+                    PrefabField prefabField("fov");
+                    ImGui::SliderFloat(Get("component.camera.fov").c_str(), &c->fov, 1.0f, 179.0f);
+                    Tooltip(Get("editor.tooltip.component.camera.fov").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio, draggable);
+                {
+                    PrefabField prefabField("aspectRatio");
+                    InputOrDrag(Get("component.camera.aspect_ratio").c_str(), &c->aspectRatio, draggable);
+                }
                 EndSection();
 
                 BeginSection("Clipping Planes");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.camera.near_plane").c_str(), &c->nearPlane, draggable);
-                Tooltip(Get("editor.tooltip.component.camera.near_plane").c_str());
+                {
+                    PrefabField prefabField("nearPlane");
+                    InputOrDrag(Get("component.camera.near_plane").c_str(), &c->nearPlane, draggable);
+                    Tooltip(Get("editor.tooltip.component.camera.near_plane").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.camera.far_plane").c_str(),  &c->farPlane,  draggable);
-                Tooltip(Get("editor.tooltip.component.camera.far_plane").c_str());
+                {
+                    PrefabField prefabField("farPlane");
+                    InputOrDrag(Get("component.camera.far_plane").c_str(),  &c->farPlane,  draggable);
+                    Tooltip(Get("editor.tooltip.component.camera.far_plane").c_str());
+                }
                 EndSection();
 
                 BeginSection("Gameplay");
-                ImGui::Checkbox(Get("component.camera.smooth_step").c_str(), &c->smoothStep);
-                Tooltip(Get("editor.tooltip.component.camera.smooth_step").c_str());
-                InputOrDrag(Get("component.camera.smoothing_strength").c_str(), &c->smoothingStrength, draggable);
+                {
+                    PrefabField prefabField("smoothStep");
+                    ImGui::Checkbox(Get("component.camera.smooth_step").c_str(), &c->smoothStep);
+                    Tooltip(Get("editor.tooltip.component.camera.smooth_step").c_str());
+                }
+                {
+                    PrefabField prefabField("smoothingStrength");
+                    InputOrDrag(Get("component.camera.smoothing_strength").c_str(), &c->smoothingStrength, draggable);
+                }
 
                 BeginSection("State");
-                if (ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive) && c->isActive)
-                    LevelManager::CurrentLevel().ActivateCamera(*c);
-                Tooltip(Get("editor.tooltip.component.camera.is_active").c_str());
+                {
+                    PrefabField prefabField("isActive");
+                    if (ImGui::Checkbox(Get("component.camera.is_active").c_str(), &c->isActive) && c->isActive)
+                        LevelManager::CurrentLevel().ActivateCamera(*c);
+                    Tooltip(Get("editor.tooltip.component.camera.is_active").c_str());
+                }
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -2244,40 +2619,55 @@ namespace ImGuiDrawFunctions {
                 const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
                 int selectedColliderIndex = c->type == COLLIDERTYPE_BOX ? 1 : 0;
 
-                FieldWidth(140.0f);
-                if (ImGui::Combo(Get("component.collider.type").c_str(),
-                                 &selectedColliderIndex, items, IM_ARRAYSIZE(items))) {
-                    // Type decides where the collider sits in the storage, so it goes
-                    // through SetType. That can move the component, so fetch it again.
-                    LevelManager::CurrentLevel().colliders.SetType(
-                        state.selectedInstanceID, selectedColliderIndex == 1 ? COLLIDERTYPE_BOX : COLLIDERTYPE_SPHERE);
-                    c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                {
+                    PrefabField prefabField("type");
+                    FieldWidth(140.0f);
+                    if (ImGui::Combo(Get("component.collider.type").c_str(),
+                                     &selectedColliderIndex, items, IM_ARRAYSIZE(items))) {
+                        // Type decides where the collider sits in the storage, so it goes
+                        // through SetType. That can move the component, so fetch it again.
+                        LevelManager::CurrentLevel().colliders.SetType(
+                            state.selectedInstanceID, selectedColliderIndex == 1 ? COLLIDERTYPE_BOX : COLLIDERTYPE_SPHERE);
+                        c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                    }
                 }
 
-                if (selectedColliderIndex == 0) {
-                    FieldWidth(120.0f);
-                    InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
-                    Tooltip(Get("editor.tooltip.component.collider.sphere_radius").c_str());
-                }
-                else {
-                    ImGui::TextDisabled("X                Y               Z");
-                    FieldWidth(220.0f);
-                    InputOrDrag3("##collider_scale", &c->scale.x, draggable);
+                {
+                    PrefabField prefabField("scale");
+                    if (selectedColliderIndex == 0) {
+                        FieldWidth(120.0f);
+                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
+                        Tooltip(Get("editor.tooltip.component.collider.sphere_radius").c_str());
+                    }
+                    else {
+                        ImGui::TextDisabled("X                Y               Z");
+                        FieldWidth(220.0f);
+                        InputOrDrag3("##collider_scale", &c->scale.x, draggable);
+                    }
                 }
 
                 EndSection();
 
                 BeginSection("Behaviour");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
-                Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
-                ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
-                Tooltip(Get("editor.tooltip.component.collider.is_trigger").c_str());
+                {
+                    PrefabField prefabField("stepSize");
+                    InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
+                    Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
+                }
+                {
+                    PrefabField prefabField("isTrigger");
+                    ImGui::Checkbox(Get("component.collider.is_trigger").c_str(), &c->isTrigger);
+                    Tooltip(Get("editor.tooltip.component.collider.is_trigger").c_str());
+                }
                 // Goes through SetActive so physics moves it in or out of the active colliders.
-                bool colliderActive = c->isActive;
-                if (ImGui::Checkbox(Get("component.collider.is_active").c_str(), &colliderActive)) {
-                    LevelManager::CurrentLevel().colliders.SetActive(state.selectedInstanceID, colliderActive);
-                    c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                {
+                    PrefabField prefabField("isActive");
+                    bool colliderActive = c->isActive;
+                    if (ImGui::Checkbox(Get("component.collider.is_active").c_str(), &colliderActive)) {
+                        LevelManager::CurrentLevel().colliders.SetActive(state.selectedInstanceID, colliderActive);
+                        c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
+                    }
                 }
                 EndSection();
 
@@ -2302,15 +2692,27 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection("Physics");
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.rigidbody.mass").c_str(),          &c->mass,         draggable);
-                Tooltip(Get("editor.tooltip.component.rigidbody.mass").c_str());
+                {
+                    PrefabField prefabField("mass");
+                    InputOrDrag(Get("component.rigidbody.mass").c_str(),          &c->mass,         draggable);
+                    Tooltip(Get("editor.tooltip.component.rigidbody.mass").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.rigidbody.gravityScale").c_str(),  &c->gravityScale, draggable);
-                Tooltip(Get("editor.tooltip.component.rigidbody.gravity_scale").c_str());
+                {
+                    PrefabField prefabField("gravityScale");
+                    InputOrDrag(Get("component.rigidbody.gravityScale").c_str(),  &c->gravityScale, draggable);
+                    Tooltip(Get("editor.tooltip.component.rigidbody.gravity_scale").c_str());
+                }
                 FieldWidth(160.0f);
-                InputOrDrag(Get("component.rigidbody.friction").c_str(),      &c->friction,     draggable);
-                ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
-                Tooltip(Get("editor.tooltip.component.rigidbody.is_static").c_str());
+                {
+                    PrefabField prefabField("friction");
+                    InputOrDrag(Get("component.rigidbody.friction").c_str(),      &c->friction,     draggable);
+                }
+                {
+                    PrefabField prefabField("isStatic");
+                    ImGui::Checkbox(Get("component.rigidbody.is_static").c_str(), &c->isStatic);
+                    Tooltip(Get("editor.tooltip.component.rigidbody.is_static").c_str());
+                }
                 EndSection();
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
@@ -2341,8 +2743,11 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection(Get("component.model.section").c_str());
 
-                MapEditorInternal::DrawAssetField(Get("component.model.file_name").c_str(), c->fileName, AssetKind::Model, 64.0f);
-                Tooltip(Get("editor.tooltip.component.model.file_name").c_str());
+                {
+                    PrefabField prefabField("fileName");
+                    MapEditorInternal::DrawAssetField(Get("component.model.file_name").c_str(), c->fileName, AssetKind::Model, 64.0f);
+                    Tooltip(Get("editor.tooltip.component.model.file_name").c_str());
+                }
 
                 if (c->fileName.empty()) ImGui::TextDisabled("%s", Get("editor.none").c_str());
                 else ImGui::TextWrapped("%s", c->fileName.c_str());
@@ -2421,8 +2826,11 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection(Get("component.flipbook.section").c_str());
 
-                MapEditorInternal::DrawAssetField(Get("component.flipbook.file_name").c_str(), c->flipbookFileName, AssetKind::Flipbook);
-                Tooltip(Get("editor.tooltip.component.flipbook.file_name").c_str());
+                {
+                    PrefabField prefabField("flipbookFileName");
+                    MapEditorInternal::DrawAssetField(Get("component.flipbook.file_name").c_str(), c->flipbookFileName, AssetKind::Flipbook);
+                    Tooltip(Get("editor.tooltip.component.flipbook.file_name").c_str());
+                }
 
                 if (!c->flipbookFileName.empty() && ImGui::SmallButton(Get("component.flipbook.open_editor").c_str()))
                     MapEditorInternal::assetBrowser.RequestOpenFlipbook(ProjectManager::GetAssetsPath() / c->flipbookFileName);
@@ -2439,25 +2847,31 @@ namespace ImGuiDrawFunctions {
                         : Get(uiEntity ? "editor.ui.sprite.title" : "component.sprite") + " " + std::to_string(index + 1);
                 };
 
-                FieldWidth(160.0f);
-                if (ImGui::BeginCombo(Get("component.flipbook.sprite").c_str(), spriteLabel(selectedSprite).c_str())) {
-                    if (ImGui::Selectable(spriteLabel(-1).c_str(), selectedSprite == -1))
-                        c->spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
+                {
+                    PrefabField prefabField("spriteInstanceID");
+                    FieldWidth(160.0f);
+                    if (ImGui::BeginCombo(Get("component.flipbook.sprite").c_str(), spriteLabel(selectedSprite).c_str())) {
+                        if (ImGui::Selectable(spriteLabel(-1).c_str(), selectedSprite == -1))
+                            c->spriteInstanceID = INVALID_COMPONENT_INSTANCE_ID;
 
-                    for (int i = 0; i < static_cast<int>(sprites.size()); ++i) {
-                        ImGui::PushID(i);
-                        if (ImGui::Selectable(spriteLabel(i).c_str(), selectedSprite == i))
-                            c->spriteInstanceID = sprites[i];
-                        ImGui::PopID();
+                        for (int i = 0; i < static_cast<int>(sprites.size()); ++i) {
+                            ImGui::PushID(i);
+                            if (ImGui::Selectable(spriteLabel(i).c_str(), selectedSprite == i))
+                                c->spriteInstanceID = sprites[i];
+                            ImGui::PopID();
+                        }
+
+                        ImGui::EndCombo();
                     }
-
-                    ImGui::EndCombo();
+                    Tooltip(Get("editor.tooltip.component.flipbook.sprite").c_str());
                 }
-                Tooltip(Get("editor.tooltip.component.flipbook.sprite").c_str());
 
                 FieldWidth(120.0f);
-                InputOrDrag(Get("component.flipbook.speed").c_str(), &c->speed, draggable, 0.01f);
-                Tooltip(Get("editor.tooltip.component.flipbook.speed").c_str());
+                {
+                    PrefabField prefabField("speed");
+                    InputOrDrag(Get("component.flipbook.speed").c_str(), &c->speed, draggable, 0.01f);
+                    Tooltip(Get("editor.tooltip.component.flipbook.speed").c_str());
+                }
 
                 EndSection();
 
@@ -2537,6 +2951,8 @@ namespace ImGuiDrawFunctions {
         ImGui::PopID();
         ImGui::PopID();
         ImGui::End();
+
+        EndPrefabFields();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

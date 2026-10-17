@@ -4,6 +4,7 @@
 
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -150,6 +151,10 @@ namespace {
     sol::state lua;
 
     std::vector<ScriptInstance> scriptInstances;
+
+    // Entities spawned while scripts run (Game.CreateEntity) whose scripts
+    // still need instances - see LuaScriptRuntime::QueueEntityScriptsStart.
+    std::vector<ID> pendingScriptStarts;
 
     // Sector ID -> the entities that were inside it the last time
     // DispatchSectorOccupancyEvents ran. Diffed against
@@ -412,6 +417,7 @@ namespace {
                 }
                 else if constexpr (std::is_same_v<T, EntityRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
+                    HashCombine(seed, std::hash<std::string>{}(typedValue.prefab));
                 }
                 else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     HashCombine(seed, std::hash<ID>{}(typedValue.entityId));
@@ -599,6 +605,12 @@ namespace {
                 using T = std::decay_t<decltype(typedValue)>;
 
                 if constexpr (std::is_same_v<T, EntityRefValue>) {
+                    if (!typedValue.prefab.empty()) {
+                        Level* copy = Prefab::GetScriptCopy(typedValue.prefab);
+                        if (copy == nullptr) return sol::make_object(luaView, sol::nil);
+                        return sol::make_object(luaView, ScriptEntity{copy, Prefab::RootOf(*copy).id});
+                    }
+
                     if (typedValue.entityId == INVALID_ID || level.GetEntity(typedValue.entityId) == nullptr)
                         return sol::make_object(luaView, sol::nil);
 
@@ -1070,6 +1082,10 @@ namespace {
 // ============================================================================
 
 namespace LuaScriptRuntime {
+    void QueueEntityScriptsStart(const ID entityId) {
+        pendingScriptStarts.push_back(entityId);
+    }
+
     bool IsInstanceValid(const ID entityId, const ScriptInstanceID instanceId) {
         const ScriptInstance* instance = FindInstanceById(instanceId);
         return instance != nullptr && instance->ownerID == entityId && !instance->destroyed;
@@ -1168,6 +1184,9 @@ void LuaScriptSystem::Start(Level& level) {
         scriptInstances.clear();
         instanceIndexById.clear();
         pendingDestroys.clear();
+        pendingScriptStarts.clear();
+        // A new play session reads fresh copies of any prefab in an Entity field.
+        Prefab::ClearScriptCopies();
         fixedUpdateAccumulator = 0.0f;
     }
     {
@@ -1211,6 +1230,14 @@ void LuaScriptSystem::Start(Level& level) {
 }
 
 void LuaScriptSystem::Update(Level& level) {
+    // Spawned since the last frame: their scripts get instances now, outside
+    // any loop over scriptInstances, and Start below like any other.
+    for (const ID entityId : std::exchange(pendingScriptStarts, {})) {
+        for (ComponentScript* script : level.scripts.GetAll(entityId))
+            if (FindInstanceById(script->instanceID) == nullptr)
+                InstantiateScript(level, ScriptOwnerKind::Entity, entityId, *script);
+    }
+
     for (ScriptInstance& instance : scriptInstances) {
         if (instance.destroyed) continue;
 

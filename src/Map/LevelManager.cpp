@@ -21,9 +21,19 @@ namespace LevelManager {
     std::vector<Level> loadedLevels;
     int currentLevelIndex = -1;
 
-    bool HasCurrentLevel() { return currentLevelIndex >= 0 && currentLevelIndex < static_cast<int>(loadedLevels.size()); }
+    namespace {
+        Level* currentLevelOverride = nullptr;
+    }
 
-    Level& CurrentLevel() { return loadedLevels[currentLevelIndex];}
+    bool HasCurrentLevel() {
+        return currentLevelOverride != nullptr ||
+               (currentLevelIndex >= 0 && currentLevelIndex < static_cast<int>(loadedLevels.size()));
+    }
+
+    Level& CurrentLevel() { return currentLevelOverride != nullptr ? *currentLevelOverride : loadedLevels[currentLevelIndex]; }
+
+    ScopedCurrentLevel::ScopedCurrentLevel(Level& level) : previous(currentLevelOverride) { currentLevelOverride = &level; }
+    ScopedCurrentLevel::~ScopedCurrentLevel() { currentLevelOverride = previous; }
 
     void ClearLoadedLevels() {
         loadedLevels.clear();
@@ -150,6 +160,27 @@ namespace LevelManager {
 
         for (ComponentUIText& text : level.ui_texts.components)
             if (text.font == oldReference) text.font = newReference;
+    }
+
+    void RenamePrefabReference(const std::string& oldReference, const std::string& newReference) {
+        if (!HasCurrentLevel()) return;
+
+        Level& level = CurrentLevel();
+
+        for (Entity& entity : level.entities)
+            if (entity.prefabLink.prefab == oldReference) entity.prefabLink.prefab = newReference;
+
+        // Entity fields holding the prefab.
+        const auto renameInScript = [&](ScriptAttachmentData& script) {
+            for (auto& [name, value] : script.publicValues)
+                if (EntityRefValue* entityRef = std::get_if<EntityRefValue>(&value); entityRef != nullptr && entityRef->prefab == oldReference)
+                    entityRef->prefab = newReference;
+        };
+
+        for (ComponentScript& script : level.scripts.components) renameInScript(script);
+
+        for (Sector& sector : level.sectors)
+            for (SectorScript& script : sector.scripts) renameInScript(script);
     }
 
     void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference) {

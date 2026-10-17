@@ -2,6 +2,7 @@
 // Created by berke on 5/16/2026.
 //
 #include "imgui.h"
+#include "imgui_internal.h"
 // ASSUMPTION: this is the standard Dear ImGui "misc/cpp/imgui_stdlib.h" add-on,
 // which supplies `ImGui::InputText`/`InputTextMultiline` overloads that bind
 // directly to a std::string. The task description asserts the project
@@ -16,6 +17,7 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Entity.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 // ASSUMPTION: wherever ComponentUIText / ComponentUISprite / ComponentUITransform
 // actually live in your project (e.g. Components.hpp). Adjust this path -
@@ -29,6 +31,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <functional>
+#include <unordered_map>
 #include <vector>
 
 /// This script is responsible for drawing the ImGUI of the UI Editor.
@@ -151,6 +155,14 @@ namespace {
         bool editingComponent = false;
         bool addingComponent = false;
         int componentToAdd = 0;
+
+        // Same as ImGuiDrawFunctions::EntityInspectorState's: for the prefab editor.
+        std::string windowTitle;
+        std::string windowIdSuffix;
+        bool allowDelete = true;
+        // Where script/flipbook cards open their editor; null = uiScriptEditorState.
+        ImGuiDrawFunctions::EntityInspectorState* scriptState = nullptr;
+        std::function<void()> drawExtras;
     };
 
     UIEntityInspectorState uiEntityInspectorState;
@@ -431,15 +443,21 @@ namespace {
 
         ImGuiDrawFunctions::BeginSection("Anchors");
 
-        ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_min").c_str(), &transform.anchorMin.x, 0.001f, 0.0f, 1.0f, "%.3f"))
-            changed = true;
-        ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_min").c_str());
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("anchorMin");
+            ImGuiDrawFunctions::FieldWidth(fieldWidth);
+            if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_min").c_str(), &transform.anchorMin.x, 0.001f, 0.0f, 1.0f, "%.3f"))
+                changed = true;
+            ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_min").c_str());
+        }
 
-        ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_max").c_str(), &transform.anchorMax.x, 0.001f, 0.0f, 1.0f, "%.3f"))
-            changed = true;
-        ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_max").c_str());
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("anchorMax");
+            ImGuiDrawFunctions::FieldWidth(fieldWidth);
+            if (ImGui::DragFloat2(Get("editor.ui.transform.anchor_max").c_str(), &transform.anchorMax.x, 0.001f, 0.0f, 1.0f, "%.3f"))
+                changed = true;
+            ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_anchor_max").c_str());
+        }
 
         // Clamp to [0,1] and enforce min <= max per axis, per spec.
         transform.anchorMin.x = std::clamp(transform.anchorMin.x, 0.0f, 1.0f);
@@ -461,10 +479,13 @@ namespace {
 
         ImGuiDrawFunctions::BeginSection("Pivot");
 
-        ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.pivot_xy").c_str(), &transform.pivot.x,
-                               0.001f, 0.0f, 1.0f, "%.3f"))
-            changed = true;
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("pivot");
+            ImGuiDrawFunctions::FieldWidth(fieldWidth);
+            if (ImGui::DragFloat2(Get("editor.ui.transform.pivot_xy").c_str(), &transform.pivot.x,
+                                   0.001f, 0.0f, 1.0f, "%.3f"))
+                changed = true;
+        }
         transform.pivot.x = std::clamp(transform.pivot.x, 0.0f, 1.0f);
         transform.pivot.y = std::clamp(transform.pivot.y, 0.0f, 1.0f);
 
@@ -496,10 +517,13 @@ namespace {
         ImGuiDrawFunctions::BeginSection("Scale");
         // Deliberately unbounded (v_min = v_max = 0.0f means "no limit" in
         // ImGui) - negative scale must stay possible, per spec.
-        ImGuiDrawFunctions::FieldWidth(fieldWidth);
-        if (ImGui::DragFloat2(Get("editor.ui.transform.scale").c_str(), &transform.scale.x, 0.01f, 0.0f, 0.0f, "%.3f"))
-            changed = true;
-        ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_scale").c_str());
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("scale");
+            ImGuiDrawFunctions::FieldWidth(fieldWidth);
+            if (ImGui::DragFloat2(Get("editor.ui.transform.scale").c_str(), &transform.scale.x, 0.01f, 0.0f, 0.0f, "%.3f"))
+                changed = true;
+            ImGuiDrawFunctions::Tooltip(Get("editor.ui.transform.tooltip_scale").c_str());
+        }
         ImGui::SameLine();
         if (ImGui::Button((Get("editor.ui.transform.reset") + "##ResetUIScale").c_str())) {
             transform.scale = {1.0f, 1.0f};
@@ -555,20 +579,24 @@ namespace {
         ImGuiDrawFunctions::SmallMetaText("%s: %d", Get("editor.ui.text.char_count").c_str(),
                                            CountCharacters(text.text));
 
-        const ImVec2 editorMin = ImGui::GetCursorScreenPos();
-        bool changed = ImGui::InputTextMultiline(
-            "##UITextEditor",
-            &text.text,
-            ImVec2(-FLT_MIN, ImGui::GetTextLineHeightWithSpacing() * 6.0f),
-            ImGuiInputTextFlags_AllowTabInput
-        );
-
-        if (text.text.empty() && !ImGui::IsItemActive()) {
-            ImGui::GetWindowDrawList()->AddText(
-                ImVec2(editorMin.x + 6.0f, editorMin.y + 4.0f),
-                IM_COL32(140, 140, 148, 255),
-                Get("editor.ui.text.hint").c_str()
+        bool changed = false;
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("text");
+            const ImVec2 editorMin = ImGui::GetCursorScreenPos();
+            changed = ImGui::InputTextMultiline(
+                "##UITextEditor",
+                &text.text,
+                ImVec2(-FLT_MIN, ImGui::GetTextLineHeightWithSpacing() * 6.0f),
+                ImGuiInputTextFlags_AllowTabInput
             );
+
+            if (text.text.empty() && !ImGui::IsItemActive()) {
+                ImGui::GetWindowDrawList()->AddText(
+                    ImVec2(editorMin.x + 6.0f, editorMin.y + 4.0f),
+                    IM_COL32(140, 140, 148, 255),
+                    Get("editor.ui.text.hint").c_str()
+                );
+            }
         }
 
         Spacing();
@@ -582,23 +610,32 @@ namespace {
         ImGuiDrawFunctions::BeginSection("Font");
 
         // Drop a .ttf/.otf from the Asset Browser. Empty = the engine's default font.
-        if (DrawAssetField(Get("editor.ui.text.font").c_str(), text.font, AssetKind::Font)) changed = true;
-        if (text.font.empty()) ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.text.default_font").c_str());
-
-        ImGui::SetNextItemWidth(120.0f);
-        if (ImGui::DragFloat(Get("editor.ui.text.font_size").c_str(), &text.fontSize, 0.25f, 0.0f, 1000.0f, "%.1f")) {
-            text.fontSize = std::max(0.0f, text.fontSize);
-            changed = true;
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("font");
+            if (DrawAssetField(Get("editor.ui.text.font").c_str(), text.font, AssetKind::Font)) changed = true;
+            if (text.font.empty()) ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.text.default_font").c_str());
         }
-        HoverTooltip(Get("editor.tooltip.ui.text.font_size").c_str());
 
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::ColorEdit4(
-            Get("editor.ui.text.color").c_str(),
-            &text.color.x,
-            ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Float
-        )) changed = true;
-        HoverTooltip(Get("editor.tooltip.ui.text.color").c_str());
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("fontSize");
+            ImGui::SetNextItemWidth(120.0f);
+            if (ImGui::DragFloat(Get("editor.ui.text.font_size").c_str(), &text.fontSize, 0.25f, 0.0f, 1000.0f, "%.1f")) {
+                text.fontSize = std::max(0.0f, text.fontSize);
+                changed = true;
+            }
+            HoverTooltip(Get("editor.tooltip.ui.text.font_size").c_str());
+        }
+
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("color");
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::ColorEdit4(
+                Get("editor.ui.text.color").c_str(),
+                &text.color.x,
+                ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Float
+            )) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.text.color").c_str());
+        }
 
         ImGuiDrawFunctions::EndSection();
 
@@ -663,11 +700,17 @@ namespace {
         ImGuiDrawFunctions::BeginSection("Texture");
 
         bool changed = false;
-        if (DrawAssetField(Get("editor.ui.sprite.texture").c_str(), sprite.texture, AssetKind::Texture, 32.0f))
-            changed = true;
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("texture");
+            if (DrawAssetField(Get("editor.ui.sprite.texture").c_str(), sprite.texture, AssetKind::Texture, 32.0f))
+                changed = true;
+        }
 
-        if (ImGui::Checkbox(Get("editor.ui.sprite.is_active").c_str(), &sprite.isActive))
-            changed = true;
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("isActive");
+            if (ImGui::Checkbox(Get("editor.ui.sprite.is_active").c_str(), &sprite.isActive))
+                changed = true;
+        }
 
         if (!sprite.texture.empty() && preview == nullptr) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.55f, 0.35f, 1.0f));
@@ -696,9 +739,11 @@ namespace {
         std::uint64_t instanceID;
     };
 
+    // `entity`/`componentType` (a CMP_* value) give prefab instances their card marks.
     bool DrawUIComponentCard(const char* label, const std::string& rowID, const int dragKind = -1,
                              const std::uint64_t instanceID = 0, const size_t indexInKind = 0,
-                             void (*move)(std::uint64_t, size_t) = nullptr) {
+                             void (*move)(std::uint64_t, size_t) = nullptr,
+                             const Entity* entity = nullptr, const int componentType = -1) {
         ImGui::PushID(rowID.c_str());
 
         const ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -710,7 +755,11 @@ namespace {
 
         ImGui::Spacing();
         ImGui::Indent(6.0f);
-        ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+        const std::string cardLabel = entity != nullptr
+            ? ImGuiDrawFunctions::PrefabCardLabel(*entity, componentType, instanceID, label)
+            : std::string(label);
+        ImGui::Selectable(cardLabel.c_str(), false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+        if (entity != nullptr) ImGuiDrawFunctions::DrawPrefabCardMarks(*entity, componentType, instanceID);
 
         if (move != nullptr) {
             if (ImGui::BeginDragDropSource()) {
@@ -763,8 +812,12 @@ namespace {
     void DrawUIComponentsSection(Entity& entity, UIEntityInspectorState& state) {
         ImGuiDrawFunctions::BeginSection("Components");
 
+        ImGuiDrawFunctions::EntityInspectorState& scriptState =
+            state.scriptState != nullptr ? *state.scriptState : uiScriptEditorState;
+
         if (UIEntityHasComponent(entity, UIComponentType::Transform) &&
-            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Transform)).c_str(), "transform")) {
+            DrawUIComponentCard(Get(UIComponentDisplayNameKey(UIComponentType::Transform)).c_str(), "transform",
+                                -1, entity.GetComponent<ComponentUITransform>()->instanceID, 0, nullptr, &entity, CMP_UI_TRANSFORM)) {
             state.selectedComponent = static_cast<int>(UIComponentType::Transform);
             state.selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
             state.editingComponent = true;
@@ -778,7 +831,8 @@ namespace {
                 const std::string label = instances.size() > 1 ? name + " " + std::to_string(i + 1) : name;
                 const std::string rowID = std::to_string(static_cast<int>(type)) + "_" + std::to_string(instances[i]);
 
-                if (DrawUIComponentCard(label.c_str(), rowID, static_cast<int>(type), instances[i], i, move)) {
+                const int componentType = type == UIComponentType::Text ? CMP_UI_TEXT : CMP_UI_SPRITE;
+                if (DrawUIComponentCard(label.c_str(), rowID, static_cast<int>(type), instances[i], i, move, &entity, componentType)) {
                     state.selectedComponent = static_cast<int>(type);
                     state.selectedInstanceID = instances[i];
                     state.editingComponent = true;
@@ -802,10 +856,10 @@ namespace {
             const std::string label = script->enabled ? displayName : displayName + " (disabled)";
 
             if (DrawUIComponentCard(label.c_str(), "script" + std::to_string(script->instanceID),
-                                    static_cast<int>(UIComponentType::Script), script->instanceID, i, &MoveScript)) {
-                uiScriptEditorState.selectedComponent = CMP_SCRIPT;
-                uiScriptEditorState.editingComponent = true;
-                uiScriptEditorState.selectedInstanceID = script->instanceID;
+                                    static_cast<int>(UIComponentType::Script), script->instanceID, i, &MoveScript, &entity, CMP_SCRIPT)) {
+                scriptState.selectedComponent = CMP_SCRIPT;
+                scriptState.editingComponent = true;
+                scriptState.selectedInstanceID = script->instanceID;
             }
         }
 
@@ -819,10 +873,10 @@ namespace {
                 : name + ": " + std::filesystem::path(flipbook->flipbookFileName).filename().string();
 
             if (DrawUIComponentCard(label.c_str(), "flipbook" + std::to_string(flipbook->instanceID),
-                                    static_cast<int>(UIComponentType::Flipbook), flipbook->instanceID, i, &MoveFlipbook)) {
-                uiScriptEditorState.selectedComponent = CMP_FLIPBOOK;
-                uiScriptEditorState.editingComponent = true;
-                uiScriptEditorState.selectedInstanceID = flipbook->instanceID;
+                                    static_cast<int>(UIComponentType::Flipbook), flipbook->instanceID, i, &MoveFlipbook, &entity, CMP_FLIPBOOK)) {
+                scriptState.selectedComponent = CMP_FLIPBOOK;
+                scriptState.editingComponent = true;
+                scriptState.selectedInstanceID = flipbook->instanceID;
             }
         }
 
@@ -892,10 +946,16 @@ namespace {
         // ASSUMPTION: kInspectorFlags (used for both entity/component windows
         // in your real code) is file-local to ImGuiDrawFunctions.cpp and not
         // reachable here - using default flags (none) as the safe fallback.
-        if (!ImGui::Begin(Get("editor.ui.entity.title").c_str(), open)) {
+        const std::string entityWindowTitle = state.windowTitle.empty() ? Get("editor.ui.entity.title") : state.windowTitle;
+        if (!ImGui::Begin(entityWindowTitle.c_str(), open)) {
             ImGui::End();
             return false;
         }
+
+        if (state.drawExtras) state.drawExtras();
+
+        ImGuiDrawFunctions::DrawPrefabInstanceBar(entity);
+        ImGuiDrawFunctions::BeginPrefabFields(entity, -1, 0);
 
         {
             char hdr[128];
@@ -914,22 +974,27 @@ namespace {
         DrawUIComponentsSection(entity, state);
         DrawUIAddComponentSection(entity, state);
 
+        // Runs a Revert/Apply picked from the bar or a card.
+        ImGuiDrawFunctions::EndPrefabFields();
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
         ImGui::PushID("ui_entity_buttons");
 
-        if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str()) ||
-            InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) {
-            deleteRequested = true;
-            state.editingComponent = false;
-            state.selectedComponent = -1;
-            if (open) *open = false;
-        }
-        ImGuiDrawFunctions::Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
+        if (state.allowDelete) {
+            if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str()) ||
+                InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) {
+                deleteRequested = true;
+                state.editingComponent = false;
+                state.selectedComponent = -1;
+                if (open) *open = false;
+            }
+            ImGuiDrawFunctions::Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
 
-        ImGui::SameLine();
+            ImGui::SameLine();
+        }
         if (ImGui::Button(Get("common.close").c_str())) {
             state.editingComponent = false;
             state.selectedComponent = -1;
@@ -957,7 +1022,7 @@ namespace {
 
         const auto componentType = static_cast<UIComponentType>(state.selectedComponent);
         const std::string componentName = Get(UIComponentDisplayNameKey(componentType));
-        const std::string windowTitle = componentName + "##ui_component_editor";
+        const std::string windowTitle = componentName + "##ui_component_editor" + state.windowIdSuffix;
 
         bool windowOpen = true;
 
@@ -973,6 +1038,15 @@ namespace {
 
         ImGui::PushID(state.selectedComponent);
         ImGui::PushID(std::to_string(state.selectedInstanceID).c_str());
+
+        {
+            const int prefabComponentType = componentType == UIComponentType::Transform ? CMP_UI_TRANSFORM
+                                          : componentType == UIComponentType::Text ? CMP_UI_TEXT : CMP_UI_SPRITE;
+            const std::uint64_t prefabInstanceID = componentType == UIComponentType::Transform && entity.GetComponent<ComponentUITransform>()
+                ? entity.GetComponent<ComponentUITransform>()->instanceID
+                : state.selectedInstanceID;
+            ImGuiDrawFunctions::BeginPrefabFields(entity, prefabComponentType, prefabInstanceID);
+        }
 
         bool closeRequested = false;
 
@@ -1035,6 +1109,8 @@ namespace {
         ImGui::PopID();
         ImGui::PopID();
         ImGui::End();
+
+        ImGuiDrawFunctions::EndPrefabFields();
     }
 
     // ---------------------------------------------------------------------
@@ -1390,11 +1466,42 @@ namespace {
 
         assetBrowser.DrawTextEditorWindow(scriptEditorFont);
         assetBrowser.DrawFlipbookEditorWindows();
+        assetBrowser.DrawPrefabEditorWindows();
     }
 
     // ---------------------------------------------------------------------
     // Dockspace
     // ---------------------------------------------------------------------
+    void PlaceUIPrefab(const std::string& reference, const Vector2 canvasPoint) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const Level* prefab = Prefab::Get(reference);
+        if (prefab == nullptr) return;
+
+        if (!prefab->ui_transforms.Has(Prefab::RootOf(*prefab).id)) {
+            spdlog::warn("{} is a world prefab - drop it on the map instead", reference);
+            return;
+        }
+
+        const ID id = Prefab::Instantiate(level, reference);
+        if (id == INVALID_ID) return;
+
+        // position is measured from the anchor point (see UISystem::UpdateTransform),
+        // and the pivot sits on anchor point + position.
+        if (ComponentUITransform* transform = level.ui_transforms.Get(id)) {
+            const float width = static_cast<float>(screenWidth);
+            const float height = static_cast<float>(screenHeight);
+            const Vector2 anchorPoint = {
+                (transform->anchorMin.x + transform->anchorMax.x) * 0.5f * width,
+                (transform->anchorMin.y + transform->anchorMax.y) * 0.5f * height
+            };
+            transform->position = {canvasPoint.x - anchorPoint.x, canvasPoint.y - anchorPoint.y};
+        }
+
+        selectedUIEntityID = id;
+        uiHasUnsavedChanges = true;
+    }
+
     void DrawUIEditorDockSpace() {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
@@ -1417,12 +1524,49 @@ namespace {
         const ImGuiID dockspaceID = ImGui::GetID("UIEditorDockspace");
         ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
+        // A UI prefab dropped on the canvas: a new instance with its pivot
+        // under the cursor.
+        std::string droppedPrefab;
+        if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Prefab, droppedPrefab))
+            PlaceUIPrefab(droppedPrefab, ScreenToUICanvas(InputManager::GetMousePosition()));
+
         ImGui::End();
     }
 }
 
 namespace MapEditorInternal {
     using namespace Localisation;
+
+    void DrawUIEntityInspectorFor(Entity& entity, const std::string& windowTitle, const std::string& idSuffix, bool* open,
+                                  const std::function<void()>& drawExtras) {
+        struct States {
+            UIEntityInspectorState ui;
+            ImGuiDrawFunctions::EntityInspectorState scripts;
+        };
+        static std::unordered_map<std::string, States> statesBySuffix;
+
+        States& states = statesBySuffix[idSuffix];
+        states.ui.windowTitle = windowTitle;
+        states.ui.windowIdSuffix = idSuffix;
+        states.ui.allowDelete = false;
+        states.scripts.windowIdSuffix = idSuffix;
+        states.scripts.allowDelete = false;
+        states.ui.scriptState = &states.scripts;
+        states.ui.drawExtras = drawExtras;
+
+        DrawUIEntityEditor(entity, states.ui, open);
+
+        if (open != nullptr && !*open) {
+            statesBySuffix.erase(idSuffix);
+            return;
+        }
+
+        if (states.ui.editingComponent && states.ui.selectedComponent != -1)
+            DrawUIComponentEditor(entity, states.ui);
+
+        if (states.scripts.editingComponent && states.scripts.selectedComponent != -1)
+            ImGuiDrawFunctions::DrawComponentEditor(entity, states.scripts, &states.scripts.editingComponent, false);
+    }
 
     // uiCanvasPan is the canvas-space point at the centre of the screen,
     // exactly like cameraPos is for WorldToScreen/ScreenToWorld - the UI

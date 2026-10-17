@@ -13,7 +13,7 @@ end
 
 | Function | Returns | |
 |---|---|---|
-| [`CreateEntity(isUIEntity)`](#createentity) | `Entity` | Adds a new entity to the level. |
+| [`CreateEntity(isUIEntity)`](#createentity) | `Entity` | Adds a new entity to the level, or a copy of one (prefabs too). |
 | [`FindEntity(name)`](#finding-entities) | `Entity` or `nil` | The first entity with exactly this name. |
 | [`FindEntities(name)`](#finding-entities) | list of `Entity` | Every entity with exactly this name. |
 | [`FindEntitiesWithTag(tag)`](#finding-entities) | list of `Entity` | Every entity with this tag. |
@@ -43,11 +43,13 @@ end
 ```lua
 Game.CreateEntity()          -- world entity
 Game.CreateEntity(true)      -- UI entity
+Game.CreateEntity(enemy)     -- a copy of an entity, or a new instance of a prefab
 ```
 
 | Parameter | Type | |
 |---|---|---|
 | `isUIEntity` | boolean, optional | `true` makes a [UI entity](Entity.md#world-entities-and-ui-entities). Leave it out (or pass `false`) for a world entity. |
+| `entity` | Entity | Instead of a boolean: the new entity is a copy of this one. See [Copies and prefabs](#copies-and-prefabs). |
 
 Adds a new entity to the level right away and returns it. It is the same as placing a new entity in
 the editor:
@@ -59,8 +61,34 @@ the editor:
   now on.
 
 Give it more components with [`AddComponent`](Entity.md#adding-and-removing-components), for
-example `"Sprite"` to draw it or `"Collider"` to make it solid. Scripts can't be added, so a created
-entity can't run a script of its own.
+example `"Sprite"` to draw it or `"Collider"` to make it solid. Scripts can't be added, so an empty
+created entity can't run a script of its own. A copy can (see below).
+
+### Copies and prefabs
+
+Passing an entity makes a copy of it, every component and script included, and returns the copy.
+Its scripts start on the next frame (their `Start` runs then).
+
+The usual way is a prefab: drag a `.prefab` from the Asset Browser onto an `Entity` field, then
+spawn it:
+
+```lua
+public Entity enemy -- a .prefab dropped here in the inspector
+
+function Update()
+    if Input.GetKeyDown(Key.E) then
+        local e = Game.CreateEntity(enemy)
+        e.transform.position = entity.transform.position
+    end
+end
+```
+
+An `Entity` field holding a prefab gives a copy of the prefab's entity that is **not** in the level:
+you can read it (`enemy.name`, `enemy.sprite`...) and change it, which changes what this play
+session spawns from it, but never the `.prefab` file. The new entity starts where the prefab's own
+Transform is.
+
+Passing an entity from the level copies it as it is right now, named with `Copy` added.
 
 Entities created while the game runs are **not** saved into the level. Stopping the game in the
 editor removes them.

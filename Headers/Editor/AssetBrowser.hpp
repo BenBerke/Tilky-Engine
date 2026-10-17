@@ -11,6 +11,7 @@
 #include <TextEditor.h>
 
 #include "Headers/Editor/FlipbookEditor.hpp"
+#include "Headers/Editor/PrefabEditor.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
 // What an asset is FOR, driving how it's referenced, thumbnailed, and
@@ -29,6 +30,8 @@
 //    relative to Assets WITH extension, e.g. "Animations/walk.fpk".
 //  - Font: a .ttf/.otf for UI Text, referenced like a texture, relative
 //    to Assets WITH extension, e.g. "Fonts/title.ttf".
+//  - Prefab: one saved entity (.prefab), referenced like a texture,
+//    relative to Assets WITH extension, e.g. "Prefabs/Goblin.prefab".
 //
 // This is a different axis to AssetEntryType below: AssetKind is about
 // what a field widget should do with the asset (drag-drop payload type,
@@ -45,6 +48,7 @@ enum class AssetKind {
     Model,
     Flipbook,
     Font,
+    Prefab,
     Other // shown for transparency, but not draggable/thumbnailed
 };
 
@@ -246,6 +250,7 @@ struct AssetBrowserModalState {
     std::filesystem::path targetPath;           // Rename / DeleteConfirm
     bool targetIsDirectory = false;             // Rename / DeleteConfirm
     std::string forcedExtension;                // CreateFile only: appended automatically if non-empty
+    bool createUIPrefab = false;                // CreateFile of a .prefab only: start as a UI entity
 
     // Rename only: the target's AssetKind at the moment RequestRename() was
     // called, captured before anything can change - see
@@ -311,6 +316,11 @@ public:
     // windows with DrawFlipbookEditorWindows().
     void RequestOpenFlipbook(const std::filesystem::path& absolutePath);
     void DrawFlipbookEditorWindows();
+
+    // Opens a .prefab in the prefab editor (or focuses it). Drawn by
+    // DrawPrefabEditorWindows(), which the Map and UI editors call.
+    void RequestOpenPrefab(const std::filesystem::path& absolutePath);
+    void DrawPrefabEditorWindows();
 
     // The one place the expected level-file extension is spelled out, per
     // the "make it configurable in one obvious constant" requirement.
@@ -414,6 +424,8 @@ public:
     void RequestCreateFolder(const std::filesystem::path& destinationDirectory);
     void RequestCreateLevel(const std::filesystem::path& destinationDirectory);
     void RequestCreateFile(const std::filesystem::path& destinationDirectory, const std::string& forcedExtension);
+    // The Create File modal for a .prefab, which starts as an empty world or UI entity.
+    void RequestCreatePrefab(const std::filesystem::path& destinationDirectory, bool uiEntity);
     void RequestOpenLevel(const std::filesystem::path& absolutePath);
     void RequestConsumeAsFieldReference(AssetKind kind, const std::filesystem::path& absolutePath);
 
@@ -422,11 +434,14 @@ public:
     // ImGui::MenuItem() + RequestCreateFile() pair here to register
     // another quick-create file type.
     void DrawCreateFileSubmenuItems(const std::filesystem::path& destinationDirectory);
+    // The "Prefabs" submenu next to it.
+    void DrawCreatePrefabSubmenuItems(const std::filesystem::path& destinationDirectory);
 
 private:
     void SaveOpenScript();
 
     FlipbookEditor flipbookEditor;
+    PrefabEditor prefabEditor;
 
     TextEditor scriptEditor;
     std::filesystem::path openScriptPath;

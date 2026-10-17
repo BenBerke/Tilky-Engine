@@ -4,6 +4,7 @@
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Objects/ComponentRegistry.hpp"
 
 #include <algorithm>
 
@@ -87,6 +88,20 @@ namespace {
         flipbook.eventPending = false;
     }
 
+    // The owner's component instance IDs (script instance IDs for scripts), in order.
+    template<typename Storage>
+    std::vector<std::uint64_t> OwnerInstanceIDs(const Storage& storage, const ID owner) {
+        const auto& ids = storage.InstancesOf(owner);
+        return {ids.begin(), ids.end()};
+    }
+
+    std::vector<std::uint64_t> OwnerInstanceIDs(const ScriptComponentStorage& storage, const ID owner) {
+        std::vector<std::uint64_t> ids;
+        for (const ComponentScript& script : storage.components)
+            if (script.ownerID == owner) ids.push_back(script.instanceID);
+        return ids;
+    }
+
     // Copies every component of one type, in order, each with a new instance ID.
     template<typename Storage>
     void CopyComponents(Storage& storage, const ID from, const ID to, ComponentMask& mask, const int bit) {
@@ -158,6 +173,26 @@ ID Level::CreateEntity(Entity& copy) {
         s.enabled = originalScript->enabled;
         s.publicValues = originalScript->publicValues;
         s.schemaHash = originalScript->schemaHash;
+    }
+
+    // A copy of a prefab instance is an instance too, with the same
+    // overrides. Components were copied in order, so the n-th copy of each
+    // type stands in for the n-th original.
+    if (copy.prefabLink.IsInstance()) {
+        entity.prefabLink = copy.prefabLink;
+
+        auto remap = [&](const int type, const std::vector<std::uint64_t>& from, const std::vector<std::uint64_t>& to) {
+            for (PrefabComponentLink& link : entity.prefabLink.components) {
+                if (link.componentType != type) continue;
+                const auto it = std::ranges::find(from, link.instanceID);
+                if (it != from.end() && static_cast<size_t>(it - from.begin()) < to.size())
+                    link.instanceID = to[static_cast<size_t>(it - from.begin())];
+            }
+        };
+
+#define REMAP_PREFAB_LINKS(Type, Bit, Storage, LabelKey) remap(Bit, OwnerInstanceIDs(Storage, copy.id), OwnerInstanceIDs(Storage, entity.id));
+        TILKY_COMPONENTS(REMAP_PREFAB_LINKS)
+#undef REMAP_PREFAB_LINKS
     }
 
     entities.push_back(entity);

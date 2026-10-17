@@ -168,4 +168,9 @@ namespace MapEditorInternal {
 
     float cameraSpeed = 1.0f;
     float cameraStepSize = 50.0f;
+
+    bool hierarchyVisible = true;
+    bool editorPanelVisible = true;
+    bool worldSettingsVisible = true;
+    bool assetBrowserVisible = true;
 }

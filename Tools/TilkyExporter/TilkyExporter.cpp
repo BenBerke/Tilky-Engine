@@ -33,6 +33,7 @@
 
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
@@ -160,24 +161,37 @@ static bool IsInsideDirectory(const fs::path& path, const fs::path& directory) {
     return !relative.empty() && *relative.begin() != "..";
 }
 
-// Model reference -> names of the levels using it.
+// Model reference -> the levels and prefabs using it ("level X", "prefab Y").
+// Prefabs count too: a script can spawn one into any level.
 static std::map<std::string, std::set<std::string>> CollectLevelModels(const fs::path& assetsSrc, std::vector<std::string>& problems) {
     std::map<std::string, std::set<std::string>> usersByModel;
 
     std::error_code ec;
     for (fs::recursive_directory_iterator it(assetsSrc, ec), end; !ec && it != end; it.increment(ec)) {
-        if (!it->is_regular_file() || it->path().extension() != ".bson") continue;
+        if (!it->is_regular_file()) continue;
+
+        const bool isPrefab = it->path().extension() == Prefab::kExtension;
+        if (it->path().extension() != ".bson" && !isPrefab) continue;
 
         Level level;
         std::string errorMessage;
 
-        if (!LevelSerialization::LoadLevelFromFile(it->path(), level, nullptr, &errorMessage)) {
-            problems.push_back("Could not read level " + it->path().string() + " to check its models: " + errorMessage);
+        const bool loaded = isPrefab
+            ? LevelSerialization::LoadPrefabFromFile(it->path(), level, &errorMessage)
+            : LevelSerialization::LoadLevelFromFile(it->path(), level, nullptr, &errorMessage);
+
+        if (!loaded) {
+            problems.push_back(std::string("Could not read ") + (isPrefab ? "prefab " : "level ") + it->path().string() +
+                               " to check its models: " + errorMessage);
             continue;
         }
 
+        const std::string user = isPrefab
+            ? "prefab " + it->path().lexically_relative(assetsSrc).generic_string()
+            : "level " + level.name;
+
         for (const ComponentModel& model : level.models.components)
-            if (!model.fileName.empty()) usersByModel[model.fileName].insert(level.name);
+            if (!model.fileName.empty()) usersByModel[model.fileName].insert(user);
     }
 
     if (ec) problems.push_back("Failed to scan " + assetsSrc.string() + " for levels: " + ec.message());
@@ -198,7 +212,7 @@ static bool ExportModelDependencies(const fs::path& assetsSrc, const fs::path& a
 
     for (const auto& [reference, levels] : usersByModel) {
         const fs::path modelSrc = (assetsSrc / fs::path(std::u8string(reference.begin(), reference.end()))).lexically_normal();
-        const std::string usedBy = " (used by level " + JoinNames(levels) + ")";
+        const std::string usedBy = " (used by " + JoinNames(levels) + ")";
 
         std::vector<ModelLoader::ModelDependency> dependencies;
         std::string errorMessage;

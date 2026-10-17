@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
+#include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Objects/Level.hpp"
 
 namespace LevelSerialization {
@@ -52,6 +55,25 @@ namespace LevelSerialization {
         const LevelExtraData* extraData = nullptr,
         std::string* errorMessage = nullptr
     );
+
+    // The given entities and their components in level.bson's own layout,
+    // {"entities": [...], "components": {...}} - what a .prefab file holds.
+    nlohmann::json EntitiesToJson(const Level& level, const std::vector<ID>& entityIDs);
+
+    // Replaces outLevel's entities and components with the ones in `data`
+    // (as written by EntitiesToJson), keeping their saved IDs.
+    bool EntitiesFromJson(const nlohmann::json& data, Level& outLevel, std::string* errorMessage = nullptr);
+
+    // A .prefab is a Level holding exactly one entity (see Prefab.hpp).
+    bool LoadPrefabFromFile(const std::filesystem::path& prefabFile, Level& outPrefab, std::string* errorMessage = nullptr);
+    bool SavePrefabToFile(const std::filesystem::path& prefabFile, const Level& prefab, std::string* errorMessage = nullptr);
+
+    // One component's own fields, keyed as level.bson stores them, without
+    // "ownerID"/"instanceID". FromJson returns false for data that can't be
+    // loaded (the component is then skipped).
+#define TILKY_DECLARE_COMPONENT_JSON(Type, Bit, Storage, LabelKey)     nlohmann::json ComponentFieldsToJson(const Type& component);     bool ComponentFieldsFromJson(const nlohmann::json& data, Type& component);
+    TILKY_COMPONENTS(TILKY_DECLARE_COMPONENT_JSON)
+#undef TILKY_DECLARE_COMPONENT_JSON
 }
 
 #endif

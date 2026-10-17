@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "../../Headers/Editor/Editor.hpp"
 #include "../../Headers/Editor/AssetBrowser.hpp"
 
@@ -459,6 +460,11 @@ namespace MapEditorInternal {
     extern float cameraSpeed;
     extern float cameraStepSize;
 
+    extern bool hierarchyVisible;
+    extern bool editorPanelVisible;
+    extern bool worldSettingsVisible;
+    extern bool assetBrowserVisible;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is
@@ -674,6 +680,15 @@ namespace MapEditorInternal {
     // Closes the fonts the UI canvas opened to preview UI Text. Before TTF_Quit().
     void DestroyUIPreviewFonts();
     void DrawUIEditorUI();
+    // An asset of `kind` dragged from the Asset Browser and released over the
+    // canvas (the middle of the dockspace `dockspaceID`) this frame.
+    bool AcceptCanvasAssetDrop(ImGuiID dockspaceID, AssetKind kind, std::string& outReference);
+    // The UI entity inspector (entity window plus its component windows) for
+    // an entity the UI editor doesn't have selected - the prefab editor's.
+    // idSuffix keeps its windows (and their state) apart from the UI
+    // editor's own; *open goes false when the user closes it.
+    void DrawUIEntityInspectorFor(Entity& entity, const std::string& windowTitle, const std::string& idSuffix, bool* open,
+                                  const std::function<void()>& drawExtras);
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
     void ChangeMode();

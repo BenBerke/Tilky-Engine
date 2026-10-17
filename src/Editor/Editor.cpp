@@ -285,6 +285,8 @@ namespace Editor {
 
         if (imguiContext == nullptr) return;
 
+        SaveUserSettings();
+
         ImGui::SetCurrentContext(imguiContext);
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();

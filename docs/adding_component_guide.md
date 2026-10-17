@@ -92,7 +92,9 @@ Use the wrappers for existing components as references.
 
 3. Use an existing component interface as a reference for layout, controls, and behavior.
 
-4. Add the required translation key-value pairs to:
+4. Wrap each field's widgets in a `PrefabField prefabField("<json key>");` scope (the key it is saved under, see section 9), so prefab instances can mark and revert/apply that field.
+
+5. Add the required translation key-value pairs to:
 
    ```text
    EngineAssets/Local/en.json
@@ -116,25 +118,23 @@ Add the appropriate removal call alongside the existing component-removal logic.
 
 ---
 
-## 9. `src/Map/LevelSerilezation.cpp`
+## 9. `src/Map/LevelSerialization.cpp`
 
-### `LoadComponents()`
+### `ComponentFieldsToJson()` / `ComponentFieldsFromJson()`
 
-1. Clear the new component storage at the beginning of the function.
+1. Add an overload pair for the new component: its own fields to JSON and back, without `ownerID`/`instanceID`. They are declared for every component in `TILKY_COMPONENTS` by `LevelSerialization.hpp`.
 
-2. Add a logic block that loads the component data from JSON.
+2. Use an existing component's pair as a reference. `FromJson` returns `false` for data that can't be loaded.
 
-3. Use the loading logic for an existing component as a reference.
+### `LoadComponents()` / `SaveComponents()`
 
-### `SaveComponents()`
+Add one `LoadComponentArray<T>(...)` and one `SaveComponentArray(...)` line with the component's JSON array key (e.g. `"sprites"`).
 
-1. Create a new JSON array for the component at the beginning of the function.
+---
 
-2. Add a logic block that serializes the component data into the array.
+## 10. `src/Objects/Prefab.cpp`
 
-3. Add the resulting array to the level JSON data.
-
-4. Use the saving logic for an existing component as a reference.
+Add a `TILKY_PREFAB_TRAITS(...)` line with the same JSON array key. Prefab files, instance syncing and overrides then handle the component.
 
 ---
 
@@ -151,6 +151,6 @@ Add the appropriate removal call alongside the existing component-removal logic.
   * Serialized fields
   * Editor fields
   * Lua wrapper fields
-* Ensure every required field is handled by both `LoadComponents()` and `SaveComponents()`.
+* Ensure every required field is handled by both `ComponentFieldsToJson()` and `ComponentFieldsFromJson()`.
 * Ensure the component is removed when its owning entity is destroyed.
 * Ensure entity-copy logic includes the component.

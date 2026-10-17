@@ -40,10 +40,14 @@ enum class ScriptValueType : std::uint8_t {
     Sector      // -> SectorRefValue
 };
 
-// A serialized reference to an Entity, by stable ID only.
-// Resolves to an Entity in Lua, or nil if entityId no longer exists.
+// A serialized reference to an Entity, by stable ID only - or to a prefab,
+// by its asset reference ("Prefabs/Goblin.prefab"), when `prefab` is set.
+// Resolves to an Entity in Lua, or nil if entityId no longer exists. A
+// prefab resolves to a copy of the prefab's entity that isn't in the level
+// (see Prefab::GetScriptCopy); Game.CreateEntity(it) spawns an instance.
 struct EntityRefValue {
     ID entityId = INVALID_ID;
+    std::string prefab;
 
     friend bool operator==(const EntityRefValue&, const EntityRefValue&) = default;
 };

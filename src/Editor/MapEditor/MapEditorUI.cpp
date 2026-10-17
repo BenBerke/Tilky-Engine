@@ -20,6 +20,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/EditorStyle.hpp"
@@ -432,6 +433,8 @@ namespace {
     bool projectSettingsOpen = false;
     bool userSettingsOpen = false;
 
+    bool layoutMenuOpen = false;
+
     bool createLevelModalRequested = false;
 
     // Confirmation guards
@@ -508,6 +511,39 @@ namespace {
 
 
     // =========================================================================
+    //  Prefab placement
+    // =========================================================================
+
+    // A world prefab dropped on the canvas: a new instance at `worldPoint`,
+    // standing on the floor of the sector there (or at 0 outside any sector).
+    void PlacePrefab(const std::string& reference, const Vector2 worldPoint) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const Level* prefab = Prefab::Get(reference);
+        if (prefab == nullptr) return;
+
+        if (prefab->ui_transforms.Has(Prefab::RootOf(*prefab).id)) {
+            spdlog::warn("{} is a UI prefab - drop it in the UI editor instead", reference);
+            return;
+        }
+
+        const ID id = Prefab::Instantiate(level, reference);
+        if (id == INVALID_ID) return;
+
+        const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, worldPoint);
+        const float floorHeight = sectorIndex >= 0 && !level.sectors[sectorIndex].floors.empty()
+            ? level.sectors[sectorIndex].floors.front().floor.height
+            : 0.0f;
+
+        if (ComponentTransform* transform = level.transforms.Get(id))
+            transform->SetPosition({worldPoint.x, floorHeight, worldPoint.y});
+
+        currentMode = MODE_ENTITY;
+        SelectEntity(id);
+        hasUnsavedChanges = true;
+    }
+
+    // =========================================================================
     //  DrawDockSpace
     // =========================================================================
 
@@ -535,11 +571,14 @@ namespace {
         ImGui::Begin("Dockspace##MainDockspaceHost", nullptr, flags);
         ImGui::PopStyleVar(3);
 
-        ImGui::DockSpace(
-            ImGui::GetID("MainDockspace"),
-            ImVec2(0.0f, 0.0f),
-            ImGuiDockNodeFlags_PassthruCentralNode
-        );
+        const ImGuiID dockspaceID = ImGui::GetID("MainDockspace");
+        ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+
+        // A prefab dropped on the canvas (the dockspace's empty middle) is
+        // placed under the cursor.
+        std::string droppedPrefab;
+        if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Prefab, droppedPrefab))
+            PlacePrefab(droppedPrefab, ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
 
         ImGui::End();
     }
@@ -1463,7 +1502,6 @@ namespace {
             ImGui::Separator();
             ImGui::Spacing();
 
-
             ImGui::SliderFloat(Get("editor.user_settings.camera_speed").c_str(), &cameraSpeed, MIN_CAM_SPEED, MAX_CAM_SPEED);
             ImGui::SliderFloat(Get("editor.user_settings.camera_step_size").c_str(), &cameraStepSize, MIN_STEP_SIZE, MAX_STEP_SIZE);
 
@@ -1471,6 +1509,25 @@ namespace {
             if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
 
             PopSuccessStyle();
+        }
+
+        ImGui::End();
+    }
+
+    // =========================================================================
+    //  Layout Menu Window
+    // =========================================================================
+
+    void DrawLayoutMenu() {
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 560.0f), ImGuiCond_FirstUseEver);
+
+        const bool windowVisible = ImGui::Begin(Get("editor.layout_menu").c_str(), &layoutMenuOpen);
+
+        if (windowVisible) {
+            ImGui::Checkbox(Get("editor.layout_menu.hierarchy_visible").c_str(), &hierarchyVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.world_settings_visible").c_str(), &worldSettingsVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.editor_panel_visible").c_str(), &editorPanelVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.asset_browser_visible").c_str(), &assetBrowserVisible);
         }
 
         ImGui::End();
@@ -1673,11 +1730,15 @@ namespace {
             if (ImGui::MenuItem(Get("editor.user_settings").c_str(), nullptr, userSettingsOpen))
                 userSettingsOpen = !userSettingsOpen;
 
+            if (ImGui::MenuItem(Get("editor.layout_menu").c_str(), nullptr, layoutMenuOpen))
+                layoutMenuOpen = !layoutMenuOpen;
+
             ImGui::EndMainMenuBar();
         }
 
         if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
+        if (layoutMenuOpen) DrawLayoutMenu();
 
         DrawShutdownConfirmModal();
     }
@@ -2739,6 +2800,7 @@ namespace {
 
         assetBrowser.DrawTextEditorWindow(scriptEditorFont);
         assetBrowser.DrawFlipbookEditorWindows();
+        assetBrowser.DrawPrefabEditorWindows();
     }
 } // anonymous namespace
 
@@ -2859,6 +2921,24 @@ namespace MapEditorInternal {
         }
 
         return changed;
+    }
+
+    bool AcceptCanvasAssetDrop(const ImGuiID dockspaceID, const AssetKind kind, std::string& outReference) {
+        // The canvas is the dockspace's passthrough middle, so no ImGui
+        // window is hovered there and BeginDragDropTarget(Custom) never
+        // accepts. Instead: the drag being released this frame over the
+        // central node, with no window under the cursor.
+        const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+        if (payload == nullptr || !payload->IsDataType(AssetBrowser::DragDropPayloadTypeFor(kind))) return false;
+        if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left) || GImGui->HoveredWindow != nullptr) return false;
+
+        const ImGuiDockNode* canvas = ImGui::DockBuilderGetCentralNode(dockspaceID);
+        if (canvas == nullptr) return false;
+        if (!ImGui::IsMouseHoveringRect(canvas->Pos, ImVec2(canvas->Pos.x + canvas->Size.x, canvas->Pos.y + canvas->Size.y), false))
+            return false;
+
+        outReference = AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), kind);
+        return true;
     }
 
     bool DrawAssetField(const char *label, std::string &value, const AssetKind kind, const float previewSize) {
@@ -3365,18 +3445,10 @@ namespace MapEditorInternal {
     }
 
     // =========================================================================
-    //  DrawEditorUI — main panel
+    //  Editor Panel
     // =========================================================================
 
-    void DrawEditorUI() {
-        const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
-
-        DrawMainMenuBar();
-        DrawDockSpace();
-        SubmitCanvasEntityDragSource();
-
-        Level &level = LevelManager::CurrentLevel();
-
+    void DrawEditorPanel() {
         // Append * to the title bar when the level has unsaved changes. The
         // ### part keeps the window's ID the same either way, so it doesn't
         // jump to a different saved position when the * appears.
@@ -3585,25 +3657,37 @@ namespace MapEditorInternal {
             ceiling.texture = ceilTexture;
         }
 
-        // ---- Inspector ----------------------------------------------------
-        // Each inspector is a window of its own, so nothing is drawn into
-        // this panel here.
-        DrawSelectionInspectors(level);
-
         // ---- Floor selector -----------------------------------------------
         //ImGui::SetNextItemWidth(80.0f);
         //ImGui::InputInt(Get("editor.floor").c_str(), &currentFloor);
         //HoverTooltip("Active editor floor / Z-layer.");
 
         ImGui::End();
+    }
+
+    void DrawEditorUI() {
+        const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
+
+        DrawMainMenuBar();
+        DrawDockSpace();
+        SubmitCanvasEntityDragSource();
+
+        Level &level = LevelManager::CurrentLevel();
+
+        if (editorPanelVisible) DrawEditorPanel();
+
+        // ---- Inspector ----------------------------------------------------
+        // Each inspector is a window of its own, so they stay up even when
+        // the Editor Panel is hidden.
+        DrawSelectionInspectors(level);
 
         // ---- Other panels -------------------------------------------------
-        DrawWorldSettings();
-        DrawHierarchyPanel(level);
+        if (worldSettingsVisible) DrawWorldSettings();
+        if (hierarchyVisible) DrawHierarchyPanel(level);
         DrawToolbar();
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
-        DrawAssetBrowserPanel();
+        if (assetBrowserVisible) DrawAssetBrowserPanel();
 
         // ---- Sector-geometry rejection toast --------------------------------
         if (!lastGeometryError.empty()) {

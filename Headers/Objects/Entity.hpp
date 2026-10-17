@@ -29,6 +29,9 @@ struct Entity {
 
     ComponentMask componentsMask;
 
+    // Which .prefab this entity is an instance of, if any.
+    PrefabLink prefabLink;
+
     void Start();
     void Update();
 

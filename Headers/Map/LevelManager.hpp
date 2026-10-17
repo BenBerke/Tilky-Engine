@@ -19,6 +19,20 @@ namespace LevelManager {
     Level& CurrentLevel();
     bool HasCurrentLevel();
 
+    // While one exists, CurrentLevel() is `level` instead of the loaded one,
+    // so code written against the current level (the entity inspector,
+    // Entity::GetComponent...) can work on a level that isn't loaded, such
+    // as a prefab being edited. Nests.
+    class ScopedCurrentLevel {
+    public:
+        explicit ScopedCurrentLevel(Level& level);
+        ~ScopedCurrentLevel();
+        ScopedCurrentLevel(const ScopedCurrentLevel&) = delete;
+        ScopedCurrentLevel& operator=(const ScopedCurrentLevel&) = delete;
+    private:
+        Level* previous;
+    };
+
     void ClearLoadedLevels();
 
     // `outExtraData` receives what the file stores beside the Level itself,
@@ -36,6 +50,8 @@ namespace LevelManager {
     void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference);
     // UI Text Font fields.
     void RenameFontReference(const std::string& oldReference, const std::string& newReference);
+    // Prefab instances' links.
+    void RenamePrefabReference(const std::string& oldReference, const std::string& newReference);
 }
 
 #endif // TILKY_ENGINE_LEVELMANAGER_H

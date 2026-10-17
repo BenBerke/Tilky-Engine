@@ -156,8 +156,10 @@ drawn, it collides, its handle is valid. At the end of the frame every script on
 
 `Game.CreateEntity()` adds a new, empty world entity to the level and returns it;
 `Game.CreateEntity(true)` adds a UI entity. It starts with only a Transform (or UI Transform). Give
-it more with [`AddComponent`](#adding-and-removing-components). It can't be given a script. See
-[Game.CreateEntity](Game.md#createentity).
+it more with [`AddComponent`](#adding-and-removing-components). It can't be given a script.
+
+`Game.CreateEntity(otherEntity)` adds a copy of another entity, scripts included. Pass an `Entity`
+field holding a `.prefab` to spawn that prefab. See [Game.CreateEntity](Game.md#createentity).
 
 ## Adding and removing components
 

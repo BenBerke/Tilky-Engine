@@ -55,7 +55,7 @@ console and logged, and the script keeps running.
 | `Input` | Keyboard and mouse: `GetKey(Key.E)`, `GetKeyDown`, `GetKeyUp`, `GetKeyName`, `GetMouseButton*`, `GetMousePosition` |
 | `Key` | Keyboard keys for `Input`: `Key.A`, `Key.Space`, `Key.LShift`, ... |
 | `Component` | Component types for `entity:AddComponent` / `RemoveComponent`: `Component.Sprite`, ... |
-| `Game` | `Raycast(...)`, `LoadLevel(name)`, `levelName`, `CreateEntity(isUIEntity?)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |
+| `Game` | `Raycast(...)`, `LoadLevel(name)`, `levelName`, `CreateEntity(isUIEntity? or entity)`, `FindEntity(name)`, `FindEntities(name)`, `FindEntitiesWithTag(tag)`, `GetEntity(id)`, `GetEntities()` |
 | `Debug` | `Print` (in-game console), `LogInfo`, `LogWarning`, `LogError`, `LogCritical` |
 | `mathT` | Everything in Lua's `math` (`Abs`, `Floor`, `Sin`, ...), constants (`Pi`, `Tau`, `Infinity`, ...), `Clamp`, `Lerp`, `SmoothDamp`, `MoveTowards`, angle helpers, random helpers and `Vector2*`/`Vector3*`/`Vector4*` functions. The script editor's autocomplete lists them all |
 | `Vector2`, `Vector3`, `Vector4` | Constructors: `Vector3(x, y, z)`. Support `+ - * /` (with a vector or a number), unary `-`, `==` and `tostring` |

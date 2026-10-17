@@ -6,6 +6,7 @@
 #include <functional>
 #include <iterator>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include <stdexcept>
 
@@ -13,6 +14,7 @@
 
 #include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Objects/Loadables.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Project/ProjectManager.hpp"
@@ -99,6 +101,7 @@ namespace {
                 } else if constexpr (std::is_same_v<T, EntityRefValue>) {
                     valueJson["type"] = "Entity";
                     valueJson["entityId"] = typedValue.entityId;
+                    if (!typedValue.prefab.empty()) valueJson["prefab"] = typedValue.prefab;
                 } else if constexpr (std::is_same_v<T, ComponentRefValue>) {
                     valueJson["type"] = "Component";
                     valueJson["entityId"] = typedValue.entityId;
@@ -173,7 +176,7 @@ namespace {
             }
 
             case ScriptValueType::Entity:
-                return EntityRefValue{valueJson.value("entityId", INVALID_ID)};
+                return EntityRefValue{valueJson.value("entityId", INVALID_ID), valueJson.value("prefab", std::string{})};
 
             case ScriptValueType::Component: {
                 // References saved before components had instance IDs name
@@ -493,6 +496,40 @@ namespace {
         };
     }
 
+    // An instance's link to its .prefab, saved on the entity as "prefab".
+    json PrefabLinkToJson(const PrefabLink& link) {
+        json components = json::array();
+        for (const PrefabComponentLink& c : link.components)
+            components.push_back({c.componentType, c.instanceID, c.prefabInstanceID});
+
+        json removed = json::array();
+        for (const PrefabRemovedComponent& r : link.removed)
+            removed.push_back({r.componentType, r.prefabInstanceID});
+
+        return {
+            {"path", link.prefab},
+            {"components", components},
+            {"removed", removed},
+            {"overrides", link.overrides}
+        };
+    }
+
+    PrefabLink PrefabLinkFromJson(const json& linkJson) {
+        PrefabLink link;
+        link.prefab = linkJson.value("path", std::string{});
+
+        if (linkJson.contains("components"))
+            for (const json& c : linkJson["components"])
+                link.components.push_back({c[0].get<int>(), c[1].get<std::uint64_t>(), c[2].get<std::uint64_t>()});
+
+        if (linkJson.contains("removed"))
+            for (const json& r : linkJson["removed"])
+                link.removed.push_back({r[0].get<int>(), r[1].get<std::uint64_t>()});
+
+        link.overrides = linkJson.value("overrides", std::vector<std::string>{});
+        return link;
+    }
+
     void LoadEntities(const json& levelData, Level& level) {
         level.entities.clear();
 
@@ -512,6 +549,8 @@ namespace {
 
             LoadTagArrays(entityJson, "Entity", entity.id, entity.tags, entity.tagIds);
 
+            if (entityJson.contains("prefab")) entity.prefabLink = PrefabLinkFromJson(entityJson["prefab"]);
+
             highestEntityID = std::max(highestEntityID, entity.id);
             level.entities.push_back(entity);
         }
@@ -519,17 +558,21 @@ namespace {
         level.nextEntityID = highestEntityID + 1;
     }
 
-    void SaveEntities(json& levelData, const Level& level) {
+    void SaveEntities(json& levelData, const std::vector<const Entity*>& entities) {
         levelData["entities"] = json::array();
 
-        for (const Entity& entity : level.entities) {
-            levelData["entities"].push_back({
-                {"id", entity.id},
-                {"name", entity.name},
-                {"enabled", entity.enabled},
-                {"tags", entity.tags},
-                {"tagIds", entity.tagIds}
-            });
+        for (const Entity* entity : entities) {
+            json entityJson = {
+                {"id", entity->id},
+                {"name", entity->name},
+                {"enabled", entity->enabled},
+                {"tags", entity->tags},
+                {"tagIds", entity->tagIds}
+            };
+
+            if (entity->prefabLink.IsInstance()) entityJson["prefab"] = PrefabLinkToJson(entity->prefabLink);
+
+            levelData["entities"].push_back(std::move(entityJson));
         }
     }
 
@@ -1210,653 +1253,512 @@ namespace {
         levelData["sectors"] = std::move(sectorArray);
     }
 
-    void LoadComponents(const json &levelData, Level &level) {
-        level.transforms.Clear();
-        level.sprites.Clear();
-        level.audioSources.Clear();
-        level.scripts.Clear();
-        level.playerControllers.Clear();
-        level.cameras.Clear();
-        level.colliders.Clear();
-        level.rigidbodies.Clear();
-        level.models.Clear();
-        level.flipbooks.Clear();
+    json Vec3Json(const Vector3& v) { return {v.x, v.y, v.z}; }
+    Vector3 Vec3FromJson(const json& j) { return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()}; }
+}
 
-        level.ui_transforms.Clear();
-        level.ui_sprites.Clear();
-        level.ui_texts.Clear();
+// ── Per-component JSON ───────────────────────────────────────────────────────
+// Each component's own fields, keyed exactly as level.bson stores them, but
+// without "ownerID"/"instanceID" - the level save adds those, and prefab
+// syncing compares these objects field by field (see Prefab.cpp).
+namespace LevelSerialization {
+    json ComponentFieldsToJson(const ComponentTransform& c) {
+        return {
+            {"position", Vec3Json(c.position)},
+            {"rotation", {c.rotation.x, c.rotation.y, c.rotation.z, c.rotation.w}},
+            {"sectorIndex", c.sectorIndex},
+            {"scale", Vec3Json(c.scale)}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentTransform& c) {
+        c.position = Vec3FromJson(j["position"]);
+        c.rotation = Quaternion{
+            j["rotation"][0].get<float>(),
+            j["rotation"][1].get<float>(),
+            j["rotation"][2].get<float>(),
+            j["rotation"][3].get<float>()
+        }.Normalized();
+        c.sectorIndex = j["sectorIndex"].get<int>();
+        c.scale = Vec3FromJson(j["scale"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentSprite& c) {
+        return {
+            {"offset", Vec3Json(c.offset)},
+            {"textureFileNames", c.textureFileNames},
+            {"sideCount", static_cast<int>(c.sideCount)},
+            {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
+            {"isStatic", c.isStatic},
+            {"isActive", c.isActive}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentSprite& c) {
+        const auto textureFileNames = j.at("textureFileNames").get<std::array<std::string, 8>>();
+        const int sideCountValue = j.at("sideCount").get<int>();
+
+        if (sideCountValue != SIDECOUNT_SINGLE &&
+            sideCountValue != SIDECOUNT_90 &&
+            sideCountValue != SIDECOUNT_45) return false;
+
+        c.textureFileNames = textureFileNames;
+        c.sideCount = static_cast<SideCount>(sideCountValue);
+        c.color = {
+            j["color"][0].get<float>(),
+            j["color"][1].get<float>(),
+            j["color"][2].get<float>(),
+            j["color"][3].get<float>()
+        };
+        c.isStatic = j.value("isStatic", false);
+        c.isActive = j.value("isActive", true);
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentAudioSource& c) {
+        return {
+            {"offset", Vec3Json(c.offset)},
+            {"soundFileName", c.soundFileName},
+            {"pitch", c.pitch},
+            {"gain", c.gain},
+            {"looping", c.looping},
+            {"playOnStart", c.playOnStart},
+            {"referenceDistance", c.referenceDistance},
+            {"maxDistance", c.maxDistance},
+            {"rollOffFactor", c.rollOffFactor},
+            {"innerConeAngle", c.innerConeAngle},
+            {"outerConeAngle", c.outerConeAngle},
+            {"outerGain", c.outerGain}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentAudioSource& c) {
+        c.soundFileName = j.value("soundFileName", std::string{});
+        c.pitch = j.value("pitch", 1.0f);
+        c.gain = j.value("gain", 1.0f);
+        c.looping = j.value("looping", false);
+        c.playOnStart = j.value("playOnStart", false);
+        c.referenceDistance = j.value("referenceDistance", 1.0f);
+        c.maxDistance = j.value("maxDistance", 10000.0f);
+        c.rollOffFactor = j.value("rollOffFactor", 1.0f);
+        c.innerConeAngle = j.value("innerConeAngle", 360.0f);
+        c.outerConeAngle = j.value("outerConeAngle", 360.0f);
+        c.outerGain = j.value("outerGain", 0.0f);
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentScript& c) {
+        json scriptJson = ScriptAttachmentToJson(c);
+        scriptJson.erase("instanceID");
+        return scriptJson;
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentScript& c) {
+        ScriptAttachmentSettingsFromJson(j, c);
+
+        // Keep the full saved path (Assets-relative, no extension) - NOT
+        // just its stem. Reducing to the stem used to drop any subfolder
+        // ("Scripts/Doors/Switch" -> "Switch"), so on the next load
+        // LuaScriptSystem would look for "Switch.lua" directly under Assets
+        // and silently fail to find every script organized into a subfolder.
+        c.fileName = j.value("fileName", std::string{});
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentUITransform& c) {
+        return {
+            {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
+            {"anchorMax", {c.anchorMax.x, c.anchorMax.y}},
+            {"pivot", {c.pivot.x, c.pivot.y}},
+            {"position", {c.position.x, c.position.y}},
+            {"scale", {c.scale.x, c.scale.y}},
+            {"rotation", c.rotation}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentUITransform& c) {
+        auto readVector2 = [&j](const char* key, Vector2& out) {
+            if (j.contains(key)) out = {j[key][0].get<float>(), j[key][1].get<float>()};
+        };
+
+        readVector2("anchorMin", c.anchorMin);
+        readVector2("anchorMax", c.anchorMax);
+        readVector2("pivot", c.pivot);
+        readVector2("position", c.position);
+        readVector2("scale", c.scale);
+        c.rotation = j.value("rotation", c.rotation);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentUISprite& c) {
+        return {
+            {"texture", c.texture},
+            {"isActive", c.isActive}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentUISprite& c) {
+        c.texture = j.value("texture", "");
+        c.isActive = j.value("isActive", true);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentUIText& c) {
+        return {
+            {"text", c.text},
+            {"font", c.font},
+            {"fontSize", c.fontSize},
+            {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentUIText& c) {
+        c.text = j.value("text", "");
+        c.font = j.value("font", "");
+        c.fontSize = j.value("fontSize", DEFAULT_UI_FONT_SIZE);
+
+        if (j.contains("color") && j["color"].is_array() && j["color"].size() == 4) {
+            const json& colorJson = j["color"];
+            c.color = {
+                colorJson[0].get<float>(),
+                colorJson[1].get<float>(),
+                colorJson[2].get<float>(),
+                colorJson[3].get<float>()
+            };
+        }
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentPlayerController& c) {
+        return {
+            {"isActive", c.isActive},
+            {"velocity", Vec3Json(c.velocity)},
+            {"speed", c.speed},
+            {"jumpPower", c.jumpPower},
+            {"runningSpeed", c.runningSpeed},
+            {"eyeHeight", c.eyeHeight},
+            {"sensitivityX", c.sensitivityX},
+            {"sensitivityY", c.sensitivityY},
+            {"minPitch", c.minPitch},
+            {"maxPitch", c.maxPitch},
+            {"minYaw", c.minYaw},
+            {"maxYaw", c.maxYaw},
+            {"noClip", c.noClip},
+            {"jumpBufferMs", c.jumpBufferMs},
+            {"acceleration", c.acceleration},
+            {"deceleration", c.deceleration},
+            {"airControl", c.airControl}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentPlayerController& c) {
+        c.isActive = j.value("isActive", true);
+        c.speed = j.value("speed", 46.0f);
+        c.runningSpeed = j.value("runningSpeed", 90.0f);
+        c.jumpPower = j.value("jumpPower", 100.0f);
+        c.eyeHeight = j.value("eyeHeight", 12.0f);
+        c.sensitivityX = j.value("sensitivityX", 0.5f);
+        c.sensitivityY = j.value("sensitivityY", 0.5f);
+        c.maxPitch = j.value("maxPitch", 89.0f);
+        c.minPitch = j.value("minPitch", -89.0f);
+        c.maxYaw = j.value("maxYaw", 360.0f);
+        c.minYaw = j.value("minYaw", .0f);
+        c.noClip = j.value("noClip", false);
+        c.jumpBufferMs = j.value("jumpBufferMs", 100.0f);
+        c.acceleration = j.value("acceleration", 80.0f);
+        c.deceleration = j.value("deceleration", 60.0f);
+        c.airControl = j.value("airControl", .3f);
+        if (j.contains("velocity")) c.velocity = Vec3FromJson(j["velocity"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentCamera& c) {
+        return {
+            {"isActive", c.isActive},
+            {"yaw", c.yaw},
+            {"pitch", c.pitch},
+            {"forward", Vec3Json(c.forward)},
+            {"target", Vec3Json(c.target)},
+            {"fov", c.fov},
+            {"aspectRatio", c.aspectRatio},
+            {"nearPlane", c.nearPlane},
+            {"farPlane", c.farPlane},
+            {"smoothStep", c.smoothStep},
+            {"smoothingStrength", c.smoothingStrength}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentCamera& c) {
+        c.isActive = j.value("isActive", true);
+        c.yaw = j.value("yaw", 0.0f);
+        c.pitch = j.value("pitch", 0.0f);
+        if (j.contains("forward")) c.forward = Vec3FromJson(j["forward"]);
+        if (j.contains("target")) c.target = Vec3FromJson(j["target"]);
+        c.fov = j.value("fov", 90.0f);
+        c.aspectRatio = j.value("aspectRatio", 1680.0f / 960.0f);
+        c.nearPlane = j.value("nearPlane", 0.1f);
+        c.farPlane = j.value("farPlane", 10000.0f);
+        c.smoothStep = j.value("smoothStep", false);
+        c.smoothingStrength = j.value("smoothingStrength", 4.8f);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentCollider& c) {
+        return {
+            {"offset", Vec3Json(c.offset)},
+            {"isActive", c.isActive},
+            {"isTrigger", c.isTrigger},
+            {"type", c.type},
+            {"scale", Vec3Json(c.scale)},
+            {"stepSize", c.stepSize}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentCollider& c) {
+        c.isActive = j.value("isActive", true);
+        c.isTrigger = j.value("isTrigger", false);
+        c.type = j.value("type", COLLIDERTYPE_SPHERE);
+        c.stepSize = j.value("stepSize", c.stepSize);
+        if (j.contains("scale")) c.scale = Vec3FromJson(j["scale"]);
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentRigidbody& c) {
+        return {
+            {"isStatic", c.isStatic},
+            {"mass", c.mass},
+            {"gravityScale", c.gravityScale},
+            {"friction", c.friction}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentRigidbody& c) {
+        c.isStatic = j.value("isStatic", true);
+        c.mass = j.value("mass", 1.0f);
+        c.gravityScale = j.value("gravityScale", 1.0f);
+        c.friction = j.value("friction", 1.0f);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentModel& c) {
+        return {
+            {"offset", Vec3Json(c.offset)},
+            {"fileName", c.fileName}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentModel& c) {
+        c.fileName = j.value("fileName", std::string{});
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        return true;
+    }
+
+    json ComponentFieldsToJson(const ComponentFlipbook& c) {
+        return {
+            {"flipbookFileName", c.flipbookFileName},
+            {"spriteInstanceID", c.spriteInstanceID},
+            {"speed", c.speed}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentFlipbook& c) {
+        c.flipbookFileName = j.value("flipbookFileName", std::string{});
+        c.spriteInstanceID = j.value("spriteInstanceID", INVALID_COMPONENT_INSTANCE_ID);
+        c.speed = j.value("speed", 1.0f);
+        return true;
+    }
+}
+
+namespace {
+    using LevelSerialization::ComponentFieldsFromJson;
+    using LevelSerialization::ComponentFieldsToJson;
+
+    // Loads one storage's array. Components whose owner isn't in the level
+    // (or whose data is invalid) are skipped; Transform/UITransform keep
+    // only the first per entity.
+    template<typename T, typename Storage>
+    void LoadComponentArray(const json& componentsJson, const char* key, Level& level, Storage& storage, const int bit) {
+        if (!componentsJson.contains(key)) return;
+
+        for (const json& componentJson : componentsJson[key]) {
+            const ID ownerID = componentJson.value("ownerID", INVALID_ENTITY_ID);
+            if (ownerID == INVALID_ENTITY_ID) continue;
+
+            Entity* entity = level.GetEntity(ownerID);
+            if (entity == nullptr) continue;
+
+            if constexpr (IsSingleComponent<T>) if (storage.Has(ownerID)) continue;
+
+            // Built whole and handed to InsertLoaded, which (for colliders)
+            // files it under the right part of the storage for its type and
+            // active state.
+            T c{};
+            if (!ComponentFieldsFromJson(componentJson, c)) continue;
+            c.ownerID = ownerID;
+            c.instanceID = componentJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID);
+            storage.InsertLoaded(c);
+
+            entity->componentsMask.set(bit);
+        }
+    }
+
+    void LoadComponents(const json &levelData, Level &level) {
+#define CLEAR_STORAGE(Type, Bit, Storage, LabelKey) level.Storage.Clear();
+        TILKY_COMPONENTS(CLEAR_STORAGE)
+#undef CLEAR_STORAGE
 
         if (!levelData.contains("components")) return;
 
         const json &componentsJson = levelData["components"];
 
-        if (componentsJson.contains("transforms")) {
-            for (const json& transformJson : componentsJson["transforms"]) {
-                const ID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                if (level.transforms.Has(ownerID)) continue; // one per entity
-
-                ComponentTransform& c = level.transforms.Add(ownerID, transformJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_TRANSFORM);
-
-                c.position = {
-                    transformJson["position"][0].get<float>(),
-                    transformJson["position"][1].get<float>(),
-                    transformJson["position"][2].get<float>()
-                };
-
-                c.rotation = Quaternion{
-                    transformJson["rotation"][0].get<float>(),
-                    transformJson["rotation"][1].get<float>(),
-                    transformJson["rotation"][2].get<float>(),
-                    transformJson["rotation"][3].get<float>()
-                }.Normalized();
-
-                c.sectorIndex = transformJson["sectorIndex"].get<int>();
-
-                c.scale = {
-                    transformJson["scale"][0].get<float>(),
-                    transformJson["scale"][1].get<float>(),
-                    transformJson["scale"][2].get<float>()
-                };
-            }
-        }
-
-        if (componentsJson.contains("sprites")) {
-            for (const json& spriteJson : componentsJson["sprites"]) {
-                const ID ownerID = spriteJson.at("ownerID").get<ID>();
-
-                Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                const auto textureFileNames = spriteJson.at("textureFileNames").get<std::array<std::string, 8>>();
-
-                const int sideCountValue = spriteJson.at("sideCount").get<int>();
-
-                if (sideCountValue != SIDECOUNT_SINGLE &&
-                    sideCountValue != SIDECOUNT_90 &&
-                    sideCountValue != SIDECOUNT_45) continue;
-
-                ComponentSprite& c = level.sprites.Add(ownerID, spriteJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-
-                c.textureFileNames = textureFileNames;
-                c.sideCount = static_cast<SideCount>(sideCountValue);
-                c.color = {
-                    spriteJson["color"][0].get<float>(),
-                    spriteJson["color"][1].get<float>(),
-                    spriteJson["color"][2].get<float>(),
-                    spriteJson["color"][3].get<float>()
-                };
-                c.isStatic = spriteJson.value("isStatic", false);
-                c.isActive = spriteJson.value("isActive", true);
-                if (spriteJson.contains("offset")) {
-                    c.offset = {
-                        spriteJson["offset"][0].get<float>(),
-                        spriteJson["offset"][1].get<float>(),
-                        spriteJson["offset"][2].get<float>()
-                    };
-                }
-
-                entity->componentsMask.set(CMP_SPRITE);
-            }
-        }
-
-        if (componentsJson.contains("audioSources")) {
-            for (const json& audioSourceJson : componentsJson["audioSources"]) {
-                const ID ownerID = audioSourceJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentAudioSource& c = level.audioSources.Add(ownerID, audioSourceJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-
-                c.soundFileName = audioSourceJson.value("soundFileName", std::string{});
-
-                c.pitch = audioSourceJson.value("pitch", 1.0f);
-                c.gain = audioSourceJson.value("gain", 1.0f);
-                c.looping = audioSourceJson.value("looping", false);
-                c.playOnStart = audioSourceJson.value("playOnStart", false);
-
-                c.referenceDistance = audioSourceJson.value("referenceDistance",1.0f);
-
-                c.maxDistance = audioSourceJson.value("maxDistance",10000.0f);
-                c.rollOffFactor = audioSourceJson.value("rollOffFactor",1.0f);
-                c.innerConeAngle = audioSourceJson.value("innerConeAngle",360.0f);
-                c.outerConeAngle = audioSourceJson.value("outerConeAngle",360.0f);
-                c.outerGain = audioSourceJson.value("outerGain", 0.0f);
-                if (audioSourceJson.contains("offset")) {
-                    c.offset = {
-                        audioSourceJson["offset"][0].get<float>(),
-                        audioSourceJson["offset"][1].get<float>(),
-                        audioSourceJson["offset"][2].get<float>()
-                    };
-                }
-
-                entity->componentsMask.set(CMP_AUDIO_SOURCE);
-            }
-        }
+        LoadComponentArray<ComponentTransform>(componentsJson, "transforms", level, level.transforms, CMP_TRANSFORM);
+        LoadComponentArray<ComponentSprite>(componentsJson, "sprites", level, level.sprites, CMP_SPRITE);
+        LoadComponentArray<ComponentAudioSource>(componentsJson, "audioSources", level, level.audioSources, CMP_AUDIO_SOURCE);
 
         if (componentsJson.contains("scripts")) {
             for (const json& scriptJson : componentsJson["scripts"]) {
                 const ID ownerID = scriptJson.value("ownerID", INVALID_ENTITY_ID);
-
                 if (ownerID == INVALID_ENTITY_ID) continue;
 
                 Entity* entity = level.GetEntity(ownerID);
-
                 if (entity == nullptr) continue;
 
-                const ScriptInstanceID instanceID = scriptJson.value("instanceID",INVALID_SCRIPT_INSTANCE_ID);
-
-                ComponentScript& c = level.scripts.Add(ownerID, instanceID);
-
-                const std::string loadedName = scriptJson.value("fileName", std::string{});
-
-                ScriptAttachmentSettingsFromJson(scriptJson, c);
-
-                // Keep the full saved path (Assets-relative, no extension) -
-                // NOT just its stem. Reducing to the stem here used to drop
-                // any subfolder ("Scripts/Doors/Switch" -> "Switch"), so on
-                // the next load LuaScriptSystem would look for "Switch.lua"
-                // directly under Assets and silently fail to find every
-                // script organized into a subfolder. Sector scripts
-                // (LoadSectorScripts below) never had this bug - they always
-                // kept the full path.
-                c.fileName = loadedName;
+                ComponentScript& c = level.scripts.Add(ownerID, scriptJson.value("instanceID", INVALID_SCRIPT_INSTANCE_ID));
+                ComponentFieldsFromJson(scriptJson, c);
 
                 entity->componentsMask.set(CMP_SCRIPT);
             }
         }
 
-        if (componentsJson.contains("uiTransforms")) {
-            for (const json &transformJson: componentsJson["uiTransforms"]) {
-                const ID ownerID = transformJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                if (level.ui_transforms.Has(ownerID)) continue; // one per entity
-
-                ComponentUITransform &c = level.ui_transforms.Add(ownerID, transformJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_UI_TRANSFORM);
-
-                if (transformJson.contains("anchorMin")) {
-                    c.anchorMin = {
-                        transformJson["anchorMin"][0].get<float>(),
-                        transformJson["anchorMin"][1].get<float>()
-                    };
-                }
-
-                if (transformJson.contains("anchorMax")) {
-                    c.anchorMax = {
-                        transformJson["anchorMax"][0].get<float>(),
-                        transformJson["anchorMax"][1].get<float>()
-                    };
-                }
-
-                if (transformJson.contains("pivot")) {
-                    c.pivot = {
-                        transformJson["pivot"][0].get<float>(),
-                        transformJson["pivot"][1].get<float>()
-                    };
-                }
-
-                if (transformJson.contains("position")) {
-                    c.position = {
-                        transformJson["position"][0].get<float>(),
-                        transformJson["position"][1].get<float>()
-                    };
-                }
-
-                if (transformJson.contains("scale")) {
-                    c.scale = {
-                        transformJson["scale"][0].get<float>(),
-                        transformJson["scale"][1].get<float>()
-                    };
-                }
-
-                c.rotation = transformJson.value("rotation", c.rotation);
-            }
-        }
-
-        if (componentsJson.contains("uiSprites")) {
-            for (const json &spriteJson: componentsJson["uiSprites"]) {
-                const ID ownerID = spriteJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentUISprite &c = level.ui_sprites.Add(ownerID, spriteJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_UI_SPRITE);
-
-                c.texture = spriteJson.value("texture", "");
-                c.isActive = spriteJson.value("isActive", true);
-            }
-        }
-
-        if (componentsJson.contains("uiTexts")) {
-            for (const json &textJson: componentsJson["uiTexts"]) {
-                const ID ownerID = textJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentUIText &c = level.ui_texts.Add(ownerID, textJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_UI_TEXT);
-
-                c.text = textJson.value("text", "");
-                c.font = textJson.value("font", "");
-                c.fontSize = textJson.value("fontSize", DEFAULT_UI_FONT_SIZE);
-
-                if (textJson.contains("color") && textJson["color"].is_array() && textJson["color"].size() == 4) {
-                    const json &colorJson = textJson["color"];
-                    c.color = {
-                        colorJson[0].get<float>(),
-                        colorJson[1].get<float>(),
-                        colorJson[2].get<float>(),
-                        colorJson[3].get<float>()
-                    };
-                }
-            }
-        }
-
-        if (componentsJson.contains("playerControllers")) {
-            for (const json &controllerJson: componentsJson["playerControllers"]) {
-                const ID ownerID = controllerJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentPlayerController &c = level.playerControllers.Add(ownerID, controllerJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-
-                entity->componentsMask.set(CMP_PLAYER_CONTROLLER);
-
-                c.isActive = controllerJson.value("isActive", true);
-                c.speed = controllerJson.value("speed", 46.0f);
-                c.runningSpeed = controllerJson.value("runningSpeed", 90.0f);
-                c.jumpPower = controllerJson.value("jumpPower", 100.0f);
-                c.eyeHeight = controllerJson.value("eyeHeight", 12.0f);
-                c.sensitivityX = controllerJson.value("sensitivityX", 0.5f);
-                c.sensitivityY = controllerJson.value("sensitivityY", 0.5f);
-                c.maxPitch = controllerJson.value("maxPitch", 89.0f);
-                c.minPitch = controllerJson.value("minPitch", -89.0f);
-                c.maxYaw = controllerJson.value("maxYaw", 360.0f);
-                c.minYaw = controllerJson.value("minYaw", .0f);
-                c.noClip = controllerJson.value("noClip", false);
-                c.jumpBufferMs = controllerJson.value("jumpBufferMs", 100.0f);
-                c.acceleration = controllerJson.value("acceleration", 80.0f);
-                c.deceleration = controllerJson.value("deceleration", 60.0f);
-                c.airControl = controllerJson.value("airControl", .3f);
-
-                if (controllerJson.contains("velocity")) {
-                    c.velocity = {
-                        controllerJson["velocity"][0].get<float>(),
-                        controllerJson["velocity"][1].get<float>(),
-                        controllerJson["velocity"][2].get<float>()
-                    };
-                }
-            }
-        }
-
-        if (componentsJson.contains("cameras")) {
-            for (const json &cameraJson: componentsJson["cameras"]) {
-                const ID ownerID =
-                        cameraJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentCamera &c = level.cameras.Add(ownerID, cameraJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_CAMERA);
-
-                c.isActive = cameraJson.value("isActive", true);
-                c.yaw = cameraJson.value("yaw", 0.0f);
-                c.pitch = cameraJson.value("pitch", 0.0f);
-
-                if (cameraJson.contains("forward")) {
-                    c.forward = {
-                        cameraJson["forward"][0].get<float>(),
-                        cameraJson["forward"][1].get<float>(),
-                        cameraJson["forward"][2].get<float>()
-                    };
-                }
-
-                if (cameraJson.contains("target")) {
-                    c.target = {
-                        cameraJson["target"][0].get<float>(),
-                        cameraJson["target"][1].get<float>(),
-                        cameraJson["target"][2].get<float>()
-                    };
-                }
-
-                c.fov = cameraJson.value("fov", 90.0f);
-                c.aspectRatio = cameraJson.value("aspectRatio", 1680.0f / 960.0f);
-                c.nearPlane = cameraJson.value("nearPlane", 0.1f);
-                c.farPlane = cameraJson.value("farPlane", 10000.0f);
-                c.smoothStep = cameraJson.value("smoothStep", false);
-                c.smoothingStrength = cameraJson.value("smoothingStrength", 4.8f);
-            }
-        }
-
-        if (componentsJson.contains("colliders")) {
-            for (const json &colliderJson: componentsJson["colliders"]) {
-                const ID ownerID = colliderJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                // Built whole and handed to InsertLoaded, which files it under the
-                // right part of the storage for its type and active state.
-                ComponentCollider c{};
-                c.ownerID = ownerID;
-                c.instanceID = colliderJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID);
-                entity->componentsMask.set(CMP_COLLIDER);
-
-                c.isActive = colliderJson.value("isActive", true);
-                c.isTrigger = colliderJson.value("isTrigger", false);
-                c.type = colliderJson.value("type", COLLIDERTYPE_SPHERE);
-                c.stepSize = colliderJson.value("stepSize", c.stepSize);
-
-                if (colliderJson.contains("scale")) {
-                    c.scale = {
-                        colliderJson["scale"][0].get<float>(),
-                        colliderJson["scale"][1].get<float>(),
-                        colliderJson["scale"][2].get<float>()
-                    };
-                }
-
-                if (colliderJson.contains("offset")) {
-                    c.offset = {
-                        colliderJson["offset"][0].get<float>(),
-                        colliderJson["offset"][1].get<float>(),
-                        colliderJson["offset"][2].get<float>()
-                    };
-                }
-
-                level.colliders.InsertLoaded(c);
-            }
-        }
-
-        if (componentsJson.contains("rigidbodies")) {
-            for (const json &rigidBodyJson: componentsJson["rigidbodies"]) {
-                const ID ownerID =
-                        rigidBodyJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity *entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentRigidbody &c = level.rigidbodies.Add(ownerID, rigidBodyJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_RIGIDBODY);
-
-                c.isStatic = rigidBodyJson.value("isStatic", true);
-                c.mass = rigidBodyJson.value("mass", 1.0f);
-                c.gravityScale = rigidBodyJson.value("gravityScale", 1.0f);
-                c.friction = rigidBodyJson.value("friction", 1.0f);
-            }
-        }
-
-        if (componentsJson.contains("models")) {
-            for (const json& modelJson : componentsJson["models"]) {
-                const ID ownerID = modelJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentModel& c = level.models.Add(ownerID, modelJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_MODEL);
-
-                c.fileName = modelJson.value("fileName", std::string{});
-                if (modelJson.contains("offset")) {
-                    c.offset = {
-                        modelJson["offset"][0].get<float>(),
-                        modelJson["offset"][1].get<float>(),
-                        modelJson["offset"][2].get<float>()
-                    };
-                }
-            }
-        }
-
-        if (componentsJson.contains("flipbooks")) {
-            for (const json& flipbookJson : componentsJson["flipbooks"]) {
-                const ID ownerID = flipbookJson.value("ownerID", INVALID_ENTITY_ID);
-
-                if (ownerID == INVALID_ENTITY_ID) continue;
-
-                Entity* entity = level.GetEntity(ownerID);
-                if (entity == nullptr) continue;
-
-                ComponentFlipbook& c = level.flipbooks.Add(ownerID, flipbookJson.value("instanceID", INVALID_COMPONENT_INSTANCE_ID));
-                entity->componentsMask.set(CMP_FLIPBOOK);
-
-                c.flipbookFileName = flipbookJson.value("flipbookFileName", std::string{});
-                c.spriteInstanceID = flipbookJson.value("spriteInstanceID", INVALID_COMPONENT_INSTANCE_ID);
-                c.speed = flipbookJson.value("speed", 1.0f);
-            }
-        }
+        LoadComponentArray<ComponentUITransform>(componentsJson, "uiTransforms", level, level.ui_transforms, CMP_UI_TRANSFORM);
+        LoadComponentArray<ComponentUISprite>(componentsJson, "uiSprites", level, level.ui_sprites, CMP_UI_SPRITE);
+        LoadComponentArray<ComponentUIText>(componentsJson, "uiTexts", level, level.ui_texts, CMP_UI_TEXT);
+        LoadComponentArray<ComponentPlayerController>(componentsJson, "playerControllers", level, level.playerControllers, CMP_PLAYER_CONTROLLER);
+        LoadComponentArray<ComponentCamera>(componentsJson, "cameras", level, level.cameras, CMP_CAMERA);
+        LoadComponentArray<ComponentCollider>(componentsJson, "colliders", level, level.colliders, CMP_COLLIDER);
+        LoadComponentArray<ComponentRigidbody>(componentsJson, "rigidbodies", level, level.rigidbodies, CMP_RIGIDBODY);
+        LoadComponentArray<ComponentModel>(componentsJson, "models", level, level.models, CMP_MODEL);
+        LoadComponentArray<ComponentFlipbook>(componentsJson, "flipbooks", level, level.flipbooks, CMP_FLIPBOOK);
     }
 
     // A storage's components grouped by entity, each entity's in their own
     // order, so the order (which one is "first") survives a save and load.
-    // Components whose owner isn't in the level are left out.
+    // Only the given entities' components are included.
     template<typename Storage>
-    auto InOwnerOrder(const Level& level, const Storage& storage) {
+    auto InOwnerOrder(const std::vector<const Entity*>& entities, const Storage& storage) {
         using T = std::remove_cvref_t<decltype(storage.components.front())>;
         std::vector<std::reference_wrapper<const T>> result;
         result.reserve(storage.components.size());
-        for (const Entity& entity : level.entities)
-            for (const T* component : storage.GetAll(entity.id)) result.emplace_back(*component);
+        for (const Entity* entity : entities)
+            for (const T* component : storage.GetAll(entity->id)) result.emplace_back(*component);
         return result;
     }
 
-    void SaveComponents(json &levelData, const Level &level) {
+    template<typename Storage>
+    void SaveComponentArray(json& componentsJson, const char* key, const std::vector<const Entity*>& entities, const Storage& storage) {
+        json& array = componentsJson[key] = json::array();
+
+        for (const auto& component : InOwnerOrder(entities, storage)) {
+            json componentJson = ComponentFieldsToJson(component.get());
+            componentJson["ownerID"] = component.get().ownerID;
+            componentJson["instanceID"] = component.get().instanceID;
+            array.push_back(std::move(componentJson));
+        }
+    }
+
+    void SaveComponents(json &levelData, const Level &level, const std::vector<const Entity*>& entities) {
         json componentsJson;
 
-        componentsJson["transforms"] = json::array();
-        componentsJson["sprites"] = json::array();
-        componentsJson["audioSources"] = json::array();
+        SaveComponentArray(componentsJson, "transforms", entities, level.transforms);
+        SaveComponentArray(componentsJson, "sprites", entities, level.sprites);
+        SaveComponentArray(componentsJson, "audioSources", entities, level.audioSources);
+
+        std::unordered_set<ID> owners;
+        for (const Entity* entity : entities) owners.insert(entity->id);
+
         componentsJson["scripts"] = json::array();
-        componentsJson["uiTransforms"] = json::array();
-        componentsJson["uiSprites"] = json::array();
-        componentsJson["uiTexts"] = json::array();
-        componentsJson["playerControllers"] = json::array();
-        componentsJson["cameras"] = json::array();
-        componentsJson["colliders"] = json::array();
-        componentsJson["rigidbodies"] = json::array();
-        componentsJson["models"] = json::array();
-        componentsJson["flipbooks"] = json::array();
-
-        for (const ComponentTransform& c : InOwnerOrder(level, level.transforms)) {
-            componentsJson["transforms"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"position", {c.position.x,c.position.y,c.position.z}},
-                {"rotation", {c.rotation.x,c.rotation.y,c.rotation.z,c.rotation.w}},
-                {"sectorIndex", c.sectorIndex},
-                {"scale", {c.scale.x,c.scale.y,c.scale.z}}
-            });
-        }
-
         for (const ComponentScript& c : level.scripts.components) {
+            if (!owners.contains(c.ownerID)) continue;
+
             json scriptJson = ScriptAttachmentToJson(c);
             scriptJson["ownerID"] = c.ownerID;
 
             componentsJson["scripts"].push_back(std::move(scriptJson));
         }
 
-        for (const ComponentAudioSource& c : InOwnerOrder(level, level.audioSources)) {
-            componentsJson["audioSources"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
-                {"soundFileName", c.soundFileName},
-                {"pitch", c.pitch},
-                {"gain", c.gain},
-                {"looping", c.looping},
-                {"playOnStart", c.playOnStart},
-                {"referenceDistance", c.referenceDistance},
-                {"maxDistance", c.maxDistance},
-                {"rollOffFactor", c.rollOffFactor},
-                {"innerConeAngle", c.innerConeAngle},
-                {"outerConeAngle", c.outerConeAngle},
-                {"outerGain", c.outerGain}
-            });
-        }
-
-        for (const ComponentSprite& c : InOwnerOrder(level, level.sprites)) {
-            componentsJson["sprites"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
-                {"textureFileNames", c.textureFileNames},
-                {"sideCount", static_cast<int>(c.sideCount)},
-                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
-                {"isStatic", c.isStatic},
-                {"isActive", c.isActive}
-            });
-        }
-
-        for (const ComponentUITransform &c: InOwnerOrder(level, level.ui_transforms)) {
-            componentsJson["uiTransforms"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
-                {"anchorMax", {c.anchorMax.x, c.anchorMax.y}},
-                {"pivot", {c.pivot.x, c.pivot.y}},
-                {"position", {c.position.x, c.position.y}},
-                {"scale", {c.scale.x, c.scale.y}},
-                {"rotation", c.rotation}
-            });
-        }
-
-        for (const ComponentUISprite &c: InOwnerOrder(level, level.ui_sprites)) {
-            componentsJson["uiSprites"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"texture", c.texture},
-                {"isActive", c.isActive}
-            });
-        }
-
-        for (const ComponentUIText &c: InOwnerOrder(level, level.ui_texts)) {
-            componentsJson["uiTexts"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"text", c.text},
-                {"font", c.font},
-                {"fontSize", c.fontSize},
-                {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
-            });
-        }
-
-        for (const ComponentPlayerController &c: InOwnerOrder(level, level.playerControllers)) {
-            componentsJson["playerControllers"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"isActive", c.isActive},
-                {"velocity", {c.velocity.x, c.velocity.y, c.velocity.z}},
-                {"speed", c.speed},
-                {"jumpPower", c.jumpPower},
-                {"runningSpeed", c.runningSpeed},
-                {"eyeHeight", c.eyeHeight},
-                {"sensitivityX", c.sensitivityX},
-                {"sensitivityY", c.sensitivityY},
-                {"minPitch", c.minPitch},
-                {"maxPitch", c.maxPitch},
-                {"minYaw", c.minYaw},
-                {"maxYaw", c.maxYaw},
-                {"noClip", c.noClip},
-                {"jumpBufferMs", c.jumpBufferMs},
-                {"acceleration", c.acceleration},
-                {"deceleration", c.deceleration},
-                {"airControl", c.airControl}
-            });
-        }
-
-        for (const ComponentCamera &c: InOwnerOrder(level, level.cameras)) {
-            componentsJson["cameras"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"isActive", c.isActive},
-                {"yaw", c.yaw},
-                {"pitch", c.pitch},
-                {"forward", {c.forward.x, c.forward.y, c.forward.z}},
-                {"target", {c.target.x, c.target.y, c.target.z}},
-                {"fov", c.fov},
-                {"aspectRatio", c.aspectRatio},
-                {"nearPlane", c.nearPlane},
-                {"farPlane", c.farPlane},
-                {"smoothStep", c.smoothStep},
-                {"smoothingStrength", c.smoothingStrength}
-            });
-        }
-
-        for (const ComponentCollider &c: InOwnerOrder(level, level.colliders)) {
-            componentsJson["colliders"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
-                {"isActive", c.isActive},
-                {"isTrigger", c.isTrigger},
-                {"type", c.type},
-                {"scale", {c.scale.x, c.scale.y, c.scale.z}},
-                {"stepSize", c.stepSize}
-            });
-        }
-
-        for (const ComponentRigidbody &c: InOwnerOrder(level, level.rigidbodies)) {
-            componentsJson["rigidbodies"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"isStatic", c.isStatic},
-                {"mass", c.mass},
-                {"gravityScale", c.gravityScale},
-                {"friction", c.friction}
-            });
-        }
-
-        for (const ComponentModel& c : InOwnerOrder(level, level.models)) {
-            componentsJson["models"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"offset", {c.offset.x, c.offset.y, c.offset.z}},
-                {"fileName", c.fileName}
-            });
-        }
-
-        for (const ComponentFlipbook& c : InOwnerOrder(level, level.flipbooks)) {
-            componentsJson["flipbooks"].push_back({
-                {"ownerID", c.ownerID},
-                {"instanceID", c.instanceID},
-                {"flipbookFileName", c.flipbookFileName},
-                {"spriteInstanceID", c.spriteInstanceID},
-                {"speed", c.speed}
-            });
-        }
+        SaveComponentArray(componentsJson, "uiTransforms", entities, level.ui_transforms);
+        SaveComponentArray(componentsJson, "uiSprites", entities, level.ui_sprites);
+        SaveComponentArray(componentsJson, "uiTexts", entities, level.ui_texts);
+        SaveComponentArray(componentsJson, "playerControllers", entities, level.playerControllers);
+        SaveComponentArray(componentsJson, "cameras", entities, level.cameras);
+        SaveComponentArray(componentsJson, "colliders", entities, level.colliders);
+        SaveComponentArray(componentsJson, "rigidbodies", entities, level.rigidbodies);
+        SaveComponentArray(componentsJson, "models", entities, level.models);
+        SaveComponentArray(componentsJson, "flipbooks", entities, level.flipbooks);
 
         levelData["components"] = componentsJson;
+    }
+
+    // `what` names the kind of file in error messages ("level", "prefab").
+    bool ReadBsonFile(const fs::path& path, const std::string& what, json& outData, std::string* errorMessage) {
+        if (!fs::exists(path)) {
+            SetError(errorMessage, what + " file does not exist: " + path.string());
+            return false;
+        }
+
+        std::ifstream file(path, std::ios::binary);
+
+        if (!file.is_open()) {
+            SetError(errorMessage, "Could not open BSON " + what + " file: " + path.string());
+            return false;
+        }
+
+        const std::vector<std::uint8_t> bsonData{
+            std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>()
+        };
+
+        try {
+            outData = json::from_bson(bsonData);
+        }
+        catch (const std::exception& e) {
+            SetError(errorMessage, "Failed to parse BSON " + what + " file " + path.string() + ": " + e.what());
+            return false;
+        }
+
+        return true;
+    }
+
+    bool WriteBsonFile(const fs::path& path, const std::string& what, const json& data, std::string* errorMessage) {
+        std::error_code ec;
+        if (!path.parent_path().empty()) fs::create_directories(path.parent_path(), ec);
+        if (ec) {
+            SetError(errorMessage, "Failed to create " + what + " folder " + path.parent_path().string() + ": " + ec.message());
+            return false;
+        }
+
+        const std::vector<std::uint8_t> bsonData = json::to_bson(data);
+
+        std::ofstream file(path, std::ios::binary);
+
+        if (!file.is_open()) {
+            SetError(errorMessage, "Failed to open BSON " + what + " for saving: " + path.string());
+            return false;
+        }
+
+        file.write(reinterpret_cast<const char*>(bsonData.data()), static_cast<std::streamsize>(bsonData.size()));
+        return true;
+    }
+
+    std::vector<const Entity*> AllEntities(const Level& level) {
+        std::vector<const Entity*> result;
+        result.reserve(level.entities.size());
+        for (const Entity& entity : level.entities) result.push_back(&entity);
+        return result;
     }
 
 #ifndef TILKY_STANDALONE
@@ -1980,44 +1882,8 @@ namespace LevelSerialization {
     }
 
     bool LoadLevelFromFile(const fs::path& levelFile, Level& outLevel, LevelExtraData* outExtraData,std::string* errorMessage) {
-        if (!fs::exists(levelFile)) {
-            SetError(
-                errorMessage,
-                "Level file does not exist: " + levelFile.string()
-            );
-            return false;
-        }
-
-        std::ifstream file(levelFile, std::ios::binary);
-
-        if (!file.is_open()) {
-            SetError(
-                errorMessage,
-                "Could not open BSON level file: " + levelFile.string()
-            );
-            return false;
-        }
-
-        std::vector<std::uint8_t> bsonData{
-            std::istreambuf_iterator<char>(file),
-            std::istreambuf_iterator<char>()
-        };
-
-        file.close();
-
         json levelData;
-
-        try {
-            levelData = json::from_bson(bsonData);
-        }
-        catch (const std::exception& e) {
-            SetError(
-                errorMessage,
-                "Failed to parse BSON level file " + levelFile.string() +
-                ": " + e.what()
-            );
-            return false;
-        }
+        if (!ReadBsonFile(levelFile, "level", levelData, errorMessage)) return false;
 
         const std::string cleanName = CleanLevelName(levelFile.stem().string());
 
@@ -2061,6 +1927,10 @@ namespace LevelSerialization {
         RebuildNextEntityID(loadedLevel);
         MapQueries::RebuildSectorRuntimeLinks(loadedLevel);
 
+        // Prefab instances take whatever changed in their .prefab since the
+        // level was saved.
+        Prefab::SyncAllInstances(loadedLevel);
+
         outLevel = std::move(loadedLevel);
 
         return true;
@@ -2075,8 +1945,9 @@ namespace LevelSerialization {
 
         SaveExtraData(levelData, extraData);
         SaveLevelStats(levelData, level);
-        SaveEntities(levelData, level);
-        SaveComponents(levelData, level);
+        const std::vector<const Entity*> entities = AllEntities(level);
+        SaveEntities(levelData, entities);
+        SaveComponents(levelData, level, entities);
         SaveWalls(levelData, level);
         SaveSectors(levelData, level);
         SaveTextures(levelData, level);
@@ -2085,33 +1956,67 @@ namespace LevelSerialization {
 #ifndef TILKY_STANDALONE
         SaveMetadata(levelData, level);
 #endif
-        try {fs::create_directories(levelFile.parent_path());}
-        catch (const json::exception& e) {
-            SetError(
-                errorMessage,
-                "Failed to create level folder " +
-                levelFile.parent_path().string() + ": " + e.what()
-            );
+        return WriteBsonFile(levelFile, "level", levelData, errorMessage);
+    }
+
+    json EntitiesToJson(const Level& level, const std::vector<ID>& entityIDs) {
+        std::vector<const Entity*> entities;
+        for (const ID entityID : entityIDs)
+            if (const Entity* entity = level.GetEntity(entityID)) entities.push_back(entity);
+
+        json data;
+        SaveEntities(data, entities);
+        SaveComponents(data, level, entities);
+        return data;
+    }
+
+    bool EntitiesFromJson(const json& data, Level& outLevel, std::string* errorMessage) {
+        try {
+            LoadEntities(data, outLevel);
+            LoadComponents(data, outLevel);
+        }
+        catch (const std::exception& e) {
+            SetError(errorMessage, std::string("Entity data schema error: ") + e.what());
             return false;
         }
 
-        const std::vector<std::uint8_t> bsonData = json::to_bson(levelData);
-
-        std::ofstream file(levelFile, std::ios::binary);
-
-        if (!file.is_open()) {
-            SetError(errorMessage,"Failed to open BSON level for saving: " + levelFile.string());
-            return false;
-        }
-
-        file.write(
-            reinterpret_cast<const char*>(bsonData.data()),
-            static_cast<std::streamsize>(bsonData.size())
-        );
-
-        file.close();
-
+        RebuildNextEntityID(outLevel);
         return true;
+    }
+
+    bool LoadPrefabFromFile(const fs::path& prefabFile, Level& outPrefab, std::string* errorMessage) {
+        json data;
+        if (!ReadBsonFile(prefabFile, "prefab", data, errorMessage)) return false;
+
+        Level loaded;
+        loaded.name = prefabFile.stem().string();
+
+        std::string error;
+        if (!EntitiesFromJson(data, loaded, &error)) {
+            SetError(errorMessage, error + " (" + prefabFile.string() + ")");
+            return false;
+        }
+
+        if (loaded.entities.size() != 1) {
+            SetError(errorMessage, "A prefab must hold exactly one entity, found " +
+                     std::to_string(loaded.entities.size()) + ": " + prefabFile.string());
+            return false;
+        }
+
+        // A prefab is never itself an instance of another prefab.
+        loaded.entities.front().prefabLink = {};
+
+        outPrefab = std::move(loaded);
+        return true;
+    }
+
+    bool SavePrefabToFile(const fs::path& prefabFile, const Level& prefab, std::string* errorMessage) {
+        if (prefab.entities.size() != 1) {
+            SetError(errorMessage, "A prefab must hold exactly one entity: " + prefabFile.string());
+            return false;
+        }
+
+        return WriteBsonFile(prefabFile, "prefab", EntitiesToJson(prefab, {prefab.entities.front().id}), errorMessage);
     }
 }
 
