@@ -502,6 +502,13 @@ namespace MapEditorInternal {
                     return;
                 }
 
+                // Same as Ctrl+left click: adds or removes the wall, and the
+                // inspector edits the whole selection.
+                if (MultiSelectModifierHeld()) {
+                    ToggleWallSelection(wallUnderCursor);
+                    return;
+                }
+
                 const bool alreadyInSelection =
                         std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
 

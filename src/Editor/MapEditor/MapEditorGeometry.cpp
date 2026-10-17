@@ -1818,10 +1818,18 @@ namespace MapEditorInternal {
         SelectEntity(entity->id);
     }
 
-    // Entity Mode — right click selects AND opens the inspector.
+    // Entity Mode — right click selects AND opens the inspector. Ctrl+right
+    // click adds it to (or removes it from) the selection instead, so the
+    // inspector edits every selected entity together.
     void HandleEntityModeRightClick(const Vector2& point) {
         Entity* entity = EntityAt(point);
         if (entity == nullptr) return;
+
+        if (InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)) {
+            ToggleEntitySelection(entity->id);
+            editingEntity = !selectedEntities.empty();
+            return;
+        }
 
         // Routed through the shared helper so selectedEntities follows the
         // primary. Assigning selectedEntity on its own used to leave the
