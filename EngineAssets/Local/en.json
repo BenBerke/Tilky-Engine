@@ -994,7 +994,7 @@
   "editor.entity_mode.distribute.x": "Distribute X",
   "editor.entity_mode.distribute.z": "Distribute Z",
   "editor.tooltip.entity_mode.distribute": "Spaces the selection evenly between its two outermost entities on that axis. Needs 3 or more.",
-  "editor.entity_mode.snap": "Snap to Grid",
+  "editor.entity_mode.snap": "Snap Selection to Grid",
   "editor.tooltip.entity_mode.snap": "Moves each selected entity to the nearest grid point. Height is kept.",
   "editor.entity_mode.drop": "Drop to Floor",
   "editor.tooltip.entity_mode.drop": "Puts each selected entity on the floor of the sector it is in.",
