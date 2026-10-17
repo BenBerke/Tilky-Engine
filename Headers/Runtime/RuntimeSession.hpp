@@ -30,8 +30,12 @@ namespace RuntimeSession {
 #endif
 
     void Update();
-    // Ends the session. In the engine this hides the window and keeps it.
+    // Ends the session. In the engine the window is kept and stays visible
+    // until HideWindow(), so the editor window can open first.
     void Shutdown();
+#ifndef TILKY_STANDALONE
+    void HideWindow();
+#endif
 }
 
 #endif // TILKY_ENGINE_RUNTIMESESSION_H

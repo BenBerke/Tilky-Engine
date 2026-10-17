@@ -98,6 +98,9 @@ namespace Editor {
             shownOnce = true;
         }
 
+        // The game window is still shown until the switch hides it.
+        SDL_RaiseWindow(window);
+
         SDL_RaiseWindow(window);
     }
 
@@ -200,7 +203,10 @@ namespace Editor {
 #ifndef TILKY_STANDALONE
         LevelManager::CurrentLevel().editorCamPos = cameraPos;
 #endif
-        SDL_HideWindow(window);
+    }
+
+    void HideWindow() {
+        SDL_HideWindow(MapEditorInternal::window);
     }
 
     void Update() {

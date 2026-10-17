@@ -135,20 +135,40 @@ namespace {
         modeActive = false;
     }
 
+    // Play and the runtime editor share the game window.
+    void HideModeWindow(const EngineMode oldMode, const EngineMode newMode) {
+        const bool oldIsEditor = oldMode == EngineMode::EDITOR;
+
+        if (oldIsEditor == (newMode == EngineMode::EDITOR)) return;
+
+        if (oldIsEditor) Editor::HideWindow();
+        else RuntimeSession::HideWindow();
+    }
+
     bool SwitchMode(const EngineMode newMode) {
         if (modeActive && currentMode == newMode) return true;
 
+        const EngineMode previousMode = currentMode;
         const bool prepareEditorLevelForRuntime = currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR;
 
         StopCurrentMode(prepareEditorLevelForRuntime);
 
-        if (StartMode(newMode)) return true;
+        // The old window is hidden only once the new one is up, so nothing
+        // disappears while the new mode loads - and if it fails to start,
+        // the old window never went away.
+        if (StartMode(newMode)) {
+            HideModeWindow(previousMode, newMode);
+            return true;
+        }
 
         if (newMode == EngineMode::EDITOR) return false;
 
         spdlog::error("Failed to start requested mode. Returning to the main editor.");
 
-        return StartMode(EngineMode::EDITOR);
+        if (!StartMode(EngineMode::EDITOR)) return false;
+
+        HideModeWindow(previousMode, EngineMode::EDITOR);
+        return true;
     }
 
     bool FindProjectArgument(const int argc, char** argv, fs::path& projectFile) {

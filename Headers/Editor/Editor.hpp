@@ -23,8 +23,10 @@ namespace Editor {
     // Each time the editor becomes the active mode: resets session state and shows the window.
     void Start();
     void Update();
-    // Leaving the editor for Play / the runtime editor: hides the window, keeps everything else.
+    // Leaving the editor for Play / the runtime editor. The window stays
+    // visible until HideWindow(), so the game window can open first.
     void Stop();
+    void HideWindow();
     // Once at engine exit. Calls SDL_Quit, so it runs after the runtime is destroyed.
     void Destroy();
 

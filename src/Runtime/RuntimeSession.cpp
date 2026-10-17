@@ -141,8 +141,6 @@ namespace {
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
         SDL_ShowCursor();
-
-        renderer->SetWindowVisible(false);
     }
 #endif
 
@@ -363,6 +361,7 @@ namespace {
         if (!StartGameSystems(level)) {
             editorLevelSnapshot.reset();
             StopRenderer();
+            renderer->SetWindowVisible(false);
             return false;
         }
 
@@ -599,4 +598,10 @@ namespace RuntimeSession {
         StopRenderer();
 #endif
     } // Shutdown
+
+#ifndef TILKY_STANDALONE
+    void HideWindow() {
+        if (renderer) renderer->SetWindowVisible(false);
+    }
+#endif
 }
