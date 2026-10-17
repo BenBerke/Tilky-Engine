@@ -223,6 +223,10 @@ namespace Editor {
             LevelManager::currentLevelIndex = 0;
         }
 
+        // Before anything draws, so a texture finished this frame shows up
+        // this frame.
+        EditorTextureCache::Update(renderer);
+
         SDL_SetRenderDrawColor(renderer, backgroundColor.r, backgroundColor.g, backgroundColor.b, 255);
         SDL_RenderClear(renderer);
 
