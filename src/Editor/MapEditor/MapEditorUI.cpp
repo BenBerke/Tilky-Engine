@@ -3467,6 +3467,7 @@ namespace MapEditorInternal {
         ImGui::Spacing();
 
         HintText(Get("editor.draw.shortcuts.general").c_str());
+        HintText(Get("editor.draw.shortcuts.edit_sectors").c_str());
 
         // Ctrl's meaning is the same for every tool (temporarily ignore
         // the grid - see ResolveSnapPointExcluding), so it's shown

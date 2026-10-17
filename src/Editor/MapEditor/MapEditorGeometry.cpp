@@ -1832,10 +1832,20 @@ namespace MapEditorInternal {
     }
 
     // Sector Mode — right click selects a sector and opens its inspector.
+    // Ctrl+right click adds it to (or removes it from) the selection instead,
+    // so the inspector edits every selected sector together.
     void HandleSectorModeRightClick(const Vector2& point) {
         Level& level = LevelManager::CurrentLevel();
         const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
         if (index < 0) return;
+
+        if (InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)) {
+            ToggleSectorSelection(level.sectors[index].id);
+
+            // Deselecting the last one already closed the inspector.
+            if (selectedSectorID != INVALID_ID) editingSector = true;
+            return;
+        }
 
         SelectSector(level.sectors[index].id);
         editingSector = true;
