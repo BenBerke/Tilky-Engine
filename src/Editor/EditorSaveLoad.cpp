@@ -475,6 +475,7 @@ namespace Editor {
         }
 
         if (ProjectManager::GetLastOpenLevelName() == oldName) ProjectManager::SetLastOpenLevelName(newName);
+        if (ProjectManager::GetStartLevelName() == oldName) ProjectManager::SetStartLevelName(newName);
 
         MapEditorInternal::UpdateLevels();
     }

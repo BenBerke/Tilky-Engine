@@ -32,6 +32,7 @@ namespace {
     std::string currentEngineVersion;
     std::string currentLastOpenLevelName;
     float currentUIReferenceHeight = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
+    std::string currentStartLevelName;
 }
 
 namespace ProjectManager {
@@ -276,6 +277,10 @@ namespace ProjectManager {
         // Editor::currentMap use - no path or extension.
         currentLastOpenLevelName = projectData.value("lastOpenLevel", std::string());
 
+        // The level the standalone game opens first. Empty means the first
+        // level file found under Assets.
+        currentStartLevelName = projectData.value("startLevel", std::string());
+
         currentUIReferenceHeight = (std::max)(1.0f, projectData.value("uiReferenceHeight", DEFAULT_UI_REFERENCE_HEIGHT));
 
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
@@ -509,6 +514,50 @@ namespace ProjectManager {
         currentLastOpenLevelName = levelName;
 
         spdlog::info("Set last open level for '{}' to '{}'", currentProjectName, levelName);
+
+        return true;
+    }
+
+    std::string GetStartLevelName() {
+        return currentStartLevelName;
+    }
+
+    bool SetStartLevelName(const std::string& levelName) {
+        if (currentProjectFile.empty()) {
+            spdlog::error("Cannot set start level - no project is currently loaded.");
+            return false;
+        }
+
+        json projectData;
+
+        {
+            std::ifstream inFile(currentProjectFile);
+            if (!inFile.is_open()) {
+                spdlog::error("Cannot set start level - failed to open project file: {}", currentProjectFile.string());
+                return false;
+            }
+
+            try { inFile >> projectData; }
+            catch (const std::exception& e) {
+                spdlog::error("Cannot set start level - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
+                return false;
+            }
+        }
+
+        projectData["startLevel"] = levelName;
+
+        std::ofstream outFile(currentProjectFile);
+        if (!outFile.is_open()) {
+            spdlog::error("Cannot set start level - failed to open project file for writing: {}", currentProjectFile.string());
+            return false;
+        }
+
+        outFile << projectData.dump(4);
+        outFile.close();
+
+        currentStartLevelName = levelName;
+
+        spdlog::info("Set start level for '{}' to '{}'", currentProjectName, levelName);
 
         return true;
     }

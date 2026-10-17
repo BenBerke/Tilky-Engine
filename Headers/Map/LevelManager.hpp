@@ -39,7 +39,9 @@ namespace LevelManager {
     // such as the background texture.
     bool LoadLevelFromFile(const std::filesystem::path& levelFile, LevelSerialization::LevelExtraData* outExtraData = nullptr);
     bool LoadLevelByName(const std::string& levelName);
-    bool LoadFirstProjectLevel(LevelSerialization::LevelExtraData* outExtraData = nullptr);
+    // The project's start level (ProjectManager::GetStartLevelName()), or the
+    // first level file under Assets when none is set or it can't be found.
+    bool LoadStartLevel(LevelSerialization::LevelExtraData* outExtraData = nullptr);
     void TriangulateCurrentLevelSectors();
 
     void RenameTextureReference(const std::string& oldReference, const std::string& newReference);

@@ -234,6 +234,16 @@ namespace ProjectManager {
     // loaded.
     bool SetLastOpenLevelName(const std::string &levelName);
 
+    // The level the standalone game opens first ("startLevel" in
+    // project.tilky), a plain level name like GetLastOpenLevelName(). Empty
+    // when none is chosen, in which case the first level file under Assets is
+    // used (see LevelManager::LoadStartLevel()).
+    std::string GetStartLevelName();
+
+    // Patches "startLevel" into the loaded project's project.tilky, the same
+    // one-field patch as SetLastOpenLevelName(). An empty name clears it.
+    bool SetStartLevelName(const std::string &levelName);
+
     // The window height UI Text Font Sizes are given at ("uiReferenceHeight"
     // in project.tilky, default DEFAULT_UI_REFERENCE_HEIGHT). Text is drawn at
     // fontSize * windowHeight / this.

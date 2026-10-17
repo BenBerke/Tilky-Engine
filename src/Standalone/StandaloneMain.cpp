@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 
     LevelSerialization::LevelExtraData extraData;
 
-    if (!LevelManager::LoadFirstProjectLevel(&extraData)) {
+    if (!LevelManager::LoadStartLevel(&extraData)) {
         std::cerr << "Failed to load startup level for the project\n";
         return 1;
     }

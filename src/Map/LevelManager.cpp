@@ -69,7 +69,17 @@ namespace LevelManager {
         return LoadLevelFromFile(levelPath);
     }
 
-    bool LoadFirstProjectLevel(LevelSerialization::LevelExtraData* outExtraData) {
+    bool LoadStartLevel(LevelSerialization::LevelExtraData* outExtraData) {
+        if (const std::string startLevel = ProjectManager::GetStartLevelName(); !startLevel.empty()) {
+            std::string errorMessage;
+            const fs::path levelPath = LevelSerialization::FindLevelPath(startLevel, &errorMessage);
+
+            if (!levelPath.empty()) return LoadLevelFromFile(levelPath, outExtraData);
+
+            std::cerr << "Start level \"" << startLevel << "\" could not be found (" << errorMessage
+                      << "). Using the first level instead.\n";
+        }
+
         const std::vector<fs::path> levelFiles = LevelSerialization::ListLevelFiles();
 
         if (levelFiles.empty()) {

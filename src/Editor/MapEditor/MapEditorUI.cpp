@@ -867,6 +867,45 @@ namespace {
     //  Settings panel so it doesn't spawn its own floating window.
     // =========================================================================
 
+    // Which level the standalone game opens first. Saved to project.tilky as
+    // soon as it is picked.
+    void DrawStartLevelCombo() {
+        const std::string startLevel = ProjectManager::GetStartLevelName();
+        const bool missing = !startLevel.empty() && std::ranges::find(Editor::maps, startLevel) == Editor::maps.end();
+
+        const std::string preview = startLevel.empty()
+            ? Get("editor.project.start_level.first_found")
+            : missing ? startLevel + " " + Get("editor.project.start_level.missing") : startLevel;
+
+        const auto pick = [](const std::string& levelName) {
+            if (!ProjectManager::SetStartLevelName(levelName))
+                ShowNotification(Get("editor.project.start_level_failed").c_str(), /*isError=*/true);
+        };
+
+        if (missing) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        const bool comboOpen = ImGui::BeginCombo("##StartLevel", preview.c_str());
+
+        if (missing) ImGui::PopStyleColor();
+
+        if (comboOpen) {
+            if (ImGui::Selectable(Get("editor.project.start_level.first_found").c_str(), startLevel.empty()) && !startLevel.empty())
+                pick("");
+
+            for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
+                ImGui::PushID(i);
+                const std::string& name = Editor::maps[i];
+                if (ImGui::Selectable(name.c_str(), name == startLevel) && name != startLevel) pick(name);
+                ImGui::PopID();
+            }
+
+            ImGui::EndCombo();
+        }
+
+        HoverTooltip(Get(missing ? "editor.tooltip.project.start_level_missing" : "editor.tooltip.project.start_level").c_str());
+    }
+
     void DrawLevelsChildPanel() {
         const float childHeight = std::min(
             static_cast<float>(Editor::maps.size()) * ImGui::GetFrameHeightWithSpacing() +
@@ -1610,6 +1649,17 @@ namespace {
             if (FullWidthButton(Get("editor.create_level").c_str())) createLevelModalRequested = true;
 
             HoverTooltip(Get("editor.tooltip.create_level").c_str());
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Start level ----------------------------------------------------
+            SectionHeader(Get("editor.project.start_level").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            DrawStartLevelCombo();
 
             ImGui::Spacing();
             ImGui::Separator();
