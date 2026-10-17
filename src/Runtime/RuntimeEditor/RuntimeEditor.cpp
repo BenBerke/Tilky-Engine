@@ -909,10 +909,21 @@ namespace RuntimeEditor {
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
                 // Negated so the texture tracks the cursor rather than running
                 // from it. Flip the signs if the sampler wants the opposite.
-                AddUvOffset(level, uvDragSurface, {
-                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
-                    -mouseDelta.y * UV_DRAG_SENSITIVITY
-                });
+                if (InputManager::GetKey(SDL_SCANCODE_X))
+                    AddUvOffset(level, uvDragSurface, {
+                                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
+                                    0
+                                });
+                else if (InputManager::GetKey(SDL_SCANCODE_Y))
+                    AddUvOffset(level, uvDragSurface, {
+                                    0,
+                                    -mouseDelta.y * UV_DRAG_SENSITIVITY
+                                });
+                else
+                    AddUvOffset(level, uvDragSurface, {
+                                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
+                                    -mouseDelta.y * UV_DRAG_SENSITIVITY
+                                });
             }
         }
 
