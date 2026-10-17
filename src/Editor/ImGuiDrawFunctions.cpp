@@ -969,7 +969,7 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable) {
+    bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable, bool *copyRequested) {
         constexpr float MIN_ROOM_HEIGHT = 0.01f;
 
         bool deleteRequested = false;
@@ -989,7 +989,28 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
+        const ImVec2 headerStart = ImGui::GetCursorPos();
+        const float headerRight = headerStart.x + ImGui::GetContentRegionAvail().x;
+
         DrawInspectorHeader("Sector", DescribeSector(sector).c_str());
+
+        // Drawn over the right end of the header strip, then the cursor goes
+        // back to where the header left it.
+        if (copyRequested != nullptr) {
+            const ImGuiStyle &style = ImGui::GetStyle();
+            const ImVec2 afterHeader = ImGui::GetCursorPos();
+            const std::string &copyLabel = Get("sector.copy");
+
+            const float buttonWidth = ImGui::CalcTextSize(copyLabel.c_str()).x + style.FramePadding.x * 2.0f;
+
+            ImGui::SetCursorPos(ImVec2(headerRight - buttonWidth - style.FramePadding.x, headerStart.y + style.ItemSpacing.y));
+
+            if (ImGui::SmallButton(copyLabel.c_str())) *copyRequested = true;
+
+            Tooltip(Get("editor.tooltip.sector.copy").c_str());
+
+            ImGui::SetCursorPos(afterHeader);
+        }
 
         BeginSection("Identity");
         SmallMetaText("ID: %u", sector.id);

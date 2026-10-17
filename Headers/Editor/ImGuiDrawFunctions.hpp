@@ -49,7 +49,9 @@ namespace ImGuiDrawFunctions {
     // The header shows the object's own stable ID (sector.id / wall.id) -
     // the same number the hierarchy shows - never its vector index.
 
-    bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable);
+    // A non-null copyRequested adds a Copy button to the header; it is set to
+    // true on the frame the button is pressed.
+    bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr);
     bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
     bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);

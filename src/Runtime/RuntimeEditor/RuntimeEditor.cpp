@@ -557,9 +557,12 @@ namespace RuntimeEditorUi {
         // The cursor is free unless the middle button is down, so the browser
         // is up whenever it could actually be clicked.
         if (!cameraLooking) {
-            ImGui::Begin("Asset Browser##RuntimeEditor");
+            ImGui::Begin((Localisation::Get("editor.asset_browser") + "##RuntimeEditor").c_str());
 
-            if (ImGui::Button("Refresh"))  MapEditorInternal::assetBrowser.Refresh();
+            if (ImGui::Button(Localisation::Get("editor.asset_browser.refresh").c_str()))  MapEditorInternal::assetBrowser.Refresh();
+
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("%s", Localisation::Get("editor.tooltip.asset_browser_refresh").c_str());
 
             ImGui::Spacing();
 

@@ -2569,6 +2569,40 @@ namespace {
     //  Selection inspectors
     // =========================================================================
 
+    // Fills the Editor Panel's New Sector Properties from an existing sector,
+    // so the next sector drawn matches it. Only the bottom floor is copied
+    // (new sectors have one), and the wall values come from the first wall
+    // in level.walls that borders the sector. DrawEditorPanel() pushes these
+    // into pendingSectorParams.
+    void CopySectorToNewSectorProperties(const Level &level, const Sector &sector) {
+        if (!sector.floors.empty()) {
+            const SectorFloor &bottomFloor = sector.floors.front();
+
+            floorHeight = bottomFloor.floor.height;
+            floorColor = bottomFloor.floor.color;
+            floorTexture = bottomFloor.floor.texture;
+
+            ceilHeight = bottomFloor.ceiling.height;
+            ceilColor = bottomFloor.ceiling.color;
+            ceilTexture = bottomFloor.ceiling.texture;
+        }
+
+        lightValue = sector.light;
+
+        const auto firstWall = std::ranges::find_if(level.walls, [&sector](const Wall &wall) {
+            return wall.frontSector == sector.id || wall.backSector == sector.id;
+        });
+
+        if (firstWall != level.walls.end()) {
+            wallTopTexture = firstWall->top.texture;
+            wallBottomTexture = firstWall->bottom.texture;
+            wallColor = firstWall->color;
+        }
+
+        hasUnsavedChanges = true;
+        ShowNotification(Get("editor.notification.sector_properties_copied").c_str());
+    }
+
     void DrawSelectedSectorInspector(Level &level) {
         if (!editingSector || currentMode != MODE_SECTOR) return;
 
@@ -2591,7 +2625,9 @@ namespace {
         // sector in the selection passes its own change on to its children.
         const auto parentsBeforeEdit = level.SnapshotParentSectorValues();
 
-        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE)) {
+        bool copyRequested = false;
+
+        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
             const std::vector<ID> sectorsToDelete =
@@ -2609,6 +2645,8 @@ namespace {
             hasUnsavedChanges = true;
 
         level.PropagateSnapshottedSectorChanges(parentsBeforeEdit);
+
+        if (copyRequested) CopySectorToNewSectorProperties(level, sector);
     }
 
     // Geometry Mode's inspector. This is the same
