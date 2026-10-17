@@ -462,6 +462,11 @@ namespace {
             RendererSettings &rendererSettings = level.rendererSettings;
 
             rendererSettings.textureSetting = rendererSettingsJson.value("textureSetting", PIXEL_ART_SHIMMERY);
+            rendererSettings.wallContrast = std::clamp(
+                rendererSettingsJson.value("wallContrast", RendererSettings{}.wallContrast),
+                0.0f,
+                MAX_WALL_CONTRAST
+            );
         }
 
         if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
@@ -489,7 +494,8 @@ namespace {
             },
             {
                 "rendererSettings", {
-                    {"textureSetting", rendererSettings.textureSetting}
+                    {"textureSetting", rendererSettings.textureSetting},
+                    {"wallContrast", rendererSettings.wallContrast}
                 }
             },
             {"sky", SaveSky(level.sky)}

@@ -472,6 +472,8 @@
   "editor.notification.export_failed_abnormal_exit": "Export failed: abnormal exit.",
   "editor.ui.title": "UI Editor",
   "settings.rendering.texture_preset": "Texture Filtering Preset",
+  "settings.rendering.wall_contrast": "Wall Contrast",
+  "settings.rendering.tooltip.wall_contrast": "Fake contrast so corners stay readable in even lighting: walls running along Z are lit this much brighter than their sector, walls along X this much darker, and angled walls blend in between. In sector light units (0-255); 0 turns it off.",
   "settings.rendering.tooltip.texture_preset": "Controls how textures are filtered when viewed nearby and at a distance.",
   "settings.rendering.texture_preset.pixel_art_shimmery": "Pixel Art - Sharp",
   "settings.rendering.tooltip.texture_preset.pixel_art_shimmery": "Uses nearest-neighbor filtering without mipmaps. Produces very sharp pixels but may shimmer or create moire patterns at a distance.",

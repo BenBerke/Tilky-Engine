@@ -37,7 +37,14 @@ enum RendererTextureSettings {
 };
 struct RendererSettings {
     RendererTextureSettings textureSetting = PIXEL_ART_SHIMMERY;
+
+    // Fake contrast, in sector light units (0-255): walls running along Z
+    // are lit this much brighter than their sector, walls along X this much
+    // darker, and angled walls blend smoothly in between. 0 turns it off.
+    float wallContrast = 16.0f;
 };
+
+constexpr float MAX_WALL_CONTRAST = 64.0f;
 
 struct Level {
     LevelID id = 0;

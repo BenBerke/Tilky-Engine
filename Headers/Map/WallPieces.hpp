@@ -50,6 +50,12 @@ namespace WallPieces {
         // True when the piece is seen from the front sector.
         bool frontFacing = true;
 
+        // The sector the piece is seen from - the one whose open space it
+        // faces, so a step under a higher floor faces the lower sector. Its
+        // light is what lights the piece. Null for a wall outside every
+        // sector. Points into level.sectors, so only valid until they move.
+        const Sector* facingSector = nullptr;
+
         WallSurfaceSlot slot = WallSurfaceSlot::Top;
 
         // World height where the texture's V = 0 sits, already resolved

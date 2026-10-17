@@ -29,11 +29,44 @@ namespace {
         return signature;
     }
 
+    // The piece is lit by the sector it is seen from, with the same
+    // subtractive rule as floors and ceilings (light 255 = unlit color).
+    // Fake contrast nudges that light by the wall's direction: +contrast for
+    // a wall along Z, -contrast along X, smoothly in between (dz^2 - dx^2 of
+    // the unit direction), clamped so it never goes past full or zero light.
+    Vector4 LitWallColor(const Wall& wall, const WallPieces::WallPiece& piece, const float contrast) {
+        if (piece.facingSector == nullptr) return wall.color;
+
+        Vector3 light = piece.facingSector->light;
+
+        const float dx = wall.end.x - wall.start.x;
+        const float dz = wall.end.y - wall.start.y;
+        const float lengthSq = dx * dx + dz * dz;
+
+        if (contrast != 0.0f && lengthSq > 0.0f) {
+            const float adjustment = contrast * (dz * dz - dx * dx) / lengthSq;
+
+            light = {
+                std::clamp(light.x + adjustment, 0.0f, 255.0f),
+                std::clamp(light.y + adjustment, 0.0f, 255.0f),
+                std::clamp(light.z + adjustment, 0.0f, 255.0f)
+            };
+        }
+
+        return {
+            wall.color.x - (255.0f - light.x) / 255.0f,
+            wall.color.y - (255.0f - light.y) / 255.0f,
+            wall.color.z - (255.0f - light.z) / 255.0f,
+            wall.color.w
+        };
+    }
+
     void PushGpuWallPiece(
         std::vector<GpuWall>& gpuWalls,
         const Wall& wall,
         const WallPieces::WallPiece& piece,
-        const float textureRegionIndex
+        const float textureRegionIndex,
+        const float wallContrast
     ) {
         const WallSurface& surface = wall.Surface(piece.slot);
 
@@ -53,7 +86,7 @@ namespace {
             wall.end.y
         };
 
-        gpuWall.color = wall.color;
+        gpuWall.color = LitWallColor(wall, piece, wallContrast);
 
         // heights.xy = bottom/top at the start point
         // heights.zw = bottom/top at the end point
@@ -93,6 +126,8 @@ void OpenGL::BuildGpuWallsFromMap() {
     WallPieces::SectorBoundsCache boundsCache;
     std::vector<WallPieces::WallPiece> pieces;
 
+    const float wallContrast = level.rendererSettings.wallContrast;
+
     for (const Wall& wall : level.walls) {
         const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
         const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture));
@@ -105,7 +140,8 @@ void OpenGL::BuildGpuWallsFromMap() {
                 gpuWalls,
                 wall,
                 piece,
-                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex
+                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex,
+                wallContrast
             );
         }
     }

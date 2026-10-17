@@ -847,6 +847,18 @@ namespace {
             HintText(Get(selectedPreset->tooltipKey).c_str());
         }
 
+        ImGui::Spacing();
+
+        if (ImGui::SliderFloat(
+            Get("settings.rendering.wall_contrast").c_str(),
+            &level.rendererSettings.wallContrast,
+            0.0f,
+            MAX_WALL_CONTRAST,
+            "%.0f"
+        )) hasUnsavedChanges = true;
+
+        HoverTooltip(Get("settings.rendering.tooltip.wall_contrast").c_str());
+
         ImGui::End();
     }
 

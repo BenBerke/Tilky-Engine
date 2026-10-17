@@ -292,7 +292,8 @@ namespace WallPieces {
             const HeightSample& bottom,
             const HeightSample& top,
             const WallSpanSide side,
-            const bool hasNeighbour
+            const bool hasNeighbour,
+            const Sector* facingSector
         ) {
             WallPiece piece;
 
@@ -310,6 +311,7 @@ namespace WallPieces {
             }
 
             piece.frontFacing = side == WallSpanSide::Front;
+            piece.facingSector = facingSector;
 
             const uint8_t neighbourFloor = piece.frontFacing ? BACK_FLOOR : FRONT_FLOOR;
             const uint8_t neighbourCeiling = piece.frontFacing ? BACK_CEILING : FRONT_CEILING;
@@ -370,18 +372,19 @@ namespace WallPieces {
                 HeightSample{0.0f, 0.0f, 0.0f},
                 HeightSample{ORPHAN_WALL_HEIGHT, ORPHAN_WALL_HEIGHT, ORPHAN_WALL_HEIGHT},
                 WallSpanSide::Front,
-                false
+                false,
+                nullptr
             );
 
             return;
         }
 
         for (const WallSpan& span : spans) {
-            const bool hasNeighbour = span.side == WallSpanSide::Front
-                ? backSectorPtr != nullptr
-                : frontSectorPtr != nullptr;
+            const bool frontSide = span.side == WallSpanSide::Front;
+            const bool hasNeighbour = frontSide ? backSectorPtr != nullptr : frontSectorPtr != nullptr;
 
-            PushPiece(pieces, wall, span.bottom, span.top, span.side, hasNeighbour);
+            PushPiece(pieces, wall, span.bottom, span.top, span.side, hasNeighbour,
+                      frontSide ? frontSectorPtr : backSectorPtr);
         }
     }
 
