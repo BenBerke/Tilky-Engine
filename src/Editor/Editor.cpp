@@ -4,6 +4,7 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
+#include <filesystem>
 #include <SDL3/SDL_init.h>
 #include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
@@ -25,6 +26,16 @@ namespace MapEditorInternal {
 namespace {
     ImGuiContext* imguiContext = nullptr;
     bool shownOnce = false;
+
+    // User settings are read from disk on the first Start() only, so values
+    // changed but not yet saved survive switching to the runtime editor and
+    // back.
+    bool userSettingsLoaded = false;
+
+    // False when a settings file exists but could not be read. Destroy() then
+    // skips its save, so the defaults the editor fell back to never overwrite
+    // that file.
+    bool userSettingsSafeToSave = false;
 }
 
 namespace Editor {
@@ -66,7 +77,17 @@ namespace Editor {
             LevelManager::currentLevelIndex = 0;
         }
 
-        if (!LoadUserSettings()) spdlog::error("Unable to load user settings");
+        if (!userSettingsLoaded) {
+            userSettingsLoaded = true;
+
+            if (LoadUserSettings()) userSettingsSafeToSave = true;
+            else {
+                spdlog::error("Unable to load user settings");
+
+                // No file yet just means first run - saving the defaults is fine.
+                userSettingsSafeToSave = !std::filesystem::exists(ProjectManager::GetUserSettingsPath());
+            }
+        }
         if (!LoadProjectSettings()) spdlog::error("Unable to load project settings");
 
         SDL_ShowWindow(window);
@@ -285,7 +306,8 @@ namespace Editor {
 
         if (imguiContext == nullptr) return;
 
-        SaveUserSettings();
+        if (userSettingsSafeToSave) SaveUserSettings();
+        else spdlog::warn("Not saving user settings on close: the existing file could not be loaded");
 
         ImGui::SetCurrentContext(imguiContext);
         ImGui_ImplSDLRenderer3_Shutdown();

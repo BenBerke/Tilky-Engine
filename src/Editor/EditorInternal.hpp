@@ -410,6 +410,10 @@ namespace MapEditorInternal {
     constexpr float MIN_STEP_SIZE = 1.0f;
     constexpr float MAX_STEP_SIZE = 750.0f;
 
+    constexpr float DEFAULT_RUNTIME_CAMERA_FOV = 90.0f;
+    constexpr float MIN_RUNTIME_CAMERA_FOV = 30.0f;
+    constexpr float MAX_RUNTIME_CAMERA_FOV = 120.0f;
+
     // Selection within the UI Editor. Independent of selectedEntity/editingEntity
     // above, which belong to the Map Editor's MODE_ENTITY and are left untouched.
     extern ID selectedUIEntityID;
@@ -459,6 +463,9 @@ namespace MapEditorInternal {
 
     extern float cameraSpeed;
     extern float cameraStepSize;
+
+    // Field of view of the runtime editor's fly camera, in degrees.
+    extern float runtimeCameraFov;
 
     extern bool hierarchyVisible;
     extern bool editorPanelVisible;

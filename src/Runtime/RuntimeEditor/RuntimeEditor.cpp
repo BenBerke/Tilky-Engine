@@ -18,6 +18,7 @@
 #include "../../Editor/EditorInternal.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -569,6 +570,20 @@ namespace RuntimeEditorUi {
             MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID);
 
             ImGui::End();
+
+            // Edits the user setting itself, so the value is the same one the
+            // map editor's User Settings window shows and saves.
+            ImGui::Begin((Localisation::Get("runtime_editor.camera_window") + "##RuntimeEditorCamera").c_str());
+
+            ImGui::SliderFloat(
+                Localisation::Get("editor.user_settings.runtime_camera_fov").c_str(),
+                &MapEditorInternal::runtimeCameraFov,
+                MapEditorInternal::MIN_RUNTIME_CAMERA_FOV,
+                MapEditorInternal::MAX_RUNTIME_CAMERA_FOV,
+                "%.0f"
+            );
+
+            ImGui::End();
         }
 
         // Outside the check above, so open scripts and flipbooks don't vanish
@@ -662,6 +677,7 @@ namespace RuntimeEditor {
         camera->yaw = level.runtimeCamRot.y;
 #endif
         camera->forward = GetCameraForward(*camera);
+        camera->fov = MapEditorInternal::runtimeCameraFov;
 
         editorWindow = renderer.GetWindow();
 
@@ -711,6 +727,8 @@ namespace RuntimeEditor {
         }
 
         if (camera == nullptr || transform == nullptr) return;
+
+        camera->fov = MapEditorInternal::runtimeCameraFov;
 
         //region look
 

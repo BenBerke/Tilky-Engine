@@ -169,6 +169,8 @@ namespace MapEditorInternal {
     float cameraSpeed = 1.0f;
     float cameraStepSize = 50.0f;
 
+    float runtimeCameraFov = DEFAULT_RUNTIME_CAMERA_FOV;
+
     bool hierarchyVisible = true;
     bool editorPanelVisible = true;
     bool worldSettingsVisible = true;

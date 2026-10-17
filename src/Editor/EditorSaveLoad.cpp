@@ -213,6 +213,11 @@ namespace MapEditorInternal {
 
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
             cameraStepSize = settings.value("cameraStepSize", 50.0f);
+            runtimeCameraFov = std::clamp(
+                settings.value("runtimeCameraFov", DEFAULT_RUNTIME_CAMERA_FOV),
+                MIN_RUNTIME_CAMERA_FOV,
+                MAX_RUNTIME_CAMERA_FOV
+            );
 
             hierarchyVisible = settings.value("hierarchyVisible", true);
             editorPanelVisible = settings.value("editorPanelVisible", true);
@@ -302,6 +307,7 @@ namespace MapEditorInternal {
                 }},
                    {"cameraSpeed", cameraSpeed},
                 {"cameraStepSize", cameraStepSize},
+                {"runtimeCameraFov", runtimeCameraFov},
                 {"editorDesign", EditorStyle::ActiveDesign()},
                 {"hierarchyVisible", hierarchyVisible},
                 {"editorPanelVisible", editorPanelVisible},

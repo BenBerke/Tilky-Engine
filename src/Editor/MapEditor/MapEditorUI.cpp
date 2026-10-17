@@ -1504,6 +1504,9 @@ namespace {
 
             ImGui::SliderFloat(Get("editor.user_settings.camera_speed").c_str(), &cameraSpeed, MIN_CAM_SPEED, MAX_CAM_SPEED);
             ImGui::SliderFloat(Get("editor.user_settings.camera_step_size").c_str(), &cameraStepSize, MIN_STEP_SIZE, MAX_STEP_SIZE);
+            ImGui::SliderFloat(Get("editor.user_settings.runtime_camera_fov").c_str(), &runtimeCameraFov,
+                               MIN_RUNTIME_CAMERA_FOV, MAX_RUNTIME_CAMERA_FOV, "%.0f");
+            HoverTooltip(Get("editor.tooltip.user_settings.runtime_camera_fov").c_str());
 
             PushSuccessStyle();
             if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
