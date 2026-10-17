@@ -1058,7 +1058,10 @@ namespace RuntimeEditor {
 
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
                 WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);
+
+                if (!InputManager::GetKey(SDL_SCANCODE_Y))
                 wallSurface.textureScale.x += uvScaleDelta;
+                if (!InputManager::GetKey(SDL_SCANCODE_X))
                 wallSurface.textureScale.y += uvScaleDelta;
             }
             else if ((hit->type == RayHitType::SectorFloor ||
