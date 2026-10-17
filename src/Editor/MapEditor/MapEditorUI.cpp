@@ -213,6 +213,10 @@ namespace {
     constexpr Vector3 defaultNormalHandleColor = {80, 220, 255};
     constexpr Vector3 defaultHighlightedHandleColor = {255, 255, 255};
     constexpr Vector3 defaultHandleOutlineColor = {20, 20, 20};
+
+    constexpr Vector3 defaultGizmoXColor = {230, 60, 60};
+    constexpr Vector3 defaultGizmoYColor = {80, 200, 80};
+    constexpr Vector3 defaultGizmoZColor = {60, 110, 240};
 } // namespace
 
 // =============================================================================
@@ -445,7 +449,8 @@ namespace {
     // Hierarchy search
     char hierarchySearchBuf[64] = "";
 
-    // Unsaved-changes flag — set on any edit, cleared on Save / new level
+    // Unsaved-changes flag — set on any edit, cleared on Save / new level.
+    // Other files set it through MapEditorInternal::MarkUnsavedChanges().
     bool hasUnsavedChanges = false;
 
     // Set when the wall inspector moves an endpoint, cleared once the
@@ -1355,6 +1360,24 @@ namespace {
                         "editor.user_settings.sprite_entity_color",
                         spriteEntityColor,
                         defaultSpriteEntityColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.gizmo_x_color",
+                        gizmoXColor,
+                        defaultGizmoXColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.gizmo_y_color",
+                        gizmoYColor,
+                        defaultGizmoYColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.gizmo_z_color",
+                        gizmoZColor,
+                        defaultGizmoZColor
                     );
                 }
             );
@@ -2850,6 +2873,10 @@ namespace {
 // =============================================================================
 
 namespace MapEditorInternal {
+    void MarkUnsavedChanges() {
+        hasUnsavedChanges = true;
+    }
+
     using namespace Localisation;
 
     // Shared Asset Browser instance - defined here (not in the anonymous
@@ -3196,6 +3223,7 @@ namespace MapEditorInternal {
         HintText(Get("editor.entity_mode.hint.create").c_str());
         HintText(Get("editor.entity_mode.hint.edit").c_str());
         HintText(Get("editor.entity_mode.hint.move").c_str());
+        HintText(Get("editor.entity_mode.hint.gizmo").c_str());
         HintText(Get("editor.entity_mode.hint.select").c_str());
         HintText(Get("editor.entity_mode.hint.copy").c_str());
         HintText(Get("editor.entity_mode.hint.focus").c_str());

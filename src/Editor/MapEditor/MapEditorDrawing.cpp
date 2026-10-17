@@ -7,6 +7,8 @@
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp" // This includes "SSECompat.hpp"
 
+#include "imgui.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -894,6 +896,69 @@ namespace MapEditorInternal {
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderRect(renderer, &rect);
         }
+    }
+
+    namespace {
+        // A thick shaft ending in a filled triangle head, in screen space.
+        void DrawGizmoArrow(const Vector2& start, const Vector2& tip, const Vector3& color) {
+            constexpr float SHAFT_THICKNESS = 3.0f;
+            constexpr float HEAD_LENGTH = 12.0f;
+            constexpr float HEAD_HALF_WIDTH = 6.0f;
+
+            const float dx = tip.x - start.x;
+            const float dy = tip.y - start.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= HEAD_LENGTH) return;
+
+            const float dirX = dx / length;
+            const float dirY = dy / length;
+
+            const Vector2 headBase = {tip.x - dirX * HEAD_LENGTH, tip.y - dirY * HEAD_LENGTH};
+
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
+            DrawColoredThickLine(start, headBase, SHAFT_THICKNESS);
+
+            const SDL_FColor headColor = ToFColor(color);
+
+            SDL_Vertex head[3];
+            head[0].position = {tip.x, tip.y};
+            head[1].position = {headBase.x - dirY * HEAD_HALF_WIDTH, headBase.y + dirX * HEAD_HALF_WIDTH};
+            head[2].position = {headBase.x + dirY * HEAD_HALF_WIDTH, headBase.y - dirX * HEAD_HALF_WIDTH};
+
+            for (SDL_Vertex& vertex : head) {
+                vertex.color = headColor;
+                vertex.tex_coord = {0.0f, 0.0f};
+            }
+
+            SDL_RenderGeometry(renderer, nullptr, head, 3, nullptr, 0);
+        }
+    }
+
+    void DrawEntityMoveGizmo() {
+        EntityGizmoLayout layout;
+        if (!GetEntityGizmoLayout(&layout)) return;
+
+        // The part being dragged stays lit for the whole drag; otherwise
+        // the one under the cursor, unless a panel has the mouse.
+        EntityGizmoPart highlighted = GetActiveEntityGizmoPart();
+
+        if (highlighted == GIZMO_NONE && !ImGui::GetIO().WantCaptureMouse)
+            highlighted = PickEntityGizmoPart(InputManager::GetMousePosition());
+
+        const auto colorFor = [highlighted](const EntityGizmoPart part, const Vector3& color) -> const Vector3& {
+            return highlighted == part ? highlightedHandleColor : color;
+        };
+
+        DrawGizmoArrow(layout.xStart, layout.xTip, colorFor(GIZMO_X, gizmoXColor));
+        DrawGizmoArrow(layout.zStart, layout.zTip, colorFor(GIZMO_Z, gizmoZColor));
+
+        const Vector3& squareColor = colorFor(GIZMO_FREE, gizmoYColor);
+
+        SDL_SetRenderDrawColor(renderer, squareColor.r, squareColor.g, squareColor.b, 255);
+        SDL_RenderFillRect(renderer, &layout.square);
+
+        SDL_SetRenderDrawColor(renderer, handleOutlineColor.r, handleOutlineColor.g, handleOutlineColor.b, 255);
+        SDL_RenderRect(renderer, &layout.square);
     }
 
     namespace {

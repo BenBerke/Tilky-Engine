@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "../EditorInternal.hpp"
@@ -29,13 +30,21 @@ namespace {
     // release (the drop is delivered during the release frame's UI pass).
     ID inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
-    void BeginCanvasEntityHold(Level& level) {
+    // The move-gizmo part the current hold started on, GIZMO_NONE for a
+    // drag of the entity body. A gizmo drag also keeps where on the gizmo the
+    // cursor grabbed (relative to the primary's position), so the entity
+    // doesn't jump to the cursor the way a body drag does.
+    MapEditorInternal::EntityGizmoPart activeGizmoPart = MapEditorInternal::GIZMO_NONE;
+    Vector2 gizmoGrabOffset = {0.0f, 0.0f};
+
+    void BeginCanvasEntityHold(Level& level, const MapEditorInternal::EntityGizmoPart gizmoPart) {
         canvasDragStartPositions.clear();
 
         for (const ID entityID : MapEditorInternal::selectedEntities)
             if (const ComponentTransform* transform = level.transforms.Get(entityID))
                 canvasDragStartPositions.emplace_back(entityID, transform->position);
 
+        activeGizmoPart = gizmoPart;
         holdingEntity = true;
     }
 }
@@ -631,6 +640,7 @@ namespace MapEditorInternal {
         }
 
         holdingEntity = false;
+        activeGizmoPart = GIZMO_NONE;
     }
 
     ID GetCanvasDragPinnedEntity() {
@@ -669,6 +679,72 @@ namespace MapEditorInternal {
 
         SelectEntity(pasted.front());
         selectedEntities = pasted;
+    }
+
+    // =========================================================================
+    //  Entity Mode move gizmo
+    // =========================================================================
+
+    namespace {
+        // All in screen pixels, so the gizmo is the same size at every zoom.
+        constexpr float GIZMO_GAP = 4.0f; // between the entity's box and the gizmo
+        constexpr float GIZMO_ARROW_LENGTH = 48.0f;
+        constexpr float GIZMO_SQUARE_SIZE = 14.0f;
+        constexpr float GIZMO_PICK_RADIUS = 6.0f;
+
+        float DistanceToSegment(const Vector2& point, const Vector2& a, const Vector2& b) {
+            const float abX = b.x - a.x;
+            const float abY = b.y - a.y;
+            const float lengthSq = abX * abX + abY * abY;
+
+            float t = lengthSq > 0.0f ? ((point.x - a.x) * abX + (point.y - a.y) * abY) / lengthSq : 0.0f;
+            t = std::clamp(t, 0.0f, 1.0f);
+
+            const float dx = point.x - (a.x + abX * t);
+            const float dy = point.y - (a.y + abY * t);
+            return std::sqrt(dx * dx + dy * dy);
+        }
+    }
+
+    bool GetEntityGizmoLayout(EntityGizmoLayout* layout) {
+        if (currentMode != MODE_ENTITY || selectedEntities.empty()) return false;
+
+        const ComponentTransform* transform = LevelManager::CurrentLevel().transforms.Get(selectedEntity.id);
+        if (transform == nullptr) return false;
+
+        const Vector2 origin = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
+        const float start = ENTITY_SIZE * editorZoom * 0.5f + GIZMO_GAP;
+
+        // World +Z is screen-down on this canvas, so the Z arrow points down.
+        layout->xStart = {origin.x + start, origin.y};
+        layout->xTip = {origin.x + start + GIZMO_ARROW_LENGTH, origin.y};
+        layout->zStart = {origin.x, origin.y + start};
+        layout->zTip = {origin.x, origin.y + start + GIZMO_ARROW_LENGTH};
+        layout->square = {origin.x + start, origin.y + start, GIZMO_SQUARE_SIZE, GIZMO_SQUARE_SIZE};
+
+        return true;
+    }
+
+    EntityGizmoPart PickEntityGizmoPart(const Vector2& mouseScreen) {
+        EntityGizmoLayout layout;
+        if (!GetEntityGizmoLayout(&layout)) return GIZMO_NONE;
+
+        const SDL_FRect& square = layout.square;
+
+        if (mouseScreen.x >= square.x && mouseScreen.x <= square.x + square.w &&
+            mouseScreen.y >= square.y && mouseScreen.y <= square.y + square.h)
+            return GIZMO_FREE;
+
+        const float xDistance = DistanceToSegment(mouseScreen, layout.xStart, layout.xTip);
+        const float zDistance = DistanceToSegment(mouseScreen, layout.zStart, layout.zTip);
+
+        if (xDistance > GIZMO_PICK_RADIUS && zDistance > GIZMO_PICK_RADIUS) return GIZMO_NONE;
+
+        return xDistance <= zDistance ? GIZMO_X : GIZMO_Z;
+    }
+
+    EntityGizmoPart GetActiveEntityGizmoPart() {
+        return holdingEntity ? activeGizmoPart : GIZMO_NONE;
     }
 
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
@@ -712,9 +788,24 @@ namespace MapEditorInternal {
                     HandleSectorDrawClick(mouseWorld);
                 }
                 else if (currentMode == MODE_ENTITY) {
-                    Entity *en = EntityAt(mouseWorld);
+                    // The gizmo sits on top of everything, so it is tested
+                    // before the entities under it.
+                    const EntityGizmoPart gizmoPart = PickEntityGizmoPart(mouseScreen);
+                    Entity *en = gizmoPart == GIZMO_NONE ? EntityAt(mouseWorld) : nullptr;
 
-                    if (en != nullptr) {
+                    if (gizmoPart != GIZMO_NONE) {
+                        // Moves the selection as it is, whatever modifiers
+                        // are held - Ctrl only matters later, for snapping.
+                        selectionBeforeCanvasDrag = selectedEntities;
+                        primaryBeforeCanvasDrag = selectedEntity.id;
+                        inspectorPinnedDuringCanvasDrag = editingEntity ? primaryBeforeCanvasDrag : INVALID_ID;
+
+                        if (const ComponentTransform* primary = level.transforms.Get(selectedEntity.id))
+                            gizmoGrabOffset = {mouseWorld.x - primary->position.x, mouseWorld.y - primary->position.z};
+
+                        BeginCanvasEntityHold(level, gizmoPart);
+                    }
+                    else if (en != nullptr) {
                         // The same modifier grammar Geometry Mode already
                         // uses for walls: Ctrl toggles one entity in or out,
                         // Shift takes the ID range from the current primary,
@@ -739,7 +830,7 @@ namespace MapEditorInternal {
                             if (!alreadyInSelection || selectedEntities.size() <= 1) SelectEntity(en->id);
                             else selectedEntity = *en;
 
-                            BeginCanvasEntityHold(level);
+                            BeginCanvasEntityHold(level, GIZMO_NONE);
                         }
                     }
                     // Empty space clears the selection, same as Geometry
@@ -774,7 +865,21 @@ namespace MapEditorInternal {
                     // of collapsing onto the cursor.
                     const Vector3 positionBeforeDrag = t->position;
 
-                    t->SetPosition({mouseWorld.x, t->position.y, mouseWorld.y});
+                    Vector2 target = mouseWorld;
+
+                    // Gizmo drags keep the grab offset, snap like wall
+                    // dragging does (Ctrl ignores the grid), and an arrow
+                    // only lets its own axis change.
+                    if (activeGizmoPart != GIZMO_NONE) {
+                        target = {mouseWorld.x - gizmoGrabOffset.x, mouseWorld.y - gizmoGrabOffset.y};
+
+                        if (gridSnapEnabled && !MultiSelectModifierHeld()) target = SnapToGrid(target);
+
+                        if (activeGizmoPart == GIZMO_X) target.y = t->position.z;
+                        else if (activeGizmoPart == GIZMO_Z) target.x = t->position.x;
+                    }
+
+                    t->SetPosition({target.x, t->position.y, target.y});
 
                     MoveSelectedEntitiesBy(level, {
                         t->position.x - positionBeforeDrag.x,
@@ -785,7 +890,10 @@ namespace MapEditorInternal {
                 else [[unlikely]] spdlog::error("Entity does not have transform component");
             }
 
-            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) holdingEntity = false;
+            if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
+                holdingEntity = false;
+                activeGizmoPart = GIZMO_NONE;
+            }
 
             UpdateEditorZoom();
         }

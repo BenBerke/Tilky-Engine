@@ -456,6 +456,18 @@ namespace MapEditorInternal {
     extern Vector3 highlightedHandleColor;
     extern Vector3 handleOutlineColor;
 
+    // Gizmo axis colours, shared by the Map Editor's 2D move gizmo and the
+    // runtime editor's move/rotate gizmos. A plane handle uses the colour of
+    // the axis it is perpendicular to, so the 2D free-drag square (the XZ
+    // plane) is gizmoYColor.
+    extern Vector3 gizmoXColor;
+    extern Vector3 gizmoYColor;
+    extern Vector3 gizmoZColor;
+
+    // Sets the Map Editor's unsaved-changes flag, for edits made outside it
+    // (the runtime editor). Defined in MapEditorUI.cpp.
+    void MarkUnsavedChanges();
+
     extern Vector3 themeTextColor;
     extern Vector3 gridColor;
 
@@ -678,6 +690,43 @@ namespace MapEditorInternal {
     // wall(s). Draws nothing in any other mode.
     void DrawGeometryEditOverlay();
     void DrawEntities();
+
+    // =========================================================================
+    //  Entity Mode move gizmo
+    // =========================================================================
+    // Two arrows (X to the right, Z pointing toward +Z, which is screen-down)
+    // and a square (the XZ plane) between them, drawn on the primary selected entity. An
+    // arrow moves the whole selection along its axis only, the square moves
+    // it freely; both snap to the grid unless Ctrl is held. Dragging the
+    // entity body itself stays the unsnapped free drag.
+
+    enum EntityGizmoPart {
+        GIZMO_NONE,
+        GIZMO_X,
+        GIZMO_Z,
+        GIZMO_FREE
+    };
+
+    // Screen-space shape of the gizmo, in pixels. The parts start just
+    // outside the entity's box so clicking the body still free-drags it.
+    struct EntityGizmoLayout {
+        Vector2 xStart, xTip;
+        Vector2 zStart, zTip;
+        SDL_FRect square;
+    };
+
+    // False when there is nothing to draw: not in Entity Mode, nothing
+    // selected, or the primary has no transform. Defined in MapEditorInput.cpp.
+    bool GetEntityGizmoLayout(EntityGizmoLayout* layout);
+
+    // The part under `mouseScreen`, square first, then the closer arrow.
+    EntityGizmoPart PickEntityGizmoPart(const Vector2& mouseScreen);
+
+    // The part being dragged right now, GIZMO_NONE between drags.
+    EntityGizmoPart GetActiveEntityGizmoPart();
+
+    // Defined in MapEditorDrawing.cpp. Call after DrawEntities().
+    void DrawEntityMoveGizmo();
     void DrawGridDots();
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);

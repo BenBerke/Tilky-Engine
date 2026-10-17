@@ -532,6 +532,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Map/MapTopology.hpp
 
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
+        src/Runtime/RuntimeEditor/TransformGizmo.cpp
 
         src/Editor/UIEditor/UIEditorUI.cpp
         src/Editor/UIEditor/UIEditorInput.cpp
@@ -545,6 +546,7 @@ set(TILKY_EDITOR_SOURCES
 
         Headers/Runtime/RuntimeEditor/EditorFunctions.hpp
         Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp
+        Headers/Runtime/RuntimeEditor/TransformGizmo.hpp
 
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Objects/RayHit.hpp

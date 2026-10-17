@@ -207,6 +207,9 @@ namespace MapEditorInternal {
             LoadColor3("normalHandleColor", normalHandleColor);
             LoadColor3("highlightedHandleColor", highlightedHandleColor);
             LoadColor3("handleOutlineColor", handleOutlineColor);
+            LoadColor3("gizmoXColor", gizmoXColor);
+            LoadColor3("gizmoYColor", gizmoYColor);
+            LoadColor3("gizmoZColor", gizmoZColor);
             LoadColor3("themeTextColor", themeTextColor);
             LoadColor3("gridColor", gridColor);
             LoadColor3("backgroundColor", backgroundColor);
@@ -295,6 +298,15 @@ namespace MapEditorInternal {
 
                     {"handleOutlineColor",
                      SerializeColor(handleOutlineColor)},
+
+                    {"gizmoXColor",
+                     SerializeColor(gizmoXColor)},
+
+                    {"gizmoYColor",
+                     SerializeColor(gizmoYColor)},
+
+                    {"gizmoZColor",
+                     SerializeColor(gizmoZColor)},
 
                     {"themeTextColor",
                      SerializeColor(themeTextColor)},

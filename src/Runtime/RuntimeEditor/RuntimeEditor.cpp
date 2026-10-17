@@ -19,6 +19,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Runtime/RuntimeEditor/TransformGizmo.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -141,6 +142,17 @@ namespace {
     // Most recent sign a wall drag actually resolved. Reused when the camera is
     // edge-on to a wall and the viewed face cannot be told apart.
     float lastWallDragHorizontalSign = 1.0f;
+
+    // The transform gizmo on the entity being edited. Chosen with the Tools
+    // window's buttons or the 1/2 keys.
+    TransformGizmo::Tool gizmoTool = TransformGizmo::Tool::Move;
+
+    // Saved by Update() for Draw(), which has no viewport size of its own.
+    Vector2 gizmoViewportSize = {};
+
+    // Whether the drag in progress has changed anything yet, so ending it
+    // only marks the level unsaved when it did.
+    bool gizmoChangedTransform = false;
 }
 
 namespace {
@@ -201,6 +213,27 @@ namespace {
         for (Entity& entity : level.entities) if (entity.id == entityId) return &entity;
 
         return nullptr;
+    }
+
+    // The gizmo only shows while an entity's inspector is open.
+    ComponentTransform* GizmoTarget(Level& level) {
+        if (!editingEntity || !selectedEntityId.has_value()) return nullptr;
+
+        return level.transforms.Get(*selectedEntityId);
+    }
+
+    bool BuildGizmoView(TransformGizmo::View& view) {
+        if (camera == nullptr || transform == nullptr) return false;
+        if (gizmoViewportSize.x <= 0.0f || gizmoViewportSize.y <= 0.0f) return false;
+
+        view.eye = transform->position;
+        view.forward = Vector3Math::Normalized(camera->forward);
+        view.left = GetCameraLeft(*camera);
+        view.up = Vector3Math::Normalized(Vector3Math::Cross(view.forward, view.left));
+        view.tanHalfFov = std::tan(camera->fov * std::numbers::pi_v<float> / 180.0f * 0.5f);
+        view.viewportSize = gizmoViewportSize;
+
+        return true;
     }
 
     int FindWallIndex(const Level& level, const Wall* wallToFind) {
@@ -458,6 +491,20 @@ namespace {
 namespace RuntimeEditorUi {
     constexpr bool DRAGGABLE = true;
     void Draw(Level& level) {
+        if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
+            TransformGizmo::View view;
+
+            if (BuildGizmoView(view)) {
+                TransformGizmo::Draw(
+                    view,
+                    gizmoTool,
+                    *gizmoTarget,
+                    InputManager::GetMousePosition(),
+                    !cameraLooking && !ImGui::GetIO().WantCaptureMouse
+                );
+            }
+        }
+
         if (editingEntity) {
             if (!selectedEntityId.has_value()) {
                 editingEntity = false;
@@ -574,10 +621,25 @@ namespace RuntimeEditorUi {
 
             ImGui::End();
 
+            ImGui::Begin((Localisation::Get("runtime_editor.tools_window") + "##RuntimeEditorTools").c_str());
+
+            const auto DrawToolButton = [](const char* labelKey, const char* tooltipKey, const TransformGizmo::Tool tool) {
+                const bool active = gizmoTool == tool;
+
+                if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                if (ImGui::Button(Localisation::Get(labelKey).c_str())) gizmoTool = tool;
+                if (active) ImGui::PopStyleColor();
+
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("%s", Localisation::Get(tooltipKey).c_str());
+            };
+
+            DrawToolButton("runtime_editor.tool.move", "runtime_editor.tooltip.tool.move", TransformGizmo::Tool::Move);
+            ImGui::SameLine();
+            DrawToolButton("runtime_editor.tool.rotate", "runtime_editor.tooltip.tool.rotate", TransformGizmo::Tool::Rotate);
+
             // Edits the user setting itself, so the value is the same one the
             // map editor's User Settings window shows and saves.
-            ImGui::Begin((Localisation::Get("runtime_editor.camera_window") + "##RuntimeEditorCamera").c_str());
-
             ImGui::SliderFloat(
                 Localisation::Get("editor.user_settings.runtime_camera_fov").c_str(),
                 &MapEditorInternal::runtimeCameraFov,
@@ -771,7 +833,9 @@ namespace RuntimeEditor {
 
         Vector3 movement = {0.0f, 0.0f, 0.0f};
 
-        //if (!keyboardBlockedByImGui) {
+        // Paused during a gizmo drag: Ctrl there means "ignore snapping", and
+        // would otherwise also fly the camera down.
+        if (!TransformGizmo::IsDragging()) {
             const Vector3 forward = camera->forward;
             const Vector3 left = GetCameraLeft(*camera);
 
@@ -794,7 +858,7 @@ namespace RuntimeEditor {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
                 transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
             }
-       // }
+        }
 
         //endregion
 
@@ -862,11 +926,59 @@ namespace RuntimeEditor {
         // smears the UVs on the way to the surface.
         const bool dragDropActive = ImGui::GetDragDropPayload() != nullptr;
 
+        //region transform gizmo
+
+        // Before the UV drag below, so a press on a handle never slides the
+        // texture of the surface behind it.
+        gizmoViewportSize = viewportSize;
+
+        ComponentTransform* gizmoTarget = GizmoTarget(level);
+        TransformGizmo::View gizmoView;
+        const bool haveGizmoView = BuildGizmoView(gizmoView);
+
+        if (windowFocused && !keyboardBlockedByImGui && !TransformGizmo::IsDragging()) {
+            if (InputManager::GetKeyDown(SDL_SCANCODE_1)) gizmoTool = TransformGizmo::Tool::Move;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_2)) gizmoTool = TransformGizmo::Tool::Rotate;
+        }
+
+        if (TransformGizmo::IsDragging() &&
+            (gizmoTarget == nullptr || !haveGizmoView || !InputManager::GetMouseButton(SDL_BUTTON_LEFT) || !windowFocused)) {
+            TransformGizmo::EndDrag();
+
+            if (gizmoChangedTransform) MapEditorInternal::MarkUnsavedChanges();
+            gizmoChangedTransform = false;
+        }
+
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
+            gizmoTarget != nullptr &&
+            haveGizmoView &&
+            windowFocused &&
+            !mouseBlockedByImGui &&
+            !dragDropActive &&
+            !cameraLooking) {
+            gizmoChangedTransform = false;
+            TransformGizmo::BeginDrag(gizmoView, gizmoTool, *gizmoTarget, InputManager::GetMousePosition());
+        }
+
+        if (TransformGizmo::IsDragging()) {
+            const bool snap = !InputManager::GetKey(SDL_SCANCODE_LCTRL) && !InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
+            if (TransformGizmo::UpdateDrag(gizmoView, *gizmoTarget, InputManager::GetMousePosition(), snap)) {
+                gizmoChangedTransform = true;
+
+                // Lighting and the entity's sector both follow its position.
+                gizmoTarget->UpdateObjectSectorAndFloor(level.sectors);
+            }
+        }
+
+        //endregion
+
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
             windowFocused &&
             !mouseBlockedByImGui &&
             !dragDropActive &&
             !cameraLooking &&
+            !TransformGizmo::IsDragging() &&
             IsUvEditableSurface(hoveredSurface.type)) {
             uvDragSurface = hoveredSurface;
             draggingUv = true;
@@ -1106,7 +1218,7 @@ namespace RuntimeEditor {
             }
         }
 
-        ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking && !draggingUv);
+        ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking && !draggingUv && !TransformGizmo::IsDragging());
 
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesFromLevel();
     } // Update
@@ -1141,6 +1253,11 @@ namespace RuntimeEditor {
 
         // Release both relative mode and our cursor rectangle before switching editors.
         SetCursorLocked(false);
+
+        // A drag cut short by leaving still changed the level.
+        if (TransformGizmo::IsDragging() && gizmoChangedTransform) MapEditorInternal::MarkUnsavedChanges();
+        TransformGizmo::EndDrag();
+        gizmoChangedTransform = false;
 
         editorWindow = nullptr;
         cameraLooking = false;

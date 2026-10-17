@@ -166,6 +166,10 @@ namespace MapEditorInternal {
     Vector3 highlightedHandleColor = {255, 255, 255};
     Vector3 handleOutlineColor = {20, 20, 20};
 
+    Vector3 gizmoXColor = {230, 60, 60};
+    Vector3 gizmoYColor = {80, 200, 80};
+    Vector3 gizmoZColor = {60, 110, 240};
+
     float cameraSpeed = 1.0f;
     float cameraStepSize = 50.0f;
 

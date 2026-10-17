@@ -254,6 +254,7 @@ namespace Editor {
             DrawGeometryEditOverlay();
 
             DrawEntities();
+            DrawEntityMoveGizmo();
 
             // Also called in Geometry Mode for the snap indicator: wall
             // and endpoint dragging obey the same grid/point snapping as

@@ -2184,7 +2184,17 @@ namespace ImGuiDrawFunctions {
                 static ID rotationEditorOwner = INVALID_ENTITY_ID;
                 static Vector3 rotationEuler = {0.0f, 0.0f, 0.0f};
 
-                if (rotationEditorOwner != c->ownerID) {
+                // Re-read too when something else (the runtime editor's rotate
+                // gizmo, a script) changed the rotation, or the next edit here
+                // would write the stale angles back over it. Two quaternions
+                // are the same rotation when |dot| is 1.
+                const Quaternion shownRotation = Quaternion::FromEulerDegrees(rotationEuler.x, rotationEuler.y, rotationEuler.z);
+                const Quaternion actualRotation = c->rotation.Normalized();
+                const float rotationDot =
+                    shownRotation.x * actualRotation.x + shownRotation.y * actualRotation.y +
+                    shownRotation.z * actualRotation.z + shownRotation.w * actualRotation.w;
+
+                if (rotationEditorOwner != c->ownerID || std::abs(rotationDot) < 0.99999f) {
                     rotationEditorOwner = c->ownerID;
                     rotationEuler = c->rotation.ToEulerDegrees();
                 }
