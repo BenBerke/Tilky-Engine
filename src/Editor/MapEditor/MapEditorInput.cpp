@@ -11,6 +11,8 @@
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapTopology.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 
 namespace {
     bool holdingEntity = false;
@@ -463,6 +465,10 @@ namespace MapEditorInternal {
             return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
         }
 
+        bool SplitModifierHeld() {
+            return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT);
+        }
+
         // Offsets every selected entity except the primary. The primary has
         // already been snapped to the cursor by the drag path below, so the
         // rest just needs the same delta - copying the primary's position
@@ -529,6 +535,22 @@ namespace MapEditorInternal {
             }
 
             if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+                // Alt+click splits the wall under the cursor at that point,
+                // snapped along the wall to the grid unless Ctrl is held.
+                if (SplitModifierHeld()) {
+                    const auto it = wallUnderCursor != INVALID_ID ? level.wallIDToIndex.find(wallUnderCursor) : level.wallIDToIndex.end();
+                    if (it == level.wallIDToIndex.end()) return;
+
+                    const Wall &wall = level.walls[it->second];
+                    Vector2 point = MapTopology::ClosestPointOnSegment(mouseWorld, wall.start, wall.end);
+
+                    if (gridSnapEnabled && !MultiSelectModifierHeld())
+                        point = MapTopology::ClosestPointOnSegment(SnapToGrid(point), wall.start, wall.end);
+
+                    if (!SplitWallAt(wallUnderCursor, point)) lastGeometryError = Localisation::Get("editor.geometry.split_too_close");
+                    return;
+                }
+
                 // Endpoint handles win over the wall body whenever the
                 // cursor is near both, so grabbing the corner of a short
                 // wall is never a coin flip.
@@ -920,15 +942,12 @@ namespace MapEditorInternal {
             // E places a new entity under the cursor. Only while the cursor
             // is on the canvas - over a panel there is no world point to
             // place it at.
+            // What it places, and how, comes from the Entity Mode panel's
+            // palette and placement settings.
             if (currentMode == MODE_ENTITY && !mouseBlockedByImGui && !holdingEntity &&
                 InputManager::GetKeyDown(SDL_SCANCODE_E)) {
-                static constexpr bool isUIEntity = false;
-                const ID id = level.CreateEntity(isUIEntity);
-
-                SelectEntity(id);
-
-                auto *t = selectedEntity.GetComponent<ComponentTransform>();
-                if (t != nullptr) t->SetPosition({mouseWorld.x, 0.0f, mouseWorld.y});
+                if (PlacePaletteEntityAt(mouseWorld) == INVALID_ID)
+                    lastGeometryError = Localisation::Get("editor.entity_mode.palette.place_failed");
             }
 
             // Drawing-tool shortcuts - all Sector Mode only, and all
@@ -1002,6 +1021,9 @@ namespace MapEditorInternal {
                         RestoreGeometrySnapshot(geometrySnapshots.back());
                         geometrySnapshots.pop_back();
                     }
+                    break;
+                case ACTION_ENTITY_TRANSFORMS:
+                    UndoEntityTransforms();
                     break;
                 default: break;
             }

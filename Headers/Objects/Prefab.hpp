@@ -68,6 +68,11 @@ namespace Prefab {
     // Same, loading the prefab by reference. INVALID_ID if it can't be loaded.
     ID Instantiate(Level& level, const std::string& reference);
 
+    // Saves a copy of the level entity as a new prefab at `reference`
+    // (relative to Assets, with extension; an existing file is overwritten),
+    // at the origin, and makes the entity a linked instance of it.
+    bool CreateFromEntity(Level& level, ID entityID, const std::string& reference, std::string* errorMessage = nullptr);
+
     // Re-works out instance.prefabLink's overrides and removed components by
     // comparing the instance with `prefab`, the version it follows.
     void RefreshOverrides(Level& level, Entity& instance, const Level& prefab);

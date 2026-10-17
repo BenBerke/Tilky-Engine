@@ -30,6 +30,9 @@ namespace {
 }
 
 namespace MapEditorInternal {
+    // How opaque a wall or entity hidden by a panel filter is drawn.
+    constexpr Uint8 FILTERED_ALPHA = 50;
+
     void DrawThickLine(SDL_Renderer* renderer, const Vector2 start, const Vector2 end, const float thickness) {
         const float dx = end.x - start.x;
         const float dy = end.y - start.y;
@@ -840,15 +843,20 @@ namespace MapEditorInternal {
     void DrawWalls() {
         const Level& level = LevelManager::CurrentLevel();
 
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
         for (const Wall& wall : level.walls) {
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 
+            // Filtered out in the Geometry Mode panel: still there, but faint.
+            const Uint8 alpha = currentMode == MODE_GEOMETRY && !WallPassesFilter(wall) ? FILTERED_ALPHA : 255;
+
             //todo TILKYTODO make this a user editable sector
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
                 editingWall && currentMode == MODE_GEOMETRY)
-                SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, 255);
-            else SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, 255);
+                SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, alpha);
+            else SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, alpha);
 
             DrawThickLine(renderer, startScreen, endScreen, 5.0f);
         }
@@ -875,6 +883,9 @@ namespace MapEditorInternal {
 
             Vector3 entityColor = normalEntityColor;
 
+            // Filtered out in the Entity Mode panel: still there, but faint.
+            const Uint8 alpha = currentMode == MODE_ENTITY && !EntityPassesFilter(entity) ? FILTERED_ALPHA : 255;
+
             // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the
             // sprite has no texture assigned or the texture isn't available.
@@ -884,16 +895,21 @@ namespace MapEditorInternal {
             if (textureViewMode && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty())
                 spriteTexture = GetEditorTexture(sprite->textureFileNames[0]);
 
-            if (spriteTexture != nullptr) SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
+            if (spriteTexture != nullptr) {
+                SDL_SetTextureAlphaMod(spriteTexture, alpha);
+                SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
+                SDL_SetTextureAlphaMod(spriteTexture, 255);
+            }
             else {
                 if (sprite != nullptr) entityColor = spriteEntityColor;
                 if (entity.id == selectedEntity.id && editingEntity && currentMode == MODE_ENTITY) entityColor = highlightedEntityColor;
 
-                SDL_SetRenderDrawColor(renderer, entityColor.x, entityColor.y, entityColor.z, 255);
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(renderer, entityColor.x, entityColor.y, entityColor.z, alpha);
                 SDL_RenderFillRect(renderer, &rect);
             }
 
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
             SDL_RenderRect(renderer, &rect);
         }
     }

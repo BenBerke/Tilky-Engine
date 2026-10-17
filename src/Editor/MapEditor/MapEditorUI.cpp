@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <cctype>
 #include <array>
+#include <cstdio>
 #include <cstring>
+#include <functional>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -20,6 +22,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
@@ -3244,17 +3247,47 @@ namespace MapEditorInternal {
         HoverTooltip(Get("editor.tooltip.grid.snap_to_points").c_str());
     }
 
-    // Geometry / Wall Edit Mode's panel. Deliberately only hints and a
-    // selection count: the wall's actual properties live in the existing
-    // wall inspector (DrawSelectedWallInspector), which this mode opens on
-    // selection.
-    void DrawGeometryModePanel() {
+    // A localised format string with one %d filled in.
+    std::string FormatCount(const std::string& format, const int count) {
+        char buffer[256];
+        std::snprintf(buffer, sizeof(buffer), format.c_str(), count);
+        return buffer;
+    }
+
+    std::string Lowercase(std::string text) {
+        for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return text;
+    }
+
+    // A sub-heading inside a mode panel: spacing, separator, accent label.
+    void ModePanelSection(const char* label) {
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
 
-        SectionHeader(Get("editor.geometry.title").c_str());
+        SectionHeader(label);
         ImGui::Spacing();
+    }
+
+    // Toast for a panel action: `doneKey` (with the count) when it did
+    // something, `nothingKey` when it didn't.
+    void NotifyActionResult(const int count, const char* doneKey, const char* nothingKey) {
+        if (count > 0) ShowNotification(FormatCount(Get(doneKey), count).c_str());
+        else ShowNotification(Get(nothingKey).c_str(), /*isError=*/true);
+    }
+
+    // Two buttons that share a row equally.
+    float HalfButtonWidth() {
+        return (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    }
+
+    // Geometry / Wall Edit Mode's panel: the selection's facts, actions on
+    // it, filters and the shortcuts. The wall's own properties stay in the
+    // wall inspector, which a right click opens.
+    void DrawGeometryModePanel() {
+        Level& level = LevelManager::CurrentLevel();
+
+        ModePanelSection(Get("editor.geometry.title").c_str());
 
         const int selectedCount = static_cast<int>(selectedWalls.size());
 
@@ -3267,28 +3300,438 @@ namespace MapEditorInternal {
             ImGui::Text(selectedText.c_str(), selectedCount);
             ImGui::PopStyleColor();
         }
+        else HintText(Get("editor.geometry.none_selected").c_str());
 
-        HintText(Get("editor.geometry.hint.select").c_str());
-        HintText(Get("editor.geometry.hint.drag").c_str());
-        HintText(Get("editor.geometry.hint.delete").c_str());
+        // ---- Info -----------------------------------------------------------
+        if (selectedCount > 0) {
+            float totalLength = 0.0f;
+            const Wall* only = nullptr;
+
+            for (const ID wallID : selectedWalls) {
+                const auto it = level.wallIDToIndex.find(wallID);
+                if (it == level.wallIDToIndex.end()) continue;
+
+                totalLength += level.walls[it->second].length;
+                only = &level.walls[it->second];
+            }
+
+            if (selectedCount == 1 && only != nullptr) {
+                const auto sectorName = [&level](const ID sectorID) {
+                    const Sector* sector = level.GetSector(sectorID);
+                    return sector != nullptr ? SectorHierarchyLabel(*sector) : Get("editor.geometry.info.no_sector");
+                };
+
+                ImGui::Text("%s %.2f", Get("editor.geometry.info.length").c_str(), only->length);
+                ImGui::Text("%s %s", Get("editor.geometry.info.type").c_str(),
+                            Get(only->IsPortal() ? "editor.geometry.info.portal" : "editor.geometry.info.solid").c_str());
+                ImGui::Text("%s %s", Get("editor.geometry.info.front").c_str(), sectorName(only->frontSector).c_str());
+                ImGui::Text("%s %s", Get("editor.geometry.info.back").c_str(), sectorName(only->backSector).c_str());
+            }
+            else ImGui::Text("%s %.2f", Get("editor.geometry.info.total_length").c_str(), totalLength);
+        }
+
+        // ---- Edit -----------------------------------------------------------
+        ModePanelSection(Get("editor.geometry.edit").c_str());
+        ImGui::BeginDisabled(selectedCount == 0);
+
+        if (ImGui::Button(Get("editor.geometry.split").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
+            NotifyActionResult(SplitSelectedWallsAtMidpoint(), "editor.geometry.split_done", "editor.geometry.split_nothing");
+        HoverTooltip(Get("editor.tooltip.geometry.split").c_str());
+
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(selectedCount < 2);
+        if (ImGui::Button(Get("editor.geometry.merge").c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            NotifyActionResult(MergeSelectedWalls(), "editor.geometry.merge_done", "editor.geometry.merge_nothing");
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.tooltip.geometry.merge").c_str());
+
+        ImGui::EndDisabled();
+
+        // ---- Apply to selection -----------------------------------------------
+        ModePanelSection(Get("editor.geometry.batch").c_str());
+
+        static WallBatchValues batch;
+
+        ImGui::Checkbox("##BatchTopTexture", &batch.applyTopTexture);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!batch.applyTopTexture);
+        DrawAssetField(Get("editor.geometry.batch.top_texture").c_str(), batch.topTexture, AssetKind::Texture, 32.0f);
+        ImGui::EndDisabled();
+
+        ImGui::Checkbox("##BatchBottomTexture", &batch.applyBottomTexture);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!batch.applyBottomTexture);
+        DrawAssetField(Get("editor.geometry.batch.bottom_texture").c_str(), batch.bottomTexture, AssetKind::Texture, 32.0f);
+        ImGui::EndDisabled();
+
+        ImGui::Checkbox("##BatchColor", &batch.applyColor);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!batch.applyColor);
+        ImGui::ColorEdit4(
+            (Get("wall.color") + "##BatchWallColor").c_str(),
+            &batch.color.x,
+            ImGuiColorEditFlags_AlphaBar |
+            ImGuiColorEditFlags_AlphaPreviewHalf |
+            ImGuiColorEditFlags_HDR |
+            ImGuiColorEditFlags_Float
+        );
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(selectedCount == 0 || (!batch.applyTopTexture && !batch.applyBottomTexture && !batch.applyColor));
+        PushAccentStyle();
+        if (FullWidthButton(FormatCount(Get("editor.geometry.batch.apply"), selectedCount).c_str()))
+            NotifyActionResult(ApplyToSelectedWalls(batch), "editor.geometry.batch.done", "editor.geometry.nothing_selected");
+        PopAccentStyle();
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.tooltip.geometry.batch").c_str());
+
+        // ---- Texture alignment ------------------------------------------------
+        ModePanelSection(Get("editor.geometry.align").c_str());
+        ImGui::BeginDisabled(selectedCount == 0);
+
+        ImGui::BeginDisabled(selectedCount < 2);
+        if (FullWidthButton(Get("editor.geometry.align.chain").c_str()))
+            NotifyActionResult(AlignSelectedWallTextures(), "editor.geometry.align.chain_done", "editor.geometry.align.chain_nothing");
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.tooltip.geometry.align.chain").c_str());
+
+        if (ImGui::Button(Get("editor.geometry.align.reset").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
+            NotifyActionResult(ResetSelectedWallOffsets(), "editor.geometry.align.reset_done", "editor.geometry.nothing_selected");
+        HoverTooltip(Get("editor.tooltip.geometry.align.reset").c_str());
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(Get("editor.geometry.align.fit").c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            NotifyActionResult(FitSelectedWallTexturesToHeight(), "editor.geometry.align.fit_done", "editor.geometry.align.fit_nothing");
+        HoverTooltip(Get("editor.tooltip.geometry.align.fit").c_str());
+
+        ImGui::EndDisabled();
+
+        // ---- Filters ----------------------------------------------------------
+        ModePanelSection(Get("editor.filters").c_str());
+
+        bool wallFilterChanged = ImGui::Checkbox(Get("editor.geometry.filter.solid").c_str(), &showSolidWalls);
+        HoverTooltip(Get("editor.tooltip.filters").c_str());
+        ImGui::SameLine(0.0f, 16.0f);
+        wallFilterChanged |= ImGui::Checkbox(Get("editor.geometry.filter.portal").c_str(), &showPortalWalls);
+        HoverTooltip(Get("editor.tooltip.filters").c_str());
+
+        // Hiding walls drops them from the selection, so nothing hidden is edited.
+        if (wallFilterChanged) {
+            std::erase_if(selectedWalls, [&level](const ID wallID) {
+                const auto it = level.wallIDToIndex.find(wallID);
+                return it != level.wallIDToIndex.end() && !WallPassesFilter(level.walls[it->second]);
+            });
+
+            if (std::find(selectedWalls.begin(), selectedWalls.end(), selectedWallID) == selectedWalls.end()) {
+                selectedWallID = selectedWalls.empty() ? INVALID_ID : selectedWalls.front();
+                editingWall = editingWall && selectedWallID != INVALID_ID;
+            }
+        }
+
+        // ---- Shortcuts --------------------------------------------------------
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(Get("editor.shortcuts").c_str())) {
+            HintText(Get("editor.geometry.hint.select").c_str());
+            HintText(Get("editor.geometry.hint.drag").c_str());
+            HintText(Get("editor.geometry.hint.split").c_str());
+            HintText(Get("editor.geometry.hint.delete").c_str());
+        }
     }
 
-    // Entity Mode's panel: just the controls, like Geometry Mode's.
+    // Every world .prefab under Assets, as asset references, for the palette.
+    std::vector<std::string> ScanWorldPrefabs() {
+        std::vector<std::string> references;
+
+        const fs::path assets = ProjectManager::GetAssetsPath();
+        std::error_code ec;
+
+        for (fs::recursive_directory_iterator it(assets, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+            if (ec) break;
+            if (!it->is_regular_file(ec) || it->path().extension() != Prefab::kExtension) continue;
+
+            const std::string reference = fs::relative(it->path(), assets, ec).generic_string();
+            if (ec) continue;
+
+            // UI prefabs belong in the UI editor.
+            const Level* prefab = Prefab::Get(reference);
+            if (prefab == nullptr || prefab->ui_transforms.Has(Prefab::RootOf(*prefab).id)) continue;
+
+            references.push_back(reference);
+        }
+
+        std::sort(references.begin(), references.end());
+        return references;
+    }
+
+    // Selects every entity `matches` accepts; the first becomes the primary.
+    template<typename F>
+    void SelectEntitiesWhere(Level& level, F&& matches) {
+        std::vector<ID> matching;
+
+        for (const Entity& entity : level.entities)
+            if (level.transforms.Has(entity.id) && matches(entity)) matching.push_back(entity.id);
+
+        if (matching.empty()) {
+            ClearEntitySelection();
+            return;
+        }
+
+        SelectEntity(matching.front());
+        selectedEntities = std::move(matching);
+    }
+
+    // One filter row: a visibility checkbox, the label with how many world
+    // entities match, and a Select button for them.
+    template<typename F>
+    void DrawEntityFilterRow(Level& level, const char* id, const std::string& label, bool visible, F&& matches,
+                             const std::function<void(bool)>& setVisible) {
+        int count = 0;
+        for (const Entity& entity : level.entities)
+            if (level.transforms.Has(entity.id) && matches(entity)) ++count;
+
+        ImGui::PushID(id);
+
+        if (ImGui::Checkbox("##Visible", &visible)) setVisible(visible);
+        HoverTooltip(Get("editor.tooltip.filters").c_str());
+
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s (%d)", label.c_str(), count);
+
+        const float selectWidth = ImGui::CalcTextSize(Get("editor.entity_mode.filter.select").c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - selectWidth));
+
+        ImGui::BeginDisabled(count == 0 || !visible);
+        if (ImGui::SmallButton(Get("editor.entity_mode.filter.select").c_str())) SelectEntitiesWhere(level, matches);
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.tooltip.entity_mode.filter.select").c_str());
+
+        ImGui::PopID();
+    }
+
+    // Entity Mode's panel: what E places and how, actions on the selection,
+    // filters and the shortcuts.
     void DrawEntityModePanel() {
-        ImGui::Spacing();
-        ImGui::Separator();
+        Level& level = LevelManager::CurrentLevel();
+
+        ModePanelSection(Get("editor.entity_mode.title").c_str());
+
+        int worldEntityCount = 0;
+        for (const Entity& entity : level.entities)
+            if (level.transforms.Has(entity.id)) ++worldEntityCount;
+
+        const int selectedCount = static_cast<int>(selectedEntities.size());
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(selectedCount > 0 ? ImGuiCol_CheckMark : ImGuiCol_TextDisabled));
+        ImGui::Text(Get("editor.entity_mode.counts").c_str(), worldEntityCount, selectedCount);
+        ImGui::PopStyleColor();
+
+        // ---- Palette ----------------------------------------------------------
+        ModePanelSection(Get("editor.entity_mode.palette").c_str());
+
+        static std::vector<std::string> palettePrefabs;
+        static bool paletteScanned = false;
+        static char paletteSearch[64] = "";
+
+        if (!paletteScanned) {
+            palettePrefabs = ScanWorldPrefabs();
+            paletteScanned = true;
+        }
+
+        // A prefab that was deleted or renamed falls back to an empty entity.
+        if (!entityPaletteSelection.empty() &&
+            std::find(palettePrefabs.begin(), palettePrefabs.end(), entityPaletteSelection) == palettePrefabs.end())
+            entityPaletteSelection.clear();
+
+        const float refreshWidth = ImGui::CalcTextSize(Get("editor.entity_mode.palette.refresh").c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - refreshWidth - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::InputTextWithHint("##PaletteSearch", Get("editor.entity_mode.palette.search").c_str(), paletteSearch, sizeof(paletteSearch));
+        ImGui::SameLine();
+        if (ImGui::Button(Get("editor.entity_mode.palette.refresh").c_str())) paletteScanned = false;
+        HoverTooltip(Get("editor.tooltip.entity_mode.palette.refresh").c_str());
+
+        const std::string search = Lowercase(paletteSearch);
+        const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+        const float listHeight = std::min(static_cast<float>(palettePrefabs.size() + 1) * rowHeight, 8.0f * rowHeight) + ImGui::GetStyle().WindowPadding.y * 2.0f;
+
+        if (ImGui::BeginChild("##Palette", ImVec2(0.0f, listHeight), /*border=*/true)) {
+            if (ImGui::Selectable(Get("editor.entity_mode.palette.empty").c_str(), entityPaletteSelection.empty()))
+                entityPaletteSelection.clear();
+
+            for (const std::string& reference : palettePrefabs) {
+                if (!search.empty() && Lowercase(reference).find(search) == std::string::npos) continue;
+
+                // The file name, with the folder dimmed in the tooltip.
+                const std::string name = fs::path(reference).stem().string();
+
+                if (ImGui::Selectable((name + "##" + reference).c_str(), entityPaletteSelection == reference))
+                    entityPaletteSelection = reference;
+
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", reference.c_str());
+            }
+        }
+        ImGui::EndChild();
+
+        HintText(Get("editor.entity_mode.palette.hint").c_str());
+
+        // ---- Placement --------------------------------------------------------
+        ModePanelSection(Get("editor.entity_mode.placement").c_str());
+
+        ImGui::Checkbox(Get("editor.entity_mode.placement.on_floor").c_str(), &placeOnFloor);
+        HoverTooltip(Get("editor.tooltip.entity_mode.placement.on_floor").c_str());
+        ImGui::SameLine(0.0f, 16.0f);
+        ImGui::Checkbox(Get("editor.entity_mode.placement.random_yaw").c_str(), &placeRandomYaw);
+        HoverTooltip(Get("editor.tooltip.entity_mode.placement.random_yaw").c_str());
+
+        static char defaultTagBuf[64] = "";
+        if (placeDefaultTag != defaultTagBuf) {
+            std::strncpy(defaultTagBuf, placeDefaultTag.c_str(), sizeof(defaultTagBuf) - 1);
+            defaultTagBuf[sizeof(defaultTagBuf) - 1] = '\0';
+        }
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+        if (ImGui::InputTextWithHint(Get("editor.entity_mode.placement.tag").c_str(), Get("editor.entity_mode.placement.tag_none").c_str(),
+                                     defaultTagBuf, sizeof(defaultTagBuf)))
+            placeDefaultTag = defaultTagBuf;
+        HoverTooltip(Get("editor.tooltip.entity_mode.placement.tag").c_str());
+
+        if (!placeDefaultTag.empty() && !TagRegistry::Exists(placeDefaultTag)) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
+            ImGui::TextWrapped("%s", Get("editor.entity_mode.placement.tag_unknown").c_str());
+            ImGui::PopStyleColor();
+        }
+
+        // ---- Selection --------------------------------------------------------
+        ModePanelSection(Get("editor.entity_mode.selection").c_str());
+        ImGui::BeginDisabled(selectedCount == 0);
+
+        const auto alignRow = [](const char* axisKey, const EntityAlignment minimum, const EntityAlignment center, const EntityAlignment maximum) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(Get(axisKey).c_str());
+            ImGui::SameLine(60.0f);
+
+            const float width = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
+            const std::pair<const char*, EntityAlignment> buttons[] = {
+                {"editor.entity_mode.align.min", minimum},
+                {"editor.entity_mode.align.center", center},
+                {"editor.entity_mode.align.max", maximum},
+            };
+
+            for (int i = 0; i < 3; ++i) {
+                if (i > 0) ImGui::SameLine();
+
+                ImGui::PushID(static_cast<int>(buttons[i].second));
+                if (ImGui::Button(Get(buttons[i].first).c_str(), ImVec2(width, 0.0f)))
+                    NotifyActionResult(AlignSelectedEntities(buttons[i].second), "editor.entity_mode.moved", "editor.entity_mode.moved_nothing");
+                ImGui::PopID();
+            }
+        };
+
+        ImGui::BeginDisabled(selectedCount < 2);
+        alignRow("editor.entity_mode.align.x", ALIGN_MIN_X, ALIGN_CENTER_X, ALIGN_MAX_X);
+        HoverTooltip(Get("editor.tooltip.entity_mode.align").c_str());
+        alignRow("editor.entity_mode.align.z", ALIGN_MIN_Z, ALIGN_CENTER_Z, ALIGN_MAX_Z);
+        HoverTooltip(Get("editor.tooltip.entity_mode.align").c_str());
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(selectedCount < 3);
+        if (ImGui::Button(Get("editor.entity_mode.distribute.x").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
+            NotifyActionResult(DistributeSelectedEntities(true), "editor.entity_mode.moved", "editor.entity_mode.moved_nothing");
+        HoverTooltip(Get("editor.tooltip.entity_mode.distribute").c_str());
+        ImGui::SameLine();
+        if (ImGui::Button(Get("editor.entity_mode.distribute.z").c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            NotifyActionResult(DistributeSelectedEntities(false), "editor.entity_mode.moved", "editor.entity_mode.moved_nothing");
+        HoverTooltip(Get("editor.tooltip.entity_mode.distribute").c_str());
+        ImGui::EndDisabled();
+
+        if (ImGui::Button(Get("editor.entity_mode.snap").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
+            NotifyActionResult(SnapSelectedEntitiesToGrid(), "editor.entity_mode.moved", "editor.entity_mode.moved_nothing");
+        HoverTooltip(Get("editor.tooltip.entity_mode.snap").c_str());
+        ImGui::SameLine();
+        if (ImGui::Button(Get("editor.entity_mode.drop").c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            NotifyActionResult(DropSelectedEntitiesToFloor(), "editor.entity_mode.moved", "editor.entity_mode.moved_nothing");
+        HoverTooltip(Get("editor.tooltip.entity_mode.drop").c_str());
+
+        if (FullWidthButton(Get("editor.entity_mode.make_prefab").c_str())) {
+            std::string error;
+            const int created = CreatePrefabsFromSelectedEntities(&error);
+
+            if (created > 0) {
+                ShowNotification(FormatCount(Get("editor.entity_mode.make_prefab_done"), created).c_str());
+                assetBrowser.Refresh();
+                paletteScanned = false;
+            }
+            else {
+                spdlog::error("Create prefab from selection failed: {}", error);
+                ShowNotification(Get("editor.entity_mode.make_prefab_failed").c_str(), /*isError=*/true);
+            }
+        }
+        HoverTooltip(Get("editor.tooltip.entity_mode.make_prefab").c_str());
+
+        ImGui::EndDisabled();
+
+        // ---- Filters ----------------------------------------------------------
+        ModePanelSection(Get("editor.filters").c_str());
+
+        bool entityFilterChanged = false;
+
+        const auto toggleListEntry = [&entityFilterChanged]<typename T>(std::vector<T>& hidden, const T& value, const bool visible) {
+            if (visible) std::erase(hidden, value);
+            else if (std::find(hidden.begin(), hidden.end(), value) == hidden.end()) hidden.push_back(value);
+            entityFilterChanged = true;
+        };
+
+#define TILKY_ENTITY_FILTER_ROW(Type, Bit, Storage, LabelKey)                                                   \
+        if (Bit != CMP_TRANSFORM) {                                                                            \
+            const int type = Bit;                                                                              \
+            const bool visible = std::find(hiddenEntityComponentTypes.begin(), hiddenEntityComponentTypes.end(), type) \
+                                 == hiddenEntityComponentTypes.end();                                          \
+            DrawEntityFilterRow(level, #Bit, Get(LabelKey), visible,                                           \
+                [type](const Entity& entity) { return entity.componentsMask.test(static_cast<size_t>(type)); }, \
+                [&, type](const bool show) { toggleListEntry(hiddenEntityComponentTypes, type, show); });      \
+        }
+        TILKY_NORMAL_COMPONENTS(TILKY_ENTITY_FILTER_ROW)
+#undef TILKY_ENTITY_FILTER_ROW
+
+        if (!TagRegistry::GetAll().empty()) {
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s", Get("editor.entity_mode.filter.tags").c_str());
+
+            for (const auto& [tagName, tagId] : TagRegistry::GetAll()) {
+                const std::string tag = tagName;
+                const bool visible = std::find(hiddenEntityTags.begin(), hiddenEntityTags.end(), tag) == hiddenEntityTags.end();
+
+                DrawEntityFilterRow(level, tag.c_str(), tag, visible,
+                    [tag](const Entity& entity) { return std::find(entity.tags.begin(), entity.tags.end(), tag) != entity.tags.end(); },
+                    [&, tag](const bool show) { toggleListEntry(hiddenEntityTags, tag, show); });
+            }
+        }
+
+        // Hiding entities drops them from the selection, so nothing hidden is edited.
+        if (entityFilterChanged && std::erase_if(selectedEntities, [&level](const ID id) {
+            const Entity* entity = level.GetEntity(id);
+            return entity != nullptr && !EntityPassesFilter(*entity);
+        }) > 0) {
+            if (selectedEntities.empty()) ClearEntitySelection();
+            else if (const Entity* primary = level.GetEntity(selectedEntities.front())) selectedEntity = *primary;
+        }
+
+        // ---- Shortcuts --------------------------------------------------------
         ImGui::Spacing();
 
-        SectionHeader(Get("editor.entity_mode.title").c_str());
-        ImGui::Spacing();
-
-        HintText(Get("editor.entity_mode.hint.create").c_str());
-        HintText(Get("editor.entity_mode.hint.edit").c_str());
-        HintText(Get("editor.entity_mode.hint.move").c_str());
-        HintText(Get("editor.entity_mode.hint.gizmo").c_str());
-        HintText(Get("editor.entity_mode.hint.select").c_str());
-        HintText(Get("editor.entity_mode.hint.copy").c_str());
-        HintText(Get("editor.entity_mode.hint.focus").c_str());
+        if (ImGui::CollapsingHeader(Get("editor.shortcuts").c_str())) {
+            HintText(Get("editor.entity_mode.hint.create").c_str());
+            HintText(Get("editor.entity_mode.hint.edit").c_str());
+            HintText(Get("editor.entity_mode.hint.move").c_str());
+            HintText(Get("editor.entity_mode.hint.gizmo").c_str());
+            HintText(Get("editor.entity_mode.hint.select").c_str());
+            HintText(Get("editor.entity_mode.hint.copy").c_str());
+            HintText(Get("editor.entity_mode.hint.focus").c_str());
+        }
     }
 
     void DrawToolButton(const char *label, const DrawTool tool, const float width) {

@@ -1,6 +1,7 @@
 #include "Headers/Objects/Prefab.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -528,6 +529,55 @@ namespace {
 
         WithComponentType(type, [&]<typename T>(T*) { CopyFieldsToPrefab<T>(level, instance, edited, *link, {field}); });
     }
+
+    // Copies `source` (an entity of `from`) into `to` as a new entity with
+    // the same components in the same order, references to itself pointed
+    // at the copy. `links` gets one {type, copy's ID, source's ID} entry per
+    // component. Returns the new entity's ID.
+    ID CopyEntity(Level& to, const Level& from, const Entity& source, std::vector<PrefabComponentLink>& links) {
+        const bool uiEntity = from.ui_transforms.Has(source.id);
+
+        // CreateEntity gives the new entity its Transform (or UITransform);
+        // the source's is copied into it below.
+        const ID newID = to.CreateEntity(uiEntity);
+        Entity& entity = *to.GetEntity(newID);
+        entity.name = source.name;
+        entity.enabled = source.enabled;
+        entity.tags = source.tags;
+        entity.tagIds = source.tagIds;
+
+        IdMap toCopy;
+        toCopy.fromEntity = source.id;
+        toCopy.toEntity = newID;
+
+        ForEachComponentType([&]<typename T>(T*) {
+            for (const std::uint64_t sourceID : InstancesOf<T>(from, source.id)) {
+                const T& data = *FindInstance<T>(from, sourceID);
+                std::uint64_t copyID;
+
+                if constexpr (IsSingleComponent<T>) {
+                    copyID = InstancesOf<T>(to, newID).front();
+                    AssignInstance<T>(to, copyID, data);
+                }
+                else copyID = AddInstance<T>(to, entity, data);
+
+                toCopy.instances[{Traits<T>::bit, sourceID}] = copyID;
+                links.push_back({Traits<T>::bit, copyID, sourceID});
+            }
+        });
+
+        // Self-references now that every component exists.
+        for (const PrefabComponentLink& link : links) {
+            if (link.componentType == CMP_SCRIPT) {
+                if (ComponentScript* script = to.scripts.GetByID(link.instanceID)) RemapRefs(*script, toCopy);
+            }
+            else if (link.componentType == CMP_FLIPBOOK) {
+                if (ComponentFlipbook* flipbook = to.flipbooks.GetInstance(link.instanceID)) RemapRefs(*flipbook, toCopy);
+            }
+        }
+
+        return newID;
+    }
 }
 
 namespace Prefab {
@@ -600,56 +650,52 @@ namespace Prefab {
     }
 
     ID Instantiate(Level& level, const Level& prefab, const std::string& reference) {
-        const Entity& root = RootOf(prefab);
-        const bool uiEntity = prefab.ui_transforms.Has(root.id);
-
-        // CreateEntity gives the new entity its Transform (or UITransform);
-        // the prefab's is copied into it below.
-        const ID newID = level.CreateEntity(uiEntity);
-        Entity& entity = *level.GetEntity(newID);
-        entity.name = root.name;
-        entity.enabled = root.enabled;
-        entity.tags = root.tags;
-        entity.tagIds = root.tagIds;
-
-        IdMap toInstance;
-        toInstance.fromEntity = root.id;
-        toInstance.toEntity = newID;
-
         std::vector<PrefabComponentLink> links;
-
-        ForEachComponentType([&]<typename T>(T*) {
-            for (const std::uint64_t prefabID : InstancesOf<T>(prefab, root.id)) {
-                const T& data = *FindInstance<T>(prefab, prefabID);
-                std::uint64_t instanceID;
-
-                if constexpr (IsSingleComponent<T>) {
-                    instanceID = InstancesOf<T>(level, newID).front();
-                    AssignInstance<T>(level, instanceID, data);
-                }
-                else instanceID = AddInstance<T>(level, entity, data);
-
-                toInstance.instances[{Traits<T>::bit, prefabID}] = instanceID;
-                links.push_back({Traits<T>::bit, instanceID, prefabID});
-            }
-        });
-
-        // Self-references now that every component exists.
-        for (const PrefabComponentLink& link : links) {
-            if (link.componentType == CMP_SCRIPT) {
-                if (ComponentScript* script = level.scripts.GetByID(link.instanceID)) RemapRefs(*script, toInstance);
-            }
-            else if (link.componentType == CMP_FLIPBOOK) {
-                if (ComponentFlipbook* flipbook = level.flipbooks.GetInstance(link.instanceID)) RemapRefs(*flipbook, toInstance);
-            }
-        }
+        const ID newID = CopyEntity(level, prefab, RootOf(prefab), links);
 
         if (!reference.empty()) {
+            Entity& entity = *level.GetEntity(newID);
             entity.prefabLink.prefab = reference;
             entity.prefabLink.components = std::move(links);
         }
 
         return newID;
+    }
+
+    bool CreateFromEntity(Level& level, const ID entityID, const std::string& reference, std::string* errorMessage) {
+        Entity* source = level.GetEntity(entityID);
+        if (source == nullptr) {
+            if (errorMessage) *errorMessage = "the entity no longer exists";
+            return false;
+        }
+
+        // links: {type, component in the prefab, component on the entity}.
+        Level prefab;
+        prefab.name = std::filesystem::path(reference).stem().string();
+
+        std::vector<PrefabComponentLink> links;
+        const ID rootID = CopyEntity(prefab, level, *source, links);
+
+        // Where an instance stands is its own, so the prefab sits at the origin.
+        if (ComponentTransform* transform = prefab.transforms.Get(rootID)) {
+            transform->SetPosition({0.0f, 0.0f, 0.0f});
+            transform->rotation = Quaternion::Identity();
+        }
+
+        if (!LevelSerialization::SavePrefabToFile(ProjectManager::GetAssetsPath() / reference, prefab, errorMessage)) return false;
+
+        Invalidate(reference);
+
+        // The entity becomes an instance of the file it was saved as.
+        source = level.GetEntity(entityID);
+        source->prefabLink = {};
+        source->prefabLink.prefab = reference;
+        for (const PrefabComponentLink& link : links)
+            source->prefabLink.components.push_back({link.componentType, link.prefabInstanceID, link.instanceID});
+
+        if (const Level* saved = Get(reference)) RefreshOverrides(level, *source, *saved);
+
+        return true;
     }
 
     ID Instantiate(Level& level, const std::string& reference) {

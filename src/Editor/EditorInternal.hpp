@@ -65,6 +65,7 @@ namespace MapEditorInternal {
         ACTION_CREATE_CORNER, // historical name - Dot lifecycle only (see AddDot; dots are internal snap anchors now, not user-facing objects).
         ACTION_CREATE_OBJECT,
         ACTION_APPLY_GEOMETRY, // one MapEditorInternal::ApplyDrawnGeometry call, however many walls/sectors it touched internally.
+        ACTION_ENTITY_TRANSFORMS, // one Entity Mode selection action (align, distribute, snap, drop); see entityTransformUndos.
     };
 
     enum State {
@@ -898,6 +899,115 @@ namespace MapEditorInternal {
     // Deletes every wall in the current selection as one undoable
     // operation, with a single topology rebuild at the end.
     void DeleteSelectedWalls();
+
+    // ---- Geometry Mode panel actions (MapEditorGeometry.cpp) ------------
+    // Each one is a single undoable operation (a geometry snapshot, pushed
+    // only when something changed). Splitting and merging edit the sector
+    // outlines in place, like a drag, so sector properties all survive.
+
+    // Splits the wall at `point` (projected onto it). The new half gets a
+    // texture offset that keeps the texture continuous. False when the
+    // point is too close to either end.
+    bool SplitWallAt(ID wallID, const Vector2& point);
+
+    // Splits every selected wall at its midpoint; returns how many split.
+    int SplitSelectedWallsAtMidpoint();
+
+    // Joins selected walls that meet end to end in a straight line, have
+    // the same sectors on each side and share their corner with no other
+    // wall. The first wall of each pair keeps its properties. Returns how
+    // many joins were made.
+    int MergeSelectedWalls();
+
+    struct WallBatchValues {
+        bool applyTopTexture = false;
+        bool applyBottomTexture = false;
+        bool applyColor = false;
+
+        std::string topTexture;
+        std::string bottomTexture;
+        Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
+    };
+
+    // Writes the ticked values to every selected wall; returns how many.
+    int ApplyToSelectedWalls(const WallBatchValues& values);
+
+    // Starting at the primary selected wall, walks through the connected
+    // selected walls and sets each one's horizontal offset (and its Flip X,
+    // when the wall runs the other way) so the texture continues across
+    // the corners. Vertical offsets are copied from the primary. Top and
+    // bottom are aligned separately. Returns how many walls were changed.
+    int AlignSelectedWallTextures();
+
+    // Zeroes the top and bottom texture offsets of the selected walls.
+    int ResetSelectedWallOffsets();
+
+    // Sets each selected wall's vertical texture scale so the texture fits
+    // the tallest visible piece of that slot exactly once, and its vertical
+    // offset to 0. Returns how many walls were changed.
+    int FitSelectedWallTexturesToHeight();
+
+    // ---- Canvas filters (MapEditorGeometry.cpp) -------------------------
+    // Filtered-out walls and entities are drawn dimmed and can't be picked.
+    // They only apply in their own mode and reset when the editor restarts.
+    extern bool showSolidWalls;
+    extern bool showPortalWalls;
+    [[nodiscard]] bool WallPassesFilter(const Wall& wall);
+
+    // Component types (CMP_*) and tags whose entities are filtered out.
+    extern std::vector<int> hiddenEntityComponentTypes;
+    extern std::vector<std::string> hiddenEntityTags;
+    [[nodiscard]] bool EntityPassesFilter(const Entity& entity);
+
+    // ---- Entity Mode placement (MapEditorGeometry.cpp) ------------------
+    // What E places: empty for a new empty entity, otherwise a prefab's
+    // asset reference ("Prefabs/Goblin.prefab").
+    extern std::string entityPaletteSelection;
+    extern bool placeOnFloor;
+    extern bool placeRandomYaw;
+    extern std::string placeDefaultTag;
+
+    // Floor height of the sector at `point`, or 0 outside every sector.
+    [[nodiscard]] float FloorHeightAt(const Vector2& point);
+
+    // Places the palette's selection at `point`, applying the placement
+    // settings, and selects it. INVALID_ID if it couldn't be placed.
+    ID PlacePaletteEntityAt(const Vector2& point);
+
+    // ---- Entity Mode selection actions (MapEditorGeometry.cpp) ----------
+    // Each pushes one ACTION_ENTITY_TRANSFORMS entry when it moved anything.
+    enum EntityAlignment {
+        ALIGN_MIN_X,
+        ALIGN_CENTER_X,
+        ALIGN_MAX_X,
+        ALIGN_MIN_Z,
+        ALIGN_CENTER_Z,
+        ALIGN_MAX_Z,
+    };
+
+    // Against the selection's bounds. Returns how many entities moved.
+    int AlignSelectedEntities(EntityAlignment alignment);
+
+    // Spaces the selection evenly between its two outermost entities on
+    // that axis (needs 3 or more). Returns how many entities moved.
+    int DistributeSelectedEntities(bool alongX);
+
+    int SnapSelectedEntitiesToGrid();
+    int DropSelectedEntitiesToFloor();
+
+    // One .prefab per selected entity in Assets/Prefabs, named after the
+    // entity; each entity becomes a linked instance of its new prefab.
+    // Returns how many were made; `errorMessage` gets the last failure.
+    int CreatePrefabsFromSelectedEntities(std::string* errorMessage);
+
+    struct EntityTransformUndo {
+        std::vector<std::pair<ID, Vector3>> positions;
+    };
+
+    // Parallel to ACTION_ENTITY_TRANSFORMS entries in `actions`, like
+    // geometrySnapshots.
+    extern std::vector<EntityTransformUndo> entityTransformUndos;
+    void UndoEntityTransforms();
 
     // Texture preview / Texture View Mode access point. Textures are
     // identified by name (relative to the Textures folder), not by index.
