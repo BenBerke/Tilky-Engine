@@ -218,6 +218,15 @@ namespace MapEditorInternal {
     Vector2 ResolveSnapPointExcluding(const Vector2& mouseWorld,
                                       const std::vector<Vector2>& ignoredPoints,
                                       const std::vector<ID>& ignoredWallIDs) {
+        // Ctrl is the universal "just this once, ignore the grid" override -
+        // centralised here (rather than in each tool's Resolve* function)
+        // so every drawing/dragging path that ends up here gets it for
+        // free, staying consistent with vertex snapping and grid snapping
+        // never getting a separate override of their own.
+        const bool snapOverrideHeld =
+            InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+        const bool gridSnapActive = gridSnapEnabled && !snapOverrideHeld;
+
         if (vertexSnapEnabled) {
             constexpr float snapRadiusPixels = 12.0f;
             const float safeZoom = std::max(editorZoom, 0.0001f);
@@ -284,18 +293,35 @@ namespace MapEditorInternal {
             if (found) return best;
 
             Vector2 onWall{};
-            if (MapTopology::ClosestPointOnAnyWall(snapCandidateWalls, mouseWorld, snapRadiusWorld, &onWall)) return onWall;
+            if (MapTopology::ClosestPointOnAnyWall(snapCandidateWalls, mouseWorld, snapRadiusWorld, &onWall)) {
+                if (!gridSnapActive) return onWall;
+
+                // Still on the grid while over a wall: snap, then slide the
+                // grid point back onto the wall it came from - the same
+                // approach Geometry Mode's Alt-click split uses. Exact on
+                // axis-aligned walls; on a diagonal one it lands on the wall
+                // as near the grid point as the wall allows.
+                // The wall `onWall` sits on is the one nearest to it.
+                const Wall* hitWall = nullptr;
+                float hitDistSq = std::numeric_limits<float>::max();
+
+                for (const Wall& wall : snapCandidateWalls) {
+                    const Vector2 onThisWall = MapTopology::ClosestPointOnSegment(onWall, wall.start, wall.end);
+                    const float distSq = Vector2Math::DistanceSquared(onWall, onThisWall);
+
+                    if (distSq < hitDistSq) {
+                        hitDistSq = distSq;
+                        hitWall = &wall;
+                    }
+                }
+
+                if (hitWall == nullptr) return onWall;
+
+                return MapTopology::ClosestPointOnSegment(SnapToGrid(onWall), hitWall->start, hitWall->end);
+            }
         }
 
-        // Ctrl is the universal "just this once, ignore the grid" override -
-        // centralised here (rather than in each tool's Resolve* function)
-        // so every drawing/dragging path that ends up here gets it for
-        // free, staying consistent with vertex snapping and grid snapping
-        // never getting a separate override of their own.
-        const bool snapOverrideHeld =
-            InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
-
-        if (gridSnapEnabled && !snapOverrideHeld) return SnapToGrid(mouseWorld);
+        if (gridSnapActive) return SnapToGrid(mouseWorld);
 
         return mouseWorld;
     }
