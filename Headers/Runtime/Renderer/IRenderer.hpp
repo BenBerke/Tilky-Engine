@@ -49,6 +49,13 @@ public:
 
     virtual void RefreshTexturesFromLevel() = 0;
 
+    // RefreshTexturesFromLevel, but only when the level now uses a texture
+    // the renderer doesn't have yet - cheap enough to call after every edit.
+    // Renderers without a cheaper check just refresh.
+    virtual void RefreshTexturesIfLevelNeedsNew() {
+        RefreshTexturesFromLevel();
+    }
+
     virtual void RenderTextRaw(const std::string& text, Vector2 position, Vector2 scale, Vector3 color) = 0;
 
     virtual bool CreateMap() = 0;

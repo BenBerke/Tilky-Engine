@@ -983,7 +983,9 @@ namespace RuntimeEditorUi {
                 !surfaceName.empty() &&
                 ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
                 ApplyTextureToHoveredSurface(level, textureReference)) {
-                if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesFromLevel();
+                // Every image in Assets is already in the atlas, so this only
+                // rebuilds for one added since it was built.
+                if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
 
                 EditorFunctions::Print("Applied " + textureReference + " to " + surfaceName);
             }
@@ -1571,7 +1573,10 @@ namespace RuntimeEditor {
 
         ImGuiDrawFunctions::SetImGuiFocus(!cameraLooking && !draggingUv && !TransformGizmo::IsDragging());
 
-        if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesFromLevel();
+        // An edit may have pointed a surface at an image the atlas doesn't
+        // have yet. Not a full refresh: that rescans Assets and froze a frame
+        // at the end of every inspector edit or UV drag.
+        if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
     } // Update
 
     void Draw(Level &level) {

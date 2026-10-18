@@ -9,16 +9,12 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 
-int OpenGL::CreateTexture(const std::string& fileName) {
-    std::filesystem::path path(fileName);
-
-    if (!path.is_absolute()) path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
-
+bool OpenGL::LoadTextureFile(const std::filesystem::path& path, GPUTexture& out) {
     SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
 
     if (loadedSurface == nullptr) {
         spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
-        return -1;
+        return false;
     }
 
     SDL_Surface* convertedSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
@@ -27,7 +23,7 @@ int OpenGL::CreateTexture(const std::string& fileName) {
 
     if (convertedSurface == nullptr) {
         spdlog::error("SDL_ConvertSurface failed for {}: {}", path.string(), SDL_GetError());
-        return -1;
+        return false;
     }
 
     GLuint textureID = 0;
@@ -56,16 +52,48 @@ int OpenGL::CreateTexture(const std::string& fileName) {
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -0.25f);
 
-    GPUTexture texture;
-    texture.id = textureID;
-    texture.width = convertedSurface->w;
-    texture.height = convertedSurface->h;
+    std::error_code ec;
+
+    out.id = textureID;
+    out.width = convertedSurface->w;
+    out.height = convertedSurface->h;
+    out.path = path;
+    out.writeTime = std::filesystem::last_write_time(path, ec);
 
     SDL_DestroySurface(convertedSurface);
 
-    textures.push_back(texture);
+    return true;
+}
+
+int OpenGL::CreateTexture(const std::string& fileName) {
+    std::filesystem::path path(fileName);
+
+    if (!path.is_absolute()) path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
+
+    GPUTexture texture;
+    if (!LoadTextureFile(path, texture)) return -1;
+
+    textures.push_back(std::move(texture));
 
     return static_cast<int>(textures.size()) - 1;
+}
+
+void OpenGL::ReloadChangedTextures() {
+    for (GPUTexture& texture : textures) {
+        if (texture.id == 0 || texture.path.empty()) continue;
+
+        std::error_code ec;
+        const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(texture.path, ec);
+
+        // A deleted file keeps its last good texture rather than going blank.
+        if (ec || writeTime == texture.writeTime) continue;
+
+        GPUTexture reloaded;
+        if (!LoadTextureFile(texture.path, reloaded)) continue;
+
+        glDeleteTextures(1, &texture.id);
+        texture = std::move(reloaded);
+    }
 }
 
 // Lazy, filename-keyed resolution on top of the plain textures[] list
@@ -89,6 +117,7 @@ int OpenGL::GetOrCreateTextureIndex(const std::string& fileName) {
 void OpenGL::RefreshTexturesFromLevel() {
     // A model that failed to load may have been imported or fixed since.
     failedModelFiles.clear();
+    unresolvedLevelTextures.clear();
     // Same for fonts; ones that loaded are reread in case the file changed.
     ReloadFonts();
 
@@ -129,6 +158,10 @@ void OpenGL::DestroyAllTextures() {
     textures.clear();
     textureIndexByName.clear();
 
+    DestroyAtlas();
+}
+
+void OpenGL::DestroyAtlas() {
     if (atlasTexture != 0) {
         glDeleteTextures(1, &atlasTexture);
         atlasTexture = 0;

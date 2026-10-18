@@ -224,6 +224,11 @@ namespace OpenGLRendererInternal {
         GLuint id = 0;
         int width = 0;
         int height = 0;
+
+        // The file it was loaded from, so an atlas rebuild can reload just
+        // the textures whose file changed.
+        std::filesystem::path path;
+        std::filesystem::file_time_type writeTime{};
     };
 
     struct GPUTextureRegion {
@@ -500,9 +505,25 @@ private:
     int GetTextureRegionIndex(const std::string& fileName) const;
 
     void RefreshTexturesFromLevel() override;
+    void RefreshTexturesIfLevelNeedsNew() override;
+
+    // Level textures a refresh already failed to find (missing or broken
+    // files), so RefreshTexturesIfLevelNeedsNew doesn't rescan for them after
+    // every edit. Cleared by a full RefreshTexturesFromLevel.
+    std::unordered_set<std::string> unresolvedLevelTextures;
     [[nodiscard]] const GPUTexture& GetTexture(int index) const;
     [[nodiscard]] int GetTextureCount() const;
     void DestroyAllTextures();
+
+    // OpenGLTexture.cpp. Loads `path` into a new GL texture. False (and
+    // `out` untouched) if it can't be read.
+    bool LoadTextureFile(const std::filesystem::path& path, GPUTexture& out);
+    // The atlas and its region buffer only, not the standalone textures.
+    void DestroyAtlas();
+    // Re-uploads, in place, every standalone texture whose file changed on
+    // disk since it was loaded. Indices (and with them textureIndexByName)
+    // stay valid.
+    void ReloadChangedTextures();
 
     void RenderUIText(const ComponentUIText& text, const ComponentUITransform& transform);
 

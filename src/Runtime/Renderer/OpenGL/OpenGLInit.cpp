@@ -309,23 +309,25 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
     const Level& level = LevelManager::CurrentLevel();
 
-    // The level's own textures go first so they land on the first page, then
-    // every other image in Assets, so a texture first named at runtime (e.g.
-    // a sprite's texture set from Lua) is already in the atlas.
-    std::vector<std::string> referencedFileNames = CollectReferencedTextureFileNames(level);
-
-    for (const ComponentUISprite& uiSprite : level.ui_sprites.components) {
-        if (uiSprite.texture.empty()) continue;
-
-        if (std::find(referencedFileNames.begin(), referencedFileNames.end(), uiSprite.texture)
-            == referencedFileNames.end()) referencedFileNames.push_back(uiSprite.texture);
-    }
+    // Every image in Assets, in name order, so a texture first named at
+    // runtime (assigned in the runtime editor, or set from Lua) is already in
+    // the atlas. Then any level texture that isn't one of them (a path from
+    // outside Assets), at the end.
+    //
+    // The order must not depend on which images the level uses: it is part of
+    // the signature below, so assigning a texture for the first time would
+    // otherwise rebuild the whole atlas.
+    std::vector<std::string> referencedFileNames = CollectProjectImageFileNames();
 
     {
-        const std::set<std::string> alreadyListed(referencedFileNames.begin(), referencedFileNames.end());
+        std::set<std::string> alreadyListed(referencedFileNames.begin(), referencedFileNames.end());
 
-        for (std::string& imageName : CollectProjectImageFileNames())
-            if (!alreadyListed.contains(imageName)) referencedFileNames.push_back(std::move(imageName));
+        const auto addIfMissing = [&](const std::string& fileName) {
+            if (!fileName.empty() && alreadyListed.insert(fileName).second) referencedFileNames.push_back(fileName);
+        };
+
+        for (const std::string& fileName : CollectReferencedTextureFileNames(level)) addIfMissing(fileName);
+        for (const ComponentUISprite& uiSprite : level.ui_sprites.components) addIfMissing(uiSprite.texture);
     }
 
     // The engine keeps the atlas between Play sessions; it only has to be
@@ -350,7 +352,12 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         return true;
     }
 
-    DestroyAllTextures();
+    // Only the atlas itself. The standalone textures - the asset browser's
+    // and inspector's previews, the sky - stay; just the ones whose file
+    // changed are reloaded. Deleting them all made every preview reload at
+    // once, so the browser went blank for a moment after each rebuild.
+    DestroyAtlas();
+    ReloadChangedTextures();
 
     textureRegions.clear();
     textureRegions.resize(referencedFileNames.size());
@@ -577,6 +584,27 @@ const OpenGLRendererInternal::DecodedImage* OpenGL::GetDecodedImage(const fs::pa
     SDL_DestroySurface(surface);
 
     return &(decodedImageCache[key] = std::move(image));
+}
+
+// The full refresh rescans every image under Assets and reloads the fonts,
+// which stalls a frame. A texture already in the atlas needs none of that:
+// walls and flats look their region up by name every frame. So only a name
+// the atlas has never seen - an image added since it was built - pays.
+void OpenGL::RefreshTexturesIfLevelNeedsNew() {
+    const std::vector<std::string> referenced = CollectReferencedTextureFileNames(LevelManager::CurrentLevel());
+
+    const auto isNew = [&](const std::string& name) {
+        return !textureRegionIndexByName.contains(name) && !unresolvedLevelTextures.contains(name);
+    };
+
+    if (std::ranges::none_of(referenced, isNew)) return;
+
+    RefreshTexturesFromLevel();
+
+    // Whatever is still missing doesn't exist (yet); don't rescan for it
+    // after every edit.
+    for (const std::string& name : referenced)
+        if (!textureRegionIndexByName.contains(name)) unresolvedLevelTextures.insert(name);
 }
 
 // Resolves a texture filename to its slot in the atlas built above.
