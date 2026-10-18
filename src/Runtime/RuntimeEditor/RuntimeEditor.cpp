@@ -1534,24 +1534,28 @@ namespace RuntimeEditor {
         if (draggingUv) {
             const Vector2 mouseDelta = InputManager::GetMouseDelta();
 
+            // On a wall flipped in Y the texture runs the other way, so up
+            // has to lower the offset for it to still follow the cursor.
+            float uvDragVerticalSign = 1.0f;
+
+            if (uvDragSurface.type == RayHitType::Wall &&
+                uvDragSurface.wallIndex >= 0 &&
+                uvDragSurface.wallIndex < static_cast<int>(level.walls.size()) &&
+                level.walls[uvDragSurface.wallIndex].Surface(uvDragSurface.wallSlot).flipTextureY)
+                uvDragVerticalSign = -1.0f;
+
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
                 // Negated so the texture tracks the cursor rather than running
                 // from it. Flip the signs if the sampler wants the opposite.
+                const float deltaX = mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY;
+                const float deltaY = -mouseDelta.y * uvDragVerticalSign * UV_DRAG_SENSITIVITY;
+
                 if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
-                    AddUvOffset(level, uvDragSurface, {
-                                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
-                                    0
-                                });
+                    AddUvOffset(level, uvDragSurface, {deltaX, 0});
                 else if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
-                    AddUvOffset(level, uvDragSurface, {
-                                    0,
-                                    -mouseDelta.y * UV_DRAG_SENSITIVITY
-                                });
+                    AddUvOffset(level, uvDragSurface, {0, deltaY});
                 else
-                    AddUvOffset(level, uvDragSurface, {
-                                    mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
-                                    -mouseDelta.y * UV_DRAG_SENSITIVITY
-                                });
+                    AddUvOffset(level, uvDragSurface, {deltaX, deltaY});
             }
         }
 
