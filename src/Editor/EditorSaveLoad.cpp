@@ -227,6 +227,23 @@ namespace MapEditorInternal {
             worldSettingsVisible = settings.value("worldSettingsVisible", true);
             assetBrowserVisible = settings.value("assetBrowserVisible", true);
 
+            // A binding missing from the file, or a slot that isn't a valid
+            // scancode, keeps its current (default) key. 0 is an empty slot.
+            if (const auto keysIt = settings.find("keyBindings"); keysIt != settings.end() && keysIt->is_object()) {
+                for (int bind = 0; bind < KEYBIND_COUNT; ++bind) {
+                    const auto it = keysIt->find(KEY_BIND_INFO[bind].saveName);
+                    if (it == keysIt->end() || !it->is_array()) continue;
+
+                    for (int slot = 0; slot < KEYBIND_SLOTS && slot < static_cast<int>(it->size()); ++slot) {
+                        const nlohmann::json& value = (*it)[slot];
+                        if (!value.is_number_integer()) continue;
+
+                        const int code = value.get<int>();
+                        if (code >= SDL_SCANCODE_UNKNOWN && code < SDL_SCANCODE_COUNT) keyBindings[bind][slot] = static_cast<SDL_Scancode>(code);
+                    }
+                }
+            }
+
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
         }
@@ -236,6 +253,20 @@ namespace MapEditorInternal {
         }
 
         return true;
+    }
+
+    // {"pan_up": [26, 0], ...} - each binding's slots as scancodes, 0 = empty.
+    nlohmann::json SerializeKeyBindings() {
+        nlohmann::json bindings = nlohmann::json::object();
+
+        for (int bind = 0; bind < KEYBIND_COUNT; ++bind) {
+            nlohmann::json slots = nlohmann::json::array();
+            for (const SDL_Scancode key : keyBindings[bind]) slots.push_back(static_cast<int>(key));
+
+            bindings[KEY_BIND_INFO[bind].saveName] = std::move(slots);
+        }
+
+        return bindings;
     }
 
     bool SaveUserSettings() {
@@ -324,7 +355,8 @@ namespace MapEditorInternal {
                 {"hierarchyVisible", hierarchyVisible},
                 {"editorPanelVisible", editorPanelVisible},
                 {"worldSettingsVisible", worldSettingsVisible},
-                {"assetBrowserVisible", assetBrowserVisible}
+                {"assetBrowserVisible", assetBrowserVisible},
+                {"keyBindings", SerializeKeyBindings()}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

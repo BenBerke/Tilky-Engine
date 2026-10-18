@@ -550,6 +550,68 @@ namespace {
         }
     }
 
+    void FlipWallSurface(WallSurface& surface, const bool flipX, const bool flipY) {
+        if (flipX) surface.flipTextureX = !surface.flipTextureX;
+        if (flipY) surface.flipTextureY = !surface.flipTextureY;
+    }
+
+    void FlipSectorSurface(SectorSurface& surface, const bool flipX, const bool flipY) {
+        if (flipX) surface.flipTextureX = !surface.flipTextureX;
+        if (flipY) surface.flipTextureY = !surface.flipTextureY;
+    }
+
+    // Toggles the flip of the selected walls (both their textures) or flats,
+    // or, with neither selected, of the surface under the cursor. Each
+    // surface toggles on its own, so a mixed selection stays mixed.
+    void FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
+        if (!selectedWalls.empty()) {
+            for (const int wallIndex : selectedWalls) {
+                if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
+
+                Wall& wall = level.walls[wallIndex];
+                FlipWallSurface(wall.top, flipX, flipY);
+                FlipWallSurface(wall.bottom, flipX, flipY);
+            }
+            return;
+        }
+
+        if (!selectedFlats.empty()) {
+            for (const SelectedFlat& flat : selectedFlats) {
+                if (flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+                Sector& sector = level.sectors[flat.sectorIndex];
+                if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
+
+                SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
+                FlipSectorSurface(flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling, flipX, flipY);
+            }
+            return;
+        }
+
+        if (!hoverAllowed) return;
+
+        switch (hoveredSurface.type) {
+            case RayHitType::Wall:
+                if (hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size()))
+                    FlipWallSurface(level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot), flipX, flipY);
+                break;
+
+            case RayHitType::SectorFloor:
+            case RayHitType::SectorCeiling: {
+                if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) break;
+
+                Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+                if (hoveredSurface.floorIndex < 0 || hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) break;
+
+                SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
+                FlipSectorSurface(hoveredSurface.type == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling, flipX, flipY);
+                break;
+            }
+
+            default: break;
+        }
+    }
+
     bool IsUvEditableSurface(const RayHitType type) {
         return type == RayHitType::Wall ||
                type == RayHitType::SectorFloor ||
@@ -710,14 +772,14 @@ namespace RuntimeEditorUi {
 
         // ---- Gizmo tools
         if (ToolbarButton("move", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "M",
-                          Localisation::Get("runtime_editor.tool.move") + "\n" + Localisation::Get("runtime_editor.tooltip.tool.move"),
+                          Localisation::Get("runtime_editor.tool.move") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.tool.move")),
                           gizmoTool == TransformGizmo::Tool::Move))
             gizmoTool = TransformGizmo::Tool::Move;
 
         ImGui::SameLine();
 
         if (ToolbarButton("rotate", ICON_FA_ROTATE, "R",
-                          Localisation::Get("runtime_editor.tool.rotate") + "\n" + Localisation::Get("runtime_editor.tooltip.tool.rotate"),
+                          Localisation::Get("runtime_editor.tool.rotate") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.tool.rotate")),
                           gizmoTool == TransformGizmo::Tool::Rotate))
             gizmoTool = TransformGizmo::Tool::Rotate;
 
@@ -729,7 +791,7 @@ namespace RuntimeEditorUi {
         BeginToolbarSlider();
         ImGui::SliderFloat("##CameraSpeed", &moveSpeed, MIN_SLIDER_MOVE_SPEED, MAX_SLIDER_MOVE_SPEED,
                            speedFormat.c_str());
-        HoverTooltip(Localisation::Get("runtime_editor.tooltip.camera_speed"));
+        HoverTooltip(MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.camera_speed")));
 
         ImGui::SameLine();
 
@@ -1130,16 +1192,18 @@ namespace RuntimeEditor {
             const Vector3 forward = camera->forward;
             const Vector3 left = GetCameraLeft(*camera);
 
-            if (InputManager::GetKey(SDL_SCANCODE_W)) movement = movement + forward;
-            if (InputManager::GetKey(SDL_SCANCODE_S)) movement = movement - forward;
-            if (InputManager::GetKey(SDL_SCANCODE_A)) movement = movement + left;
-            if (InputManager::GetKey(SDL_SCANCODE_D)) movement = movement - left;
-            if (InputManager::GetKey(SDL_SCANCODE_SPACE)) movement.y += 1.0f;
-            if (InputManager::GetKey(SDL_SCANCODE_LCTRL)) movement.y -= 1.0f;
+            using namespace MapEditorInternal;
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) moveSpeed += 3.0f;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_E)) moveSpeed -= 3.0f;
-            if (InputManager::GetKey(SDL_SCANCODE_C)) moveSpeed = BASE_MOVE_SPEED;
+            if (GetKeyBind(KEYBIND_RT_FLY_FORWARD)) movement = movement + forward;
+            if (GetKeyBind(KEYBIND_RT_FLY_BACK)) movement = movement - forward;
+            if (GetKeyBind(KEYBIND_RT_FLY_LEFT)) movement = movement + left;
+            if (GetKeyBind(KEYBIND_RT_FLY_RIGHT)) movement = movement - left;
+            if (GetKeyBind(KEYBIND_RT_FLY_UP)) movement.y += 1.0f;
+            if (GetKeyBind(KEYBIND_RT_FLY_DOWN)) movement.y -= 1.0f;
+
+            if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
+            if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
+            if (GetKeyBind(KEYBIND_RT_RESET_SPEED)) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
 
@@ -1286,8 +1350,8 @@ namespace RuntimeEditor {
         const bool haveGizmoView = BuildGizmoView(gizmoView);
 
         if (windowFocused && !keyboardBlockedByImGui && !TransformGizmo::IsDragging()) {
-            if (InputManager::GetKeyDown(SDL_SCANCODE_1)) gizmoTool = TransformGizmo::Tool::Move;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_2)) gizmoTool = TransformGizmo::Tool::Rotate;
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_MOVE_TOOL)) gizmoTool = TransformGizmo::Tool::Move;
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_ROTATE_TOOL)) gizmoTool = TransformGizmo::Tool::Rotate;
         }
 
         if (TransformGizmo::IsDragging() &&
@@ -1310,7 +1374,7 @@ namespace RuntimeEditor {
         }
 
         if (TransformGizmo::IsDragging()) {
-            const bool snap = !InputManager::GetKey(SDL_SCANCODE_LCTRL) && !InputManager::GetKey(SDL_SCANCODE_RCTRL);
+            const bool snap = !MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_DISABLE_SNAP);
 
             const Vector3 positionBefore = gizmoTarget->position;
             const Quaternion rotationBefore = gizmoTarget->rotation;
@@ -1391,12 +1455,12 @@ namespace RuntimeEditor {
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
                 // Negated so the texture tracks the cursor rather than running
                 // from it. Flip the signs if the sampler wants the opposite.
-                if (InputManager::GetKey(SDL_SCANCODE_X))
+                if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
                     AddUvOffset(level, uvDragSurface, {
                                     mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY,
                                     0
                                 });
-                else if (InputManager::GetKey(SDL_SCANCODE_Y))
+                else if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
                     AddUvOffset(level, uvDragSurface, {
                                     0,
                                     -mouseDelta.y * UV_DRAG_SENSITIVITY
@@ -1407,6 +1471,19 @@ namespace RuntimeEditor {
                                     -mouseDelta.y * UV_DRAG_SENSITIVITY
                                 });
             }
+        }
+
+        // Flip texture. Not while left is held: X / Y are the axis locks of
+        // the texture drag above, and pressing one mid-drag mustn't flip.
+        if (windowFocused &&
+            !keyboardBlockedByImGui &&
+            !InputManager::GetMouseButton(SDL_BUTTON_LEFT) &&
+            !TransformGizmo::IsDragging()) {
+            const bool flipX = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FLIP_TEXTURE_X);
+            const bool flipY = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FLIP_TEXTURE_Y);
+
+            // The hovered fallback needs the cursor on the view, not a panel.
+            if (flipX || flipY) FlipTextures(level, flipX, flipY, !mouseBlockedByImGui);
         }
 
         //endregion
@@ -1428,7 +1505,7 @@ namespace RuntimeEditor {
             // Shift adds to (or toggles within) the selection, but only items
             // of the kind already selected. Shift-clicking another kind does
             // nothing at all - the selection and the inspector stay as they were.
-            const bool additive = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+            const bool additive = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_ADD_TO_SELECTION);
             const SelectionKind currentKind = CurrentSelectionKind();
 
             const auto rejectsKind = [&](const SelectionKind clickedKind) {
@@ -1524,9 +1601,9 @@ namespace RuntimeEditor {
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
                 WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);
 
-                if (!InputManager::GetKey(SDL_SCANCODE_Y))
+                if (!MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
                 wallSurface.textureScale.x += uvScaleDelta;
-                if (!InputManager::GetKey(SDL_SCANCODE_X))
+                if (!MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
                 wallSurface.textureScale.y += uvScaleDelta;
             }
             else if ((hit->type == RayHitType::SectorFloor ||

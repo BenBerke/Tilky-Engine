@@ -58,14 +58,12 @@ namespace MapEditorInternal {
 
         bool zoomChanged = false;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_EQUALS) ||
-            InputManager::GetKeyDown(SDL_SCANCODE_KP_PLUS) || InputManager::GetMouseWheelScrollUp()) {
+        if (GetKeyBindDown(KEYBIND_ZOOM_IN) || InputManager::GetMouseWheelScrollUp()) {
             editorZoom *= 1.15f;
             zoomChanged = true;
         }
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_MINUS) ||
-            InputManager::GetKeyDown(SDL_SCANCODE_KP_MINUS) || InputManager::GetMouseWheelScrollDown()) {
+        if (GetKeyBindDown(KEYBIND_ZOOM_OUT) || InputManager::GetMouseWheelScrollDown()) {
             editorZoom /= 1.15f;
             zoomChanged = true;
         }
@@ -470,15 +468,15 @@ namespace MapEditorInternal {
         }
 
         bool MultiSelectModifierHeld() {
-            return InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+            return GetKeyBind(KEYBIND_MULTI_SELECT);
         }
 
         bool RangeSelectModifierHeld() {
-            return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+            return GetKeyBind(KEYBIND_RANGE_SELECT);
         }
 
         bool SplitModifierHeld() {
-            return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT);
+            return GetKeyBind(KEYBIND_SPLIT_WALL);
         }
 
         // Offsets every selected entity except the primary. The primary has
@@ -694,7 +692,7 @@ namespace MapEditorInternal {
                     const Wall &wall = level.walls[it->second];
                     Vector2 point = MapTopology::ClosestPointOnSegment(mouseWorld, wall.start, wall.end);
 
-                    if (gridSnapEnabled && !MultiSelectModifierHeld())
+                    if (gridSnapEnabled && !GetKeyBind(KEYBIND_DISABLE_SNAP))
                         point = MapTopology::ClosestPointOnSegment(SnapToGrid(point), wall.start, wall.end);
 
                     if (!SplitWallAt(wallUnderCursor, point)) lastGeometryError = Localisation::Get("editor.geometry.split_too_close");
@@ -1072,7 +1070,7 @@ namespace MapEditorInternal {
                     if (activeGizmoPart != GIZMO_NONE) {
                         target = {mouseWorld.x - gizmoGrabOffset.x, mouseWorld.y - gizmoGrabOffset.y};
 
-                        if (gridSnapEnabled && !MultiSelectModifierHeld()) target = SnapToGrid(target);
+                        if (gridSnapEnabled && !GetKeyBind(KEYBIND_DISABLE_SNAP)) target = SnapToGrid(target);
 
                         if (activeGizmoPart == GIZMO_X) target.y = t->position.z;
                         else if (activeGizmoPart == GIZMO_Z) target.x = t->position.x;
@@ -1102,21 +1100,21 @@ namespace MapEditorInternal {
         if (!keyboardBlockedByImgui) {
             Vector2 movement = {.0f, .0f};
 
-            if (InputManager::GetKey(SDL_SCANCODE_W)) movement.y = cameraSpeed;
-            if (InputManager::GetKey(SDL_SCANCODE_S)) movement.y = -cameraSpeed;
-            if (InputManager::GetKey(SDL_SCANCODE_A)) movement.x = cameraSpeed;
-            if (InputManager::GetKey(SDL_SCANCODE_D)) movement.x = -cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_UP)) movement.y = cameraStepSize;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_DOWN)) movement.y = -cameraStepSize;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_LEFT)) movement.x = cameraStepSize;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_RIGHT)) movement.x = -cameraStepSize;
+            if (GetKeyBindDown(KEYBIND_STEP_UP)) movement.y = cameraStepSize;
+            if (GetKeyBindDown(KEYBIND_STEP_DOWN)) movement.y = -cameraStepSize;
+            if (GetKeyBindDown(KEYBIND_STEP_LEFT)) movement.x = cameraStepSize;
+            if (GetKeyBindDown(KEYBIND_STEP_RIGHT)) movement.x = -cameraStepSize;
 
             cameraPos.x -= movement.x / editorZoom;
             cameraPos.y -= movement.y / editorZoom;
 
             if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelActiveDrawing();
-            if (InputManager::GetKeyDown(SDL_SCANCODE_F)) FocusCameraOnSelection();
+            if (GetKeyBindDown(KEYBIND_FOCUS_SELECTION)) FocusCameraOnSelection();
 
             // E places a new entity under the cursor. Only while the cursor
             // is on the canvas - over a panel there is no world point to
@@ -1124,7 +1122,7 @@ namespace MapEditorInternal {
             // What it places, and how, comes from the Entity Mode panel's
             // palette and placement settings.
             if (currentMode == MODE_ENTITY && !mouseBlockedByImGui && !holdingEntity &&
-                InputManager::GetKeyDown(SDL_SCANCODE_E)) {
+                GetKeyBindDown(KEYBIND_PLACE_ENTITY)) {
                 if (PlacePaletteEntityAt(mouseWorld) == INVALID_ID)
                     lastGeometryError = Localisation::Get("editor.entity_mode.palette.place_failed");
             }
@@ -1133,19 +1131,16 @@ namespace MapEditorInternal {
             // no-ops when nothing relevant is in progress (ConfirmActiveDrawing/
             // UndoLastDrawPoint already check that internally).
             if (currentMode == MODE_SECTOR) {
-                if (InputManager::GetKeyDown(SDL_SCANCODE_RETURN) ||
-                    InputManager::GetKeyDown(SDL_SCANCODE_KP_ENTER) ||
-                    InputManager::GetKeyDown(SDL_SCANCODE_SPACE))
-                    ConfirmActiveDrawing();
+                if (GetKeyBindDown(KEYBIND_FINISH_SHAPE)) ConfirmActiveDrawing();
 
-                if (InputManager::GetKeyDown(SDL_SCANCODE_BACKSPACE)) UndoLastDrawPoint();
+                if (GetKeyBindDown(KEYBIND_UNDO_POINT)) UndoLastDrawPoint();
 
                 // [ / ] adjust the Regular Polygon tool's side count even
                 // while a polygon is mid-preview, so the shape under the
                 // cursor updates live instead of only from the UI slider.
-                if (InputManager::GetKeyDown(SDL_SCANCODE_LEFTBRACKET))
+                if (GetKeyBindDown(KEYBIND_FEWER_SIDES))
                     polygonSideCount = std::max(3, polygonSideCount - 1);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_RIGHTBRACKET))
+                if (GetKeyBindDown(KEYBIND_MORE_SIDES))
                     polygonSideCount = std::min(MAX_POLYGON_SIDES, polygonSideCount + 1);
 
                 // Alt flips which end of the Staircase tool's rectangle is
@@ -1153,21 +1148,27 @@ namespace MapEditorInternal {
                 // a held modifier), same as the checkbox in the settings
                 // panel - BuildStaircasePlan (MapEditorGeometry.cpp) just
                 // reads staircaseReverseRise, it never touches input state.
-                if (InputManager::GetKeyDown(SDL_SCANCODE_LALT) || InputManager::GetKeyDown(SDL_SCANCODE_RALT))
+                if (GetKeyBindDown(KEYBIND_FLIP_STAIRCASE))
                     staircaseReverseRise = !staircaseReverseRise;
 
-                if (InputManager::GetKeyDown(SDL_SCANCODE_1)) SetActiveDrawTool(DRAWTOOL_FREEHAND);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_2)) SetActiveDrawTool(DRAWTOOL_RECTANGLE);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_3)) SetActiveDrawTool(DRAWTOOL_POLYGON);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_4)) SetActiveDrawTool(DRAWTOOL_CIRCLE);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_5)) SetActiveDrawTool(DRAWTOOL_CURVE);
-                if (InputManager::GetKeyDown(SDL_SCANCODE_6)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
+                if (GetKeyBindDown(KEYBIND_TOOL_FREEHAND)) SetActiveDrawTool(DRAWTOOL_FREEHAND);
+                if (GetKeyBindDown(KEYBIND_TOOL_RECTANGLE)) SetActiveDrawTool(DRAWTOOL_RECTANGLE);
+                if (GetKeyBindDown(KEYBIND_TOOL_POLYGON)) SetActiveDrawTool(DRAWTOOL_POLYGON);
+                if (GetKeyBindDown(KEYBIND_TOOL_CIRCLE)) SetActiveDrawTool(DRAWTOOL_CIRCLE);
+                if (GetKeyBindDown(KEYBIND_TOOL_CURVE)) SetActiveDrawTool(DRAWTOOL_CURVE);
+                if (GetKeyBindDown(KEYBIND_TOOL_STAIRCASE)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
             }
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
-            if (InputManager::GetKeyDown(SDL_SCANCODE_G) || (InputManager::GetKeyDown(SDL_SCANCODE_V) && !(InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)))) currentMode = MODE_GEOMETRY;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_E) || InputManager::GetKeyDown(SDL_SCANCODE_T)) currentMode = MODE_ENTITY;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_R) || InputManager::GetKeyDown(SDL_SCANCODE_L)) currentMode = MODE_SECTOR;
+            // Ctrl+C/V/Z are fixed, so the mode keys stay quiet under Ctrl
+            // (Geometry Mode's alternate is V, Ctrl+V pastes).
+            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
+            if (!ctrlHeld) {
+                if (GetKeyBindDown(KEYBIND_CYCLE_MODE)) ChangeMode();
+                if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) currentMode = MODE_GEOMETRY;
+                if (GetKeyBindDown(KEYBIND_ENTITY_MODE)) currentMode = MODE_ENTITY;
+                if (GetKeyBindDown(KEYBIND_SECTOR_MODE)) currentMode = MODE_SECTOR;
+            }
         }
 
         if (InputManager::QuitRequested()) {
@@ -1227,7 +1228,7 @@ namespace MapEditorInternal {
                 PasteEntityClipboard(level, mouseWorld);
         }
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) [[unlikely]] {
+        if (GetKeyBindDown(KEYBIND_DELETE)) [[unlikely]] {
             if (!selectedEntities.empty()) {
                 const std::vector<ID> entitiesToDelete = selectedEntities;
                 selectedEntities.clear();

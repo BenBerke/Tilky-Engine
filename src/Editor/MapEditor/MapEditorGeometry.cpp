@@ -223,8 +223,7 @@ namespace MapEditorInternal {
         // so every drawing/dragging path that ends up here gets it for
         // free, staying consistent with vertex snapping and grid snapping
         // never getting a separate override of their own.
-        const bool snapOverrideHeld =
-            InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+        const bool snapOverrideHeld = GetKeyBind(KEYBIND_DISABLE_SNAP);
         const bool gridSnapActive = gridSnapEnabled && !snapOverrideHeld;
 
         if (vertexSnapEnabled) {
@@ -799,7 +798,7 @@ namespace MapEditorInternal {
     }
 
     bool IsConstrainModifierHeld() {
-        return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+        return GetKeyBind(KEYBIND_CONSTRAIN_ANGLE);
     }
 
     Vector2 ConstrainToAngleStep(const Vector2& reference, const Vector2& target, const float stepRadians) {
@@ -1865,7 +1864,7 @@ namespace MapEditorInternal {
         Entity* entity = EntityAt(point);
         if (entity == nullptr) return;
 
-        if (InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)) {
+        if (GetKeyBind(KEYBIND_MULTI_SELECT)) {
             ToggleEntitySelection(entity->id);
             editingEntity = !selectedEntities.empty();
             return;
@@ -1887,7 +1886,7 @@ namespace MapEditorInternal {
         const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
         if (index < 0) return;
 
-        if (InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)) {
+        if (GetKeyBind(KEYBIND_MULTI_SELECT)) {
             ToggleSectorSelection(level.sectors[index].id);
 
             // Deselecting the last one already closed the inspector.

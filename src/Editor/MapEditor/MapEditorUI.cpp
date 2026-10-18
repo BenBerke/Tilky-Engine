@@ -1390,6 +1390,82 @@ namespace {
                 ImGui::Spacing();
             };
 
+            constexpr float keyColumnWidth = 100.0f;
+
+            // Set by DrawKeySelect, so a binding left listening when its
+            // header gets collapsed stops listening (see the end of the window).
+            bool keyBindRowDrawn = false;
+
+            // One key slot: the bound key's name on a button. Clicking it
+            // listens for the next key press, which becomes the binding;
+            // Escape or a second click cancels. Right click empties the slot.
+            const auto DrawKeySlot = [&](const int slot, SDL_Scancode* original) {
+                ImGui::PushID(slot);
+
+                const bool listening = keyBindBeingListened == original;
+
+                if (listening) {
+                    const SDL_Scancode pressed = InputManager::GetAnyKeyDown();
+
+                    if (pressed == SDL_SCANCODE_ESCAPE) keyBindBeingListened = nullptr;
+                    else if (pressed != SDL_SCANCODE_UNKNOWN) {
+                        *original = pressed;
+                        keyBindBeingListened = nullptr;
+                    }
+                }
+
+                const std::string buttonLabel = (listening
+                    ? Get("editor.user_settings.key_listening")
+                    : *original == SDL_SCANCODE_UNKNOWN
+                        ? Get("editor.user_settings.key_none")
+                        : InputManager::ScancodeToString(*original)) + "##Key";
+
+                if (listening) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+
+                if (ImGui::Button(buttonLabel.c_str(), ImVec2(keyColumnWidth, 0.0f)))
+                    keyBindBeingListened = listening ? nullptr : original;
+
+                if (listening) ImGui::PopStyleColor();
+
+                if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                    *original = SDL_SCANCODE_UNKNOWN;
+                    if (listening) keyBindBeingListened = nullptr;
+                }
+
+                ImGui::PopID();
+            };
+
+            // One row of the key bindings table: label, primary, alternate,
+            // and Default, which resets both.
+            const auto DrawKeySelect = [&](const EditorKeyBind bind) {
+                keyBindRowDrawn = true;
+
+                const EditorKeyBindInfo& info = KEY_BIND_INFO[bind];
+
+                ImGui::PushID(info.saveName);
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Get(info.labelKey).c_str());
+
+                for (int slot = 0; slot < KEYBIND_SLOTS; ++slot) {
+                    ImGui::TableSetColumnIndex(1 + slot);
+                    DrawKeySlot(slot, &keyBindings[bind][slot]);
+                }
+
+                ImGui::TableSetColumnIndex(1 + KEYBIND_SLOTS);
+
+                if (ImGui::SmallButton(defaultLabel.c_str())) {
+                    for (int slot = 0; slot < KEYBIND_SLOTS; ++slot) {
+                        if (keyBindBeingListened == &keyBindings[bind][slot]) keyBindBeingListened = nullptr;
+                        keyBindings[bind][slot] = info.defaults[slot];
+                    }
+                }
+
+                ImGui::PopID();
+            };
+
             SectionHeader(Get("editor.user_settings.colors").c_str());
             ImGui::Separator();
             ImGui::Spacing();
@@ -1587,9 +1663,44 @@ namespace {
 
             PushSuccessStyle();
             if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
-
             PopSuccessStyle();
+
+            ImGui::Spacing();
+
+            const bool keyBindingsOpen = ImGui::CollapsingHeader(Get("editor.user_settings.key_bindings").c_str());
+            HoverTooltip(Get("editor.tooltip.user_settings.key_bindings").c_str());
+
+            if (keyBindingsOpen) {
+                // KEY_BIND_INFO keeps each group's rows together; a new
+                // group starts a new heading and table.
+                int bind = 0;
+
+                while (bind < KEYBIND_COUNT) {
+                    const char* groupKey = KEY_BIND_INFO[bind].groupKey;
+
+                    ImGui::SeparatorText(Get(groupKey).c_str());
+
+                    const bool tableOpen = ImGui::BeginTable(groupKey, 2 + KEYBIND_SLOTS, tableFlags);
+
+                    if (tableOpen) {
+                        ImGui::TableSetupColumn("##Setting", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("##Primary", ImGuiTableColumnFlags_WidthFixed, keyColumnWidth);
+                        ImGui::TableSetupColumn("##Alternate", ImGuiTableColumnFlags_WidthFixed, keyColumnWidth);
+                        ImGui::TableSetupColumn("##Default", ImGuiTableColumnFlags_WidthFixed, resetColumnWidth);
+                    }
+
+                    for (; bind < KEYBIND_COUNT && std::strcmp(KEY_BIND_INFO[bind].groupKey, groupKey) == 0; ++bind)
+                        if (tableOpen) DrawKeySelect(static_cast<EditorKeyBind>(bind));
+
+                    if (tableOpen) ImGui::EndTable();
+                }
+            }
+
+            if (!keyBindRowDrawn) keyBindBeingListened = nullptr;
         }
+        // Hidden (collapsed or docked away) while listening would leave the
+        // shortcuts off with nothing on screen to finish the binding.
+        else keyBindBeingListened = nullptr;
 
         ImGui::End();
     }
@@ -1829,6 +1940,7 @@ namespace {
 
         if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
+        else keyBindBeingListened = nullptr;
         if (layoutMenuOpen) DrawLayoutMenu();
 
         DrawShutdownConfirmModal();
@@ -2016,11 +2128,9 @@ namespace {
                         // longer needs the inspector to already be open to
                         // range-select, only a previous primary, which is
                         // what you'd expect after a Ctrl-click.
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
-                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
+                        if (GetKeyBind(KEYBIND_RANGE_SELECT))
                             ExtendSectorSelectionTo(sector.id);
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
-                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                        else if (GetKeyBind(KEYBIND_MULTI_SELECT))
                             ToggleSectorSelection(sector.id);
                         else SelectSector(sector.id);
 
@@ -2097,11 +2207,9 @@ namespace {
                         // Shift takes the ID range from the previous
                         // primary, Ctrl toggles, a plain click replaces -
                         // and both modifier keys count, matching the canvas.
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
-                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
+                        if (GetKeyBind(KEYBIND_RANGE_SELECT))
                             ExtendWallSelectionTo(wall.id);
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
-                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                        else if (GetKeyBind(KEYBIND_MULTI_SELECT))
                             ToggleWallSelection(wall.id);
                         else SelectWall(wall.id);
                     }
@@ -2165,11 +2273,9 @@ namespace {
                         currentMode = MODE_ENTITY;
 
                         // Same routing as the sector and wall lists above.
-                        if (InputManager::GetKey(SDL_SCANCODE_LSHIFT) ||
-                            InputManager::GetKey(SDL_SCANCODE_RSHIFT))
+                        if (GetKeyBind(KEYBIND_RANGE_SELECT))
                             ExtendEntitySelectionTo(entity.id);
-                        else if (InputManager::GetKey(SDL_SCANCODE_LCTRL) ||
-                                 InputManager::GetKey(SDL_SCANCODE_RCTRL))
+                        else if (GetKeyBind(KEYBIND_MULTI_SELECT))
                             ToggleEntitySelection(entity.id);
                         else SelectEntity(entity.id);
 
@@ -3336,7 +3442,7 @@ namespace MapEditorInternal {
 
         if (ImGui::Button(Get("editor.geometry.split").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
             NotifyActionResult(SplitSelectedWallsAtMidpoint(), "editor.geometry.split_done", "editor.geometry.split_nothing");
-        HoverTooltip(Get("editor.tooltip.geometry.split").c_str());
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.geometry.split")).c_str());
 
         ImGui::SameLine();
 
@@ -3436,8 +3542,8 @@ namespace MapEditorInternal {
         if (ImGui::CollapsingHeader(Get("editor.shortcuts").c_str())) {
             HintText(Get("editor.geometry.hint.select").c_str());
             HintText(Get("editor.geometry.hint.drag").c_str());
-            HintText(Get("editor.geometry.hint.split").c_str());
-            HintText(Get("editor.geometry.hint.delete").c_str());
+            HintText(FormatKeyBinds(Get("editor.geometry.hint.split")).c_str());
+            HintText(FormatKeyBinds(Get("editor.geometry.hint.delete")).c_str());
         }
     }
 
@@ -3576,7 +3682,7 @@ namespace MapEditorInternal {
         }
         ImGui::EndChild();
 
-        HintText(Get("editor.entity_mode.palette.hint").c_str());
+        HintText(FormatKeyBinds(Get("editor.entity_mode.palette.hint")).c_str());
 
         // ---- Placement --------------------------------------------------------
         ModePanelSection(Get("editor.entity_mode.placement").c_str());
@@ -3724,13 +3830,13 @@ namespace MapEditorInternal {
         ImGui::Spacing();
 
         if (ImGui::CollapsingHeader(Get("editor.shortcuts").c_str())) {
-            HintText(Get("editor.entity_mode.hint.create").c_str());
-            HintText(Get("editor.entity_mode.hint.edit").c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.create")).c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.edit")).c_str());
             HintText(Get("editor.entity_mode.hint.move").c_str());
-            HintText(Get("editor.entity_mode.hint.gizmo").c_str());
-            HintText(Get("editor.entity_mode.hint.select").c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.gizmo")).c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.select")).c_str());
             HintText(Get("editor.entity_mode.hint.copy").c_str());
-            HintText(Get("editor.entity_mode.hint.focus").c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.focus")).c_str());
         }
     }
 
@@ -3827,7 +3933,7 @@ namespace MapEditorInternal {
         // this checkbox is just another way to flip it, not a separate
         // input path.
         ImGui::Checkbox(Get("editor.staircase.reverse_rise").c_str(), &staircaseReverseRise);
-        HoverTooltip(Get("editor.tooltip.staircase.reverse_rise").c_str());
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.staircase.reverse_rise")).c_str());
 
         ImGui::Spacing();
         HintText(Get("editor.draw.hint.staircase").c_str());
@@ -3925,7 +4031,7 @@ namespace MapEditorInternal {
                     if (ImGui::Button(Get("editor.manual_sector.create").c_str())) CreateManualSector();
                     ImGui::EndDisabled();
 
-                    HoverTooltip(Get("editor.manual_sector.tooltip.create").c_str());
+                    HoverTooltip(FormatKeyBinds(Get("editor.manual_sector.tooltip.create")).c_str());
 
                     ImGui::SameLine();
 
@@ -3951,7 +4057,7 @@ namespace MapEditorInternal {
                     MAX_POLYGON_SIDES
                 );
                 polygonSideCount = std::clamp(polygonSideCount, 3, MAX_POLYGON_SIDES);
-                HoverTooltip(Get("editor.tooltip.draw.sides").c_str());
+                HoverTooltip(FormatKeyBinds(Get("editor.tooltip.draw.sides")).c_str());
 
                 ImGui::SameLine();
 
@@ -3999,24 +4105,24 @@ namespace MapEditorInternal {
 
         ImGui::Spacing();
 
-        HintText(Get("editor.draw.shortcuts.general").c_str());
-        HintText(Get("editor.draw.shortcuts.edit_sectors").c_str());
+        HintText(FormatKeyBinds(Get("editor.draw.shortcuts.general")).c_str());
+        HintText(FormatKeyBinds(Get("editor.draw.shortcuts.edit_sectors")).c_str());
 
         // Ctrl's meaning is the same for every tool (temporarily ignore
         // the grid - see ResolveSnapPointExcluding), so it's shown
         // unconditionally; Shift's meaning is tool-specific.
-        HintText(Get("editor.draw.shortcuts.no_snap").c_str());
+        HintText(FormatKeyBinds(Get("editor.draw.shortcuts.no_snap")).c_str());
 
         if (currentDrawTool == DRAWTOOL_STAIRCASE) {
-            HintText(Get("editor.draw.shortcuts.staircase_constrain").c_str());
-            HintText(Get("editor.draw.shortcuts.staircase_reverse").c_str());
+            HintText(FormatKeyBinds(Get("editor.draw.shortcuts.staircase_constrain")).c_str());
+            HintText(FormatKeyBinds(Get("editor.draw.shortcuts.staircase_reverse")).c_str());
         }
-        else HintText(Get("editor.draw.shortcuts.constrain").c_str());
+        else HintText(FormatKeyBinds(Get("editor.draw.shortcuts.constrain")).c_str());
 
         if (currentDrawTool == DRAWTOOL_POLYGON)
-            HintText(Get("editor.draw.shortcuts.sides").c_str());
+            HintText(FormatKeyBinds(Get("editor.draw.shortcuts.sides")).c_str());
 
-        HintText(Get("editor.draw.shortcuts.tools").c_str());
+        HintText(FormatKeyBinds(Get("editor.draw.shortcuts.tools")).c_str());
     }
 
     // =========================================================================

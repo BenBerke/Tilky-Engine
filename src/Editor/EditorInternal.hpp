@@ -980,6 +980,112 @@ namespace MapEditorInternal {
     extern bool placeRandomYaw;
     extern std::string placeDefaultTag;
 
+    // ---- Key bindings (EditorState.cpp) ---------------------------------
+    // Every single-key shortcut and held modifier of the 2D editor. Each
+    // has KEYBIND_SLOTS keys (a primary and an alternate), either of which
+    // triggers it; SDL_SCANCODE_UNKNOWN is an empty slot. Ctrl+Z/C/V and
+    // Escape (cancel) stay fixed.
+    //
+    // Adding one: an enum value here and a row in KEY_BIND_INFO - the User
+    // Settings window, save and load all loop over the table.
+    enum EditorKeyBind {
+        // Camera
+        KEYBIND_PAN_UP,
+        KEYBIND_PAN_DOWN,
+        KEYBIND_PAN_LEFT,
+        KEYBIND_PAN_RIGHT,
+        KEYBIND_STEP_UP,
+        KEYBIND_STEP_DOWN,
+        KEYBIND_STEP_LEFT,
+        KEYBIND_STEP_RIGHT,
+        KEYBIND_ZOOM_IN,
+        KEYBIND_ZOOM_OUT,
+        KEYBIND_FOCUS_SELECTION,
+
+        // Modes
+        KEYBIND_CYCLE_MODE,
+        KEYBIND_GEOMETRY_MODE,
+        KEYBIND_ENTITY_MODE,
+        KEYBIND_SECTOR_MODE,
+
+        // Editing
+        KEYBIND_PLACE_ENTITY,
+        KEYBIND_DELETE,
+
+        // Drawing (Sector Mode)
+        KEYBIND_FINISH_SHAPE,
+        KEYBIND_UNDO_POINT,
+        KEYBIND_FEWER_SIDES,
+        KEYBIND_MORE_SIDES,
+        KEYBIND_FLIP_STAIRCASE,
+        KEYBIND_TOOL_FREEHAND,
+        KEYBIND_TOOL_RECTANGLE,
+        KEYBIND_TOOL_POLYGON,
+        KEYBIND_TOOL_CIRCLE,
+        KEYBIND_TOOL_CURVE,
+        KEYBIND_TOOL_STAIRCASE,
+
+        // Held modifiers
+        KEYBIND_DISABLE_SNAP,
+        KEYBIND_MULTI_SELECT,
+        KEYBIND_RANGE_SELECT,
+        KEYBIND_CONSTRAIN_ANGLE,
+        KEYBIND_SPLIT_WALL,
+
+        // Runtime editor: camera
+        KEYBIND_RT_FLY_FORWARD,
+        KEYBIND_RT_FLY_BACK,
+        KEYBIND_RT_FLY_LEFT,
+        KEYBIND_RT_FLY_RIGHT,
+        KEYBIND_RT_FLY_UP,
+        KEYBIND_RT_FLY_DOWN,
+        KEYBIND_RT_SPEED_UP,
+        KEYBIND_RT_SPEED_DOWN,
+        KEYBIND_RT_RESET_SPEED,
+
+        // Runtime editor: editing
+        KEYBIND_RT_MOVE_TOOL,
+        KEYBIND_RT_ROTATE_TOOL,
+        KEYBIND_RT_DISABLE_SNAP,
+        KEYBIND_RT_ADD_TO_SELECTION,
+        KEYBIND_RT_TEXTURE_X_ONLY,
+        KEYBIND_RT_TEXTURE_Y_ONLY,
+        KEYBIND_RT_FLIP_TEXTURE_X,
+        KEYBIND_RT_FLIP_TEXTURE_Y,
+
+        KEYBIND_COUNT
+    };
+
+    constexpr int KEYBIND_SLOTS = 2;
+
+    struct EditorKeyBindInfo {
+        const char* saveName;   // its key in UserSettings.bson
+        const char* labelKey;   // en.json
+        const char* groupKey;   // en.json; rows sharing one are drawn under one heading
+        SDL_Scancode defaults[KEYBIND_SLOTS];
+    };
+
+    extern const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT];
+    extern SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS];
+
+    // Pressed this frame / held, on any of its slots.
+    [[nodiscard]] bool GetKeyBindDown(EditorKeyBind bind);
+    [[nodiscard]] bool GetKeyBind(EditorKeyBind bind);
+
+    // The name of the key a binding is on: its primary, else its alternate,
+    // else "None".
+    [[nodiscard]] std::string KeyBindName(EditorKeyBind bind);
+
+    // `text` with every "{key:<saveName>}" replaced by that binding's
+    // KeyBindName, so hints and tooltips name the key the user actually
+    // bound. Unknown names are left as they are.
+    [[nodiscard]] std::string FormatKeyBinds(const std::string& text);
+
+    // The key slot the User Settings window is waiting on a key press for,
+    // nullptr when none. While set, the editor's shortcuts are off so the
+    // key being bound doesn't also fire.
+    extern SDL_Scancode* keyBindBeingListened;
+
     // Floor height of the sector at `point`, or 0 outside every sector.
     [[nodiscard]] float FloorHeightAt(const Vector2& point);
 

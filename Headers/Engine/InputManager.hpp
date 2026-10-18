@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_scancode.h>
 #include <filesystem>
+#include <string>
 #include <vector>
 #include "../Math/Vector/Vector2.hpp"
 
@@ -42,4 +43,7 @@ namespace InputManager {
     [[nodiscard]] const std::vector<DroppedFile>& GetDroppedFiles();
     [[nodiscard]] bool IsExternalDragActive();
     [[nodiscard]] Vector2 GetExternalDragPosition();
+
+    // A display name for the key ("A", "Left Ctrl", "Page Up"), "Unknown" if it has none.
+    [[nodiscard]] const std::string& ScancodeToString(SDL_Scancode code);
 }

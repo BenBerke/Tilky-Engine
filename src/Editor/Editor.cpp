@@ -247,7 +247,7 @@ namespace Editor {
         // WantCaptureKeyboard is true whenever any ImGui window has focus
         // (keyboard nav is on), so clicking a panel used to lock every
         // shortcut until the canvas was clicked again.
-        const bool keyboardBlockedByImgui = io.WantTextInput;
+        const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr;
 
         if (currentState == STATE_MAP) {
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
