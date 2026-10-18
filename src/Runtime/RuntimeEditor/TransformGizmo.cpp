@@ -452,6 +452,10 @@ namespace TransformGizmo {
         return activeHandle != Handle::None;
     }
 
+    bool ProjectPoint(const View& view, const Vector3& point, Vector2& screen) {
+        return Project(view, point, screen);
+    }
+
     void Draw(const View& view, const Tool tool, const ComponentTransform& transform, const Vector2 mouse, const bool showHover) {
         Frame frame;
         if (!MakeFrame(view, tool, transform, frame)) return;

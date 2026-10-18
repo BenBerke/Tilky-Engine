@@ -4208,6 +4208,8 @@ namespace MapEditorInternal {
                 32.0f
             )) hasUnsavedChanges = true;
 
+            ImGui::SameLine(20.0f);
+
             if (DrawAssetField(
                 Get("editor.new_sector.wall_bottom_texture").c_str(),
                 wallBottomTexture,
@@ -4223,6 +4225,8 @@ namespace MapEditorInternal {
                 32.0f
             )) hasUnsavedChanges = true;
 
+            ImGui::SameLine(20.0f);
+
             if (DrawAssetField(
                 Get("editor.new_sector.floor_texture").c_str(),
                 floorTexture,
@@ -4235,7 +4239,7 @@ namespace MapEditorInternal {
             ImGui::Spacing();
 
             constexpr float INPUT_WIDTH = 110.0f;
-            constexpr float MIN_ROOM_HEIGHT = 0.01f;
+            constexpr float MIN_ROOM_HEIGHT = 0.0001f;
 
             ImGui::SetNextItemWidth(INPUT_WIDTH);
 
@@ -4245,8 +4249,7 @@ namespace MapEditorInternal {
                 1.0f,
                 10.0f,
                 "%.2f"
-            ))
-                hasUnsavedChanges = true;
+            )) hasUnsavedChanges = true;
 
 
             HoverTooltip(Get("editor.tooltip.floor_height").c_str());
@@ -4259,8 +4262,7 @@ namespace MapEditorInternal {
                 1.0f,
                 10.0f,
                 "%.2f"
-            ))
-                hasUnsavedChanges = true;
+            )) hasUnsavedChanges = true;
 
 
             HoverTooltip(Get("editor.tooltip.ceil_height").c_str());
@@ -4282,7 +4284,7 @@ namespace MapEditorInternal {
             };
 
             if (ImGui::ColorEdit3(
-                (Get("sector.light_value") + "##NewSectorLight").c_str(),
+            (Get("sector.light_value") + "##NewSectorLight").c_str(),
                 lightPicker,
                 ImGuiColorEditFlags_Uint8
             )) {
@@ -4299,36 +4301,30 @@ namespace MapEditorInternal {
 
             ImGui::Spacing();
 
+            constexpr ImGuiColorEditFlags_ COLOR_PICKER_FLAGS = static_cast<ImGuiColorEditFlags_>(ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float);
+
             if (ImGui::ColorEdit4(
                 Get("wall.color").c_str(),
                 &wallColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_HDR |
-                ImGuiColorEditFlags_Float
-            )) {
-                hasUnsavedChanges = true;
-            }
+                COLOR_PICKER_FLAGS
+            )) hasUnsavedChanges = true;
+
 
             if (ImGui::ColorEdit4(
                 Get("sector.ceil_color").c_str(),
                 &ceilColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_HDR |
-                ImGuiColorEditFlags_Float
-            )) {
-                hasUnsavedChanges = true;
-            }
+                COLOR_PICKER_FLAGS
+            )) hasUnsavedChanges = true;
+
 
             if (ImGui::ColorEdit4(
                 Get("sector.floor_color").c_str(),
                 &floorColor.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_HDR |
-                ImGuiColorEditFlags_Float
-            )) { hasUnsavedChanges = true; }
+                COLOR_PICKER_FLAGS
+            )) hasUnsavedChanges = true;
 
             ImGui::Spacing();
 

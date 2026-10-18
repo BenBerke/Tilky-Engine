@@ -392,6 +392,24 @@ namespace {
         return true;
     }
 
+    // A white circle on every entity, so ones with nothing to draw (no sprite,
+    // model or collider) can still be found. Drawn before the transform gizmo
+    // so the gizmo stays on top.
+    void DrawEntityMarkers(const Level& level) {
+        TransformGizmo::View view;
+        if (!BuildGizmoView(view)) return;
+
+        constexpr float MARKER_RADIUS = 6.0f; // pixels
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+        for (const ComponentTransform& entityTransform : level.transforms.components) {
+            Vector2 screen;
+            if (!TransformGizmo::ProjectPoint(view, entityTransform.position, screen)) continue;
+
+            drawList->AddCircle({screen.x, screen.y}, MARKER_RADIUS, IM_COL32(255, 255, 255, 220), 0, 2.0f);
+        }
+    }
+
     int FindWallIndex(const Level& level, const Wall* wallToFind) {
         if (wallToFind == nullptr) return -1;
 
@@ -1318,6 +1336,8 @@ namespace RuntimeEditorUi {
         // from the editor's ImGui context every frame. This context has its
         // own copy; drawing with the other one shows the wrong glyphs.
         if (runtimeRenderer != nullptr) MapEditorInternal::assetBrowser.SetIconFont(runtimeRenderer->GetImGuiIconFont());
+
+        DrawEntityMarkers(level);
 
         if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
             TransformGizmo::View view;

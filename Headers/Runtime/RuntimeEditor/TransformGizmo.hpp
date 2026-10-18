@@ -40,6 +40,9 @@ namespace TransformGizmo {
     void EndDrag();
     [[nodiscard]] bool IsDragging();
 
+    // Projects a world point to window pixels. False when it is behind the camera.
+    bool ProjectPoint(const View& view, const Vector3& point, Vector2& screen);
+
     // Draws onto ImGui's background draw list (above the 3D view, below the
     // panels), so call it inside an ImGui frame. With `showHover`, the handle
     // under `mouse` is highlighted; the one being dragged always is.
