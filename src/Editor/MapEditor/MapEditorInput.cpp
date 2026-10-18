@@ -986,7 +986,7 @@ namespace MapEditorInternal {
             }
 
             if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
-            if (InputManager::GetKeyDown(SDL_SCANCODE_G) || (InputManager::GetKeyDown(SDL_SCANCODE_V) && !InputManager::GetKeyDown(SDL_SCANCODE_LCTRL))) currentMode = MODE_GEOMETRY;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_G) || (InputManager::GetKeyDown(SDL_SCANCODE_V) && !(InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)))) currentMode = MODE_GEOMETRY;
             if (InputManager::GetKeyDown(SDL_SCANCODE_E)) currentMode = MODE_ENTITY;
             if (InputManager::GetKeyDown(SDL_SCANCODE_R) || InputManager::GetKeyDown(SDL_SCANCODE_L)) currentMode = MODE_SECTOR;
         }

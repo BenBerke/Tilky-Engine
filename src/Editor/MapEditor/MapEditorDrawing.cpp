@@ -151,7 +151,7 @@ namespace MapEditorInternal {
         // fill, so every tool gives the same at-a-glance feedback.
 
         SDL_FColor ThemeTextColor() {
-            const SDL_FColor r = {themeTextColor.r / 255.0f, themeTextColor.g / 255.0f, themeTextColor.b / 255.0f};
+            const SDL_FColor r = {themeTextColor.r / 255.0f, themeTextColor.g / 255.0f, themeTextColor.b / 255.0f, 1.0f};
             return r;
         }
 
