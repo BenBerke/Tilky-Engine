@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Entity.hpp"
@@ -118,6 +119,15 @@ namespace ImGuiDrawFunctions {
     // Same, but centred horizontally with its top edge at `topY` (screen
     // pixels) instead of at the bottom of the window.
     void DrawNotificationBelow(float dt, float topY);
+
+    // An undo history: `undoLabels` oldest first, `redoLabels` in the order
+    // they would be redone, `initialLabel` for the state before them all.
+    // Newest at the top, the current state highlighted and the redo steps
+    // greyed. Returns how many undo steps the clicked row has done
+    // (0 for the initial state), or -1 when nothing was clicked.
+    int DrawHistoryList(const std::vector<std::string>& undoLabels,
+                        const std::vector<std::string>& redoLabels,
+                        const std::string& initialLabel);
 
     // ── Mouse/keyboard focus control ──────────────────────────────────────────
     // focus=true  → allow mouse input into ImGui

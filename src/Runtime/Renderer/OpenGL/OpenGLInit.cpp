@@ -273,6 +273,7 @@ bool OpenGL::InitImGui() {
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // the runtime editor's windows dock into each other
 
     // The same text and icon fonts the editor loads (Editor.cpp), so the
     // runtime editor's panels - the asset browser's icons especially - look

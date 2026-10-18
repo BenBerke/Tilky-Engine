@@ -25,6 +25,8 @@
 #include "Headers/Runtime/RuntimeEditor/MultiEdit.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
+#include <string_view>
+
 #include <algorithm>
 #include <functional>
 #include <cmath>
@@ -631,9 +633,12 @@ namespace {
 
     // Calls fn(surface) for every surface a texture action applies to: the
     // selected walls (both their textures) or flats, or, with neither
-    // selected and hoverAllowed, the surface under the cursor.
+    // selected and hoverAllowed, the surface under the cursor. Returns how
+    // many walls or flats that was.
     template <typename Fn>
-    void ForEachTargetSurface(Level& level, const bool hoverAllowed, Fn&& fn) {
+    int ForEachTargetSurface(Level& level, const bool hoverAllowed, Fn&& fn) {
+        int count = 0;
+
         if (!selectedWalls.empty()) {
             for (const int wallIndex : selectedWalls) {
                 if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
@@ -641,8 +646,9 @@ namespace {
                 Wall& wall = level.walls[wallIndex];
                 fn(wall.top);
                 fn(wall.bottom);
+                ++count;
             }
-            return;
+            return count;
         }
 
         if (!selectedFlats.empty()) {
@@ -654,16 +660,17 @@ namespace {
 
                 SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
                 fn(flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling);
+                ++count;
             }
-            return;
+            return count;
         }
 
-        if (hoverAllowed) ForHoveredSurface(level, fn);
+        return hoverAllowed && ForHoveredSurface(level, fn) ? 1 : 0;
     }
 
     // Each surface toggles on its own, so a mixed selection stays mixed.
-    void FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
-        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+    int FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
+        return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
             if (flipX) surface.flipTextureX = !surface.flipTextureX;
             if (flipY) surface.flipTextureY = !surface.flipTextureY;
         });
@@ -792,24 +799,33 @@ namespace {
     // Onto the selection when it's the copied kind (a selected floor or
     // ceiling stands for its sector), otherwise onto the hovered one. A
     // selection of the other kind takes nothing, the hovered one included.
-    void PasteProperties(Level& level, const bool hoverAllowed) {
+    // Returns how many walls or sectors it pasted onto.
+    int PasteProperties(Level& level, const bool hoverAllowed) {
+        int count = 0;
+
         if (propertyClipboard.kind == PropertyClipboard::Kind::Wall) {
-            if (!selectedFlats.empty()) return;
+            if (!selectedFlats.empty()) return 0;
 
             if (!selectedWalls.empty()) {
-                for (const int wallIndex : selectedWalls)
-                    if (wallIndex >= 0 && wallIndex < static_cast<int>(level.walls.size())) PasteWallProperties(level.walls[wallIndex]);
-                return;
+                for (const int wallIndex : selectedWalls) {
+                    if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
+
+                    PasteWallProperties(level.walls[wallIndex]);
+                    ++count;
+                }
+                return count;
             }
 
             if (hoverAllowed && hoveredSurface.type == RayHitType::Wall &&
-                hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size()))
+                hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size())) {
                 PasteWallProperties(level.walls[hoveredSurface.wallIndex]);
-            return;
+                return 1;
+            }
+            return 0;
         }
 
         if (propertyClipboard.kind == PropertyClipboard::Kind::Sector) {
-            if (!selectedWalls.empty()) return;
+            if (!selectedWalls.empty()) return 0;
 
             std::vector<int> sectorIndices;
 
@@ -820,10 +836,15 @@ namespace {
             else if (hoverAllowed && (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling))
                 sectorIndices.push_back(hoveredSurface.sectorIndex);
 
-            for (const int sectorIndex : sectorIndices)
-                if (sectorIndex >= 0 && sectorIndex < static_cast<int>(level.sectors.size()))
-                    PasteSectorProperties(level, level.sectors[sectorIndex]);
+            for (const int sectorIndex : sectorIndices) {
+                if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+                PasteSectorProperties(level, level.sectors[sectorIndex]);
+                ++count;
+            }
         }
+
+        return count;
     }
 
     // ---- Undo / redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) ---------------------
@@ -834,6 +855,10 @@ namespace {
     struct GeometryState {
         std::vector<Wall> walls;
         std::vector<Sector> sectors;
+
+        // Names the step in the History window.
+        const char* labelKey = ""; // en.json
+        int count = 0;             // shown after the label when above 1
     };
 
     constexpr std::size_t MAX_UNDO_STEPS = 64;
@@ -841,16 +866,43 @@ namespace {
     std::vector<GeometryState> undoStack;
     std::vector<GeometryState> redoStack;
 
-    // Scroll notches closer together than this are one undo step.
+    // Scroll notches of the same kind closer together than this are one
+    // undo step.
     constexpr Uint64 SCROLL_UNDO_MERGE_MS = 500;
     Uint64 lastScrollEditTicks = 0;
+    std::string_view lastScrollLabel;
 
-    // Call before changing walls or sectors.
-    void PushUndo(const Level& level) {
-        undoStack.push_back({level.walls, level.sectors});
+    // A texture drag's state from the press. It only becomes an undo step
+    // once the drag moves something, so a plain click leaves none.
+    GeometryState uvDragUndo;
+    bool uvDragPushedUndo = false;
+
+    // The walls and sectors as they are now, to record once an edit has
+    // changed something.
+    GeometryState CaptureGeometry(const Level& level, const char* labelKey) {
+        return {level.walls, level.sectors, labelKey, 0};
+    }
+
+    void CommitUndo(GeometryState before) {
+        undoStack.push_back(std::move(before));
         if (undoStack.size() > MAX_UNDO_STEPS) undoStack.erase(undoStack.begin());
 
         redoStack.clear();
+    }
+
+    // Records `before` when the edit changed `count` (more than 0) things.
+    void CommitUndoIf(GeometryState before, const int count) {
+        if (count <= 0) return;
+
+        before.count = count;
+        CommitUndo(std::move(before));
+    }
+
+    // Call before changing walls or sectors.
+    void PushUndo(const Level& level, const char* labelKey, const int count = 0) {
+        GeometryState state = CaptureGeometry(level, labelKey);
+        state.count = count;
+        CommitUndo(std::move(state));
     }
 
     // Swaps `state` in, leaving what was there in `state`. Selected indices
@@ -905,8 +957,8 @@ namespace {
     // ---- Texture shortcuts ------------------------------------------------
 
     // Alt+R: offset 0, scale 1, no flip.
-    void ResetTexturePlacement(Level& level, const bool hoverAllowed) {
-        ForEachTargetSurface(level, hoverAllowed, [](auto& surface) {
+    int ResetTexturePlacement(Level& level, const bool hoverAllowed) {
+        return ForEachTargetSurface(level, hoverAllowed, [](auto& surface) {
             surface.textureOffset = {0.0f, 0.0f};
             surface.textureScale = {1.0f, 1.0f};
             surface.flipTextureX = false;
@@ -953,24 +1005,25 @@ namespace {
 
     // [ / ]: each target surface steps to the previous / next image in its
     // own texture's folder.
-    void CycleTextures(Level& level, const int direction, const bool hoverAllowed) {
-        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+    int CycleTextures(Level& level, const int direction, const bool hoverAllowed) {
+        return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
             if (std::string next = StepTextureInFolder(surface.texture, direction); !next.empty()) surface.texture = std::move(next);
         });
     }
 
     // Runs one of the Map Editor's wall texture tools - they work on its own
-    // selection - on this editor's selected walls. The tool's undo entry
-    // lands on the Map Editor's stack, so it's taken back off: this editor's
-    // own undo covers the change. Returns how many walls the tool changed.
+    // selection - on this editor's selected walls. The tool's undo step
+    // lands on the Map Editor's history, so it's taken back off and that
+    // history's redo steps put back: this editor's own undo covers the
+    // change. Returns how many walls the tool changed.
     int RunMapEditorWallTool(Level& level, int (*tool)()) {
         if (selectedWalls.empty() || &level != &LevelManager::CurrentLevel()) return 0;
 
         const std::vector<ID> savedSelection = MapEditorInternal::selectedWalls;
         const ID savedPrimary = MapEditorInternal::selectedWallID;
         const bool savedEditing = MapEditorInternal::editingWall;
-        const std::size_t savedActions = MapEditorInternal::actions.size();
-        const std::size_t savedSnapshots = MapEditorInternal::geometrySnapshots.size();
+        const std::size_t savedSteps = MapEditorInternal::undoSteps.size();
+        std::vector<MapEditorInternal::UndoStep> savedRedo = std::move(MapEditorInternal::redoSteps);
 
         MapEditorInternal::selectedWalls.clear();
         for (const int index : selectedWalls)
@@ -982,8 +1035,8 @@ namespace {
 
         const int changed = MapEditorInternal::selectedWalls.empty() ? 0 : tool();
 
-        MapEditorInternal::actions.erase(MapEditorInternal::actions.begin() + static_cast<std::ptrdiff_t>(savedActions), MapEditorInternal::actions.end());
-        MapEditorInternal::geometrySnapshots.erase(MapEditorInternal::geometrySnapshots.begin() + static_cast<std::ptrdiff_t>(savedSnapshots), MapEditorInternal::geometrySnapshots.end());
+        while (MapEditorInternal::undoSteps.size() > savedSteps) MapEditorInternal::undoSteps.pop_back();
+        MapEditorInternal::redoSteps = std::move(savedRedo);
 
         MapEditorInternal::selectedWalls = savedSelection;
         MapEditorInternal::selectedWallID = savedPrimary;
@@ -1097,7 +1150,7 @@ namespace {
 
     // A drop that doesn't land leaves no undo step behind.
     bool ApplyTextureToHoveredSurfaceWithUndo(Level& level, const std::string& textureReference) {
-        PushUndo(level);
+        PushUndo(level, "runtime_editor.history.apply_texture");
         if (ApplyTextureToHoveredSurface(level, textureReference)) return true;
 
         undoStack.pop_back();
@@ -1128,12 +1181,12 @@ namespace {
     }
 
     // Placement only goes with Alt, and only if it was copied with Alt.
-    void PasteSurface(Level& level, const bool withPlacement, const bool hoverAllowed) {
-        if (!surfaceClipboard.hasTexture) return;
+    int PasteSurface(Level& level, const bool withPlacement, const bool hoverAllowed) {
+        if (!surfaceClipboard.hasTexture) return 0;
 
         const bool pastePlacement = withPlacement && surfaceClipboard.hasPlacement;
 
-        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+        return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
             surface.texture = surfaceClipboard.texture;
 
             if (pastePlacement) {
@@ -1395,6 +1448,14 @@ namespace RuntimeEditorUi {
 
         ImGui::SameLine();
 
+        // ---- History
+        if (ToolbarButton("history", ICON_FA_CLOCK_ROTATE_LEFT, "H",
+                          Localisation::Get("editor.history") + "\n" + Localisation::Get("runtime_editor.tooltip.history"),
+                          MapEditorInternal::runtimeHistoryVisible))
+            MapEditorInternal::runtimeHistoryVisible = !MapEditorInternal::runtimeHistoryVisible;
+
+        ImGui::SameLine();
+
         // ---- Statistics
         if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
                           Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
@@ -1413,6 +1474,29 @@ namespace RuntimeEditorUi {
                         framerate > 0.0f ? 1000.0f / framerate : 0.0f);
 
             ImGui::EndPopup();
+        }
+
+        ImGui::End();
+    }
+
+    // Same list as the map editor's History window, over this editor's own
+    // undo steps.
+    void DrawHistoryWindow(Level& level) {
+        ImGui::SetNextWindowSize(ImVec2(260.0f, 320.0f), ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin((Localisation::Get("editor.history") + "##RuntimeEditor").c_str(), &MapEditorInternal::runtimeHistoryVisible)) {
+            std::vector<std::string> undoLabels;
+            std::vector<std::string> redoLabels;
+
+            for (const GeometryState& state : undoStack) undoLabels.push_back(MapEditorInternal::HistoryLabel(state.labelKey, state.count));
+            for (auto it = redoStack.rbegin(); it != redoStack.rend(); ++it) redoLabels.push_back(MapEditorInternal::HistoryLabel(it->labelKey, it->count));
+
+            const int position = ImGuiDrawFunctions::DrawHistoryList(undoLabels, redoLabels, Localisation::Get("editor.history.initial_state"));
+
+            if (position >= 0) {
+                while (static_cast<int>(undoStack.size()) > position && Undo(level)) {}
+                while (static_cast<int>(undoStack.size()) < position && Redo(level)) {}
+            }
         }
 
         ImGui::End();
@@ -1511,7 +1595,7 @@ namespace RuntimeEditorUi {
                 std::ranges::sort(indicesToDelete, std::greater{});
 
                 ClearWallSelection();
-                PushUndo(level);
+                PushUndo(level, "editor.history.delete_walls", static_cast<int>(indicesToDelete.size()));
 
                 for (const int index : indicesToDelete) level.walls.erase(level.walls.begin() + index);
 
@@ -1593,6 +1677,8 @@ namespace RuntimeEditorUi {
             MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID);
 
             ImGui::End();
+
+            if (MapEditorInternal::runtimeHistoryVisible) DrawHistoryWindow(level);
 
             DrawToolbar();
         }
@@ -2015,7 +2101,8 @@ namespace RuntimeEditor {
             !cameraLooking &&
             !TransformGizmo::IsDragging() &&
             IsUvEditableSurface(hoveredSurface.type)) {
-            PushUndo(level);
+            uvDragUndo = CaptureGeometry(level, "runtime_editor.history.drag_texture");
+            uvDragPushedUndo = false;
 
             uvDragSurface = hoveredSurface;
             draggingUv = true;
@@ -2074,6 +2161,11 @@ namespace RuntimeEditor {
                 const float deltaX = mouseDelta.x * uvDragHorizontalSign * dragSpeed;
                 const float deltaY = -mouseDelta.y * uvDragVerticalSign * dragSpeed;
 
+                if (!uvDragPushedUndo) {
+                    CommitUndo(std::move(uvDragUndo));
+                    uvDragPushedUndo = true;
+                }
+
                 if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
                     AddUvOffset(level, uvDragSurface, {deltaX, 0});
                 else if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
@@ -2094,8 +2186,8 @@ namespace RuntimeEditor {
 
             // The hovered fallback needs the cursor on the view, not a panel.
             if (flipX || flipY) {
-                PushUndo(level);
-                FlipTextures(level, flipX, flipY, !mouseBlockedByImGui);
+                GeometryState before = CaptureGeometry(level, "runtime_editor.history.flip_texture");
+                CommitUndoIf(std::move(before), FlipTextures(level, flipX, flipY, !mouseBlockedByImGui));
             }
         }
 
@@ -2115,8 +2207,10 @@ namespace RuntimeEditor {
             const bool pasteWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE_PLACEMENT);
 
             if (pasteWithPlacement || GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE)) {
-                PushUndo(level);
-                PasteSurface(level, pasteWithPlacement, !mouseBlockedByImGui);
+                GeometryState before = CaptureGeometry(level, pasteWithPlacement
+                    ? "runtime_editor.history.paste_texture_placement"
+                    : "runtime_editor.history.paste_texture");
+                CommitUndoIf(std::move(before), PasteSurface(level, pasteWithPlacement, !mouseBlockedByImGui));
 
                 // The copied image may not be in the atlas yet.
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
@@ -2130,26 +2224,30 @@ namespace RuntimeEditor {
             }
 
             if (GetComboDown(MapEditorInternal::COMBO_RT_PASTE_PROPERTIES)) {
-                PushUndo(level);
-                PasteProperties(level, !mouseBlockedByImGui);
+                GeometryState before = CaptureGeometry(level, "runtime_editor.history.paste_properties");
+                CommitUndoIf(std::move(before), PasteProperties(level, !mouseBlockedByImGui));
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
 
             // Reset offset, scale and flip.
             if (GetComboDown(MapEditorInternal::COMBO_RT_RESET_PLACEMENT)) {
-                PushUndo(level);
-                ResetTexturePlacement(level, !mouseBlockedByImGui);
+                GeometryState before = CaptureGeometry(level, "runtime_editor.history.reset_placement");
+                CommitUndoIf(std::move(before), ResetTexturePlacement(level, !mouseBlockedByImGui));
             }
 
             // Fit each selected wall's texture to its height, or continue the
             // textures across the selected walls' corners.
             if (GetComboDown(MapEditorInternal::COMBO_RT_FIT_TEXTURES)) {
-                PushUndo(level);
-                ShowToastf("editor.geometry.align.fit_done", RunMapEditorWallTool(level, &MapEditorInternal::FitSelectedWallTexturesToHeight));
+                GeometryState before = CaptureGeometry(level, "editor.history.fit_wall_textures");
+                const int changed = RunMapEditorWallTool(level, &MapEditorInternal::FitSelectedWallTexturesToHeight);
+                CommitUndoIf(std::move(before), changed);
+                ShowToastf("editor.geometry.align.fit_done", changed);
             }
             else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES)) {
-                PushUndo(level);
-                ShowToastf("editor.geometry.align.chain_done", RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures));
+                GeometryState before = CaptureGeometry(level, "editor.history.align_wall_textures");
+                const int changed = RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures);
+                CommitUndoIf(std::move(before), changed);
+                ShowToastf("editor.geometry.align.chain_done", changed);
             }
 
             if (GetComboDown(MapEditorInternal::COMBO_RT_REDO)) Redo(level);
@@ -2159,8 +2257,8 @@ namespace RuntimeEditor {
             const bool cycleForward = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_NEXT_TEXTURE);
 
             if (cycleBack != cycleForward) {
-                PushUndo(level);
-                CycleTextures(level, cycleForward ? 1 : -1, !mouseBlockedByImGui);
+                GeometryState before = CaptureGeometry(level, "runtime_editor.history.change_texture");
+                CommitUndoIf(std::move(before), CycleTextures(level, cycleForward ? 1 : -1, !mouseBlockedByImGui));
             }
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FULLBRIGHT)) {
@@ -2300,9 +2398,22 @@ namespace RuntimeEditor {
             const float heightDelta = wheel * runtimeSteps[fine ? RT_STEP_FINE_HEIGHT : RT_STEP_HEIGHT];
             const float uvScaleDelta = wheel * runtimeSteps[fine ? RT_STEP_FINE_TEXTURE_SCALE : RT_STEP_TEXTURE_SCALE];
 
+            const bool flatHit = hit->type == RayHitType::SectorFloor || hit->type == RayHitType::SectorCeiling;
+            const char* scrollLabel =
+                hit->type == RayHitType::Wall ? "runtime_editor.history.scale_texture"
+                : flatHit && GetKeyBind(KEYBIND_RT_BRIGHTNESS_SCROLL) ? "runtime_editor.history.change_brightness"
+                : hit->type == RayHitType::SectorFloor ? "runtime_editor.history.change_floor_height"
+                : hit->type == RayHitType::SectorCeiling ? "runtime_editor.history.change_ceiling_height"
+                : nullptr;
+
             const Uint64 now = SDL_GetTicks();
-            if (now - lastScrollEditTicks > SCROLL_UNDO_MERGE_MS) PushUndo(level);
-            lastScrollEditTicks = now;
+
+            if (scrollLabel != nullptr) {
+                if (now - lastScrollEditTicks > SCROLL_UNDO_MERGE_MS || lastScrollLabel != scrollLabel) PushUndo(level, scrollLabel);
+
+                lastScrollEditTicks = now;
+                lastScrollLabel = scrollLabel;
+            }
 
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
                 WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);

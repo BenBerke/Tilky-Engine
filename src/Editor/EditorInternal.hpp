@@ -6,6 +6,8 @@
 
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Objects/Sector.hpp"
+#include "Headers/Objects/Level.hpp"
+#include "Headers/Objects/ComponentRegistry.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -27,6 +29,7 @@ namespace MapEditorInternal {
     constexpr float MIN_EDITOR_ZOOM = 0.10f;
     constexpr float MAX_EDITOR_ZOOM = 10.00f;
     constexpr float MIN_GRID_SIZE = 1.0f;
+    constexpr float DEFAULT_GRID_SIZE = 12.0f;
 
     constexpr float ENTITY_SIZE = 10.0f;
 
@@ -57,15 +60,6 @@ namespace MapEditorInternal {
         MODE_ENTITY,
 
         MODE_COUNT
-    };
-
-    enum Action {
-        ACTION_CREATE_SECTOR,
-        ACTION_CREATE_WALL,
-        ACTION_CREATE_CORNER, // historical name - Dot lifecycle only (see AddDot; dots are internal snap anchors now, not user-facing objects).
-        ACTION_CREATE_OBJECT,
-        ACTION_APPLY_GEOMETRY, // one MapEditorInternal::ApplyDrawnGeometry call, however many walls/sectors it touched internally.
-        ACTION_ENTITY_TRANSFORMS, // one Entity Mode selection action (align, distribute, snap, drop); see entityTransformUndos.
     };
 
     enum State {
@@ -154,10 +148,10 @@ namespace MapEditorInternal {
 
     // Whole-operation undo snapshot for ApplyDrawnGeometry - it can create
     // and split many walls and sectors in one call, so a single
-    // ACTION_APPLY_GEOMETRY entry carries exactly one of these rather than
-    // pushing a separate undo action per internal wall split. Captured
-    // before the call is attempted; only kept (pushed onto
-    // geometrySnapshots) if the call actually succeeds.
+    // UNDO_GEOMETRY step carries exactly one of these rather than
+    // pushing a separate undo step per internal wall split. Captured
+    // before the call is attempted; only kept (pushed onto undoSteps)
+    // if the call actually succeeds.
     struct GeometrySnapshot {
         std::vector<Wall> walls;
         std::vector<Sector> sectors;
@@ -207,14 +201,6 @@ namespace MapEditorInternal {
         float startingFloorHeight = 0.0f;
         float finalFloorHeight = 0.0f;
     };
-
-    // Internal variables do not touch
-    extern std::vector<Action> actions;
-
-    // Undo stack for ACTION_APPLY_GEOMETRY entries - kept parallel to
-    // `actions` (one entry per ACTION_APPLY_GEOMETRY present in it), not
-    // indexed by position within it.
-    extern std::vector<GeometrySnapshot> geometrySnapshots;
 
     // Set by ApplyDrawnGeometry whenever it rejects an edit (cleared on
     // success); MapEditorUI.cpp surfaces it as a toast once per rejection.
@@ -485,6 +471,10 @@ namespace MapEditorInternal {
     extern bool worldSettingsVisible;
     extern bool assetBrowserVisible;
 
+    // The History windows of the map editor and the runtime editor.
+    extern bool historyVisible;
+    extern bool runtimeHistoryVisible;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is
@@ -612,7 +602,7 @@ namespace MapEditorInternal {
     // one MapTopology::ApplyDrawnGeometry call per step (so adjacent steps
     // reuse/split each other's shared boundary wall the same way any two
     // adjacently-drawn sectors would), captured under a single
-    // GeometrySnapshot/ACTION_APPLY_GEOMETRY entry rather than one per
+    // GeometrySnapshot/UNDO_GEOMETRY step rather than one per
     // step. If any step is rejected partway through, every step already
     // applied this call is rolled back and the level is left exactly as
     // it was before the call. Selects every newly created sector on
@@ -640,13 +630,13 @@ namespace MapEditorInternal {
     // open polyline - repeat the first point at the end to close a loop
     // back on itself. Returns false and leaves the level untouched if
     // the edit is rejected (see lastGeometryError for why); on success,
-    // pushes one ACTION_APPLY_GEOMETRY undo entry and selects one of the
+    // pushes one UNDO_GEOMETRY undo step and selects one of the
     // resulting sectors.
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params);
 
     // Restores level walls/sectors/ID counters and the affected
     // selection from a GeometrySnapshot, then rebuilds runtime links.
-    // Used only by the ACTION_APPLY_GEOMETRY case of the undo handler.
+    // Used by the UNDO_GEOMETRY case of the undo handler.
     void RestoreGeometrySnapshot(const GeometrySnapshot& snapshot);
 
     Vector2 ScreenToWorld(const Vector2& screenPos, const Vector2& cameraPos);
@@ -902,12 +892,11 @@ namespace MapEditorInternal {
     void RebuildGeometryAfterWallDrag(const std::vector<Vector2>& movedPoints,
                                       const std::vector<ID>& draggedWallIDs);
 
-    // Undo support for geometry edits. Wall moves and deletions reuse the
-    // existing whole-operation ACTION_APPLY_GEOMETRY entry rather than
-    // introducing a second undo kind: capture before touching anything,
-    // push only once the edit has actually changed something.
+    // Undo support for geometry edits: capture before touching anything,
+    // push only once the edit has actually changed something. `labelKey`
+    // (en.json) and `count` name the step in the History window.
     [[nodiscard]] GeometrySnapshot CaptureGeometryUndoSnapshot();
-    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot);
+    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot, const char* labelKey, int count = 0);
 
     // Deletes every wall in the current selection as one undoable
     // operation, with a single topology rebuild at the end.
@@ -1193,7 +1182,7 @@ namespace MapEditorInternal {
     ID PlacePaletteEntityAt(const Vector2& point);
 
     // ---- Entity Mode selection actions (MapEditorGeometry.cpp) ----------
-    // Each pushes one ACTION_ENTITY_TRANSFORMS entry when it moved anything.
+    // Each pushes one UNDO_ENTITY_POSITIONS step when it moved anything.
     enum EntityAlignment {
         ALIGN_MIN_X,
         ALIGN_CENTER_X,
@@ -1222,28 +1211,58 @@ namespace MapEditorInternal {
         std::vector<std::pair<ID, Vector3>> positions;
     };
 
-    // Parallel to ACTION_ENTITY_TRANSFORMS entries in `actions`, like
-    // geometrySnapshots.
-    extern std::vector<EntityTransformUndo> entityTransformUndos;
-    void UndoEntityTransforms();
-
-    // Redo (Ctrl+Y / Ctrl+Shift+Z) for the snapshot-based undo kinds,
-    // ACTION_APPLY_GEOMETRY and ACTION_ENTITY_TRANSFORMS: undoing one of
-    // them keeps what it took back here. Undoing any other kind, any new
-    // undoable action, or clearing `actions` empties it (ClearRedo).
-    struct RedoEntry {
-        Action action = ACTION_APPLY_GEOMETRY;
-        GeometrySnapshot geometry;          // ACTION_APPLY_GEOMETRY
-        EntityTransformUndo transforms;     // ACTION_ENTITY_TRANSFORMS
+    // ---- Undo history ----------------------------------------------------
+    // Every map editor undo step restores one kind of state. Undoing a step
+    // swaps the current state of that kind into it, so the same step, moved
+    // to redoSteps, redoes it.
+    enum UndoKind {
+        UNDO_GEOMETRY,          // walls and sectors
+        UNDO_ENTITY_POSITIONS,  // some entities' positions
+        UNDO_ENTITIES,          // every entity and component - adds and deletes
     };
 
-    extern std::vector<RedoEntry> redoEntries;
-    void ClearRedo();
+    struct EntitiesSnapshot {
+        std::vector<Entity> entities;
+        ID nextEntityID = 1;
 
-    // Undoes the last entry of `actions`, keeping a redo entry when it can.
+#define TILKY_SNAPSHOT_STORAGE(Type, Bit, Storage, LabelKey) decltype(Level::Storage) Storage;
+        TILKY_COMPONENTS(TILKY_SNAPSHOT_STORAGE)
+#undef TILKY_SNAPSHOT_STORAGE
+    };
+
+    struct UndoStep {
+        UndoKind kind = UNDO_GEOMETRY;
+        const char* labelKey = ""; // en.json
+        int count = 0;             // shown after the label when above 1
+
+        GeometrySnapshot geometry;       // UNDO_GEOMETRY
+        EntityTransformUndo positions;   // UNDO_ENTITY_POSITIONS
+        EntitiesSnapshot entities;       // UNDO_ENTITIES
+    };
+
+    constexpr std::size_t MAX_MAP_UNDO_STEPS = 128;
+
+    extern std::vector<UndoStep> undoSteps; // oldest first
+    extern std::vector<UndoStep> redoSteps; // the next one to redo last
+
+    // Level loads and new levels start a fresh history.
+    void ClearUndoHistory();
+
+    // A new step; clears the redo steps.
+    void PushUndoStep(UndoStep step);
+
+    [[nodiscard]] EntitiesSnapshot CaptureEntitiesSnapshot();
+    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, int count = 0);
+    void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, int count = 0);
+
+    // "Label" or "Label (count)", localised.
+    [[nodiscard]] std::string HistoryLabel(const char* labelKey, int count);
+
     void UndoLastAction();
-    // Re-applies the last undone action, if redoEntries has one.
     void RedoLastAction();
+
+    // Undoes or redoes until `position` steps are done (0: all undone).
+    void JumpToUndoPosition(std::size_t position);
 
     // Ctrl+A: every wall (Geometry Mode), entity (Entity Mode) or sector
     // (Sector Mode) that passes the canvas filter.

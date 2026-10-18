@@ -58,8 +58,7 @@ namespace Editor {
 
         sectorBeingCreated.clear();
         pendingSectorParams = {};
-        actions.clear();
-        ClearRedo();
+        ClearUndoHistory();
 
         dots.clear();
         dotIDToIndex.clear();

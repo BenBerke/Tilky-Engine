@@ -226,6 +226,8 @@ namespace MapEditorInternal {
             editorPanelVisible = settings.value("editorPanelVisible", true);
             worldSettingsVisible = settings.value("worldSettingsVisible", true);
             assetBrowserVisible = settings.value("assetBrowserVisible", true);
+            historyVisible = settings.value("historyVisible", false);
+            runtimeHistoryVisible = settings.value("runtimeHistoryVisible", false);
 
             // A binding missing from the file, or a slot that isn't a valid
             // scancode, keeps its current (default) key. 0 is an empty slot.
@@ -406,6 +408,8 @@ namespace MapEditorInternal {
                 {"editorPanelVisible", editorPanelVisible},
                 {"worldSettingsVisible", worldSettingsVisible},
                 {"assetBrowserVisible", assetBrowserVisible},
+                {"historyVisible", historyVisible},
+                {"runtimeHistoryVisible", runtimeHistoryVisible},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
                 {"runtimeSteps", SerializeRuntimeSteps()}
@@ -529,8 +533,7 @@ namespace Editor {
         editingSector = false;
         selectedSectorID = INVALID_ID;
 
-        actions.clear();
-        ClearRedo();
+        ClearUndoHistory();
 
         if (LevelManager::loadedLevels.empty()) {
             LevelManager::loadedLevels.push_back(std::move(loadedLevel));
@@ -611,8 +614,7 @@ namespace Editor {
         editingSector = false;
         selectedSectorID = INVALID_ID;
 
-        actions.clear();
-        ClearRedo();
+        ClearUndoHistory();
 
         LevelSystem::RefreshScriptAssets(level);
 

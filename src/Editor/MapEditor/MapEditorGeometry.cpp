@@ -1569,10 +1569,14 @@ namespace MapEditorInternal {
         return CaptureGeometrySnapshot(LevelManager::CurrentLevel());
     }
 
-    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot) {
-        geometrySnapshots.push_back(std::move(snapshot));
-        actions.push_back(ACTION_APPLY_GEOMETRY);
-        ClearRedo();
+    void PushGeometryUndoSnapshot(GeometrySnapshot snapshot, const char* labelKey, const int count) {
+        UndoStep step;
+        step.kind = UNDO_GEOMETRY;
+        step.labelKey = labelKey;
+        step.count = count;
+        step.geometry = std::move(snapshot);
+
+        PushUndoStep(std::move(step));
     }
 
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params) {
@@ -1599,9 +1603,7 @@ namespace MapEditorInternal {
             return false;
         }
 
-        geometrySnapshots.push_back(std::move(snapshot));
-        actions.push_back(ACTION_APPLY_GEOMETRY);
-        ClearRedo();
+        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.draw_sector");
 
         if (!applyResult.affectedSectorIDs.empty()) {
             // Through the shared helper rather than assigning
@@ -1660,7 +1662,7 @@ namespace MapEditorInternal {
         // MapTopology::ApplyDrawnGeometry (bypassing the single-sector
         // ApplyDrawnGeometry above, which would push its own undo entry
         // per step) so the entire multi-sector staircase becomes exactly
-        // one ACTION_APPLY_GEOMETRY entry.
+        // one UNDO_GEOMETRY step.
         const GeometrySnapshot snapshot = CaptureGeometrySnapshot(level);
 
         std::vector<ID> affectedSectorIDs;
@@ -1696,9 +1698,7 @@ namespace MapEditorInternal {
                     affectedSectorIDs.push_back(sectorID);
         }
 
-        geometrySnapshots.push_back(snapshot);
-        actions.push_back(ACTION_APPLY_GEOMETRY);
-        ClearRedo();
+        PushGeometryUndoSnapshot(snapshot, "editor.history.create_staircase", static_cast<int>(affectedSectorIDs.size()));
 
         if (!affectedSectorIDs.empty()) {
             // Every newly created step sector, not just the primary - see
@@ -1746,8 +1746,6 @@ namespace MapEditorInternal {
         dots.push_back(dot);
         dotIDToIndex[dot.id] = static_cast<int>(dots.size()) - 1;
 
-        actions.push_back(ACTION_CREATE_CORNER);
-        ClearRedo();
     }
 
     void DeleteDot(const ID dotID) {
@@ -2353,7 +2351,7 @@ namespace MapEditorInternal {
 
         // One undo entry and one topology rebuild for the whole
         // selection, rather than one of each per wall.
-        PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot());
+        PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot(), "editor.history.delete_walls", static_cast<int>(wallsToDelete.size()));
 
         ClearWallSelection();
 
@@ -2625,7 +2623,7 @@ namespace MapEditorInternal {
 
         // Moves the given entities, recording one undo entry if any moved.
         template<typename F>
-        int MoveSelectedEntities(F&& newPosition) {
+        int MoveSelectedEntities(const char* labelKey, F&& newPosition) {
             Level& level = LevelManager::CurrentLevel();
 
             EntityTransformUndo undo;
@@ -2646,9 +2644,7 @@ namespace MapEditorInternal {
             }
 
             if (moved > 0) {
-                entityTransformUndos.push_back(std::move(undo));
-                actions.push_back(ACTION_ENTITY_TRANSFORMS);
-                ClearRedo();
+                PushEntityPositionsUndo(std::move(undo), labelKey, moved);
                 MarkUnsavedChanges();
             }
 
@@ -2684,7 +2680,7 @@ namespace MapEditorInternal {
         GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
         if (SplitWallNoUndo(level, wallID, point) == INVALID_ID) return false;
 
-        PushGeometryUndoSnapshot(std::move(snapshot));
+        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_wall");
         MarkUnsavedChanges();
         return true;
     }
@@ -2705,7 +2701,7 @@ namespace MapEditorInternal {
         }
 
         if (split > 0) {
-            PushGeometryUndoSnapshot(std::move(snapshot));
+            PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_walls", split);
             MarkUnsavedChanges();
         }
 
@@ -2733,7 +2729,7 @@ namespace MapEditorInternal {
 
         if (merged > 0) {
             RebuildGeometryAfterMove();
-            PushGeometryUndoSnapshot(std::move(snapshot));
+            PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.merge_walls", merged);
             MarkUnsavedChanges();
         }
 
@@ -2759,7 +2755,7 @@ namespace MapEditorInternal {
         }
 
         if (changed > 0) {
-            PushGeometryUndoSnapshot(std::move(snapshot));
+            PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.edit_walls", changed);
             MarkUnsavedChanges();
         }
 
@@ -2814,7 +2810,7 @@ namespace MapEditorInternal {
             }
         }
 
-        PushGeometryUndoSnapshot(std::move(snapshot));
+        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.align_wall_textures", static_cast<int>(forward.size() + backward.size()) + 1);
         MarkUnsavedChanges();
 
         return static_cast<int>(forward.size() + backward.size()) + 1;
@@ -2836,7 +2832,7 @@ namespace MapEditorInternal {
         }
 
         if (changed > 0) {
-            PushGeometryUndoSnapshot(std::move(snapshot));
+            PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.reset_wall_offsets", changed);
             MarkUnsavedChanges();
         }
 
@@ -2882,7 +2878,7 @@ namespace MapEditorInternal {
         }
 
         if (changed > 0) {
-            PushGeometryUndoSnapshot(std::move(snapshot));
+            PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.fit_wall_textures", changed);
             MarkUnsavedChanges();
         }
 
@@ -2922,8 +2918,6 @@ namespace MapEditorInternal {
     bool placeRandomYaw = false;
     std::string placeDefaultTag;
 
-    std::vector<EntityTransformUndo> entityTransformUndos;
-
     float FloorHeightAt(const Vector2& point) {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -2937,6 +2931,7 @@ namespace MapEditorInternal {
     ID PlacePaletteEntityAt(const Vector2& point) {
         Level& level = LevelManager::CurrentLevel();
 
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
         ID id = INVALID_ID;
 
         if (entityPaletteSelection.empty()) id = level.CreateEntity(false);
@@ -2971,6 +2966,7 @@ namespace MapEditorInternal {
             }
         }
 
+        PushEntitiesUndo(std::move(before), "editor.history.place_entity");
         SelectEntity(id);
         MarkUnsavedChanges();
 
@@ -2998,7 +2994,7 @@ namespace MapEditorInternal {
         if (alignment == ALIGN_MIN_X || alignment == ALIGN_MIN_Z) target = low;
         if (alignment == ALIGN_MAX_X || alignment == ALIGN_MAX_Z) target = high;
 
-        return MoveSelectedEntities([alongX, target](ID, Vector3 position) {
+        return MoveSelectedEntities("editor.history.align_entities", [alongX, target](ID, Vector3 position) {
             (alongX ? position.x : position.z) = target;
             return position;
         });
@@ -3020,7 +3016,7 @@ namespace MapEditorInternal {
         const float first = order.front().first;
         const float step = (order.back().first - first) / static_cast<float>(order.size() - 1);
 
-        return MoveSelectedEntities([&order, alongX, first, step](const ID entityID, Vector3 position) {
+        return MoveSelectedEntities("editor.history.distribute_entities", [&order, alongX, first, step](const ID entityID, Vector3 position) {
             const auto it = std::find_if(order.begin(), order.end(), [entityID](const auto& entry) { return entry.second == entityID; });
             (alongX ? position.x : position.z) = first + step * static_cast<float>(it - order.begin());
             return position;
@@ -3028,33 +3024,16 @@ namespace MapEditorInternal {
     }
 
     int SnapSelectedEntitiesToGrid() {
-        return MoveSelectedEntities([](ID, const Vector3 position) {
+        return MoveSelectedEntities("editor.history.snap_entities", [](ID, const Vector3 position) {
             const Vector2 snapped = SnapToGrid({position.x, position.z});
             return Vector3{snapped.x, position.y, snapped.y};
         });
     }
 
     int DropSelectedEntitiesToFloor() {
-        return MoveSelectedEntities([](ID, const Vector3 position) {
+        return MoveSelectedEntities("editor.history.drop_entities", [](ID, const Vector3 position) {
             return Vector3{position.x, FloorHeightAt({position.x, position.z}), position.z};
         });
-    }
-
-    void UndoEntityTransforms() {
-        if (entityTransformUndos.empty()) return;
-
-        Level& level = LevelManager::CurrentLevel();
-
-        for (const auto& [entityID, position] : entityTransformUndos.back().positions) {
-            ComponentTransform* transform = level.transforms.Get(entityID);
-            if (transform == nullptr) continue;
-
-            transform->SetPosition(position);
-            transform->isDirty = true;
-        }
-
-        entityTransformUndos.pop_back();
-        MarkUnsavedChanges();
     }
 
     namespace {
@@ -3068,95 +3047,129 @@ namespace MapEditorInternal {
 
             return current;
         }
-    }
 
-    void UndoLastAction() {
-        if (actions.empty()) return;
+        // Selected entities the restore removed are dropped, and the
+        // primary's copy is refreshed.
+        void RestoreEntitiesSnapshot(Level& level, const EntitiesSnapshot& snapshot) {
+            level.entities = snapshot.entities;
+            level.nextEntityID = snapshot.nextEntityID;
 
-        Level& level = LevelManager::CurrentLevel();
+#define RESTORE_STORAGE(Type, Bit, Storage, LabelKey) level.Storage = snapshot.Storage;
+            TILKY_COMPONENTS(RESTORE_STORAGE)
+#undef RESTORE_STORAGE
 
-        switch (actions.back()) {
-            case ACTION_CREATE_CORNER:
-                if (!dots.empty()) DeleteDot(dots.back().id);
-                ClearRedo();
-                break;
-            case ACTION_CREATE_WALL:
-                if (!level.walls.empty()) DeleteWall(level.walls.back().id);
-                ClearRedo();
-                break;
-            case ACTION_CREATE_SECTOR:
-                if (!level.sectors.empty()) DeleteSector(level.sectors.back().id);
-                ClearRedo();
-                break;
-            case ACTION_CREATE_OBJECT:
-                if (!level.entities.empty()) {
-                    const Entity entity = level.entities.back();
-                    level.DestroyEntity(entity.id);
-                }
-                ClearRedo();
-                break;
-            case ACTION_APPLY_GEOMETRY:
-                // One ApplyDrawnGeometry call can create/split many
-                // walls and sectors at once, so undo restores the
-                // whole-operation snapshot rather than guessing at
-                // "the last wall" / "the last sector" the way the
-                // simpler action kinds above do.
-                if (!geometrySnapshots.empty()) {
-                    RedoEntry redo;
-                    redo.action = ACTION_APPLY_GEOMETRY;
-                    redo.geometry = CaptureGeometryUndoSnapshot();
+            std::erase_if(selectedEntities, [&level](const ID id) { return level.GetEntity(id) == nullptr; });
 
-                    RestoreGeometrySnapshot(geometrySnapshots.back());
-                    geometrySnapshots.pop_back();
+            if (const Entity* primary = level.GetEntity(selectedEntity.id)) selectedEntity = *primary;
+            else if (!selectedEntities.empty()) selectedEntity = *level.GetEntity(selectedEntities.back());
+            else editingEntity = false;
 
-                    redoEntries.push_back(std::move(redo));
-                }
-                break;
-            case ACTION_ENTITY_TRANSFORMS:
-                if (!entityTransformUndos.empty()) {
-                    RedoEntry redo;
-                    redo.action = ACTION_ENTITY_TRANSFORMS;
-                    redo.transforms = CurrentPositions(level, entityTransformUndos.back());
-
-                    UndoEntityTransforms();
-                    redoEntries.push_back(std::move(redo));
-                }
-                break;
-            default: break;
-        }
-
-        actions.pop_back();
-    }
-
-    void RedoLastAction() {
-        if (redoEntries.empty()) return;
-
-        RedoEntry redo = std::move(redoEntries.back());
-        redoEntries.pop_back();
-
-        Level& level = LevelManager::CurrentLevel();
-
-        if (redo.action == ACTION_APPLY_GEOMETRY) {
-            geometrySnapshots.push_back(CaptureGeometryUndoSnapshot());
-            RestoreGeometrySnapshot(redo.geometry);
-        }
-        else if (redo.action == ACTION_ENTITY_TRANSFORMS) {
-            entityTransformUndos.push_back(CurrentPositions(level, redo.transforms));
-
-            for (const auto& [entityID, position] : redo.transforms.positions) {
-                ComponentTransform* transform = level.transforms.Get(entityID);
-                if (transform == nullptr) continue;
-
-                transform->SetPosition(position);
-                transform->isDirty = true;
-            }
+            if (level.GetEntity(selectedUIEntityID) == nullptr) selectedUIEntityID = INVALID_ID;
 
             MarkUnsavedChanges();
         }
-        else return;
 
-        // Not through the usual push: that would clear the rest of the redo.
-        actions.push_back(redo.action);
+        // Puts `step`'s state back and leaves the state it replaced in
+        // `step`, so the same step takes it back the other way.
+        void SwapUndoStep(UndoStep& step) {
+            Level& level = LevelManager::CurrentLevel();
+
+            switch (step.kind) {
+                case UNDO_GEOMETRY: {
+                    GeometrySnapshot current = CaptureGeometryUndoSnapshot();
+                    RestoreGeometrySnapshot(step.geometry);
+                    step.geometry = std::move(current);
+                    break;
+                }
+                case UNDO_ENTITY_POSITIONS: {
+                    EntityTransformUndo current = CurrentPositions(level, step.positions);
+
+                    for (const auto& [entityID, position] : step.positions.positions) {
+                        ComponentTransform* transform = level.transforms.Get(entityID);
+                        if (transform == nullptr) continue;
+
+                        transform->SetPosition(position);
+                        transform->isDirty = true;
+                    }
+
+                    step.positions = std::move(current);
+                    MarkUnsavedChanges();
+                    break;
+                }
+                case UNDO_ENTITIES: {
+                    EntitiesSnapshot current = CaptureEntitiesSnapshot();
+                    RestoreEntitiesSnapshot(level, step.entities);
+                    step.entities = std::move(current);
+                    break;
+                }
+            }
+        }
+    }
+
+    EntitiesSnapshot CaptureEntitiesSnapshot() {
+        const Level& level = LevelManager::CurrentLevel();
+
+        EntitiesSnapshot snapshot;
+        snapshot.entities = level.entities;
+        snapshot.nextEntityID = level.nextEntityID;
+
+#define CAPTURE_STORAGE(Type, Bit, Storage, LabelKey) snapshot.Storage = level.Storage;
+        TILKY_COMPONENTS(CAPTURE_STORAGE)
+#undef CAPTURE_STORAGE
+
+        return snapshot;
+    }
+
+    void PushUndoStep(UndoStep step) {
+        undoSteps.push_back(std::move(step));
+        if (undoSteps.size() > MAX_MAP_UNDO_STEPS) undoSteps.erase(undoSteps.begin());
+
+        redoSteps.clear();
+    }
+
+    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, const int count) {
+        UndoStep step;
+        step.kind = UNDO_ENTITIES;
+        step.labelKey = labelKey;
+        step.count = count;
+        step.entities = std::move(before);
+
+        PushUndoStep(std::move(step));
+    }
+
+    void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, const int count) {
+        UndoStep step;
+        step.kind = UNDO_ENTITY_POSITIONS;
+        step.labelKey = labelKey;
+        step.count = count;
+        step.positions = std::move(before);
+
+        PushUndoStep(std::move(step));
+    }
+
+    void UndoLastAction() {
+        if (undoSteps.empty()) return;
+
+        UndoStep step = std::move(undoSteps.back());
+        undoSteps.pop_back();
+
+        SwapUndoStep(step);
+        redoSteps.push_back(std::move(step));
+    }
+
+    void RedoLastAction() {
+        if (redoSteps.empty()) return;
+
+        UndoStep step = std::move(redoSteps.back());
+        redoSteps.pop_back();
+
+        SwapUndoStep(step);
+        undoSteps.push_back(std::move(step));
+    }
+
+    void JumpToUndoPosition(const std::size_t position) {
+        while (undoSteps.size() > position) UndoLastAction();
+        while (undoSteps.size() < position && !redoSteps.empty()) RedoLastAction();
     }
 
     void SelectAllInMode() {

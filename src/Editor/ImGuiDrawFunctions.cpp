@@ -3101,3 +3101,34 @@ namespace ImGuiDrawFunctions {
     }
 
 } // namespace ImGuiDrawFunctions
+
+namespace ImGuiDrawFunctions {
+    int DrawHistoryList(const std::vector<std::string>& undoLabels,
+                        const std::vector<std::string>& redoLabels,
+                        const std::string& initialLabel) {
+        int clicked = -1;
+
+        const int done = static_cast<int>(undoLabels.size());
+        const int total = done + static_cast<int>(redoLabels.size());
+
+        if (ImGui::BeginChild("##HistoryList")) {
+            for (int position = total; position >= 0; --position) {
+                const bool redoRow = position > done;
+                const std::string& label = position == 0 ? initialLabel
+                                         : redoRow ? redoLabels[position - done - 1]
+                                         : undoLabels[position - 1];
+
+                ImGui::PushID(position);
+                if (redoRow) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
+                if (ImGui::Selectable(label.c_str(), position == done) && position != done) clicked = position;
+
+                if (redoRow) ImGui::PopStyleColor();
+                ImGui::PopID();
+            }
+        }
+
+        ImGui::EndChild();
+        return clicked;
+    }
+}

@@ -34,6 +34,10 @@ namespace {
     // release (the drop is delivered during the release frame's UI pass).
     ID inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
+    // Set when the release of a canvas drag recorded an undo step, so a drop
+    // onto a field (RevertCanvasEntityDrag) can take that step back off.
+    bool canvasDragPushedUndo = false;
+
     // The move-gizmo part the current hold started on, GIZMO_NONE for a
     // drag of the entity body. A gizmo drag also keeps where on the gizmo the
     // cursor grabbed (relative to the primary's position), so the entity
@@ -50,6 +54,25 @@ namespace {
 
         activeGizmoPart = gizmoPart;
         holdingEntity = true;
+        canvasDragPushedUndo = false;
+    }
+
+    // On release: one step for every entity the hold moved.
+    void PushCanvasEntityDragUndo(const Level& level) {
+        MapEditorInternal::EntityTransformUndo before;
+
+        for (const auto& [entityID, position] : canvasDragStartPositions) {
+            const ComponentTransform* transform = level.transforms.Get(entityID);
+            if (transform == nullptr || transform->position == position) continue;
+
+            before.positions.emplace_back(entityID, position);
+        }
+
+        if (before.positions.empty()) return;
+
+        const int moved = static_cast<int>(before.positions.size());
+        MapEditorInternal::PushEntityPositionsUndo(std::move(before), "editor.history.move_entities", moved);
+        canvasDragPushedUndo = true;
     }
 }
 
@@ -402,7 +425,7 @@ namespace MapEditorInternal {
             // actually changes something, so a click that merely happens to
             // land on a wall doesn't litter the undo stack.
             if (!dragMutatedGeometry && (delta.x != 0.0f || delta.y != 0.0f)) {
-                PushGeometryUndoSnapshot(dragUndoSnapshot);
+                PushGeometryUndoSnapshot(dragUndoSnapshot, "editor.history.move_points", static_cast<int>(dragMovingPoints.size()));
                 dragMutatedGeometry = true;
             }
 
@@ -792,6 +815,9 @@ namespace MapEditorInternal {
     void RevertCanvasEntityDrag() {
         Level& level = LevelManager::CurrentLevel();
 
+        if (canvasDragPushedUndo && !undoSteps.empty()) undoSteps.pop_back();
+        canvasDragPushedUndo = false;
+
         for (const auto& [entityID, position] : canvasDragStartPositions) {
             ComponentTransform* transform = level.transforms.Get(entityID);
             if (transform == nullptr) continue;
@@ -822,9 +848,11 @@ namespace MapEditorInternal {
     // Copies the clipboard's entities that still exist. The primary lands
     // under the cursor and the rest keep their offsets from it; heights are
     // kept. The copies become the selection.
-    void PasteEntityClipboard(Level& level, const Vector2& mouseWorld) {
+    void PasteEntityClipboard(Level& level, const Vector2& mouseWorld, const char* labelKey) {
         std::erase_if(entityClipboard, [&level](const ID id) { return level.GetEntity(id) == nullptr; });
         if (entityClipboard.empty()) return;
+
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
 
         // Offsets are measured from the first copied entity that has a transform.
         const ComponentTransform* anchor = nullptr;
@@ -848,6 +876,8 @@ namespace MapEditorInternal {
 
             pasted.push_back(copyID);
         }
+
+        PushEntitiesUndo(std::move(before), labelKey, static_cast<int>(pasted.size()));
 
         SelectEntity(pasted.front());
         selectedEntities = pasted;
@@ -874,7 +904,7 @@ namespace MapEditorInternal {
 
         // Through the paste, without touching what Ctrl+C copied.
         std::swap(entityClipboard, clipboard);
-        PasteEntityClipboard(level, target);
+        PasteEntityClipboard(level, target, "editor.history.duplicate_entities");
         std::swap(entityClipboard, clipboard);
     }
 
@@ -1115,6 +1145,8 @@ namespace MapEditorInternal {
             }
 
             if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) {
+                if (holdingEntity) PushCanvasEntityDragUndo(level);
+
                 holdingEntity = false;
                 activeGizmoPart = GIZMO_NONE;
             }
@@ -1221,7 +1253,7 @@ namespace MapEditorInternal {
 
         if (GetComboDown(COMBO_REDO)) RedoLastAction();
         else if (GetComboDown(COMBO_UNDO)) {
-            if (actions.empty()) return;
+            if (undoSteps.empty()) return;
             UndoLastAction();
         }
 
@@ -1237,7 +1269,7 @@ namespace MapEditorInternal {
             }
 
             if (GetComboDown(COMBO_PASTE_ENTITIES)) [[unlikely]]
-                PasteEntityClipboard(level, mouseWorld);
+                PasteEntityClipboard(level, mouseWorld, "editor.history.paste_entities");
         }
 
         if (GetKeyBindDown(KEYBIND_DELETE)) [[unlikely]] {
@@ -1245,13 +1277,17 @@ namespace MapEditorInternal {
                 const std::vector<ID> entitiesToDelete = selectedEntities;
                 selectedEntities.clear();
 
+                EntitiesSnapshot before = CaptureEntitiesSnapshot();
                 for (const ID id : entitiesToDelete) level.DestroyEntity(id);
+                PushEntitiesUndo(std::move(before), "editor.history.delete_entities", static_cast<int>(entitiesToDelete.size()));
             }
             if (!selectedSectors.empty()) {
                 const std::vector<ID> sectorsToDelete = selectedSectors;
                 selectedSectors.clear();
 
+                GeometrySnapshot before = CaptureGeometryUndoSnapshot();
                 for (const ID id : sectorsToDelete) DeleteSector(id);
+                PushGeometryUndoSnapshot(std::move(before), "editor.history.delete_sectors", static_cast<int>(sectorsToDelete.size()));
             }
             // One undoable operation with a single topology rebuild for
             // the whole wall selection, rather than one of each per wall.

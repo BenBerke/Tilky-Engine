@@ -459,8 +459,7 @@ namespace {
 
         ResetInspectorState();
 
-        actions.clear();
-        ClearRedo();
+        ClearUndoHistory();
 
         Editor::currentMap = levelName;
 
@@ -489,8 +488,12 @@ namespace {
             return;
         }
 
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
+
         const ID id = Prefab::Instantiate(level, reference);
         if (id == INVALID_ID) return;
+
+        PushEntitiesUndo(std::move(before), "editor.history.place_entity");
 
         const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, worldPoint);
         const float floorHeight = sectorIndex >= 0 && !level.sectors[sectorIndex].floors.empty()
@@ -1734,6 +1737,7 @@ namespace {
             ImGui::Checkbox(Get("editor.layout_menu.world_settings_visible").c_str(), &worldSettingsVisible);
             ImGui::Checkbox(Get("editor.layout_menu.editor_panel_visible").c_str(), &editorPanelVisible);
             ImGui::Checkbox(Get("editor.layout_menu.asset_browser_visible").c_str(), &assetBrowserVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.history_visible").c_str(), &historyVisible);
         }
 
         ImGui::End();
@@ -2168,7 +2172,9 @@ namespace {
                 ImGui::Unindent();
 
                 if (sectorPendingDelete != INVALID_ID) {
+                    GeometrySnapshot before = CaptureGeometryUndoSnapshot();
                     DeleteSector(sectorPendingDelete);
+                    PushGeometryUndoSnapshot(std::move(before), "editor.history.delete_sectors");
                     hasUnsavedChanges = true;
                 }
             }
@@ -2327,7 +2333,9 @@ namespace {
                         ResetInspectorState();
                     }
                     if (selectedUIEntityID == entityPendingDelete) selectedUIEntityID = INVALID_ID;
+                    EntitiesSnapshot before = CaptureEntitiesSnapshot();
                     level.DestroyEntity(entityPendingDelete);
+                    PushEntitiesUndo(std::move(before), "editor.history.delete_entities");
                     hasUnsavedChanges = true;
                 }
             }
@@ -2844,7 +2852,9 @@ namespace {
 
             ClearSectorSelection();
 
+            GeometrySnapshot before = CaptureGeometryUndoSnapshot();
             for (const ID sectorID: sectorsToDelete) DeleteSector(sectorID);
+            PushGeometryUndoSnapshot(std::move(before), "editor.history.delete_sectors", static_cast<int>(sectorsToDelete.size()));
 
             hasUnsavedChanges = true;
             return;
@@ -2922,7 +2932,7 @@ namespace {
             wall.end = endBeforeEdit;
 
             if (!wallGeometryDirtyFromInspector)
-                PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot());
+                PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot(), "editor.history.edit_wall_points");
 
             if (startMoved) MoveSharedEndpoint(startBeforeEdit, startAfterEdit);
             if (endMoved) MoveSharedEndpoint(endBeforeEdit, endAfterEdit);
@@ -2981,7 +2991,9 @@ namespace {
             ClearEntitySelection();
             ResetInspectorState();
 
+            EntitiesSnapshot before = CaptureEntitiesSnapshot();
             for (const ID entityID: entitiesToDelete) level.DestroyEntity(entityID);
+            PushEntitiesUndo(std::move(before), "editor.history.delete_entities", static_cast<int>(entitiesToDelete.size()));
 
             hasUnsavedChanges = true;
             return;
@@ -3312,8 +3324,7 @@ namespace MapEditorInternal {
         // when the level underneath it changes.
         CancelActiveDrawing();
         pendingSectorParams = PendingSectorParams{};
-        actions.clear();
-        ClearRedo();
+        ClearUndoHistory();
 
         dots.clear();
         dotIDToIndex.clear();
@@ -3358,7 +3369,12 @@ namespace MapEditorInternal {
         ))
             GRID_SIZE = std::max(GRID_SIZE, MIN_GRID_SIZE);
 
-        HoverTooltip(Get("editor.tooltip.grid.size").c_str());
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.grid.size")).c_str());
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(GRID_SIZE == DEFAULT_GRID_SIZE);
+        if (ImGui::Button((Get("editor.user_settings.default") + "##EditorGridSizeDefault").c_str())) GRID_SIZE = DEFAULT_GRID_SIZE;
+        ImGui::EndDisabled();
 
         ImGui::Checkbox(Get("editor.grid.snap_to_grid").c_str(), &gridSnapEnabled);
         HoverTooltip(Get("editor.tooltip.grid.snap_to_grid").c_str());
@@ -4358,6 +4374,27 @@ namespace MapEditorInternal {
         ImGui::End();
     }
 
+    // =========================================================================
+    //  History
+    // =========================================================================
+
+    void DrawHistoryPanel() {
+        ImGui::SetNextWindowSize(ImVec2(260.0f, 320.0f), ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin(Get("editor.history").c_str(), &historyVisible)) {
+            std::vector<std::string> undoLabels;
+            std::vector<std::string> redoLabels;
+
+            for (const UndoStep& step : undoSteps) undoLabels.push_back(HistoryLabel(step.labelKey, step.count));
+            for (auto it = redoSteps.rbegin(); it != redoSteps.rend(); ++it) redoLabels.push_back(HistoryLabel(it->labelKey, it->count));
+
+            const int position = ImGuiDrawFunctions::DrawHistoryList(undoLabels, redoLabels, Get("editor.history.initial_state"));
+            if (position >= 0) JumpToUndoPosition(static_cast<std::size_t>(position));
+        }
+
+        ImGui::End();
+    }
+
     void DrawEditorUI() {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
@@ -4381,6 +4418,7 @@ namespace MapEditorInternal {
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         if (assetBrowserVisible) DrawAssetBrowserPanel();
+        if (historyVisible) DrawHistoryPanel();
 
         // ---- Sector-geometry rejection toast --------------------------------
         if (!lastGeometryError.empty()) {

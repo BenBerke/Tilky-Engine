@@ -22,7 +22,7 @@ namespace MapEditorInternal {
     ImFont* editorIconFont = nullptr;
 
     float editorZoom = 1.0f;
-    float GRID_SIZE = 12.0f; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)
+    float GRID_SIZE = DEFAULT_GRID_SIZE; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)
 
     Vector2 cameraPos = {0.0f, 0.0f};
 
@@ -49,15 +49,20 @@ namespace MapEditorInternal {
 
     bool textureViewMode = false;
 
-    std::vector<Action> actions;
-    std::vector<GeometrySnapshot> geometrySnapshots;
+    // Here rather than next to UndoLastAction: level loading clears them,
+    // and that code is in the standalone build too.
+    std::vector<UndoStep> undoSteps;
+    std::vector<UndoStep> redoSteps;
 
-    // Here rather than next to UndoLastAction: level loading clears it, and
-    // that code is in the standalone build too.
-    std::vector<RedoEntry> redoEntries;
+    void ClearUndoHistory() {
+        undoSteps.clear();
+        redoSteps.clear();
+    }
 
-    void ClearRedo() {
-        redoEntries.clear();
+    std::string HistoryLabel(const char* labelKey, const int count) {
+        std::string label = Localisation::Get(labelKey);
+        if (count > 1) label += " (" + std::to_string(count) + ")";
+        return label;
     }
     std::string lastGeometryError;
 
@@ -192,6 +197,8 @@ namespace MapEditorInternal {
     bool editorPanelVisible = true;
     bool worldSettingsVisible = true;
     bool assetBrowserVisible = true;
+    bool historyVisible = false;
+    bool runtimeHistoryVisible = false;
 
     // In EditorKeyBind order.
     const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT] = {
