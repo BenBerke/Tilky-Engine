@@ -139,56 +139,9 @@ static bool FullWidthButton(const char *label) {
 // =============================================================================
 
 namespace {
-    struct Toast {
-        char message[128];
-        float remainingSeconds;
-        bool isError;
-    };
-
-    Toast s_toast{};
-
-    void ShowNotification(const char *msg, const bool isError = false, float duration = 3.0f) {
-        std::strncpy(s_toast.message, msg, sizeof(s_toast.message) - 1);
-        s_toast.message[sizeof(s_toast.message) - 1] = '\0';
-        s_toast.remainingSeconds = duration;
-        s_toast.isError = isError;
-    }
-
-    void DrawNotification(const float dt) {
-        if (s_toast.remainingSeconds <= 0.0f) return;
-        s_toast.remainingSeconds -= dt;
-
-        const ImGuiViewport *vp = ImGui::GetMainViewport();
-        constexpr float margin = 16.0f;
-
-        ImGui::SetNextWindowPos(
-            ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f,
-                   vp->WorkPos.y + vp->WorkSize.y - margin),
-            ImGuiCond_Always,
-            ImVec2(0.5f, 1.0f)
-        );
-        ImGui::SetNextWindowBgAlpha(0.88f);
-
-        constexpr ImGuiWindowFlags flags =
-                ImGuiWindowFlags_NoDecoration |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_NoNav |
-                ImGuiWindowFlags_AlwaysAutoResize;
-
-        ImGui::Begin("##Toast", nullptr, flags);
-
-        const ImVec4 col = s_toast.isError
-                               ? ImVec4(1.00f, 0.45f, 0.45f, 1.00f)
-                               : ImVec4(0.55f, 1.00f, 0.65f, 1.00f);
-
-        ImGui::PushStyleColor(ImGuiCol_Text, col);
-        ImGui::Text("  %s  ", s_toast.message);
-        ImGui::PopStyleColor();
-
-        ImGui::End();
-    }
+    // Shared with the runtime editor (ImGuiDrawFunctions.cpp).
+    using ImGuiDrawFunctions::ShowNotification;
+    using ImGuiDrawFunctions::DrawNotification;
 
     constexpr Vector3 defaultWallColor = {205, 205, 205};
     constexpr Vector3 defaultSnapIndicator = {220, 255, 255};

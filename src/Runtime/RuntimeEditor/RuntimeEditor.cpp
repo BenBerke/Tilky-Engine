@@ -550,27 +550,45 @@ namespace {
         }
     }
 
-    void FlipWallSurface(WallSurface& surface, const bool flipX, const bool flipY) {
-        if (flipX) surface.flipTextureX = !surface.flipTextureX;
-        if (flipY) surface.flipTextureY = !surface.flipTextureY;
+    // Calls fn(surface) with the WallSurface or SectorSurface under the
+    // cursor. False (fn not called) for entities, nothing, or stale indices.
+    template <typename Fn>
+    bool ForHoveredSurface(Level& level, Fn&& fn) {
+        switch (hoveredSurface.type) {
+            case RayHitType::Wall:
+                if (hoveredSurface.wallIndex < 0 || hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
+
+                fn(level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot));
+                return true;
+
+            case RayHitType::SectorFloor:
+            case RayHitType::SectorCeiling: {
+                if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return false;
+
+                Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+                if (hoveredSurface.floorIndex < 0 || hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) return false;
+
+                SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
+                fn(hoveredSurface.type == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling);
+                return true;
+            }
+
+            default: return false;
+        }
     }
 
-    void FlipSectorSurface(SectorSurface& surface, const bool flipX, const bool flipY) {
-        if (flipX) surface.flipTextureX = !surface.flipTextureX;
-        if (flipY) surface.flipTextureY = !surface.flipTextureY;
-    }
-
-    // Toggles the flip of the selected walls (both their textures) or flats,
-    // or, with neither selected, of the surface under the cursor. Each
-    // surface toggles on its own, so a mixed selection stays mixed.
-    void FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
+    // Calls fn(surface) for every surface a texture action applies to: the
+    // selected walls (both their textures) or flats, or, with neither
+    // selected and hoverAllowed, the surface under the cursor.
+    template <typename Fn>
+    void ForEachTargetSurface(Level& level, const bool hoverAllowed, Fn&& fn) {
         if (!selectedWalls.empty()) {
             for (const int wallIndex : selectedWalls) {
                 if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
 
                 Wall& wall = level.walls[wallIndex];
-                FlipWallSurface(wall.top, flipX, flipY);
-                FlipWallSurface(wall.bottom, flipX, flipY);
+                fn(wall.top);
+                fn(wall.bottom);
             }
             return;
         }
@@ -583,33 +601,74 @@ namespace {
                 if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
 
                 SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
-                FlipSectorSurface(flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling, flipX, flipY);
+                fn(flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling);
             }
             return;
         }
 
-        if (!hoverAllowed) return;
+        if (hoverAllowed) ForHoveredSurface(level, fn);
+    }
 
-        switch (hoveredSurface.type) {
-            case RayHitType::Wall:
-                if (hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size()))
-                    FlipWallSurface(level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot), flipX, flipY);
-                break;
+    // Each surface toggles on its own, so a mixed selection stays mixed.
+    void FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
+        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+            if (flipX) surface.flipTextureX = !surface.flipTextureX;
+            if (flipY) surface.flipTextureY = !surface.flipTextureY;
+        });
+    }
 
-            case RayHitType::SectorFloor:
-            case RayHitType::SectorCeiling: {
-                if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) break;
+    // Shift+C / Shift+V copy and paste a surface's texture; Alt+C / Alt+V
+    // its offset, scale and flip as well. Fixed combos, like Ctrl+C/V in
+    // the map editor. Walls and flats share one clipboard.
+    struct SurfaceClipboard {
+        bool hasTexture = false;
+        bool hasPlacement = false; // copied with Alt
 
-                Sector& sector = level.sectors[hoveredSurface.sectorIndex];
-                if (hoveredSurface.floorIndex < 0 || hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) break;
+        std::string texture;
+        Vector2 textureOffset = {0.0f, 0.0f};
+        Vector2 textureScale = {1.0f, 1.0f};
+        bool flipTextureX = false;
+        bool flipTextureY = false;
+    };
 
-                SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
-                FlipSectorSurface(hoveredSurface.type == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling, flipX, flipY);
-                break;
+    SurfaceClipboard surfaceClipboard;
+
+    bool ShiftHeld() { return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT); }
+    bool AltHeld() { return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT); }
+
+    // Copies the hovered surface. False if the cursor isn't on one.
+    bool CopyHoveredSurface(Level& level, const bool withPlacement) {
+        return ForHoveredSurface(level, [&](const auto& surface) {
+            surfaceClipboard = {};
+            surfaceClipboard.hasTexture = true;
+            surfaceClipboard.hasPlacement = withPlacement;
+            surfaceClipboard.texture = surface.texture;
+
+            if (withPlacement) {
+                surfaceClipboard.textureOffset = surface.textureOffset;
+                surfaceClipboard.textureScale = surface.textureScale;
+                surfaceClipboard.flipTextureX = surface.flipTextureX;
+                surfaceClipboard.flipTextureY = surface.flipTextureY;
             }
+        });
+    }
 
-            default: break;
-        }
+    // Placement only goes with Alt, and only if it was copied with Alt.
+    void PasteSurface(Level& level, const bool withPlacement, const bool hoverAllowed) {
+        if (!surfaceClipboard.hasTexture) return;
+
+        const bool pastePlacement = withPlacement && surfaceClipboard.hasPlacement;
+
+        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+            surface.texture = surfaceClipboard.texture;
+
+            if (pastePlacement) {
+                surface.textureOffset = surfaceClipboard.textureOffset;
+                surface.textureScale = surfaceClipboard.textureScale;
+                surface.flipTextureX = surfaceClipboard.flipTextureX;
+                surface.flipTextureY = surfaceClipboard.flipTextureY;
+            }
+        });
     }
 
     bool IsUvEditableSurface(const RayHitType type) {
@@ -703,8 +762,7 @@ namespace {
 }
 
 namespace RuntimeEditorUi {
-    constexpr bool DRAGGABLE = true;
-    // =========================================================================
+    constexpr bool DRAGGABLE = true;    // =========================================================================
     //  Toolbar: square icon buttons centred along the top of the window, the
     //  same look as the Map Editor's (MapEditorUI.cpp, DrawToolbar)
     // =========================================================================
@@ -1008,6 +1066,12 @@ namespace RuntimeEditorUi {
         MapEditorInternal::assetBrowser.DrawTextEditorWindow(nullptr);
         MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
 
+        // Centred a little below the toolbar: its 6px margin, 32px buttons
+        // and padding end ~54px down.
+        constexpr float TOAST_TOP_OFFSET = 62.0f;
+
+        ImGuiDrawFunctions::DrawNotificationBelow(ImGui::GetIO().DeltaTime, ImGui::GetMainViewport()->WorkPos.y + TOAST_TOP_OFFSET);
+
         // ── Drop textures straight onto geometry ─────────────────────────────
         // The 3D view is not an ImGui window, so there is no item to hang a
         // BeginDragDropTarget() off. Watch the live payload instead and apply it
@@ -1203,7 +1267,8 @@ namespace RuntimeEditor {
 
             if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
             if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
-            if (GetKeyBind(KEYBIND_RT_RESET_SPEED)) moveSpeed = BASE_MOVE_SPEED;
+            // Shift/Alt + C copies a texture (see below), so not a reset there.
+            if (GetKeyBind(KEYBIND_RT_RESET_SPEED) && !ShiftHeld() && !AltHeld()) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
 
@@ -1484,6 +1549,24 @@ namespace RuntimeEditor {
 
             // The hovered fallback needs the cursor on the view, not a panel.
             if (flipX || flipY) FlipTextures(level, flipX, flipY, !mouseBlockedByImGui);
+        }
+
+        // Texture copy / paste. Alt wins when both are held.
+        if (windowFocused && !keyboardBlockedByImGui && (ShiftHeld() || AltHeld())) {
+            const bool withPlacement = AltHeld();
+
+            if (InputManager::GetKeyDown(SDL_SCANCODE_C) && !mouseBlockedByImGui && CopyHoveredSurface(level, withPlacement)) {
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(withPlacement
+                    ? "runtime_editor.toast.texture_and_placement_copied"
+                    : "runtime_editor.toast.texture_copied").c_str(), false, 1.5f);
+            }
+
+            if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
+                PasteSurface(level, withPlacement, !mouseBlockedByImGui);
+
+                // The copied image may not be in the atlas yet.
+                runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+            }
         }
 
         //endregion

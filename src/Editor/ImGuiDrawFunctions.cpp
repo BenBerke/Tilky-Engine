@@ -3035,6 +3035,65 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Focus helper
     // ─────────────────────────────────────────────────────────────────────────
+    namespace {
+        struct Toast {
+            char message[128];
+            float remainingSeconds;
+            bool isError;
+        };
+
+        Toast s_toast{};
+
+        // The window's `pivot` point goes at `position`.
+        void DrawToast(const float dt, const ImVec2 position, const ImVec2 pivot) {
+            if (s_toast.remainingSeconds <= 0.0f) return;
+            s_toast.remainingSeconds -= dt;
+
+            ImGui::SetNextWindowPos(position, ImGuiCond_Always, pivot);
+            ImGui::SetNextWindowBgAlpha(0.88f);
+
+            constexpr ImGuiWindowFlags flags =
+                    ImGuiWindowFlags_NoDecoration |
+                    ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoSavedSettings |
+                    ImGuiWindowFlags_NoFocusOnAppearing |
+                    ImGuiWindowFlags_NoNav |
+                    ImGuiWindowFlags_AlwaysAutoResize;
+
+            ImGui::Begin("##Toast", nullptr, flags);
+
+            const ImVec4 col = s_toast.isError
+                                   ? ImVec4(1.00f, 0.45f, 0.45f, 1.00f)
+                                   : ImVec4(0.55f, 1.00f, 0.65f, 1.00f);
+
+            ImGui::PushStyleColor(ImGuiCol_Text, col);
+            ImGui::Text("  %s  ", s_toast.message);
+            ImGui::PopStyleColor();
+
+            ImGui::End();
+        }
+    }
+
+    void ShowNotification(const char *msg, const bool isError, const float duration) {
+        std::strncpy(s_toast.message, msg, sizeof(s_toast.message) - 1);
+        s_toast.message[sizeof(s_toast.message) - 1] = '\0';
+        s_toast.remainingSeconds = duration;
+        s_toast.isError = isError;
+    }
+
+    void DrawNotification(const float dt) {
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        constexpr float margin = 16.0f;
+
+        DrawToast(dt, ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y - margin), ImVec2(0.5f, 1.0f));
+    }
+
+    void DrawNotificationBelow(const float dt, const float topY) {
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+
+        DrawToast(dt, ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, topY), ImVec2(0.5f, 0.0f));
+    }
+
     void SetImGuiFocus(const bool focus) {
         ImGuiIO &io = ImGui::GetIO();
         if (focus) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
