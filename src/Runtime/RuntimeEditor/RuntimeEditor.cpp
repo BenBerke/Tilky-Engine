@@ -653,6 +653,129 @@ namespace {
         if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, sector.floors, lightBefore);
     }
 
+    // Shift+R / Shift+F copy and paste a whole wall's or sector's properties.
+    // Walls: colour, both textures with their placement, tags. Sectors:
+    // light, tags, and every floor's floor and ceiling (heights included),
+    // floor N onto floor N - floors past the shorter count are left alone
+    // and the floor count itself never changes. Never copied: name, scripts,
+    // geometry and sector links.
+    struct PropertyClipboard {
+        enum class Kind { None, Wall, Sector } kind = Kind::None;
+
+        // Wall
+        Vector4 color = {};
+        WallSurface top;
+        WallSurface bottom;
+
+        // Sector
+        Vector3 light = {};
+        std::vector<SectorFloor> floors;
+
+        std::vector<std::string> tags;
+        std::vector<uint16_t> tagIds;
+    };
+
+    PropertyClipboard propertyClipboard;
+
+    // The wall or sector under the cursor (a floor or ceiling's sector).
+    // False if the cursor is on neither.
+    bool CopyHoveredProperties(Level& level) {
+        if (hoveredSurface.type == RayHitType::Wall) {
+            if (hoveredSurface.wallIndex < 0 || hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
+
+            const Wall& wall = level.walls[hoveredSurface.wallIndex];
+
+            propertyClipboard = {};
+            propertyClipboard.kind = PropertyClipboard::Kind::Wall;
+            propertyClipboard.color = wall.color;
+            propertyClipboard.top = wall.top;
+            propertyClipboard.bottom = wall.bottom;
+            propertyClipboard.tags = wall.tags;
+            propertyClipboard.tagIds = wall.tagIds;
+            return true;
+        }
+
+        if (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling) {
+            if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return false;
+
+            const Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+
+            propertyClipboard = {};
+            propertyClipboard.kind = PropertyClipboard::Kind::Sector;
+            propertyClipboard.light = sector.light;
+            propertyClipboard.floors = sector.floors;
+            propertyClipboard.tags = sector.tags;
+            propertyClipboard.tagIds = sector.tagIds;
+            return true;
+        }
+
+        return false;
+    }
+
+    void PasteWallProperties(Wall& wall) {
+        wall.color = propertyClipboard.color;
+        wall.top = propertyClipboard.top;
+        wall.bottom = propertyClipboard.bottom;
+        wall.tags = propertyClipboard.tags;
+        wall.tagIds = propertyClipboard.tagIds;
+    }
+
+    void PasteSectorProperties(Level& level, Sector& sector) {
+        const std::vector<SectorFloor> floorsBefore = sector.floors;
+        const Vector3 lightBefore = sector.light;
+
+        sector.light = propertyClipboard.light;
+        sector.tags = propertyClipboard.tags;
+        sector.tagIds = propertyClipboard.tagIds;
+
+        // The surfaces only: a floor that's mid-move keeps moving.
+        const std::size_t floorCount = std::min(sector.floors.size(), propertyClipboard.floors.size());
+
+        for (std::size_t i = 0; i < floorCount; ++i) {
+            sector.floors[i].floor = propertyClipboard.floors[i].floor;
+            sector.floors[i].ceiling = propertyClipboard.floors[i].ceiling;
+        }
+
+        if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, floorsBefore, lightBefore);
+    }
+
+    // Onto the selection when it's the copied kind (a selected floor or
+    // ceiling stands for its sector), otherwise onto the hovered one. A
+    // selection of the other kind takes nothing, the hovered one included.
+    void PasteProperties(Level& level, const bool hoverAllowed) {
+        if (propertyClipboard.kind == PropertyClipboard::Kind::Wall) {
+            if (!selectedFlats.empty()) return;
+
+            if (!selectedWalls.empty()) {
+                for (const int wallIndex : selectedWalls)
+                    if (wallIndex >= 0 && wallIndex < static_cast<int>(level.walls.size())) PasteWallProperties(level.walls[wallIndex]);
+                return;
+            }
+
+            if (hoverAllowed && hoveredSurface.type == RayHitType::Wall &&
+                hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size()))
+                PasteWallProperties(level.walls[hoveredSurface.wallIndex]);
+            return;
+        }
+
+        if (propertyClipboard.kind == PropertyClipboard::Kind::Sector) {
+            if (!selectedWalls.empty()) return;
+
+            std::vector<int> sectorIndices;
+
+            if (!selectedFlats.empty()) {
+                for (const SelectedFlat& flat : selectedFlats)
+                    if (std::ranges::find(sectorIndices, flat.sectorIndex) == sectorIndices.end()) sectorIndices.push_back(flat.sectorIndex);
+            }
+            else if (hoverAllowed && (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling))
+                sectorIndices.push_back(hoveredSurface.sectorIndex);
+
+            for (const int sectorIndex : sectorIndices)
+                if (sectorIndex >= 0 && sectorIndex < static_cast<int>(level.sectors.size()))
+                    PasteSectorProperties(level, level.sectors[sectorIndex]);
+        }
+    }
+
     // Copies the hovered surface. False if the cursor isn't on one.
     bool CopyHoveredSurface(Level& level, const bool withPlacement) {
         return ForHoveredSurface(level, [&](const auto& surface) {
@@ -1586,6 +1709,20 @@ namespace RuntimeEditor {
                 PasteSurface(level, withPlacement, !mouseBlockedByImGui);
 
                 // The copied image may not be in the atlas yet.
+                runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+            }
+        }
+
+        // Wall / sector property copy (Shift+R) and paste (Shift+F).
+        if (windowFocused && !keyboardBlockedByImGui && ShiftHeld()) {
+            if (InputManager::GetKeyDown(SDL_SCANCODE_R) && !mouseBlockedByImGui && CopyHoveredProperties(level)) {
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(propertyClipboard.kind == PropertyClipboard::Kind::Wall
+                    ? "runtime_editor.toast.wall_properties_copied"
+                    : "runtime_editor.toast.sector_properties_copied").c_str(), false, 1.5f);
+            }
+
+            if (InputManager::GetKeyDown(SDL_SCANCODE_F)) {
+                PasteProperties(level, !mouseBlockedByImGui);
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
         }

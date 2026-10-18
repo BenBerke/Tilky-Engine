@@ -119,6 +119,8 @@
   "editor.user_settings.key_listening": "Press a key...",
   "runtime_editor.tools_window": "Tools",
   "runtime_editor.toast.texture_copied": "Texture copied",
+  "runtime_editor.toast.wall_properties_copied": "Wall properties copied",
+  "runtime_editor.toast.sector_properties_copied": "Sector properties copied",
   "runtime_editor.toast.texture_and_placement_copied": "Texture and placement copied",
   "runtime_editor.tool.move": "Move",
   "runtime_editor.tool.rotate": "Rotate",
