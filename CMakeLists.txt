@@ -533,6 +533,7 @@ set(TILKY_EDITOR_SOURCES
 
         src/Runtime/RuntimeEditor/RuntimeEditor.cpp
         src/Runtime/RuntimeEditor/TransformGizmo.cpp
+        src/Runtime/RuntimeEditor/MultiEdit.cpp
 
         src/Editor/UIEditor/UIEditorUI.cpp
         src/Editor/UIEditor/UIEditorInput.cpp

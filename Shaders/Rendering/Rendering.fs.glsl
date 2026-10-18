@@ -8,6 +8,7 @@
 
 // SurfaceMetaData bit flags (Headers/Runtime/Renderer/SurfaceMetaData.hpp).
 #define SURFACE_META_HOVERED 1
+#define SURFACE_META_SELECTED 2
 
 in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
@@ -18,7 +19,7 @@ in vec2 vFlatUV;
 flat in int vTextureIndex;
 flat in int vFlatTextureIndex;
 flat in vec4 vColor;
-flat in int vSurfaceMetaData; // walls and flats only
+flat in int vSurfaceMetaData;
 
 in vec3 vWorldPos;
 in vec2 vSurfaceCoord;
@@ -52,9 +53,12 @@ const float MODEL_AMBIENT = 0.55;
 const float WALL_AO_DISTANCE = 12.0;
 const float WALL_AO_STRENGTH = 0.28;
 
-// Runtime editor hover highlight, mixed over the lit colour.
+// Runtime editor highlights, mixed over the lit colour. Hover goes on top,
+// so a selected surface under the cursor still reads as hovered.
+const vec3 SELECTED_TINT_COLOR = vec3(0.15, 0.45, 1.0);
+const float SELECTED_TINT_STRENGTH = 0.18;
 const vec3 HOVER_TINT_COLOR = vec3(1.0, 0.1, 0.1);
-const float HOVER_TINT_STRENGTH = 0.4;
+const float HOVER_TINT_STRENGTH = 0.2;
 
 struct TextureRegion {
     vec4 uvRect;
@@ -133,6 +137,9 @@ vec4 ApplyLighting(vec4 color, bool applyWallAO) {
 }
 
 vec4 ApplySurfaceMetaData(vec4 color) {
+    if ((vSurfaceMetaData & SURFACE_META_SELECTED) != 0)
+        color.rgb = mix(color.rgb, SELECTED_TINT_COLOR, SELECTED_TINT_STRENGTH);
+
     if ((vSurfaceMetaData & SURFACE_META_HOVERED) != 0)
         color.rgb = mix(color.rgb, HOVER_TINT_COLOR, HOVER_TINT_STRENGTH);
 
@@ -161,7 +168,7 @@ void main() {
 
         if (texColor.a < 0.1) discard;
 
-        FragColor = ApplyLighting(texColor * vColor, false);
+        FragColor = ApplySurfaceMetaData(ApplyLighting(texColor * vColor, false));
         return;
     }
     else if (renderMode == RENDER_MODEL) {
@@ -170,7 +177,7 @@ void main() {
 
         if (color.a < 0.1) discard;
 
-        FragColor = ApplyLighting(vec4(color.rgb * vColor.rgb * GetModelShade(), color.a), false);
+        FragColor = ApplySurfaceMetaData(ApplyLighting(vec4(color.rgb * vColor.rgb * GetModelShade(), color.a), false));
         return;
     }
     else if (renderMode == RENDER_COLLIDER){

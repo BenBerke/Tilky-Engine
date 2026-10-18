@@ -2076,3 +2076,55 @@ namespace LevelSerialization {
         return true;
     }
 }
+
+namespace LevelSerialization {
+    // One-element levels, so these stay exactly the save format's per-wall
+    // and per-sector objects instead of a second copy of it.
+    json WallToJson(const Wall& wall) {
+        Level level;
+        level.walls.push_back(wall);
+
+        json levelData;
+        SaveWalls(levelData, level);
+
+        return levelData.at("walls").at(0);
+    }
+
+    bool WallFromJson(const json& data, Wall& outWall) {
+        try {
+            Level level;
+            LoadWalls(json{{"walls", json::array({data})}}, level);
+            if (level.walls.size() != 1) return false;
+
+            outWall = std::move(level.walls.front());
+            return true;
+        } catch (const std::exception& exception) {
+            spdlog::warn("WallFromJson: {}", exception.what());
+            return false;
+        }
+    }
+
+    json SectorToJson(const Sector& sector) {
+        Level level;
+        level.sectors.push_back(sector);
+
+        json levelData;
+        SaveSectors(levelData, level);
+
+        return levelData.at("sectors").at(0);
+    }
+
+    bool SectorFromJson(const json& data, Sector& outSector) {
+        try {
+            Level level;
+            LoadSectors(json{{"sectors", json::array({data})}}, level);
+            if (level.sectors.size() != 1) return false;
+
+            outSector = std::move(level.sectors.front());
+            return true;
+        } catch (const std::exception& exception) {
+            spdlog::warn("SectorFromJson: {}", exception.what());
+            return false;
+        }
+    }
+}

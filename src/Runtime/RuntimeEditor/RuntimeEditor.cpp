@@ -20,8 +20,10 @@
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Runtime/RuntimeEditor/TransformGizmo.hpp"
+#include "Headers/Runtime/RuntimeEditor/MultiEdit.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -31,6 +33,7 @@
 #include <optional>
 #include <SDL3/SDL.h>
 #include <string>
+#include <vector>
 
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
@@ -105,6 +108,26 @@ namespace {
     RayHitType selectedSectorSurface = RayHitType::None;
     int selectedSectorFloor = -1;
 
+    // Multi-selection (Shift + right-click). Each list holds every selected
+    // item of its kind, the primary - the one the inspector above shows -
+    // included. Only one kind is ever selected at a time.
+    std::vector<ID> selectedEntityIds;
+    std::vector<int> selectedWalls; // indices into level.walls
+
+    // A floor or ceiling of one of a sector's floors. Floors and ceilings
+    // count as one kind, so both can be in the selection together.
+    struct SelectedFlat {
+        int sectorIndex = -1;
+        int floorIndex = -1;
+        RayHitType surface = RayHitType::SectorFloor;
+
+        bool operator==(const SelectedFlat&) const = default;
+    };
+
+    std::vector<SelectedFlat> selectedFlats;
+
+    enum class SelectionKind { None, Entity, Wall, Flat };
+
     // Camera look and UV-offset dragging both consume relative mouse motion.
     // Keep the cursor locked while either interaction is active and release it
     // only after both have ended. Update() owns this; Draw() only reads it.
@@ -160,6 +183,133 @@ namespace {
         entityInspectorState = {};
     }
 
+    void ClearEntitySelection() {
+        editingEntity = false;
+        selectedEntityId.reset();
+        selectedEntityIds.clear();
+        ResetEntityInspectorState();
+    }
+
+    void ClearWallSelection() {
+        editingWall = false;
+        selectedWall = -1;
+        selectedWalls.clear();
+    }
+
+    void ClearFlatSelection() {
+        editingSector = false;
+        selectedSector = -1;
+        selectedSectorSurface = RayHitType::None;
+        selectedSectorFloor = -1;
+        selectedFlats.clear();
+    }
+
+    SelectionKind CurrentSelectionKind() {
+        if (editingEntity && selectedEntityId.has_value()) return SelectionKind::Entity;
+        if (editingWall && selectedWall >= 0) return SelectionKind::Wall;
+        if (editingSector && selectedSector >= 0) return SelectionKind::Flat;
+        return SelectionKind::None;
+    }
+
+    // Plain click: the clicked item becomes the whole selection.
+    void SelectOnlyEntity(const ID entityID) {
+        ClearWallSelection();
+        ClearFlatSelection();
+
+        if (!selectedEntityId.has_value() || *selectedEntityId != entityID) ResetEntityInspectorState();
+
+        selectedEntityIds = {entityID};
+        selectedEntityId = entityID;
+        editingEntity = true;
+    }
+
+    void SelectOnlyWall(const int wallIndex) {
+        ClearEntitySelection();
+        ClearFlatSelection();
+
+        selectedWalls = {wallIndex};
+        selectedWall = wallIndex;
+        editingWall = true;
+    }
+
+    void SetPrimaryFlat(const SelectedFlat& flat) {
+        selectedSector = flat.sectorIndex;
+        selectedSectorFloor = flat.floorIndex;
+        selectedSectorSurface = flat.surface;
+        editingSector = true;
+    }
+
+    void SelectOnlyFlat(const SelectedFlat& flat) {
+        ClearEntitySelection();
+        ClearWallSelection();
+
+        selectedFlats = {flat};
+        SetPrimaryFlat(flat);
+    }
+
+    // Shift-click on the kind already selected: adds the item and makes it
+    // the primary, or - if it was already selected - drops it, handing the
+    // inspector to the most recently added item still left.
+    void ToggleEntity(const ID entityID) {
+        if (const auto it = std::ranges::find(selectedEntityIds, entityID); it != selectedEntityIds.end()) {
+            selectedEntityIds.erase(it);
+
+            if (selectedEntityIds.empty()) {
+                ClearEntitySelection();
+                return;
+            }
+
+            if (*selectedEntityId == entityID) {
+                selectedEntityId = selectedEntityIds.back();
+                ResetEntityInspectorState();
+            }
+
+            return;
+        }
+
+        selectedEntityIds.push_back(entityID);
+        selectedEntityId = entityID;
+        ResetEntityInspectorState();
+    }
+
+    void ToggleWall(const int wallIndex) {
+        if (const auto it = std::ranges::find(selectedWalls, wallIndex); it != selectedWalls.end()) {
+            selectedWalls.erase(it);
+
+            if (selectedWalls.empty()) {
+                ClearWallSelection();
+                return;
+            }
+
+            if (selectedWall == wallIndex) selectedWall = selectedWalls.back();
+            return;
+        }
+
+        selectedWalls.push_back(wallIndex);
+        selectedWall = wallIndex;
+    }
+
+    void ToggleFlat(const SelectedFlat& flat) {
+        if (const auto it = std::ranges::find(selectedFlats, flat); it != selectedFlats.end()) {
+            const bool wasPrimary = it->sectorIndex == selectedSector &&
+                                    it->floorIndex == selectedSectorFloor &&
+                                    it->surface == selectedSectorSurface;
+
+            selectedFlats.erase(it);
+
+            if (selectedFlats.empty()) {
+                ClearFlatSelection();
+                return;
+            }
+
+            if (wasPrimary) SetPrimaryFlat(selectedFlats.back());
+            return;
+        }
+
+        selectedFlats.push_back(flat);
+        SetPrimaryFlat(flat);
+    }
+
     // Relative mode supplies motion without moving the OS pointer. The
     // one-pixel rectangle fixes its absolute position as well. Restore that
     // position before leaving relative mode so the cursor reappears exactly
@@ -207,12 +357,6 @@ namespace {
         }
 
         InputManager::SetRelativeMouseMode(editorWindow, false);
-    }
-
-    Entity* FindEntityById(Level& level, const ID entityId) {
-        for (Entity& entity : level.entities) if (entity.id == entityId) return &entity;
-
-        return nullptr;
     }
 
     // The gizmo only shows while an entity's inspector is open.
@@ -491,6 +635,11 @@ namespace {
 namespace RuntimeEditorUi {
     constexpr bool DRAGGABLE = true;
     void Draw(Level& level) {
+        // The browser is shared with the Map Editor, which hands it a font
+        // from the editor's ImGui context every frame. This context has its
+        // own copy; drawing with the other one shows the wrong glyphs.
+        if (runtimeRenderer != nullptr) MapEditorInternal::assetBrowser.SetIconFont(runtimeRenderer->GetImGuiIconFont());
+
         if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
             TransformGizmo::View view;
 
@@ -506,38 +655,36 @@ namespace RuntimeEditorUi {
         }
 
         if (editingEntity) {
-            if (!selectedEntityId.has_value()) {
-                editingEntity = false;
-                ResetEntityInspectorState();
+            // Drop anything deleted since it was selected (scripts can destroy
+            // entities while the runtime editor is open).
+            std::erase_if(selectedEntityIds, [&](const ID id) { return level.GetEntity(id) == nullptr; });
+
+            if (!selectedEntityId.has_value() || level.GetEntity(*selectedEntityId) == nullptr) {
+                ClearEntitySelection();
                 return;
             }
 
-            Entity* entityToEdit = FindEntityById(level, *selectedEntityId);
+            Entity* entityToEdit = level.GetEntity(*selectedEntityId);
+            const ID primaryID = entityToEdit->id;
 
-            if (entityToEdit == nullptr) {
-                editingEntity = false;
-                selectedEntityId.reset();
-                ResetEntityInspectorState();
-                return;
-            }
+            // Snapshotted only when there is someone to mirror onto.
+            const bool mirrors = selectedEntityIds.size() > 1;
+            const nlohmann::json before = mirrors ? MultiEdit::EntityState(level, primaryID) : nlohmann::json{};
 
             const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
 
             if (deleteRequested) {
-                const ID idToDelete = entityToEdit->id;
+                const std::vector<ID> idsToDelete = selectedEntityIds;
 
-                editingEntity = false;
-                selectedEntityId.reset();
-                ResetEntityInspectorState();
+                ClearEntitySelection();
 
-                level.DestroyEntity(idToDelete);
+                for (const ID id : idsToDelete) level.DestroyEntity(id);
                 return;
             }
 
             if (!editingEntity) {
-                selectedEntityId.reset();
-                ResetEntityInspectorState();
+                ClearEntitySelection();
                 return;
             }
 
@@ -548,42 +695,75 @@ namespace RuntimeEditorUi {
                     &entityInspectorState.editingComponent, DRAGGABLE
                 );
             }
+
+            if (mirrors) {
+                const nlohmann::json after = MultiEdit::EntityState(level, primaryID);
+
+                if (after != before)
+                    for (const ID id : selectedEntityIds)
+                        if (id != primaryID) MultiEdit::MirrorEntityEdit(level, before, after, id);
+            }
         }
 
         if (editingWall) {
+            std::erase_if(selectedWalls, [&](const int index) { return index < 0 || index >= static_cast<int>(level.walls.size()); });
+
             if (selectedWall < 0 || selectedWall >= static_cast<int>(level.walls.size())) {
-                editingWall = false;
-                selectedWall = -1;
+                ClearWallSelection();
                 return;
             }
 
-            Wall& wall = level.walls[selectedWall];
+            const bool mirrors = selectedWalls.size() > 1;
+            const nlohmann::json before = mirrors ? MultiEdit::WallState(level.walls[selectedWall]) : nlohmann::json{};
 
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE);
+                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE);
 
             if (deleteRequested) {
-                level.walls.erase(level.walls.begin() + selectedWall);
+                // Highest index first, so each erase leaves the rest valid.
+                std::vector<int> indicesToDelete = selectedWalls;
+                std::ranges::sort(indicesToDelete, std::greater{});
 
-                editingWall = false;
-                selectedWall = -1;
+                ClearWallSelection();
+
+                for (const int index : indicesToDelete) level.walls.erase(level.walls.begin() + index);
                 return;
             }
 
             if (!editingWall) {
-                selectedWall = -1;
+                ClearWallSelection();
                 return;
+            }
+
+            if (mirrors) {
+                const nlohmann::json after = MultiEdit::WallState(level.walls[selectedWall]);
+
+                if (after != before)
+                    for (const int index : selectedWalls)
+                        if (index != selectedWall) MultiEdit::MirrorWallEdit(before, after, level.walls[index]);
             }
         }
 
         if (editingSector) {
+            std::erase_if(selectedFlats, [&](const SelectedFlat& flat) {
+                return flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size());
+            });
+
             if (selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) {
-                editingSector = false;
-                selectedSector = -1;
-                selectedSectorSurface = RayHitType::None;
-                selectedSectorFloor = -1;
+                ClearFlatSelection();
             }
             else {
+                // The inspector edits whole sectors, so a selection of several
+                // floors/ceilings mirrors onto each other sector they belong to.
+                std::vector<int> otherSectors;
+
+                for (const SelectedFlat& flat : selectedFlats)
+                    if (flat.sectorIndex != selectedSector && std::ranges::find(otherSectors, flat.sectorIndex) == otherSectors.end())
+                        otherSectors.push_back(flat.sectorIndex);
+
+                const bool mirrors = !otherSectors.empty();
+                const nlohmann::json before = mirrors ? MultiEdit::SectorState(level.sectors[selectedSector]) : nlohmann::json{};
+
                 bool open = true;
 
                 ImGuiDrawFunctions::DrawSectorEditor(
@@ -593,10 +773,13 @@ namespace RuntimeEditorUi {
                 );
 
                 if (!open) {
-                    editingSector = false;
-                    selectedSector = -1;
-                    selectedSectorSurface = RayHitType::None;
-                    selectedSectorFloor = -1;
+                    ClearFlatSelection();
+                }
+                else if (mirrors) {
+                    const nlohmann::json after = MultiEdit::SectorState(level.sectors[selectedSector]);
+
+                    if (after != before)
+                        for (const int index : otherSectors) MultiEdit::MirrorSectorEdit(before, after, level.sectors[index]);
                 }
             }
         }
@@ -919,10 +1102,41 @@ namespace RuntimeEditor {
             }
         }
 
+        renderer.ClearSurfaceMarks();
+
+        // Blue tint on everything selected. A wall is selected whole, so both
+        // its pieces get it.
+        {
+            SurfaceMark mark;
+            mark.metaData = SURFACE_META_SELECTED;
+
+            mark.kind = MarkedSurfaceKind::Entity;
+            for (const ID id : selectedEntityIds) {
+                mark.entityID = id;
+                renderer.MarkSurface(mark);
+            }
+
+            mark.kind = MarkedSurfaceKind::Wall;
+            for (const int index : selectedWalls) {
+                mark.wallIndex = index;
+
+                for (const WallSurfaceSlot slot : {WallSurfaceSlot::Top, WallSurfaceSlot::Bottom}) {
+                    mark.wallSlot = slot;
+                    renderer.MarkSurface(mark);
+                }
+            }
+
+            for (const SelectedFlat& flat : selectedFlats) {
+                mark.kind = flat.surface == RayHitType::SectorCeiling ? MarkedSurfaceKind::Ceiling : MarkedSurfaceKind::Floor;
+                mark.sectorIndex = flat.sectorIndex;
+                mark.floorIndex = flat.floorIndex;
+                renderer.MarkSurface(mark);
+            }
+        }
+
         // Red tint on the hovered surface. Same "over the 3D view" test as
         // Draw()'s drop target, so it also shows while dragging a texture in
         // from the asset browser, but not while the cursor is over a panel.
-        renderer.ClearSurfaceMarks();
 
         constexpr ImGuiHoveredFlags hoverFlags =
             ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
@@ -990,11 +1204,32 @@ namespace RuntimeEditor {
         if (TransformGizmo::IsDragging()) {
             const bool snap = !InputManager::GetKey(SDL_SCANCODE_LCTRL) && !InputManager::GetKey(SDL_SCANCODE_RCTRL);
 
+            const Vector3 positionBefore = gizmoTarget->position;
+            const Quaternion rotationBefore = gizmoTarget->rotation;
+
             if (TransformGizmo::UpdateDrag(gizmoView, *gizmoTarget, InputManager::GetMousePosition(), snap)) {
                 gizmoChangedTransform = true;
 
                 // Lighting and the entity's sector both follow its position.
                 gizmoTarget->UpdateObjectSectorAndFloor(level.sectors);
+
+                // The rest of the selection follows by the same step: moved
+                // by the same offset, or turned by the same world-axis
+                // rotation about each one's own origin.
+                const Vector3 moved = gizmoTarget->position - positionBefore;
+                const Quaternion turned = (gizmoTarget->rotation * rotationBefore.Inversed()).Normalized();
+
+                for (const ID id : selectedEntityIds) {
+                    if (id == *selectedEntityId) continue;
+
+                    ComponentTransform* other = level.transforms.Get(id);
+                    if (other == nullptr) continue;
+
+                    if (gizmoTool == TransformGizmo::Tool::Move) other->AddPosition(moved);
+                    else other->rotation = (turned * other->rotation).Normalized();
+
+                    other->UpdateObjectSectorAndFloor(level.sectors);
+                }
             }
         }
 
@@ -1082,6 +1317,16 @@ namespace RuntimeEditor {
                 hit->sector != nullptr
             );
 
+            // Shift adds to (or toggles within) the selection, but only items
+            // of the kind already selected. Shift-clicking another kind does
+            // nothing at all - the selection and the inspector stay as they were.
+            const bool additive = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+            const SelectionKind currentKind = CurrentSelectionKind();
+
+            const auto rejectsKind = [&](const SelectionKind clickedKind) {
+                return additive && currentKind != SelectionKind::None && currentKind != clickedKind;
+            };
+
             switch (hit->type) {
                 case RayHitType::Entity: {
                     if (hit->entity == nullptr) {
@@ -1089,24 +1334,14 @@ namespace RuntimeEditor {
                         return;
                     }
 
+                    if (rejectsKind(SelectionKind::Entity)) break;
+
                     const ID hitEntityId = hit->entity->id;
 
-                    spdlog::info("Selected entity {}", hitEntityId);
+                    if (additive && currentKind == SelectionKind::Entity) ToggleEntity(hitEntityId);
+                    else SelectOnlyEntity(hitEntityId);
 
-                    if (!selectedEntityId.has_value() || *selectedEntityId != hitEntityId) ResetEntityInspectorState();
-
-                    editingEntity = true;
-                    selectedEntityId = hitEntityId;
-
-                    editingWall = false;
-                    selectedWall = -1;
-
-                    editingSector = false;
-                    selectedSector = -1;
-                    selectedSectorSurface = RayHitType::None;
-                    selectedSectorFloor = -1;
-
-                    spdlog::info("Entity selection finished");
+                    spdlog::info("Selected entity {} ({} selected)", hitEntityId, selectedEntityIds.size());
                     break;
                 }
 
@@ -1116,28 +1351,19 @@ namespace RuntimeEditor {
                         return;
                     }
 
+                    if (rejectsKind(SelectionKind::Wall)) break;
+
                     const int wallIndex = FindWallIndex(level, hit->wall);
 
                     if (wallIndex == -1) {
                         spdlog::error("Selected wall was not found in level.walls");
-                        editingWall = false;
-                        selectedWall = -1;
                         return;
                     }
 
-                    editingWall = true;
-                    selectedWall = wallIndex;
+                    if (additive && currentKind == SelectionKind::Wall) ToggleWall(wallIndex);
+                    else SelectOnlyWall(wallIndex);
 
-                    editingEntity = false;
-                    selectedEntityId.reset();
-                    ResetEntityInspectorState();
-
-                    editingSector = false;
-                    selectedSector = -1;
-                    selectedSectorSurface = RayHitType::None;
-                    selectedSectorFloor = -1;
-
-                    spdlog::info("Selected wall {}", selectedWall);
+                    spdlog::info("Selected wall {} ({} selected)", wallIndex, selectedWalls.size());
                     break;
                 }
 
@@ -1148,34 +1374,26 @@ namespace RuntimeEditor {
                         return;
                     }
 
+                    if (rejectsKind(SelectionKind::Flat)) break;
+
                     const int sectorIndex = FindSectorIndex(level, hit->sector);
 
                     if (sectorIndex == -1) {
                         spdlog::error("Selected sector was not found in level.sectors");
-                        editingSector = false;
-                        selectedSector = -1;
-                        selectedSectorSurface = RayHitType::None;
-                        selectedSectorFloor = -1;
                         return;
                     }
 
-                    editingSector = true;
-                    selectedSector = sectorIndex;
-                    selectedSectorSurface = hit->type;
-                    selectedSectorFloor = hit->sectorFloorIndex;
+                    const SelectedFlat flat = {sectorIndex, hit->sectorFloorIndex, hit->type};
 
-                    editingEntity = false;
-                    selectedEntityId.reset();
-                    ResetEntityInspectorState();
-
-                    editingWall = false;
-                    selectedWall = -1;
+                    if (additive && currentKind == SelectionKind::Flat) ToggleFlat(flat);
+                    else SelectOnlyFlat(flat);
 
                     spdlog::info(
-                        "Selected sector {} floor={} surface={}",
-                        selectedSector,
-                        selectedSectorFloor,
-                        hit->type == RayHitType::SectorFloor ? "floor" : "ceiling"
+                        "Selected sector {} floor={} surface={} ({} selected)",
+                        sectorIndex,
+                        flat.floorIndex,
+                        hit->type == RayHitType::SectorFloor ? "floor" : "ceiling",
+                        selectedFlats.size()
                     );
 
                     break;
@@ -1271,14 +1489,9 @@ namespace RuntimeEditor {
         camera = nullptr;
         transform = nullptr;
 
-        editingEntity = false;
-        selectedEntityId.reset();
-        editingWall = false;
-        selectedWall = -1;
-        editingSector = false;
-        selectedSector = -1;
-        selectedSectorSurface = RayHitType::None;
-        selectedSectorFloor = -1;
+        ClearEntitySelection();
+        ClearWallSelection();
+        ClearFlatSelection();
 
         // Release both relative mode and our cursor rectangle before switching editors.
         SetCursorLocked(false);

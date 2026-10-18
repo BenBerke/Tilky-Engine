@@ -382,7 +382,10 @@ void OpenGL::BuildGpuModels() {
             instancesByBatch.emplace_back();
         }
 
-        instancesByBatch[batch->second].push_back(BuildModelInstance(*transform, modelComponent.offset, level));
+        GpuModelInstance instance = BuildModelInstance(*transform, modelComponent.offset, level);
+        instance.color.w = static_cast<float>(EntityMetaData(modelComponent.ownerID));
+
+        instancesByBatch[batch->second].push_back(instance);
     }
 
     for (size_t i = 0; i < modelBatches.size(); ++i) {

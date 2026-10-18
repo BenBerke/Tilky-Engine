@@ -68,6 +68,14 @@ namespace LevelSerialization {
     bool LoadPrefabFromFile(const std::filesystem::path& prefabFile, Level& outPrefab, std::string* errorMessage = nullptr);
     bool SavePrefabToFile(const std::filesystem::path& prefabFile, const Level& prefab, std::string* errorMessage = nullptr);
 
+    // One wall / sector as level.bson stores it in its "walls" / "sectors"
+    // array. FromJson returns false (outWall/outSector untouched) for data
+    // that can't be loaded.
+    nlohmann::json WallToJson(const Wall& wall);
+    bool WallFromJson(const nlohmann::json& data, Wall& outWall);
+    nlohmann::json SectorToJson(const Sector& sector);
+    bool SectorFromJson(const nlohmann::json& data, Sector& outSector);
+
     // One component's own fields, keyed as level.bson stores them, without
     // "ownerID"/"instanceID". FromJson returns false for data that can't be
     // loaded (the component is then skipped).

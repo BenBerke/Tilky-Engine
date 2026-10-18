@@ -39,6 +39,7 @@ struct Sprite {
 
     ivec4 flags;
 // flags.x = isStatic
+// flags.y = SurfaceMetaData flags of the owning entity
 };
 
 struct Wall {
@@ -122,6 +123,7 @@ struct ModelInstance {
     mat3 normalMatrix;
     vec4 color;
 // color.rgb = sector light
+// color.a = SurfaceMetaData flags of the owning entity
 };
 
 layout(std430, binding = 0) readonly buffer WallBuffer {
@@ -180,7 +182,7 @@ flat out int vTextureIndex;
 flat out int vFlatTextureIndex;
 flat out vec4 vColor;
 
-// SurfaceMetaData flags of the wall piece / floor / ceiling being drawn.
+// SurfaceMetaData flags of the wall piece / floor / ceiling / entity being drawn.
 flat out int vSurfaceMetaData;
 
 out vec2 vSpriteUV;
@@ -462,6 +464,7 @@ void renderSprite() {
     vSpriteUV = uv;
     vSpriteTextureIndex = textureIndex;
     vColor = sprite.color;
+    vSurfaceMetaData = sprite.flags.y;
 
     vWallUV = vec2(0.0);
     vFlatUV = vec2(0.0);
@@ -724,7 +727,8 @@ void renderModel() {
     vModelNormal = instance.normalMatrix * (uModelLocalNormal * aModelNormal);
     vModelUV = aModelUV;
 
-    vColor = instance.color;
+    vColor = vec4(instance.color.rgb, 1.0);
+    vSurfaceMetaData = int(instance.color.a);
 
     vWallUV = vec2(0.0);
     vFlatUV = vec2(0.0);
@@ -742,6 +746,8 @@ void renderModel() {
 }
 
 void main() {
+    vSurfaceMetaData = 0;
+
     if (renderMode == RENDER_FLAT) renderFlat();
     else if (renderMode == RENDER_WALL) renderWall();
     else if (renderMode == RENDER_SPRITE) renderSprite();

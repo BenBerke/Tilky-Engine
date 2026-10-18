@@ -82,6 +82,12 @@ public:
         return static_cast<ImTextureID>(0);
     }
 
+    // The icon font (Font Awesome) in this renderer's own ImGui context, or
+    // nullptr. A font from the editor's context can't be drawn here.
+    [[nodiscard]] virtual ImFont* GetImGuiIconFont() const {
+        return nullptr;
+    }
+
     // Surfaces to draw differently (see SurfaceMetaData). Kept until
     // cleared, so a caller re-marking every frame clears first.
     void ClearSurfaceMarks() {
@@ -112,6 +118,15 @@ protected:
         for (const SurfaceMark& mark : surfaceMarks)
             if (mark.kind == kind && mark.sectorIndex == sectorIndex && mark.floorIndex == floorIndex)
                 metaData |= mark.metaData;
+
+        return metaData;
+    }
+
+    [[nodiscard]] uint8_t EntityMetaData(const ID entityID) const {
+        uint8_t metaData = SURFACE_META_NONE;
+
+        for (const SurfaceMark& mark : surfaceMarks)
+            if (mark.kind == MarkedSurfaceKind::Entity && mark.entityID == entityID) metaData |= mark.metaData;
 
         return metaData;
     }

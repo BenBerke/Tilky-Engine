@@ -274,6 +274,25 @@ bool OpenGL::InitImGui() {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
+    // The same text and icon fonts the editor loads (Editor.cpp), so the
+    // runtime editor's panels - the asset browser's icons especially - look
+    // the same. Each context has its own font atlas, so they're loaded again
+    // here rather than shared. Missing files just fall back (the standalone
+    // game may not ship them).
+    std::error_code ec;
+
+    if (const std::filesystem::path textFont = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
+        std::filesystem::exists(textFont, ec)) {
+        if (ImFont* uiFont = io.Fonts->AddFontFromFileTTF(textFont.string().c_str(), 18.0f)) io.FontDefault = uiFont;
+    }
+
+    imguiIconFont = nullptr;
+
+    if (const std::filesystem::path iconFont = ProjectManager::FindAssetPath("EngineAssets/Fonts/FontAwesome6-Solid.otf");
+        std::filesystem::exists(iconFont, ec)) {
+        imguiIconFont = io.Fonts->AddFontFromFileTTF(iconFont.string().c_str(), 16.0f);
+    }
+
     // Whatever design the editor had, so the runtime editor matches it.
     EditorStyle::Apply(EditorStyle::ActiveDesign());
 

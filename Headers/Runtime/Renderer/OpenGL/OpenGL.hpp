@@ -177,7 +177,7 @@ namespace OpenGLRendererInternal {
     struct alignas(16) GpuModelInstance {
         float modelMatrix[16]{};  // mat4: transform.position * rotation * scale
         float normalMatrix[12]{}; // mat3: std430 pads each column to a vec4
-        Vector4 color;            // rgb = sector light, a = 1
+        Vector4 color;            // rgb = sector light, a = SurfaceMetaData flags
     };
 
     static_assert(sizeof(GpuModelInstance) == 128);
@@ -318,6 +318,10 @@ public:
 
     [[nodiscard]] ImTextureID GetImGuiTextureID(const std::string& fileName) override;
 
+    [[nodiscard]] ImFont* GetImGuiIconFont() const override {
+        return imguiIconFont;
+    }
+
 private:
     using Glyph = OpenGLRendererInternal::Glyph;
     using GlyphKey = OpenGLRendererInternal::GlyphKey;
@@ -335,6 +339,7 @@ private:
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
     ImGuiContext* imguiContext = nullptr;
+    ImFont* imguiIconFont = nullptr; // in imguiContext's atlas; see InitImGui
     bool windowShownOnce = false;
 
     GLuint VAO = 0;

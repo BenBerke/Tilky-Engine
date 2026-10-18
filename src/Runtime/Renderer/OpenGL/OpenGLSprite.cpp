@@ -81,7 +81,7 @@ void OpenGL::BuildGpuSprites() {
 
         gpuSprite.flags = {
             spriteComponent.isStatic ? 1 : 0,
-            0,
+            EntityMetaData(spriteComponent.ownerID),
             0,
             0
         };

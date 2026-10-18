@@ -97,6 +97,7 @@ void OpenGL::Shutdown() {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext(imguiContext);
         imguiContext = nullptr;
+        imguiIconFont = nullptr;
     }
 
     if (glContext != nullptr) {
