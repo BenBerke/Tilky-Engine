@@ -243,7 +243,11 @@ namespace Editor {
         const ImGuiIO &io = ImGui::GetIO();
 
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
-        const bool keyboardBlockedByImgui = io.WantCaptureKeyboard;
+        // Only a text field being typed into blocks the shortcuts.
+        // WantCaptureKeyboard is true whenever any ImGui window has focus
+        // (keyboard nav is on), so clicking a panel used to lock every
+        // shortcut until the canvas was clicked again.
+        const bool keyboardBlockedByImgui = io.WantTextInput;
 
         if (currentState == STATE_MAP) {
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
