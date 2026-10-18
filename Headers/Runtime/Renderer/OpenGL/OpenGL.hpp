@@ -142,6 +142,9 @@ namespace OpenGLRendererInternal {
 
     struct GpuSector {
         Vector4 floorData; // x = offset into sectorFloors, y = floor count
+        // minX, minY, maxX, maxY of the sector's flat triangles in map XY -
+        // the rectangle slopes are measured from (WallPieces::SectorBounds).
+        Vector4 bounds;
     };
 
     struct GpuSectorFloor {
@@ -404,6 +407,9 @@ private:
         GLsizei count = 0;
     };
     std::vector<FlatSectorRange> flatSectorRanges;
+    // Each sector's bounds from the same triangles, so slopes on the GPU
+    // match the baked flats (GpuSector::bounds).
+    std::vector<Vector4> flatSectorBounds;
     GLint flatInstanceOffsetUniform = -1;
 
     // Visibility culling, decided each frame by UpdateVisibleSectors. Only on

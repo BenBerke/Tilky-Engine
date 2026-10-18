@@ -53,6 +53,7 @@ namespace {
     void ResetCopiedRuntimeState(ComponentAudioSource& audio) {
         audio.name.clear(); // names the original's OpenAL source; the copy gets its own when started
         audio.isHeld = false;
+        audio.applied = {};
     }
 
     void ResetCopiedRuntimeState(ComponentPlayerController& controller) {

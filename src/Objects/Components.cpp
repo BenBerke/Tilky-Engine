@@ -92,42 +92,52 @@ bool ComponentAudioSource::IsPlaying() const {
 
 void ComponentAudioSource::SetSourcePitch(const float _pitch) const {
     SoundManager::SetSourcePitch(this->name, _pitch);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceGain(const float _gain) const {
     SoundManager::SetSourceGain(this->name, _gain);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceLooping(const bool _looping) const {
     SoundManager::SetSourceLooping(this->name, _looping);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceReferenceDistance(const float distance) const {
     SoundManager::SetSourceReferenceDistance(this->name, distance);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceMaxDistance(const float distance) const {
     SoundManager::SetSourceMaxDistance(this->name, distance);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceRollOffFactor(const float factor) const {
     SoundManager::SetSourceRollOffFactor(this->name, factor);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceInnerConeAngle(const float angle) const {
     SoundManager::SetSourceInnerConeAngle(this->name, angle);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceOuterConeAngle(const float angle) const {
     SoundManager::SetSourceOuterConeAngle(this->name, angle);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourceOuterGain(const float _outerGain) const {
     SoundManager::SetSourceOuterGain(this->name, _outerGain);
+    applied.valid = false;
 }
 
 void ComponentAudioSource::SetSourcePosition(const Vector3& position) const {
     SoundManager::SetSourcePosition(this->name, position);
+    applied.valid = false;
 }
 
 void ComponentRigidbody::AddVelocity(const Vector3 &_velocity) {

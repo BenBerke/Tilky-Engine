@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <unordered_map>
@@ -68,7 +69,7 @@ namespace {
     }
 
     // Axis aligned bounds of the sector in map XY. Slope offsets are measured
-    // from an edge of this rectangle, so it has to match GetSectorBounds() in
+    // from an edge of this rectangle, so it has to match Sector.bounds in
     // Rendering_vs.glsl - that one is built from the sector's triangles.
     struct SectorBounds {
         Vector2 minimum = {0.0f, 0.0f};
@@ -310,6 +311,134 @@ namespace {
         return spans;
     }
 
+    // Wall spans only change when a wall moves or the heights around it do,
+    // so they are kept between runs and rebuilt per wall when needed.
+    // Everything is compared exactly, so a kept span is always the one a
+    // rebuild would make.
+    struct WallSpanCache {
+        // Per sector index: every value BuildWallSpans reads from it - each
+        // floor's floor/ceiling height and slope, plus the bounds when any
+        // surface slopes (only slopes read them).
+        std::vector<std::vector<float>> sectorKeys;
+        std::vector<uint8_t> sectorChanged;
+
+        // Per wall index: what its spans were built from, and the spans.
+        struct WallKey {
+            Vector2 start;
+            Vector2 end;
+            int frontIndex = -1;
+            int backIndex = -1;
+        };
+        std::vector<WallKey> wallKeys;
+        std::vector<std::vector<WallSpan>> spans;
+        std::vector<uint8_t> wallBuilt;
+
+        std::vector<float> scratchKey;
+    };
+
+    WallSpanCache wallSpanCache;
+
+    void BuildSectorKey(const Sector& sector, std::vector<float>& key) {
+        key.clear();
+
+        bool slopes = false;
+
+        for (const SectorFloor& floor : sector.floors) {
+            for (const SectorSurface* surface : {&floor.floor, &floor.ceiling}) {
+                key.push_back(surface->height);
+                key.push_back(static_cast<float>(surface->slopeDirection));
+                key.push_back(surface->slopeStrength);
+                slopes = slopes || surface->slopeStrength != 0.0f;
+            }
+        }
+
+        if (!slopes) return;
+
+        const SectorBounds bounds = ComputeSectorBounds(sector);
+        key.push_back(bounds.valid ? 1.0f : 0.0f);
+        key.push_back(bounds.minimum.x);
+        key.push_back(bounds.minimum.y);
+        key.push_back(bounds.maximum.x);
+        key.push_back(bounds.maximum.y);
+    }
+
+    // Brings wallSpanCache up to date with the level; returns how many walls
+    // were rebuilt.
+    size_t UpdateWallSpans(const Level& level, SectorBoundsCache& boundsCache) {
+        WallSpanCache& cache = wallSpanCache;
+
+        const size_t sectorCount = level.sectors.size();
+        cache.sectorKeys.resize(sectorCount);
+        cache.sectorChanged.assign(sectorCount, 0);
+
+        for (size_t index = 0; index < sectorCount; ++index) {
+            BuildSectorKey(level.sectors[index], cache.scratchKey);
+
+            if (cache.scratchKey != cache.sectorKeys[index]) {
+                cache.sectorKeys[index].assign(cache.scratchKey.begin(), cache.scratchKey.end());
+                cache.sectorChanged[index] = 1;
+            }
+        }
+
+        const size_t wallCount = level.walls.size();
+        cache.wallKeys.resize(wallCount);
+        cache.spans.resize(wallCount);
+        cache.wallBuilt.resize(wallCount, 0);
+
+        const auto indexOf = [&](const Sector* sector) {
+            return sector == nullptr ? -1 : static_cast<int>(sector - level.sectors.data());
+        };
+
+        size_t rebuilt = 0;
+
+        for (size_t wallIndex = 0; wallIndex < wallCount; ++wallIndex) {
+            const Wall& wall = level.walls[wallIndex];
+
+            const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
+            const Sector* backSectorPtr = MapQueries::GetSectorByID(level, wall.backSector);
+
+            if (frontSectorPtr == backSectorPtr) backSectorPtr = nullptr;
+
+            const WallSpanCache::WallKey key{wall.start, wall.end, indexOf(frontSectorPtr), indexOf(backSectorPtr)};
+            WallSpanCache::WallKey& cached = cache.wallKeys[wallIndex];
+
+            const bool sectorsChanged =
+                (key.frontIndex >= 0 && cache.sectorChanged[key.frontIndex]) ||
+                (key.backIndex >= 0 && cache.sectorChanged[key.backIndex]);
+
+            if (cache.wallBuilt[wallIndex] &&
+                !sectorsChanged &&
+                cached.start == key.start &&
+                cached.end == key.end &&
+                cached.frontIndex == key.frontIndex &&
+                cached.backIndex == key.backIndex) continue;
+
+            const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
+            const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
+
+            const WallSamplePoints points{
+                wall.start,
+                Vector2{
+                    (wall.start.x + wall.end.x) * 0.5f,
+                    (wall.start.y + wall.end.y) * 0.5f
+                },
+                wall.end
+            };
+
+            std::vector<WallSpan>& spans = cache.spans[wallIndex];
+            spans = BuildWallSpans(frontSector, backSector, points);
+
+            if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr)
+                spans.push_back({0.0f, 0.0f, 32.0f, 32.0f});
+
+            cached = key;
+            cache.wallBuilt[wallIndex] = 1;
+            ++rebuilt;
+        }
+
+        return rebuilt;
+    }
+
     int FindBestSectorFloor(
         const Sector& sector,
         const SectorBounds& bounds,
@@ -532,40 +661,12 @@ namespace PhysicsSystem {
 
         SectorBoundsCache boundsCache;
 
-        std::vector<std::vector<WallSpan>> wallSpans(level.walls.size());
-
         {
             ZoneScopedN("Build wall collision spans");
-
-            for (size_t wallIndex = 0; wallIndex < level.walls.size(); ++wallIndex) {
-                const Wall& wall = level.walls[wallIndex];
-
-                const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
-                const Sector* backSectorPtr = MapQueries::GetSectorByID(level, wall.backSector);
-
-                if (frontSectorPtr == backSectorPtr) backSectorPtr = nullptr;
-
-                const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
-                const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
-
-                const WallSamplePoints points{
-                    wall.start,
-                    Vector2{
-                        (wall.start.x + wall.end.x) * 0.5f,
-                        (wall.start.y + wall.end.y) * 0.5f
-                    },
-                    wall.end
-                };
-
-                wallSpans[wallIndex] = BuildWallSpans(frontSector, backSector, points);
-
-                if (wallSpans[wallIndex].empty() &&
-                    frontSectorPtr == nullptr &&
-                    backSectorPtr == nullptr) {
-                    wallSpans[wallIndex].push_back({0.0f, 0.0f, 32.0f, 32.0f});
-                }
-            }
+            UpdateWallSpans(level, boundsCache);
         }
+
+        const std::vector<std::vector<WallSpan>>& wallSpans = wallSpanCache.spans;
 
         std::vector<ID> allEntities;
         std::vector<const Wall*> allWalls;

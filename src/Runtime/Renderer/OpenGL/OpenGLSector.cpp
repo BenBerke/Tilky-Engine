@@ -15,7 +15,8 @@ void OpenGL::BuildGpuSectors() {
 
     gpuSectorFloors.reserve(totalFloorCount);
 
-    for (const Sector& sector : level.sectors) {
+    for (size_t sectorIndex = 0; sectorIndex < level.sectors.size(); ++sectorIndex) {
+        const Sector& sector = level.sectors[sectorIndex];
         GpuSector gpuSector{};
 
         gpuSector.floorData = {
@@ -24,6 +25,10 @@ void OpenGL::BuildGpuSectors() {
             0.0f,
             0.0f
         };
+
+        // Baked with the flat triangles; a sector added since then has no
+        // triangles drawn yet either.
+        if (sectorIndex < flatSectorBounds.size()) gpuSector.bounds = flatSectorBounds[sectorIndex];
 
         for (const SectorFloor& floor : sector.floors) {
             GpuSectorFloor gpuFloor{};

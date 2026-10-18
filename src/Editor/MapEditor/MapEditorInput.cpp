@@ -984,9 +984,12 @@ namespace MapEditorInternal {
                 if (InputManager::GetKeyDown(SDL_SCANCODE_5)) SetActiveDrawTool(DRAWTOOL_CURVE);
                 if (InputManager::GetKeyDown(SDL_SCANCODE_6)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
             }
-        }
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
+            if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
+            if (InputManager::GetKeyDown(SDL_SCANCODE_G) || (InputManager::GetKeyDown(SDL_SCANCODE_V) && !InputManager::GetKeyDown(SDL_SCANCODE_LCTRL))) currentMode = MODE_GEOMETRY;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_E)) currentMode = MODE_ENTITY;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_R) || InputManager::GetKeyDown(SDL_SCANCODE_L)) currentMode = MODE_SECTOR;
+        }
 
         if (InputManager::QuitRequested()) {
             shutdown = true;

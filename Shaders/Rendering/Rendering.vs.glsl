@@ -72,6 +72,10 @@ struct Sector {
     vec4 floorData;
 // floorData.x = offset into sectorFloors
 // floorData.y = floor count
+
+    vec4 bounds;
+// bounds = minX, minY, maxX, maxY of the sector's flat triangles in map XY.
+// Slopes are measured from its edges (GetSlopeOffset).
 };
 
 struct SectorFloor {
@@ -467,41 +471,6 @@ void renderSprite() {
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }
 
-vec4 GetSectorBounds(int sectorIndex, FlatTriangle initialTriangle) {
-    vec2 minimum = min(
-    min(initialTriangle.a.xy, initialTriangle.b.xy),
-    initialTriangle.c.xy
-    );
-
-    vec2 maximum = max(
-    max(initialTriangle.a.xy, initialTriangle.b.xy),
-    initialTriangle.c.xy
-    );
-
-    for (int triangleIndex = 0;
-    triangleIndex < flatTriangles.length();
-    ++triangleIndex) {
-        FlatTriangle candidate = flatTriangles[triangleIndex];
-
-        if (int(candidate.data.x) != sectorIndex) continue;
-
-        minimum = min(minimum, candidate.a.xy);
-        minimum = min(minimum, candidate.b.xy);
-        minimum = min(minimum, candidate.c.xy);
-
-        maximum = max(maximum, candidate.a.xy);
-        maximum = max(maximum, candidate.b.xy);
-        maximum = max(maximum, candidate.c.xy);
-    }
-
-    return vec4(
-    minimum.x,
-    minimum.y,
-    maximum.x,
-    maximum.y
-    );
-}
-
 float GetSlopeOffset(
 vec2 worldXZ,
 vec4 sectorBounds,
@@ -572,11 +541,9 @@ void renderFlat() {
         vFlatTextureIndex = int(sectorFloor.textureData.x);
     }
 
-    vec4 sectorBounds = GetSectorBounds(sectorIndex, triangle);
-
     point.z = baseHeight + GetSlopeOffset(
     point.xy,
-    sectorBounds,
+    sector.bounds,
     slopeDirection,
     slopeStrength
     );

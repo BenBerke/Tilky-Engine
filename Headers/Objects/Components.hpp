@@ -398,6 +398,27 @@ struct ComponentAudioSource {
     // ResumeSound clear it.
     bool isHeld = false;
 
+    // Runtime only, not saved: what AudioSystem last sent to this OpenAL
+    // source, so each frame only sends values that changed. `valid` is false
+    // until the first send and after anything else writes to the source
+    // directly (the SetSource* calls below), so the next frame sends
+    // everything again.
+    struct AppliedSettings {
+        bool valid = false;
+        Vector3 position;
+        Vector3 direction;
+        float pitch = 0.0f;
+        float gain = 0.0f;
+        bool looping = false;
+        float referenceDistance = 0.0f;
+        float maxDistance = 0.0f;
+        float rollOffFactor = 0.0f;
+        float innerConeAngle = 0.0f;
+        float outerConeAngle = 0.0f;
+        float outerGain = 0.0f;
+    };
+    mutable AppliedSettings applied;
+
     void PlaySound();
     void StopSound();
     void PauseSound();

@@ -2794,7 +2794,7 @@ private:
     }
 
     // Slopes are measured from an edge of this rectangle. Must match
-    // ComputeSectorBounds() in PhysicsSystem.cpp and GetSectorBounds() in
+    // ComputeSectorBounds() in PhysicsSystem.cpp and Sector.bounds in
     // Rendering_vs.glsl (triangles first, vertices as the fallback), or the
     // height reported here won't be the height on screen.
     static void ComputeBounds(const Sector& sector, Vector2& minimum, Vector2& maximum) {

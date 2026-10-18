@@ -171,11 +171,15 @@ void OpenGL::BuildFlatTrianglesFromSectors() {
 
     flatTriangles.clear();
     flatSectorRanges.assign(level.sectors.size(), {});
+    flatSectorBounds.assign(level.sectors.size(), {});
 
     for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
         const Sector& sector = level.sectors[sectorIndex];
 
         flatSectorRanges[sectorIndex].first = static_cast<GLint>(flatTriangles.size());
+
+        if (const WallPieces::SectorBounds bounds = WallPieces::ComputeSectorBounds(sector); bounds.valid)
+            flatSectorBounds[sectorIndex] = {bounds.minX, bounds.minY, bounds.maxX, bounds.maxY};
 
         for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
             for (const Triangle& triangle : sector.triangles) {

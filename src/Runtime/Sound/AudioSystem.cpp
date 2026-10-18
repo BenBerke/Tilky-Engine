@@ -17,22 +17,34 @@ namespace {
     }
 
     // Puts the source on its entity (plus its offset), facing the rotation's local +Z, and
-    // pushes every component setting to OpenAL.
+    // pushes the component's settings to OpenAL - only the ones that changed
+    // since the last send (see ComponentAudioSource::applied).
     void ApplySourceSettings(const Level& level, const ComponentAudioSource& audio) {
+        ComponentAudioSource::AppliedSettings& applied = audio.applied;
+        const bool sendAll = !applied.valid;
+
+        const auto send = [&](const auto value, auto& last, void (*setter)(const std::string&, decltype(value))) {
+            if (!sendAll && value == last) return;
+            setter(audio.name, value);
+            last = value;
+        };
+
         if (const ComponentTransform* transform = level.transforms.Get(audio.ownerID)) {
-            SoundManager::SetSourcePosition(audio.name, transform->LocalToWorld(audio.offset));
-            SoundManager::SetSourceDirection(audio.name, QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()));
+            send(transform->LocalToWorld(audio.offset), applied.position, &SoundManager::SetSourcePosition);
+            send(QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()), applied.direction, &SoundManager::SetSourceDirection);
         }
 
-        SoundManager::SetSourcePitch(audio.name, audio.pitch);
-        SoundManager::SetSourceGain(audio.name, audio.gain);
-        SoundManager::SetSourceLooping(audio.name, audio.looping);
-        SoundManager::SetSourceReferenceDistance(audio.name, audio.referenceDistance);
-        SoundManager::SetSourceMaxDistance(audio.name, audio.maxDistance);
-        SoundManager::SetSourceRollOffFactor(audio.name, audio.rollOffFactor);
-        SoundManager::SetSourceInnerConeAngle(audio.name, audio.innerConeAngle);
-        SoundManager::SetSourceOuterConeAngle(audio.name, audio.outerConeAngle);
-        SoundManager::SetSourceOuterGain(audio.name, audio.outerGain);
+        send(audio.pitch, applied.pitch, &SoundManager::SetSourcePitch);
+        send(audio.gain, applied.gain, &SoundManager::SetSourceGain);
+        send(audio.looping, applied.looping, &SoundManager::SetSourceLooping);
+        send(audio.referenceDistance, applied.referenceDistance, &SoundManager::SetSourceReferenceDistance);
+        send(audio.maxDistance, applied.maxDistance, &SoundManager::SetSourceMaxDistance);
+        send(audio.rollOffFactor, applied.rollOffFactor, &SoundManager::SetSourceRollOffFactor);
+        send(audio.innerConeAngle, applied.innerConeAngle, &SoundManager::SetSourceInnerConeAngle);
+        send(audio.outerConeAngle, applied.outerConeAngle, &SoundManager::SetSourceOuterConeAngle);
+        send(audio.outerGain, applied.outerGain, &SoundManager::SetSourceOuterGain);
+
+        applied.valid = true;
     }
 
     // The listener hears from the active camera: its entity's position (at
@@ -87,6 +99,8 @@ namespace AudioSystem {
             return;
         }
 
+        audio.applied.valid = false;
+
         ApplySourceSettings(level, audio);
 
         if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
@@ -113,6 +127,7 @@ namespace AudioSystem {
             if (audio.name.empty()) {
                 audio.name = MakeAudioSourceName(audio);
                 if (!SoundManager::CreateSource(audio.name)) continue;
+                audio.applied.valid = false;
             }
 
             ApplySourceSettings(level, audio);

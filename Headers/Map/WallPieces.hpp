@@ -15,7 +15,7 @@ struct Level;
 // uses them to tell which texture a click landed on.
 namespace WallPieces {
     // Axis aligned bounds of a sector's triangulated area, in map XY.
-    // This must match GetSectorBounds() in Rendering.vs.glsl exactly -
+    // This must match Sector.bounds in Rendering.vs.glsl exactly -
     // the shader derives slope offsets from the same rectangle, so any
     // difference here shows up as a seam between a sloped flat and the
     // wall that is supposed to close it.
