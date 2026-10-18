@@ -1353,7 +1353,7 @@ namespace {
             // One key slot: the bound key's name on a button. Clicking it
             // listens for the next key press, which becomes the binding;
             // Escape or a second click cancels. Right click empties the slot.
-            const auto DrawKeySlot = [&](const int slot, SDL_Scancode* original) {
+            const auto DrawKeySlot = [&](const int slot, SDL_Scancode* original, const float width) {
                 ImGui::PushID(slot);
 
                 const bool listening = keyBindBeingListened == original;
@@ -1376,7 +1376,7 @@ namespace {
 
                 if (listening) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
 
-                if (ImGui::Button(buttonLabel.c_str(), ImVec2(keyColumnWidth, 0.0f)))
+                if (ImGui::Button(buttonLabel.c_str(), ImVec2(width, 0.0f)))
                     keyBindBeingListened = listening ? nullptr : original;
 
                 if (listening) ImGui::PopStyleColor();
@@ -1384,6 +1384,41 @@ namespace {
                 if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                     *original = SDL_SCANCODE_UNKNOWN;
                     if (listening) keyBindBeingListened = nullptr;
+                }
+
+                ImGui::PopID();
+            };
+
+            constexpr float comboKeyColumnWidth = 84.0f;
+            constexpr float comboSetGap = 12.0f; // extra space between set A and set B
+
+            // One row of a combo table: label, set A's two keys, a gap, set
+            // B's two keys, and Default, which resets all four.
+            const auto DrawComboSelect = [&](const EditorCombo combo) {
+                keyBindRowDrawn = true;
+
+                const EditorComboInfo& info = COMBO_INFO[combo];
+
+                ImGui::PushID(info.saveName);
+                ImGui::TableNextRow();
+
+                ImGui::TableSetColumnIndex(0);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(Get(info.labelKey).c_str());
+
+                // Columns 1-2 set A, 3 the gap, 4-5 set B.
+                for (int slot = 0; slot < COMBO_SLOTS; ++slot) {
+                    ImGui::TableSetColumnIndex(slot < 2 ? 1 + slot : 2 + slot);
+                    DrawKeySlot(slot, &comboBindings[combo][slot], comboKeyColumnWidth);
+                }
+
+                ImGui::TableSetColumnIndex(6);
+
+                if (ImGui::SmallButton(defaultLabel.c_str())) {
+                    for (int slot = 0; slot < COMBO_SLOTS; ++slot) {
+                        if (keyBindBeingListened == &comboBindings[combo][slot]) keyBindBeingListened = nullptr;
+                        comboBindings[combo][slot] = info.defaults[slot];
+                    }
                 }
 
                 ImGui::PopID();
@@ -1405,7 +1440,7 @@ namespace {
 
                 for (int slot = 0; slot < KEYBIND_SLOTS; ++slot) {
                     ImGui::TableSetColumnIndex(1 + slot);
-                    DrawKeySlot(slot, &keyBindings[bind][slot]);
+                    DrawKeySlot(slot, &keyBindings[bind][slot], keyColumnWidth);
                 }
 
                 ImGui::TableSetColumnIndex(1 + KEYBIND_SLOTS);
@@ -1645,6 +1680,32 @@ namespace {
 
                     for (; bind < KEYBIND_COUNT && std::strcmp(KEY_BIND_INFO[bind].groupKey, groupKey) == 0; ++bind)
                         if (tableOpen) DrawKeySelect(static_cast<EditorKeyBind>(bind));
+
+                    if (tableOpen) ImGui::EndTable();
+                }
+
+                // The combos, grouped the same way.
+                int combo = 0;
+
+                while (combo < COMBO_COUNT) {
+                    const char* groupKey = COMBO_INFO[combo].groupKey;
+
+                    ImGui::SeparatorText(Get(groupKey).c_str());
+
+                    const bool tableOpen = ImGui::BeginTable(groupKey, 7, tableFlags);
+
+                    if (tableOpen) {
+                        ImGui::TableSetupColumn("##Setting", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("##A1", ImGuiTableColumnFlags_WidthFixed, comboKeyColumnWidth);
+                        ImGui::TableSetupColumn("##A2", ImGuiTableColumnFlags_WidthFixed, comboKeyColumnWidth);
+                        ImGui::TableSetupColumn("##Gap", ImGuiTableColumnFlags_WidthFixed, comboSetGap);
+                        ImGui::TableSetupColumn("##B1", ImGuiTableColumnFlags_WidthFixed, comboKeyColumnWidth);
+                        ImGui::TableSetupColumn("##B2", ImGuiTableColumnFlags_WidthFixed, comboKeyColumnWidth);
+                        ImGui::TableSetupColumn("##Default", ImGuiTableColumnFlags_WidthFixed, resetColumnWidth);
+                    }
+
+                    for (; combo < COMBO_COUNT && std::strcmp(COMBO_INFO[combo].groupKey, groupKey) == 0; ++combo)
+                        if (tableOpen) DrawComboSelect(static_cast<EditorCombo>(combo));
 
                     if (tableOpen) ImGui::EndTable();
                 }
@@ -3333,7 +3394,7 @@ namespace MapEditorInternal {
     // Toast for a panel action: `doneKey` (with the count) when it did
     // something, `nothingKey` when it didn't.
     void NotifyActionResult(const int count, const char* doneKey, const char* nothingKey) {
-        if (count > 0) ShowNotification(FormatCount(Get(doneKey), count).c_str());
+        if (count > 0) ShowNotification(FormatCount(FormatKeyBinds(Get(doneKey)), count).c_str());
         else ShowNotification(Get(nothingKey).c_str(), /*isError=*/true);
     }
 
@@ -3790,7 +3851,7 @@ namespace MapEditorInternal {
             HintText(Get("editor.entity_mode.hint.move").c_str());
             HintText(FormatKeyBinds(Get("editor.entity_mode.hint.gizmo")).c_str());
             HintText(FormatKeyBinds(Get("editor.entity_mode.hint.select")).c_str());
-            HintText(Get("editor.entity_mode.hint.copy").c_str());
+            HintText(FormatKeyBinds(Get("editor.entity_mode.hint.copy")).c_str());
             HintText(FormatKeyBinds(Get("editor.entity_mode.hint.focus")).c_str());
         }
     }

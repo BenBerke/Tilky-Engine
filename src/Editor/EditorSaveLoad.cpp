@@ -244,6 +244,22 @@ namespace MapEditorInternal {
                 }
             }
 
+            // Same for the combos, four slots each.
+            if (const auto combosIt = settings.find("comboBindings"); combosIt != settings.end() && combosIt->is_object()) {
+                for (int combo = 0; combo < COMBO_COUNT; ++combo) {
+                    const auto it = combosIt->find(COMBO_INFO[combo].saveName);
+                    if (it == combosIt->end() || !it->is_array()) continue;
+
+                    for (int slot = 0; slot < COMBO_SLOTS && slot < static_cast<int>(it->size()); ++slot) {
+                        const nlohmann::json& value = (*it)[slot];
+                        if (!value.is_number_integer()) continue;
+
+                        const int code = value.get<int>();
+                        if (code >= SDL_SCANCODE_UNKNOWN && code < SDL_SCANCODE_COUNT) comboBindings[combo][slot] = static_cast<SDL_Scancode>(code);
+                    }
+                }
+            }
+
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
         }
@@ -264,6 +280,20 @@ namespace MapEditorInternal {
             for (const SDL_Scancode key : keyBindings[bind]) slots.push_back(static_cast<int>(key));
 
             bindings[KEY_BIND_INFO[bind].saveName] = std::move(slots);
+        }
+
+        return bindings;
+    }
+
+    // {"undo": [224, 29, 228, 29], ...} - set A then set B, 0 = empty.
+    nlohmann::json SerializeComboBindings() {
+        nlohmann::json bindings = nlohmann::json::object();
+
+        for (int combo = 0; combo < COMBO_COUNT; ++combo) {
+            nlohmann::json slots = nlohmann::json::array();
+            for (const SDL_Scancode key : comboBindings[combo]) slots.push_back(static_cast<int>(key));
+
+            bindings[COMBO_INFO[combo].saveName] = std::move(slots);
         }
 
         return bindings;
@@ -356,7 +386,8 @@ namespace MapEditorInternal {
                 {"editorPanelVisible", editorPanelVisible},
                 {"worldSettingsVisible", worldSettingsVisible},
                 {"assetBrowserVisible", assetBrowserVisible},
-                {"keyBindings", SerializeKeyBindings()}
+                {"keyBindings", SerializeKeyBindings()},
+                {"comboBindings", SerializeComboBindings()}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

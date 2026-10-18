@@ -1125,19 +1125,14 @@ namespace MapEditorInternal {
         UpdateBoxSelect(mouseWorld);
 
         if (!keyboardBlockedByImgui) {
-            // Ctrl+C/V/Z/A/D are fixed, so the single-key shortcuts that
-            // share a letter with them stay quiet under Ctrl - the pan keys
-            // included, or Ctrl+A / Ctrl+D would also slide the view.
-            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
-
+            // A key a combo is using (A while Ctrl is held, for Ctrl+A)
+            // doesn't count for these - see GetKeyBind.
             Vector2 movement = {.0f, .0f};
 
-            if (!ctrlHeld) {
-                if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
-                if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
-                if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
-                if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
-            }
+            if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
+            if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
 
             if (GetKeyBindDown(KEYBIND_STEP_UP)) movement.y = cameraStepSize;
             if (GetKeyBindDown(KEYBIND_STEP_DOWN)) movement.y = -cameraStepSize;
@@ -1193,33 +1188,30 @@ namespace MapEditorInternal {
                 if (GetKeyBindDown(KEYBIND_TOOL_STAIRCASE)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
             }
 
-            if (!ctrlHeld) {
-                if (GetKeyBindDown(KEYBIND_CYCLE_MODE)) ChangeMode();
-                if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) currentMode = MODE_GEOMETRY;
-                if (GetKeyBindDown(KEYBIND_ENTITY_MODE)) currentMode = MODE_ENTITY;
-                if (GetKeyBindDown(KEYBIND_SECTOR_MODE)) currentMode = MODE_SECTOR;
+            if (GetKeyBindDown(KEYBIND_CYCLE_MODE)) ChangeMode();
+            if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) currentMode = MODE_GEOMETRY;
+            if (GetKeyBindDown(KEYBIND_ENTITY_MODE)) currentMode = MODE_ENTITY;
+            if (GetKeyBindDown(KEYBIND_SECTOR_MODE)) currentMode = MODE_SECTOR;
 
-                if (GetKeyBindDown(KEYBIND_TOGGLE_GRID_SNAP)) {
-                    gridSnapEnabled = !gridSnapEnabled;
-                    ImGuiDrawFunctions::ShowNotification(Localisation::Get(gridSnapEnabled ? "editor.toast.grid_snap_on" : "editor.toast.grid_snap_off").c_str(), false, 1.5f);
-                }
-
-                const bool gridSmaller = GetKeyBindDown(KEYBIND_GRID_SMALLER);
-                const bool gridLarger = GetKeyBindDown(KEYBIND_GRID_LARGER);
-
-                if (gridSmaller != gridLarger) {
-                    constexpr float MAX_GRID_SIZE = 1024.0f;
-                    GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0f : GRID_SIZE * 0.5f, MIN_GRID_SIZE, MAX_GRID_SIZE);
-
-                    char message[128];
-                    std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);
-                    ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
-                }
+            if (GetKeyBindDown(KEYBIND_TOGGLE_GRID_SNAP)) {
+                gridSnapEnabled = !gridSnapEnabled;
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(gridSnapEnabled ? "editor.toast.grid_snap_on" : "editor.toast.grid_snap_off").c_str(), false, 1.5f);
             }
-            else {
-                if (InputManager::GetKeyDown(SDL_SCANCODE_A)) SelectAllInMode();
-                if (InputManager::GetKeyDown(SDL_SCANCODE_D) && currentMode == MODE_ENTITY) DuplicateSelectedEntities();
+
+            const bool gridSmaller = GetKeyBindDown(KEYBIND_GRID_SMALLER);
+            const bool gridLarger = GetKeyBindDown(KEYBIND_GRID_LARGER);
+
+            if (gridSmaller != gridLarger) {
+                constexpr float MAX_GRID_SIZE = 1024.0f;
+                GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0f : GRID_SIZE * 0.5f, MIN_GRID_SIZE, MAX_GRID_SIZE);
+
+                char message[128];
+                std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);
+                ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
             }
+
+            if (GetComboDown(COMBO_SELECT_ALL)) SelectAllInMode();
+            if (GetComboDown(COMBO_DUPLICATE) && currentMode == MODE_ENTITY) DuplicateSelectedEntities();
         }
 
         if (InputManager::QuitRequested()) {
@@ -1227,20 +1219,15 @@ namespace MapEditorInternal {
             quit = true;
         }
 
-        // Ctrl+Y or Ctrl+Shift+Z redoes, Ctrl+Z undoes.
-        const bool undoShiftHeld = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
-
-        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y) ||
-            (undoShiftHeld && InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)))
-            RedoLastAction();
-        else if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
+        if (GetComboDown(COMBO_REDO)) RedoLastAction();
+        else if (GetComboDown(COMBO_UNDO)) {
             if (actions.empty()) return;
             UndoLastAction();
         }
 
         // Not while a text field has the keyboard: Ctrl+C/V there are its own.
         if (!keyboardBlockedByImgui && currentMode == MODE_ENTITY) {
-            if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_C) && !selectedEntities.empty()) [[unlikely]] {
+            if (GetComboDown(COMBO_COPY_ENTITIES) && !selectedEntities.empty()) [[unlikely]] {
                 // Any selection, not only a dragged or inspected entity.
                 // The primary goes first: paste places it under the cursor.
                 entityClipboard.assign(1, selectedEntity.id);
@@ -1249,7 +1236,7 @@ namespace MapEditorInternal {
                     if (id != selectedEntity.id) entityClipboard.push_back(id);
             }
 
-            if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_V)) [[unlikely]]
+            if (GetComboDown(COMBO_PASTE_ENTITIES)) [[unlikely]]
                 PasteEntityClipboard(level, mouseWorld);
         }
 

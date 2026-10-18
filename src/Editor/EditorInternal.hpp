@@ -981,10 +981,11 @@ namespace MapEditorInternal {
     extern std::string placeDefaultTag;
 
     // ---- Key bindings (EditorState.cpp) ---------------------------------
-    // Every single-key shortcut and held modifier of the 2D editor. Each
+    // Every single-key shortcut and held modifier of both editors. Each
     // has KEYBIND_SLOTS keys (a primary and an alternate), either of which
-    // triggers it; SDL_SCANCODE_UNKNOWN is an empty slot. Ctrl+Z/C/V and
-    // Escape (cancel) stay fixed.
+    // triggers it; SDL_SCANCODE_UNKNOWN is an empty slot. Two-key shortcuts
+    // (Ctrl+Z, Shift+C, ...) are EditorCombo below. Only Escape (cancel)
+    // stays fixed.
     //
     // Adding one: an enum value here and a row in KEY_BIND_INFO - the User
     // Settings window, save and load all loop over the table.
@@ -1061,33 +1062,94 @@ namespace MapEditorInternal {
         KEYBIND_RT_NEXT_TEXTURE,
         KEYBIND_RT_FULLBRIGHT,
         KEYBIND_RT_FOCUS_SELECTION,
+        KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
+        KEYBIND_RT_FINE_SCROLL,       // held while scrolling
+        KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
 
         KEYBIND_COUNT
     };
 
     constexpr int KEYBIND_SLOTS = 2;
 
+    // Which editor a binding belongs to. A combo only takes its key away
+    // from the single-key bindings of its own editor (see GetKeyBind).
+    enum KeyBindScope {
+        KEYSCOPE_MAP,     // 2D level editor
+        KEYSCOPE_RUNTIME  // runtime editor
+    };
+
     struct EditorKeyBindInfo {
         const char* saveName;   // its key in UserSettings.bson
         const char* labelKey;   // en.json
         const char* groupKey;   // en.json; rows sharing one are drawn under one heading
+        KeyBindScope scope;
         SDL_Scancode defaults[KEYBIND_SLOTS];
     };
 
     extern const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT];
     extern SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS];
 
-    // Pressed this frame / held, on any of its slots.
+    // Pressed this frame / held, on any of its slots. A key some combo of
+    // the same editor is using right now - its first key is held - doesn't
+    // count, so Ctrl+A doesn't also pan left.
     [[nodiscard]] bool GetKeyBindDown(EditorKeyBind bind);
     [[nodiscard]] bool GetKeyBind(EditorKeyBind bind);
+
+    // Two-key shortcuts: hold the first key, press the second. Each has two
+    // sets of two keys (COMBO_SLOTS: set A is slots 0-1, set B slots 2-3),
+    // either of which triggers it. A set with an empty first key is just
+    // its second key; one with an empty second key is off.
+    enum EditorCombo {
+        // 2D editor
+        COMBO_UNDO,
+        COMBO_REDO,
+        COMBO_COPY_ENTITIES,
+        COMBO_PASTE_ENTITIES,
+        COMBO_SELECT_ALL,
+        COMBO_DUPLICATE,
+
+        // Runtime editor
+        COMBO_RT_UNDO,
+        COMBO_RT_REDO,
+        COMBO_RT_COPY_TEXTURE,
+        COMBO_RT_COPY_TEXTURE_PLACEMENT,
+        COMBO_RT_PASTE_TEXTURE,
+        COMBO_RT_PASTE_TEXTURE_PLACEMENT,
+        COMBO_RT_COPY_PROPERTIES,
+        COMBO_RT_PASTE_PROPERTIES,
+        COMBO_RT_RESET_PLACEMENT,
+        COMBO_RT_ALIGN_TEXTURES,
+        COMBO_RT_FIT_TEXTURES,
+
+        COMBO_COUNT
+    };
+
+    constexpr int COMBO_SLOTS = 4;
+
+    struct EditorComboInfo {
+        const char* saveName;
+        const char* labelKey;
+        const char* groupKey;
+        KeyBindScope scope;
+        SDL_Scancode defaults[COMBO_SLOTS];
+    };
+
+    extern const EditorComboInfo COMBO_INFO[COMBO_COUNT];
+    extern SDL_Scancode comboBindings[COMBO_COUNT][COMBO_SLOTS];
+
+    // A set's first key held and its second pressed this frame.
+    [[nodiscard]] bool GetComboDown(EditorCombo combo);
 
     // The name of the key a binding is on: its primary, else its alternate,
     // else "None".
     [[nodiscard]] std::string KeyBindName(EditorKeyBind bind);
 
+    // "Left Ctrl+Z": the first set that has a second key, else "None".
+    [[nodiscard]] std::string ComboName(EditorCombo combo);
+
     // `text` with every "{key:<saveName>}" replaced by that binding's
-    // KeyBindName, so hints and tooltips name the key the user actually
-    // bound. Unknown names are left as they are.
+    // KeyBindName (or a combo's ComboName), so hints and tooltips name the
+    // keys the user actually bound. Unknown names are left as they are.
     [[nodiscard]] std::string FormatKeyBinds(const std::string& text);
 
     // The key slot the User Settings window is waiting on a key press for,

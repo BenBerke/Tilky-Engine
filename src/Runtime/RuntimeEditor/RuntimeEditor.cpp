@@ -637,8 +637,6 @@ namespace {
 
     SurfaceClipboard surfaceClipboard;
 
-    bool ShiftHeld() { return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT); }
-    bool AltHeld() { return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT); }
 
     // Moves a sector's light by `delta` on its brightest channel, scaling the
     // other two with it so the tint stays the same. From black it comes back
@@ -1699,8 +1697,7 @@ namespace RuntimeEditor {
 
             if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
             if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
-            // Shift/Alt + C copies a texture (see below), so not a reset there.
-            if (GetKeyBind(KEYBIND_RT_RESET_SPEED) && !ShiftHeld() && !AltHeld()) moveSpeed = BASE_MOVE_SPEED;
+            if (GetKeyBind(KEYBIND_RT_RESET_SPEED)) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
 
@@ -1992,68 +1989,61 @@ namespace RuntimeEditor {
             }
         }
 
-        // Texture copy / paste. Alt wins when both are held.
-        if (windowFocused && !keyboardBlockedByImGui && (ShiftHeld() || AltHeld())) {
-            const bool withPlacement = AltHeld();
+        if (windowFocused && !keyboardBlockedByImGui) {
+            using MapEditorInternal::GetComboDown;
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_C) && !mouseBlockedByImGui && CopyHoveredSurface(level, withPlacement)) {
-                ImGuiDrawFunctions::ShowNotification(Localisation::Get(withPlacement
+            // Texture copy / paste. With placement wins when both fire.
+            const bool copyWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_COPY_TEXTURE_PLACEMENT);
+
+            if ((copyWithPlacement || GetComboDown(MapEditorInternal::COMBO_RT_COPY_TEXTURE)) &&
+                !mouseBlockedByImGui && CopyHoveredSurface(level, copyWithPlacement)) {
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(copyWithPlacement
                     ? "runtime_editor.toast.texture_and_placement_copied"
                     : "runtime_editor.toast.texture_copied").c_str(), false, 1.5f);
             }
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
+            const bool pasteWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE_PLACEMENT);
+
+            if (pasteWithPlacement || GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE)) {
                 PushUndo(level);
-                PasteSurface(level, withPlacement, !mouseBlockedByImGui);
+                PasteSurface(level, pasteWithPlacement, !mouseBlockedByImGui);
 
                 // The copied image may not be in the atlas yet.
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
-        }
 
-        // Wall / sector property copy (Shift+R) and paste (Shift+F).
-        if (windowFocused && !keyboardBlockedByImGui && ShiftHeld()) {
-            if (InputManager::GetKeyDown(SDL_SCANCODE_R) && !mouseBlockedByImGui && CopyHoveredProperties(level)) {
+            // Wall / sector property copy and paste.
+            if (GetComboDown(MapEditorInternal::COMBO_RT_COPY_PROPERTIES) && !mouseBlockedByImGui && CopyHoveredProperties(level)) {
                 ImGuiDrawFunctions::ShowNotification(Localisation::Get(propertyClipboard.kind == PropertyClipboard::Kind::Wall
                     ? "runtime_editor.toast.wall_properties_copied"
                     : "runtime_editor.toast.sector_properties_copied").c_str(), false, 1.5f);
             }
 
-            if (InputManager::GetKeyDown(SDL_SCANCODE_F)) {
+            if (GetComboDown(MapEditorInternal::COMBO_RT_PASTE_PROPERTIES)) {
                 PushUndo(level);
                 PasteProperties(level, !mouseBlockedByImGui);
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
 
-            // Shift+G: continue the textures across the selected walls' corners.
-            if (InputManager::GetKeyDown(SDL_SCANCODE_G) && !AltHeld()) {
-                PushUndo(level);
-                ShowToastf("editor.geometry.align.chain_done", RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures));
-            }
-        }
-
-        if (windowFocused && !keyboardBlockedByImGui && AltHeld()) {
-            // Alt+R: reset offset, scale and flip.
-            if (InputManager::GetKeyDown(SDL_SCANCODE_R)) {
+            // Reset offset, scale and flip.
+            if (GetComboDown(MapEditorInternal::COMBO_RT_RESET_PLACEMENT)) {
                 PushUndo(level);
                 ResetTexturePlacement(level, !mouseBlockedByImGui);
             }
 
-            // Alt+G: fit each selected wall's texture to its height.
-            if (InputManager::GetKeyDown(SDL_SCANCODE_G)) {
+            // Fit each selected wall's texture to its height, or continue the
+            // textures across the selected walls' corners.
+            if (GetComboDown(MapEditorInternal::COMBO_RT_FIT_TEXTURES)) {
                 PushUndo(level);
                 ShowToastf("editor.geometry.align.fit_done", RunMapEditorWallTool(level, &MapEditorInternal::FitSelectedWallTexturesToHeight));
             }
-        }
-
-        if (windowFocused && !keyboardBlockedByImGui) {
-            // Undo / redo. Fixed keys, like the Map Editor's Ctrl+Z.
-            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
-
-            if (ctrlHeld) {
-                if (InputManager::GetKeyDown(SDL_SCANCODE_Y) || (ShiftHeld() && InputManager::GetKeyDown(SDL_SCANCODE_Z))) Redo(level);
-                else if (InputManager::GetKeyDown(SDL_SCANCODE_Z)) Undo(level);
+            else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES)) {
+                PushUndo(level);
+                ShowToastf("editor.geometry.align.chain_done", RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures));
             }
+
+            if (GetComboDown(MapEditorInternal::COMBO_RT_REDO)) Redo(level);
+            else if (GetComboDown(MapEditorInternal::COMBO_RT_UNDO)) Undo(level);
 
             const bool cycleBack = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_PREVIOUS_TEXTURE);
             const bool cycleForward = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_NEXT_TEXTURE);
@@ -2070,17 +2060,18 @@ namespace RuntimeEditor {
                     : "runtime_editor.toast.fullbright_off").c_str(), false, 1.5f);
             }
 
-            // Shift+F is the property paste above.
-            if (!ShiftHeld() && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
         }
 
-        // Alt+right click: select by texture.
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && AltHeld() && SelectAllWithHoveredTexture(level))
+        // Select by texture: its key held while right clicking.
+        const bool selectByTextureHeld = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_SELECT_BY_TEXTURE);
+
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && selectByTextureHeld && SelectAllWithHoveredTexture(level))
             ShowToastf("runtime_editor.toast.selected_by_texture", static_cast<int>(SelectionCount()));
 
         //endregion
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && !AltHeld()) {
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && !selectByTextureHeld) {
             if (!hit.has_value()) {
                 spdlog::info("Runtime editor ray missed");
                 return;
@@ -2188,7 +2179,7 @@ namespace RuntimeEditor {
             constexpr float UV_SCALE_STEP = 0.01f;
             constexpr float MIN_ROOM_HEIGHT = 1.0f;
             // Alt: a tenth of every step.
-            const float stepScale = AltHeld() ? 0.1f : 1.0f;
+            const float stepScale = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_FINE_SCROLL) ? 0.1f : 1.0f;
             const float heightDelta = wheel * HEIGHT_STEP * stepScale;
             const float uvScaleDelta = wheel * UV_SCALE_STEP * stepScale;
 
@@ -2214,7 +2205,7 @@ namespace RuntimeEditor {
                 SectorFloor& floor = sector.floors[floorIndex];
 
                 // Shift+scroll: the sector's brightness instead of a height.
-                if (ShiftHeld()) {
+                if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_BRIGHTNESS_SCROLL)) {
                     constexpr float LIGHT_STEP = 8.0f;
                     AdjustSectorBrightness(level, sector, wheel * LIGHT_STEP * stepScale);
                 }
