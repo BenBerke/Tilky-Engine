@@ -182,6 +182,10 @@ namespace {
     // window's buttons or the 1/2 keys.
     TransformGizmo::Tool gizmoTool = TransformGizmo::Tool::Move;
 
+    // Entity markers: toggled from the toolbar's dropdown or its key.
+    bool showEntityMarkers = true;
+    bool hideEntityMarkersBehindWalls = false;
+
     // Saved by Update() for Draw(), which has no viewport size of its own.
     Vector2 gizmoViewportSize = {};
 
@@ -392,10 +396,39 @@ namespace {
         return true;
     }
 
+    // Whether a wall, floor or ceiling is between the camera and `point`.
+    // Entities don't hide markers.
+    bool IsBehindGeometry(Level& level, const Vector3& eye, const Vector3& point) {
+        constexpr float END_TOLERANCE = 0.01f; // a marker on a floor isn't behind it
+
+        const Vector3 toPoint = point - eye;
+        const float distance = Vector3Math::Length(toPoint);
+        if (distance <= END_TOLERANCE) return false;
+
+        const Vector3 direction = toPoint / distance;
+        Vector3 origin = eye;
+        float remaining = distance - END_TOLERANCE;
+
+        // Raycast stops at the first hit, entities included, so step past those.
+        while (remaining > 0.0f) {
+            const std::optional<RayHit> hit = GameFunctions::Raycast(level, origin, direction, remaining, camera->ownerID, false);
+            if (!hit.has_value()) return false;
+            if (hit->type != RayHitType::Entity) return true;
+
+            const float travelled = Vector3Math::Dot(hit->position - origin, direction) + END_TOLERANCE;
+            origin = origin + direction * travelled;
+            remaining -= travelled;
+        }
+
+        return false;
+    }
+
     // A white circle on every entity, so ones with nothing to draw (no sprite,
     // model or collider) can still be found. Drawn before the transform gizmo
     // so the gizmo stays on top.
-    void DrawEntityMarkers(const Level& level) {
+    void DrawEntityMarkers(Level& level) {
+        if (!showEntityMarkers) return;
+
         TransformGizmo::View view;
         if (!BuildGizmoView(view)) return;
 
@@ -405,6 +438,7 @@ namespace {
         for (const ComponentTransform& entityTransform : level.transforms.components) {
             Vector2 screen;
             if (!TransformGizmo::ProjectPoint(view, entityTransform.position, screen)) continue;
+            if (hideEntityMarkersBehindWalls && IsBehindGeometry(level, view.eye, entityTransform.position)) continue;
 
             drawList->AddCircle({screen.x, screen.y}, MARKER_RADIUS, IM_COL32(255, 255, 255, 220), 0, 2.0f);
         }
@@ -1308,6 +1342,26 @@ namespace RuntimeEditorUi {
 
         DrawToolbarSeparator();
 
+        // ---- Entity markers
+        constexpr const char* ENTITY_MARKERS_POPUP = "##RuntimeEditorEntityMarkers";
+
+        if (ToolbarButton("entity_markers", ICON_FA_CIRCLE_DOT, "E",
+                          Localisation::Get("runtime_editor.entity_markers") + "\n" + Localisation::Get("runtime_editor.tooltip.entity_markers"),
+                          showEntityMarkers))
+            ImGui::OpenPopup(ENTITY_MARKERS_POPUP);
+
+        if (ImGui::BeginPopup(ENTITY_MARKERS_POPUP)) {
+            const std::string toggleKey = MapEditorInternal::KeyBindName(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS);
+
+            ImGui::MenuItem(Localisation::Get("runtime_editor.entity_markers.show").c_str(), toggleKey.c_str(), &showEntityMarkers);
+            ImGui::MenuItem(Localisation::Get("runtime_editor.entity_markers.hide_behind_walls").c_str(), nullptr,
+                            &hideEntityMarkersBehindWalls, showEntityMarkers);
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+
         // ---- Statistics
         if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
                           Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
@@ -2081,6 +2135,13 @@ namespace RuntimeEditor {
             }
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
+
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS)) {
+                showEntityMarkers = !showEntityMarkers;
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(showEntityMarkers
+                    ? "runtime_editor.toast.entity_markers_on"
+                    : "runtime_editor.toast.entity_markers_off").c_str(), false, 1.5f);
+            }
         }
 
         // Select by texture: its key held while right clicking.

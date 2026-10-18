@@ -259,6 +259,7 @@ namespace MapEditorInternal {
         {"rt_next_texture",     "editor.key.rt_next_texture",     "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_RIGHTBRACKET}},
         {"rt_fullbright",       "editor.key.rt_fullbright",       "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_L}},
         {"rt_focus_selection",  "editor.key.rt_focus_selection",  "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_F}},
+        {"rt_toggle_entity_markers", "editor.key.rt_toggle_entity_markers", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_P}},
         {"rt_select_by_texture", "editor.key.rt_select_by_texture", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},

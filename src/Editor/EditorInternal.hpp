@@ -1062,6 +1062,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_NEXT_TEXTURE,
         KEYBIND_RT_FULLBRIGHT,
         KEYBIND_RT_FOCUS_SELECTION,
+        KEYBIND_RT_TOGGLE_ENTITY_MARKERS,
         KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
         KEYBIND_RT_FINE_SCROLL,       // held while scrolling
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
