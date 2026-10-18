@@ -1487,7 +1487,7 @@ namespace ImGuiDrawFunctions {
         return deleteRequested;
     }
     void DrawWallTextureField(const char *label, WallSurface &surface) {
-        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, 48.0f);
+        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, 128.0f);
         Tooltip(Get("editor.tooltip.wall.texture").c_str());
     }
 

@@ -4224,7 +4224,7 @@ namespace MapEditorInternal {
                 32.0f
             )) hasUnsavedChanges = true;
 
-            ImGui::SameLine(20.0f);
+            ImGui::SameLine(100.0f);
 
             if (DrawAssetField(
                 Get("editor.new_sector.wall_bottom_texture").c_str(),
@@ -4241,7 +4241,7 @@ namespace MapEditorInternal {
                 32.0f
             )) hasUnsavedChanges = true;
 
-            ImGui::SameLine(20.0f);
+            ImGui::SameLine(100.0f);
 
             if (DrawAssetField(
                 Get("editor.new_sector.floor_texture").c_str(),
