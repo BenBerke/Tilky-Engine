@@ -128,6 +128,21 @@ namespace MapTopology {
     // `level` is untouched.
     bool RebuildSectorsFromWalls(Level& level);
 
+    // Turns an arbitrary wall list back into a planar graph after walls
+    // were moved directly (a Geometry Mode drag): welds endpoints within
+    // kEpsilon of each other onto one exact point, splits a wall wherever
+    // another wall's endpoint lands inside it or two walls cross, then
+    // drops zero-length walls and all but the first of any walls that
+    // ended up spanning the same two points. Split halves copy every
+    // property of the wall they came from. Returns whether anything
+    // changed; follow a true with RebuildSectorsFromWalls.
+    //
+    // With `focusWallIDs`, only problems involving one of those walls are
+    // fixed - the rest of the level is left as it is, overlaps and all -
+    // and where a focus wall lands exactly on another wall, the other one
+    // is kept. Empty means every wall.
+    bool PlanarizeWalls(std::vector<Wall>& walls, ID& nextWallID, const std::vector<ID>& focusWallIDs = {});
+
     // Runs the exact same algorithm as ApplyDrawnGeometry without ever
     // touching `level`, returning whether it would enclose at least one
     // new sector. Used by the editor's click handler to decide, before

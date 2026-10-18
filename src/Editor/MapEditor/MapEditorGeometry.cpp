@@ -2301,6 +2301,46 @@ namespace MapEditorInternal {
         MapQueries::RebuildSectorRuntimeLinks(level);
     }
 
+    void RebuildGeometryAfterWallDrag(const std::vector<Vector2>& movedPoints,
+                                      const std::vector<ID>& draggedWallIDs) {
+        Level& level = LevelManager::CurrentLevel();
+
+        // A moved point now sitting on a corner of a wall the drag didn't
+        // touch joins two pieces of geometry without any wall overlapping,
+        // so PlanarizeWalls alone wouldn't notice it.
+        bool joinedCorner = false;
+
+        for (const Wall& wall : level.walls) {
+            if (std::ranges::find(draggedWallIDs, wall.id) != draggedWallIDs.end()) continue;
+
+            for (const Vector2& moved : movedPoints) {
+                if (MapTopology::PointsEquivalent(moved, wall.start) || MapTopology::PointsEquivalent(moved, wall.end)) {
+                    joinedCorner = true;
+                    break;
+                }
+            }
+
+            if (joinedCorner) break;
+        }
+
+        std::vector<Wall> walls = level.walls;
+        ID nextWallID = level.nextWallID;
+
+        const bool planarized = MapTopology::PlanarizeWalls(walls, nextWallID, draggedWallIDs);
+
+        // Nothing landed on anything: keep the sectors exactly as the drag
+        // left them, with everything a re-derive would drop (tags, ...).
+        if (!joinedCorner && !planarized) {
+            RebuildGeometryAfterMove();
+            return;
+        }
+
+        level.walls = std::move(walls);
+        level.nextWallID = nextWallID;
+
+        RebuildGeometryAfterEdit();
+    }
+
     void DeleteSelectedWalls() {
         if (selectedWalls.empty()) return;
 

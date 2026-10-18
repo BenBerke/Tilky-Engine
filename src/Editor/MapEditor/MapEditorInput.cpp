@@ -336,6 +336,7 @@ namespace MapEditorInternal {
 
         Vector2 dragAnchorOrigin{}; // the point whose snapped position defines the drag's offset
         Vector2 dragGrabOffset{};   // mouseWorld - anchor at press, so a body drag doesn't jump on grab
+        Vector2 dragDelta{};        // offset the last UpdateWallDrag applied to dragMovingPoints
 
         GeometrySnapshot dragUndoSnapshot;
         bool dragMutatedGeometry = false;
@@ -373,6 +374,8 @@ namespace MapEditorInternal {
                                  ? Vector2{mouseWorld.x - anchor.x, mouseWorld.y - anchor.y}
                                  : Vector2{0.0f, 0.0f};
 
+            dragDelta = {0.0f, 0.0f};
+
             dragUndoSnapshot = CaptureGeometryUndoSnapshot();
             dragMutatedGeometry = false;
 
@@ -404,6 +407,7 @@ namespace MapEditorInternal {
             }
 
             ApplyGeometryDragOffset(dragOriginalWalls, dragOriginalSectors, dragMovingPoints, delta);
+            dragDelta = delta;
         }
 
         // Commits whatever the drag ended up doing. Called on mouse-up, and
@@ -415,6 +419,14 @@ namespace MapEditorInternal {
 
             draggingWallGeometry = false;
 
+            std::vector<Vector2> movedPoints;
+            movedPoints.reserve(dragMovingPoints.size());
+
+            for (const Vector2& point : dragMovingPoints)
+                movedPoints.push_back({point.x + dragDelta.x, point.y + dragDelta.y});
+
+            const std::vector<ID> draggedWallIDs = dragSnapIgnoredWalls;
+
             dragOriginalWalls.clear();
             dragOriginalSectors.clear();
             dragMovingPoints.clear();
@@ -424,11 +436,11 @@ namespace MapEditorInternal {
 
             dragMutatedGeometry = false;
 
-            // The move variant, not RebuildGeometryAfterEdit: the sectors
-            // moved with the walls and were re-triangulated as they went,
-            // so re-deriving them here would throw away perfectly good
-            // sectors (and their textures) to build identical new ones.
-            RebuildGeometryAfterMove();
+            // A plain move keeps the sectors the drag already moved and
+            // re-triangulated as they are; only a drop onto other walls
+            // re-derives them, since that's what changes which sector
+            // borders which wall.
+            RebuildGeometryAfterWallDrag(movedPoints, draggedWallIDs);
         }
 
         // The distinct endpoint positions of the current selection. A
@@ -987,7 +999,7 @@ namespace MapEditorInternal {
 
             if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) ChangeMode();
             if (InputManager::GetKeyDown(SDL_SCANCODE_G) || (InputManager::GetKeyDown(SDL_SCANCODE_V) && !(InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)))) currentMode = MODE_GEOMETRY;
-            if (InputManager::GetKeyDown(SDL_SCANCODE_E)) currentMode = MODE_ENTITY;
+            if (InputManager::GetKeyDown(SDL_SCANCODE_E) || InputManager::GetKeyDown(SDL_SCANCODE_T)) currentMode = MODE_ENTITY;
             if (InputManager::GetKeyDown(SDL_SCANCODE_R) || InputManager::GetKeyDown(SDL_SCANCODE_L)) currentMode = MODE_SECTOR;
         }
 

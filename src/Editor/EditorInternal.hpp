@@ -889,6 +889,16 @@ namespace MapEditorInternal {
     void RebuildGeometryAfterMove();
     void RebuildGeometryAfterEdit();
 
+    // End of a Geometry Mode drag. Usually just RebuildGeometryAfterMove,
+    // but a drag that dropped geometry onto other walls - a point onto
+    // another wall's corner or side, a wall across or along another one -
+    // changed the topology, so the walls are planarized and the sectors
+    // re-derived (RebuildGeometryAfterEdit) to give every wall the right
+    // front/back sector. `movedPoints` are where the dragged points ended
+    // up; `draggedWallIDs` every wall that had one of them as an endpoint.
+    void RebuildGeometryAfterWallDrag(const std::vector<Vector2>& movedPoints,
+                                      const std::vector<ID>& draggedWallIDs);
+
     // Undo support for geometry edits. Wall moves and deletions reuse the
     // existing whole-operation ACTION_APPLY_GEOMETRY entry rather than
     // introducing a second undo kind: capture before touching anything,

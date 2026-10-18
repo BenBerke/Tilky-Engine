@@ -1178,6 +1178,124 @@ namespace MapTopology {
         return true;
     }
 
+    bool PlanarizeWalls(std::vector<Wall>& walls, ID& nextWallID, const std::vector<ID>& focusWallIDs) {
+        bool changed = false;
+
+        // focus[i]: walls[i] is a focus wall, or a split piece of one.
+        std::vector<bool> focus(walls.size(), focusWallIDs.empty());
+
+        if (!focusWallIDs.empty())
+            for (std::size_t i = 0; i < walls.size(); ++i)
+                focus[i] = std::ranges::find(focusWallIDs, walls[i].id) != focusWallIDs.end();
+
+        // Weld first, so the splits below land on exact shared points
+        // rather than on two corners a float's width apart. Non-focus
+        // walls are the reference: a focus endpoint moves onto them,
+        // never the other way round.
+        std::vector<Vector2> canonicalPoints;
+
+        for (const bool weldingFocus : { false, true }) {
+            for (std::size_t i = 0; i < walls.size(); ++i) {
+                if (focus[i] != weldingFocus) continue;
+
+                Wall& wall = walls[i];
+                bool welded = false;
+
+                for (Vector2* endpoint : { &wall.start, &wall.end }) {
+                    const auto it = std::ranges::find_if(canonicalPoints, [&](const Vector2& point) {
+                        return PointsEquivalent(point, *endpoint);
+                    });
+
+                    if (it == canonicalPoints.end()) {
+                        canonicalPoints.push_back(*endpoint);
+                        continue;
+                    }
+
+                    if (!weldingFocus || *it == *endpoint) continue;
+
+                    *endpoint = *it;
+                    welded = true;
+                }
+
+                if (welded) {
+                    wall.RefreshDerived();
+                    changed = true;
+                }
+            }
+        }
+
+        const auto splitIfInterior = [&](const int wallIndex, const Vector2& at) {
+            if (!PointOnSegmentInterior(at, walls[wallIndex].start, walls[wallIndex].end, kEpsilon)) return false;
+
+            SplitWallAt(walls, wallIndex, at, nextWallID);
+            focus.push_back(focus[wallIndex]);
+            return true;
+        };
+
+        // One pass is enough: a split's far half is appended, so it still
+        // meets every wall after it, and it's a piece of a wall the walls
+        // before it were already clean against.
+        for (int i = 0; i < static_cast<int>(walls.size()); ++i) {
+            for (int j = i + 1; j < static_cast<int>(walls.size()); ++j) {
+                if (!focus[i] && !focus[j]) continue;
+
+                bool split = true;
+
+                while (split) {
+                    // Copies - SplitWallAt appends, which can reallocate.
+                    const Vector2 a = walls[i].start;
+                    const Vector2 b = walls[i].end;
+                    const Vector2 c = walls[j].start;
+                    const Vector2 d = walls[j].end;
+
+                    // An endpoint inside the other wall (a T-junction, or
+                    // the ends of a collinear overlap) splits at that exact
+                    // endpoint, not at a recomputed intersection point.
+                    split = splitIfInterior(i, c) || splitIfInterior(i, d) ||
+                            splitIfInterior(j, a) || splitIfInterior(j, b);
+
+                    if (!split) {
+                        const SegmentIntersection hit = IntersectSegments(a, b, c, d);
+
+                        if (hit.kind == IntersectKind::Point &&
+                            PointOnSegmentInterior(hit.point, a, b, kEpsilon) &&
+                            PointOnSegmentInterior(hit.point, c, d, kEpsilon)) {
+                            splitIfInterior(i, hit.point);
+                            splitIfInterior(j, hit.point);
+                            split = true;
+                        }
+                    }
+
+                    changed = changed || split;
+                }
+            }
+        }
+
+        // Non-focus walls go first, so where a focus wall now duplicates
+        // one it didn't move, the stationary wall is the one kept.
+        std::vector<Wall> kept;
+        kept.reserve(walls.size());
+
+        for (const bool keepingFocus : { false, true }) {
+            for (std::size_t i = 0; i < walls.size(); ++i) {
+                if (focus[i] != keepingFocus) continue;
+
+                Wall& wall = walls[i];
+
+                if (keepingFocus && (PointsEquivalent(wall.start, wall.end) || FindMatchingWall(kept, wall.start, wall.end) >= 0)) {
+                    changed = true;
+                    continue;
+                }
+
+                kept.push_back(std::move(wall));
+            }
+        }
+
+        walls = std::move(kept);
+
+        return changed;
+    }
+
     bool WouldEncloseNewFace(const Level& level, const std::vector<Vector2>& drawnPoints) {
         const NewSectorParams dummyParams{}; // cosmetic only - doesn't affect face count
         const PassResult pass = RunTopologyPass(level, drawnPoints, dummyParams);
