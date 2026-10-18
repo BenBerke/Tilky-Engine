@@ -636,6 +636,23 @@ namespace {
     bool ShiftHeld() { return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT); }
     bool AltHeld() { return InputManager::GetKey(SDL_SCANCODE_LALT) || InputManager::GetKey(SDL_SCANCODE_RALT); }
 
+    // Moves a sector's light by `delta` on its brightest channel, scaling the
+    // other two with it so the tint stays the same. From black it comes back
+    // as grey. Children follow, same as an inspector edit.
+    void AdjustSectorBrightness(Level& level, Sector& sector, const float delta) {
+        const Vector3 lightBefore = sector.light;
+        const float brightest = std::max({sector.light.x, sector.light.y, sector.light.z});
+        const float target = std::clamp(brightest + delta, 0.0f, 255.0f);
+
+        if (brightest <= 0.0f) sector.light = {target, target, target};
+        else {
+            const float factor = target / brightest;
+            sector.light = {sector.light.x * factor, sector.light.y * factor, sector.light.z * factor};
+        }
+
+        if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, sector.floors, lightBefore);
+    }
+
     // Copies the hovered surface. False if the cursor isn't on one.
     bool CopyHoveredSurface(Level& level, const bool withPlacement) {
         return ForHoveredSurface(level, [&](const auto& surface) {
@@ -1698,7 +1715,12 @@ namespace RuntimeEditor {
                 const int floorIndex = hit->sectorFloorIndex;
                 SectorFloor& floor = sector.floors[floorIndex];
 
-                if (hit->type == RayHitType::SectorFloor) {
+                // Shift+scroll: the sector's brightness instead of a height.
+                if (ShiftHeld()) {
+                    constexpr float LIGHT_STEP = 8.0f;
+                    AdjustSectorBrightness(level, sector, wheel * LIGHT_STEP);
+                }
+                else if (hit->type == RayHitType::SectorFloor) {
                     const float minimumHeight =
                         floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
 
