@@ -292,6 +292,18 @@ namespace MapEditorInternal {
 
     SDL_Scancode comboBindings[COMBO_COUNT][COMBO_SLOTS] = {};
 
+    const RuntimeStepInfo RUNTIME_STEP_INFO[RT_STEP_COUNT] = {
+        {"height",              "runtime_editor.step.height",              1.0f,   0.01f,   64.0f, "%.2f"},
+        {"fine_height",         "runtime_editor.step.fine_height",         0.1f,   0.01f,   64.0f, "%.2f"},
+        {"texture_scale",       "runtime_editor.step.texture_scale",       0.01f,  0.0001f, 1.0f,  "%.4f"},
+        {"fine_texture_scale",  "runtime_editor.step.fine_texture_scale",  0.001f, 0.0001f, 1.0f,  "%.4f"},
+        {"brightness",          "runtime_editor.step.brightness",          8.0f,   0.1f,    64.0f, "%.1f"},
+        {"fine_brightness",     "runtime_editor.step.fine_brightness",     0.8f,   0.1f,    64.0f, "%.1f"},
+        {"texture_drag",        "runtime_editor.step.texture_drag",        0.08f,  0.001f,  1.0f,  "%.3f"},
+    };
+
+    float runtimeSteps[RT_STEP_COUNT] = {};
+
     namespace {
         // keyBindings and comboBindings start as copies of the defaults.
         const bool keyBindingsInitialized = [] {
@@ -302,6 +314,8 @@ namespace MapEditorInternal {
             for (int combo = 0; combo < COMBO_COUNT; ++combo)
                 for (int slot = 0; slot < COMBO_SLOTS; ++slot)
                     comboBindings[combo][slot] = COMBO_INFO[combo].defaults[slot];
+
+            for (int step = 0; step < RT_STEP_COUNT; ++step) runtimeSteps[step] = RUNTIME_STEP_INFO[step].defaultValue;
 
             return true;
         }();

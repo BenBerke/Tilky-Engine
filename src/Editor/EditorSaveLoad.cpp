@@ -260,6 +260,17 @@ namespace MapEditorInternal {
                 }
             }
 
+            // A missing or non-number step keeps its default.
+            if (const auto stepsIt = settings.find("runtimeSteps"); stepsIt != settings.end() && stepsIt->is_object()) {
+                for (int step = 0; step < RT_STEP_COUNT; ++step) {
+                    const RuntimeStepInfo& info = RUNTIME_STEP_INFO[step];
+                    const auto it = stepsIt->find(info.saveName);
+                    if (it == stepsIt->end() || !it->is_number()) continue;
+
+                    runtimeSteps[step] = std::clamp(it->get<float>(), info.min, info.max);
+                }
+            }
+
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
         }
@@ -297,6 +308,15 @@ namespace MapEditorInternal {
         }
 
         return bindings;
+    }
+
+    // {"height": 1.0, ...}
+    nlohmann::json SerializeRuntimeSteps() {
+        nlohmann::json steps = nlohmann::json::object();
+
+        for (int step = 0; step < RT_STEP_COUNT; ++step) steps[RUNTIME_STEP_INFO[step].saveName] = runtimeSteps[step];
+
+        return steps;
     }
 
     bool SaveUserSettings() {
@@ -387,7 +407,8 @@ namespace MapEditorInternal {
                 {"worldSettingsVisible", worldSettingsVisible},
                 {"assetBrowserVisible", assetBrowserVisible},
                 {"keyBindings", SerializeKeyBindings()},
-                {"comboBindings", SerializeComboBindings()}
+                {"comboBindings", SerializeComboBindings()},
+                {"runtimeSteps", SerializeRuntimeSteps()}
             };
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

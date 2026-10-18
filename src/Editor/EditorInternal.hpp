@@ -1088,6 +1088,33 @@ namespace MapEditorInternal {
     };
 
     extern const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT];
+
+    // Runtime editor step sizes, set from its toolbar's Steps menu and saved
+    // with the user settings. The fine ones replace the normal ones while
+    // the fine scroll key is held.
+    enum RuntimeStep {
+        RT_STEP_HEIGHT,
+        RT_STEP_FINE_HEIGHT,
+        RT_STEP_TEXTURE_SCALE,
+        RT_STEP_FINE_TEXTURE_SCALE,
+        RT_STEP_BRIGHTNESS,
+        RT_STEP_FINE_BRIGHTNESS,
+        RT_STEP_TEXTURE_DRAG, // texture units per pixel of left-drag
+
+        RT_STEP_COUNT
+    };
+
+    struct RuntimeStepInfo {
+        const char* saveName;
+        const char* labelKey; // en.json
+        float defaultValue;
+        float min;
+        float max;
+        const char* format;
+    };
+
+    extern const RuntimeStepInfo RUNTIME_STEP_INFO[RT_STEP_COUNT];
+    extern float runtimeSteps[RT_STEP_COUNT];
     extern SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS];
 
     // Pressed this frame / held, on any of its slots. A key some combo of

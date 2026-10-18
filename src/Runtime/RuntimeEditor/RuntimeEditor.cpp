@@ -57,10 +57,6 @@ namespace {
     constexpr float BASE_MOVE_SPEED = 50.0f;
     constexpr float RAY_LENGTH = 10000.0f;
 
-    // Texture units per pixel of left-drag. Walls and sector surfaces share it
-    // so a drag feels the same on either.
-    constexpr float UV_DRAG_SENSITIVITY = 0.08f;
-
     float moveSpeed = 50.0f;
 
     // Toolbar layout and its camera speed slider range. Q/E and Shift
@@ -1362,6 +1358,43 @@ namespace RuntimeEditorUi {
 
         ImGui::SameLine();
 
+        // ---- Step sizes
+        constexpr const char* STEPS_POPUP = "##RuntimeEditorSteps";
+
+        if (ToolbarButton("steps", ICON_FA_SLIDERS, "Sz",
+                          Localisation::Get("runtime_editor.steps") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.steps")),
+                          ImGui::IsPopupOpen(STEPS_POPUP)))
+            ImGui::OpenPopup(STEPS_POPUP);
+
+        if (ImGui::BeginPopup(STEPS_POPUP)) {
+            using namespace MapEditorInternal;
+
+            ImGui::TextUnformatted(Localisation::Get("runtime_editor.steps").c_str());
+            ImGui::Separator();
+
+            const std::string defaultLabel = Localisation::Get("runtime_editor.steps.default");
+
+            for (int step = 0; step < RT_STEP_COUNT; ++step) {
+                const RuntimeStepInfo& info = RUNTIME_STEP_INFO[step];
+                ImGui::PushID(step);
+
+                ImGui::SetNextItemWidth(TOOLBAR_SLIDER_WIDTH);
+                ImGui::SliderFloat(Localisation::Get(info.labelKey).c_str(), &runtimeSteps[step], info.min, info.max, info.format,
+                                   ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+
+                ImGui::SameLine();
+                ImGui::BeginDisabled(runtimeSteps[step] == info.defaultValue);
+                if (ImGui::SmallButton(defaultLabel.c_str())) runtimeSteps[step] = info.defaultValue;
+                ImGui::EndDisabled();
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+
         // ---- Statistics
         if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
                           Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
@@ -2035,8 +2068,11 @@ namespace RuntimeEditor {
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
                 // Negated so the texture tracks the cursor rather than running
                 // from it. Flip the signs if the sampler wants the opposite.
-                const float deltaX = mouseDelta.x * uvDragHorizontalSign * UV_DRAG_SENSITIVITY;
-                const float deltaY = -mouseDelta.y * uvDragVerticalSign * UV_DRAG_SENSITIVITY;
+                // Walls and sector surfaces share the speed so a drag feels
+                // the same on either.
+                const float dragSpeed = MapEditorInternal::runtimeSteps[MapEditorInternal::RT_STEP_TEXTURE_DRAG];
+                const float deltaX = mouseDelta.x * uvDragHorizontalSign * dragSpeed;
+                const float deltaY = -mouseDelta.y * uvDragVerticalSign * dragSpeed;
 
                 if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
                     AddUvOffset(level, uvDragSurface, {deltaX, 0});
@@ -2256,13 +2292,13 @@ namespace RuntimeEditor {
         const float wheel = InputManager::GetMouseWheelScroll();
 
         if (wheel != 0.0f && !mouseBlockedByImGui && hit.has_value()) {
-            constexpr float HEIGHT_STEP = 1.0f;
-            constexpr float UV_SCALE_STEP = 0.01f;
+            using namespace MapEditorInternal;
+
             constexpr float MIN_ROOM_HEIGHT = 1.0f;
-            // Alt: a tenth of every step.
-            const float stepScale = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_FINE_SCROLL) ? 0.1f : 1.0f;
-            const float heightDelta = wheel * HEIGHT_STEP * stepScale;
-            const float uvScaleDelta = wheel * UV_SCALE_STEP * stepScale;
+            // The fine scroll key swaps every step for its fine one.
+            const bool fine = GetKeyBind(KEYBIND_RT_FINE_SCROLL);
+            const float heightDelta = wheel * runtimeSteps[fine ? RT_STEP_FINE_HEIGHT : RT_STEP_HEIGHT];
+            const float uvScaleDelta = wheel * runtimeSteps[fine ? RT_STEP_FINE_TEXTURE_SCALE : RT_STEP_TEXTURE_SCALE];
 
             const Uint64 now = SDL_GetTicks();
             if (now - lastScrollEditTicks > SCROLL_UNDO_MERGE_MS) PushUndo(level);
@@ -2287,8 +2323,7 @@ namespace RuntimeEditor {
 
                 // Shift+scroll: the sector's brightness instead of a height.
                 if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_BRIGHTNESS_SCROLL)) {
-                    constexpr float LIGHT_STEP = 8.0f;
-                    AdjustSectorBrightness(level, sector, wheel * LIGHT_STEP * stepScale);
+                    AdjustSectorBrightness(level, sector, wheel * runtimeSteps[fine ? RT_STEP_FINE_BRIGHTNESS : RT_STEP_BRIGHTNESS]);
                 }
                 else if (hit->type == RayHitType::SectorFloor) {
                     const float minimumHeight =
