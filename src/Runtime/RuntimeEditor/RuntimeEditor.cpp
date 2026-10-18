@@ -21,6 +21,7 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Runtime/RuntimeEditor/TransformGizmo.hpp"
 #include "Headers/Runtime/RuntimeEditor/MultiEdit.hpp"
+#include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
 #include <algorithm>
 #include <functional>
@@ -57,6 +58,13 @@ namespace {
     constexpr float UV_DRAG_SENSITIVITY = 0.08f;
 
     float moveSpeed = 50.0f;
+
+    // Toolbar layout and its camera speed slider range. Q/E and Shift
+    // still change and reset the speed directly.
+    constexpr float TOOLBAR_BUTTON_SIZE = 32.0f;
+    constexpr float TOOLBAR_SLIDER_WIDTH = 140.0f;
+    constexpr float MIN_SLIDER_MOVE_SPEED = 1.0f;
+    constexpr float MAX_SLIDER_MOVE_SPEED = 1000.0f;
 
     Vector3 GetCameraForward(const ComponentCamera& camera) {
         const float yawRadians = camera.yaw * std::numbers::pi_v<float> / 180.0f;
@@ -634,6 +642,131 @@ namespace {
 
 namespace RuntimeEditorUi {
     constexpr bool DRAGGABLE = true;
+    // =========================================================================
+    //  Toolbar: square icon buttons centred along the top of the window, the
+    //  same look as the Map Editor's (MapEditorUI.cpp, DrawToolbar)
+    // =========================================================================
+
+    void HoverTooltip(const std::string& text) {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", text.c_str());
+    }
+
+    // Shows `icon` (a Font Awesome glyph) when this context's icon font
+    // loaded, otherwise `fallback`. `active` draws it pressed, for the tool
+    // that's selected.
+    bool ToolbarButton(const char* id, const char* icon, const char* fallback, const std::string& tooltip, const bool active) {
+        ImFont* iconFont = runtimeRenderer != nullptr ? runtimeRenderer->GetImGuiIconFont() : nullptr;
+
+        ImGui::PushID(id);
+
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (iconFont != nullptr) ImGui::PushFont(iconFont, 0.0f);
+
+        const bool pressed = ImGui::Button(iconFont != nullptr ? icon : fallback, ImVec2(TOOLBAR_BUTTON_SIZE, TOOLBAR_BUTTON_SIZE));
+
+        if (iconFont != nullptr) ImGui::PopFont();
+        if (active) ImGui::PopStyleColor();
+
+        HoverTooltip(tooltip);
+
+        ImGui::PopID();
+        return pressed;
+    }
+
+    void DrawToolbarSeparator() {
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+    }
+
+    // Slider the height of the toolbar buttons' row, centred on them.
+    void BeginToolbarSlider() {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (TOOLBAR_BUTTON_SIZE - ImGui::GetFrameHeight()) * 0.5f);
+        ImGui::SetNextItemWidth(TOOLBAR_SLIDER_WIDTH);
+    }
+
+    void DrawToolbar() {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        constexpr float MARGIN = 6.0f;
+        constexpr const char* STATISTICS_POPUP = "##RuntimeEditorStatistics";
+
+        ImGui::SetNextWindowPos(
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + MARGIN),
+            ImGuiCond_Always,
+            ImVec2(0.5f, 0.0f)
+        );
+
+        ImGui::SetNextWindowBgAlpha(0.0f);
+
+        constexpr ImGuiWindowFlags overlayFlags =
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::Begin("##RuntimeEditorToolbar", nullptr, overlayFlags);
+
+        // ---- Gizmo tools
+        if (ToolbarButton("move", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "M",
+                          Localisation::Get("runtime_editor.tool.move") + "\n" + Localisation::Get("runtime_editor.tooltip.tool.move"),
+                          gizmoTool == TransformGizmo::Tool::Move))
+            gizmoTool = TransformGizmo::Tool::Move;
+
+        ImGui::SameLine();
+
+        if (ToolbarButton("rotate", ICON_FA_ROTATE, "R",
+                          Localisation::Get("runtime_editor.tool.rotate") + "\n" + Localisation::Get("runtime_editor.tooltip.tool.rotate"),
+                          gizmoTool == TransformGizmo::Tool::Rotate))
+            gizmoTool = TransformGizmo::Tool::Rotate;
+
+        DrawToolbarSeparator();
+
+        // ---- Camera
+        const std::string speedFormat = Localisation::Get("runtime_editor.camera_speed") + ": %.0f";
+
+        BeginToolbarSlider();
+        ImGui::SliderFloat("##CameraSpeed", &moveSpeed, MIN_SLIDER_MOVE_SPEED, MAX_SLIDER_MOVE_SPEED,
+                           speedFormat.c_str());
+        HoverTooltip(Localisation::Get("runtime_editor.tooltip.camera_speed"));
+
+        ImGui::SameLine();
+
+        // Edits the user setting itself, so the value is the same one the
+        // map editor's User Settings window shows and saves.
+        const std::string fovFormat = Localisation::Get("editor.user_settings.runtime_camera_fov") + ": %.0f";
+
+        BeginToolbarSlider();
+        ImGui::SliderFloat("##CameraFov", &MapEditorInternal::runtimeCameraFov,
+                           MapEditorInternal::MIN_RUNTIME_CAMERA_FOV, MapEditorInternal::MAX_RUNTIME_CAMERA_FOV,
+                           fovFormat.c_str());
+
+        DrawToolbarSeparator();
+
+        // ---- Statistics
+        if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
+                          Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
+                          ImGui::IsPopupOpen(STATISTICS_POPUP)))
+            ImGui::OpenPopup(STATISTICS_POPUP);
+
+        if (ImGui::BeginPopup(STATISTICS_POPUP)) {
+            // ImGui's own running average, so the number is readable instead
+            // of changing every frame.
+            const float framerate = ImGui::GetIO().Framerate;
+
+            ImGui::TextUnformatted(Localisation::Get("runtime_editor.statistics").c_str());
+            ImGui::Separator();
+            ImGui::Text("%s: %.0f", Localisation::Get("runtime_editor.statistics.fps").c_str(), framerate);
+            ImGui::Text("%s: %.2f ms", Localisation::Get("runtime_editor.statistics.frame_time").c_str(),
+                        framerate > 0.0f ? 1000.0f / framerate : 0.0f);
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::End();
+    }
+
     void Draw(Level& level) {
         // The browser is shared with the Map Editor, which hands it a font
         // from the editor's ImGui context every frame. This context has its
@@ -804,34 +937,7 @@ namespace RuntimeEditorUi {
 
             ImGui::End();
 
-            ImGui::Begin((Localisation::Get("runtime_editor.tools_window") + "##RuntimeEditorTools").c_str());
-
-            const auto DrawToolButton = [](const char* labelKey, const char* tooltipKey, const TransformGizmo::Tool tool) {
-                const bool active = gizmoTool == tool;
-
-                if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-                if (ImGui::Button(Localisation::Get(labelKey).c_str())) gizmoTool = tool;
-                if (active) ImGui::PopStyleColor();
-
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                    ImGui::SetTooltip("%s", Localisation::Get(tooltipKey).c_str());
-            };
-
-            DrawToolButton("runtime_editor.tool.move", "runtime_editor.tooltip.tool.move", TransformGizmo::Tool::Move);
-            ImGui::SameLine();
-            DrawToolButton("runtime_editor.tool.rotate", "runtime_editor.tooltip.tool.rotate", TransformGizmo::Tool::Rotate);
-
-            // Edits the user setting itself, so the value is the same one the
-            // map editor's User Settings window shows and saves.
-            ImGui::SliderFloat(
-                Localisation::Get("editor.user_settings.runtime_camera_fov").c_str(),
-                &MapEditorInternal::runtimeCameraFov,
-                MapEditorInternal::MIN_RUNTIME_CAMERA_FOV,
-                MapEditorInternal::MAX_RUNTIME_CAMERA_FOV,
-                "%.0f"
-            );
-
-            ImGui::End();
+            DrawToolbar();
         }
 
         // Outside the check above, so open scripts and flipbooks don't vanish
@@ -1031,7 +1137,7 @@ namespace RuntimeEditor {
 
             if (InputManager::GetKeyDown(SDL_SCANCODE_Q)) moveSpeed += 3.0f;
             if (InputManager::GetKeyDown(SDL_SCANCODE_E)) moveSpeed -= 3.0f;
-            if (InputManager::GetKey(SDL_SCANCODE_LSHIFT)) moveSpeed = BASE_MOVE_SPEED;
+            if (InputManager::GetKey(SDL_SCANCODE_C)) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
 

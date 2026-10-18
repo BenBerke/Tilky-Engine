@@ -398,13 +398,12 @@ namespace {
 
             renderer->EndImGuiFrame();
 
-            RenderDebugText();
+            // No FPS text here: the runtime editor's toolbar has a
+            // Statistics menu for it.
             EditorFunctions::RenderConsole(renderer.get());
 
             renderer->EndFrame();
         }
-
-        UpdateFpsCounter();
 
         const auto parentsBeforeUpdate = level.SnapshotParentSectorValues();
 
@@ -413,7 +412,11 @@ namespace {
             *renderer,
             relativeMouseMode,
             io.WantCaptureMouse,
-            io.WantCaptureKeyboard,
+            // Only a text field being typed into blocks the shortcuts.
+            // WantCaptureKeyboard is true whenever any ImGui window has focus
+            // (keyboard nav is on), and the panels that reappear after a
+            // middle-mouse look take focus - locking the 1/2 tool keys.
+            io.WantTextInput,
             renderer->screenWidth,
             renderer->screenHeight
         );
