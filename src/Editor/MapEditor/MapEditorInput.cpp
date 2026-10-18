@@ -505,6 +505,144 @@ namespace MapEditorInternal {
             }
         }
 
+        // ---- Box selection --------------------------------------------------
+        // A left drag that starts on empty canvas in Geometry or Entity Mode
+        // draws a box; on release everything it touches is selected - walls
+        // that cross or sit in it, entities whose footprint overlaps it. A
+        // plain box replaces the selection, Ctrl on release adds to it. A
+        // press that never drags still just clears the selection, as before.
+
+        constexpr float BOX_SELECT_DRAG_THRESHOLD = 4.0f; // screen pixels
+
+        bool boxSelectPending = false;  // left is down after an empty-canvas press
+        bool boxSelectDragged = false;  // ...and has moved past the threshold
+        Mode boxSelectMode = MODE_GEOMETRY;
+        Vector2 boxSelectStartWorld{};
+        Vector2 boxSelectStartScreen{};
+
+        void BeginBoxSelect(const Vector2& mouseWorld) {
+            boxSelectPending = true;
+            boxSelectDragged = false;
+            boxSelectMode = currentMode;
+            boxSelectStartWorld = mouseWorld;
+            boxSelectStartScreen = InputManager::GetMousePosition();
+        }
+
+        // Liang-Barsky: does any part of segment a-b lie in the box?
+        bool SegmentTouchesBox(const Vector2& a, const Vector2& b, const Vector2& boxMin, const Vector2& boxMax) {
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+
+            const float p[4] = {-dx, dx, -dy, dy};
+            const float q[4] = {a.x - boxMin.x, boxMax.x - a.x, a.y - boxMin.y, boxMax.y - a.y};
+
+            float t0 = 0.0f;
+            float t1 = 1.0f;
+
+            for (int i = 0; i < 4; ++i) {
+                if (p[i] == 0.0f) {
+                    if (q[i] < 0.0f) return false; // parallel to this edge and outside it
+                    continue;
+                }
+
+                const float t = q[i] / p[i];
+
+                if (p[i] < 0.0f) {
+                    if (t > t1) return false;
+                    t0 = std::max(t0, t);
+                }
+                else {
+                    if (t < t0) return false;
+                    t1 = std::min(t1, t);
+                }
+            }
+
+            return true;
+        }
+
+        void ClearSelectionForMode(const Mode mode) {
+            if (mode == MODE_GEOMETRY) ClearWallSelection();
+            else if (mode == MODE_ENTITY) ClearEntitySelection();
+        }
+
+        void ApplyBoxSelection(const Vector2& boxMin, const Vector2& boxMax, const bool additive) {
+            Level& level = LevelManager::CurrentLevel();
+
+            if (!additive) ClearSelectionForMode(boxSelectMode);
+
+            if (boxSelectMode == MODE_GEOMETRY) {
+                for (const Wall& wall : level.walls) {
+                    if (!SegmentTouchesBox(wall.start, wall.end, boxMin, boxMax)) continue;
+                    if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end()) continue;
+
+                    selectedWalls.push_back(wall.id);
+                    selectedWallID = wall.id;
+                }
+
+                // Like a left click: selects, the inspector stays closed
+                // until a wall is right clicked.
+                editingWall = false;
+                return;
+            }
+
+            if (boxSelectMode == MODE_ENTITY) {
+                for (Entity& entity : level.entities) {
+                    // Filtered-out entities can't be clicked either; UI
+                    // entities live in the UI Editor's space, not this one.
+                    if (!EntityPassesFilter(entity)) continue;
+
+                    const ComponentTransform* transform = level.transforms.Get(entity.id);
+                    if (transform == nullptr) continue;
+
+                    // The same footprint EntityAt picks with.
+                    const float halfX = transform->scale.x * 0.5f;
+                    const float halfZ = transform->scale.z * 0.5f;
+
+                    const bool overlaps =
+                        transform->position.x - halfX <= boxMax.x && transform->position.x + halfX >= boxMin.x &&
+                        transform->position.z - halfZ <= boxMax.y && transform->position.z + halfZ >= boxMin.y;
+
+                    if (!overlaps) continue;
+                    if (std::find(selectedEntities.begin(), selectedEntities.end(), entity.id) != selectedEntities.end()) continue;
+
+                    selectedEntities.push_back(entity.id);
+                    selectedEntity = entity;
+                }
+            }
+        }
+
+        // Every frame, ImGui or not, so a release over a panel still ends it.
+        void UpdateBoxSelect(const Vector2& mouseWorld) {
+            if (!boxSelectPending) return;
+
+            if (currentMode != boxSelectMode || InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+                boxSelectPending = false;
+                return;
+            }
+
+            const Vector2 mouseScreen = InputManager::GetMousePosition();
+
+            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
+                const float dx = mouseScreen.x - boxSelectStartScreen.x;
+                const float dy = mouseScreen.y - boxSelectStartScreen.y;
+
+                if (dx * dx + dy * dy > BOX_SELECT_DRAG_THRESHOLD * BOX_SELECT_DRAG_THRESHOLD) boxSelectDragged = true;
+                return;
+            }
+
+            boxSelectPending = false;
+
+            if (!boxSelectDragged) {
+                ClearSelectionForMode(boxSelectMode);
+                return;
+            }
+
+            const Vector2 boxMin = {std::min(boxSelectStartWorld.x, mouseWorld.x), std::min(boxSelectStartWorld.y, mouseWorld.y)};
+            const Vector2 boxMax = {std::max(boxSelectStartWorld.x, mouseWorld.x), std::max(boxSelectStartWorld.y, mouseWorld.y)};
+
+            ApplyBoxSelection(boxMin, boxMax, MultiSelectModifierHeld());
+        }
+
         // Geometry Mode's whole pointer story: hover, select, drag, release.
         // Sectors are never touched here - the moved walls are handed back
         // to the topology pass on release, and it re-derives whatever
@@ -578,10 +716,10 @@ namespace MapEditorInternal {
                     }
                 }
 
-                // Empty space clears the selection, and with it the wall
-                // inspector.
+                // Empty space starts a box selection. Released without a
+                // drag, it clears the selection (and the wall inspector).
                 if (wallUnderCursor == INVALID_ID) {
-                    ClearWallSelection();
+                    BeginBoxSelect(mouseWorld);
                     return;
                 }
 
@@ -777,6 +915,32 @@ namespace MapEditorInternal {
         return xDistance <= zDistance ? GIZMO_X : GIZMO_Z;
     }
 
+    void DrawSelectionBox() {
+        if (!boxSelectPending || !boxSelectDragged) return;
+
+        // From where the drag started in the world (the camera can pan
+        // mid-drag) to the cursor.
+        const Vector2 start = WorldToScreen(boxSelectStartWorld, cameraPos);
+        const Vector2 end = InputManager::GetMousePosition();
+
+        const SDL_FRect box = {
+            std::min(start.x, end.x),
+            std::min(start.y, end.y),
+            std::fabs(end.x - start.x),
+            std::fabs(end.y - start.y)
+        };
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+        SDL_SetRenderDrawColor(renderer, 90, 150, 255, 40);
+        SDL_RenderFillRect(renderer, &box);
+
+        SDL_SetRenderDrawColor(renderer, 90, 150, 255, 200);
+        SDL_RenderRect(renderer, &box);
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    }
+
     EntityGizmoPart GetActiveEntityGizmoPart() {
         return holdingEntity ? activeGizmoPart : GIZMO_NONE;
     }
@@ -867,10 +1031,11 @@ namespace MapEditorInternal {
                             BeginCanvasEntityHold(level, GIZMO_NONE);
                         }
                     }
-                    // Empty space clears the selection, same as Geometry
-                    // Mode. Creating an entity is the E key's job (see
-                    // below), so a missed click never spawns one.
-                    else ClearEntitySelection();
+                    // Empty space starts a box selection, same as Geometry
+                    // Mode; released without a drag it clears the selection.
+                    // Creating an entity is the E key's job (see below), so a
+                    // missed click never spawns one.
+                    else BeginBoxSelect(mouseWorld);
 
                     // Left click only selects/moves — it must never
                     // open the inspector
@@ -931,6 +1096,8 @@ namespace MapEditorInternal {
 
             UpdateEditorZoom();
         }
+
+        UpdateBoxSelect(mouseWorld);
 
         if (!keyboardBlockedByImgui) {
             Vector2 movement = {.0f, .0f};

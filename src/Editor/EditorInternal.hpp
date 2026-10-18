@@ -728,6 +728,9 @@ namespace MapEditorInternal {
 
     // Defined in MapEditorDrawing.cpp. Call after DrawEntities().
     void DrawEntityMoveGizmo();
+    // Defined in MapEditorInput.cpp, next to the box selection it draws.
+    // Call after DrawEntities().
+    void DrawSelectionBox();
     void DrawGridDots();
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
