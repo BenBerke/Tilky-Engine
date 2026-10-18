@@ -98,7 +98,7 @@ namespace OpenGLRendererInternal {
         //data.x = texture region/index;
         //data.y = 0 seen from the front sector, 1 from the back;
         //data.z = texture anchor height (world height of V = 0);
-        //data.w = unused;
+        //data.w = SurfaceMetaData flags of this piece;
         Vector4 data2;
         //x = textureOffset.x
         //y = textureOffset.y
@@ -152,7 +152,7 @@ namespace OpenGLRendererInternal {
         Vector4 slopeData;
         Vector4 floorColor;
         Vector4 ceilingColor;
-        Vector4 textureData;
+        Vector4 textureData; // x/y = floor/ceiling texture region, z/w = floor/ceiling SurfaceMetaData flags
 
         // xy = floor offset, zw = ceiling offset
         Vector4 textureOffsets;

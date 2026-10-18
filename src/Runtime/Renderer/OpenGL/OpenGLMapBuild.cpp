@@ -66,7 +66,8 @@ namespace {
         const Wall& wall,
         const WallPieces::WallPiece& piece,
         const float textureRegionIndex,
-        const float wallContrast
+        const float wallContrast,
+        const uint8_t metaData
     ) {
         const WallSurface& surface = wall.Surface(piece.slot);
 
@@ -76,7 +77,7 @@ namespace {
             textureRegionIndex,
             piece.frontFacing ? 0.0f : 1.0f,
             piece.anchorHeight,
-            0.0f
+            static_cast<float>(metaData)
         };
 
         gpuWall.startEnd = {
@@ -128,7 +129,8 @@ void OpenGL::BuildGpuWallsFromMap() {
 
     const float wallContrast = level.rendererSettings.wallContrast;
 
-    for (const Wall& wall : level.walls) {
+    for (int wallIndex = 0; wallIndex < static_cast<int>(level.walls.size()); ++wallIndex) {
+        const Wall& wall = level.walls[wallIndex];
         if (IsWallCulled(level, wall)) continue;
 
         const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
@@ -143,7 +145,8 @@ void OpenGL::BuildGpuWallsFromMap() {
                 wall,
                 piece,
                 piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex,
-                wallContrast
+                wallContrast,
+                WallPieceMetaData(wallIndex, piece.slot)
             );
         }
     }

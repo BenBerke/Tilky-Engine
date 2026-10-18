@@ -3,10 +3,12 @@
 
 #include <imgui.h>
 #include <string>
+#include <vector>
 
 #include <SDL3/SDL.h>
 
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Runtime/Renderer/SurfaceMetaData.hpp"
 
 class IRenderer {
 public:
@@ -27,6 +29,7 @@ public:
     void EndSession() {
         useEditorCamera = false;
         DestroyEditorCamera();
+        ClearSurfaceMarks();
     }
 
     virtual void BeginFrame() = 0;
@@ -79,7 +82,40 @@ public:
         return static_cast<ImTextureID>(0);
     }
 
+    // Surfaces to draw differently (see SurfaceMetaData). Kept until
+    // cleared, so a caller re-marking every frame clears first.
+    void ClearSurfaceMarks() {
+        surfaceMarks.clear();
+    }
+
+    void MarkSurface(const SurfaceMark& mark) {
+        if (mark.metaData != SURFACE_META_NONE) surfaceMarks.push_back(mark);
+    }
+
 protected:
+    std::vector<SurfaceMark> surfaceMarks;
+
+    // The flags of every mark on that wall piece / floor or ceiling, OR'd.
+    [[nodiscard]] uint8_t WallPieceMetaData(const int wallIndex, const WallSurfaceSlot slot) const {
+        uint8_t metaData = SURFACE_META_NONE;
+
+        for (const SurfaceMark& mark : surfaceMarks)
+            if (mark.kind == MarkedSurfaceKind::Wall && mark.wallIndex == wallIndex && mark.wallSlot == slot)
+                metaData |= mark.metaData;
+
+        return metaData;
+    }
+
+    [[nodiscard]] uint8_t FlatMetaData(const int sectorIndex, const int floorIndex, const MarkedSurfaceKind kind) const {
+        uint8_t metaData = SURFACE_META_NONE;
+
+        for (const SurfaceMark& mark : surfaceMarks)
+            if (mark.kind == kind && mark.sectorIndex == sectorIndex && mark.floorIndex == floorIndex)
+                metaData |= mark.metaData;
+
+        return metaData;
+    }
+
     bool useEditorCamera = false;
 
     static constexpr ID EDITOR_CAMERA_ENTITY_ID = 0;

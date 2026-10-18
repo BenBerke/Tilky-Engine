@@ -30,7 +30,8 @@ void OpenGL::BuildGpuSectors() {
         // triangles drawn yet either.
         if (sectorIndex < flatSectorBounds.size()) gpuSector.bounds = flatSectorBounds[sectorIndex];
 
-        for (const SectorFloor& floor : sector.floors) {
+        for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+            const SectorFloor& floor = sector.floors[floorIndex];
             GpuSectorFloor gpuFloor{};
 
             const Vector4 floorColor = floor.floor.color;
@@ -67,8 +68,8 @@ void OpenGL::BuildGpuSectors() {
             gpuFloor.textureData = {
                 static_cast<float>(GetTextureRegionIndex(floor.floor.texture)),
                 static_cast<float>(GetTextureRegionIndex(floor.ceiling.texture)),
-                0.0f,
-                0.0f
+                static_cast<float>(FlatMetaData(static_cast<int>(sectorIndex), floorIndex, MarkedSurfaceKind::Floor)),
+                static_cast<float>(FlatMetaData(static_cast<int>(sectorIndex), floorIndex, MarkedSurfaceKind::Ceiling))
             };
 
             gpuFloor.textureOffsets = {

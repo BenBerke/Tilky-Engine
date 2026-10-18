@@ -6,6 +6,9 @@
 #define RENDER_COLLIDER 4
 #define RENDER_MODEL 5
 
+// SurfaceMetaData bit flags (Headers/Runtime/Renderer/SurfaceMetaData.hpp).
+#define SURFACE_META_HOVERED 1
+
 in vec2 vSpriteUV;
 flat in int vSpriteTextureIndex;
 
@@ -15,6 +18,7 @@ in vec2 vFlatUV;
 flat in int vTextureIndex;
 flat in int vFlatTextureIndex;
 flat in vec4 vColor;
+flat in int vSurfaceMetaData; // walls and flats only
 
 in vec3 vWorldPos;
 in vec2 vSurfaceCoord;
@@ -47,6 +51,10 @@ const float MODEL_AMBIENT = 0.55;
 // Approximate contact occlusion along wall boundaries.
 const float WALL_AO_DISTANCE = 12.0;
 const float WALL_AO_STRENGTH = 0.28;
+
+// Runtime editor hover highlight, mixed over the lit colour.
+const vec3 HOVER_TINT_COLOR = vec3(1.0, 0.1, 0.1);
+const float HOVER_TINT_STRENGTH = 0.4;
 
 struct TextureRegion {
     vec4 uvRect;
@@ -124,13 +132,20 @@ vec4 ApplyLighting(vec4 color, bool applyWallAO) {
     return vec4(color.rgb * light, color.a);
 }
 
+vec4 ApplySurfaceMetaData(vec4 color) {
+    if ((vSurfaceMetaData & SURFACE_META_HOVERED) != 0)
+        color.rgb = mix(color.rgb, HOVER_TINT_COLOR, HOVER_TINT_STRENGTH);
+
+    return color;
+}
+
 void main() {
     if (renderMode == RENDER_FLAT) {
         vec4 texColor = SampleTexture(vFlatTextureIndex, vFlatUV, true);
 
         if (texColor.a < 0.1) discard;
 
-        FragColor = ApplyLighting(texColor * vColor, false);
+        FragColor = ApplySurfaceMetaData(ApplyLighting(texColor * vColor, false));
         return;
     }
     else if (renderMode == RENDER_WALL) {
@@ -138,7 +153,7 @@ void main() {
 
         if (texColor.a < 0.1) discard;
 
-        FragColor = ApplyLighting(texColor * vColor, true);
+        FragColor = ApplySurfaceMetaData(ApplyLighting(texColor * vColor, true));
         return;
     }
     else if (renderMode == RENDER_SPRITE) {

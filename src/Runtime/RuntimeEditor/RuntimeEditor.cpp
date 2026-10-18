@@ -919,6 +919,33 @@ namespace RuntimeEditor {
             }
         }
 
+        // Red tint on the hovered surface. Same "over the 3D view" test as
+        // Draw()'s drop target, so it also shows while dragging a texture in
+        // from the asset browser, but not while the cursor is over a panel.
+        renderer.ClearSurfaceMarks();
+
+        constexpr ImGuiHoveredFlags hoverFlags =
+            ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+
+        if (cameraLooking || !ImGui::IsWindowHovered(hoverFlags)) {
+            SurfaceMark mark;
+            mark.metaData = SURFACE_META_HOVERED;
+
+            if (hoveredSurface.type == RayHitType::Wall && hoveredSurface.wallIndex >= 0) {
+                mark.kind = MarkedSurfaceKind::Wall;
+                mark.wallIndex = hoveredSurface.wallIndex;
+                mark.wallSlot = hoveredSurface.wallSlot;
+                renderer.MarkSurface(mark);
+            }
+            else if ((hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling) &&
+                     hoveredSurface.sectorIndex >= 0) {
+                mark.kind = hoveredSurface.type == RayHitType::SectorFloor ? MarkedSurfaceKind::Floor : MarkedSurfaceKind::Ceiling;
+                mark.sectorIndex = hoveredSurface.sectorIndex;
+                mark.floorIndex = hoveredSurface.floorIndex;
+                renderer.MarkSurface(mark);
+            }
+        }
+
         //region uv drag
 
         // The asset browser's drop path also rides the left button, so stay out
@@ -1238,6 +1265,8 @@ namespace RuntimeEditor {
         // it set would feed that editor's SDL backend renderer-specific IDs.
         MapEditorInternal::previewTextureProvider = nullptr;
 
+        // Play mode reuses the renderer; it mustn't inherit the hover tint.
+        if (runtimeRenderer != nullptr) runtimeRenderer->ClearSurfaceMarks();
         runtimeRenderer = nullptr;
         camera = nullptr;
         transform = nullptr;

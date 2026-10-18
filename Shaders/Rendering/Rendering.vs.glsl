@@ -49,7 +49,7 @@ struct Wall {
 //data.x = texture region/index;
 //data.y = 0.0 seen from the front sector, 1.0 from the back;
 //data.z = texture anchor height (world height of V = 0);
-//data.w = unused;
+//data.w = SurfaceMetaData flags of this piece;
     vec4 data2;
 // data2.xy = texture offset in map units
 // data2.zw = independent X/Y UV scale (1.0 = normal)
@@ -95,6 +95,8 @@ struct SectorFloor {
     vec4 textureData;
 // textureData.x = floor texture region index
 // textureData.y = ceiling texture region index
+// textureData.z = floor SurfaceMetaData flags
+// textureData.w = ceiling SurfaceMetaData flags
 
     vec4 textureOffsets;
 // textureOffsets.xy = floor texture offset in map units
@@ -177,6 +179,9 @@ out vec2 vFlatUV;
 flat out int vTextureIndex;
 flat out int vFlatTextureIndex;
 flat out vec4 vColor;
+
+// SurfaceMetaData flags of the wall piece / floor / ceiling being drawn.
+flat out int vSurfaceMetaData;
 
 out vec2 vSpriteUV;
 flat out int vSpriteTextureIndex;
@@ -531,6 +536,7 @@ void renderFlat() {
 
         vColor = sectorFloor.ceilingColor;
         vFlatTextureIndex = int(sectorFloor.textureData.y);
+        vSurfaceMetaData = int(sectorFloor.textureData.w);
     }
     else {
         baseHeight = sectorFloor.heights.x;
@@ -539,6 +545,7 @@ void renderFlat() {
 
         vColor = sectorFloor.floorColor;
         vFlatTextureIndex = int(sectorFloor.textureData.x);
+        vSurfaceMetaData = int(sectorFloor.textureData.z);
     }
 
     point.z = baseHeight + GetSlopeOffset(
@@ -698,6 +705,7 @@ void renderWall() {
     vFlatTextureIndex = -1;
     vSpriteTextureIndex = -1;
     vColor = wall.color;
+    vSurfaceMetaData = int(wall.data.w);
 
     vWorldPos = worldPos;
     vSurfaceCoord = surfaceCoords[gl_VertexID];
