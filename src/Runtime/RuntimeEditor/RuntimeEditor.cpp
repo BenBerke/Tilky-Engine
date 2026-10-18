@@ -17,6 +17,8 @@
 
 #include "../../Editor/EditorInternal.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Runtime/RuntimeEditor/TransformGizmo.hpp"
@@ -26,6 +28,8 @@
 #include <algorithm>
 #include <functional>
 #include <cmath>
+#include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <imgui.h>
@@ -776,6 +780,290 @@ namespace {
         }
     }
 
+    // ---- Undo / redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) ---------------------
+    // Covers the edits made straight in the view - texture drags, scrolling,
+    // flips, pastes, resets, texture cycling, alignment, dropped textures and
+    // wall deletes - as whole copies of the level's walls and sectors. Not the
+    // inspector's field edits, and not entities.
+    struct GeometryState {
+        std::vector<Wall> walls;
+        std::vector<Sector> sectors;
+    };
+
+    constexpr std::size_t MAX_UNDO_STEPS = 64;
+
+    std::vector<GeometryState> undoStack;
+    std::vector<GeometryState> redoStack;
+
+    // Scroll notches closer together than this are one undo step.
+    constexpr Uint64 SCROLL_UNDO_MERGE_MS = 500;
+    Uint64 lastScrollEditTicks = 0;
+
+    // Call before changing walls or sectors.
+    void PushUndo(const Level& level) {
+        undoStack.push_back({level.walls, level.sectors});
+        if (undoStack.size() > MAX_UNDO_STEPS) undoStack.erase(undoStack.begin());
+
+        redoStack.clear();
+    }
+
+    // Swaps `state` in, leaving what was there in `state`. Selected indices
+    // that no longer exist are dropped.
+    void SwapGeometry(Level& level, GeometryState& state) {
+        std::swap(level.walls, state.walls);
+        std::swap(level.sectors, state.sectors);
+
+        // Sector::walls points into level.walls, which is now a different
+        // array - every raycast and wall query walks those pointers.
+        MapQueries::RebuildSectorRuntimeLinks(level);
+
+        const int wallCount = static_cast<int>(level.walls.size());
+        std::erase_if(selectedWalls, [&](const int index) { return index < 0 || index >= wallCount; });
+
+        if (selectedWalls.empty()) ClearWallSelection();
+        else if (selectedWall < 0 || selectedWall >= wallCount) selectedWall = selectedWalls.back();
+
+        const int sectorCount = static_cast<int>(level.sectors.size());
+        std::erase_if(selectedFlats, [&](const SelectedFlat& flat) {
+            return flat.sectorIndex < 0 || flat.sectorIndex >= sectorCount ||
+                   flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(level.sectors[flat.sectorIndex].floors.size());
+        });
+
+        if (selectedFlats.empty()) ClearFlatSelection();
+        else if (std::ranges::find(selectedFlats, SelectedFlat{selectedSector, selectedSectorFloor, selectedSectorSurface}) == selectedFlats.end())
+            SetPrimaryFlat(selectedFlats.back());
+    }
+
+    bool Undo(Level& level) {
+        if (undoStack.empty()) return false;
+
+        GeometryState state = std::move(undoStack.back());
+        undoStack.pop_back();
+
+        SwapGeometry(level, state);
+        redoStack.push_back(std::move(state));
+        return true;
+    }
+
+    bool Redo(Level& level) {
+        if (redoStack.empty()) return false;
+
+        GeometryState state = std::move(redoStack.back());
+        redoStack.pop_back();
+
+        SwapGeometry(level, state);
+        undoStack.push_back(std::move(state));
+        return true;
+    }
+
+    // ---- Texture shortcuts ------------------------------------------------
+
+    // Alt+R: offset 0, scale 1, no flip.
+    void ResetTexturePlacement(Level& level, const bool hoverAllowed) {
+        ForEachTargetSurface(level, hoverAllowed, [](auto& surface) {
+            surface.textureOffset = {0.0f, 0.0f};
+            surface.textureScale = {1.0f, 1.0f};
+            surface.flipTextureX = false;
+            surface.flipTextureY = false;
+        });
+    }
+
+    // The image `direction` steps from `texture` among the images in its
+    // folder, in name order, wrapping round. Empty when there is nothing to
+    // step to (no texture, a path outside Assets, a folder with one image).
+    std::string StepTextureInFolder(const std::string& texture, const int direction) {
+        if (texture.empty()) return {};
+
+        const std::filesystem::path relative = std::filesystem::path(texture).lexically_normal();
+        if (relative.is_absolute()) return {};
+
+        const std::filesystem::path folder = ProjectManager::GetAssetsPath() / relative.parent_path();
+
+        std::vector<std::string> names;
+        std::error_code ec;
+
+        for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+            if (!entry.is_regular_file(ec)) continue;
+
+            std::string extension = entry.path().extension().string();
+            std::ranges::transform(extension, extension.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") names.push_back(entry.path().filename().string());
+        }
+
+        if (names.size() < 2) return {};
+
+        std::ranges::sort(names);
+
+        const std::string current = relative.filename().string();
+        const auto it = std::ranges::find(names, current);
+        if (it == names.end()) return {};
+
+        const int count = static_cast<int>(names.size());
+        const int index = ((static_cast<int>(it - names.begin()) + direction) % count + count) % count;
+
+        return (relative.parent_path() / names[index]).generic_string();
+    }
+
+    // [ / ]: each target surface steps to the previous / next image in its
+    // own texture's folder.
+    void CycleTextures(Level& level, const int direction, const bool hoverAllowed) {
+        ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
+            if (std::string next = StepTextureInFolder(surface.texture, direction); !next.empty()) surface.texture = std::move(next);
+        });
+    }
+
+    // Runs one of the Map Editor's wall texture tools - they work on its own
+    // selection - on this editor's selected walls. The tool's undo entry
+    // lands on the Map Editor's stack, so it's taken back off: this editor's
+    // own undo covers the change. Returns how many walls the tool changed.
+    int RunMapEditorWallTool(Level& level, int (*tool)()) {
+        if (selectedWalls.empty() || &level != &LevelManager::CurrentLevel()) return 0;
+
+        const std::vector<ID> savedSelection = MapEditorInternal::selectedWalls;
+        const ID savedPrimary = MapEditorInternal::selectedWallID;
+        const bool savedEditing = MapEditorInternal::editingWall;
+        const std::size_t savedActions = MapEditorInternal::actions.size();
+        const std::size_t savedSnapshots = MapEditorInternal::geometrySnapshots.size();
+
+        MapEditorInternal::selectedWalls.clear();
+        for (const int index : selectedWalls)
+            if (index >= 0 && index < static_cast<int>(level.walls.size())) MapEditorInternal::selectedWalls.push_back(level.walls[index].id);
+
+        MapEditorInternal::selectedWallID = selectedWall >= 0 && selectedWall < static_cast<int>(level.walls.size())
+            ? level.walls[selectedWall].id
+            : INVALID_ID;
+
+        const int changed = MapEditorInternal::selectedWalls.empty() ? 0 : tool();
+
+        MapEditorInternal::actions.erase(MapEditorInternal::actions.begin() + static_cast<std::ptrdiff_t>(savedActions), MapEditorInternal::actions.end());
+        MapEditorInternal::geometrySnapshots.erase(MapEditorInternal::geometrySnapshots.begin() + static_cast<std::ptrdiff_t>(savedSnapshots), MapEditorInternal::geometrySnapshots.end());
+
+        MapEditorInternal::selectedWalls = savedSelection;
+        MapEditorInternal::selectedWallID = savedPrimary;
+        MapEditorInternal::editingWall = savedEditing;
+
+        return changed;
+    }
+
+    // Alt+right click: selects every wall (or every floor/ceiling) using the
+    // texture of the one clicked, which stays the primary. False if it isn't
+    // a textured wall, floor or ceiling.
+    bool SelectAllWithHoveredTexture(Level& level) {
+        std::string texture;
+        if (!ForHoveredSurface(level, [&](const auto& surface) { texture = surface.texture; }) || texture.empty()) return false;
+
+        if (hoveredSurface.type == RayHitType::Wall) {
+            SelectOnlyWall(hoveredSurface.wallIndex);
+
+            for (int i = 0; i < static_cast<int>(level.walls.size()); ++i)
+                if (i != hoveredSurface.wallIndex && (level.walls[i].top.texture == texture || level.walls[i].bottom.texture == texture))
+                    selectedWalls.push_back(i);
+
+            return true;
+        }
+
+        SelectOnlyFlat({hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type});
+
+        for (int sectorIndex = 0; sectorIndex < static_cast<int>(level.sectors.size()); ++sectorIndex) {
+            const Sector& sector = level.sectors[sectorIndex];
+
+            for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+                for (const RayHitType type : {RayHitType::SectorFloor, RayHitType::SectorCeiling}) {
+                    const SectorSurface& surface = type == RayHitType::SectorFloor ? sector.floors[floorIndex].floor : sector.floors[floorIndex].ceiling;
+                    const SelectedFlat flat = {sectorIndex, floorIndex, type};
+
+                    if (surface.texture == texture && std::ranges::find(selectedFlats, flat) == selectedFlats.end())
+                        selectedFlats.push_back(flat);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    std::size_t SelectionCount() {
+        return selectedEntityIds.size() + selectedWalls.size() + selectedFlats.size();
+    }
+
+    // F: moves the camera back along its view direction until the selection
+    // is in front of it, at a distance that fits its size. The angle stays.
+    void FocusSelection(Level& level) {
+        bool any = false;
+        Vector3 boundsMin{};
+        Vector3 boundsMax{};
+
+        const auto include = [&](const Vector3& point) {
+            if (!any) {
+                boundsMin = boundsMax = point;
+                any = true;
+                return;
+            }
+
+            boundsMin = {std::min(boundsMin.x, point.x), std::min(boundsMin.y, point.y), std::min(boundsMin.z, point.z)};
+            boundsMax = {std::max(boundsMax.x, point.x), std::max(boundsMax.y, point.y), std::max(boundsMax.z, point.z)};
+        };
+
+        for (const ID id : selectedEntityIds)
+            if (const ComponentTransform* entityTransform = level.transforms.Get(id)) include(entityTransform->position);
+
+        for (const int index : selectedWalls) {
+            if (index < 0 || index >= static_cast<int>(level.walls.size())) continue;
+
+            const Wall& wall = level.walls[index];
+            const Sector* sector = level.GetSector(wall.frontSector != INVALID_ID ? wall.frontSector : wall.backSector);
+            const float bottom = sector != nullptr && !sector->floors.empty() ? sector->floors.front().floor.height : 0.0f;
+            const float top = sector != nullptr && !sector->floors.empty() ? sector->floors.back().ceiling.height : 0.0f;
+
+            include({wall.start.x, bottom, wall.start.y});
+            include({wall.end.x, top, wall.end.y});
+        }
+
+        for (const SelectedFlat& flat : selectedFlats) {
+            if (flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+            const Sector& sector = level.sectors[flat.sectorIndex];
+            if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
+
+            const SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
+            const float height = flat.surface == RayHitType::SectorFloor ? sectorFloor.floor.height : sectorFloor.ceiling.height;
+
+            for (const Vector2& vertex : sector.vertices) include({vertex.x, height, vertex.y});
+        }
+
+        if (!any || transform == nullptr || camera == nullptr) return;
+
+        const Vector3 center = {
+            (boundsMin.x + boundsMax.x) * 0.5f,
+            (boundsMin.y + boundsMax.y) * 0.5f,
+            (boundsMin.z + boundsMax.z) * 0.5f
+        };
+
+        const float dx = boundsMax.x - boundsMin.x;
+        const float dy = boundsMax.y - boundsMin.y;
+        const float dz = boundsMax.z - boundsMin.z;
+
+        constexpr float MIN_FOCUS_DISTANCE = 4.0f;
+        const float distance = std::max(std::sqrt(dx * dx + dy * dy + dz * dz), MIN_FOCUS_DISTANCE);
+
+        transform->SetPosition(center - camera->forward * distance);
+    }
+
+    // A drop that doesn't land leaves no undo step behind.
+    bool ApplyTextureToHoveredSurfaceWithUndo(Level& level, const std::string& textureReference) {
+        PushUndo(level);
+        if (ApplyTextureToHoveredSurface(level, textureReference)) return true;
+
+        undoStack.pop_back();
+        return false;
+    }
+
+    void ShowToastf(const char* key, const int value) {
+        char message[128];
+        std::snprintf(message, sizeof(message), Localisation::Get(key).c_str(), value);
+        ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
+    }
+
     // Copies the hovered surface. False if the cursor isn't on one.
     bool CopyHoveredSurface(Level& level, const bool withPlacement) {
         return ForHoveredSurface(level, [&](const auto& surface) {
@@ -1118,8 +1406,12 @@ namespace RuntimeEditorUi {
                 std::ranges::sort(indicesToDelete, std::greater{});
 
                 ClearWallSelection();
+                PushUndo(level);
 
                 for (const int index : indicesToDelete) level.walls.erase(level.walls.begin() + index);
+
+                // The erase moved the walls Sector::walls points at.
+                MapQueries::RebuildSectorRuntimeLinks(level);
                 return;
             }
 
@@ -1248,7 +1540,7 @@ namespace RuntimeEditorUi {
                 !textureReference.empty() &&
                 !surfaceName.empty() &&
                 ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-                ApplyTextureToHoveredSurface(level, textureReference)) {
+                ApplyTextureToHoveredSurfaceWithUndo(level, textureReference)) {
                 // Every image in Assets is already in the atlas, so this only
                 // rebuilds for one added since it was built.
                 if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
@@ -1619,6 +1911,8 @@ namespace RuntimeEditor {
             !cameraLooking &&
             !TransformGizmo::IsDragging() &&
             IsUvEditableSurface(hoveredSurface.type)) {
+            PushUndo(level);
+
             uvDragSurface = hoveredSurface;
             draggingUv = true;
 
@@ -1692,7 +1986,10 @@ namespace RuntimeEditor {
             const bool flipY = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FLIP_TEXTURE_Y);
 
             // The hovered fallback needs the cursor on the view, not a panel.
-            if (flipX || flipY) FlipTextures(level, flipX, flipY, !mouseBlockedByImGui);
+            if (flipX || flipY) {
+                PushUndo(level);
+                FlipTextures(level, flipX, flipY, !mouseBlockedByImGui);
+            }
         }
 
         // Texture copy / paste. Alt wins when both are held.
@@ -1706,6 +2003,7 @@ namespace RuntimeEditor {
             }
 
             if (InputManager::GetKeyDown(SDL_SCANCODE_V)) {
+                PushUndo(level);
                 PasteSurface(level, withPlacement, !mouseBlockedByImGui);
 
                 // The copied image may not be in the atlas yet.
@@ -1722,14 +2020,67 @@ namespace RuntimeEditor {
             }
 
             if (InputManager::GetKeyDown(SDL_SCANCODE_F)) {
+                PushUndo(level);
                 PasteProperties(level, !mouseBlockedByImGui);
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
+
+            // Shift+G: continue the textures across the selected walls' corners.
+            if (InputManager::GetKeyDown(SDL_SCANCODE_G) && !AltHeld()) {
+                PushUndo(level);
+                ShowToastf("editor.geometry.align.chain_done", RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures));
+            }
         }
+
+        if (windowFocused && !keyboardBlockedByImGui && AltHeld()) {
+            // Alt+R: reset offset, scale and flip.
+            if (InputManager::GetKeyDown(SDL_SCANCODE_R)) {
+                PushUndo(level);
+                ResetTexturePlacement(level, !mouseBlockedByImGui);
+            }
+
+            // Alt+G: fit each selected wall's texture to its height.
+            if (InputManager::GetKeyDown(SDL_SCANCODE_G)) {
+                PushUndo(level);
+                ShowToastf("editor.geometry.align.fit_done", RunMapEditorWallTool(level, &MapEditorInternal::FitSelectedWallTexturesToHeight));
+            }
+        }
+
+        if (windowFocused && !keyboardBlockedByImGui) {
+            // Undo / redo. Fixed keys, like the Map Editor's Ctrl+Z.
+            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
+            if (ctrlHeld) {
+                if (InputManager::GetKeyDown(SDL_SCANCODE_Y) || (ShiftHeld() && InputManager::GetKeyDown(SDL_SCANCODE_Z))) Redo(level);
+                else if (InputManager::GetKeyDown(SDL_SCANCODE_Z)) Undo(level);
+            }
+
+            const bool cycleBack = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_PREVIOUS_TEXTURE);
+            const bool cycleForward = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_NEXT_TEXTURE);
+
+            if (cycleBack != cycleForward) {
+                PushUndo(level);
+                CycleTextures(level, cycleForward ? 1 : -1, !mouseBlockedByImGui);
+            }
+
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FULLBRIGHT)) {
+                runtimeRenderer->SetFullbright(!runtimeRenderer->IsFullbright());
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(runtimeRenderer->IsFullbright()
+                    ? "runtime_editor.toast.fullbright_on"
+                    : "runtime_editor.toast.fullbright_off").c_str(), false, 1.5f);
+            }
+
+            // Shift+F is the property paste above.
+            if (!ShiftHeld() && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
+        }
+
+        // Alt+right click: select by texture.
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && AltHeld() && SelectAllWithHoveredTexture(level))
+            ShowToastf("runtime_editor.toast.selected_by_texture", static_cast<int>(SelectionCount()));
 
         //endregion
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
+        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && !AltHeld()) {
             if (!hit.has_value()) {
                 spdlog::info("Runtime editor ray missed");
                 return;
@@ -1836,8 +2187,14 @@ namespace RuntimeEditor {
             constexpr float HEIGHT_STEP = 1.0f;
             constexpr float UV_SCALE_STEP = 0.01f;
             constexpr float MIN_ROOM_HEIGHT = 1.0f;
-            const float heightDelta = wheel * HEIGHT_STEP;
-            const float uvScaleDelta = wheel * UV_SCALE_STEP;
+            // Alt: a tenth of every step.
+            const float stepScale = AltHeld() ? 0.1f : 1.0f;
+            const float heightDelta = wheel * HEIGHT_STEP * stepScale;
+            const float uvScaleDelta = wheel * UV_SCALE_STEP * stepScale;
+
+            const Uint64 now = SDL_GetTicks();
+            if (now - lastScrollEditTicks > SCROLL_UNDO_MERGE_MS) PushUndo(level);
+            lastScrollEditTicks = now;
 
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
                 WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);
@@ -1859,7 +2216,7 @@ namespace RuntimeEditor {
                 // Shift+scroll: the sector's brightness instead of a height.
                 if (ShiftHeld()) {
                     constexpr float LIGHT_STEP = 8.0f;
-                    AdjustSectorBrightness(level, sector, wheel * LIGHT_STEP);
+                    AdjustSectorBrightness(level, sector, wheel * LIGHT_STEP * stepScale);
                 }
                 else if (hit->type == RayHitType::SectorFloor) {
                     const float minimumHeight =

@@ -478,6 +478,7 @@ namespace Editor {
         selectedSectorID = INVALID_ID;
 
         actions.clear();
+        ClearRedo();
 
         if (LevelManager::loadedLevels.empty()) {
             LevelManager::loadedLevels.push_back(std::move(loadedLevel));
@@ -559,6 +560,7 @@ namespace Editor {
         selectedSectorID = INVALID_ID;
 
         actions.clear();
+        ClearRedo();
 
         LevelSystem::RefreshScriptAssets(level);
 

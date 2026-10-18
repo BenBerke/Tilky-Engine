@@ -200,7 +200,7 @@ namespace {
                 out[column * 3 + row] = cofactor[row][column] * inverse;
     }
 
-    GpuModelInstance BuildModelInstance(const ComponentTransform& transform, const Vector3& offset, const Level& level) {
+    GpuModelInstance BuildModelInstance(const ComponentTransform& transform, const Vector3& offset, const Level& level, const bool fullbright) {
         const Quaternion q = transform.rotation.Normalized();
 
         // Rotation matrix columns.
@@ -236,7 +236,7 @@ namespace {
 
         // Same sector light rule as sprites: light 255 = unlit color.
         if (transform.sectorIndex >= 0 && transform.sectorIndex < static_cast<int>(level.sectors.size())) {
-            const Vector3& light = level.sectors[transform.sectorIndex].light;
+            const Vector3 light = fullbright ? Vector3{255.0f, 255.0f, 255.0f} : level.sectors[transform.sectorIndex].light;
 
             instance.color = {
                 std::max(light.x / 255.0f, 0.0f),
@@ -382,7 +382,7 @@ void OpenGL::BuildGpuModels() {
             instancesByBatch.emplace_back();
         }
 
-        GpuModelInstance instance = BuildModelInstance(*transform, modelComponent.offset, level);
+        GpuModelInstance instance = BuildModelInstance(*transform, modelComponent.offset, level, fullbright);
         instance.color.w = static_cast<float>(EntityMetaData(modelComponent.ownerID));
 
         instancesByBatch[batch->second].push_back(instance);

@@ -1032,6 +1032,11 @@ namespace MapEditorInternal {
         KEYBIND_CONSTRAIN_ANGLE,
         KEYBIND_SPLIT_WALL,
 
+        // Grid
+        KEYBIND_TOGGLE_GRID_SNAP,
+        KEYBIND_GRID_SMALLER,
+        KEYBIND_GRID_LARGER,
+
         // Runtime editor: camera
         KEYBIND_RT_FLY_FORWARD,
         KEYBIND_RT_FLY_BACK,
@@ -1052,6 +1057,10 @@ namespace MapEditorInternal {
         KEYBIND_RT_TEXTURE_Y_ONLY,
         KEYBIND_RT_FLIP_TEXTURE_X,
         KEYBIND_RT_FLIP_TEXTURE_Y,
+        KEYBIND_RT_PREVIOUS_TEXTURE,
+        KEYBIND_RT_NEXT_TEXTURE,
+        KEYBIND_RT_FULLBRIGHT,
+        KEYBIND_RT_FOCUS_SELECTION,
 
         KEYBIND_COUNT
     };
@@ -1127,6 +1136,32 @@ namespace MapEditorInternal {
     // geometrySnapshots.
     extern std::vector<EntityTransformUndo> entityTransformUndos;
     void UndoEntityTransforms();
+
+    // Redo (Ctrl+Y / Ctrl+Shift+Z) for the snapshot-based undo kinds,
+    // ACTION_APPLY_GEOMETRY and ACTION_ENTITY_TRANSFORMS: undoing one of
+    // them keeps what it took back here. Undoing any other kind, any new
+    // undoable action, or clearing `actions` empties it (ClearRedo).
+    struct RedoEntry {
+        Action action = ACTION_APPLY_GEOMETRY;
+        GeometrySnapshot geometry;          // ACTION_APPLY_GEOMETRY
+        EntityTransformUndo transforms;     // ACTION_ENTITY_TRANSFORMS
+    };
+
+    extern std::vector<RedoEntry> redoEntries;
+    void ClearRedo();
+
+    // Undoes the last entry of `actions`, keeping a redo entry when it can.
+    void UndoLastAction();
+    // Re-applies the last undone action, if redoEntries has one.
+    void RedoLastAction();
+
+    // Ctrl+A: every wall (Geometry Mode), entity (Entity Mode) or sector
+    // (Sector Mode) that passes the canvas filter.
+    void SelectAllInMode();
+
+    // Ctrl+D: copies of the selected entities, one grid step down and right
+    // of the originals, selected in their place.
+    void DuplicateSelectedEntities();
 
     // Texture preview / Texture View Mode access point. Textures are
     // identified by name (relative to the Textures folder), not by index.

@@ -299,6 +299,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             renderCameraTransform.position.y,
             renderCameraTransform.position.z
         );
+
+        glUniform1i(fullbrightUniform, fullbright ? 1 : 0);
     }
 
     {

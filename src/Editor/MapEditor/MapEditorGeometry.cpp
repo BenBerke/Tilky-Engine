@@ -1572,6 +1572,7 @@ namespace MapEditorInternal {
     void PushGeometryUndoSnapshot(GeometrySnapshot snapshot) {
         geometrySnapshots.push_back(std::move(snapshot));
         actions.push_back(ACTION_APPLY_GEOMETRY);
+        ClearRedo();
     }
 
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params) {
@@ -1600,6 +1601,7 @@ namespace MapEditorInternal {
 
         geometrySnapshots.push_back(std::move(snapshot));
         actions.push_back(ACTION_APPLY_GEOMETRY);
+        ClearRedo();
 
         if (!applyResult.affectedSectorIDs.empty()) {
             // Through the shared helper rather than assigning
@@ -1696,6 +1698,7 @@ namespace MapEditorInternal {
 
         geometrySnapshots.push_back(snapshot);
         actions.push_back(ACTION_APPLY_GEOMETRY);
+        ClearRedo();
 
         if (!affectedSectorIDs.empty()) {
             // Every newly created step sector, not just the primary - see
@@ -1744,6 +1747,7 @@ namespace MapEditorInternal {
         dotIDToIndex[dot.id] = static_cast<int>(dots.size()) - 1;
 
         actions.push_back(ACTION_CREATE_CORNER);
+        ClearRedo();
     }
 
     void DeleteDot(const ID dotID) {
@@ -2644,6 +2648,7 @@ namespace MapEditorInternal {
             if (moved > 0) {
                 entityTransformUndos.push_back(std::move(undo));
                 actions.push_back(ACTION_ENTITY_TRANSFORMS);
+                ClearRedo();
                 MarkUnsavedChanges();
             }
 
@@ -3050,6 +3055,141 @@ namespace MapEditorInternal {
 
         entityTransformUndos.pop_back();
         MarkUnsavedChanges();
+    }
+
+    namespace {
+        // The current positions of the entities `undo` names.
+        EntityTransformUndo CurrentPositions(const Level& level, const EntityTransformUndo& undo) {
+            EntityTransformUndo current;
+
+            for (const auto& [entityID, position] : undo.positions)
+                if (const ComponentTransform* transform = level.transforms.Get(entityID))
+                    current.positions.emplace_back(entityID, transform->position);
+
+            return current;
+        }
+    }
+
+    void UndoLastAction() {
+        if (actions.empty()) return;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        switch (actions.back()) {
+            case ACTION_CREATE_CORNER:
+                if (!dots.empty()) DeleteDot(dots.back().id);
+                ClearRedo();
+                break;
+            case ACTION_CREATE_WALL:
+                if (!level.walls.empty()) DeleteWall(level.walls.back().id);
+                ClearRedo();
+                break;
+            case ACTION_CREATE_SECTOR:
+                if (!level.sectors.empty()) DeleteSector(level.sectors.back().id);
+                ClearRedo();
+                break;
+            case ACTION_CREATE_OBJECT:
+                if (!level.entities.empty()) {
+                    const Entity entity = level.entities.back();
+                    level.DestroyEntity(entity.id);
+                }
+                ClearRedo();
+                break;
+            case ACTION_APPLY_GEOMETRY:
+                // One ApplyDrawnGeometry call can create/split many
+                // walls and sectors at once, so undo restores the
+                // whole-operation snapshot rather than guessing at
+                // "the last wall" / "the last sector" the way the
+                // simpler action kinds above do.
+                if (!geometrySnapshots.empty()) {
+                    RedoEntry redo;
+                    redo.action = ACTION_APPLY_GEOMETRY;
+                    redo.geometry = CaptureGeometryUndoSnapshot();
+
+                    RestoreGeometrySnapshot(geometrySnapshots.back());
+                    geometrySnapshots.pop_back();
+
+                    redoEntries.push_back(std::move(redo));
+                }
+                break;
+            case ACTION_ENTITY_TRANSFORMS:
+                if (!entityTransformUndos.empty()) {
+                    RedoEntry redo;
+                    redo.action = ACTION_ENTITY_TRANSFORMS;
+                    redo.transforms = CurrentPositions(level, entityTransformUndos.back());
+
+                    UndoEntityTransforms();
+                    redoEntries.push_back(std::move(redo));
+                }
+                break;
+            default: break;
+        }
+
+        actions.pop_back();
+    }
+
+    void RedoLastAction() {
+        if (redoEntries.empty()) return;
+
+        RedoEntry redo = std::move(redoEntries.back());
+        redoEntries.pop_back();
+
+        Level& level = LevelManager::CurrentLevel();
+
+        if (redo.action == ACTION_APPLY_GEOMETRY) {
+            geometrySnapshots.push_back(CaptureGeometryUndoSnapshot());
+            RestoreGeometrySnapshot(redo.geometry);
+        }
+        else if (redo.action == ACTION_ENTITY_TRANSFORMS) {
+            entityTransformUndos.push_back(CurrentPositions(level, redo.transforms));
+
+            for (const auto& [entityID, position] : redo.transforms.positions) {
+                ComponentTransform* transform = level.transforms.Get(entityID);
+                if (transform == nullptr) continue;
+
+                transform->SetPosition(position);
+                transform->isDirty = true;
+            }
+
+            MarkUnsavedChanges();
+        }
+        else return;
+
+        // Not through the usual push: that would clear the rest of the redo.
+        actions.push_back(redo.action);
+    }
+
+    void SelectAllInMode() {
+        Level& level = LevelManager::CurrentLevel();
+
+        if (currentMode == MODE_GEOMETRY) {
+            ClearWallSelection();
+
+            for (const Wall& wall : level.walls) {
+                if (!WallPassesFilter(wall)) continue;
+
+                selectedWalls.push_back(wall.id);
+                selectedWallID = wall.id;
+            }
+        }
+        else if (currentMode == MODE_ENTITY) {
+            ClearEntitySelection();
+
+            for (const Entity& entity : level.entities) {
+                if (!EntityPassesFilter(entity) || level.transforms.Get(entity.id) == nullptr) continue;
+
+                if (selectedEntities.empty()) SelectEntity(entity.id);
+                else selectedEntities.push_back(entity.id);
+            }
+        }
+        else if (currentMode == MODE_SECTOR) {
+            ClearSectorSelection();
+
+            for (const Sector& sector : level.sectors) {
+                if (selectedSectors.empty()) SelectSector(sector.id);
+                else selectedSectors.push_back(sector.id);
+            }
+        }
     }
 
     int CreatePrefabsFromSelectedEntities(std::string* errorMessage) {

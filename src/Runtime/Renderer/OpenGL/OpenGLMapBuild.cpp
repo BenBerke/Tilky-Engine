@@ -34,8 +34,8 @@ namespace {
     // Fake contrast nudges that light by the wall's direction: +contrast for
     // a wall along Z, -contrast along X, smoothly in between (dz^2 - dx^2 of
     // the unit direction), clamped so it never goes past full or zero light.
-    Vector4 LitWallColor(const Wall& wall, const WallPieces::WallPiece& piece, const float contrast) {
-        if (piece.facingSector == nullptr) return wall.color;
+    Vector4 LitWallColor(const Wall& wall, const WallPieces::WallPiece& piece, const float contrast, const bool fullbright) {
+        if (piece.facingSector == nullptr || fullbright) return wall.color;
 
         Vector3 light = piece.facingSector->light;
 
@@ -67,6 +67,7 @@ namespace {
         const WallPieces::WallPiece& piece,
         const float textureRegionIndex,
         const float wallContrast,
+        const bool fullbright,
         const uint8_t metaData
     ) {
         const WallSurface& surface = wall.Surface(piece.slot);
@@ -87,7 +88,7 @@ namespace {
             wall.end.y
         };
 
-        gpuWall.color = LitWallColor(wall, piece, wallContrast);
+        gpuWall.color = LitWallColor(wall, piece, wallContrast, fullbright);
 
         // heights.xy = bottom/top at the start point
         // heights.zw = bottom/top at the end point
@@ -146,6 +147,7 @@ void OpenGL::BuildGpuWallsFromMap() {
                 piece,
                 piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex,
                 wallContrast,
+                fullbright,
                 WallPieceMetaData(wallIndex, piece.slot)
             );
         }
@@ -367,6 +369,7 @@ bool OpenGL::CreateMap() {
 
     // Not fatal when missing: the driver drops uniforms a shader never reads.
     cameraWorldPosUniform = glGetUniformLocation(projectionShader->ID, "uCameraWorldPos");
+    fullbrightUniform = glGetUniformLocation(projectionShader->ID, "uFullbright");
     modelInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uModelInstanceOffset");
     flatInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uFlatInstanceOffset");
     modelLocalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocal");

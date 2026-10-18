@@ -51,17 +51,19 @@ void OpenGL::BuildGpuSectors() {
                 floor.ceiling.slopeStrength * Constants::DegToRad,
             };
 
+            const Vector3 light = SectorLight(sector);
+
             gpuFloor.floorColor = {
-                floorColor.x - (255.0f - sector.light.x) / 255.0f,
-                floorColor.y - (255.0f - sector.light.y) / 255.0f,
-                floorColor.z - (255.0f - sector.light.z) / 255.0f,
+                floorColor.x - (255.0f - light.x) / 255.0f,
+                floorColor.y - (255.0f - light.y) / 255.0f,
+                floorColor.z - (255.0f - light.z) / 255.0f,
                 floorColor.w
             };
 
             gpuFloor.ceilingColor = {
-                ceilingColor.x - (255.0f - sector.light.x) / 255.0f,
-                ceilingColor.y - (255.0f - sector.light.y) / 255.0f,
-                ceilingColor.z - (255.0f - sector.light.z) / 255.0f,
+                ceilingColor.x - (255.0f - light.x) / 255.0f,
+                ceilingColor.y - (255.0f - light.y) / 255.0f,
+                ceilingColor.z - (255.0f - light.z) / 255.0f,
                 ceilingColor.w
             };
 

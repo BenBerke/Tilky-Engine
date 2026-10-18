@@ -404,6 +404,7 @@ private:
     GLint modelHasTextureUniform = -1;
     GLint modelTextureUniform = -1;
     GLint cameraWorldPosUniform = -1;
+    GLint fullbrightUniform = -1;
 
     std::vector<GpuWall> gpuWalls;
     GLsizei gpuWallCount = 0;

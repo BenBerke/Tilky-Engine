@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Objects/Sector.hpp"
 #include "Headers/Runtime/Renderer/SurfaceMetaData.hpp"
 
 class IRenderer {
@@ -30,6 +31,7 @@ public:
         useEditorCamera = false;
         DestroyEditorCamera();
         ClearSurfaceMarks();
+        fullbright = false;
     }
 
     virtual void BeginFrame() = 0;
@@ -105,8 +107,19 @@ public:
         if (mark.metaData != SURFACE_META_NONE) surfaceMarks.push_back(mark);
     }
 
+    // Draws every sector at full light, with no distance darkening or wall
+    // shading - for judging textures in dark areas. Ends with the session.
+    void SetFullbright(const bool enabled) { fullbright = enabled; }
+    [[nodiscard]] bool IsFullbright() const { return fullbright; }
+
 protected:
     std::vector<SurfaceMark> surfaceMarks;
+    bool fullbright = false;
+
+    // A sector's light as the renderer should use it.
+    [[nodiscard]] Vector3 SectorLight(const Sector& sector) const {
+        return fullbright ? Vector3{255.0f, 255.0f, 255.0f} : sector.light;
+    }
 
     // The flags of every mark on that wall piece / floor or ceiling, OR'd.
     [[nodiscard]] uint8_t WallPieceMetaData(const int wallIndex, const WallSurfaceSlot slot) const {

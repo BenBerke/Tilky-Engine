@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include "../EditorInternal.hpp"
@@ -13,6 +14,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapTopology.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
 namespace {
     bool holdingEntity = false;
@@ -851,6 +853,31 @@ namespace MapEditorInternal {
         selectedEntities = pasted;
     }
 
+    void DuplicateSelectedEntities() {
+        Level& level = LevelManager::CurrentLevel();
+        if (selectedEntities.empty()) return;
+
+        // Ctrl+C's order: the primary first, so it's the one placed at the target.
+        std::vector<ID> clipboard;
+        if (level.GetEntity(selectedEntity.id) != nullptr) clipboard.push_back(selectedEntity.id);
+
+        for (const ID id : selectedEntities)
+            if (id != selectedEntity.id) clipboard.push_back(id);
+
+        const ComponentTransform* anchor = nullptr;
+        for (const ID id : clipboard)
+            if ((anchor = level.transforms.Get(id)) != nullptr) break;
+
+        if (anchor == nullptr) return;
+
+        const Vector2 target = {anchor->position.x + GRID_SIZE, anchor->position.z + GRID_SIZE};
+
+        // Through the paste, without touching what Ctrl+C copied.
+        std::swap(entityClipboard, clipboard);
+        PasteEntityClipboard(level, target);
+        std::swap(entityClipboard, clipboard);
+    }
+
     // =========================================================================
     //  Entity Mode move gizmo
     // =========================================================================
@@ -1098,12 +1125,19 @@ namespace MapEditorInternal {
         UpdateBoxSelect(mouseWorld);
 
         if (!keyboardBlockedByImgui) {
+            // Ctrl+C/V/Z/A/D are fixed, so the single-key shortcuts that
+            // share a letter with them stay quiet under Ctrl - the pan keys
+            // included, or Ctrl+A / Ctrl+D would also slide the view.
+            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
             Vector2 movement = {.0f, .0f};
 
-            if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
+            if (!ctrlHeld) {
+                if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
+            }
 
             if (GetKeyBindDown(KEYBIND_STEP_UP)) movement.y = cameraStepSize;
             if (GetKeyBindDown(KEYBIND_STEP_DOWN)) movement.y = -cameraStepSize;
@@ -1159,15 +1193,32 @@ namespace MapEditorInternal {
                 if (GetKeyBindDown(KEYBIND_TOOL_STAIRCASE)) SetActiveDrawTool(DRAWTOOL_STAIRCASE);
             }
 
-            // Ctrl+C/V/Z are fixed, so the mode keys stay quiet under Ctrl
-            // (Geometry Mode's alternate is V, Ctrl+V pastes).
-            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
-
             if (!ctrlHeld) {
                 if (GetKeyBindDown(KEYBIND_CYCLE_MODE)) ChangeMode();
                 if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) currentMode = MODE_GEOMETRY;
                 if (GetKeyBindDown(KEYBIND_ENTITY_MODE)) currentMode = MODE_ENTITY;
                 if (GetKeyBindDown(KEYBIND_SECTOR_MODE)) currentMode = MODE_SECTOR;
+
+                if (GetKeyBindDown(KEYBIND_TOGGLE_GRID_SNAP)) {
+                    gridSnapEnabled = !gridSnapEnabled;
+                    ImGuiDrawFunctions::ShowNotification(Localisation::Get(gridSnapEnabled ? "editor.toast.grid_snap_on" : "editor.toast.grid_snap_off").c_str(), false, 1.5f);
+                }
+
+                const bool gridSmaller = GetKeyBindDown(KEYBIND_GRID_SMALLER);
+                const bool gridLarger = GetKeyBindDown(KEYBIND_GRID_LARGER);
+
+                if (gridSmaller != gridLarger) {
+                    constexpr float MAX_GRID_SIZE = 1024.0f;
+                    GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0f : GRID_SIZE * 0.5f, MIN_GRID_SIZE, MAX_GRID_SIZE);
+
+                    char message[128];
+                    std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);
+                    ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
+                }
+            }
+            else {
+                if (InputManager::GetKeyDown(SDL_SCANCODE_A)) SelectAllInMode();
+                if (InputManager::GetKeyDown(SDL_SCANCODE_D) && currentMode == MODE_ENTITY) DuplicateSelectedEntities();
             }
         }
 
@@ -1176,41 +1227,15 @@ namespace MapEditorInternal {
             quit = true;
         }
 
-        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
+        // Ctrl+Y or Ctrl+Shift+Z redoes, Ctrl+Z undoes.
+        const bool undoShiftHeld = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+
+        if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y) ||
+            (undoShiftHeld && InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)))
+            RedoLastAction();
+        else if (InputManager::GetDoubleKeyDown(SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z)) {
             if (actions.empty()) return;
-            switch (actions.back()) {
-                case ACTION_CREATE_CORNER:
-                    if (!dots.empty()) DeleteDot(dots.back().id);
-                    break;
-                case ACTION_CREATE_WALL:
-                    if (!level.walls.empty()) DeleteWall(level.walls.back().id);
-                    break;
-                case ACTION_CREATE_SECTOR:
-                    if (!level.sectors.empty()) DeleteSector(level.sectors.back().id);
-                    break;
-                case ACTION_CREATE_OBJECT:
-                    if (!level.entities.empty()) {
-                        const Entity entity = level.entities.back();
-                        level.DestroyEntity(entity.id);
-                    }
-                    break;
-                case ACTION_APPLY_GEOMETRY:
-                    // One ApplyDrawnGeometry call can create/split many
-                    // walls and sectors at once, so undo restores the
-                    // whole-operation snapshot rather than guessing at
-                    // "the last wall" / "the last sector" the way the
-                    // simpler action kinds above do.
-                    if (!geometrySnapshots.empty()) {
-                        RestoreGeometrySnapshot(geometrySnapshots.back());
-                        geometrySnapshots.pop_back();
-                    }
-                    break;
-                case ACTION_ENTITY_TRANSFORMS:
-                    UndoEntityTransforms();
-                    break;
-                default: break;
-            }
-            actions.pop_back();
+            UndoLastAction();
         }
 
         // Not while a text field has the keyboard: Ctrl+C/V there are its own.

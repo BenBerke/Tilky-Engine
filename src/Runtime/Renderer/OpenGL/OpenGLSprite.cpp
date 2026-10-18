@@ -34,12 +34,12 @@ void OpenGL::BuildGpuSprites() {
         gpuSprite.color = spriteComponent.color;
 
         if (transform->sectorIndex >= 0 &&transform->sectorIndex < static_cast<int>(level.sectors.size())) {
-            const Sector& sector = level.sectors[transform->sectorIndex];
+            const Vector3 light = SectorLight(level.sectors[transform->sectorIndex]);
 
             gpuSprite.color = {
-                spriteComponent.color.x - (255.0f - sector.light.x) / 255.0f,
-                spriteComponent.color.y - (255.0f - sector.light.y) / 255.0f,
-                spriteComponent.color.z - (255.0f - sector.light.z) / 255.0f,
+                spriteComponent.color.x - (255.0f - light.x) / 255.0f,
+                spriteComponent.color.y - (255.0f - light.y) / 255.0f,
+                spriteComponent.color.z - (255.0f - light.z) / 255.0f,
                 spriteComponent.color.w
             };
         }

@@ -460,6 +460,7 @@ namespace {
         ResetInspectorState();
 
         actions.clear();
+        ClearRedo();
 
         Editor::currentMap = levelName;
 
@@ -3251,6 +3252,7 @@ namespace MapEditorInternal {
         CancelActiveDrawing();
         pendingSectorParams = PendingSectorParams{};
         actions.clear();
+        ClearRedo();
 
         dots.clear();
         dotIDToIndex.clear();

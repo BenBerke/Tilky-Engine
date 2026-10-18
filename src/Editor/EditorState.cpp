@@ -51,6 +51,14 @@ namespace MapEditorInternal {
 
     std::vector<Action> actions;
     std::vector<GeometrySnapshot> geometrySnapshots;
+
+    // Here rather than next to UndoLastAction: level loading clears it, and
+    // that code is in the standalone build too.
+    std::vector<RedoEntry> redoEntries;
+
+    void ClearRedo() {
+        redoEntries.clear();
+    }
     std::string lastGeometryError;
 
     int currentFloor;
@@ -225,6 +233,10 @@ namespace MapEditorInternal {
         {"constrain_angle",  "editor.key.constrain_angle",  "editor.key_group.modifiers", {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
         {"split_wall",       "editor.key.split_wall",       "editor.key_group.modifiers", {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
 
+        {"toggle_grid_snap", "editor.key.toggle_grid_snap", "editor.key_group.grid",      {SDL_SCANCODE_N}},
+        {"grid_smaller",     "editor.key.grid_smaller",     "editor.key_group.grid",      {SDL_SCANCODE_COMMA}},
+        {"grid_larger",      "editor.key.grid_larger",      "editor.key_group.grid",      {SDL_SCANCODE_PERIOD}},
+
         {"rt_fly_forward",      "editor.key.rt_fly_forward",      "editor.key_group.runtime_camera",  {SDL_SCANCODE_W}},
         {"rt_fly_back",         "editor.key.rt_fly_back",         "editor.key_group.runtime_camera",  {SDL_SCANCODE_S}},
         {"rt_fly_left",         "editor.key.rt_fly_left",         "editor.key_group.runtime_camera",  {SDL_SCANCODE_A}},
@@ -243,6 +255,10 @@ namespace MapEditorInternal {
         {"rt_texture_y_only",   "editor.key.rt_texture_y_only",   "editor.key_group.runtime_editing", {SDL_SCANCODE_Y}},
         {"rt_flip_texture_x",   "editor.key.rt_flip_texture_x",   "editor.key_group.runtime_editing", {SDL_SCANCODE_X}},
         {"rt_flip_texture_y",   "editor.key.rt_flip_texture_y",   "editor.key_group.runtime_editing", {SDL_SCANCODE_Y}},
+        {"rt_previous_texture", "editor.key.rt_previous_texture", "editor.key_group.runtime_editing", {SDL_SCANCODE_LEFTBRACKET}},
+        {"rt_next_texture",     "editor.key.rt_next_texture",     "editor.key_group.runtime_editing", {SDL_SCANCODE_RIGHTBRACKET}},
+        {"rt_fullbright",       "editor.key.rt_fullbright",       "editor.key_group.runtime_editing", {SDL_SCANCODE_L}},
+        {"rt_focus_selection",  "editor.key.rt_focus_selection",  "editor.key_group.runtime_editing", {SDL_SCANCODE_F}},
     };
 
     SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS] = {};

@@ -38,6 +38,7 @@ uniform vec4 uModelBaseColor;
 
 uniform int renderMode;
 uniform vec3 uCameraWorldPos;
+uniform int uFullbright; // runtime editor: no distance light or wall AO
 
 // Shader-only lighting controls. Values are in world units.
 const float DISTANCE_LIGHT_START = 256.0;
@@ -129,6 +130,8 @@ float GetWallAmbientOcclusion() {
 }
 
 vec4 ApplyLighting(vec4 color, bool applyWallAO) {
+    if (uFullbright != 0) return color;
+
     float light = GetDistanceLight();
 
     if (applyWallAO) light *= GetWallAmbientOcclusion();
