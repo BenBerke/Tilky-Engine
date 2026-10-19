@@ -7,6 +7,7 @@
 
 struct Level;
 struct Matrix4;
+struct ComponentTransform;
 
 namespace MapQueries {
     int FindSectorContainingPoint(
@@ -14,6 +15,19 @@ namespace MapQueries {
         Vector2 position,
         int hintSector = -1
     );
+
+    // Height of one of `sector`'s floors or ceilings at `point`, slope
+    // included. Slopes run from an edge of the sector's bounding rectangle,
+    // as in the renderer and PhysicsSystem.
+    [[nodiscard]] float SurfaceHeightAt(const Sector& sector, const SectorSurface& surface, Vector2 point);
+
+    // The floor of `sector` whose floor-to-ceiling span at `point` is nearest
+    // `height` (0 away when inside it). -1 when the sector has no floors.
+    [[nodiscard]] int FindFloorAtHeight(const Sector& sector, Vector2 point, float height);
+
+    // Puts the transform's feet on the floor it is in (FindFloorAtHeight) of
+    // the sector under it. False, leaving it alone, outside every sector.
+    bool SnapToFloor(Level& level, ComponentTransform& transform);
 
     void RebuildSectorIDLookup(Level& level);
     void RebuildWallIDLookup(Level& level);

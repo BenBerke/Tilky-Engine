@@ -36,6 +36,11 @@ namespace ImGuiDrawFunctions {
         std::string windowTitle;
         std::string windowIdSuffix;
         bool allowDelete = true;
+        // A Snap to Floor button, for inspectors of a level's entities. It
+        // only sets snapToFloorRequested; the caller does the snapping and
+        // clears it.
+        bool allowSnapToFloor = true;
+        bool snapToFloorRequested = false;
         // Drawn at the top of the entity window, e.g. the prefab editor's Save row.
         std::function<void()> drawExtras;
     };

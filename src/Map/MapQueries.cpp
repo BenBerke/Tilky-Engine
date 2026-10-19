@@ -16,6 +16,86 @@
 #include "Headers/Objects/Level.hpp"
 
 namespace MapQueries {
+    float SurfaceHeightAt(const Sector& sector, const SectorSurface& surface, const Vector2 point) {
+        if (surface.slopeStrength == 0.0f) return surface.height;
+
+        // Triangles first, vertices as the fallback - what the renderer's
+        // Sector.bounds is built from.
+        Vector2 minimum = {0.0f, 0.0f};
+        Vector2 maximum = {0.0f, 0.0f};
+        bool first = true;
+
+        const auto include = [&](const Vector2& p) {
+            if (first) { minimum = {p.x, p.y}; maximum = {p.x, p.y}; first = false; return; }
+            minimum = {std::min(minimum.x, p.x), std::min(minimum.y, p.y)};
+            maximum = {std::max(maximum.x, p.x), std::max(maximum.y, p.y)};
+        };
+
+        if (!sector.triangles.empty()) {
+            for (const Triangle& t : sector.triangles) { include(t.a); include(t.b); include(t.c); }
+        }
+        else for (const Vector2& vertex : sector.vertices) include(vertex);
+
+        if (first) return surface.height;
+
+        const float gradient = surface.slopeStrength * Constants::DegToRad;
+
+        switch (surface.slopeDirection) {
+            case PLUS_X:  return surface.height + (point.x - minimum.x) * gradient;
+            case MINUS_X: return surface.height + (maximum.x - point.x) * gradient;
+            case PLUS_Z:  return surface.height + (point.y - minimum.y) * gradient;
+            case MINUS_Z: return surface.height + (maximum.y - point.y) * gradient;
+        }
+
+        return surface.height;
+    }
+
+    int FindFloorAtHeight(const Sector& sector, const Vector2 point, const float height) {
+        int best = -1;
+        float bestDistance = 0.0f;
+
+        for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+            const SectorFloor& floor = sector.floors[floorIndex];
+
+            const float floorHeight = SurfaceHeightAt(sector, floor.floor, point);
+            const float ceilingHeight = SurfaceHeightAt(sector, floor.ceiling, point);
+
+            const float distance = height < floorHeight ? floorHeight - height
+                                 : height > ceilingHeight ? height - ceilingHeight
+                                 : 0.0f;
+
+            if (best < 0 || distance < bestDistance) {
+                best = floorIndex;
+                bestDistance = distance;
+            }
+        }
+
+        return best;
+    }
+
+    bool SnapToFloor(Level& level, ComponentTransform& transform) {
+        const Vector2 point = {transform.position.x, transform.position.z};
+        const int hint = transform.sectorIndex >= 0 && transform.sectorIndex < static_cast<int>(level.sectors.size())
+            ? transform.sectorIndex
+            : -1;
+
+        const int sectorIndex = FindSectorContainingPoint(level.sectors, point, hint);
+        if (sectorIndex < 0) return false;
+
+        const Sector& sector = level.sectors[sectorIndex];
+
+        const int floorIndex = FindFloorAtHeight(sector, point, transform.position.y);
+        if (floorIndex < 0) return false;
+
+        const float floorHeight = SurfaceHeightAt(sector, sector.floors[floorIndex].floor, point);
+
+        transform.SetPosition({transform.position.x, floorHeight, transform.position.z});
+        transform.isDirty = true;
+        transform.UpdateObjectSectorAndFloor(level.sectors);
+
+        return true;
+    }
+
     int FindSectorContainingPoint(const std::vector<Sector> &sectors, const Vector2 position, const int hintSector)
     {
         // Fast path: still in the same sector (overwhelmingly common)

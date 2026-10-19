@@ -1629,6 +1629,22 @@ namespace RuntimeEditorUi {
                     for (const ID id : selectedEntityIds)
                         if (id != primaryID) MultiEdit::MirrorEntityEdit(level, before, after, id);
             }
+
+            // After the mirroring above, which would otherwise copy the
+            // primary's new height onto the others.
+            if (entityInspectorState.snapToFloorRequested) {
+                entityInspectorState.snapToFloorRequested = false;
+
+                GeometryState undo = CaptureEntities(level, "editor.history.snap_to_floor");
+                int snapped = 0;
+
+                for (const ID id : selectedEntityIds)
+                    if (ComponentTransform* entityTransform = level.transforms.Get(id); entityTransform != nullptr && MapQueries::SnapToFloor(level, *entityTransform))
+                        ++snapped;
+
+                CommitUndoIf(std::move(undo), snapped);
+                if (snapped > 0) MapEditorInternal::MarkUnsavedChanges();
+            }
         }
 
         if (editingWall) {

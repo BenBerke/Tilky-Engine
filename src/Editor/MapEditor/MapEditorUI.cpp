@@ -3035,6 +3035,31 @@ namespace {
         if (multiEdit &&
             PropagateEntityTransformEdits(level, transformBeforeEdit, selectedEntities, entity.id))
             hasUnsavedChanges = true;
+
+        // After the propagation above, which would otherwise pass the
+        // primary's snap on to the others as a move.
+        if (entityInspectorState.snapToFloorRequested) {
+            entityInspectorState.snapToFloorRequested = false;
+
+            EntityTransformUndo before;
+            int snapped = 0;
+
+            for (const ID entityID : multiEdit ? selectedEntities : std::vector<ID>{entity.id}) {
+                ComponentTransform* transform = level.transforms.Get(entityID);
+                if (transform == nullptr) continue;
+
+                const Vector3 position = transform->position;
+                if (!MapQueries::SnapToFloor(level, *transform)) continue;
+
+                before.positions.emplace_back(entityID, position);
+                ++snapped;
+            }
+
+            if (snapped > 0) {
+                PushEntityPositionsUndo(std::move(before), "editor.history.snap_to_floor", snapped);
+                hasUnsavedChanges = true;
+            }
+        }
     }
 
     void DrawSelectionInspectors(Level &level) {

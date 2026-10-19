@@ -2101,6 +2101,18 @@ namespace ImGuiDrawFunctions {
             if (open) *open = false;
         }
 
+        // Right-aligned on the same row.
+        if (state.allowSnapToFloor) {
+            const std::string snapLabel = Get("entity.snap_to_floor");
+            const float snapWidth = ImGui::CalcTextSize(snapLabel.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - snapWidth));
+
+            if (ImGui::Button(snapLabel.c_str())) state.snapToFloorRequested = true;
+            Tooltip(Get("editor.tooltip.entity.snap_to_floor").c_str());
+        }
+
         ImGui::PopID();
 
         ImGui::End();
