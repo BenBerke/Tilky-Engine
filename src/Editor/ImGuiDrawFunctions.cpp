@@ -2004,6 +2004,36 @@ namespace ImGuiDrawFunctions {
                         if (payload->componentType == componentType && payload->instanceID != instanceID)
                             MoveComponentInstance(componentType, payload->instanceID, indexInType);
                     }
+
+                    // An asset from the Asset Browser fills this component's
+                    // file field: a texture a Sprite's front slot, a model a
+                    // Model, a sound an Audio Source, a flipbook a Flipbook.
+                    const auto acceptAsset = [](const AssetKind kind) -> std::optional<std::string> {
+                        const ImGuiPayload *dropped = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(kind));
+                        if (dropped == nullptr) return std::nullopt;
+                        return AssetBrowser::ToAssetReference(static_cast<const char *>(dropped->Data), kind);
+                    };
+
+                    switch (componentType) {
+                        case CMP_SPRITE:
+                            if (const auto reference = acceptAsset(AssetKind::Texture))
+                                if (auto *c = entity.GetComponentInstance<ComponentSprite>(instanceID)) c->textureFileNames[0] = *reference;
+                            break;
+                        case CMP_MODEL:
+                            if (const auto reference = acceptAsset(AssetKind::Model))
+                                if (auto *c = entity.GetComponentInstance<ComponentModel>(instanceID)) c->fileName = *reference;
+                            break;
+                        case CMP_AUDIO_SOURCE:
+                            if (const auto reference = acceptAsset(AssetKind::Sound))
+                                if (auto *c = entity.GetComponentInstance<ComponentAudioSource>(instanceID)) c->soundFileName = *reference;
+                            break;
+                        case CMP_FLIPBOOK:
+                            if (const auto reference = acceptAsset(AssetKind::Flipbook))
+                                if (auto *c = entity.GetComponentInstance<ComponentFlipbook>(instanceID)) c->flipbookFileName = *reference;
+                            break;
+                        default: break;
+                    }
+
                     ImGui::EndDragDropTarget();
                 }
 
