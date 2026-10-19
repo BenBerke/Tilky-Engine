@@ -384,7 +384,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     {
         ZoneScopedN("Build Colliders");
 
-        if (renderDebug) {
+        // Turning entity markers off hides the collider outlines too.
+        if (renderDebug && entityMarkers != EntityMarkers::Off) {
             BuildGpuColliders();
 
             if (colliderCount > 0) {

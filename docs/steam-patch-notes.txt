@@ -1,0 +1,87 @@
+[h1]Tilky Engine Update – What's New Since 1.2.1[/h1]
+
+This is a big one! Prefabs arrive, the 3D Runtime Editor becomes a full level-editing tool, every shortcut can now be rebound, and switching between the editor and the game is much faster.
+
+[hr][/hr]
+
+[h2]Highlights[/h2]
+[list]
+[*][b]Prefabs[/b] – reusable, linked entities with per-field overrides.
+[*][b]Runtime Editor overhaul[/b] – select, move, rotate, texture and light your level directly in 3D.
+[*][b]Undo History[/b] – a History window in both editors; click any entry to jump back or forward to it.
+[*][b]Custom Key Bindings[/b] – rebind every key and shortcut in User Settings.
+[*][b]Snap to Wall & Snap to Floor[/b] – place decals and props on walls and floors in one click.
+[*][b]Faster everything[/b] – quicker editor ↔ game switching, multithreaded texture loading and visibility culling in-game.
+[/list]
+
+[hr][/hr]
+
+[h2]Prefabs[/h2]
+[list]
+[*]New [b].prefab[/b] asset. Create one from the Asset Browser's right-click menu ([i]Prefabs ▸ Empty Prefab / Empty UI Prefab[/i]) or with [b]Create Prefab from Selection[/b] in Entity Mode (saved to Assets/Prefabs).
+[*]Double-click a prefab to edit it in its own panel. Unsaved changes are marked, and you'll be asked before closing.
+[*]Placed prefabs are [b]linked instances[/b]: fields you change become overrides (highlighted in the inspector), everything else follows the prefab. Right-click a field to [i]Revert[/i] or [i]Apply to Prefab[/i], or use the prefab bar's Open / Apply All / Revert All / Unpack.
+[*]Saving a prefab updates every instance in the open level.
+[*]Drag a prefab onto the 2D canvas or straight into the Runtime Editor's 3D view to place it where you point.
+[*]Drop a prefab into a script's Entity field and spawn copies from Lua with [b]Game.CreateEntity[/b].
+[/list]
+
+[h2]Runtime Editor (3D)[/h2]
+[b]New toolbar:[/b] Move / Rotate gizmo, camera Speed and FOV sliders, Entity Markers, Entity Palette, Step Sizes, History and Statistics (FPS / frame time).
+[list]
+[*][b]Selection[/b] – right-click to select entities, walls, floors and ceilings; Ctrl+right-click to add to the selection; hold Alt and right-click to select every surface using the same texture. Selected and hovered surfaces and entities are highlighted.
+[*][b]Transform gizmo[/b] – move along an axis or a plane, rotate around the entity's own axes. Grid and 15° snapping, and every move or rotation can be undone.
+[*][b]Texture editing[/b] – drag to offset textures (lock to X or Y), scroll to scale, flip X / Y, step to the previous / next texture in the same folder, copy and paste a texture with or without its placement, reset placement, align textures along connected walls or fit them to the wall height.
+[*][b]Drag & drop[/b] – drop textures from the Asset Browser onto any surface, and prefabs into the level.
+[*][b]Sectors[/b] – scroll to raise or lower floors and ceilings, hold a key and scroll to change brightness (fine steps available), and copy / paste wall and sector properties.
+[*][b]Placing entities[/b] – press [b]E[/b] to place the palette's selection (an empty entity or a prefab) where you're pointing.
+[*][b]Entity Markers[/b] – a ring on every entity so invisible ones are easy to find. Click to cycle: always shown → hidden behind walls → off. Your choice is remembered.
+[*][b]Step Sizes[/b] – choose how much scrolling and dragging changes heights, scale, brightness and texture offsets.
+[*][b]Fullbright[/b] (L) to judge textures in dark areas, and [b]Focus Selection[/b] (F) to jump the camera to what you've selected.
+[*]Toolbar menus now stay open until you close them, even while you look around with the middle mouse button.
+[/list]
+
+[h2]Level Editor (2D)[/h2]
+[list]
+[*][b]Geometry Mode[/b] – select and drag walls and their end points, multi-select with Ctrl / Shift or a selection box, split walls (or Alt+click to split at the cursor), merge straight runs, see wall length and type, apply top / bottom textures to the whole selection, and align, reset or fit wall textures.
+[*][b]Entity Mode panel[/b] – an entity Palette with search (drop a prefab on the search box to pick it), placement options (Drop on Floor, Random Yaw, Default Tag), selection tools (Align, Distribute, Snap to Grid, Drop to Floor), and filters to hide entities by component or tag.
+[*]Copy, paste and duplicate entities; box selection; on-canvas move gizmo.
+[*]Ctrl+right-click sectors to edit several at once, and [b]Copy[/b] a sector's properties into New Sector Properties so the next sector you draw matches it.
+[*]Shortcuts to switch modes, toggle grid snapping and halve / double the grid size.
+[*][b]Grid snapping is now opt-in while dragging:[/b] hold Ctrl to snap (it used to snap by default).
+[*][b]Layout[/b] menu to show or hide each panel, including the new History window.
+[*][b]Start Level[/b] project setting: choose which level the exported game opens first.
+[/list]
+
+[h2]Entity Inspector[/h2]
+[list]
+[*][b]Snap to Floor[/b] – drops the entity onto the floor it's standing in. Works with stacked floors and sloped floors.
+[*][b]Snap to Wall[/b] – click it, then right-click a wall. The entity sticks to the wall and faces away from it, perfect for decals and signs. It can still slide along the wall and move up or down. Use [i]Switch Sides[/i] and [i]Gap[/i] to adjust it. Snaps are saved with the level.
+[*]Drag a texture, model, sound or flipbook onto a Sprite, Model, Audio Source or Flipbook component in the entity panel to assign it.
+[*]Reset buttons for Transform rotation and scale.
+[/list]
+
+[h2]Customisation[/h2]
+[list]
+[*][b]Key Bindings[/b] in User Settings: every key has a primary and an alternate binding, shortcuts are fully rebindable, and all hints and tooltips show your own keys.
+[*]New editor look with four UI designs: [b]Dark, Light, Midnight and Classic[/b].
+[*]New settings: Gizmo X/Y/Z colours, Texture Field Size, Runtime Editor FOV.
+[/list]
+
+[h2]Rendering & Performance[/h2]
+[list]
+[*][b]Visibility culling[/b] – in the game, only the sectors the camera can actually see are drawn.
+[*][b]Wall Contrast[/b] rendering setting – a subtle fake contrast that keeps corners readable in evenly lit rooms.
+[*][b]Much faster switching[/b] between the Level Editor, Runtime Editor and Play: the game window and textures are kept between sessions, and only changed images are reloaded.
+[*]Textures load on multiple threads when the editor starts, and switching textures is faster.
+[/list]
+
+[h2]Fixes[/h2]
+[list]
+[*]Collider outlines now appear exactly where the collider is (they were drawn off-centre).
+[*]Fixed slowdowns with Entity Markers in large levels.
+[*]Fixed toolbar menus closing on any click.
+[*]Fixed wall length labels, slider behaviour, menu alignment and panels stealing keyboard focus.
+[/list]
+
+Thanks for using Tilky Engine! Report bugs and share what you're building – feedback shapes every update.
