@@ -46,6 +46,16 @@ struct RendererSettings {
 
 constexpr float MAX_WALL_CONTRAST = 64.0f;
 
+// One entity's Snap to Wall (src/Editor/WallSnap.hpp). Editor-only: saved
+// in the level file's metadata, which the game never reads.
+struct WallSnapData {
+    static constexpr float DEFAULT_GAP = 0.05f;
+
+    ID wallID = INVALID_ID;
+    float side = 1.0f; // +1 or -1: which side of the wall
+    float gap = DEFAULT_GAP;
+};
+
 struct Level {
     LevelID id = 0;
     std::string name;
@@ -91,6 +101,9 @@ struct Level {
     Vector2 editorCamPos = {0.0f, 0.0f};
     Vector3 runtimeCamPos = {0.0f, 0.0f, 0.0f};
     Vector2 runtimeCamRot = {.0f, .0f};
+
+    // Snapped entities, by entity ID.
+    std::unordered_map<ID, WallSnapData> wallSnaps;
 #endif
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;

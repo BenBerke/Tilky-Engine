@@ -162,6 +162,7 @@ namespace {
         WallSurfaceSlot wallSlot = WallSurfaceSlot::Top; // the wall texture under the cursor
         int sectorIndex = -1;
         int floorIndex = -1;
+        ID entityID = INVALID_ID; // when type is Entity
     };
 
     SurfaceRef hoveredSurface;
@@ -2174,6 +2175,7 @@ namespace RuntimeEditor {
                 hoveredSurface.sectorIndex = FindSectorIndex(level, hit->sector);
                 hoveredSurface.floorIndex = hit->sectorFloorIndex;
             }
+            else if (hit->HitEntity()) hoveredSurface.entityID = hit->entity->id;
         }
 
         renderer.ClearSurfaceMarks();
@@ -2230,6 +2232,11 @@ namespace RuntimeEditor {
                 mark.kind = hoveredSurface.type == RayHitType::SectorFloor ? MarkedSurfaceKind::Floor : MarkedSurfaceKind::Ceiling;
                 mark.sectorIndex = hoveredSurface.sectorIndex;
                 mark.floorIndex = hoveredSurface.floorIndex;
+                renderer.MarkSurface(mark);
+            }
+            else if (hoveredSurface.type == RayHitType::Entity && hoveredSurface.entityID != INVALID_ID) {
+                mark.kind = MarkedSurfaceKind::Entity;
+                mark.entityID = hoveredSurface.entityID;
                 renderer.MarkSurface(mark);
             }
         }

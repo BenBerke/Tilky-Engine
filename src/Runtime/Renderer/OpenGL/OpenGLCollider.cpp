@@ -19,11 +19,15 @@ void OpenGL::BuildGpuColliders() {
 
         GpuCollider gpuCollider;
 
+        // The collider's bottom, as physics and Raycast place it: a sphere
+        // rests on it, a box stands on it. The shader draws both around a
+        // centre, so lift that by the radius or half the height.
         const Vector3 position = transform->LocalToWorld(collider.offset);
+        const float lift = collider.type == COLLIDERTYPE_SPHERE ? collider.scale.x : collider.scale.y * 0.5f;
 
         gpuCollider.positionType.x = position.x;
-        gpuCollider.positionType.y = position.y;
-        gpuCollider.positionType.z = position.z + transform->scale.z * .5f;
+        gpuCollider.positionType.y = position.y + lift;
+        gpuCollider.positionType.z = position.z;
 
         gpuCollider.positionType.w = collider.type == COLLIDERTYPE_SPHERE ? 0.0f : 1.0f;
 

@@ -5,29 +5,22 @@
 #include <vector>
 
 #include "Headers/Math/Vector/Vector2.hpp"
-#include "Headers/Objects/EntityTypes.hpp"
-
-struct Level;
-struct Wall;
+#include "Headers/Objects/Level.hpp"
 
 // The entity inspector's "Snap to Wall", in the map editor and the runtime
-// editor alike. Editor-only: nothing is saved with the level. A snapped
+// editor alike. Editor-only, but kept in the level (Level::wallSnaps) and
+// saved in its file's metadata, so snaps last until disabled. A snapped
 // entity stays on its wall's line (clamped to the wall's ends), `gap` off the
 // chosen side, facing straight out from it (yaw only - it can still be tilted
-// or rolled). Its height stays free. Snaps last until disabled, another level
-// is loaded or the engine closes, and carry over between the two editors.
+// or rolled). Its height stays free.
 namespace WallSnap {
-    inline constexpr float DEFAULT_GAP = 0.05f;
+    inline constexpr float DEFAULT_GAP = WallSnapData::DEFAULT_GAP;
 
-    struct Snap {
-        ID wallID = INVALID_ID;
-        float side = 1.0f; // +1 or -1 times WallNormal
-        float gap = DEFAULT_GAP;
-    };
-
+    using Snap = WallSnapData; // side: +1 or -1 times WallNormal
     using Snaps = std::unordered_map<ID, Snap>; // by entity
 
-    // Every snapped entity. Undo steps that change snaps swap this whole.
+    // Every snapped entity of the open level. Undo steps that change snaps
+    // swap this whole.
     Snaps& All();
 
     [[nodiscard]] const Snap* Find(ID entityID);
@@ -59,8 +52,7 @@ namespace WallSnap {
     void SetGap(Level& level, const std::vector<ID>& entities, float gap);
 
     // Puts every snapped entity back on its wall - call once a frame, after
-    // anything that moves entities. Drops snaps whose entity or wall is gone,
-    // and every snap when a different level is open. Returns whether any
-    // entity moved.
+    // anything that moves entities. Drops snaps whose entity or wall is gone.
+    // Returns whether any entity moved.
     bool Enforce(Level& level);
 }

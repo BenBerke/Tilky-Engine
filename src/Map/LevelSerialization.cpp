@@ -1787,6 +1787,23 @@ namespace {
                 level.runtimeCamRot.x = metadatajson["runtimeCamRot"][0];
                 level.runtimeCamRot.y = metadatajson["runtimeCamRot"][1];
             }
+
+            // BSON has no unsigned ints, so IDs come back signed.
+            if (metadatajson.contains("wallSnaps") && metadatajson["wallSnaps"].is_array()) {
+                for (const json& snapJson : metadatajson["wallSnaps"]) {
+                    if (!snapJson.is_object() ||
+                        !snapJson.contains("entity") || !snapJson["entity"].is_number_integer() ||
+                        !snapJson.contains("wall") || !snapJson["wall"].is_number_integer())
+                        continue;
+
+                    WallSnapData snap;
+                    snap.wallID = snapJson["wall"].get<ID>();
+                    snap.side = snapJson.value("flipped", false) ? -1.0f : 1.0f;
+                    snap.gap = std::max(0.0f, snapJson.value("gap", WallSnapData::DEFAULT_GAP));
+
+                    level.wallSnaps[snapJson["entity"].get<ID>()] = snap;
+                }
+            }
         }
     }
 
@@ -1808,6 +1825,22 @@ namespace {
             level.runtimeCamRot.x,
             level.runtimeCamRot.y,
         };
+
+        // Snaps of entities deleted since the editor last checked are left out.
+        json wallSnapsJson = json::array();
+
+        for (const auto& [entityID, snap] : level.wallSnaps) {
+            if (level.GetEntity(entityID) == nullptr) continue;
+
+            wallSnapsJson.push_back({
+                {"entity", entityID},
+                {"wall", snap.wallID},
+                {"flipped", snap.side < 0.0f}, // on the other side of the wall's normal
+                {"gap", snap.gap}
+            });
+        }
+
+        metadatajson["wallSnaps"] = std::move(wallSnapsJson);
 
         levelData["metadata"] = metadatajson;
     }

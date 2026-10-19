@@ -9,19 +9,13 @@
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 namespace WallSnap {
     namespace {
-        Snaps snaps;
-
         bool picking = false;
         std::vector<ID> pickTargets;
         ID pickPrimary = INVALID_ID;
-
-        // The level the snaps belong to. Wall and entity IDs mean nothing in
-        // another one.
-        ID snapsLevelID = INVALID_ID;
-        std::string snapsLevelName;
 
         constexpr float POSITION_EPSILON = 0.0001f;
         constexpr float YAW_EPSILON = 0.00001f;
@@ -59,10 +53,6 @@ namespace WallSnap {
 
             const float t = std::clamp(((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / lengthSq, 0.0f, 1.0f);
             return {wall.start.x + dx * t, wall.start.y + dy * t};
-        }
-
-        bool SameLevel(const Level& level) {
-            return level.id == snapsLevelID && level.name == snapsLevelName;
         }
 
         // On the wall's line `gap` off the snap's side, facing out (local +Z
@@ -109,8 +99,8 @@ namespace WallSnap {
         }
 
         bool ConstrainOne(Level& level, const ID entityID) {
-            const auto it = snaps.find(entityID);
-            if (it == snaps.end()) return false;
+            const auto it = level.wallSnaps.find(entityID);
+            if (it == level.wallSnaps.end()) return false;
 
             ComponentTransform* transform = level.transforms.Get(entityID);
             const Wall* wall = FindWall(level, it->second.wallID);
@@ -121,10 +111,11 @@ namespace WallSnap {
     }
 
     Snaps& All() {
-        return snaps;
+        return LevelManager::CurrentLevel().wallSnaps;
     }
 
     const Snap* Find(const ID entityID) {
+        const Snaps& snaps = All();
         const auto it = snaps.find(entityID);
         return it != snaps.end() ? &it->second : nullptr;
     }
@@ -168,12 +159,6 @@ namespace WallSnap {
         const Vector2 normal = WallNormal(wall);
         if (normal.x == 0.0f && normal.y == 0.0f) return 0;
 
-        if (!SameLevel(level)) {
-            snaps.clear();
-            snapsLevelID = level.id;
-            snapsLevelName = level.name;
-        }
-
         // The side the viewer is on; on the wall's line counts as the front.
         const Vector2 onWall = ClosestPointOnWall(wall, viewer);
         const float facing = (viewer.x - onWall.x) * normal.x + (viewer.y - onWall.y) * normal.y;
@@ -191,11 +176,9 @@ namespace WallSnap {
             }
 
             // Keeps the gap of an entity moved from another wall.
-            Snap snap;
-            if (const Snap* previous = Find(entityID)) snap.gap = previous->gap;
+            Snap& snap = level.wallSnaps[entityID];
             snap.wallID = wall.id;
             snap.side = side;
-            snaps[entityID] = snap;
 
             if (Entity* entity = level.GetEntity(entityID))
                 for (ComponentSprite* sprite : entity->GetComponents<ComponentSprite>())
@@ -209,6 +192,7 @@ namespace WallSnap {
     }
 
     void Disable(const std::vector<ID>& entities) {
+        Snaps& snaps = All();
         for (const ID entityID : entities) snaps.erase(entityID);
     }
 
@@ -216,8 +200,8 @@ namespace WallSnap {
         int switched = 0;
 
         for (const ID entityID : entities) {
-            const auto it = snaps.find(entityID);
-            if (it == snaps.end()) continue;
+            const auto it = level.wallSnaps.find(entityID);
+            if (it == level.wallSnaps.end()) continue;
 
             it->second.side = -it->second.side;
             ConstrainOne(level, entityID);
@@ -229,8 +213,8 @@ namespace WallSnap {
 
     void SetGap(Level& level, const std::vector<ID>& entities, const float gap) {
         for (const ID entityID : entities) {
-            const auto it = snaps.find(entityID);
-            if (it == snaps.end()) continue;
+            const auto it = level.wallSnaps.find(entityID);
+            if (it == level.wallSnaps.end()) continue;
 
             it->second.gap = gap;
             ConstrainOne(level, entityID);
@@ -238,13 +222,8 @@ namespace WallSnap {
     }
 
     bool Enforce(Level& level) {
+        Snaps& snaps = level.wallSnaps;
         if (snaps.empty()) return false;
-
-        if (!SameLevel(level)) {
-            snaps.clear();
-            CancelPicking();
-            return false;
-        }
 
         bool moved = false;
 
