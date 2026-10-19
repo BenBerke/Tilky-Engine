@@ -3082,6 +3082,8 @@ namespace MapEditorInternal {
         void SwapUndoStep(UndoStep& step) {
             Level& level = LevelManager::CurrentLevel();
 
+            if (step.wallSnaps.has_value()) std::swap(*step.wallSnaps, WallSnap::All());
+
             switch (step.kind) {
                 case UNDO_GEOMETRY: {
                     GeometrySnapshot current = CaptureGeometryUndoSnapshot();

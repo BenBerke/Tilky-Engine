@@ -134,6 +134,7 @@ void PrefabEditor::DrawDocument(Document& document) {
             inspector.windowIdSuffix = idSuffix;
             inspector.allowDelete = false;
             inspector.allowSnapToFloor = false;
+            inspector.allowSnapToWall = false;
             inspector.drawExtras = drawExtras;
 
             constexpr bool draggable = true;

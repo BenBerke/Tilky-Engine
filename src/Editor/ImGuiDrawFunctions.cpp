@@ -2101,16 +2101,69 @@ namespace ImGuiDrawFunctions {
             if (open) *open = false;
         }
 
-        // Right-aligned on the same row.
-        if (state.allowSnapToFloor) {
-            const std::string snapLabel = Get("entity.snap_to_floor");
-            const float snapWidth = ImGui::CalcTextSize(snapLabel.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        // Right-aligned on the same row: Snap to Wall, then Snap to Floor.
+        {
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const auto buttonWidth = [&](const std::string& label) {
+                return ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0f;
+            };
 
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - snapWidth));
+            using WallSnapStatus = EntityInspectorState::WallSnapStatus;
 
-            if (ImGui::Button(snapLabel.c_str())) state.snapToFloorRequested = true;
-            Tooltip(Get("editor.tooltip.entity.snap_to_floor").c_str());
+            const std::string wallLabel = Get(
+                state.wallSnapStatus == WallSnapStatus::Picking ? "entity.snap_to_wall_cancel"
+                : state.wallSnapStatus == WallSnapStatus::Snapped ? "entity.disable_wall_snap"
+                : "entity.snap_to_wall");
+            const std::string floorLabel = Get("entity.snap_to_floor");
+
+            float width = 0.0f;
+            if (state.allowSnapToWall) width += buttonWidth(wallLabel);
+            if (state.allowSnapToFloor) width += (width > 0.0f ? style.ItemSpacing.x : 0.0f) + buttonWidth(floorLabel);
+
+            if (width > 0.0f) {
+                ImGui::SameLine();
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - width));
+            }
+
+            if (state.allowSnapToWall) {
+                if (ImGui::Button(wallLabel.c_str())) state.wallSnapButtonRequested = true;
+                Tooltip(Get(
+                    state.wallSnapStatus == WallSnapStatus::Picking ? "editor.tooltip.entity.snap_to_wall_cancel"
+                    : state.wallSnapStatus == WallSnapStatus::Snapped ? "editor.tooltip.entity.disable_wall_snap"
+                    : "editor.tooltip.entity.snap_to_wall").c_str());
+
+                if (state.allowSnapToFloor) ImGui::SameLine();
+            }
+
+            if (state.allowSnapToFloor) {
+                if (ImGui::Button(floorLabel.c_str())) state.snapToFloorRequested = true;
+                Tooltip(Get("editor.tooltip.entity.snap_to_floor").c_str());
+            }
+
+            // A second row while snapped, right-aligned too: Gap, Switch Sides.
+            if (state.allowSnapToWall && state.wallSnapStatus == WallSnapStatus::Snapped) {
+                constexpr float GAP_FIELD_WIDTH = 70.0f;
+
+                const std::string gapLabel = Get("entity.wall_gap");
+                const std::string switchLabel = Get("entity.switch_sides");
+                const float rowWidth = ImGui::CalcTextSize(gapLabel.c_str()).x + style.ItemSpacing.x +
+                                       GAP_FIELD_WIDTH + style.ItemSpacing.x + buttonWidth(switchLabel);
+
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - rowWidth));
+
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(gapLabel.c_str());
+                ImGui::SameLine();
+
+                ImGui::SetNextItemWidth(GAP_FIELD_WIDTH);
+                if (ImGui::DragFloat("##WallSnapGap", &state.wallSnapGap, 0.01f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
+                    state.wallSnapGapChanged = true;
+                Tooltip(Get("editor.tooltip.entity.wall_gap").c_str());
+
+                ImGui::SameLine();
+                if (ImGui::Button(switchLabel.c_str())) state.switchSidesRequested = true;
+                Tooltip(Get("editor.tooltip.entity.switch_sides").c_str());
+            }
         }
 
         ImGui::PopID();

@@ -1564,6 +1564,7 @@ namespace MapEditorInternal {
         states.scripts.windowIdSuffix = idSuffix;
         states.scripts.allowDelete = false;
         states.scripts.allowSnapToFloor = false;
+        states.scripts.allowSnapToWall = false;
         states.ui.scriptState = &states.scripts;
         states.ui.drawExtras = drawExtras;
 

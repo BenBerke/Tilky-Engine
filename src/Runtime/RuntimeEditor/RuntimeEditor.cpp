@@ -16,6 +16,7 @@
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 
 #include "../../Editor/EditorInternal.hpp"
+#include "../../Editor/WallSnap.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -851,12 +852,20 @@ namespace {
         // Set on entity steps, which hold every entity instead of the walls
         // and sectors.
         std::optional<MapEditorInternal::EntitiesSnapshot> entities;
+
+        // Set on steps that change wall snaps: every snap, swapped with
+        // WallSnap::All() along with the rest.
+        std::optional<WallSnap::Snaps> wallSnaps;
     };
 
     constexpr std::size_t MAX_UNDO_STEPS = 64;
 
     std::vector<GeometryState> undoStack;
     std::vector<GeometryState> redoStack;
+
+    // Every entity as the gizmo drag in progress found them, committed as an
+    // undo step once the drag has changed something.
+    GeometryState gizmoUndo;
 
     // Scroll notches of the same kind closer together than this are one
     // undo step.
@@ -932,6 +941,8 @@ namespace {
     // Swaps `state` in, leaving what was there in `state`. Selected indices
     // that no longer exist are dropped.
     void SwapGeometry(Level& level, GeometryState& state) {
+        if (state.wallSnaps.has_value()) std::swap(*state.wallSnaps, WallSnap::All());
+
         if (state.entities.has_value()) {
             SwapEntities(level, *state.entities);
             return;
@@ -1618,6 +1629,16 @@ namespace RuntimeEditorUi {
             const bool mirrors = selectedEntityIds.size() > 1;
             const nlohmann::json before = mirrors ? MultiEdit::EntityState(level, primaryID) : nlohmann::json{};
 
+            {
+                using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
+
+                const WallSnap::Snap* snap = WallSnap::Find(primaryID);
+                entityInspectorState.wallSnapStatus = WallSnap::IsPicking() ? WallSnapStatus::Picking
+                                                    : snap != nullptr ? WallSnapStatus::Snapped
+                                                    : WallSnapStatus::Off;
+                if (snap != nullptr) entityInspectorState.wallSnapGap = snap->gap;
+            }
+
             const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
 
@@ -1665,6 +1686,36 @@ namespace RuntimeEditorUi {
 
                 CommitUndoIf(std::move(undo), snapped);
                 if (snapped > 0) MapEditorInternal::MarkUnsavedChanges();
+            }
+
+            if (entityInspectorState.wallSnapButtonRequested) {
+                entityInspectorState.wallSnapButtonRequested = false;
+
+                using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
+
+                switch (entityInspectorState.wallSnapStatus) {
+                    case WallSnapStatus::Off: WallSnap::BeginPicking(selectedEntityIds, primaryID); break;
+                    case WallSnapStatus::Picking: WallSnap::CancelPicking(); break;
+                    case WallSnapStatus::Snapped: WallSnap::Disable(selectedEntityIds); break;
+                }
+            }
+
+            if (entityInspectorState.switchSidesRequested) {
+                entityInspectorState.switchSidesRequested = false;
+
+                GeometryState undo = CaptureEntities(level, "editor.history.switch_wall_side");
+                undo.wallSnaps = WallSnap::All();
+
+                const int switched = WallSnap::SwitchSides(level, selectedEntityIds);
+                CommitUndoIf(std::move(undo), switched);
+                if (switched > 0) MapEditorInternal::MarkUnsavedChanges();
+            }
+
+            if (entityInspectorState.wallSnapGapChanged) {
+                entityInspectorState.wallSnapGapChanged = false;
+
+                WallSnap::SetGap(level, selectedEntityIds, entityInspectorState.wallSnapGap);
+                MapEditorInternal::MarkUnsavedChanges();
             }
         }
 
@@ -2148,7 +2199,12 @@ namespace RuntimeEditor {
             (gizmoTarget == nullptr || !haveGizmoView || !InputManager::GetMouseButton(SDL_BUTTON_LEFT) || !windowFocused)) {
             TransformGizmo::EndDrag();
 
-            if (gizmoChangedTransform) MapEditorInternal::MarkUnsavedChanges();
+            if (gizmoChangedTransform) {
+                CommitUndoIf(std::move(gizmoUndo), static_cast<int>(selectedEntityIds.size()));
+                MapEditorInternal::MarkUnsavedChanges();
+            }
+
+            gizmoUndo = {};
             gizmoChangedTransform = false;
         }
 
@@ -2160,7 +2216,11 @@ namespace RuntimeEditor {
             !dragDropActive &&
             !cameraLooking) {
             gizmoChangedTransform = false;
-            TransformGizmo::BeginDrag(gizmoView, gizmoTool, *gizmoTarget, InputManager::GetMousePosition());
+
+            if (TransformGizmo::BeginDrag(gizmoView, gizmoTool, *gizmoTarget, InputManager::GetMousePosition()))
+                gizmoUndo = CaptureEntities(level, gizmoTool == TransformGizmo::Tool::Move
+                    ? "runtime_editor.history.move_entities"
+                    : "runtime_editor.history.rotate_entities");
         }
 
         if (TransformGizmo::IsDragging()) {
@@ -2194,6 +2254,10 @@ namespace RuntimeEditor {
                 }
             }
         }
+
+        // After the gizmo, so a snapped entity dragged off its wall is back
+        // on it before anything draws.
+        if (WallSnap::Enforce(level)) MapEditorInternal::MarkUnsavedChanges();
 
         //endregion
 
@@ -2381,15 +2445,52 @@ namespace RuntimeEditor {
 
         }
 
+        // ---- Snap to Wall waiting for a wall
+        // A right-click finishes it on a wall or cancels it on anything else,
+        // and selects nothing either way. Entities are looked through.
+        bool rightClickTaken = false;
+
+        WallSnap::CancelPickingIfSelectionChanged(selectedEntityIds);
+
+        if (WallSnap::IsPicking() && !keyboardBlockedByImGui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE))
+            WallSnap::CancelPicking();
+
+        if (WallSnap::IsPicking() && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui) {
+            rightClickTaken = true;
+
+            const std::optional<RayHit> wallHit = GameFunctions::RaycastGeometry(level, rayOrigin, rayDirection, RAY_LENGTH);
+
+            if (!wallHit.has_value() || !wallHit->HitWall()) WallSnap::CancelPicking();
+            else {
+                GeometryState undo = CaptureEntities(level, "editor.history.snap_to_wall");
+                undo.wallSnaps = WallSnap::All();
+
+                const int snapped = WallSnap::FinishPicking(
+                    level,
+                    *wallHit->wall,
+                    {wallHit->position.x, wallHit->position.z},
+                    wallHit->position.y,
+                    {rayOrigin.x, rayOrigin.z}
+                );
+
+                CommitUndoIf(std::move(undo), snapped);
+
+                if (snapped > 0) {
+                    runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+                    MapEditorInternal::MarkUnsavedChanges();
+                }
+            }
+        }
+
         // Select by texture: its key held while right clicking.
         const bool selectByTextureHeld = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_SELECT_BY_TEXTURE);
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && selectByTextureHeld && SelectAllWithHoveredTexture(level))
+        if (!rightClickTaken && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && selectByTextureHeld && SelectAllWithHoveredTexture(level))
             ShowToastf("runtime_editor.toast.selected_by_texture", static_cast<int>(SelectionCount()));
 
         //endregion
 
-        if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && !selectByTextureHeld) {
+        if (!rightClickTaken && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && !selectByTextureHeld) {
             if (!hit.has_value()) {
                 spdlog::info("Runtime editor ray missed");
                 return;

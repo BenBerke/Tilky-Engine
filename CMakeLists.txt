@@ -528,6 +528,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/AssetBrowser.cpp
         src/Editor/FlipbookEditor.cpp
         src/Editor/PrefabEditor.cpp
+        src/Editor/WallSnap.cpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp

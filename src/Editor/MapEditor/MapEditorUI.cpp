@@ -2998,6 +2998,16 @@ namespace {
         const EntityTransformSnapshot transformBeforeEdit =
                 multiEdit ? CaptureEntityTransformSnapshot(level, entity.id) : EntityTransformSnapshot{};
 
+        {
+            using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
+
+            const WallSnap::Snap* snap = WallSnap::Find(entity.id);
+            entityInspectorState.wallSnapStatus = WallSnap::IsPicking() ? WallSnapStatus::Picking
+                                                : snap != nullptr ? WallSnapStatus::Snapped
+                                                : WallSnapStatus::Off;
+            if (snap != nullptr) entityInspectorState.wallSnapGap = snap->gap;
+        }
+
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
@@ -3059,6 +3069,44 @@ namespace {
                 PushEntityPositionsUndo(std::move(before), "editor.history.snap_to_floor", snapped);
                 hasUnsavedChanges = true;
             }
+        }
+
+        const std::vector<ID> wallSnapTargets = multiEdit ? selectedEntities : std::vector<ID>{entity.id};
+
+        if (entityInspectorState.wallSnapButtonRequested) {
+            entityInspectorState.wallSnapButtonRequested = false;
+
+            using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
+
+            switch (entityInspectorState.wallSnapStatus) {
+                case WallSnapStatus::Off: WallSnap::BeginPicking(wallSnapTargets, entity.id); break;
+                case WallSnapStatus::Picking: WallSnap::CancelPicking(); break;
+                case WallSnapStatus::Snapped: WallSnap::Disable(wallSnapTargets); break;
+            }
+        }
+
+        if (entityInspectorState.switchSidesRequested) {
+            entityInspectorState.switchSidesRequested = false;
+
+            UndoStep step;
+            step.kind = UNDO_ENTITIES;
+            step.labelKey = "editor.history.switch_wall_side";
+            step.entities = CaptureEntitiesSnapshot();
+            step.wallSnaps = WallSnap::All();
+
+            step.count = WallSnap::SwitchSides(level, wallSnapTargets);
+
+            if (step.count > 0) {
+                PushUndoStep(std::move(step));
+                hasUnsavedChanges = true;
+            }
+        }
+
+        if (entityInspectorState.wallSnapGapChanged) {
+            entityInspectorState.wallSnapGapChanged = false;
+
+            WallSnap::SetGap(level, wallSnapTargets, entityInspectorState.wallSnapGap);
+            hasUnsavedChanges = true;
         }
     }
 

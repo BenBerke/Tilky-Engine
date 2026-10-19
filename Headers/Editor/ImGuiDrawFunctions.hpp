@@ -41,6 +41,17 @@ namespace ImGuiDrawFunctions {
         // clears it.
         bool allowSnapToFloor = true;
         bool snapToFloorRequested = false;
+
+        // Snap to Wall (src/Editor/WallSnap.hpp), shown with Snap to Floor.
+        // The caller fills in wallSnapStatus and wallSnapGap every frame
+        // before drawing; the controls only set the requests below.
+        enum class WallSnapStatus { Off, Picking, Snapped };
+        bool allowSnapToWall = true;
+        WallSnapStatus wallSnapStatus = WallSnapStatus::Off;
+        float wallSnapGap = 0.0f;
+        bool wallSnapButtonRequested = false; // Snap to Wall, Cancel or Disable Snap, by status
+        bool switchSidesRequested = false;
+        bool wallSnapGapChanged = false;       // wallSnapGap holds the new value
         // Drawn at the top of the entity window, e.g. the prefab editor's Save row.
         std::function<void()> drawExtras;
     };

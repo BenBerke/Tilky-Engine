@@ -178,6 +178,39 @@ namespace MapEditorInternal {
     // holdingEntity drag, the clipboard, FocusCameraOnSelection). The plural
     // list holds IDs, like the sector and wall ones.
 
+    ID wallSnapHoveredWallID = INVALID_ID;
+
+    namespace {
+        // Right-click while Snap to Wall waits for a wall: a wall finishes
+        // it (one undo step, snaps included), anything else cancels it.
+        void HandleWallSnapRightClick(Level& level, const Vector2& mouseWorld) {
+            const ID wallID = PickWallAt(mouseWorld);
+            const Wall* wall = nullptr;
+
+            for (const Wall& candidate : level.walls)
+                if (candidate.id == wallID) wall = &candidate;
+
+            if (wall == nullptr) {
+                WallSnap::CancelPicking();
+                return;
+            }
+
+            UndoStep step;
+            step.kind = UNDO_ENTITIES;
+            step.labelKey = "editor.history.snap_to_wall";
+            step.entities = CaptureEntitiesSnapshot();
+            step.wallSnaps = WallSnap::All();
+
+            // The cursor's side of the wall is the side it goes on.
+            step.count = WallSnap::FinishPicking(level, *wall, mouseWorld, std::nullopt, mouseWorld);
+
+            if (step.count > 0) {
+                PushUndoStep(std::move(step));
+                MarkUnsavedChanges();
+            }
+        }
+    }
+
     void SelectEntity(const ID entityID) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -1012,6 +1045,15 @@ namespace MapEditorInternal {
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
+        // Snap to Wall waits for a right-click on a wall in Entity Mode only.
+        WallSnap::CancelPickingIfSelectionChanged(selectedEntities);
+
+        if (WallSnap::IsPicking() &&
+            (currentMode != MODE_ENTITY || (!keyboardBlockedByImgui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE))))
+            WallSnap::CancelPicking();
+
+        wallSnapHoveredWallID = WallSnap::IsPicking() && !mouseBlockedByImGui ? PickWallAt(mouseWorld) : INVALID_ID;
+
         // Geometry editing is gated entirely on Geometry Mode being active
         // and ImGui not having the mouse: a click that lands on a panel
         // must never move or deselect a wall behind it. A drag that is
@@ -1108,8 +1150,10 @@ namespace MapEditorInternal {
                 else if (IsDrawingInProgress()) CancelActiveDrawing();
                 else HandleSectorModeRightClick(mouseWorld);
             }
-            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT))
-                if (currentMode == MODE_ENTITY) HandleEntityModeRightClick(mouseWorld);
+            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && currentMode == MODE_ENTITY) {
+                if (WallSnap::IsPicking()) HandleWallSnapRightClick(level, mouseWorld);
+                else HandleEntityModeRightClick(mouseWorld);
+            }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
                 if (auto* t = selectedEntity.GetComponent<ComponentTransform>()) [[likely]] {

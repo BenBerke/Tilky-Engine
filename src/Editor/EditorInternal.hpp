@@ -8,6 +8,7 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
+#include "WallSnap.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -359,6 +360,10 @@ namespace MapEditorInternal {
     // MODE_GEOMETRY; INVALID_ID in every other mode and whenever ImGui
     // has the mouse. Read-only elsewhere, for the hover highlight.
     extern ID hoveredWallID;
+
+    // The wall under the cursor while Snap to Wall waits for one, for its
+    // highlight. INVALID_ID otherwise.
+    extern ID wallSnapHoveredWallID;
 
     // True from the mouse-down that starts a wall body/endpoint drag
     // until that drag is committed.
@@ -1206,6 +1211,10 @@ namespace MapEditorInternal {
     // Floor height of the sector at `point`, or 0 outside every sector.
     [[nodiscard]] float FloorHeightAt(const Vector2& point);
 
+    // Draws the hover highlight of the wall Snap to Wall would pick
+    // (MapEditorDrawing.cpp).
+    void DrawWallSnapPickHighlight();
+
     // Places the palette's selection at `point`, applying the placement
     // settings, and selects it. INVALID_ID if it couldn't be placed.
     ID PlacePaletteEntityAt(const Vector2& point);
@@ -1272,6 +1281,10 @@ namespace MapEditorInternal {
         GeometrySnapshot geometry;       // UNDO_GEOMETRY
         EntityTransformUndo positions;   // UNDO_ENTITY_POSITIONS
         EntitiesSnapshot entities;       // UNDO_ENTITIES
+
+        // Set on steps that change wall snaps (any kind): every snap, swapped
+        // with WallSnap::All() along with the step's own state.
+        std::optional<WallSnap::Snaps> wallSnaps;
     };
 
     constexpr std::size_t MAX_MAP_UNDO_STEPS = 128;

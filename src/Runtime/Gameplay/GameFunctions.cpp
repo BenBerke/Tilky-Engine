@@ -614,6 +614,10 @@ namespace GameFunctions {
         return CastRay(level, pos, dir, length, ignoredEntity, requireCollider, true);
     }
 
+    std::optional<RayHit> RaycastGeometry(Level& level, const Vector3 pos, const Vector3& dir, const float length) {
+        return CastRay(level, pos, dir, length, INVALID_ENTITY_ID, false, false);
+    }
+
     bool LineOfSight(Level& level, const Vector3& from, const Vector3& to) {
         const Vector3 delta = to - from;
         const float distance = Vector3Math::Length(delta);

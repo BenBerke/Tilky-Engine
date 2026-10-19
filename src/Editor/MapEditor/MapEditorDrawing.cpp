@@ -844,6 +844,19 @@ namespace MapEditorInternal {
         }
     }
 
+    // Amber, like Geometry Mode's hover.
+    void DrawWallSnapPickHighlight() {
+        if (wallSnapHoveredWallID == INVALID_ID) return;
+
+        for (const Wall& wall : LevelManager::CurrentLevel().walls) {
+            if (wall.id != wallSnapHoveredWallID) continue;
+
+            SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+            DrawColoredThickLine(WorldToScreen(wall.start, cameraPos), WorldToScreen(wall.end, cameraPos), 7.0f);
+            return;
+        }
+    }
+
     void DrawWalls() {
         const Level& level = LevelManager::CurrentLevel();
 

@@ -253,6 +253,10 @@ namespace Editor {
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
             HandleEditorShortcuts(keyboardBlockedByImgui);
 
+            // After everything that moves entities, so a snapped one is
+            // drawn back on its wall.
+            if (WallSnap::Enforce(LevelManager::CurrentLevel())) MarkUnsavedChanges();
+
             DrawGridDots();
             DrawExistingSectors();
             DrawWalls();
@@ -263,6 +267,7 @@ namespace Editor {
             // DrawDots() was - it highlights the walls, so drawing it
             // first would put every highlight underneath them.
             DrawGeometryEditOverlay();
+            DrawWallSnapPickHighlight();
 
             DrawEntities();
             DrawEntityMoveGizmo();
