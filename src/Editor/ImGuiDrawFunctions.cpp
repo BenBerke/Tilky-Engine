@@ -2156,6 +2156,7 @@ namespace ImGuiDrawFunctions {
                 ImGui::SameLine();
 
                 ImGui::SetNextItemWidth(GAP_FIELD_WIDTH);
+
                 if (ImGui::DragFloat("##WallSnapGap", &state.wallSnapGap, 0.01f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
                     state.wallSnapGapChanged = true;
                 Tooltip(Get("editor.tooltip.entity.wall_gap").c_str());
@@ -2270,11 +2271,15 @@ namespace ImGuiDrawFunctions {
                     c->isDirty = true;
                 }
 
-                if (ImGui::Button("Reset##rst_rotation")) {
-                    rotationEuler = {0.0f, 0.0f, 0.0f};
-                    c->rotation = Quaternion::Identity();
-                    c->isDirty = true;
-                }
+                // ImGui::SameLine();
+                //
+                // if (ImGui::Button("Reset##rst_rotation")) {
+                //     rotationEuler = {0.0f, 0.0f, 0.0f};
+                //     c->rotation = Quaternion::Identity();
+                //     c->isDirty = true;
+                // }
+
+                ResetFloat3Button("##rotation", &c->rotation.x);
 
                 EndSection();
 
@@ -2284,9 +2289,7 @@ namespace ImGuiDrawFunctions {
                     ImGui::TextDisabled("X                Y               Z");
                     FieldWidth(220.0f);
 
-                    if (InputOrDrag3("##scale", &c->scale.x, draggable)) {
-                        c->isDirty = true;
-                    }
+                    if (InputOrDrag3("##scale", &c->scale.x, draggable)) c->isDirty = true;
 
                     ResetFloat3Button("rst_scale", &c->scale.x);
                     EndSection();
