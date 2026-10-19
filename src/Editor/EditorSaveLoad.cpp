@@ -233,6 +233,11 @@ namespace MapEditorInternal {
             assetBrowserVisible = settings.value("assetBrowserVisible", true);
             historyVisible = settings.value("historyVisible", false);
             runtimeHistoryVisible = settings.value("runtimeHistoryVisible", false);
+            entityMarkerMode = static_cast<EntityMarkerMode>(std::clamp(
+                settings.value("entityMarkerMode", static_cast<int>(EntityMarkerMode::Always)),
+                0,
+                static_cast<int>(EntityMarkerMode::Count) - 1
+            ));
 
             // A binding missing from the file, or a slot that isn't a valid
             // scancode, keeps its current (default) key. 0 is an empty slot.
@@ -416,6 +421,7 @@ namespace MapEditorInternal {
                 {"assetBrowserVisible", assetBrowserVisible},
                 {"historyVisible", historyVisible},
                 {"runtimeHistoryVisible", runtimeHistoryVisible},
+                {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
                 {"runtimeSteps", SerializeRuntimeSteps()}

@@ -482,6 +482,17 @@ namespace MapEditorInternal {
     extern bool historyVisible;
     extern bool runtimeHistoryVisible;
 
+    // Which entity markers the runtime editor draws. Its toolbar button and
+    // key cycle through these in order.
+    enum class EntityMarkerMode {
+        Always,      // through walls too
+        VisibleOnly, // hidden behind level geometry
+        Off,
+        Count
+    };
+
+    extern EntityMarkerMode entityMarkerMode;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is
@@ -1049,8 +1060,8 @@ namespace MapEditorInternal {
         KEYBIND_RT_FLY_RIGHT,
         KEYBIND_RT_FLY_UP,
         KEYBIND_RT_FLY_DOWN,
-        KEYBIND_RT_SPEED_UP,
         KEYBIND_RT_SPEED_DOWN,
+        KEYBIND_RT_SPEED_UP,
         KEYBIND_RT_RESET_SPEED,
 
         // Runtime editor: editing

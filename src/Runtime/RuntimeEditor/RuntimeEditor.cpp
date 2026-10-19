@@ -182,10 +182,6 @@ namespace {
     // window's buttons or the 1/2 keys.
     TransformGizmo::Tool gizmoTool = TransformGizmo::Tool::Move;
 
-    // Entity markers: toggled from the toolbar's dropdown or its key.
-    bool showEntityMarkers = true;
-    bool hideEntityMarkersBehindWalls = false;
-
     // Saved by Update() for Draw(), which has no viewport size of its own.
     Vector2 gizmoViewportSize = {};
 
@@ -426,8 +422,32 @@ namespace {
     // A white circle on every entity, so ones with nothing to draw (no sprite,
     // model or collider) can still be found. Drawn before the transform gizmo
     // so the gizmo stays on top.
+    const char* EntityMarkerModeKey(const MapEditorInternal::EntityMarkerMode mode) {
+        switch (mode) {
+            case MapEditorInternal::EntityMarkerMode::Always: return "runtime_editor.entity_markers.always";
+            case MapEditorInternal::EntityMarkerMode::VisibleOnly: return "runtime_editor.entity_markers.visible_only";
+            default: return "runtime_editor.entity_markers.off";
+        }
+    }
+
+    // Always -> VisibleOnly -> Off -> Always. `notify` shows the new mode in a
+    // toast, for the key, which has no button to look at.
+    void CycleEntityMarkerMode(const bool notify) {
+        using MapEditorInternal::EntityMarkerMode;
+
+        const int next = (static_cast<int>(MapEditorInternal::entityMarkerMode) + 1) % static_cast<int>(EntityMarkerMode::Count);
+        MapEditorInternal::entityMarkerMode = static_cast<EntityMarkerMode>(next);
+
+        if (notify) {
+            const std::string text = Localisation::Get("runtime_editor.entity_markers") + ": "
+                                   + Localisation::Get(EntityMarkerModeKey(MapEditorInternal::entityMarkerMode));
+            ImGuiDrawFunctions::ShowNotification(text.c_str(), false, 1.5f);
+        }
+    }
+
     void DrawEntityMarkers(Level& level) {
-        if (!showEntityMarkers) return;
+        const MapEditorInternal::EntityMarkerMode mode = MapEditorInternal::entityMarkerMode;
+        if (mode == MapEditorInternal::EntityMarkerMode::Off) return;
 
         TransformGizmo::View view;
         if (!BuildGizmoView(view)) return;
@@ -438,7 +458,7 @@ namespace {
         for (const ComponentTransform& entityTransform : level.transforms.components) {
             Vector2 screen;
             if (!TransformGizmo::ProjectPoint(view, entityTransform.position, screen)) continue;
-            if (hideEntityMarkersBehindWalls && IsBehindGeometry(level, view.eye, entityTransform.position)) continue;
+            if (mode == MapEditorInternal::EntityMarkerMode::VisibleOnly && IsBehindGeometry(level, view.eye, entityTransform.position)) continue;
 
             drawList->AddCircle({screen.x, screen.y}, MARKER_RADIUS, IM_COL32(255, 255, 255, 220), 0, 2.0f);
         }
@@ -1393,21 +1413,22 @@ namespace RuntimeEditorUi {
         DrawToolbarSeparator();
 
         // ---- Entity markers
-        constexpr const char* ENTITY_MARKERS_POPUP = "##RuntimeEditorEntityMarkers";
+        {
+            using MapEditorInternal::EntityMarkerMode;
 
-        if (ToolbarButton("entity_markers", ICON_FA_CIRCLE_DOT, "E",
-                          Localisation::Get("runtime_editor.entity_markers") + "\n" + Localisation::Get("runtime_editor.tooltip.entity_markers"),
-                          showEntityMarkers))
-            ImGui::OpenPopup(ENTITY_MARKERS_POPUP);
+            const EntityMarkerMode mode = MapEditorInternal::entityMarkerMode;
+            const char* icon = mode == EntityMarkerMode::Always ? ICON_FA_CIRCLE_DOT
+                             : mode == EntityMarkerMode::VisibleOnly ? ICON_FA_EYE
+                             : ICON_FA_EYE_SLASH;
+            const char* fallback = mode == EntityMarkerMode::Always ? "E+"
+                                 : mode == EntityMarkerMode::VisibleOnly ? "E"
+                                 : "E-";
 
-        if (ImGui::BeginPopup(ENTITY_MARKERS_POPUP)) {
-            const std::string toggleKey = MapEditorInternal::KeyBindName(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS);
-
-            ImGui::MenuItem(Localisation::Get("runtime_editor.entity_markers.show").c_str(), toggleKey.c_str(), &showEntityMarkers);
-            ImGui::MenuItem(Localisation::Get("runtime_editor.entity_markers.hide_behind_walls").c_str(), nullptr,
-                            &hideEntityMarkersBehindWalls, showEntityMarkers);
-
-            ImGui::EndPopup();
+            if (ToolbarButton("entity_markers", icon, fallback,
+                              Localisation::Get("runtime_editor.entity_markers") + ": " + Localisation::Get(EntityMarkerModeKey(mode)) + "\n"
+                              + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.entity_markers")),
+                              mode != EntityMarkerMode::Off))
+                CycleEntityMarkerMode(false);
         }
 
         ImGui::SameLine();
@@ -1897,8 +1918,8 @@ namespace RuntimeEditor {
             if (GetKeyBind(KEYBIND_RT_FLY_UP)) movement.y += 1.0f;
             if (GetKeyBind(KEYBIND_RT_FLY_DOWN)) movement.y -= 1.0f;
 
-            if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
             if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
+            if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
             if (GetKeyBind(KEYBIND_RT_RESET_SPEED)) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
@@ -2281,12 +2302,7 @@ namespace RuntimeEditor {
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
 
-            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS)) {
-                showEntityMarkers = !showEntityMarkers;
-                ImGuiDrawFunctions::ShowNotification(Localisation::Get(showEntityMarkers
-                    ? "runtime_editor.toast.entity_markers_on"
-                    : "runtime_editor.toast.entity_markers_off").c_str(), false, 1.5f);
-            }
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS)) CycleEntityMarkerMode(true);
         }
 
         // Select by texture: its key held while right clicking.

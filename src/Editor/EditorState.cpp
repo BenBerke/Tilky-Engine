@@ -201,6 +201,7 @@ namespace MapEditorInternal {
     bool assetBrowserVisible = true;
     bool historyVisible = false;
     bool runtimeHistoryVisible = false;
+    EntityMarkerMode entityMarkerMode = EntityMarkerMode::Always;
 
     // In EditorKeyBind order.
     const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT] = {
