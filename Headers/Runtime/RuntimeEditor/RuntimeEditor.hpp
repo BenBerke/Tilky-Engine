@@ -21,6 +21,9 @@ namespace RuntimeEditor {
     );
     void Draw(Level& level);
     void Shutdown(Level& level);
+
+    // The key back to the Map Editor was pressed. Reset by Start().
+    bool BackToEditorRequested();
 }
 
 #endif //TILKY_ENGINE_RUNTIMEEDITOR_H

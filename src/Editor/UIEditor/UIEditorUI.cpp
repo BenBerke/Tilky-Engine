@@ -100,6 +100,11 @@ namespace {
     // dirty-state symbol this file can reach.
     bool uiHasUnsavedChanges = false;
 
+    // The Save button and Ctrl+S.
+    void SaveFromUIEditor() {
+        if (MapEditorInternal::Save(Editor::currentMap)) uiHasUnsavedChanges = false;
+    }
+
     // Centres the canvas pan on the actual current screen once, the first
     // time the UI Editor is opened - screenWidth/screenHeight aren't known
     // at static init time. After that, pan is fully user-controlled (drag
@@ -1537,6 +1542,13 @@ namespace {
 namespace MapEditorInternal {
     using namespace Localisation;
 
+    void HandleUIEditorShortcuts(const bool keyboardBlockedByImgui) {
+        if (keyboardBlockedByImgui) return;
+
+        if (GetComboDown(COMBO_SAVE)) SaveFromUIEditor();
+        if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_MAP;
+    }
+
     void DrawUIEntityInspectorFor(Entity& entity, const std::string& windowTitle, const std::string& idSuffix, bool* open,
                                   const std::function<void()>& drawExtras) {
         struct States {
@@ -1630,7 +1642,7 @@ namespace MapEditorInternal {
         Spacing();
 
         PushAccentStyle();
-        if (FullWidthButton(Get("editor.save").c_str())) if (Save(Editor::currentMap)) uiHasUnsavedChanges = false;
+        if (FullWidthButton(Get("editor.save").c_str())) SaveFromUIEditor();
         PopAccentStyle();
         HoverTooltip(Get("editor.tooltip.save").c_str());
 

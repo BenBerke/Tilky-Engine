@@ -251,6 +251,7 @@ namespace Editor {
 
         if (currentState == STATE_MAP) {
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+            HandleEditorShortcuts(keyboardBlockedByImgui);
 
             DrawGridDots();
             DrawExistingSectors();
@@ -276,12 +277,14 @@ namespace Editor {
             DrawEditorUI();
         }
         else if (currentState == STATE_UI) {
+            HandleUIEditorShortcuts(keyboardBlockedByImgui);
             HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
+            // Again after the input, so a drag made this frame is drawn where
+            // it now is.
             Level& level = LevelManager::CurrentLevel();
             UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
-            HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
             DrawUIEditorUI();
             UIEditorDraw();
         }

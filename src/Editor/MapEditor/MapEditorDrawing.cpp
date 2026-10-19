@@ -655,6 +655,8 @@ namespace MapEditorInternal {
 
             SDL_FColor sectorColor = normalSectorColor;
 
+            constexpr SDL_FColor hoveredTexturedSectorTint = {.5f, .5f, .5f, 1.0f};
+
             const bool selected = !selectedSectors.empty() &&
                 std::find(selectedSectors.begin(),selectedSectors.end(),sector.id) != selectedSectors.end() &&
                 editingSector &&
@@ -674,8 +676,10 @@ namespace MapEditorInternal {
             }
 
             for (const Triangle& triangle : sector.triangles) {
-                if (floorTexture != nullptr)
-                    DrawFilledTriangleTextured(triangle,floorTexture,{1.0f, 1.0f, 1.0f, 1.0f});
+                if (floorTexture != nullptr) {
+                    if (hovered) DrawFilledTriangleTextured(triangle,floorTexture, hoveredTexturedSectorTint);
+                    else DrawFilledTriangleTextured(triangle,floorTexture, {1.0f, 1.0f, 1.0f, 1.0f});
+                }
                 else DrawFilledTriangle(triangle, sectorColor);
             }
         }

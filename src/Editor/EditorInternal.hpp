@@ -731,12 +731,17 @@ namespace MapEditorInternal {
     void DrawGridDots();
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
+    // Save and editor-switch shortcuts. Defined in MapEditorUI.cpp, next to
+    // the toolbar buttons that do the same.
+    void HandleEditorShortcuts(bool keyboardBlockedByImgui);
     void DrawEditorUI();
 
     void UIEditorDraw();
     // Closes the fonts the UI canvas opened to preview UI Text. Before TTF_Quit().
     void DestroyUIPreviewFonts();
     void DrawUIEditorUI();
+    // Ctrl+S and the key back to the Map Editor. Defined in UIEditorUI.cpp.
+    void HandleUIEditorShortcuts(bool keyboardBlockedByImgui);
     // An asset of `kind` dragged from the Asset Browser and released over the
     // canvas (the middle of the dockspace `dockspaceID`) this frame.
     bool AcceptCanvasAssetDrop(ImGuiID dockspaceID, AssetKind kind, std::string& outReference);
@@ -1004,6 +1009,9 @@ namespace MapEditorInternal {
         KEYBIND_GEOMETRY_MODE,
         KEYBIND_ENTITY_MODE,
         KEYBIND_SECTOR_MODE,
+        KEYBIND_TOGGLE_UI_EDITOR,
+        KEYBIND_TOGGLE_RUNTIME_EDITOR,
+        KEYBIND_TOGGLE_TEXTURE_VIEW,
 
         // Editing
         KEYBIND_PLACE_ENTITY,
@@ -1062,6 +1070,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
         KEYBIND_RT_FINE_SCROLL,       // held while scrolling
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
+        KEYBIND_RT_BACK_TO_EDITOR,
 
         KEYBIND_COUNT
     };
@@ -1131,6 +1140,7 @@ namespace MapEditorInternal {
         COMBO_PASTE_ENTITIES,
         COMBO_SELECT_ALL,
         COMBO_DUPLICATE,
+        COMBO_SAVE,
 
         // Runtime editor
         COMBO_RT_UNDO,

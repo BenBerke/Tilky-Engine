@@ -217,9 +217,12 @@ namespace MapEditorInternal {
         {"focus_selection",  "editor.key.focus_selection",  "editor.key_group.camera",     KEYSCOPE_MAP, {SDL_SCANCODE_F}},
 
         {"cycle_mode",       "editor.key.cycle_mode",       "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_Q}},
-        {"geometry_mode",    "editor.key.geometry_mode",    "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_G, SDL_SCANCODE_V}},
+        {"geometry_mode",    "editor.key.geometry_mode",    "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_G}},
         {"entity_mode",      "editor.key.entity_mode",      "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_E, SDL_SCANCODE_T}},
         {"sector_mode",      "editor.key.sector_mode",      "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_R}},
+        {"toggle_ui_editor", "editor.key.toggle_ui_editor", "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_U}},
+        {"toggle_runtime_editor", "editor.key.toggle_runtime_editor", "editor.key_group.modes", KEYSCOPE_MAP, {SDL_SCANCODE_V}},
+        {"toggle_texture_view", "editor.key.toggle_texture_view", "editor.key_group.modes", KEYSCOPE_MAP, {SDL_SCANCODE_M}},
 
         {"place_entity",     "editor.key.place_entity",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_E}},
         {"delete",           "editor.key.delete",           "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_DELETE}},
@@ -272,6 +275,7 @@ namespace MapEditorInternal {
         {"rt_select_by_texture", "editor.key.rt_select_by_texture", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
+        {"rt_back_to_editor",   "editor.key.rt_back_to_editor",   "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_V}},
     };
 
     SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS] = {};
@@ -285,6 +289,7 @@ namespace MapEditorInternal {
         {"paste_entities",   "editor.combo.paste_entities",   "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_V, SDL_SCANCODE_RCTRL, SDL_SCANCODE_V}},
         {"select_all",       "editor.combo.select_all",       "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_A, SDL_SCANCODE_RCTRL, SDL_SCANCODE_A}},
         {"duplicate",        "editor.combo.duplicate",        "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_D, SDL_SCANCODE_RCTRL, SDL_SCANCODE_D}},
+        {"save",             "editor.combo.save",             "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_S, SDL_SCANCODE_RCTRL, SDL_SCANCODE_S}},
 
         {"rt_undo",          "editor.combo.rt_undo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Z}},
         {"rt_redo",          "editor.combo.rt_redo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Y}},

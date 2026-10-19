@@ -2039,6 +2039,21 @@ namespace {
 
         ImGui::End();
     }
+} // anonymous namespace
+
+namespace MapEditorInternal {
+    void HandleEditorShortcuts(const bool keyboardBlockedByImgui) {
+        if (keyboardBlockedByImgui) return;
+
+        if (GetComboDown(COMBO_SAVE)) SaveLevelFromEditor();
+        if (GetKeyBindDown(KEYBIND_TOGGLE_TEXTURE_VIEW)) textureViewMode = !textureViewMode;
+
+        if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_UI;
+        else if (GetKeyBindDown(KEYBIND_TOGGLE_RUNTIME_EDITOR)) OpenRuntimeEditorFromEditor();
+    }
+} // namespace MapEditorInternal
+
+namespace {
 
     // =========================================================================
     //  Hierarchy panel — search, type-coloured icons, counts,

@@ -1157,19 +1157,22 @@ namespace MapEditorInternal {
         UpdateBoxSelect(mouseWorld);
 
         if (!keyboardBlockedByImgui) {
-            // A key a combo is using (A while Ctrl is held, for Ctrl+A)
-            // doesn't count for these - see GetKeyBind.
+            // Ctrl is for shortcuts (Ctrl+S, Ctrl+A, ...), so while it is
+            // held the camera keys do nothing.
+            const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
             Vector2 movement = {.0f, .0f};
 
-            if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
-            if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
+            if (!ctrlHeld) {
+                if (GetKeyBind(KEYBIND_PAN_UP)) movement.y = cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_DOWN)) movement.y = -cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_LEFT)) movement.x = cameraSpeed;
+                if (GetKeyBind(KEYBIND_PAN_RIGHT)) movement.x = -cameraSpeed;
 
-            if (GetKeyBindDown(KEYBIND_STEP_UP)) movement.y = cameraStepSize;
-            if (GetKeyBindDown(KEYBIND_STEP_DOWN)) movement.y = -cameraStepSize;
-            if (GetKeyBindDown(KEYBIND_STEP_LEFT)) movement.x = cameraStepSize;
-            if (GetKeyBindDown(KEYBIND_STEP_RIGHT)) movement.x = -cameraStepSize;
+                if (GetKeyBindDown(KEYBIND_STEP_UP)) movement.y = cameraStepSize;
+                if (GetKeyBindDown(KEYBIND_STEP_DOWN)) movement.y = -cameraStepSize;
+                if (GetKeyBindDown(KEYBIND_STEP_LEFT)) movement.x = cameraStepSize;
+                if (GetKeyBindDown(KEYBIND_STEP_RIGHT)) movement.x = -cameraStepSize;
+            }
 
             cameraPos.x -= movement.x / editorZoom;
             cameraPos.y -= movement.y / editorZoom;

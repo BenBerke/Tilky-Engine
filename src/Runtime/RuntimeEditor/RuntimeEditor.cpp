@@ -143,6 +143,8 @@ namespace {
     // only after both have ended. Update() owns this; Draw() only reads it.
     bool cameraLooking = false;
 
+    bool backToEditorRequested = false;
+
     bool cursorLocked = false;
     Vector2 cursorBeforeLock = {};
     std::optional<SDL_Rect> mouseRectBeforeLock;
@@ -1757,6 +1759,8 @@ namespace RuntimeEditor {
     void Start(Level& level, IRenderer& renderer) {
         (void)level;
 
+        backToEditorRequested = false;
+
         spdlog::info("Runtime editor started");
 
         runtimeRenderer = &renderer;
@@ -2199,6 +2203,8 @@ namespace RuntimeEditor {
         if (windowFocused && !keyboardBlockedByImGui) {
             using MapEditorInternal::GetComboDown;
 
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_BACK_TO_EDITOR)) backToEditorRequested = true;
+
             // Texture copy / paste. With placement wins when both fire.
             const bool copyWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_COPY_TEXTURE_PLACEMENT);
 
@@ -2484,6 +2490,10 @@ namespace RuntimeEditor {
 
     void Draw(Level &level) {
         RuntimeEditorUi::Draw(level);
+    }
+
+    bool BackToEditorRequested() {
+        return backToEditorRequested;
     }
 
     void Shutdown(Level& level) {

@@ -6,6 +6,7 @@
 
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -299,7 +300,9 @@ namespace {
     bool UpdateRuntimeMode() {
         RuntimeSession::Update();
 
-        if (!InputManager::QuitRequested() && !StopKeyPressed()) return true;
+        const bool backToEditor = currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::BackToEditorRequested();
+
+        if (!InputManager::QuitRequested() && !StopKeyPressed() && !backToEditor) return true;
 
         return SwitchMode(EngineMode::EDITOR);
     }
