@@ -3780,6 +3780,19 @@ namespace MapEditorInternal {
 
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - refreshWidth - ImGui::GetStyle().ItemSpacing.x);
         ImGui::InputTextWithHint("##PaletteSearch", Get("editor.entity_mode.palette.search").c_str(), paletteSearch, sizeof(paletteSearch));
+
+        // A .prefab dragged from the Asset Browser searches for its name.
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab))) {
+                const std::string reference = AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Prefab);
+                const std::string name = fs::path(reference).stem().string();
+
+                std::strncpy(paletteSearch, name.c_str(), sizeof(paletteSearch) - 1);
+                paletteSearch[sizeof(paletteSearch) - 1] = '\0';
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         ImGui::SameLine();
         if (ImGui::Button(Get("editor.entity_mode.palette.refresh").c_str())) paletteScanned = false;
         HoverTooltip(Get("editor.tooltip.entity_mode.palette.refresh").c_str());
