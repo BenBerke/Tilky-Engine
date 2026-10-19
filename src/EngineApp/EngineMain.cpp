@@ -124,7 +124,7 @@ namespace {
         switch (currentMode) {
             case EngineMode::EDITOR:
                 Editor::Stop();
-                if (prepareEditorLevelForRuntime) Editor::LoadLevel(Editor::currentMap);
+                if (prepareEditorLevelForRuntime) Editor::PrepareLevelForRuntime();
                 break;
 
             case EngineMode::PLAY:

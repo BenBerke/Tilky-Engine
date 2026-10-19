@@ -16,6 +16,7 @@
 #include "Headers/TagRegistry.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -564,6 +565,19 @@ namespace Editor {
         spdlog::info("Level loaded successfully {}", path.string());
 
         return true;
+    }
+
+    // What LoadLevelFromFile and LoadLevel do after reading the file. The
+    // editor state LoadLevel also resets is reset by Editor::Start() on the
+    // way back.
+    void PrepareLevelForRuntime() {
+        if (!LevelManager::HasCurrentLevel()) return;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        MapQueries::RebuildSectorRuntimeLinks(level);
+        Prefab::SyncAllInstances(level);
+        LevelSystem::RefreshScriptAssets(level);
     }
 
     void LevelFileRenamed(const std::string& oldName, const std::string& newName) {

@@ -35,6 +35,10 @@ namespace Editor {
     bool PlayRequested();
     bool SwitchToRuntimeEditorRequested();
     bool LoadLevel(const std::string& levelName);
+
+    // Readies the level in memory for the runtime editor or Play, as loading
+    // its just-saved file would, without reading it back from disk.
+    void PrepareLevelForRuntime();
     void RefreshLevelSoundsFromFolder();
 
     void AddWall(const Wall& wall);

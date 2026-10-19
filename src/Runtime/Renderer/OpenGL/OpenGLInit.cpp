@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Editor/EditorStyle.hpp"
+#include "Headers/Engine/FolderWatcher.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include "Headers/Objects/Wall.hpp"
@@ -16,8 +17,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "imgui.h"
@@ -81,6 +84,24 @@ namespace {
 
         std::ranges::sort(imageNames);
         return imageNames;
+    }
+
+#ifndef TILKY_STANDALONE
+    // CollectProjectImageFileNames and those images' write times, kept until
+    // an image under Assets changes. Walking Assets and reading every
+    // image's time took ~200 ms on a 1700-image project, on every switch
+    // into the runtime editor or Play.
+    FolderWatcher imageWatcher({".png", ".jpg", ".jpeg"});
+    std::uint64_t cachedImageGeneration = 0;
+    std::vector<std::string> cachedProjectImages;
+    std::unordered_map<std::string, size_t> cachedWriteTimes; // project images only
+#endif
+
+    size_t WriteTimeHash(const std::string& fileName) {
+        std::error_code ec;
+        const fs::file_time_type writeTime =
+            fs::last_write_time(ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal(), ec);
+        return ec ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count()));
     }
 }
 
@@ -318,7 +339,22 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
     // The order must not depend on which images the level uses: it is part of
     // the signature below, so assigning a texture for the first time would
     // otherwise rebuild the whole atlas.
+#ifndef TILKY_STANDALONE
+    // Read before scanning: a change made during the scan moves the
+    // generation on, so the next call scans again.
+    const std::uint64_t imageGeneration = imageWatcher.Generation(ProjectManager::GetAssetsPath());
+
+    if (imageGeneration != cachedImageGeneration) {
+        cachedProjectImages = CollectProjectImageFileNames();
+        cachedWriteTimes.clear();
+        cachedImageGeneration = imageGeneration;
+    }
+
+    std::vector<std::string> referencedFileNames = cachedProjectImages;
+    const size_t projectImageCount = cachedProjectImages.size();
+#else
     std::vector<std::string> referencedFileNames = CollectProjectImageFileNames();
+#endif
 
     {
         std::set<std::string> alreadyListed(referencedFileNames.begin(), referencedFileNames.end());
@@ -339,13 +375,23 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
         signature ^= value + 0x9e3779b97f4a7c15ULL + (signature << 6) + (signature >> 2);
     };
 
-    for (const std::string& fileName : referencedFileNames) {
+    for (size_t index = 0; index < referencedFileNames.size(); ++index) {
+        const std::string& fileName = referencedFileNames[index];
         combine(std::hash<std::string>{}(fileName));
 
-        std::error_code ec;
-        const fs::file_time_type writeTime =
-            fs::last_write_time(ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal(), ec);
-        combine(ec ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count())));
+#ifndef TILKY_STANDALONE
+        // The level's own references after them may lie outside Assets,
+        // where the watcher can't see changes, so those are read every time.
+        if (index < projectImageCount) {
+            const auto [cached, inserted] = cachedWriteTimes.try_emplace(fileName, 0);
+            if (inserted) cached->second = WriteTimeHash(fileName);
+
+            combine(cached->second);
+            continue;
+        }
+#endif
+
+        combine(WriteTimeHash(fileName));
     }
 
     if (atlasTexture != 0 && signature == atlasSignature) {

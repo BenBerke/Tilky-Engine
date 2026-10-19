@@ -272,6 +272,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLTexture.cpp
 
         src/Engine/GameTime.cpp
+        src/Engine/FolderWatcher.cpp
         src/Engine/InputManager.cpp
 
         src/Objects/Entity.cpp
