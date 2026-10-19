@@ -41,6 +41,11 @@ void OpenGL::Shutdown() {
         colliderSSBO = 0;
     }
 
+    if (entityMarkerSSBO != 0) {
+        glDeleteBuffers(1, &entityMarkerSSBO);
+        entityMarkerSSBO = 0;
+    }
+
     if (sectorFloorSSBO != 0) {
         glDeleteBuffers(1, &sectorFloorSSBO);
         sectorFloorSSBO = 0;

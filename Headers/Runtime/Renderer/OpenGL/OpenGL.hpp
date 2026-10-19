@@ -35,6 +35,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_SPRITE = 2;
     inline constexpr int RENDER_COLLIDER = 4;
     inline constexpr int RENDER_MODEL = 5;
+    inline constexpr int RENDER_ENTITY_MARKER = 6;
 
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
@@ -394,6 +395,9 @@ private:
     GLuint colliderSSBO = 0;
     GLsizei colliderCount = 0;
 
+    GLuint entityMarkerSSBO = 0;
+    GLsizei entityMarkerCount = 0;
+
     GLuint modelSSBO = 0;
     GLsizeiptr modelSSBOCapacity = 0;
 
@@ -405,6 +409,7 @@ private:
     GLint modelTextureUniform = -1;
     GLint cameraWorldPosUniform = -1;
     GLint fullbrightUniform = -1;
+    GLint viewportSizeUniform = -1;
 
     std::vector<GpuWall> gpuWalls;
     GLsizei gpuWallCount = 0;
@@ -440,6 +445,7 @@ private:
 
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
+    std::vector<Vector4> gpuEntityMarkers; // xyz = position
 
     // Keyed by ComponentModel::fileName. Assets nobody used for
     // MODEL_UNUSED_LIFETIME_MS are released; failed loads are remembered so a
@@ -477,6 +483,7 @@ private:
     void BuildGpuSectors();
     void BuildGpuSprites();
     void BuildGpuColliders();
+    void BuildGpuEntityMarkers();
 
     // OpenGLModel.cpp
     void BuildGpuModels();

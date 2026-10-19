@@ -5,6 +5,11 @@
 #define RENDER_SPRITE 2
 #define RENDER_COLLIDER 4
 #define RENDER_MODEL 5
+#define RENDER_ENTITY_MARKER 6
+
+// Entity marker quad, in pixels from its centre to an edge: a ring of radius
+// 6 and 2 wide, plus a pixel to fade out. Same value in Rendering.fs.glsl.
+#define ENTITY_MARKER_HALF_SIZE 8.0
 
 // Collision Sphere debug view stuff
 #define SIDECOUNT_SINGLE 0
@@ -155,6 +160,10 @@ layout(std430, binding = 7) readonly buffer SectorFloorBuffer {
     SectorFloor sectorFloors[];
 };
 
+layout(std430, binding = 8) readonly buffer EntityMarkerBuffer {
+    vec4 entityMarkers[]; // xyz = position
+};
+
 // Model vertices. Every other mode is procedural and leaves these disabled.
 layout(location = 0) in vec3 aModelPosition;
 layout(location = 1) in vec3 aModelNormal;
@@ -164,6 +173,7 @@ uniform mat4 uView;
 uniform mat4 uProjection;
 uniform int renderMode;
 uniform vec3 uCameraWorldPos;
+uniform vec2 uViewportSize; // pixels
 
 // Model draw: first instance of the current batch, and the node transform
 // (plus unit-box normalization) of the mesh being drawn.
@@ -368,6 +378,42 @@ void RenderColliderVertex() {
     vSurfaceSize = vec2(1.0);
 
     gl_Position = uProjection * uView * vec4(worldPosition, 1.0);
+}
+
+// A screen-facing quad of ENTITY_MARKER_HALF_SIZE pixels around each
+// entity's position. vSpriteUV runs -1..1 across it for the fragment shader.
+void RenderEntityMarkerVertex() {
+    const vec2 CORNERS[6] = vec2[](
+        vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0),
+        vec2(-1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0)
+    );
+
+    vec3 position = entityMarkers[gl_VertexID / 6].xyz;
+    vec2 corner = CORNERS[gl_VertexID % 6];
+
+    // The whole quad sits at the centre's depth, so a marker on a floor would
+    // lose its lower half to the floor sloping away from the camera. Pulled
+    // two marker sizes toward the camera to clear it.
+    vec4 clip = uProjection * uView * vec4(position, 1.0);
+    float worldPerPixel = 2.0 * abs(clip.w) / (uViewportSize.y * uProjection[1][1]);
+    vec3 toCamera = uCameraWorldPos - position;
+    float cameraDistance = length(toCamera);
+
+    if (cameraDistance > 0.0001) {
+        position += toCamera / cameraDistance * min(4.0 * ENTITY_MARKER_HALF_SIZE * worldPerPixel, cameraDistance * 0.5);
+        clip = uProjection * uView * vec4(position, 1.0);
+    }
+
+    clip.xy += corner * ENTITY_MARKER_HALF_SIZE * 2.0 / uViewportSize * clip.w;
+
+    vColor = vec4(1.0, 1.0, 1.0, 220.0 / 255.0);
+    vSpriteUV = corner;
+
+    vWorldPos = position;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
+    gl_Position = clip;
 }
 
 vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
@@ -753,5 +799,6 @@ void main() {
     else if (renderMode == RENDER_SPRITE) renderSprite();
     else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
     else if (renderMode == RENDER_MODEL) renderModel();
+    else if (renderMode == RENDER_ENTITY_MARKER) RenderEntityMarkerVertex();
     else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
 }

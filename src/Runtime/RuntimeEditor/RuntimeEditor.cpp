@@ -164,6 +164,10 @@ namespace {
 
     SurfaceRef hoveredSurface;
 
+    // Where the mouse ray hit, when hoveredSurface.type isn't None.
+    Vector3 hoveredHitPosition = {};
+    Vector3 hoveredRayDirection = {};
+
     // Captured on button-down so a drag that slides off the surface keeps
     // editing the one it started on.
     SurfaceRef uvDragSurface;
@@ -392,36 +396,6 @@ namespace {
         return true;
     }
 
-    // Whether a wall, floor or ceiling is between the camera and `point`.
-    // Entities don't hide markers.
-    bool IsBehindGeometry(Level& level, const Vector3& eye, const Vector3& point) {
-        constexpr float END_TOLERANCE = 0.01f; // a marker on a floor isn't behind it
-
-        const Vector3 toPoint = point - eye;
-        const float distance = Vector3Math::Length(toPoint);
-        if (distance <= END_TOLERANCE) return false;
-
-        const Vector3 direction = toPoint / distance;
-        Vector3 origin = eye;
-        float remaining = distance - END_TOLERANCE;
-
-        // Raycast stops at the first hit, entities included, so step past those.
-        while (remaining > 0.0f) {
-            const std::optional<RayHit> hit = GameFunctions::Raycast(level, origin, direction, remaining, camera->ownerID, false);
-            if (!hit.has_value()) return false;
-            if (hit->type != RayHitType::Entity) return true;
-
-            const float travelled = Vector3Math::Dot(hit->position - origin, direction) + END_TOLERANCE;
-            origin = origin + direction * travelled;
-            remaining -= travelled;
-        }
-
-        return false;
-    }
-
-    // A white circle on every entity, so ones with nothing to draw (no sprite,
-    // model or collider) can still be found. Drawn before the transform gizmo
-    // so the gizmo stays on top.
     const char* EntityMarkerModeKey(const MapEditorInternal::EntityMarkerMode mode) {
         switch (mode) {
             case MapEditorInternal::EntityMarkerMode::Always: return "runtime_editor.entity_markers.always";
@@ -445,22 +419,14 @@ namespace {
         }
     }
 
-    void DrawEntityMarkers(Level& level) {
-        const MapEditorInternal::EntityMarkerMode mode = MapEditorInternal::entityMarkerMode;
-        if (mode == MapEditorInternal::EntityMarkerMode::Off) return;
+    // The renderer draws them, depth tested in VisibleOnly.
+    void UpdateEntityMarkers() {
+        using MapEditorInternal::EntityMarkerMode;
 
-        TransformGizmo::View view;
-        if (!BuildGizmoView(view)) return;
-
-        constexpr float MARKER_RADIUS = 6.0f; // pixels
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-
-        for (const ComponentTransform& entityTransform : level.transforms.components) {
-            Vector2 screen;
-            if (!TransformGizmo::ProjectPoint(view, entityTransform.position, screen)) continue;
-            if (mode == MapEditorInternal::EntityMarkerMode::VisibleOnly && IsBehindGeometry(level, view.eye, entityTransform.position)) continue;
-
-            drawList->AddCircle({screen.x, screen.y}, MARKER_RADIUS, IM_COL32(255, 255, 255, 220), 0, 2.0f);
+        switch (MapEditorInternal::entityMarkerMode) {
+            case EntityMarkerMode::Always: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::Always); break;
+            case EntityMarkerMode::VisibleOnly: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::VisibleOnly); break;
+            default: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::Off); break;
         }
     }
 
@@ -871,8 +837,9 @@ namespace {
     // ---- Undo / redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) ---------------------
     // Covers the edits made straight in the view - texture drags, scrolling,
     // flips, pastes, resets, texture cycling, alignment, dropped textures and
-    // wall deletes - as whole copies of the level's walls and sectors. Not the
-    // inspector's field edits, and not entities.
+    // wall deletes - as whole copies of the level's walls and sectors, and
+    // placed entities as a copy of every entity. Not the inspector's field
+    // edits.
     struct GeometryState {
         std::vector<Wall> walls;
         std::vector<Sector> sectors;
@@ -880,6 +847,10 @@ namespace {
         // Names the step in the History window.
         const char* labelKey = ""; // en.json
         int count = 0;             // shown after the label when above 1
+
+        // Set on entity steps, which hold every entity instead of the walls
+        // and sectors.
+        std::optional<MapEditorInternal::EntitiesSnapshot> entities;
     };
 
     constexpr std::size_t MAX_UNDO_STEPS = 64;
@@ -926,9 +897,46 @@ namespace {
         CommitUndo(std::move(state));
     }
 
+    // Call before adding or removing entities.
+    GeometryState CaptureEntities(const Level& level, const char* labelKey) {
+        GeometryState state;
+        state.labelKey = labelKey;
+        state.entities.emplace();
+        state.entities->entities = level.entities;
+        state.entities->nextEntityID = level.nextEntityID;
+
+#define CAPTURE_STORAGE(Type, Bit, Storage, LabelKey) state.entities->Storage = level.Storage;
+        TILKY_COMPONENTS(CAPTURE_STORAGE)
+#undef CAPTURE_STORAGE
+
+        return state;
+    }
+
+    void SwapEntities(Level& level, MapEditorInternal::EntitiesSnapshot& snapshot) {
+        std::swap(level.entities, snapshot.entities);
+        std::swap(level.nextEntityID, snapshot.nextEntityID);
+
+#define SWAP_STORAGE(Type, Bit, Storage, LabelKey) std::swap(level.Storage, snapshot.Storage);
+        TILKY_COMPONENTS(SWAP_STORAGE)
+#undef SWAP_STORAGE
+
+        std::erase_if(selectedEntityIds, [&](const ID id) { return level.GetEntity(id) == nullptr; });
+
+        if (selectedEntityIds.empty()) ClearEntitySelection();
+        else if (!selectedEntityId.has_value() || level.GetEntity(*selectedEntityId) == nullptr) SelectOnlyEntity(selectedEntityIds.back());
+
+        runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+        MapEditorInternal::MarkUnsavedChanges();
+    }
+
     // Swaps `state` in, leaving what was there in `state`. Selected indices
     // that no longer exist are dropped.
     void SwapGeometry(Level& level, GeometryState& state) {
+        if (state.entities.has_value()) {
+            SwapEntities(level, *state.entities);
+            return;
+        }
+
         std::swap(level.walls, state.walls);
         std::swap(level.sectors, state.sectors);
 
@@ -1167,6 +1175,32 @@ namespace {
         const float distance = std::max(std::sqrt(dx * dx + dy * dy + dz * dz), MIN_FOCUS_DISTANCE);
 
         transform->SetPosition(center - camera->forward * distance);
+    }
+
+    // The Entity Mode palette's selection where the mouse ray hits, pulled
+    // back along the ray a little so it lands on the camera's side of a
+    // wall. Selected, with an undo step.
+    void PlacePaletteEntityAtHover(Level& level) {
+        if (hoveredSurface.type == RayHitType::None) return;
+
+        constexpr float PULL_BACK = 0.01f;
+
+        GeometryState before = CaptureEntities(level, "editor.history.place_entity");
+
+        const ID id = MapEditorInternal::CreatePaletteEntity(level, hoveredHitPosition - hoveredRayDirection * PULL_BACK);
+
+        if (id == INVALID_ID) {
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.entity_mode.palette.place_failed").c_str(), true, 2.0f);
+            return;
+        }
+
+        if (ComponentTransform* placed = level.transforms.Get(id)) placed->UpdateObjectSectorAndFloor(level.sectors);
+
+        CommitUndo(std::move(before));
+        SelectOnlyEntity(id);
+
+        runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+        MapEditorInternal::MarkUnsavedChanges();
     }
 
     // A drop that doesn't land leaves no undo step behind.
@@ -1530,7 +1564,7 @@ namespace RuntimeEditorUi {
         // own copy; drawing with the other one shows the wrong glyphs.
         if (runtimeRenderer != nullptr) MapEditorInternal::assetBrowser.SetIconFont(runtimeRenderer->GetImGuiIconFont());
 
-        DrawEntityMarkers(level);
+        UpdateEntityMarkers();
 
         if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
             TransformGizmo::View view;
@@ -1918,8 +1952,8 @@ namespace RuntimeEditor {
             if (GetKeyBind(KEYBIND_RT_FLY_UP)) movement.y += 1.0f;
             if (GetKeyBind(KEYBIND_RT_FLY_DOWN)) movement.y -= 1.0f;
 
-            if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
             if (GetKeyBindDown(KEYBIND_RT_SPEED_UP)) moveSpeed += 3.0f;
+            if (GetKeyBindDown(KEYBIND_RT_SPEED_DOWN)) moveSpeed -= 3.0f;
             if (GetKeyBind(KEYBIND_RT_RESET_SPEED)) moveSpeed = BASE_MOVE_SPEED;
 
             moveSpeed = std::fmax(moveSpeed, 0.0001f);
@@ -1972,6 +2006,8 @@ namespace RuntimeEditor {
 
         if (hit.has_value()) {
             hoveredSurface.type = hit->type;
+            hoveredHitPosition = hit->position;
+            hoveredRayDirection = rayDirection;
 
             if (hit->type == RayHitType::Wall) {
                 hoveredSurface.wallIndex = FindWallIndex(level, hit->wall);
@@ -2091,7 +2127,7 @@ namespace RuntimeEditor {
         }
 
         if (TransformGizmo::IsDragging()) {
-            const bool snap = !MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_DISABLE_SNAP);
+            const bool snap = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_DISABLE_SNAP);
 
             const Vector3 positionBefore = gizmoTarget->position;
             const Quaternion rotationBefore = gizmoTarget->rotation;
@@ -2303,6 +2339,9 @@ namespace RuntimeEditor {
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_FOCUS_SELECTION)) FocusSelection(level);
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS)) CycleEntityMarkerMode(true);
+
+            if (!mouseBlockedByImGui && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_PLACE_ENTITY)) PlacePaletteEntityAtHover(level);
+
         }
 
         // Select by texture: its key held while right clicking.

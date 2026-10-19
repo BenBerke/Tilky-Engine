@@ -301,6 +301,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         );
 
         glUniform1i(fullbrightUniform, fullbright ? 1 : 0);
+        glUniform2f(viewportSizeUniform, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
     }
 
     {
@@ -403,6 +404,31 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             }
         }
     }
+
+    if (entityMarkers != EntityMarkers::Off) {
+        ZoneScopedN("Entity Markers");
+
+        BuildGpuEntityMarkers();
+
+        if (entityMarkerCount > 0) {
+            constexpr GLsizei VERTICES_PER_MARKER = 6;
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+
+            if (entityMarkers == EntityMarkers::Always) glDisable(GL_DEPTH_TEST);
+            else glDepthFunc(GL_GEQUAL);
+
+            glUniform1i(renderModeUniform, RENDER_ENTITY_MARKER);
+            glDrawArrays(GL_TRIANGLES, 0, entityMarkerCount * VERTICES_PER_MARKER);
+
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
+    }
+
     if (!renderUI) return;
 #endif
     {

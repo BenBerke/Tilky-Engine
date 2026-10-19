@@ -5,6 +5,10 @@
 #define RENDER_SPRITE 2
 #define RENDER_COLLIDER 4
 #define RENDER_MODEL 5
+#define RENDER_ENTITY_MARKER 6
+
+#define ENTITY_MARKER_HALF_SIZE 8.0 // pixels, as in Rendering.vs.glsl
+#define ENTITY_MARKER_RADIUS 6.0
 
 // SurfaceMetaData bit flags (Headers/Runtime/Renderer/SurfaceMetaData.hpp).
 #define SURFACE_META_HOVERED 1
@@ -186,6 +190,16 @@ void main() {
     else if (renderMode == RENDER_COLLIDER){
         FragColor = vColor;
 
+        return;
+    }
+    else if (renderMode == RENDER_ENTITY_MARKER) {
+        // Solid within a pixel of the radius, fading out over the next.
+        float pixelsFromCentre = length(vSpriteUV) * ENTITY_MARKER_HALF_SIZE;
+        float coverage = clamp(2.0 - abs(pixelsFromCentre - ENTITY_MARKER_RADIUS), 0.0, 1.0);
+
+        if (coverage <= 0.0) discard;
+
+        FragColor = vec4(vColor.rgb, vColor.a * coverage);
         return;
     }
 

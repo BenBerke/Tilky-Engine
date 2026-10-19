@@ -48,3 +48,26 @@ void OpenGL::BuildGpuColliders() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
 }
+
+/// Runtime editor entity markers
+
+void OpenGL::BuildGpuEntityMarkers() {
+    const Level& level = LevelManager::CurrentLevel();
+
+    gpuEntityMarkers.clear();
+
+    for (const ComponentTransform& transform : level.transforms.components)
+        gpuEntityMarkers.push_back({transform.position.x, transform.position.y, transform.position.z, 0.0f});
+
+    entityMarkerCount = static_cast<GLsizei>(gpuEntityMarkers.size());
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, entityMarkerSSBO);
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        gpuEntityMarkers.size() * sizeof(Vector4),
+        gpuEntityMarkers.empty() ? nullptr : gpuEntityMarkers.data(),
+        GL_DYNAMIC_DRAW
+    );
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, entityMarkerSSBO);
+}

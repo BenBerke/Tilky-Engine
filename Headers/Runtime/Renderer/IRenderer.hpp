@@ -32,6 +32,7 @@ public:
         DestroyEditorCamera();
         ClearSurfaceMarks();
         fullbright = false;
+        entityMarkers = EntityMarkers::Off;
     }
 
     virtual void BeginFrame() = 0;
@@ -112,9 +113,20 @@ public:
     void SetFullbright(const bool enabled) { fullbright = enabled; }
     [[nodiscard]] bool IsFullbright() const { return fullbright; }
 
+    // A ring on every entity, so ones with nothing to draw (no sprite, model
+    // or collider) can still be found. Ends with the session.
+    enum class EntityMarkers {
+        Off,
+        Always,     // drawn over walls too
+        VisibleOnly // depth tested, so walls hide them
+    };
+
+    void SetEntityMarkers(const EntityMarkers markers) { entityMarkers = markers; }
+
 protected:
     std::vector<SurfaceMark> surfaceMarks;
     bool fullbright = false;
+    EntityMarkers entityMarkers = EntityMarkers::Off;
 
     // A sector's light as the renderer should use it.
     [[nodiscard]] Vector3 SectorLight(const Sector& sector) const {

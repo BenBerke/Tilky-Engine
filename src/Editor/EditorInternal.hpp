@@ -1060,8 +1060,8 @@ namespace MapEditorInternal {
         KEYBIND_RT_FLY_RIGHT,
         KEYBIND_RT_FLY_UP,
         KEYBIND_RT_FLY_DOWN,
-        KEYBIND_RT_SPEED_DOWN,
         KEYBIND_RT_SPEED_UP,
+        KEYBIND_RT_SPEED_DOWN,
         KEYBIND_RT_RESET_SPEED,
 
         // Runtime editor: editing
@@ -1078,6 +1078,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_FULLBRIGHT,
         KEYBIND_RT_FOCUS_SELECTION,
         KEYBIND_RT_TOGGLE_ENTITY_MARKERS,
+        KEYBIND_RT_PLACE_ENTITY,
         KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
         KEYBIND_RT_FINE_SCROLL,       // held while scrolling
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
@@ -1208,6 +1209,11 @@ namespace MapEditorInternal {
     // Places the palette's selection at `point`, applying the placement
     // settings, and selects it. INVALID_ID if it couldn't be placed.
     ID PlacePaletteEntityAt(const Vector2& point);
+
+    // The palette's selection at `position` with the random yaw and default
+    // tag settings applied. No undo step and no selection - the caller's
+    // editor records those. INVALID_ID if it couldn't be made.
+    ID CreatePaletteEntity(Level& level, const Vector3& position);
 
     // ---- Entity Mode selection actions (MapEditorGeometry.cpp) ----------
     // Each pushes one UNDO_ENTITY_POSITIONS step when it moved anything.

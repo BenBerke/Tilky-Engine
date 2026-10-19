@@ -2928,10 +2928,7 @@ namespace MapEditorInternal {
             : 0.0f;
     }
 
-    ID PlacePaletteEntityAt(const Vector2& point) {
-        Level& level = LevelManager::CurrentLevel();
-
-        EntitiesSnapshot before = CaptureEntitiesSnapshot();
+    ID CreatePaletteEntity(Level& level, const Vector3& position) {
         ID id = INVALID_ID;
 
         if (entityPaletteSelection.empty()) id = level.CreateEntity(false);
@@ -2945,7 +2942,7 @@ namespace MapEditorInternal {
         if (id == INVALID_ID) return INVALID_ID;
 
         if (ComponentTransform* transform = level.transforms.Get(id)) {
-            transform->SetPosition({point.x, placeOnFloor ? FloorHeightAt(point) : 0.0f, point.y});
+            transform->SetPosition(position);
 
             if (placeRandomYaw) {
                 static std::mt19937 random(std::random_device{}());
@@ -2965,6 +2962,17 @@ namespace MapEditorInternal {
                 entity->tagIds.push_back(*tagId);
             }
         }
+
+        return id;
+    }
+
+    ID PlacePaletteEntityAt(const Vector2& point) {
+        Level& level = LevelManager::CurrentLevel();
+
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
+
+        const ID id = CreatePaletteEntity(level, {point.x, placeOnFloor ? FloorHeightAt(point) : 0.0f, point.y});
+        if (id == INVALID_ID) return INVALID_ID;
 
         PushEntitiesUndo(std::move(before), "editor.history.place_entity");
         SelectEntity(id);

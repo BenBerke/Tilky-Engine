@@ -337,6 +337,11 @@ bool OpenGL::CreateMap() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
+    glGenBuffers(1, &entityMarkerSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, entityMarkerSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, entityMarkerSSBO);
+
     // Per-entity model transforms. Grown on demand by BuildGpuModels().
     glGenBuffers(1, &modelSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, modelSSBO);
@@ -370,6 +375,7 @@ bool OpenGL::CreateMap() {
     // Not fatal when missing: the driver drops uniforms a shader never reads.
     cameraWorldPosUniform = glGetUniformLocation(projectionShader->ID, "uCameraWorldPos");
     fullbrightUniform = glGetUniformLocation(projectionShader->ID, "uFullbright");
+    viewportSizeUniform = glGetUniformLocation(projectionShader->ID, "uViewportSize");
     modelInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uModelInstanceOffset");
     flatInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uFlatInstanceOffset");
     modelLocalUniform = glGetUniformLocation(projectionShader->ID, "uModelLocal");
