@@ -1375,6 +1375,30 @@ namespace RuntimeEditorUi {
         return pressed;
     }
 
+    // Toolbar menus that stay open until their button is pressed again.
+    bool stepsMenuOpen = false;
+    bool statisticsMenuOpen = false;
+
+    // A toolbar menu's window, under the button just drawn. A window rather
+    // than a popup: ImGui closes popups on any click outside them, and when
+    // another window takes focus. Always pair with ImGui::End().
+    bool BeginToolbarMenu(const char* id) {
+        const ImVec2 buttonMin = ImGui::GetItemRectMin();
+        const ImVec2 buttonMax = ImGui::GetItemRectMax();
+
+        ImGui::SetNextWindowPos(ImVec2(buttonMin.x, buttonMax.y + ImGui::GetStyle().ItemSpacing.y));
+
+        constexpr ImGuiWindowFlags menuFlags =
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_AlwaysAutoResize;
+
+        return ImGui::Begin(id, nullptr, menuFlags);
+    }
+
     void DrawToolbarSeparator() {
         ImGui::SameLine();
         ImGui::TextDisabled("|");
@@ -1390,7 +1414,6 @@ namespace RuntimeEditorUi {
     void DrawToolbar() {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         constexpr float MARGIN = 6.0f;
-        constexpr const char* STATISTICS_POPUP = "##RuntimeEditorStatistics";
 
         ImGui::SetNextWindowPos(
             ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + MARGIN),
@@ -1468,14 +1491,12 @@ namespace RuntimeEditorUi {
         ImGui::SameLine();
 
         // ---- Step sizes
-        constexpr const char* STEPS_POPUP = "##RuntimeEditorSteps";
-
         if (ToolbarButton("steps", ICON_FA_SLIDERS, "Sz",
                           Localisation::Get("runtime_editor.steps") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.steps")),
-                          ImGui::IsPopupOpen(STEPS_POPUP)))
-            ImGui::OpenPopup(STEPS_POPUP);
+                          stepsMenuOpen))
+            stepsMenuOpen = !stepsMenuOpen;
 
-        if (ImGui::BeginPopup(STEPS_POPUP)) {
+        if (stepsMenuOpen && BeginToolbarMenu("##RuntimeEditorSteps")) {
             using namespace MapEditorInternal;
 
             ImGui::TextUnformatted(Localisation::Get("runtime_editor.steps").c_str());
@@ -1498,9 +1519,9 @@ namespace RuntimeEditorUi {
 
                 ImGui::PopID();
             }
-
-            ImGui::EndPopup();
         }
+
+        if (stepsMenuOpen) ImGui::End();
 
         ImGui::SameLine();
 
@@ -1515,10 +1536,10 @@ namespace RuntimeEditorUi {
         // ---- Statistics
         if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
                           Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
-                          ImGui::IsPopupOpen(STATISTICS_POPUP)))
-            ImGui::OpenPopup(STATISTICS_POPUP);
+                          statisticsMenuOpen))
+            statisticsMenuOpen = !statisticsMenuOpen;
 
-        if (ImGui::BeginPopup(STATISTICS_POPUP)) {
+        if (statisticsMenuOpen && BeginToolbarMenu("##RuntimeEditorStatistics")) {
             // ImGui's own running average, so the number is readable instead
             // of changing every frame.
             const float framerate = ImGui::GetIO().Framerate;
@@ -1528,9 +1549,9 @@ namespace RuntimeEditorUi {
             ImGui::Text("%s: %.0f", Localisation::Get("runtime_editor.statistics.fps").c_str(), framerate);
             ImGui::Text("%s: %.2f ms", Localisation::Get("runtime_editor.statistics.frame_time").c_str(),
                         framerate > 0.0f ? 1000.0f / framerate : 0.0f);
-
-            ImGui::EndPopup();
         }
+
+        if (statisticsMenuOpen) ImGui::End();
 
         ImGui::End();
     }
