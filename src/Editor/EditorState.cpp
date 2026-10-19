@@ -193,6 +193,8 @@ namespace MapEditorInternal {
 
     float runtimeCameraFov = DEFAULT_RUNTIME_CAMERA_FOV;
 
+    float textureFieldSize = DEFAULT_TEXTURE_FIELD_SIZE;
+
     bool hierarchyVisible = true;
     bool editorPanelVisible = true;
     bool worldSettingsVisible = true;

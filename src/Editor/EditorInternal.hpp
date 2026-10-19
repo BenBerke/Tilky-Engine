@@ -401,6 +401,10 @@ namespace MapEditorInternal {
     constexpr float MIN_RUNTIME_CAMERA_FOV = 30.0f;
     constexpr float MAX_RUNTIME_CAMERA_FOV = 120.0f;
 
+    constexpr float DEFAULT_TEXTURE_FIELD_SIZE = 200.0f;
+    constexpr float MIN_TEXTURE_FIELD_SIZE = 32.0f;
+    constexpr float MAX_TEXTURE_FIELD_SIZE = 512.0f;
+
     // Selection within the UI Editor. Independent of selectedEntity/editingEntity
     // above, which belong to the Map Editor's MODE_ENTITY and are left untouched.
     extern ID selectedUIEntityID;
@@ -465,6 +469,9 @@ namespace MapEditorInternal {
 
     // Field of view of the runtime editor's fly camera, in degrees.
     extern float runtimeCameraFov;
+
+    // Preview size of the inspector's wall and sector texture fields, in pixels.
+    extern float textureFieldSize;
 
     extern bool hierarchyVisible;
     extern bool editorPanelVisible;

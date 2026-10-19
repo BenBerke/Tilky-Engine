@@ -1643,6 +1643,10 @@ namespace {
             }
             HoverTooltip(Get("editor.tooltip.user_settings.ui_design").c_str());
 
+            ImGui::SliderFloat(Get("editor.user_settings.texture_field_size").c_str(), &textureFieldSize,
+                               MIN_TEXTURE_FIELD_SIZE, MAX_TEXTURE_FIELD_SIZE, "%.0f");
+            HoverTooltip(Get("editor.tooltip.user_settings.texture_field_size").c_str());
+
             SectionHeader(Get("editor.user_settings.editor_controls").c_str());
             ImGui::Separator();
             ImGui::Spacing();

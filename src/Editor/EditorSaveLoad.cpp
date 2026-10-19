@@ -221,6 +221,11 @@ namespace MapEditorInternal {
                 MIN_RUNTIME_CAMERA_FOV,
                 MAX_RUNTIME_CAMERA_FOV
             );
+            textureFieldSize = std::clamp(
+                settings.value("textureFieldSize", DEFAULT_TEXTURE_FIELD_SIZE),
+                MIN_TEXTURE_FIELD_SIZE,
+                MAX_TEXTURE_FIELD_SIZE
+            );
 
             hierarchyVisible = settings.value("hierarchyVisible", true);
             editorPanelVisible = settings.value("editorPanelVisible", true);
@@ -403,6 +408,7 @@ namespace MapEditorInternal {
                    {"cameraSpeed", cameraSpeed},
                 {"cameraStepSize", cameraStepSize},
                 {"runtimeCameraFov", runtimeCameraFov},
+                {"textureFieldSize", textureFieldSize},
                 {"editorDesign", EditorStyle::ActiveDesign()},
                 {"hierarchyVisible", hierarchyVisible},
                 {"editorPanelVisible", editorPanelVisible},

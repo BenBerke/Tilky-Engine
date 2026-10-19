@@ -1167,7 +1167,7 @@ namespace ImGuiDrawFunctions {
                 Get("sector.floor_texture").c_str(),
                 sectorFloor.floor.texture,
                 AssetKind::Texture,
-                48.0f
+                MapEditorInternal::textureFieldSize
             );
             Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
 
@@ -1203,7 +1203,7 @@ namespace ImGuiDrawFunctions {
                 Get("sector.ceil_texture").c_str(),
                 sectorFloor.ceiling.texture,
                 AssetKind::Texture,
-                48.0f
+                MapEditorInternal::textureFieldSize
             );
             Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
 
@@ -1480,14 +1480,13 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SameLine();
 
-        if (ImGui::Button(Get("common.close").c_str()))
-            if (open != nullptr) *open = false;
+        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
 
         ImGui::End();
         return deleteRequested;
     }
     void DrawWallTextureField(const char *label, WallSurface &surface) {
-        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, 128.0f);
+        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
         Tooltip(Get("editor.tooltip.wall.texture").c_str());
     }
 
