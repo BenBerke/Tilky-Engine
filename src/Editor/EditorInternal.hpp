@@ -1215,6 +1215,10 @@ namespace MapEditorInternal {
     // (MapEditorDrawing.cpp).
     void DrawWallSnapPickHighlight();
 
+    // The Entity Mode palette, for the map editor's panel and the runtime
+    // editor's toolbar menu (MapEditorUI.cpp).
+    void DrawEntityPalette(const char* hintKey);
+
     // Places the palette's selection at `point`, applying the placement
     // settings, and selects it. INVALID_ID if it couldn't be placed.
     ID PlacePaletteEntityAt(const Vector2& point);

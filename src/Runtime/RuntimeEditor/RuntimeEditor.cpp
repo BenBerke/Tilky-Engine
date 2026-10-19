@@ -1389,6 +1389,7 @@ namespace RuntimeEditorUi {
     // Toolbar menus that stay open until their button is pressed again.
     bool stepsMenuOpen = false;
     bool statisticsMenuOpen = false;
+    bool paletteMenuOpen = false;
 
     // A toolbar menu's window, under the button just drawn. A window rather
     // than a popup: ImGui closes popups on any click outside them, and when
@@ -1498,6 +1499,27 @@ namespace RuntimeEditorUi {
                               mode != EntityMarkerMode::Off))
                 CycleEntityMarkerMode(false);
         }
+
+        ImGui::SameLine();
+
+        // ---- Palette (what the place-entity key makes)
+        if (ToolbarButton("palette", ICON_FA_CUBES, "Pl",
+                          Localisation::Get("editor.entity_mode.palette") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.palette")),
+                          paletteMenuOpen))
+            paletteMenuOpen = !paletteMenuOpen;
+
+        if (paletteMenuOpen && BeginToolbarMenu("##RuntimeEditorPalette")) {
+            // Fixes the menu's width: the palette's hint wraps to it.
+            constexpr float PALETTE_MENU_WIDTH = 280.0f;
+            ImGui::Dummy(ImVec2(PALETTE_MENU_WIDTH, 0.0f));
+
+            ImGui::TextUnformatted(Localisation::Get("editor.entity_mode.palette").c_str());
+            ImGui::Separator();
+
+            MapEditorInternal::DrawEntityPalette("runtime_editor.palette.hint");
+        }
+
+        if (paletteMenuOpen) ImGui::End();
 
         ImGui::SameLine();
 

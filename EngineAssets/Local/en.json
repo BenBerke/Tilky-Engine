@@ -1159,6 +1159,8 @@
   "editor.entity_mode.palette.refresh": "Refresh",
   "editor.tooltip.entity_mode.palette.refresh": "Looks for .prefab files under Assets again.",
   "editor.entity_mode.palette.empty": "Empty Entity",
+  "runtime_editor.tooltip.palette": "What {key:rt_place_entity} places: an empty entity or a prefab. Shared with the map editor's Entity Mode palette.",
+  "runtime_editor.palette.hint": "Pick what to place, then press {key:rt_place_entity} while pointing at a surface or an entity.",
   "editor.entity_mode.palette.hint": "Pick what to place, then press {key:place_entity} over the canvas. Prefabs can also be dragged onto the canvas.",
   "editor.entity_mode.palette.place_failed": "Could not place the selected prefab. Check the logs.",
   "editor.entity_mode.placement": "Placement",

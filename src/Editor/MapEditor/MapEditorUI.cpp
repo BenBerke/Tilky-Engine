@@ -3744,26 +3744,19 @@ namespace MapEditorInternal {
 
     // Entity Mode's panel: what E places and how, actions on the selection,
     // filters and the shortcuts.
-    void DrawEntityModePanel() {
-        Level& level = LevelManager::CurrentLevel();
+    // What E places in either editor: an empty entity or one of the
+    // project's world prefabs, with a search box (a .prefab dropped on it
+    // searches for its name). Both editors share the list, the search and
+    // entityPaletteSelection. `hintKey` is the line under it, naming the
+    // editor's own key.
+    namespace {
+        // Cleared to rescan Assets for prefabs on the next draw (Refresh,
+        // Make Prefab).
+        bool paletteScanned = false;
+    }
 
-        ModePanelSection(Get("editor.entity_mode.title").c_str());
-
-        int worldEntityCount = 0;
-        for (const Entity& entity : level.entities)
-            if (level.transforms.Has(entity.id)) ++worldEntityCount;
-
-        const int selectedCount = static_cast<int>(selectedEntities.size());
-
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(selectedCount > 0 ? ImGuiCol_CheckMark : ImGuiCol_TextDisabled));
-        ImGui::Text(Get("editor.entity_mode.counts").c_str(), worldEntityCount, selectedCount);
-        ImGui::PopStyleColor();
-
-        // ---- Palette ----------------------------------------------------------
-        ModePanelSection(Get("editor.entity_mode.palette").c_str());
-
+    void DrawEntityPalette(const char* hintKey) {
         static std::vector<std::string> palettePrefabs;
-        static bool paletteScanned = false;
         static char paletteSearch[64] = "";
 
         if (!paletteScanned) {
@@ -3781,7 +3774,8 @@ namespace MapEditorInternal {
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - refreshWidth - ImGui::GetStyle().ItemSpacing.x);
         ImGui::InputTextWithHint("##PaletteSearch", Get("editor.entity_mode.palette.search").c_str(), paletteSearch, sizeof(paletteSearch));
 
-        // A .prefab dragged from the Asset Browser searches for its name.
+        // A .prefab dragged from the Asset Browser searches for its name and
+        // becomes what gets placed - like dropping one on a prefab field.
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab))) {
                 const std::string reference = AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Prefab);
@@ -3789,6 +3783,14 @@ namespace MapEditorInternal {
 
                 std::strncpy(paletteSearch, name.c_str(), sizeof(paletteSearch) - 1);
                 paletteSearch[sizeof(paletteSearch) - 1] = '\0';
+
+                // One made since the last scan isn't listed yet.
+                if (std::find(palettePrefabs.begin(), palettePrefabs.end(), reference) == palettePrefabs.end())
+                    palettePrefabs = ScanWorldPrefabs();
+
+                // UI prefabs aren't in the list and can't be placed.
+                if (std::find(palettePrefabs.begin(), palettePrefabs.end(), reference) != palettePrefabs.end())
+                    entityPaletteSelection = reference;
             }
             ImGui::EndDragDropTarget();
         }
@@ -3819,7 +3821,28 @@ namespace MapEditorInternal {
         }
         ImGui::EndChild();
 
-        HintText(FormatKeyBinds(Get("editor.entity_mode.palette.hint")).c_str());
+        HintText(FormatKeyBinds(Get(hintKey)).c_str());
+    }
+
+    void DrawEntityModePanel() {
+        Level& level = LevelManager::CurrentLevel();
+
+        ModePanelSection(Get("editor.entity_mode.title").c_str());
+
+        int worldEntityCount = 0;
+        for (const Entity& entity : level.entities)
+            if (level.transforms.Has(entity.id)) ++worldEntityCount;
+
+        const int selectedCount = static_cast<int>(selectedEntities.size());
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(selectedCount > 0 ? ImGuiCol_CheckMark : ImGuiCol_TextDisabled));
+        ImGui::Text(Get("editor.entity_mode.counts").c_str(), worldEntityCount, selectedCount);
+        ImGui::PopStyleColor();
+
+        // ---- Palette ----------------------------------------------------------
+        ModePanelSection(Get("editor.entity_mode.palette").c_str());
+
+        DrawEntityPalette("editor.entity_mode.palette.hint");
 
         // ---- Placement --------------------------------------------------------
         ModePanelSection(Get("editor.entity_mode.placement").c_str());
