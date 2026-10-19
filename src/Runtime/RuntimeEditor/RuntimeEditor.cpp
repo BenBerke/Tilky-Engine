@@ -118,7 +118,7 @@ namespace {
     RayHitType selectedSectorSurface = RayHitType::None;
     int selectedSectorFloor = -1;
 
-    // Multi-selection (Shift + right-click). Each list holds every selected
+    // Multi-selection (Ctrl + right-click). Each list holds every selected
     // item of its kind, the primary - the one the inspector above shows -
     // included. Only one kind is ever selected at a time.
     std::vector<ID> selectedEntityIds;
@@ -261,7 +261,7 @@ namespace {
         SetPrimaryFlat(flat);
     }
 
-    // Shift-click on the kind already selected: adds the item and makes it
+    // Ctrl-click on the kind already selected: adds the item and makes it
     // the primary, or - if it was already selected - drops it, handing the
     // inspector to the most recently added item still left.
     void ToggleEntity(const ID entityID) {
@@ -676,9 +676,8 @@ namespace {
         });
     }
 
-    // Shift+C / Shift+V copy and paste a surface's texture; Alt+C / Alt+V
-    // its offset, scale and flip as well. Fixed combos, like Ctrl+C/V in
-    // the map editor. Walls and flats share one clipboard.
+    // Ctrl+C / Ctrl+V copy and paste a surface's texture; Alt+C / Alt+V
+    // its offset, scale and flip as well. Walls and flats share one clipboard.
     struct SurfaceClipboard {
         bool hasTexture = false;
         bool hasPlacement = false; // copied with Alt
@@ -710,7 +709,7 @@ namespace {
         if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, sector.floors, lightBefore);
     }
 
-    // Shift+R / Shift+F copy and paste a whole wall's or sector's properties.
+    // Ctrl+R / Ctrl+F copy and paste a whole wall's or sector's properties.
     // Walls: colour, both textures with their placement, tags. Sectors:
     // light, tags, and every floor's floor and ceiling (heights included),
     // floor N onto floor N - floors past the shorter count are left alone
@@ -1382,7 +1381,7 @@ namespace RuntimeEditorUi {
 
         // Edits the user setting itself, so the value is the same one the
         // map editor's User Settings window shows and saves.
-        const std::string fovFormat = Localisation::Get("editor.user_settings.runtime_camera_fov") + ": %.0f";
+        const std::string fovFormat = Localisation::Get("editor.runtime_editor.fov") + ": %.0f";
 
         BeginToolbarSlider();
         ImGui::SliderFloat("##CameraFov", &MapEditorInternal::runtimeCameraFov,
@@ -1842,12 +1841,18 @@ namespace RuntimeEditor {
         // The ImGui test gates only the *start* of a look. Once the cursor is
         // hidden ImGui keeps reporting the position it froze at, so re-testing
         // every frame would drop the drag the moment you swing past a panel.
+        // Not WantCaptureMouse: ImGui sets it while any popup is open, wherever
+        // the cursor is, and middle-click does not close popups - so an open
+        // toolbar menu (Steps, Statistics) would block looking entirely.
+        constexpr ImGuiHoveredFlags lookHoverFlags =
+            ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByPopup;
+
         const bool windowFocused = editorWindow != nullptr && SDL_GetKeyboardFocus() == editorWindow;
         const bool wantLook =
             windowFocused &&
             middleHeld &&
             !draggingUv &&
-            (cameraLooking || !mouseBlockedByImGui);
+            (cameraLooking || !ImGui::IsWindowHovered(lookHoverFlags));
 
         if (wantLook != cameraLooking) {
             cameraLooking = wantLook;
@@ -1873,9 +1878,9 @@ namespace RuntimeEditor {
 
         Vector3 movement = {0.0f, 0.0f, 0.0f};
 
-        // Paused during a gizmo drag: Ctrl there means "ignore snapping", and
-        // would otherwise also fly the camera down.
-        if (!TransformGizmo::IsDragging()) {
+        // Keeps running during a gizmo drag, so you can fly while moving or
+        // rotating an entity.
+        {
             const Vector3 forward = camera->forward;
             const Vector3 left = GetCameraLeft(*camera);
 
@@ -2300,8 +2305,8 @@ namespace RuntimeEditor {
                 hit->sector != nullptr
             );
 
-            // Shift adds to (or toggles within) the selection, but only items
-            // of the kind already selected. Shift-clicking another kind does
+            // Ctrl adds to (or toggles within) the selection, but only items
+            // of the kind already selected. Ctrl-clicking another kind does
             // nothing at all - the selection and the inspector stay as they were.
             const bool additive = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_ADD_TO_SELECTION);
             const SelectionKind currentKind = CurrentSelectionKind();
@@ -2432,7 +2437,7 @@ namespace RuntimeEditor {
                 const int floorIndex = hit->sectorFloorIndex;
                 SectorFloor& floor = sector.floors[floorIndex];
 
-                // Shift+scroll: the sector's brightness instead of a height.
+                // Ctrl+scroll: the sector's brightness instead of a height.
                 if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_BRIGHTNESS_SCROLL)) {
                     AdjustSectorBrightness(level, sector, wheel * runtimeSteps[fine ? RT_STEP_FINE_BRIGHTNESS : RT_STEP_BRIGHTNESS]);
                 }

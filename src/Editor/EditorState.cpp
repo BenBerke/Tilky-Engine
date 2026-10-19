@@ -251,7 +251,7 @@ namespace MapEditorInternal {
         {"rt_fly_left",         "editor.key.rt_fly_left",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_A}},
         {"rt_fly_right",        "editor.key.rt_fly_right",        "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_D}},
         {"rt_fly_up",           "editor.key.rt_fly_up",           "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_SPACE}},
-        {"rt_fly_down",         "editor.key.rt_fly_down",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL}},
+        {"rt_fly_down",         "editor.key.rt_fly_down",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT}},
         {"rt_speed_up",         "editor.key.rt_speed_up",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_Q}},
         {"rt_speed_down",       "editor.key.rt_speed_down",       "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_E}},
         {"rt_reset_speed",      "editor.key.rt_reset_speed",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_C}},
@@ -259,7 +259,7 @@ namespace MapEditorInternal {
         {"rt_move_tool",        "editor.key.rt_move_tool",        "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_1}},
         {"rt_rotate_tool",      "editor.key.rt_rotate_tool",      "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_2}},
         {"rt_disable_snap",     "editor.key.rt_disable_snap",     "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
-        {"rt_add_to_selection", "editor.key.rt_add_to_selection", "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
+        {"rt_add_to_selection", "editor.key.rt_add_to_selection", "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
         {"rt_texture_x_only",   "editor.key.rt_texture_x_only",   "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_X}},
         {"rt_texture_y_only",   "editor.key.rt_texture_y_only",   "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_Y}},
         {"rt_flip_texture_x",   "editor.key.rt_flip_texture_x",   "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_X}},
@@ -271,7 +271,7 @@ namespace MapEditorInternal {
         {"rt_toggle_entity_markers", "editor.key.rt_toggle_entity_markers", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_P}},
         {"rt_select_by_texture", "editor.key.rt_select_by_texture", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
-        {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
+        {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
     };
 
     SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS] = {};
@@ -288,14 +288,14 @@ namespace MapEditorInternal {
 
         {"rt_undo",          "editor.combo.rt_undo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Z}},
         {"rt_redo",          "editor.combo.rt_redo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Y}},
-        {"rt_copy_texture",  "editor.combo.rt_copy_texture",  "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_C, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_C}},
+        {"rt_copy_texture",  "editor.combo.rt_copy_texture",  "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_C, SDL_SCANCODE_RCTRL, SDL_SCANCODE_C}},
         {"rt_copy_texture_placement", "editor.combo.rt_copy_texture_placement", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_C, SDL_SCANCODE_RALT, SDL_SCANCODE_C}},
-        {"rt_paste_texture", "editor.combo.rt_paste_texture", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_V, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_V}},
+        {"rt_paste_texture", "editor.combo.rt_paste_texture", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_V, SDL_SCANCODE_RCTRL, SDL_SCANCODE_V}},
         {"rt_paste_texture_placement", "editor.combo.rt_paste_texture_placement", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_V, SDL_SCANCODE_RALT, SDL_SCANCODE_V}},
-        {"rt_copy_properties", "editor.combo.rt_copy_properties", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_R, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_R}},
-        {"rt_paste_properties", "editor.combo.rt_paste_properties", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_F, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_F}},
+        {"rt_copy_properties", "editor.combo.rt_copy_properties", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_R, SDL_SCANCODE_RCTRL, SDL_SCANCODE_R}},
+        {"rt_paste_properties", "editor.combo.rt_paste_properties", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_F, SDL_SCANCODE_RCTRL, SDL_SCANCODE_F}},
         {"rt_reset_placement", "editor.combo.rt_reset_placement", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_R, SDL_SCANCODE_RALT, SDL_SCANCODE_R}},
-        {"rt_align_textures", "editor.combo.rt_align_textures", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_G, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_G}},
+        {"rt_align_textures", "editor.combo.rt_align_textures", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_G, SDL_SCANCODE_RCTRL, SDL_SCANCODE_G}},
         {"rt_fit_textures",  "editor.combo.rt_fit_textures",  "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_G, SDL_SCANCODE_RALT, SDL_SCANCODE_G}},
     };
 
