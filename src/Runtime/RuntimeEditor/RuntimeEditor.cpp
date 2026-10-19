@@ -17,6 +17,7 @@
 
 #include "../../Editor/EditorInternal.hpp"
 #include "../../Editor/WallSnap.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -1188,17 +1189,18 @@ namespace {
         transform->SetPosition(center - camera->forward * distance);
     }
 
-    // The Entity Mode palette's selection where the mouse ray hits, pulled
-    // back along the ray a little so it lands on the camera's side of a
-    // wall. Selected, with an undo step.
-    void PlacePaletteEntityAtHover(Level& level) {
+    // An entity made by `create` where the mouse ray hits, pulled back along
+    // the ray a little so it lands on the camera's side of a wall. Selected,
+    // with an undo step. Nothing when the ray hits nothing.
+    template<typename Create>
+    void PlaceAtHover(Level& level, Create&& create) {
         if (hoveredSurface.type == RayHitType::None) return;
 
         constexpr float PULL_BACK = 0.01f;
 
         GeometryState before = CaptureEntities(level, "editor.history.place_entity");
 
-        const ID id = MapEditorInternal::CreatePaletteEntity(level, hoveredHitPosition - hoveredRayDirection * PULL_BACK);
+        const ID id = create(hoveredHitPosition - hoveredRayDirection * PULL_BACK);
 
         if (id == INVALID_ID) {
             ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.entity_mode.palette.place_failed").c_str(), true, 2.0f);
@@ -1212,6 +1214,32 @@ namespace {
 
         runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
         MapEditorInternal::MarkUnsavedChanges();
+    }
+
+    // The Entity Mode palette's selection, placed as above.
+    void PlacePaletteEntityAtHover(Level& level) {
+        PlaceAtHover(level, [&level](const Vector3& position) {
+            return MapEditorInternal::CreatePaletteEntity(level, position);
+        });
+    }
+
+    // A .prefab dropped on the 3D view: just that prefab with its own values,
+    // whatever the palette's placement settings are.
+    void PlacePrefabAtHover(Level& level, const std::string& reference) {
+        PlaceAtHover(level, [&level, &reference](const Vector3& position) {
+            // UI prefabs belong in the UI editor.
+            const Level* prefab = Prefab::Get(reference);
+            if (prefab == nullptr || prefab->ui_transforms.Has(Prefab::RootOf(*prefab).id)) return INVALID_ID;
+
+            const ID id = Prefab::Instantiate(level, reference);
+
+            if (ComponentTransform* placed = level.transforms.Get(id)) {
+                placed->SetPosition(position);
+                placed->isDirty = true;
+            }
+
+            return id;
+        });
     }
 
     // A drop that doesn't land leaves no undo step behind.
@@ -1904,6 +1932,17 @@ namespace RuntimeEditorUi {
 
                 EditorFunctions::Print("Applied " + textureReference + " to " + surfaceName);
             }
+        }
+
+        // ── Drop prefabs into the level ──────────────────────────────────────
+        // Watched the same way. Lands where the mouse ray hits, which Update()
+        // keeps current while dragging.
+        if (const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+            payload != nullptr &&
+            payload->IsDataType(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab)) &&
+            ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+            !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+            PlacePrefabAtHover(level, AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Prefab));
         }
 
         // Crosshair, useless because mouse position is used for selection
