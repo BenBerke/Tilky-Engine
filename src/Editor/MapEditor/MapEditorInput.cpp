@@ -1171,7 +1171,7 @@ namespace MapEditorInternal {
                     if (activeGizmoPart != GIZMO_NONE) {
                         target = {mouseWorld.x - gizmoGrabOffset.x, mouseWorld.y - gizmoGrabOffset.y};
 
-                        if (gridSnapEnabled && !GetKeyBind(KEYBIND_DISABLE_SNAP)) target = SnapToGrid(target);
+                        if (gridSnapEnabled && GetKeyBind(KEYBIND_DISABLE_SNAP)) target = SnapToGrid(target);
 
                         if (activeGizmoPart == GIZMO_X) target.y = t->position.z;
                         else if (activeGizmoPart == GIZMO_Z) target.x = t->position.x;

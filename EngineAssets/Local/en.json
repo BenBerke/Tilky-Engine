@@ -121,7 +121,7 @@
   "editor.key.rt_reset_speed": "Reset Speed",
   "editor.key.rt_move_tool": "Move Tool",
   "editor.key.rt_rotate_tool": "Rotate Tool",
-  "editor.key.rt_disable_snap": "Disable Snapping",
+  "editor.key.rt_enable_snap": "Enable Snapping",
   "editor.key.rt_add_to_selection": "Add to Selection",
   "editor.key.rt_texture_x_only": "Drag/Scale: X Only",
   "editor.key.rt_texture_y_only": "Drag/Scale: Y Only",
