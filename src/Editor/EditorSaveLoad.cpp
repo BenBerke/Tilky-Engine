@@ -54,52 +54,7 @@ namespace {
 namespace MapEditorInternal {
     bool LoadProjectSettings()
     {
-        const fs::path settingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json";
-
-        try {
-            if (!fs::exists(settingsPath)) {
-                TagRegistry::Clear();
-                return true;
-            }
-
-            std::ifstream file(settingsPath);
-
-            if (!file.is_open()) {
-                spdlog::error("Failed to open project settings: {}",settingsPath.string());
-                return false;
-            }
-
-            nlohmann::json settings;
-            file >> settings;
-
-            const int formatVersion = settings.at("formatVersion").get<int>();
-
-            if (formatVersion != 1) {
-                spdlog::error("Unsupported project settings version: {}",formatVersion);
-                return false;
-            }
-
-            auto tags = settings.at("tagToId").get<TagRegistry::TagMap>();
-
-            // Calculate the minimum safe next ID. This prevents ID collisions
-            // if nextTagId is missing or contains an incorrect lower value.
-            uint32_t minimumNextId = 0;
-
-            for (const auto& [name, id] : tags)
-                minimumNextId = std::max(minimumNextId,static_cast<uint32_t>(id) + 1u);
-
-            const uint32_t savedNextId = settings.value("nextTagId", minimumNextId);
-
-            const uint32_t nextId = std::max(savedNextId, minimumNextId);
-
-            TagRegistry::Load(std::move(tags), nextId);
-
-            return true;
-        }
-        catch (const std::exception& error) {
-            spdlog::error("Failed to load project settings: {}",error.what());
-            return false;
-        }
+        return TagRegistry::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json");
     }
 
     bool SaveProjectSettings() {

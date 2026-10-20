@@ -53,6 +53,9 @@ top-left      = anchor point + position − size × pivot
 size          = scale  (or the anchor span, on stretched axes)
 ```
 
+On a stretched axis the element always covers the span between its anchors, whatever its pivot:
+its top-left on that axis is `screen size × Anchor Min + position`.
+
 Those results are readable as `resolvedPosition` (top-left corner) and `resolvedSize`.
 
 ### Rotation

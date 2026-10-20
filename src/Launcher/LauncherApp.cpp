@@ -20,6 +20,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Launcher/EngineVersionManager.hpp"
+#include "Headers/Launcher/ProjectTemplates.hpp"
 #include "Headers/Launcher/SampleProjectManager.hpp"
 
 #include <SDL3/SDL.h>
@@ -165,9 +166,19 @@ namespace {
     bool versionPendingRemovalProcessRunning = false;
 
     // ============================================================================
-    // Sample projects modal (downloadable example projects, see SampleProjectManager)
+    // Create Project window: Blank, the templates bundled with the chosen engine
+    // version (see ProjectTemplates) and the downloadable showcase project (see
+    // SampleProjectManager)
     // ============================================================================
-    bool wantOpenSampleProjectsPopup = false;
+    // samples.json entry the "Showcase Project" button installs.
+    constexpr const char* SHOWCASE_SAMPLE_ID = "tilky-showcase";
+
+    std::vector<ProjectTemplates::TemplateInfo> newProjectTemplates;
+    // Engine version newProjectTemplates was read for; empty optional = read again.
+    std::optional<std::string> newProjectTemplatesVersion;
+    std::string newProjectSelectedTemplateId; // empty = Blank
+    std::map<fs::path, SDL_Texture*> templateThumbnails; // nullptr = failed to load
+    bool closeNewProjectPopupRequested = false;
 
     std::vector<Toast> toasts;
 
@@ -235,12 +246,16 @@ namespace {
 
     void DrawTopBar();
     void DrawNewProjectModal();
+    void DrawTemplateTiles();
+    void DrawShowcaseSection();
+    SDL_Texture* GetTemplateThumbnail(const fs::path& file);
+    void ReleaseTemplateThumbnails();
+    void RequestNewProjectPopup();
     void DrawRenameModal();
     void DrawDeleteConfirmModal();
     void DrawEngineVersionsModal();
     void DrawRemoveVersionConfirmModal();
     void PushEngineVersionInstallToasts();
-    void DrawSampleProjectsModal();
     void HandleSampleInstallEvents();
     std::string LocalizedInstallPhaseLabel(EngineVersionManager::InstallPhase phase);
     void DrawVersionProgressInline(const EngineVersionManager::InstallProgress& progress);
@@ -1005,11 +1020,7 @@ namespace {
     // Top bar: create / import / refresh + search + sort
     // ============================================================================
     void DrawTopBar() {
-        if (ImGui::Button(Localisation::Get("launcher.create_project").c_str())) {
-            std::fill(newProjectNameBuffer.begin(), newProjectNameBuffer.end(), '\0');
-            newProjectValidationError.clear();
-            wantOpenNewProjectPopup = true;
-        }
+        if (ImGui::Button(Localisation::Get("launcher.create_project").c_str())) RequestNewProjectPopup();
 
         ImGui::SameLine();
         if (ImGui::Button(Localisation::Get("launcher.import_project").c_str())) {
@@ -1025,11 +1036,6 @@ namespace {
         if (ImGui::Button(Localisation::Get("launcher.evm_manage_versions").c_str())) {
             engineVersionsModalTargetProject.clear();
             wantOpenEngineVersionsPopup = true;
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button(Localisation::Get("launcher.samples_button").c_str())) {
-            wantOpenSampleProjectsPopup = true;
         }
 
         ImGui::Spacing();
@@ -1078,20 +1084,186 @@ namespace {
     }
 
     // ============================================================================
-    // New Project modal
+    // New Project modal: pick Blank or a template, name the project and pin an
+    // engine version - or install the showcase project from the bottom section.
     // ============================================================================
+    void RequestNewProjectPopup() {
+        std::ranges::fill(newProjectNameBuffer, '\0');
+        newProjectValidationError.clear();
+        wantOpenNewProjectPopup = true;
+    }
+
+    SDL_Texture* GetTemplateThumbnail(const fs::path& file) {
+        const auto it = templateThumbnails.find(file);
+        if (it != templateThumbnails.end()) return it->second;
+
+        SDL_Texture* texture = IMG_LoadTexture(renderer, file.string().c_str());
+        if (texture == nullptr) spdlog::warn("Failed to load template thumbnail {}: {}", file.string(), SDL_GetError());
+        templateThumbnails[file] = texture;
+        return texture;
+    }
+
+    void ReleaseTemplateThumbnails() {
+        for (const auto& [file, texture] : templateThumbnails) {
+            if (texture != nullptr) SDL_DestroyTexture(texture);
+        }
+        templateThumbnails.clear();
+    }
+
+    // One selectable tile per choice, Blank first, wrapping to the window width.
+    void DrawTemplateTiles() {
+        // The tiles follow the engine-version picker: each version offers the
+        // templates it shipped with.
+        if (newProjectTemplatesVersion != newProjectSelectedVersion) {
+            newProjectTemplates = ProjectTemplates::DiscoverTemplates(newProjectSelectedVersion);
+            newProjectTemplatesVersion = newProjectSelectedVersion;
+            ReleaseTemplateThumbnails();
+
+            const bool stillOffered = std::ranges::any_of(newProjectTemplates,
+                [](const ProjectTemplates::TemplateInfo& t) { return t.id == newProjectSelectedTemplateId; });
+            if (!stillOffered) newProjectSelectedTemplateId.clear();
+        }
+
+        ImGui::TextUnformatted(Localisation::Get("launcher.templates_heading").c_str());
+
+        constexpr ImVec2 thumbSize(144.0f, 81.0f);
+        const float tileWidth = thumbSize.x + 8.0f;
+        const float tileHeight = thumbSize.y + ImGui::GetTextLineHeight() + 12.0f;
+        // Fixed, not fitted to the width: the window auto-resizes to its content.
+        constexpr int perRow = 4;
+
+        const auto drawTile = [&](const int index, const std::string& id, const std::string& name, const fs::path& thumbnail) {
+            if (index % perRow != 0) ImGui::SameLine();
+
+            ImGui::PushID(id.empty() ? "##blank" : id.c_str());
+            const bool selected = (id == newProjectSelectedTemplateId);
+            // A Selectable closes the popup it's in unless told not to.
+            if (ImGui::Selectable("##tile", selected, ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(tileWidth, tileHeight)))
+                newProjectSelectedTemplateId = id;
+
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const ImVec2 tileMin = ImGui::GetItemRectMin();
+            const ImVec2 thumbMin(tileMin.x + 4.0f, tileMin.y + 4.0f);
+            const ImVec2 thumbMax(thumbMin.x + thumbSize.x, thumbMin.y + thumbSize.y);
+
+            SDL_Texture* texture = thumbnail.empty() ? nullptr : GetTemplateThumbnail(thumbnail);
+            if (texture != nullptr) {
+                drawList->AddImage(static_cast<ImTextureID>(reinterpret_cast<std::uintptr_t>(texture)), thumbMin, thumbMax);
+            } else {
+                drawList->AddRectFilled(thumbMin, thumbMax, IM_COL32(45, 45, 45, 255), 4.0f);
+            }
+
+            const ImVec2 labelPos(thumbMin.x, thumbMax.y + 4.0f);
+            drawList->PushClipRect(labelPos, ImVec2(thumbMax.x, labelPos.y + ImGui::GetTextLineHeight()), true);
+            drawList->AddText(labelPos, ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
+            drawList->PopClipRect();
+
+            ImGui::PopID();
+        };
+
+        drawTile(0, std::string(), Localisation::Get("launcher.template_blank"), fs::path());
+        for (size_t i = 0; i < newProjectTemplates.size(); ++i) {
+            const ProjectTemplates::TemplateInfo& info = newProjectTemplates[i];
+            drawTile(static_cast<int>(i) + 1, info.id, info.name, info.thumbnailFile);
+        }
+
+        std::string description = Localisation::Get("launcher.template_blank_description");
+        for (const ProjectTemplates::TemplateInfo& info : newProjectTemplates) {
+            if (info.id == newProjectSelectedTemplateId) description = info.description;
+        }
+        if (!description.empty()) {
+            // Wrapped to the tile row, or a long description would widen the
+            // auto-sized window past the launcher.
+            const float rowWidth = perRow * tileWidth + (perRow - 1) * ImGui::GetStyle().ItemSpacing.x;
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + rowWidth);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextUnformatted(description.c_str());
+            ImGui::PopStyleColor();
+            ImGui::PopTextWrapPos();
+        }
+
+        ImGui::Spacing();
+    }
+
+    // The showcase project is downloaded as-is (see SampleProjectManager); it
+    // doesn't use the name or engine version picked above.
+    void DrawShowcaseSection() {
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        const std::vector<SampleProjectManager::SampleInfo> samples = Samples().GetSamples();
+        const auto showcase = std::ranges::find(samples, std::string(SHOWCASE_SAMPLE_ID), &SampleProjectManager::SampleInfo::id);
+
+        if (showcase == samples.end()) {
+            ImGui::BeginDisabled();
+            ImGui::Button(Localisation::Get("launcher.showcase_button").c_str());
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+
+            if (Samples().IsManifestLoading()) {
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_checking").c_str());
+            } else if (const std::optional<std::string> manifestError = Samples().GetManifestError()) {
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_manifest_error").c_str());
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", manifestError->c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton(Localisation::Get("launcher.evm_retry").c_str())) Samples().RefreshManifestAsync();
+            } else {
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.showcase_unavailable").c_str());
+            }
+            return;
+        }
+
+        const bool installing = Samples().IsInstalling(showcase->id);
+        const SampleProjectManager::InstallProgress progress =
+            installing ? Samples().GetInstallProgress(showcase->id) : SampleProjectManager::InstallProgress{};
+
+        if (installing) {
+            DrawVersionProgressInline(progress);
+            ImGui::SameLine();
+            if (ImGui::SmallButton(Localisation::Get("common.cancel").c_str())) Samples().CancelInstall(showcase->id);
+        } else {
+            // Installing again never overwrites: the copy lands next to the
+            // existing folder as "<name> (2)".
+            if (ImGui::Button(Localisation::Get("launcher.showcase_button").c_str())) Samples().Install(showcase->id);
+
+            if (showcase->sizeBytes > 0) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", FormatFileSize(showcase->sizeBytes).c_str());
+            }
+            if (showcase->installed) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_already_installed").c_str());
+            }
+        }
+
+        if (!showcase->description.empty()) ImGui::TextWrapped("%s", showcase->description.c_str());
+
+        if (progress.phase == SampleProjectManager::InstallPhase::Failed && !progress.errorMessage.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
+            ImGui::TextWrapped("%s", progress.errorMessage.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+
     void DrawNewProjectModal() {
     constexpr const char* popupId = "Create Project###new_project_modal";
 
     if (wantOpenNewProjectPopup) {
         ImGui::OpenPopup(popupId);
         wantOpenNewProjectPopup = false;
+        closeNewProjectPopupRequested = false;
         // Same default the old auto-pin logic used (latest installed stable), but now
         // surfaced via the picker below instead of being applied silently.
         newProjectSelectedVersion = EVM().GetLatestInstalledStableVersion().value_or(std::string());
+        newProjectTemplatesVersion.reset();
+        newProjectSelectedTemplateId.clear();
+        Samples().RefreshManifestAsync(); // no-op if a fetch is already in flight
     }
 
-    ImGui::SetNextWindowSize(ImVec2(420.0f, 0.0f), ImGuiCond_Appearing);
+    if (!ImGui::IsPopupOpen(popupId) && !templateThumbnails.empty()) ReleaseTemplateThumbnails();
+
+    ImGui::SetNextWindowSize(ImVec2(640.0f, 0.0f), ImGuiCond_Appearing);
 
     const ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(
@@ -1101,6 +1273,14 @@ namespace {
     );
 
     if (ImGui::BeginPopupModal(popupId, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        // A showcase install that finished (HandleSampleInstallEvents) closes the window.
+        if (closeNewProjectPopupRequested) {
+            closeNewProjectPopupRequested = false;
+            ImGui::CloseCurrentPopup();
+        }
+
+        DrawTemplateTiles();
+
         ImGui::TextUnformatted(Localisation::Get("launcher.input_name").c_str());
 
         const bool enterPressed = ImGui::InputText(
@@ -1172,23 +1352,44 @@ namespace {
             const std::string validationMessage =
                 ValidateNewProjectName(typedName);
 
+            const auto chosenTemplate = std::ranges::find(newProjectTemplates, newProjectSelectedTemplateId,
+                                                          &ProjectTemplates::TemplateInfo::id);
+
             if (!validationMessage.empty()) newProjectValidationError = validationMessage;
+            else if (chosenTemplate != newProjectTemplates.end()) {
+                fs::path projectPath;
+                std::string error;
+
+                if (!ProjectTemplates::CreateProjectFromTemplate(*chosenTemplate, typedName, newProjectSelectedVersion,
+                                                                 projectPath, error)) {
+                    spdlog::error("Creating project '{}' from template {} failed: {}", typedName, chosenTemplate->id, error);
+                    newProjectValidationError = Localisation::Get("launcher.template_create_failed") + " " + error;
+                } else {
+                    WriteLuaAutocompleteConfig(projectPath);
+                    ProjectManager::OpenProject(projectPath);
+
+                    PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
+
+                    std::ranges::fill(newProjectNameBuffer, '\0');
+
+                    newProjectValidationError.clear();
+                    selectedProjectPath = projectPath;
+                    projectListDirty = true;
+                    ImGui::CloseCurrentPopup();
+                }
+            }
             else {
-                ProjectManager::CreateProjectDirectory(typedName);
+                // Pinned to whichever installed version the user chose in the picker
+                // above (pre-selected at latest-installed-stable, but overridable)
+                // before the project opens, so it opens in that version. If nothing
+                // is installed yet, this leaves engineVersion unset - same as the
+                // pre-EngineVersionManager behaviour - until the user installs one
+                // and pins it via "Change Version".
+                ProjectManager::CreateProjectDirectory(typedName, newProjectSelectedVersion);
 
                 const fs::path projectPath = ProjectManager::GetDefaultProjectsFolder() / typedName;
 
                 WriteLuaAutocompleteConfig(projectPath);
-
-                // Pin to whichever installed version the user chose in the picker
-                // above (pre-selected at latest-installed-stable, mirroring the old
-                // default, but overridable). If nothing is installed yet, this leaves
-                // engineVersion unset - same as the pre-EngineVersionManager
-                // behaviour - until the user installs one and pins it via "Change
-                // Version".
-                if (!newProjectSelectedVersion.empty()) {
-                    ProjectManager::SetProjectEngineVersion(projectPath, newProjectSelectedVersion);
-                }
 
                 PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
 
@@ -1209,6 +1410,8 @@ namespace {
             newProjectSelectedVersion.clear();
             ImGui::CloseCurrentPopup();
         }
+
+        DrawShowcaseSection();
 
         ImGui::EndPopup();
     }
@@ -1458,114 +1661,10 @@ namespace {
 
             selectedProjectPath = event.installedFolder;
             projectListDirty = true;
+            closeNewProjectPopupRequested = true;
             PushToast(Localisation::Get("launcher.toast_sample_installed") + " " + event.installedFolder.filename().string(),
                       ToastLevel::Success);
         }
-    }
-
-    void DrawSampleProjectsModal() {
-        const std::string popupId = Localisation::Get("launcher.samples_title") + "###sample_projects_modal";
-
-        if (wantOpenSampleProjectsPopup) {
-            ImGui::OpenPopup(popupId.c_str());
-            wantOpenSampleProjectsPopup = false;
-            Samples().RefreshManifestAsync(); // no-op if a fetch is already in flight
-        }
-
-        ImGui::SetNextWindowSize(ImVec2(620.0f, 420.0f), ImGuiCond_Appearing);
-        const ImGuiIO& io = ImGui::GetIO();
-        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-
-        if (!ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) return;
-
-        ImGui::TextWrapped("%s", Localisation::Get("launcher.samples_intro").c_str());
-        ImGui::Spacing();
-
-        if (Samples().IsManifestLoading()) {
-            ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_checking").c_str());
-        }
-
-        const std::optional<std::string> manifestError = Samples().GetManifestError();
-        if (manifestError) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
-            ImGui::TextWrapped("%s: %s", Localisation::Get("launcher.samples_manifest_error").c_str(), manifestError->c_str());
-            ImGui::PopStyleColor();
-
-            ImGui::SameLine();
-            if (ImGui::SmallButton(Localisation::Get("launcher.evm_retry").c_str())) Samples().RefreshManifestAsync();
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        const std::vector<SampleProjectManager::SampleInfo> samples = Samples().GetSamples();
-
-        if (samples.empty() && !Samples().IsManifestLoading() && !manifestError) {
-            ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_none").c_str());
-        }
-
-        if (ImGui::BeginChild("##sample_projects_list", ImVec2(0.0f, -36.0f), true)) {
-            for (const SampleProjectManager::SampleInfo& sample : samples) {
-                ImGui::PushID(sample.id.c_str());
-
-                const bool installing = Samples().IsInstalling(sample.id);
-                const SampleProjectManager::InstallProgress progress =
-                    installing ? Samples().GetInstallProgress(sample.id) : SampleProjectManager::InstallProgress{};
-
-                ImGui::BeginGroup();
-
-                std::string headline = sample.name;
-                if (!sample.version.empty()) headline += "  v" + sample.version;
-                ImGui::TextUnformatted(headline.c_str());
-
-                if (sample.sizeBytes > 0) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(%s)", FormatFileSize(sample.sizeBytes).c_str());
-                }
-
-                if (!sample.description.empty()) ImGui::TextWrapped("%s", sample.description.c_str());
-
-                if (!sample.minEngineVersion.empty()) {
-                    ImGui::TextDisabled("%s v%s", Localisation::Get("launcher.samples_requires_engine").c_str(),
-                                        sample.minEngineVersion.c_str());
-                }
-
-                if (progress.phase == SampleProjectManager::InstallPhase::Failed && !progress.errorMessage.empty()) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.35f, 0.35f, 1.0f));
-                    ImGui::TextWrapped("%s", progress.errorMessage.c_str());
-                    ImGui::PopStyleColor();
-                }
-
-                if (installing) {
-                    DrawVersionProgressInline(progress);
-                    ImGui::SameLine();
-                    if (ImGui::SmallButton(Localisation::Get("common.cancel").c_str())) Samples().CancelInstall(sample.id);
-                } else {
-                    // Installing again never overwrites: the copy lands next to the
-                    // existing folder as "<name> (2)".
-                    const std::string& label = Localisation::Get(sample.installed ? "launcher.samples_install_copy"
-                                                                                  : "launcher.samples_install");
-                    if (ImGui::SmallButton(label.c_str())) Samples().Install(sample.id);
-
-                    if (sample.installed) {
-                        ImGui::SameLine();
-                        ImGui::TextDisabled("%s", Localisation::Get("launcher.samples_already_installed").c_str());
-                    }
-                }
-
-                ImGui::EndGroup();
-                ImGui::Separator();
-
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndChild();
-
-        ImGui::Spacing();
-        if (ImGui::Button(Localisation::Get("launcher.evm_close").c_str())) ImGui::CloseCurrentPopup();
-
-        ImGui::EndPopup();
     }
 
     // ============================================================================
@@ -2081,11 +2180,7 @@ namespace {
 
         if (ImGui::IsKeyPressed(ImGuiKey_F5)) projectListDirty = true;
 
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N)) {
-            std::fill(newProjectNameBuffer.begin(), newProjectNameBuffer.end(), '\0');
-            newProjectValidationError.clear();
-            wantOpenNewProjectPopup = true;
-        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N)) RequestNewProjectPopup();
 
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F)) focusSearchBoxRequested = true;
         if (!selectedProjectPath.empty()) {
@@ -2282,7 +2377,6 @@ namespace LauncherApp {
         DrawDeleteConfirmModal();
         DrawEngineVersionsModal();
         DrawRemoveVersionConfirmModal();
-        DrawSampleProjectsModal();
 
         ImGui::End();
 
@@ -2328,6 +2422,7 @@ namespace LauncherApp {
             SDL_DestroyTexture(logo);
             logo = nullptr;
         }
+        ReleaseTemplateThumbnails();
 
         ImGui_ImplSDLRenderer3_Shutdown();
         ImGui_ImplSDL3_Shutdown();

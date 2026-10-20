@@ -618,6 +618,86 @@ if(MINGW)
 endif()
 
 # ============================================================
+# Project templates
+#
+# Every Templates/<id>/ folder holding project/project.tilky becomes
+# LauncherAssets/Templates/<id>.zip (the contents of project/), plus
+# <id>.json (copied from template.json) and <id>.png (from thumbnail.png,
+# optional). The launcher's Create Project window reads them from the
+# engine version a new project is pinned to - see ProjectTemplates.hpp.
+# Dot-files and dot-folders (.luals, .luarc.json, ...) the editor writes
+# while a template is being worked on are left out of the ZIP.
+# ============================================================
+
+set(TILKY_TEMPLATES_BUILD_DIR "${CMAKE_BINARY_DIR}/ProjectTemplates")
+set(TILKY_TEMPLATE_FILES "")
+
+file(GLOB TILKY_TEMPLATE_DIRS LIST_DIRECTORIES true CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Templates/*"
+)
+
+foreach(template_dir IN LISTS TILKY_TEMPLATE_DIRS)
+    if(NOT EXISTS "${template_dir}/project/project.tilky")
+        continue()
+    endif()
+
+    get_filename_component(template_id "${template_dir}" NAME)
+
+    file(GLOB template_top_level RELATIVE "${template_dir}/project" "${template_dir}/project/*")
+    list(FILTER template_top_level EXCLUDE REGEX "^\\.")
+
+    file(GLOB_RECURSE template_sources CONFIGURE_DEPENDS "${template_dir}/project/*")
+    list(FILTER template_sources EXCLUDE REGEX "/project/(.*/)?\\.")
+
+    set(template_zip "${TILKY_TEMPLATES_BUILD_DIR}/${template_id}.zip")
+    add_custom_command(
+            OUTPUT "${template_zip}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${TILKY_TEMPLATES_BUILD_DIR}"
+            COMMAND "${CMAKE_COMMAND}" -E rm -f "${template_zip}"
+            COMMAND "${CMAKE_COMMAND}" -E tar cf "${template_zip}" --format=zip -- ${template_top_level}
+            WORKING_DIRECTORY "${template_dir}/project"
+            DEPENDS ${template_sources}
+            COMMENT "Packing project template ${template_id}"
+            VERBATIM
+    )
+    list(APPEND TILKY_TEMPLATE_FILES "${template_zip}")
+
+    foreach(sidecar IN ITEMS "template.json;json" "thumbnail.png;png")
+        list(GET sidecar 0 sidecar_source)
+        list(GET sidecar 1 sidecar_extension)
+
+        if(EXISTS "${template_dir}/${sidecar_source}")
+            set(sidecar_output "${TILKY_TEMPLATES_BUILD_DIR}/${template_id}.${sidecar_extension}")
+            add_custom_command(
+                    OUTPUT "${sidecar_output}"
+                    COMMAND "${CMAKE_COMMAND}" -E copy "${template_dir}/${sidecar_source}" "${sidecar_output}"
+                    DEPENDS "${template_dir}/${sidecar_source}"
+                    VERBATIM
+            )
+            list(APPEND TILKY_TEMPLATE_FILES "${sidecar_output}")
+        endif()
+    endforeach()
+endforeach()
+
+add_custom_target(Tilky_ProjectTemplates DEPENDS ${TILKY_TEMPLATE_FILES})
+
+# Replaces <destination>/LauncherAssets/Templates with exactly the current
+# templates, so a template deleted from Templates/ doesn't linger in builds.
+function(tilky_append_template_copy_commands out_var destination_dir)
+    set(commands ${${out_var}})
+    list(APPEND commands
+            COMMAND "${CMAKE_COMMAND}" -E rm -rf "${destination_dir}/LauncherAssets/Templates"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${destination_dir}/LauncherAssets/Templates"
+    )
+    if(TILKY_TEMPLATE_FILES)
+        list(APPEND commands
+                COMMAND "${CMAKE_COMMAND}" -E copy ${TILKY_TEMPLATE_FILES} "${destination_dir}/LauncherAssets/Templates"
+        )
+    endif()
+    set(${out_var} ${commands} PARENT_SCOPE)
+endfunction()
+
+# ============================================================
 # Launcher source list
 # ============================================================
 
@@ -626,12 +706,14 @@ set(TILKY_LAUNCHER_SOURCES
         src/Launcher/EngineVersionManager.cpp
         src/Launcher/ArchiveInstaller.cpp
         src/Launcher/SampleProjectManager.cpp
+        src/Launcher/ProjectTemplates.cpp
         src/Launcher/Sha256.cpp
 
         Headers/Launcher/LauncherApp.hpp
         Headers/Launcher/EngineVersionManager.hpp
         Headers/Launcher/ArchiveInstaller.hpp
         Headers/Launcher/SampleProjectManager.hpp
+        Headers/Launcher/ProjectTemplates.hpp
         Headers/Launcher/Sha256.hpp
         Headers/Runtime/Scripting/IScripting.hpp
 )
@@ -927,6 +1009,18 @@ target_compile_definitions(Tilky_Launcher PRIVATE
 
 tilky_configure_unity_build(Tilky_Launcher)
 
+# The launcher offers the templates bundled next to it (see
+# ProjectTemplates.hpp), so a launcher run straight from the build has them too.
+set(TILKY_LAUNCHER_TEMPLATE_COMMANDS "")
+tilky_append_template_copy_commands(TILKY_LAUNCHER_TEMPLATE_COMMANDS "${TILKY_LAUNCHER_OUTPUT_DIR}")
+add_custom_target(Tilky_LauncherTemplates
+        ${TILKY_LAUNCHER_TEMPLATE_COMMANDS}
+        COMMENT "Copying project templates next to the launcher"
+        VERBATIM
+)
+add_dependencies(Tilky_LauncherTemplates Tilky_ProjectTemplates)
+add_dependencies(Tilky_Launcher Tilky_LauncherTemplates)
+
 # ============================================================
 # Launcher-only package
 # ============================================================
@@ -1004,6 +1098,8 @@ foreach(engine_asset_subdirectory
     endif()
 endforeach()
 
+tilky_append_template_copy_commands(TILKY_LAUNCHER_PACKAGE_COMMANDS "${TILKY_LAUNCHER_PACKAGE_DIR}")
+
 # MinGW runtime.
 if(MINGW)
     foreach(runtime_dll
@@ -1034,6 +1130,7 @@ add_custom_target(Launcher_Only
 
         DEPENDS
         Tilky_Launcher
+        Tilky_ProjectTemplates
 
         COMMENT "Building self-contained Tilky launcher package"
         VERBATIM
@@ -1101,11 +1198,14 @@ foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
     endif()
 endforeach()
 
+tilky_append_template_copy_commands(TILKY_RUNTIME_ASSET_COPY_COMMANDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+
 add_custom_target(Tilky_RuntimeAssets
         ${TILKY_RUNTIME_ASSET_COPY_COMMANDS}
         COMMENT "Updating Tilky runtime assets"
         VERBATIM
 )
+add_dependencies(Tilky_RuntimeAssets Tilky_ProjectTemplates)
 
 add_dependencies(Tilky_Engine Tilky_RuntimeAssets)
 add_dependencies(Tilky_Standalone Tilky_RuntimeAssets)
@@ -1320,6 +1420,8 @@ foreach(asset_dir IN LISTS TILKY_RUNTIME_ASSET_DIRS)
         )
     endif()
 endforeach()
+
+tilky_append_template_copy_commands(TILKY_ENGINE_VERSION_ASSET_COMMANDS "${TILKY_ENGINE_VERSION_STAGE_DIR}")
 
 add_custom_target(Tilky_EngineVersionPackage
         COMMAND "${CMAKE_COMMAND}" -E rm -rf

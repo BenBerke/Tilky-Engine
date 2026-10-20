@@ -4,9 +4,14 @@
 
 #include "Headers/TagRegistry.hpp"
 
+#include <algorithm>
+#include <fstream>
 #include <limits>
 #include <stdexcept>
 #include <utility>
+
+#include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 namespace
 {
@@ -81,6 +86,51 @@ uint32_t TagRegistry::GetNextId() {
 void TagRegistry::Load(TagMap tags, const uint32_t nextId) {
     tagToId = std::move(tags);
     nextTagId = nextId;
+}
+
+bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsPath) {
+    try {
+        if (!std::filesystem::exists(settingsPath)) {
+            Clear();
+            return true;
+        }
+
+        std::ifstream file(settingsPath);
+
+        if (!file.is_open()) {
+            spdlog::error("Failed to open project settings: {}", settingsPath.string());
+            return false;
+        }
+
+        nlohmann::json settings;
+        file >> settings;
+
+        const int formatVersion = settings.at("formatVersion").get<int>();
+
+        if (formatVersion != 1) {
+            spdlog::error("Unsupported project settings version: {}", formatVersion);
+            return false;
+        }
+
+        auto tags = settings.at("tagToId").get<TagMap>();
+
+        // Calculate the minimum safe next ID. This prevents ID collisions
+        // if nextTagId is missing or contains an incorrect lower value.
+        uint32_t minimumNextId = 0;
+
+        for (const auto& [name, id] : tags)
+            minimumNextId = std::max(minimumNextId, static_cast<uint32_t>(id) + 1u);
+
+        const uint32_t savedNextId = settings.value("nextTagId", minimumNextId);
+
+        Load(std::move(tags), std::max(savedNextId, minimumNextId));
+
+        return true;
+    }
+    catch (const std::exception& error) {
+        spdlog::error("Failed to load project settings: {}", error.what());
+        return false;
+    }
 }
 
 void TagRegistry::Clear() {

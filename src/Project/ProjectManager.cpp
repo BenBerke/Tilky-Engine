@@ -171,7 +171,7 @@ namespace ProjectManager {
         return LaunchEngine(projectFile, GetEngineVersionDirectory(currentEngineVersion));
     }
 
-    void CreateProject(const fs::path& directory, const std::string& projectName) {
+    void CreateProject(const fs::path& directory, const std::string& projectName, const std::string& engineVersion) {
         const fs::path assetsPath = directory / "Assets";
 
         bool openProject = true;
@@ -196,7 +196,7 @@ namespace ProjectManager {
             json projectData;
             projectData["name"] = projectName;
             projectData["assetsFolder"] = "Assets";
-            projectData["engineVersion"] = ""; // set later by the launcher (new-project default pin) or via "Select Version"
+            projectData["engineVersion"] = engineVersion; // set before OpenProject() below so the pinned version is the one launched
 
             std::ofstream file(dataPath);
 
@@ -224,14 +224,14 @@ namespace ProjectManager {
         OpenProject(directory);
     }
 
-    void CreateProjectDirectory(const std::string& projectName) {
+    void CreateProjectDirectory(const std::string& projectName, const std::string& engineVersion) {
         const fs::path path = GetDefaultProjectsFolder() / projectName;
 
         try {
             if (!fs::exists(path)) {
                 if (fs::create_directories(path)) {
                     spdlog::info("Created project folder: {}", path.string());
-                    CreateProject(path, projectName);
+                    CreateProject(path, projectName, engineVersion);
                 }
                 else spdlog::error("Failed to create project folder: {}", path.string());
             }

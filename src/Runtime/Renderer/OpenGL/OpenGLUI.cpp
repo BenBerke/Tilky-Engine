@@ -126,5 +126,6 @@ void OpenGL::DrawUIRectangle(
         );
     }
 
-    glDisable(GL_BLEND);
+    // Blending is left as the caller set it: the UI pass enables it once for
+    // every image, so each one keeps its texture's partial transparency.
 }

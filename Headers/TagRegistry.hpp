@@ -6,6 +6,7 @@
 #define TILKY_ENGINE_TAGREGISTRY_HPP
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -35,6 +36,10 @@ namespace TagRegistry
     uint32_t GetNextId();
 
     void Load(TagMap tags, uint32_t nextId);
+    // Loads the tags from a project's ProjectSettings.json. A missing file
+    // means a project without tags: the registry is cleared and this returns
+    // true. Used by both the editor and the standalone game.
+    bool LoadFromProjectSettings(const std::filesystem::path& settingsPath);
     void Clear();
 }
 

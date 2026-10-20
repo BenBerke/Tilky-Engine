@@ -369,6 +369,13 @@ int main(int argc, char** argv) {
     std::cout << "Copied project metadata from " << metadataPath
               << " to " << metadataDest << "\n";
 
+    // Copy ProjectSettings.json (tag names), if the project has one
+    const fs::path settingsSrc = projectDir / "ProjectSettings.json";
+    if (fs::exists(settingsSrc)) {
+        if (!CopyFileChecked(settingsSrc, destinationPath / "ProjectSettings.json")) return 1;
+        std::cout << "Copied project settings from " << settingsSrc << "\n";
+    }
+
     // Copy Assets/
     const fs::path assetsSrc  = projectDir / "Assets";
     const fs::path assetsDest = destinationPath / "Assets";

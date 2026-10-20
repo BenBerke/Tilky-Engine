@@ -6,6 +6,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/TagRegistry.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -27,6 +28,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to load project metadata\n";
         return 1;
     }
+
+    // Tag names, for entity:HasTag and Game.FindEntitiesWithTag.
+    if (!TagRegistry::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))
+        std::cerr << "Failed to load ProjectSettings.json; tags won't be found by name\n";
 
     LevelSerialization::LevelExtraData extraData;
 

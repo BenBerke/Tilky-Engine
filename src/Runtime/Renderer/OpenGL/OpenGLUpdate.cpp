@@ -478,6 +478,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
                 sprite.texture
             );
         }
+
+        glDisable(GL_BLEND);
     }
 
     {

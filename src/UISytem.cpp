@@ -19,14 +19,17 @@ namespace UISystem {
         const bool stretchX = transform.anchorMin.x != transform.anchorMax.x;
         const bool stretchY = transform.anchorMin.y != transform.anchorMax.y;
 
-        const Vector2 anchorPoint = {
-            stretchX ? (anchorMinPx.x + anchorMaxPx.x) * 0.5f : anchorMinPx.x,
-            stretchY ? (anchorMinPx.y + anchorMaxPx.y) * 0.5f : anchorMinPx.y
-        };
-
         const Vector2 anchorSize = {
             anchorMaxPx.x - anchorMinPx.x,
             anchorMaxPx.y - anchorMinPx.y
+        };
+
+        // On a stretched axis the anchor point sits at the pivot's fraction
+        // of the span, so subtracting size * pivot below lands exactly on the
+        // span's start: the element covers the span whatever the pivot.
+        const Vector2 anchorPoint = {
+            stretchX ? anchorMinPx.x + anchorSize.x * transform.pivot.x : anchorMinPx.x,
+            stretchY ? anchorMinPx.y + anchorSize.y * transform.pivot.y : anchorMinPx.y
         };
 
         const Vector2 finalSize = {

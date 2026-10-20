@@ -80,7 +80,10 @@ namespace ProjectManager {
     // It does NOT create any subfolders inside Assets. Assets of every kind
     // may live in any folder under Assets, so nothing is pre-created at a
     // fixed location.
-    void CreateProject(const fs::path &directory, const std::string &projectName);
+    //
+    // engineVersion is written into project.tilky before the project is opened,
+    // so the new project launches in that version. Empty leaves it unpinned.
+    void CreateProject(const fs::path &directory, const std::string &projectName, const std::string &engineVersion);
 
     // Creates a new project folder inside the top-level Projects folder, then creates
     // the actual project files inside it.
@@ -96,8 +99,9 @@ namespace ProjectManager {
     // This function turns that into:
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject
     //
-    // Then it calls CreateProject() using that project root folder.
-    void CreateProjectDirectory(const std::string &projectName);
+    // Then it calls CreateProject() using that project root folder, passing
+    // engineVersion through.
+    void CreateProjectDirectory(const std::string &projectName, const std::string &engineVersion);
 
     // Loads a project's metadata from its project.tilky file and stores the important
     // project paths inside ProjectManager.
