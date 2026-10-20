@@ -116,6 +116,7 @@ namespace LevelManager {
         for (Wall& wall : level.walls) {
             if (wall.top.texture == oldReference) wall.top.texture = newReference;
             if (wall.bottom.texture == oldReference) wall.bottom.texture = newReference;
+            if (wall.middle.texture == oldReference) wall.middle.texture = newReference;
         }
 
         for (Sector& sector : level.sectors)

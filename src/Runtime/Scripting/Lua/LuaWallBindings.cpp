@@ -31,10 +31,17 @@ namespace {
             Prop("bottomTextureScale", "Vector2"),
             Prop("topAnchor", "WallAnchor"),
             Prop("bottomAnchor", "WallAnchor"),
+            Prop("middleTexture", "string"),
+            Prop("middleTextureOffset", "Vector2"),
+            Prop("middleTextureScale", "Vector2"),
+            Prop("middleAnchor", "WallAnchor"),
+            Prop("middleHasCollision", "boolean"),
+            Prop("middleIgnoredByRaycast", "boolean"),
             Prop("tagCount", "integer", true),
         }, {
             Method("ClearTopTexture"),
             Method("ClearBottomTexture"),
+            Method("ClearMiddleTexture"),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this wall has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
         }));
@@ -145,6 +152,40 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
         "bottomAnchor", sol::property(
             &ScriptWall::GetBottomAnchor,
             &ScriptWall::SetBottomAnchor
+        ),
+
+        // Fills the wall's openings; no texture means no middle at all.
+        "middleTexture", sol::property(
+            &ScriptWall::GetMiddleTexture,
+            &ScriptWall::SetMiddleTexture
+        ),
+
+        "ClearMiddleTexture",
+        &ScriptWall::ClearMiddleTexture,
+
+        "middleTextureOffset", sol::property(
+            &ScriptWall::GetMiddleTextureOffset,
+            &ScriptWall::SetMiddleTextureOffset
+        ),
+
+        "middleTextureScale", sol::property(
+            &ScriptWall::GetMiddleTextureScale,
+            &ScriptWall::SetMiddleTextureScale
+        ),
+
+        "middleAnchor", sol::property(
+            &ScriptWall::GetMiddleAnchor,
+            &ScriptWall::SetMiddleAnchor
+        ),
+
+        "middleHasCollision", sol::property(
+            &ScriptWall::GetMiddleHasCollision,
+            &ScriptWall::SetMiddleHasCollision
+        ),
+
+        "middleIgnoredByRaycast", sol::property(
+            &ScriptWall::GetMiddleIgnoredByRaycast,
+            &ScriptWall::SetMiddleIgnoredByRaycast
         ),
 
         // Read-only: tags are assigned from the editor only - no SetTag.

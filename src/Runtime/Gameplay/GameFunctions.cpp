@@ -312,6 +312,8 @@ namespace {
             };
 
             for (const WallPieces::WallPiece& piece : scratch.pieces) {
+                if (piece.slot == WallSurfaceSlot::Middle && wall.middleIgnoredByRaycast) continue;
+
                 const Vector3 bottomStart = {wall.start.x, piece.bottomStart, wall.start.y};
                 const Vector3 bottomEnd = {wall.end.x, piece.bottomEnd, wall.end.y};
                 const Vector3 topEnd = {wall.end.x, piece.topEnd, wall.end.y};

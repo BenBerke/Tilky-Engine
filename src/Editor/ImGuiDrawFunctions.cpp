@@ -1490,7 +1490,7 @@ namespace ImGuiDrawFunctions {
         Tooltip(Get("editor.tooltip.wall.texture").c_str());
     }
 
-    // `id` keeps the Top and Bottom widgets apart when both are shown.
+    // `id` keeps the Top, Bottom and Middle widgets apart when several are shown.
     void DrawWallSurfaceSettings(const char *id, WallSurface &surface, const bool draggable) {
         ImGui::PushID(id);
 
@@ -1578,10 +1578,16 @@ namespace ImGuiDrawFunctions {
 
         // Only a portal has a step under the neighbour's floor, so only a
         // portal gets a Bottom texture; a solid wall shows Top everywhere.
+        // Only a portal has openings too, so Middle is greyed out on the rest.
         const bool portal = wall.IsPortal();
 
         DrawWallTextureField(portal ? Get("wall.texture_top").c_str() : Get("wall.texture").c_str(), wall.top);
         if (portal) DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
+
+        ImGui::BeginDisabled(!portal);
+        MapEditorInternal::DrawAssetField(Get("wall.texture_middle").c_str(), wall.middle.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
+        ImGui::EndDisabled();
+        Tooltip(Get("editor.tooltip.wall.texture_middle").c_str());
 
         FieldWidth(220.0f);
 
@@ -1609,6 +1615,19 @@ namespace ImGuiDrawFunctions {
             DrawWallSurfaceSettings("Bottom", wall.bottom, draggable);
         }
         else DrawWallSurfaceSettings("Top", wall.top, draggable);
+
+        ImGui::BeginDisabled(!portal);
+
+        SmallMetaText("%s", Get("wall.texture_middle").c_str());
+        DrawWallSurfaceSettings("Middle", wall.middle, draggable);
+
+        ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
+        Tooltip(Get("editor.tooltip.wall.middle_has_collision").c_str());
+
+        ImGui::Checkbox(Get("wall.ignored_by_raycast").c_str(), &wall.middleIgnoredByRaycast);
+        Tooltip(Get("editor.tooltip.wall.middle_ignored_by_raycast").c_str());
+
+        ImGui::EndDisabled();
 
         EndSection();
 

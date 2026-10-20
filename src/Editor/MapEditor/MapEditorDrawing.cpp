@@ -669,8 +669,11 @@ namespace MapEditorInternal {
 
             SDL_Texture *floorTexture = nullptr;
 
-            if (textureViewMode && !sector.floors.empty()) {
-                const std::string &textureFileName = sector.floors.front().floor.texture;
+            if (textureViewMode != TextureViewMode::Off && !sector.floors.empty()) {
+                const SectorFloor& shownFloor = sector.floors.front();
+                const std::string &textureFileName = textureViewMode == TextureViewMode::Ceiling
+                    ? shownFloor.ceiling.texture
+                    : shownFloor.floor.texture;
 
                 if (!textureFileName.empty()) floorTexture = GetEditorTexture(textureFileName);
             }
@@ -909,7 +912,7 @@ namespace MapEditorInternal {
             const ComponentSprite* sprite = level.sprites.Get(entity.id);
             SDL_Texture* spriteTexture = nullptr;
 
-            if (textureViewMode && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty())
+            if (textureViewMode != TextureViewMode::Off && sprite != nullptr && !sprite->textureFileNames.empty() && !sprite->textureFileNames[0].empty())
                 spriteTexture = GetEditorTexture(sprite->textureFileNames[0]);
 
             if (spriteTexture != nullptr) {

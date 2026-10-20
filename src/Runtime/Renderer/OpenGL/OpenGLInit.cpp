@@ -37,6 +37,7 @@ namespace {
         for (const Wall& wall : level.walls) {
             if (!wall.top.texture.empty()) uniqueNames.insert(wall.top.texture);
             if (!wall.bottom.texture.empty()) uniqueNames.insert(wall.bottom.texture);
+            if (!wall.middle.texture.empty()) uniqueNames.insert(wall.middle.texture);
         }
 
         for (const Sector& sector : level.sectors) {

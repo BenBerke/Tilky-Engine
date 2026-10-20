@@ -17,7 +17,8 @@ namespace WallPieces {
 
         enum class WallSpanSide {
             Front,
-            Back
+            Back,
+            Opening // open on both sides: where a middle texture goes
         };
 
         // Mirrors GetSlopeOffset() in Rendering_vs.glsl. slopeStrength is used
@@ -228,10 +229,13 @@ namespace WallPieces {
             return best;
         }
 
+        // With `withOpenings`, the parts open on both sides come back too,
+        // as Opening spans.
         std::vector<WallSpan> BuildWallSpans(
             const SectorSample& frontSector,
             const SectorSample& backSector,
-            const WallSamplePoints& points
+            const WallSamplePoints& points,
+            const bool withOpenings
         ) {
             std::vector<HeightSample> heights;
 
@@ -256,11 +260,13 @@ namespace WallPieces {
 
                 const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
 
-                if (frontOpen == backOpen) continue;
+                WallSpanSide side;
 
-                PushOrMergeWallSpan(spans, bottom, top,
-                frontOpen ? WallSpanSide::Front : WallSpanSide::Back
-                );
+                if (frontOpen != backOpen) side = frontOpen ? WallSpanSide::Front : WallSpanSide::Back;
+                else if (frontOpen && withOpenings) side = WallSpanSide::Opening;
+                else continue;
+
+                PushOrMergeWallSpan(spans, bottom, top, side);
             }
 
             return spans;
@@ -312,8 +318,18 @@ namespace WallPieces {
                 return;
             }
 
-            piece.frontFacing = side == WallSpanSide::Front;
+            piece.frontFacing = side != WallSpanSide::Back;
             piece.facingSector = facingSector;
+
+            // Seen from both sides, so neither sector's floor or ceiling
+            // decides anything: always Middle, anchored at the top like a
+            // solid wall.
+            if (side == WallSpanSide::Opening) {
+                piece.slot = WallSurfaceSlot::Middle;
+                piece.anchorHeight = ResolveAnchorHeight(wall.middle.anchor, WallTextureAnchor::TopEdge, piece);
+                pieces.push_back(piece);
+                return;
+            }
 
             const uint8_t neighbourFloor = piece.frontFacing ? BACK_FLOOR : FRONT_FLOOR;
             const uint8_t neighbourCeiling = piece.frontFacing ? BACK_CEILING : FRONT_CEILING;
@@ -365,7 +381,7 @@ namespace WallPieces {
             wall.end
         };
 
-        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, points);
+        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, points, wall.HasMiddle());
 
         if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr) {
             PushPiece(
@@ -382,7 +398,8 @@ namespace WallPieces {
         }
 
         for (const WallSpan& span : spans) {
-            const bool frontSide = span.side == WallSpanSide::Front;
+            // An opening is lit by the front sector.
+            const bool frontSide = span.side != WallSpanSide::Back;
             const bool hasNeighbour = frontSide ? backSectorPtr != nullptr : frontSectorPtr != nullptr;
 
             PushPiece(pieces, wall, span.bottom, span.top, span.side, hasNeighbour,
@@ -405,11 +422,15 @@ namespace WallPieces {
             t = std::clamp(Vector2Math::Dot(toPoint, wall.vector) / wall.lengthSq, 0.0f, 1.0f);
         }
 
-        for (const WallPiece& piece : pieces) {
-            const float bottom = piece.bottomStart + (piece.bottomEnd - piece.bottomStart) * t;
-            const float top = piece.topStart + (piece.topEnd - piece.topStart) * t;
+        // Pieces share edges, so a piece the height is strictly inside wins
+        // over one it only touches within the tolerance.
+        for (const float tolerance : {0.0f, TOLERANCE}) {
+            for (const WallPiece& piece : pieces) {
+                const float bottom = piece.bottomStart + (piece.bottomEnd - piece.bottomStart) * t;
+                const float top = piece.topStart + (piece.topEnd - piece.topStart) * t;
 
-            if (height >= bottom - TOLERANCE && height <= top + TOLERANCE) return piece.slot;
+                if (height >= bottom - tolerance && height <= top + tolerance) return piece.slot;
+            }
         }
 
         return WallSurfaceSlot::Top;

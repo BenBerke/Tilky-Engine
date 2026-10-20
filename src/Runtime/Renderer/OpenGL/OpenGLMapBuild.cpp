@@ -136,6 +136,7 @@ void OpenGL::BuildGpuWallsFromMap() {
 
         const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
         const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture));
+        const float middleTextureIndex = wall.HasMiddle() ? static_cast<float>(GetTextureRegionIndex(wall.middle.texture)) : 0.0f;
 
         pieces.clear();
         WallPieces::Build(level, wall, boundsCache, pieces);
@@ -145,7 +146,9 @@ void OpenGL::BuildGpuWallsFromMap() {
                 gpuWalls,
                 wall,
                 piece,
-                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex : topTextureIndex,
+                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex
+                    : piece.slot == WallSurfaceSlot::Middle ? middleTextureIndex
+                    : topTextureIndex,
                 wallContrast,
                 fullbright,
                 WallPieceMetaData(wallIndex, piece.slot)

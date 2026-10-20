@@ -2042,11 +2042,18 @@ struct ScriptWall {
     void SetBottomTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Bottom).texture = value; }
     void ClearBottomTexture() const { SetBottomTexture(""); }
 
+    [[nodiscard]] std::string GetMiddleTexture() const { return GetSurface(WallSurfaceSlot::Middle).texture; }
+    void SetMiddleTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Middle).texture = value; }
+    void ClearMiddleTexture() const { SetMiddleTexture(""); }
+
     [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).textureOffset; }
     void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureOffset = value; }
 
     [[nodiscard]] Vector2 GetBottomTextureOffset() const { return GetSurface(WallSurfaceSlot::Bottom).textureOffset; }
     void SetBottomTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureOffset = value; }
+
+    [[nodiscard]] Vector2 GetMiddleTextureOffset() const { return GetSurface(WallSurfaceSlot::Middle).textureOffset; }
+    void SetMiddleTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).textureOffset = value; }
 
     [[nodiscard]] Vector2 GetTopTextureScale() const { return GetSurface(WallSurfaceSlot::Top).textureScale; }
     void SetTopTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureScale = value; }
@@ -2054,11 +2061,29 @@ struct ScriptWall {
     [[nodiscard]] Vector2 GetBottomTextureScale() const { return GetSurface(WallSurfaceSlot::Bottom).textureScale; }
     void SetBottomTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureScale = value; }
 
+    [[nodiscard]] Vector2 GetMiddleTextureScale() const { return GetSurface(WallSurfaceSlot::Middle).textureScale; }
+    void SetMiddleTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).textureScale = value; }
+
     [[nodiscard]] int GetTopAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Top).anchor); }
     void SetTopAnchor(const int value) const { GetSurface(WallSurfaceSlot::Top).anchor = ToAnchor(value); }
 
     [[nodiscard]] int GetBottomAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Bottom).anchor); }
     void SetBottomAnchor(const int value) const { GetSurface(WallSurfaceSlot::Bottom).anchor = ToAnchor(value); }
+
+    [[nodiscard]] int GetMiddleAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Middle).anchor); }
+    void SetMiddleAnchor(const int value) const { GetSurface(WallSurfaceSlot::Middle).anchor = ToAnchor(value); }
+
+    [[nodiscard]] bool GetMiddleHasCollision() const { return CheckedWall().middleHasCollision; }
+    void SetMiddleHasCollision(const bool value) const { CheckedWall().middleHasCollision = value; }
+
+    [[nodiscard]] bool GetMiddleIgnoredByRaycast() const { return CheckedWall().middleIgnoredByRaycast; }
+    void SetMiddleIgnoredByRaycast(const bool value) const { CheckedWall().middleIgnoredByRaycast = value; }
+
+    [[nodiscard]] Wall& CheckedWall() const {
+        Wall* wall = GetWall();
+        if (wall == nullptr) throw sol::error("Invalid Wall");
+        return *wall;
+    }
 
     static WallTextureAnchor ToAnchor(const int value) {
         const std::optional<WallTextureAnchor> anchor = WallTextureAnchorFromInt(value);

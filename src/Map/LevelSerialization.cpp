@@ -726,6 +726,9 @@ namespace {
 
             if (wallJson.contains("top")) LoadWallSurface(wallJson.at("top"), wall.top);
             if (wallJson.contains("bottom")) LoadWallSurface(wallJson.at("bottom"), wall.bottom);
+            if (wallJson.contains("middle")) LoadWallSurface(wallJson.at("middle"), wall.middle);
+            wall.middleHasCollision = wallJson.value("middleHasCollision", wall.middleHasCollision);
+            wall.middleIgnoredByRaycast = wallJson.value("middleIgnoredByRaycast", wall.middleIgnoredByRaycast);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
@@ -800,6 +803,9 @@ namespace {
                 },
                 {"top", SaveWallSurface(wall.top)},
                 {"bottom", SaveWallSurface(wall.bottom)},
+                {"middle", SaveWallSurface(wall.middle)},
+                {"middleHasCollision", wall.middleHasCollision},
+                {"middleIgnoredByRaycast", wall.middleIgnoredByRaycast},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
                 {"tags", wall.tags},

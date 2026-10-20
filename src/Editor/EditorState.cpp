@@ -47,7 +47,7 @@ namespace MapEditorInternal {
     Mode currentMode = MODE_GEOMETRY;
     State currentState = STATE_MAP;
 
-    bool textureViewMode = false;
+    TextureViewMode textureViewMode = TextureViewMode::Off;
 
     // Here rather than next to UndoLastAction: level loading clears them,
     // and that code is in the standalone build too.

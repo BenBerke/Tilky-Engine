@@ -244,7 +244,16 @@ namespace MapEditorInternal {
     extern Mode currentMode;
     extern State currentState;
 
-    extern bool textureViewMode;
+    // What the 2D canvas fills sectors with. Its key cycles through these in
+    // order. Sprite textures show in every mode but Off.
+    enum class TextureViewMode {
+        Off,
+        Floor,   // the lowest floor's texture
+        Ceiling, // that floor's ceiling texture
+        Count
+    };
+
+    extern TextureViewMode textureViewMode;
 
     extern int currentFloor;
 

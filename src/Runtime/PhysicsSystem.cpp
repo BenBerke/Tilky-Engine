@@ -252,10 +252,13 @@ namespace {
         return best;
     }
 
+    // With `solidOpenings` (a middle texture with collision), the parts open
+    // on both sides are solid too.
     std::vector<WallSpan> BuildWallSpans(
         const SectorSample& frontSector,
         const SectorSample& backSector,
-        const WallSamplePoints& points
+        const WallSamplePoints& points,
+        const bool solidOpenings
     ) {
         std::vector<HeightSample> heights;
 
@@ -297,7 +300,7 @@ namespace {
             const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
             const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
 
-            if (frontOpen == backOpen) continue;
+            if (frontOpen == backOpen && !(frontOpen && solidOpenings)) continue;
 
             if (!spans.empty() &&
                 std::abs(spans.back().topStart - bottom.start) <= MIN_WALL_HEIGHT &&
@@ -328,6 +331,7 @@ namespace {
             Vector2 end;
             int frontIndex = -1;
             int backIndex = -1;
+            bool solidOpenings = false;
         };
         std::vector<WallKey> wallKeys;
         std::vector<std::vector<WallSpan>> spans;
@@ -399,7 +403,13 @@ namespace {
 
             if (frontSectorPtr == backSectorPtr) backSectorPtr = nullptr;
 
-            const WallSpanCache::WallKey key{wall.start, wall.end, indexOf(frontSectorPtr), indexOf(backSectorPtr)};
+            const WallSpanCache::WallKey key{
+                wall.start,
+                wall.end,
+                indexOf(frontSectorPtr),
+                indexOf(backSectorPtr),
+                wall.HasMiddle() && wall.middleHasCollision
+            };
             WallSpanCache::WallKey& cached = cache.wallKeys[wallIndex];
 
             const bool sectorsChanged =
@@ -411,7 +421,8 @@ namespace {
                 cached.start == key.start &&
                 cached.end == key.end &&
                 cached.frontIndex == key.frontIndex &&
-                cached.backIndex == key.backIndex) continue;
+                cached.backIndex == key.backIndex &&
+                cached.solidOpenings == key.solidOpenings) continue;
 
             const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
             const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
@@ -426,7 +437,7 @@ namespace {
             };
 
             std::vector<WallSpan>& spans = cache.spans[wallIndex];
-            spans = BuildWallSpans(frontSector, backSector, points);
+            spans = BuildWallSpans(frontSector, backSector, points, key.solidOpenings);
 
             if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr)
                 spans.push_back({0.0f, 0.0f, 32.0f, 32.0f});

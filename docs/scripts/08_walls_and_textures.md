@@ -16,10 +16,11 @@ Useful `Wall` members:
 | Member | Type | Notes |
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
-| `wall.topTextureOffset`, `wall.bottomTextureOffset` | `Vector2` | Scrolls a texture. Change it over time for moving surfaces |
-| `wall.topTexture`, `wall.bottomTexture` | `string` | Swap a texture. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` remove it |
-| `wall.topAnchor`, `wall.bottomAnchor` | `WallAnchor` | Where a texture is pinned (`Auto`, `TopEdge`, `BottomEdge`, `World`) |
-| `wall.isPortal` | boolean | `true` if a sector is on both sides. Bottom only shows on portals |
+| `wall.topTextureOffset`, `wall.bottomTextureOffset`, `wall.middleTextureOffset` | `Vector2` | Scrolls a texture. Change it over time for moving surfaces |
+| `wall.topTexture`, `wall.bottomTexture`, `wall.middleTexture` | `string` | Swap a texture. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` / `wall:ClearMiddleTexture()` remove it |
+| `wall.topAnchor`, `wall.bottomAnchor`, `wall.middleAnchor` | `WallAnchor` | Where a texture is pinned (`Auto`, `TopEdge`, `BottomEdge`, `World`) |
+| `wall.isPortal` | boolean | `true` if a sector is on both sides. Bottom and Middle only show on portals |
+| `wall.middleHasCollision`, `wall.middleIgnoredByRaycast` | boolean | Whether the middle (fence, bars) blocks movement, and whether raycasts pass through it |
 | `wall.start`, `wall["end"]`, `wall.length` | read-only | Endpoints (`Vector2`) and length. `end` is a Lua keyword, so use `wall["end"]` |
 | `wall.frontSector`, `wall.backSector` | integer IDs | `backSector` identifies the neighbour on a portal wall |
 | `wall:HasTag("Name")` | boolean | Tags are assigned in the editor |

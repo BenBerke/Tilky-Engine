@@ -2378,8 +2378,6 @@ namespace MapEditorInternal {
         // Neither half of a split may be shorter than this.
         constexpr float MIN_SPLIT_LENGTH = 0.5f;
 
-        constexpr std::array<WallSurfaceSlot, 2> WALL_SLOTS = {WallSurfaceSlot::Top, WallSurfaceSlot::Bottom};
-
         bool NearlySame(const Vector2& a, const Vector2& b) {
             return MapTopology::PointsEquivalent(a, b);
         }
@@ -2470,7 +2468,7 @@ namespace MapEditorInternal {
             second.id = level.nextWallID++;
             second.start = splitPoint;
 
-            for (const WallSurfaceSlot slot : WALL_SLOTS) {
+            for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                 WallSurface& surface = second.Surface(slot);
                 surface.textureOffset.x = WrapTextureOffset(surface.textureOffset.x + USign(surface) * startDistance * surface.textureScale.x);
             }
@@ -2543,7 +2541,7 @@ namespace MapEditorInternal {
                 // moves back by the same length to keep the texture still.
                 first->start = secondFar;
 
-                for (const WallSurfaceSlot slot : WALL_SLOTS) {
+                for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                     WallSurface& surface = first->Surface(slot);
                     surface.textureOffset.x = WrapTextureOffset(surface.textureOffset.x - USign(surface) * secondLength * surface.textureScale.x);
                 }
@@ -2779,7 +2777,7 @@ namespace MapEditorInternal {
 
         GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
 
-        for (const WallSurfaceSlot slot : WALL_SLOTS) {
+        for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
             const WallSurface& first = primary->Surface(slot);
 
             // The walk keeps the primary's U direction the whole way round.
@@ -2826,8 +2824,7 @@ namespace MapEditorInternal {
             Wall* wall = FindWall(level, wallID);
             if (wall == nullptr) continue;
 
-            wall->top.textureOffset = {0.0f, 0.0f};
-            wall->bottom.textureOffset = {0.0f, 0.0f};
+            for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) wall->Surface(slot).textureOffset = {0.0f, 0.0f};
             ++changed;
         }
 
@@ -2857,7 +2854,7 @@ namespace MapEditorInternal {
 
             bool wallChanged = false;
 
-            for (const WallSurfaceSlot slot : WALL_SLOTS) {
+            for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                 float tallest = 0.0f;
 
                 for (const WallPieces::WallPiece& piece : pieces) {

@@ -650,6 +650,10 @@ namespace {
                 Wall& wall = level.walls[wallIndex];
                 fn(wall.top);
                 fn(wall.bottom);
+
+                // Only a middle that exists: giving every selected wall a
+                // middle texture would fill all of their openings.
+                if (wall.HasMiddle()) fn(wall.middle);
                 ++count;
             }
             return count;
@@ -726,6 +730,9 @@ namespace {
         Vector4 color = {};
         WallSurface top;
         WallSurface bottom;
+        WallSurface middle;
+        bool middleHasCollision = true;
+        bool middleIgnoredByRaycast = false;
 
         // Sector
         Vector3 light = {};
@@ -750,6 +757,9 @@ namespace {
             propertyClipboard.color = wall.color;
             propertyClipboard.top = wall.top;
             propertyClipboard.bottom = wall.bottom;
+            propertyClipboard.middle = wall.middle;
+            propertyClipboard.middleHasCollision = wall.middleHasCollision;
+            propertyClipboard.middleIgnoredByRaycast = wall.middleIgnoredByRaycast;
             propertyClipboard.tags = wall.tags;
             propertyClipboard.tagIds = wall.tagIds;
             return true;
@@ -776,6 +786,9 @@ namespace {
         wall.color = propertyClipboard.color;
         wall.top = propertyClipboard.top;
         wall.bottom = propertyClipboard.bottom;
+        wall.middle = propertyClipboard.middle;
+        wall.middleHasCollision = propertyClipboard.middleHasCollision;
+        wall.middleIgnoredByRaycast = propertyClipboard.middleIgnoredByRaycast;
         wall.tags = propertyClipboard.tags;
         wall.tagIds = propertyClipboard.tagIds;
     }
@@ -1111,7 +1124,8 @@ namespace {
             SelectOnlyWall(hoveredSurface.wallIndex);
 
             for (int i = 0; i < static_cast<int>(level.walls.size()); ++i)
-                if (i != hoveredSurface.wallIndex && (level.walls[i].top.texture == texture || level.walls[i].bottom.texture == texture))
+                if (i != hoveredSurface.wallIndex &&
+                    (level.walls[i].top.texture == texture || level.walls[i].bottom.texture == texture || level.walls[i].middle.texture == texture))
                     selectedWalls.push_back(i);
 
             return true;
@@ -2326,7 +2340,7 @@ namespace RuntimeEditor {
             for (const int index : selectedWalls) {
                 mark.wallIndex = index;
 
-                for (const WallSurfaceSlot slot : {WallSurfaceSlot::Top, WallSurfaceSlot::Bottom}) {
+                for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                     mark.wallSlot = slot;
                     renderer.MarkSurface(mark);
                 }

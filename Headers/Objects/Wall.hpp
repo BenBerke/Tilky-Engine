@@ -59,9 +59,10 @@ inline std::optional<WallTextureAnchor> WallTextureAnchorFromInt(const int value
     return std::nullopt;
 }
 
-// One texture and its placement. A wall has two: Top covers a solid wall
+// One texture and its placement. A wall has three: Top covers a solid wall
 // and, on a portal, everything except the step under the neighbour's
-// floor, which uses Bottom.
+// floor, which uses Bottom. Middle fills the openings, where both sides are
+// open space, and only exists while it has a texture.
 struct WallSurface {
     std::string texture;
     Vector2 textureOffset = {0.0f, 0.0f};
@@ -73,8 +74,11 @@ struct WallSurface {
 
 enum class WallSurfaceSlot {
     Top,
-    Bottom
+    Bottom,
+    Middle
 };
+
+inline constexpr std::array WALL_SURFACE_SLOTS = {WallSurfaceSlot::Top, WallSurfaceSlot::Bottom, WallSurfaceSlot::Middle};
 
 struct Wall {
     ID id = INVALID_ID;
@@ -89,6 +93,13 @@ struct Wall {
 
     WallSurface top;
     WallSurface bottom;
+    WallSurface middle;
+
+    // Only matter while middle has a texture. Collision blocks movement
+    // through the opening; raycasts (scripts and the runtime editor's
+    // picking) pass through unless they are ignored here.
+    bool middleHasCollision = true;
+    bool middleIgnoredByRaycast = false;
 
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
     // Should be -1 if there is no sector
@@ -144,11 +155,21 @@ struct Wall {
     }
 
     [[nodiscard]] WallSurface& Surface(const WallSurfaceSlot slot) {
-        return slot == WallSurfaceSlot::Bottom ? bottom : top;
+        switch (slot) {
+            case WallSurfaceSlot::Bottom: return bottom;
+            case WallSurfaceSlot::Middle: return middle;
+            default: return top;
+        }
     }
 
     [[nodiscard]] const WallSurface& Surface(const WallSurfaceSlot slot) const {
-        return slot == WallSurfaceSlot::Bottom ? bottom : top;
+        return const_cast<Wall*>(this)->Surface(slot);
+    }
+
+    // Openings exist only on portals, and a middle without a texture draws
+    // nothing at all.
+    [[nodiscard]] bool HasMiddle() const {
+        return !middle.texture.empty();
     }
 
     // Recomputes dir/normal/vector/lengthSq/length from the current

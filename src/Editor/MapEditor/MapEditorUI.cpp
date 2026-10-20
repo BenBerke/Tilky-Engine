@@ -2106,7 +2106,9 @@ namespace MapEditorInternal {
         if (keyboardBlockedByImgui) return;
 
         if (GetComboDown(COMBO_SAVE)) SaveLevelFromEditor();
-        if (GetKeyBindDown(KEYBIND_TOGGLE_TEXTURE_VIEW)) textureViewMode = !textureViewMode;
+        if (GetKeyBindDown(KEYBIND_TOGGLE_TEXTURE_VIEW))
+            textureViewMode = static_cast<TextureViewMode>(
+                (static_cast<int>(textureViewMode) + 1) % static_cast<int>(TextureViewMode::Count));
 
         if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_UI;
         else if (GetKeyBindDown(KEYBIND_TOGGLE_RUNTIME_EDITOR)) OpenRuntimeEditorFromEditor();
@@ -2566,6 +2568,9 @@ namespace {
         Vector4 color{};
         WallSurface top;
         WallSurface bottom;
+        WallSurface middle;
+        bool middleHasCollision = true;
+        bool middleIgnoredByRaycast = false;
     };
 
     struct EntityTransformSnapshot {
@@ -2709,6 +2714,9 @@ namespace {
         snapshot.color = wall.color;
         snapshot.top = wall.top;
         snapshot.bottom = wall.bottom;
+        snapshot.middle = wall.middle;
+        snapshot.middleHasCollision = wall.middleHasCollision;
+        snapshot.middleIgnoredByRaycast = wall.middleIgnoredByRaycast;
         return snapshot;
     }
 
@@ -2776,6 +2784,17 @@ namespace {
 
             if (ApplyWallSurfaceChange(before.top, primary.top, target.top)) changedAnything = true;
             if (ApplyWallSurfaceChange(before.bottom, primary.bottom, target.bottom)) changedAnything = true;
+            if (ApplyWallSurfaceChange(before.middle, primary.middle, target.middle)) changedAnything = true;
+
+            if (primary.middleHasCollision != before.middleHasCollision) {
+                target.middleHasCollision = primary.middleHasCollision;
+                changedAnything = true;
+            }
+
+            if (primary.middleIgnoredByRaycast != before.middleIgnoredByRaycast) {
+                target.middleIgnoredByRaycast = primary.middleIgnoredByRaycast;
+                changedAnything = true;
+            }
         }
 
         return changedAnything;
@@ -4379,8 +4398,29 @@ namespace MapEditorInternal {
         ImGui::Separator();
         ImGui::Spacing();
 
-        ImGui::Checkbox(Get("editor.texture_view_mode").c_str(), &textureViewMode);
-        HoverTooltip(Get("editor.tooltip.texture_view_mode").c_str());
+        {
+            // Same order as TextureViewMode.
+            static constexpr const char* labelKeys[] = {
+                "editor.texture_view_mode.off",
+                "editor.texture_view_mode.floor",
+                "editor.texture_view_mode.ceiling",
+            };
+            static_assert(std::size(labelKeys) == static_cast<size_t>(TextureViewMode::Count));
+
+            const int current = static_cast<int>(textureViewMode);
+
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::BeginCombo(Get("editor.texture_view_mode").c_str(), Get(labelKeys[current]).c_str())) {
+                for (int mode = 0; mode < static_cast<int>(TextureViewMode::Count); ++mode) {
+                    const bool selected = mode == current;
+                    if (ImGui::Selectable(Get(labelKeys[mode]).c_str(), selected))
+                        textureViewMode = static_cast<TextureViewMode>(mode);
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            HoverTooltip(FormatKeyBinds(Get("editor.tooltip.texture_view_mode")).c_str());
+        }
 
         // ---- Grid & snapping (visible in every mode - Geometry Mode's
         // wall/endpoint dragging and every Sector drawing tool both

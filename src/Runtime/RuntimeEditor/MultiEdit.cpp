@@ -114,6 +114,9 @@ namespace MultiEdit {
         target.color = loaded.color;
         target.top = std::move(loaded.top);
         target.bottom = std::move(loaded.bottom);
+        target.middle = std::move(loaded.middle);
+        target.middleHasCollision = loaded.middleHasCollision;
+        target.middleIgnoredByRaycast = loaded.middleIgnoredByRaycast;
     }
 
     json SectorState(const Sector& sector) {
