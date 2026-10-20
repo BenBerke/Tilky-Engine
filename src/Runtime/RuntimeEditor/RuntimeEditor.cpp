@@ -185,6 +185,19 @@ namespace {
     // edge-on to a wall and the viewed face cannot be told apart.
     float lastWallDragHorizontalSign = 1.0f;
 
+    // How a floor or ceiling drag maps the mouse onto the texture offset,
+    // decided once on button-down like uvDragHorizontalSign. Offset X slides
+    // the texture along world X, offset Y along world Z; `horizontalAxis` is
+    // the one left/right mouse movement drives (0 = X, 1 = Y), up/down
+    // drives the other. The signs make the texture follow the cursor.
+    struct FlatUvDrag {
+        int horizontalAxis = 0;
+        float horizontalSign = 1.0f;
+        float verticalSign = 1.0f;
+    };
+
+    FlatUvDrag flatUvDrag;
+
     // The transform gizmo on the entity being edited. Chosen with the Tools
     // window's buttons or the 1/2 keys.
     TransformGizmo::Tool gizmoTool = TransformGizmo::Tool::Move;
@@ -1411,6 +1424,73 @@ namespace {
         return (screenSlide > 0.0f ? 1.0f : -1.0f) * textureSlide;
     }
 
+    // Which texture axis each mouse axis drives on a floor or ceiling, from
+    // where a step along world X and along world Z at the clicked point lands
+    // on screen. Projecting covers every case at once: facing any way, floors
+    // (whose far side is at the top of the screen) and ceilings (whose near
+    // side is), and slopes. `fallback` when the camera is edge-on to the
+    // surface and the axes can't be told apart.
+    FlatUvDrag ComputeFlatUvDrag(
+        const SectorSurface& surface,
+        const WallPieces::SectorBounds& bounds,
+        const Vector3 hitPosition,
+        const TransformGizmo::View& view,
+        const FlatUvDrag& fallback) {
+        constexpr float STEP = 0.5f; // world units
+        constexpr float MIN_PIXELS = 1e-3f;
+
+        const auto onSurface = [&](const float x, const float z) {
+            return Vector3{x, WallPieces::GetSurfaceHeight(surface, bounds, {x, z}), z};
+        };
+
+        Vector2 origin, alongX, alongZ;
+        if (!TransformGizmo::ProjectPoint(view, onSurface(hitPosition.x, hitPosition.z), origin) ||
+            !TransformGizmo::ProjectPoint(view, onSurface(hitPosition.x + STEP, hitPosition.z), alongX) ||
+            !TransformGizmo::ProjectPoint(view, onSurface(hitPosition.x, hitPosition.z + STEP), alongZ))
+            return fallback;
+
+        // Screen movement (pixels, y down) of one step along each world axis.
+        const Vector2 screenAxes[2] = {
+            {alongX.x - origin.x, alongX.y - origin.y},
+            {alongZ.x - origin.x, alongZ.y - origin.y}
+        };
+
+        float lengths[2];
+        for (int axis = 0; axis < 2; ++axis) {
+            lengths[axis] = std::sqrt(screenAxes[axis].x * screenAxes[axis].x + screenAxes[axis].y * screenAxes[axis].y);
+            if (lengths[axis] < MIN_PIXELS) return fallback;
+        }
+
+        // The pairing whose axes line up best with the screen's.
+        const float xHorizontal = std::abs(screenAxes[0].x) / lengths[0] + std::abs(screenAxes[1].y) / lengths[1];
+        const float zHorizontal = std::abs(screenAxes[1].x) / lengths[1] + std::abs(screenAxes[0].y) / lengths[0];
+
+        FlatUvDrag drag;
+        drag.horizontalAxis = xHorizontal >= zHorizontal ? 0 : 1;
+        const int verticalAxis = 1 - drag.horizontalAxis;
+
+        // uv = position * scale (negated when flipped) + offset, so a larger
+        // offset slides the texture toward negative world positions, and a
+        // flip or a negative scale turns that around.
+        const auto worldSlide = [&surface](const int axis) {
+            const bool flipped = axis == 0 ? surface.flipTextureX : surface.flipTextureY;
+            const float scale = axis == 0 ? surface.textureScale.x : surface.textureScale.y;
+
+            float slide = -1.0f;
+            if (flipped) slide = -slide;
+            if (scale < 0.0f) slide = -slide;
+            return slide;
+        };
+
+        const float horizontalScreen = screenAxes[drag.horizontalAxis].x * worldSlide(drag.horizontalAxis);
+        const float verticalScreen = screenAxes[verticalAxis].y * worldSlide(verticalAxis);
+
+        drag.horizontalSign = horizontalScreen >= 0.0f ? 1.0f : -1.0f;
+        drag.verticalSign = verticalScreen >= 0.0f ? 1.0f : -1.0f;
+
+        return drag;
+    }
+
     void DrawDropHint(const std::string& text) {
         ImDrawList* drawList = ImGui::GetForegroundDrawList();
 
@@ -2413,6 +2493,24 @@ namespace RuntimeEditor {
 
                 uvDragHorizontalSign = lastWallDragHorizontalSign;
             }
+            else if ((uvDragSurface.type == RayHitType::SectorFloor || uvDragSurface.type == RayHitType::SectorCeiling) &&
+                     hit.has_value() && haveGizmoView &&
+                     uvDragSurface.sectorIndex >= 0 &&
+                     uvDragSurface.sectorIndex < static_cast<int>(level.sectors.size())) {
+                const Sector& dragSector = level.sectors[uvDragSurface.sectorIndex];
+
+                if (uvDragSurface.floorIndex >= 0 && uvDragSurface.floorIndex < static_cast<int>(dragSector.floors.size())) {
+                    const SectorFloor& dragFloor = dragSector.floors[uvDragSurface.floorIndex];
+
+                    flatUvDrag = ComputeFlatUvDrag(
+                        uvDragSurface.type == RayHitType::SectorFloor ? dragFloor.floor : dragFloor.ceiling,
+                        WallPieces::ComputeSectorBounds(dragSector),
+                        hit->position,
+                        gizmoView,
+                        flatUvDrag
+                    );
+                }
+            }
 
             SetCursorLocked(cameraLooking || draggingUv);
         }
@@ -2451,9 +2549,22 @@ namespace RuntimeEditor {
                     uvDragPushedUndo = true;
                 }
 
-                if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
+                const bool xOnly = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY);
+                const bool yOnly = !xOnly && MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY);
+
+                // The axis locks are mouse directions, so on a floor or
+                // ceiling they lock whichever texture axis that direction drives.
+                if (uvDragSurface.type == RayHitType::SectorFloor || uvDragSurface.type == RayHitType::SectorCeiling) {
+                    const float horizontal = yOnly ? 0.0f : mouseDelta.x * flatUvDrag.horizontalSign * dragSpeed;
+                    const float vertical = xOnly ? 0.0f : mouseDelta.y * flatUvDrag.verticalSign * dragSpeed;
+
+                    AddUvOffset(level, uvDragSurface, flatUvDrag.horizontalAxis == 0
+                        ? Vector2{horizontal, vertical}
+                        : Vector2{vertical, horizontal});
+                }
+                else if (xOnly)
                     AddUvOffset(level, uvDragSurface, {deltaX, 0});
-                else if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
+                else if (yOnly)
                     AddUvOffset(level, uvDragSurface, {0, deltaY});
                 else
                     AddUvOffset(level, uvDragSurface, {deltaX, deltaY});
