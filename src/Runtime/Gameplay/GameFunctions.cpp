@@ -11,16 +11,10 @@
 #include <vector>
 
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Map/WallPieces.hpp"
 #include "Headers/Math/Constants.hpp"
 
 namespace {
-    constexpr float MIN_WALL_HEIGHT = 0.0001f;
-
-    struct WallSpan {
-        float bottom;
-        float top;
-    };
-
     std::optional<float> RayTriangleIntersection(
         const Vector3& origin,
         const Vector3& dir,
@@ -155,12 +149,21 @@ namespace {
         return std::sqrt(dx * dx + dz * dz);
     }
 
-    // Distance along the ray to the horizontal plane at `height`, if it's
-    // within maxDistance. Same parallel cutoff as RayTriangleIntersection.
-    std::optional<float> RayFlatDistance(const Vector3& origin, const Vector3& dir, const float height, const float maxDistance) {
-        if (std::abs(dir.y) < Constants::Epsilon) return std::nullopt;
+    // Distance along the ray to a floor or ceiling's plane, slope included,
+    // if it's within maxDistance. Same parallel cutoff as RayTriangleIntersection.
+    std::optional<float> RayFlatDistance(const Vector3& origin, const Vector3& dir, const SectorSurface& surface,
+                                         const WallPieces::SectorBounds& bounds, const float maxDistance) {
+        // A slope is linear in map X/Z, so three samples give the plane
+        // height = base + slopeX * x + slopeZ * z exactly, from the same
+        // function the renderer's geometry uses.
+        const float base = WallPieces::GetSurfaceHeight(surface, bounds, {0.0f, 0.0f});
+        const float slopeX = WallPieces::GetSurfaceHeight(surface, bounds, {1.0f, 0.0f}) - base;
+        const float slopeZ = WallPieces::GetSurfaceHeight(surface, bounds, {0.0f, 1.0f}) - base;
 
-        const float t = (height - origin.y) / dir.y;
+        const float denominator = dir.y - slopeX * dir.x - slopeZ * dir.z;
+        if (std::abs(denominator) < Constants::Epsilon) return std::nullopt;
+
+        const float t = (base + slopeX * origin.x + slopeZ * origin.z - origin.y) / denominator;
         if (t < 0.0f || t > maxDistance) return std::nullopt;
 
         return t;
@@ -187,60 +190,6 @@ namespace {
         const bool hasPositive = ab > 0.0f || bc > 0.0f || ca > 0.0f;
 
         return !(hasNegative && hasPositive);
-    }
-
-    bool IsSectorOpenAtHeight(const Sector& sector, const float height) {
-        for (const SectorFloor& sectorFloor : sector.floors)
-            if (height > sectorFloor.floor.height && height < sectorFloor.ceiling.height) return true;
-
-
-        return false;
-    }
-
-    void AddSectorBoundaryHeights(const Sector& sector, std::vector<float>& heights) {
-        for (const SectorFloor& floor : sector.floors) {
-            heights.push_back(floor.floor.height);
-            heights.push_back(floor.ceiling.height);
-        }
-    }
-
-    // Fills `spans` with the solid parts of a wall between the two sectors.
-    // The caller owns both buffers so one ray reuses them for every wall it
-    // crosses instead of allocating per wall.
-    void BuildWallSpans(const Sector* frontSector, const Sector* backSector,
-                        std::vector<float>& heights, std::vector<WallSpan>& spans) {
-        heights.clear();
-        spans.clear();
-
-        if (frontSector != nullptr) AddSectorBoundaryHeights(*frontSector, heights);
-        if (backSector != nullptr) AddSectorBoundaryHeights(*backSector, heights);
-
-        std::ranges::sort(heights);
-
-        heights.erase(
-            std::ranges::unique(heights,
-                                [](const float a, const float b) {
-                                    return std::abs(a - b) <= MIN_WALL_HEIGHT;
-                                }
-            ).begin(),
-            heights.end()
-        );
-
-        for (size_t i = 0; i + 1 < heights.size(); ++i) {
-            const float bottom = heights[i];
-            const float top = heights[i + 1];
-
-            if (top - bottom <= MIN_WALL_HEIGHT) continue;
-
-            const float sampleHeight = (bottom + top) * 0.5f;
-            const bool frontOpen = frontSector != nullptr && IsSectorOpenAtHeight(*frontSector, sampleHeight);
-            const bool backOpen = backSector != nullptr && IsSectorOpenAtHeight(*backSector, sampleHeight);
-
-            if (frontOpen == backOpen) continue;
-
-            if (!spans.empty() && std::abs(spans.back().top - bottom) <= MIN_WALL_HEIGHT) spans.back().top = top;
-            else spans.push_back({bottom, top});
-        }
     }
 
     // Index of the sector with this ID, or -1.
@@ -272,8 +221,7 @@ namespace {
     // Scratch space reused by every ray on this thread, so a ray allocates
     // nothing once these have grown.
     struct RayScratch {
-        std::vector<float> heights;
-        std::vector<WallSpan> spans;
+        std::vector<WallPieces::WallPiece> pieces;
 
         std::vector<int> sectorStack;
         std::vector<int> visitedSectors;
@@ -342,18 +290,15 @@ namespace {
             rayHit = hit;
         };
 
-        // The exact 3D test for a wall the ray's top-down path crosses.
+        // Slopes are measured from each sector's bounds. Only sectors the ray
+        // gets near are looked up, so they're computed on demand per ray.
+        WallPieces::SectorBoundsCache boundsCache;
+
+        // The exact 3D test for a wall the ray's top-down path crosses,
+        // against the pieces the renderer draws, sloped edges included.
         const auto testWall = [&](Wall& wall) {
-            const Sector* frontSector = MapQueries::GetSectorByID(level, wall.frontSector);
-            const Sector* backSector = MapQueries::GetSectorByID(level, wall.backSector);
-
-            if (frontSector == backSector) backSector = nullptr;
-
-            BuildWallSpans(frontSector, backSector, scratch.heights, scratch.spans);
-
-            if (scratch.spans.empty() && frontSector == nullptr && backSector == nullptr) {
-                scratch.spans.push_back({0.0f, 32.0f});
-            }
+            scratch.pieces.clear();
+            WallPieces::Build(level, wall, boundsCache, scratch.pieces);
 
             const HitOrder order{ORDER_WALL, static_cast<std::size_t>(&wall - level.walls.data()), 0};
 
@@ -366,11 +311,11 @@ namespace {
                 submit(distance, order, hit);
             };
 
-            for (const WallSpan& span : scratch.spans) {
-                const Vector3 bottomStart = {wall.start.x, span.bottom, wall.start.y};
-                const Vector3 bottomEnd = {wall.end.x, span.bottom, wall.end.y};
-                const Vector3 topEnd = {wall.end.x, span.top, wall.end.y};
-                const Vector3 topStart = {wall.start.x, span.top, wall.start.y};
+            for (const WallPieces::WallPiece& piece : scratch.pieces) {
+                const Vector3 bottomStart = {wall.start.x, piece.bottomStart, wall.start.y};
+                const Vector3 bottomEnd = {wall.end.x, piece.bottomEnd, wall.end.y};
+                const Vector3 topEnd = {wall.end.x, piece.topEnd, wall.end.y};
+                const Vector3 topStart = {wall.start.x, piece.topStart, wall.start.y};
 
                 const std::optional<float> firstHit = RayTriangleIntersection(
                     pos,
@@ -396,11 +341,13 @@ namespace {
             }
         };
 
-        // Floors and ceilings are flat, so the ray meets each one at a single
-        // point: find it once, then check whether it's inside the sector,
-        // instead of a 3D ray-triangle test against every triangle.
-        const auto testFlat = [&](Sector& sector, const int floorIndex, const float height, const RayHitType type) {
-            const std::optional<float> distance = RayFlatDistance(pos, normalizedDir, height, closestDistance);
+        // Floors and ceilings are planes (tilted when sloped), so the ray
+        // meets each one at a single point: find it once, then check whether
+        // it's inside the sector, instead of a 3D ray-triangle test against
+        // every triangle.
+        const auto testFlat = [&](Sector& sector, const int floorIndex, const SectorSurface& surface, const RayHitType type) {
+            const std::optional<float> distance =
+                RayFlatDistance(pos, normalizedDir, surface, boundsCache.Get(&sector), closestDistance);
             if (!distance.has_value()) return;
 
             const HitOrder order{
@@ -429,8 +376,8 @@ namespace {
             for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
                 const SectorFloor& floor = sector.floors[floorIndex];
 
-                testFlat(sector, floorIndex, floor.floor.height, RayHitType::SectorFloor);
-                testFlat(sector, floorIndex, floor.ceiling.height, RayHitType::SectorCeiling);
+                testFlat(sector, floorIndex, floor.floor, RayHitType::SectorFloor);
+                testFlat(sector, floorIndex, floor.ceiling, RayHitType::SectorCeiling);
             }
         };
 
