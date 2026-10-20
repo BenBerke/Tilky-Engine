@@ -361,11 +361,29 @@ namespace MapEditorInternal {
             return true;
         }();
 
-        // `key` is the second key of a combo of `scope` whose first key is
-        // held right now.
+        // The 2D editor also uses the runtime editor's texture copy/paste
+        // combos, so their keys are taken there too: Alt+V mustn't also
+        // press V (open the runtime editor).
+        bool ComboUsedInScope(const int combo, const KeyBindScope scope) {
+            if (COMBO_INFO[combo].scope == scope) return true;
+            if (scope != KEYSCOPE_MAP) return false;
+
+            switch (combo) {
+                case COMBO_RT_COPY_TEXTURE:
+                case COMBO_RT_COPY_TEXTURE_PLACEMENT:
+                case COMBO_RT_PASTE_TEXTURE:
+                case COMBO_RT_PASTE_TEXTURE_PLACEMENT:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        // `key` is the second key of a combo used in `scope` whose first key
+        // is held right now.
         bool IsKeyTakenByCombo(const SDL_Scancode key, const KeyBindScope scope) {
             for (int combo = 0; combo < COMBO_COUNT; ++combo) {
-                if (COMBO_INFO[combo].scope != scope) continue;
+                if (!ComboUsedInScope(combo, scope)) continue;
 
                 for (int set = 0; set < COMBO_SLOTS; set += 2) {
                     const SDL_Scancode first = comboBindings[combo][set];

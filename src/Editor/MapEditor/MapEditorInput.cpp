@@ -13,6 +13,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapTopology.hpp"
+#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
@@ -1033,6 +1034,263 @@ namespace MapEditorInternal {
         return holdingEntity ? activeGizmoPart : GIZMO_NONE;
     }
 
+    // =========================================================================
+    //  Texture copy/paste on the canvas - the runtime editor's shortcuts
+    // =========================================================================
+    //
+    // Copy takes from what the cursor is on (Geometry and Sector Mode fall
+    // back to the primary selection). Paste goes to the whole selection when
+    // the cursor is on a selected item or on nothing, and to just the hovered
+    // item otherwise. A sector's floor or ceiling is picked by the texture
+    // view mode, Off counting as floor.
+
+    namespace {
+        // A wall copies its three textures as a set and a sprite its texture
+        // for every angle. `primary` is the single texture other kinds of
+        // target take from them.
+        struct CanvasTextureClipboard {
+            enum class Source { None, Wall, Flat, Sprite } source = Source::None;
+            bool hasPlacement = false;
+
+            WallSurface primary;
+            std::array<WallSurface, WALL_SURFACE_SLOTS.size()> wallSurfaces;
+            std::array<std::string, 8> spriteTextures;
+            SideCount spriteSideCount = SIDECOUNT_SINGLE;
+        };
+
+        CanvasTextureClipboard canvasTextureClipboard;
+
+        // The floor or ceiling the canvas is showing for this sector.
+        SectorSurface* ShownFlat(Sector& sector) {
+            if (sector.floors.empty()) return nullptr;
+
+            SectorFloor& floor = sector.floors.front();
+            return textureViewMode == TextureViewMode::Ceiling ? &floor.ceiling : &floor.floor;
+        }
+
+        int WallIndexOf(const Level& level, const ID wallID) {
+            const auto it = level.wallIDToIndex.find(wallID);
+            return it == level.wallIDToIndex.end() ? -1 : it->second;
+        }
+
+        int SectorIndexOf(const Level& level, const ID sectorID) {
+            const auto it = level.sectorIDToIndex.find(sectorID);
+            return it == level.sectorIDToIndex.end() ? -1 : it->second;
+        }
+
+        // The wall, sector or entity under the cursor in the current mode.
+        ID HoveredCanvasItem(const Level& level, const Vector2& mouseWorld) {
+            switch (currentMode) {
+                case MODE_GEOMETRY:
+                    return PickWallAt(mouseWorld);
+
+                case MODE_SECTOR:
+                    // Hole-aware, like the hover highlight.
+                    for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i)
+                        if (Geometry::IsPointInPolygon(level.sectors[i].vertices, level.sectors[i].innerLoops, mouseWorld))
+                            return level.sectors[i].id;
+                    return INVALID_ID;
+
+                case MODE_ENTITY: {
+                    const Entity* entity = EntityAt(mouseWorld);
+                    return entity != nullptr && level.sprites.Get(entity->id) != nullptr ? entity->id : INVALID_ID;
+                }
+
+                default:
+                    return INVALID_ID;
+            }
+        }
+
+        const std::vector<ID>& CanvasSelection() {
+            switch (currentMode) {
+                case MODE_GEOMETRY: return selectedWalls;
+                case MODE_SECTOR: return selectedSectors;
+                default: return selectedEntities;
+            }
+        }
+
+        template <typename Surface>
+        void CopyPlacement(const Surface& from, WallSurface& to) {
+            to.texture = from.texture;
+            to.textureOffset = from.textureOffset;
+            to.textureScale = from.textureScale;
+            to.flipTextureX = from.flipTextureX;
+            to.flipTextureY = from.flipTextureY;
+        }
+
+        bool CopyCanvasTexture(Level& level, const ID itemID, const bool withPlacement) {
+            CanvasTextureClipboard copied;
+            copied.hasPlacement = withPlacement;
+
+            if (currentMode == MODE_GEOMETRY) {
+                const int index = WallIndexOf(level, itemID);
+                if (index < 0) return false;
+
+                const Wall& wall = level.walls[index];
+                bool anyTexture = false;
+
+                for (size_t slot = 0; slot < WALL_SURFACE_SLOTS.size(); ++slot) {
+                    copied.wallSurfaces[slot] = wall.Surface(WALL_SURFACE_SLOTS[slot]);
+                    anyTexture = anyTexture || !copied.wallSurfaces[slot].texture.empty();
+                }
+
+                if (!anyTexture) return false;
+
+                copied.source = CanvasTextureClipboard::Source::Wall;
+                copied.primary = wall.top;
+            }
+            else if (currentMode == MODE_SECTOR) {
+                const int index = SectorIndexOf(level, itemID);
+                if (index < 0) return false;
+
+                const SectorSurface* flat = ShownFlat(level.sectors[index]);
+                if (flat == nullptr || flat->texture.empty()) return false;
+
+                copied.source = CanvasTextureClipboard::Source::Flat;
+                CopyPlacement(*flat, copied.primary);
+            }
+            else if (currentMode == MODE_ENTITY) {
+                const ComponentSprite* sprite = level.sprites.Get(itemID);
+                if (sprite == nullptr || std::ranges::all_of(sprite->textureFileNames, &std::string::empty)) return false;
+
+                copied.source = CanvasTextureClipboard::Source::Sprite;
+                copied.spriteTextures = sprite->textureFileNames;
+                copied.spriteSideCount = sprite->sideCount;
+                copied.primary.texture = sprite->textureFileNames[0];
+            }
+            else return false;
+
+            canvasTextureClipboard = std::move(copied);
+            return true;
+        }
+
+        // Texture, plus offset/scale/flip with `withPlacement`.
+        template <typename Surface>
+        void PastePrimary(Surface& surface, const bool withPlacement) {
+            const WallSurface& primary = canvasTextureClipboard.primary;
+
+            surface.texture = primary.texture;
+            if (!withPlacement) return;
+
+            surface.textureOffset = primary.textureOffset;
+            surface.textureScale = primary.textureScale;
+            surface.flipTextureX = primary.flipTextureX;
+            surface.flipTextureY = primary.flipTextureY;
+        }
+
+        // Returns how many items changed.
+        int PasteCanvasTexture(Level& level, const std::vector<ID>& targets, bool withPlacement) {
+            const CanvasTextureClipboard& clipboard = canvasTextureClipboard;
+            if (clipboard.source == CanvasTextureClipboard::Source::None || targets.empty()) return 0;
+
+            withPlacement = withPlacement && clipboard.hasPlacement;
+            const char* labelKey = withPlacement ? "runtime_editor.history.paste_texture_placement" : "runtime_editor.history.paste_texture";
+
+            int changed = 0;
+
+            if (currentMode == MODE_GEOMETRY || currentMode == MODE_SECTOR) {
+                GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+
+                for (const ID id : targets) {
+                    if (currentMode == MODE_GEOMETRY) {
+                        const int index = WallIndexOf(level, id);
+                        if (index < 0) continue;
+
+                        Wall& wall = level.walls[index];
+
+                        if (clipboard.source == CanvasTextureClipboard::Source::Wall) {
+                            for (size_t slot = 0; slot < WALL_SURFACE_SLOTS.size(); ++slot) {
+                                WallSurface& surface = wall.Surface(WALL_SURFACE_SLOTS[slot]);
+
+                                if (withPlacement) surface = clipboard.wallSurfaces[slot];
+                                else surface.texture = clipboard.wallSurfaces[slot].texture;
+                            }
+                        }
+                        else PastePrimary(wall.top, withPlacement);
+                    }
+                    else {
+                        const int index = SectorIndexOf(level, id);
+                        if (index < 0) continue;
+
+                        SectorSurface* flat = ShownFlat(level.sectors[index]);
+                        if (flat == nullptr) continue;
+
+                        PastePrimary(*flat, withPlacement);
+                    }
+
+                    ++changed;
+                }
+
+                if (changed > 0) PushGeometryUndoSnapshot(std::move(before), labelKey, changed);
+                return changed;
+            }
+
+            EntitiesSnapshot before = CaptureEntitiesSnapshot();
+
+            for (const ID id : targets) {
+                ComponentSprite* sprite = level.sprites.Get(id);
+                if (sprite == nullptr) continue;
+
+                if (clipboard.source == CanvasTextureClipboard::Source::Sprite) {
+                    sprite->textureFileNames = clipboard.spriteTextures;
+                    sprite->sideCount = clipboard.spriteSideCount;
+                }
+                else sprite->textureFileNames[0] = clipboard.primary.texture;
+
+                ++changed;
+            }
+
+            if (changed > 0) PushEntitiesUndo(std::move(before), labelKey, changed);
+            return changed;
+        }
+
+        // True when it took the key press. In Entity Mode that is only while
+        // the cursor is on an entity with a sprite, so Ctrl+C / Ctrl+V still
+        // copy and paste entities everywhere else.
+        bool HandleCanvasTextureShortcuts(Level& level, const Vector2& mouseWorld, const bool mouseBlockedByImGui) {
+            const bool copyWithPlacement = GetComboDown(COMBO_RT_COPY_TEXTURE_PLACEMENT);
+            const bool copy = copyWithPlacement || GetComboDown(COMBO_RT_COPY_TEXTURE);
+            const bool pasteWithPlacement = GetComboDown(COMBO_RT_PASTE_TEXTURE_PLACEMENT);
+            const bool paste = pasteWithPlacement || GetComboDown(COMBO_RT_PASTE_TEXTURE);
+
+            if (!copy && !paste) return false;
+
+            const ID hovered = mouseBlockedByImGui ? INVALID_ID : HoveredCanvasItem(level, mouseWorld);
+            if (currentMode == MODE_ENTITY && hovered == INVALID_ID) return false;
+
+            // With no texture copied yet, Ctrl+V on an entity still pastes entities.
+            const bool clipboardEmpty = canvasTextureClipboard.source == CanvasTextureClipboard::Source::None;
+            if (currentMode == MODE_ENTITY && !copy && clipboardEmpty) return false;
+
+            if (copy) {
+                ID source = hovered;
+
+                if (source == INVALID_ID) {
+                    if (currentMode == MODE_GEOMETRY) source = selectedWallID;
+                    else if (currentMode == MODE_SECTOR) source = selectedSectorID;
+                }
+
+                if (source != INVALID_ID && CopyCanvasTexture(level, source, copyWithPlacement))
+                    ImGuiDrawFunctions::ShowNotification(Localisation::Get(copyWithPlacement
+                        ? "runtime_editor.toast.texture_and_placement_copied"
+                        : "runtime_editor.toast.texture_copied").c_str(), false, 1.5f);
+            }
+
+            if (paste) {
+                const std::vector<ID>& selection = CanvasSelection();
+                const bool hoveredSelected = std::ranges::find(selection, hovered) != selection.end();
+
+                const std::vector<ID> targets = hovered == INVALID_ID || hoveredSelected
+                    ? selection
+                    : std::vector<ID>{hovered};
+
+                PasteCanvasTexture(level, targets, pasteWithPlacement);
+            }
+
+            return true;
+        }
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -1305,7 +1563,12 @@ namespace MapEditorInternal {
         }
 
         // Not while a text field has the keyboard: Ctrl+C/V there are its own.
-        if (!keyboardBlockedByImgui && currentMode == MODE_ENTITY) {
+        // Texture copy/paste first: in Entity Mode it shares Ctrl+C/V with
+        // entity copy/paste, and wins while the cursor is on an entity.
+        const bool textureShortcutTaken =
+            !keyboardBlockedByImgui && HandleCanvasTextureShortcuts(level, mouseWorld, mouseBlockedByImGui);
+
+        if (!keyboardBlockedByImgui && !textureShortcutTaken && currentMode == MODE_ENTITY) {
             if (GetComboDown(COMBO_COPY_ENTITIES) && !selectedEntities.empty()) [[unlikely]] {
                 // Any selection, not only a dragged or inspected entity.
                 // The primary goes first: paste places it under the cursor.
