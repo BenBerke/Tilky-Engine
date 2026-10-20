@@ -461,7 +461,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
-            if (!sprite.isActive) continue;
+            if (!sprite.isActive || sprite.color.w <= 0.0f) continue;
 
             const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
@@ -473,7 +473,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             DrawUIRectangle(
                 transform->resolvedPosition,
                 transform->resolvedSize,
-                {255.0f, 255.0f, 255.0f, 255.0f},
+                {sprite.color.x * 255.0f, sprite.color.y * 255.0f, sprite.color.z * 255.0f, sprite.color.w * 255.0f},
                 transform->rotation,
                 sprite.texture
             );

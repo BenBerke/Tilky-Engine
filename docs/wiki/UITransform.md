@@ -65,7 +65,7 @@ Those results are readable as `resolvedPosition` (top-left corner) and `resolved
 
 ## In the editor
 
-UI entities are edited in the **UI Editor** (add one with **Add UI Entity** in its Hierarchy). The
+UI entities are edited in the **UI Editor** (right-click the canvas and pick **Create UI Entity**). The
 canvas previews the layout at a target resolution.
 
 | Field | Lua | Default | Notes |
@@ -77,6 +77,31 @@ canvas previews the layout at a target resolution.
 | **Scale** | `scale` | `1, 1` | **Size in pixels**. The default is a 1 × 1 pixel dot, so set a real size. |
 | **Rotation** | `rotation` | `0` | Degrees. |
 | **Resolved Layout** | `resolvedPosition`, `resolvedSize` | | The computed result, read-only. |
+
+### On the canvas
+
+| Do this | To |
+|---|---|
+| Right-click | **Create UI Entity** (100 × 100, centred on the cursor); on an element also Duplicate, Frame and Delete. |
+| Click | Select the topmost element under the cursor. Click the same spot again to select the one underneath. |
+| Shift/Ctrl + click | Add the element to the selection, or take it out. |
+| Drag on empty canvas | Box select every element the box touches. |
+| Drag an element, the square or an arrow | Move the selection (an arrow moves along its axis only). |
+| Drag a corner or edge handle | Resize; the opposite side stays put. Hold Shift to keep the aspect ratio. A stretched axis has no handles: its size comes from the anchors. |
+| Drag the handle above the top edge | Rotate. |
+| Arrow keys | Nudge the selection 1 pixel (10 with Shift). |
+| Ctrl+D, Delete, Ctrl+Z / Ctrl+Y | Duplicate, delete, undo / redo. |
+| F | Frame the selection (or the whole screen). |
+| Escape | Cancel the drag, else deselect. |
+
+While moving and resizing, edges and centres **snap** to the screen's edges and centre, to other
+elements (**To Elements**), to the grid and to the safe area while those overlays are shown; a pink
+guide shows what it snapped to. Rotation snaps to 15°. Hold Alt to ignore snapping, or turn
+**Snap** off (N). Every key here can be rebound in **User Settings** (UI Editor groups).
+
+**Arrange** aligns the selection's left/centre/right/top/middle/bottom edges: to the screen when
+one element is selected, to their combined bounds when several are. **Distribute** spaces three or
+more evenly.
 
 ## Scripting
 

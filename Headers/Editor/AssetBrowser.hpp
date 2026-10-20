@@ -318,7 +318,7 @@ public:
     void DrawFlipbookEditorWindows();
 
     // Opens a .prefab in the prefab editor (or focuses it). Drawn by
-    // DrawPrefabEditorWindows(), which the Map and UI editors call.
+    // DrawPrefabEditorWindows(), which the Map, UI and runtime editors call.
     void RequestOpenPrefab(const std::filesystem::path& absolutePath);
     void DrawPrefabEditorWindows();
 

@@ -154,7 +154,8 @@ namespace {
 
         RegisterType(Type("UISprite", "A UI element's texture.", {
             Prop("isValid", "boolean", true),
-            Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\")."),
+            Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\"). \"\" = a solid rectangle of color."),
+            Prop("color", "Vector4", false, "RGBA, each 0..1, multiplied with the texture. Alpha below 1 makes the image see-through."),
             Prop("isActive", "boolean", false, "false = not drawn."),
         }));
 
@@ -608,6 +609,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         "textureIndex", sol::property(
             &ScriptUISprite::GetTextureIndex,
             &ScriptUISprite::SetTextureIndex
+        ),
+
+        "color", sol::property(
+            &ScriptUISprite::GetColor,
+            &ScriptUISprite::SetColor
         )
     );
 

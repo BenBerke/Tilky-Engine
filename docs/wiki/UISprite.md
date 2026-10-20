@@ -12,6 +12,9 @@ icons, a logo. It fills the rectangle of the entity's [UI Transform](UITransform
   image.
 - It turns with the UI Transform's `rotation`.
 - It isn't affected by any sector's light. The texture's own transparency is kept.
+- **Color** multiplies the texture. Its alpha makes the whole image see-through: `0.5` is half
+  transparent, `0` hides it.
+- With no texture, the Image is a solid rectangle of its **Color**: panels, bars, fades.
 - Images are drawn before [Text](UIText.md), so text always appears on top of images.
 - An inactive image (**Is Active** off) isn't drawn in the game. The UI Editor still shows it,
   faded, so you can find and select it.
@@ -23,8 +26,12 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 
 | Field | Lua | Notes |
 |---|---|---|
-| **Texture** | `textureIndex` | Image path relative to `Assets`, with the extension. The editor warns if the file can't be found. |
+| **Texture** | `textureIndex` | Image path relative to `Assets`, with the extension. The editor warns if the file can't be found. Empty = a solid rectangle of **Color**. |
+| **Color** | `color` | RGBA, `0..1`, default `1, 1, 1, 1`. Multiplied with the texture; alpha below `1` makes it see-through. |
 | **Is Active** | `isActive` | On by default. Off = not drawn in the game. |
+
+**Set Native Size** sizes the UI Transform to the texture's own pixel size (not while the anchors
+stretch it).
 
 ## Scripting
 
@@ -33,6 +40,7 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 | `isValid` | boolean | read-only | `false` if the entity or its Image is gone. |
 | `textureIndex` | string | read/write | Despite the name, the image's **path**, e.g. `"Textures/UI/crosshair.png"`. |
 | `isActive` | boolean | read/write | `false` hides the image. |
+| `color` | Vector4 | read/write | RGBA, each `0..1`. `color.w` is the alpha. A colour read from `color` is a copy, so change it and assign it back. |
 
 Switching images from a script works like any other texture change: any image in `Assets` can be
 used (see the note on the [Sprite](Sprite.md) page).
@@ -52,6 +60,21 @@ end
 
 Add a [Flipbook](Flipbook.md#on-ui-entities) to the same entity. It swaps the image's texture
 frame by frame, using slot 0 (N) of each frame in the `.fpk` file.
+
+### Fading an image
+
+```lua
+-- Scripts/UI/FadeOut.lua (UI entity with an Image)
+public number duration = 1
+
+local elapsed = 0
+
+function Update()
+    elapsed = elapsed + GameTime.deltaTime
+    local c = entity.uiSprite.color
+    entity.uiSprite.color = Vector4(c.x, c.y, c.z, math.max(0, 1 - elapsed / duration))
+end
+```
 
 ### Showing and hiding an image
 

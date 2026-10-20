@@ -152,6 +152,11 @@ namespace MapEditorInternal {
     bool showUICenterLines = true;
     bool showUISafeArea = false;
 
+    std::vector<ID> selectedUIEntities = {};
+
+    bool uiSnapEnabled = true;
+    bool uiSnapToElements = true;
+
     std::vector<ID> selectedEntities = {};
     std::vector<ID> selectedSectors = {};
     std::vector<ID> selectedWalls = {};
@@ -278,6 +283,20 @@ namespace MapEditorInternal {
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
         {"rt_back_to_editor",   "editor.key.rt_back_to_editor",   "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_V}},
+
+        {"ui_nudge_up",         "editor.key.ui_nudge_up",         "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_UP}},
+        {"ui_nudge_down",       "editor.key.ui_nudge_down",       "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_DOWN}},
+        {"ui_nudge_left",       "editor.key.ui_nudge_left",       "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_LEFT}},
+        {"ui_nudge_right",      "editor.key.ui_nudge_right",      "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_RIGHT}},
+        {"ui_big_nudge",        "editor.key.ui_big_nudge",        "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
+        {"ui_delete",           "editor.key.ui_delete",           "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_DELETE, SDL_SCANCODE_BACKSPACE}},
+        {"ui_focus_selection",  "editor.key.ui_focus_selection",  "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_F}},
+        {"ui_zoom_in",          "editor.key.ui_zoom_in",          "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_EQUALS, SDL_SCANCODE_KP_PLUS}},
+        {"ui_zoom_out",         "editor.key.ui_zoom_out",         "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_MINUS, SDL_SCANCODE_KP_MINUS}},
+        {"ui_toggle_snap",      "editor.key.ui_toggle_snap",      "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_N}},
+        {"ui_disable_snap",     "editor.key.ui_disable_snap",     "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
+        {"ui_add_to_selection", "editor.key.ui_add_to_selection", "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_LCTRL}},
+        {"ui_keep_aspect",      "editor.key.ui_keep_aspect",      "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
     };
 
     SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS] = {};
@@ -304,6 +323,11 @@ namespace MapEditorInternal {
         {"rt_reset_placement", "editor.combo.rt_reset_placement", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_R, SDL_SCANCODE_RALT, SDL_SCANCODE_R}},
         {"rt_align_textures", "editor.combo.rt_align_textures", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_G, SDL_SCANCODE_RCTRL, SDL_SCANCODE_G}},
         {"rt_fit_textures",  "editor.combo.rt_fit_textures",  "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_G, SDL_SCANCODE_RALT, SDL_SCANCODE_G}},
+
+        {"ui_undo",          "editor.combo.ui_undo",          "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Z}},
+        {"ui_redo",          "editor.combo.ui_redo",          "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Y}},
+        {"ui_duplicate",     "editor.combo.ui_duplicate",     "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_D, SDL_SCANCODE_RCTRL, SDL_SCANCODE_D}},
+        {"ui_select_all",    "editor.combo.ui_select_all",    "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_A, SDL_SCANCODE_RCTRL, SDL_SCANCODE_A}},
     };
 
     SDL_Scancode comboBindings[COMBO_COUNT][COMBO_SLOTS] = {};

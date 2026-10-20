@@ -1516,6 +1516,18 @@ struct ScriptUISprite {
         if (sprite == nullptr) return;
         sprite->isActive = active;
     }
+
+    [[nodiscard]] Vector4 GetColor() const {
+        const ComponentUISprite* sprite = GetComponent();
+        if (sprite == nullptr) return {1.0f, 1.0f, 1.0f, 1.0f};
+        return sprite->color;
+    }
+
+    void SetColor(const Vector4& value) const {
+        ComponentUISprite* sprite = GetComponent();
+        if (sprite == nullptr) return;
+        sprite->color = value;
+    }
 };
 
 // ---------------------------------------------------------

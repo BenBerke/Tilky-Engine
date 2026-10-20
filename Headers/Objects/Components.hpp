@@ -70,7 +70,12 @@ struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
+    // Empty = a solid rectangle of `color`.
     std::string texture;
+
+    // RGBA, each 0..1, multiplied with the texture. Alpha below 1 makes the
+    // image see-through.
+    Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
     bool isActive = true; // false = not drawn
 };

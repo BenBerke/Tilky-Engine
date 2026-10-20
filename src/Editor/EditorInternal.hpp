@@ -415,6 +415,106 @@ namespace MapEditorInternal {
     extern ID selectedUIEntityID;
     extern ID hoveredUIEntityID; // recomputed each frame in HandleUIEditorInput(); read-only elsewhere, for hover highlighting.
 
+    // Every selected UI entity, the primary (selectedUIEntityID, the one the
+    // inspector and the gizmo are on) included. HandleUIEditorInput() keeps
+    // the two in step: setting selectedUIEntityID from anywhere else makes it
+    // the whole selection, and INVALID_ID clears it.
+    extern std::vector<ID> selectedUIEntities;
+
+    [[nodiscard]] bool IsUIEntitySelected(ID id);
+    // Makes `id` the only selected UI entity (INVALID_ID clears the selection).
+    void SelectUIEntity(ID id);
+    // Adds `id` as the new primary, or removes it if it's already selected.
+    void ToggleUIEntitySelection(ID id);
+
+    // Snapping while moving and resizing on the UI canvas. Screen edges and
+    // centre always, the grid and safe area while their overlays are shown,
+    // other elements when uiSnapToElements is on.
+    extern bool uiSnapEnabled;
+    extern bool uiSnapToElements;
+
+    // The canvas grid overlay's spacing and the safe area overlay's margin,
+    // which snapping uses too.
+    constexpr float UI_CANVAS_GRID_STEP = 32.0f;
+    constexpr float UI_SAFE_AREA_FRACTION = 0.05f;
+
+    // ---- UI canvas gizmo (UIEditorInput.cpp, drawn by UIEditorDraw.cpp) ----
+    enum UIGizmoPart {
+        UI_GIZMO_NONE,
+        UI_GIZMO_MOVE_X,
+        UI_GIZMO_MOVE_Y,
+        UI_GIZMO_MOVE_FREE,
+        UI_GIZMO_ROTATE,
+        // The 8 resize handles, in UI_RESIZE_HANDLE_DIRECTIONS order.
+        UI_GIZMO_RESIZE_FIRST,
+        UI_GIZMO_RESIZE_LAST = UI_GIZMO_RESIZE_FIRST + 7,
+        UI_GIZMO_BODY
+    };
+
+    // Each resize handle's side of the element, -1/0/1 per local axis.
+    inline constexpr int UI_RESIZE_HANDLE_DIRECTIONS[8][2] = {
+        {-1, -1}, {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}
+    };
+
+    // Screen-space layout of the primary selection's gizmo.
+    struct UIGizmoLayout {
+        Vector2 corners[4];        // TL, TR, BR, BL of the rotated rect
+        Vector2 center;
+        Vector2 xTip, yTip;        // move arrows, from `center`
+        Vector2 rotateHandle;
+        Vector2 rotateStem;        // middle of the top edge
+        Vector2 resizeHandles[8];
+        bool resizeShown[8];       // false on stretched axes and for edges too short to grab
+        bool moveSquareOnTop;      // a small element's move square beats its resize handles
+    };
+
+    [[nodiscard]] bool GetUIGizmoLayout(UIGizmoLayout* layout);
+    // The part being dragged, else the one under the mouse.
+    [[nodiscard]] UIGizmoPart GetHighlightedUIGizmoPart();
+
+    // A snap the current drag landed on, drawn as a guide across the canvas.
+    struct UISnapGuide {
+        bool vertical;     // a line of constant canvas x
+        float canvasValue;
+    };
+
+    [[nodiscard]] const std::vector<UISnapGuide>& GetUISnapGuides();
+
+    // The box selection being dragged, in screen space.
+    [[nodiscard]] bool GetUIBoxSelection(Vector2* startScreen, Vector2* endScreen);
+
+    // What the current drag shows next to the cursor ("X, Y", "W x H",
+    // "45.0 deg"); empty when not dragging.
+    [[nodiscard]] const std::string& GetUIDragReadout();
+
+    // The UI editor's unsaved-changes flag (UIEditorUI.cpp).
+    void MarkUIUnsavedChanges();
+
+    // Selection actions of the UI editor (UIEditorInput.cpp). Each pushes one
+    // undo step when it changed anything.
+    enum UIAlignment {
+        UI_ALIGN_LEFT,
+        UI_ALIGN_CENTER_X,
+        UI_ALIGN_RIGHT,
+        UI_ALIGN_TOP,
+        UI_ALIGN_CENTER_Y,
+        UI_ALIGN_BOTTOM
+    };
+
+    // One element: against the screen. Several: against their combined bounds.
+    void AlignSelectedUIEntities(UIAlignment alignment);
+    // Spaces the selection's centres evenly between its two outermost ones
+    // (needs 3 or more).
+    void DistributeSelectedUIEntities(bool horizontally);
+    // Centres the canvas on the selection (or the whole screen) and zooms to fit it.
+    void FrameUISelection();
+    void DeleteSelectedUIEntities();
+    void DuplicateSelectedUIEntities();
+
+    // True once per right click on the canvas, with where it was (canvas
+    // space) and whether it was on an element (which is now selected).
+    [[nodiscard]] bool ConsumeUICanvasContextMenuRequest(Vector2* canvasPoint, bool* onElement);
+
     // Canvas pan/zoom. uiCanvasPan is the canvas-space point currently at
     // the centre of the screen (mirrors cameraPos's role exactly).
     extern Vector2 uiCanvasPan;
@@ -1089,6 +1189,21 @@ namespace MapEditorInternal {
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
         KEYBIND_RT_BACK_TO_EDITOR,
 
+        // UI editor
+        KEYBIND_UI_NUDGE_UP,
+        KEYBIND_UI_NUDGE_DOWN,
+        KEYBIND_UI_NUDGE_LEFT,
+        KEYBIND_UI_NUDGE_RIGHT,
+        KEYBIND_UI_BIG_NUDGE,       // held with a nudge key
+        KEYBIND_UI_DELETE,
+        KEYBIND_UI_FOCUS_SELECTION,
+        KEYBIND_UI_ZOOM_IN,
+        KEYBIND_UI_ZOOM_OUT,
+        KEYBIND_UI_TOGGLE_SNAP,
+        KEYBIND_UI_DISABLE_SNAP,    // held while dragging
+        KEYBIND_UI_ADD_TO_SELECTION, // held while clicking or box selecting
+        KEYBIND_UI_KEEP_ASPECT,     // held while resizing
+
         KEYBIND_COUNT
     };
 
@@ -1098,7 +1213,8 @@ namespace MapEditorInternal {
     // from the single-key bindings of its own editor (see GetKeyBind).
     enum KeyBindScope {
         KEYSCOPE_MAP,     // 2D level editor
-        KEYSCOPE_RUNTIME  // runtime editor
+        KEYSCOPE_RUNTIME, // runtime editor
+        KEYSCOPE_UI       // UI editor
     };
 
     struct EditorKeyBindInfo {
@@ -1171,6 +1287,12 @@ namespace MapEditorInternal {
         COMBO_RT_RESET_PLACEMENT,
         COMBO_RT_ALIGN_TEXTURES,
         COMBO_RT_FIT_TEXTURES,
+
+        // UI editor
+        COMBO_UI_UNDO,
+        COMBO_UI_REDO,
+        COMBO_UI_DUPLICATE,
+        COMBO_UI_SELECT_ALL,
 
         COMBO_COUNT
     };

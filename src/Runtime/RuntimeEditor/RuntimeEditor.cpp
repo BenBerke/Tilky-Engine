@@ -1878,11 +1878,12 @@ namespace RuntimeEditorUi {
             DrawToolbar();
         }
 
-        // Outside the check above, so open scripts and flipbooks don't vanish
-        // while looking around. No code font: the map editor's belongs to its
-        // own ImGui context, so the script editor uses the default one here.
+        // Outside the check above, so open scripts, flipbooks and prefabs don't
+        // vanish while looking around. No code font: the map editor's belongs to
+        // its own ImGui context, so the script editor uses the default one here.
         MapEditorInternal::assetBrowser.DrawTextEditorWindow(nullptr);
         MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
+        MapEditorInternal::assetBrowser.DrawPrefabEditorWindows();
 
         // Centred a little below the toolbar: its 6px margin, 32px buttons
         // and padding end ~54px down.

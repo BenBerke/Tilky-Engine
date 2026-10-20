@@ -1402,6 +1402,7 @@ namespace LevelSerialization {
     json ComponentFieldsToJson(const ComponentUISprite& c) {
         return {
             {"texture", c.texture},
+            {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
             {"isActive", c.isActive}
         };
     }
@@ -1409,6 +1410,16 @@ namespace LevelSerialization {
     bool ComponentFieldsFromJson(const json& j, ComponentUISprite& c) {
         c.texture = j.value("texture", "");
         c.isActive = j.value("isActive", true);
+
+        if (j.contains("color") && j["color"].is_array() && j["color"].size() == 4) {
+            const json& colorJson = j["color"];
+            c.color = {
+                colorJson[0].get<float>(),
+                colorJson[1].get<float>(),
+                colorJson[2].get<float>(),
+                colorJson[3].get<float>()
+            };
+        }
         return true;
     }
 

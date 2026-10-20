@@ -20,13 +20,7 @@ void OpenGL::DrawUIRectangle(
         return;
     }
 
-    if (texture.empty()) {
-        spdlog::critical(
-            "DrawUIRectangle: texture name is empty at position ({}, {})",
-            position.x,
-            position.y
-        );
-    }
+    // An empty texture is a solid rectangle of `color`.
 
     const auto SetUniform2f = [&](const char *name, const float x, const float y) {
         const GLint location = glGetUniformLocation(uiShader->ID, name);

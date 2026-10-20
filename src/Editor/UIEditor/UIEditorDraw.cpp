@@ -2,6 +2,7 @@
 // Created by berke on 5/17/2026.
 //
 #include "Headers/Editor/EditorTextureCache.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/UISystem.hpp"
@@ -97,8 +98,7 @@ namespace {
     void DrawUICanvasGrid() {
         if (!showUIGrid) return;
 
-        constexpr float gridStep = 32.0f;
-        const float stepScreen = gridStep * uiCanvasZoom;
+        const float stepScreen = UI_CANVAS_GRID_STEP * uiCanvasZoom;
         if (stepScreen < 4.0f) return;
 
         const Vector2 topLeft = UICanvasToScreen({0.0f, 0.0f});
@@ -157,9 +157,8 @@ namespace {
     void DrawUICanvasSafeArea() {
         if (!showUISafeArea) return;
 
-        constexpr float marginFraction = 0.05f;
         const Vector2 screenRes = CurrentScreenResolution();
-        const Vector2 inset = {screenRes.x * marginFraction, screenRes.y * marginFraction};
+        const Vector2 inset = {screenRes.x * UI_SAFE_AREA_FRACTION, screenRes.y * UI_SAFE_AREA_FRACTION};
         const Vector2 topLeft = UICanvasToScreen(inset);
         const Vector2 bottomRight = UICanvasToScreen({screenRes.x - inset.x, screenRes.y - inset.y});
 
@@ -325,26 +324,95 @@ namespace {
         TTF_DestroyText(renderedText);
     }
 
-    void DrawUIEntityGizmos(
-        const UIEntityScreenQuad& quad,
-        const ComponentUITransform& transform,
-        const bool selected,
-        const bool hovered) {
+    SDL_FColor ToFColor(const Vector3& color, const float alpha = 1.0f) {
+        return {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f, alpha};
+    }
+
+    // A line `thickness` pixels wide in the current draw colour.
+    // (MapEditorInternal::DrawThickLine always draws in the wall colour.)
+    void DrawColoredThickLine(const Vector2& start, const Vector2& end, const float thickness) {
+        const float dx = end.x - start.x;
+        const float dy = end.y - start.y;
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (length <= 0.0001f) return;
+
+        const float normalX = -dy / length;
+        const float normalY = dx / length;
+        const int halfThickness = static_cast<int>(thickness * 0.5f);
+
+        for (int i = -halfThickness; i <= halfThickness; ++i) {
+            const float offsetX = normalX * static_cast<float>(i);
+            const float offsetY = normalY * static_cast<float>(i);
+            SDL_RenderLine(renderer, start.x + offsetX, start.y + offsetY, end.x + offsetX, end.y + offsetY);
+        }
+    }
+
+    void DrawFilledQuad(const Vector2& center, const float half, const SDL_FColor fill, const Vector3& outline) {
+        const SDL_FRect rect = {center.x - half, center.y - half, half * 2.0f, half * 2.0f};
+        SDL_SetRenderDrawColorFloat(renderer, fill.r, fill.g, fill.b, fill.a);
+        SDL_RenderFillRect(renderer, &rect);
+        SDL_SetRenderDrawColor(renderer, outline.x, outline.y, outline.z, 255);
+        SDL_RenderRect(renderer, &rect);
+    }
+
+    // A thick shaft ending in a filled triangle head, in screen space.
+    void DrawUIGizmoArrow(const Vector2& start, const Vector2& tip, const Vector3& color) {
+        constexpr float SHAFT_THICKNESS = 3.0f;
+        constexpr float HEAD_LENGTH = 12.0f;
+        constexpr float HEAD_HALF_WIDTH = 6.0f;
+
+        const float dx = tip.x - start.x;
+        const float dy = tip.y - start.y;
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (length <= HEAD_LENGTH) return;
+
+        const float dirX = dx / length;
+        const float dirY = dy / length;
+        const Vector2 headBase = {tip.x - dirX * HEAD_LENGTH, tip.y - dirY * HEAD_LENGTH};
+
+        SDL_SetRenderDrawColor(renderer, color.x, color.y, color.z, 255);
+        DrawColoredThickLine(start, headBase, SHAFT_THICKNESS);
+
+        SDL_Vertex head[3];
+        head[0].position = {tip.x, tip.y};
+        head[1].position = {headBase.x - dirY * HEAD_HALF_WIDTH, headBase.y + dirX * HEAD_HALF_WIDTH};
+        head[2].position = {headBase.x + dirY * HEAD_HALF_WIDTH, headBase.y - dirX * HEAD_HALF_WIDTH};
+        for (SDL_Vertex& vertex : head) {
+            vertex.color = ToFColor(color);
+            vertex.tex_coord = {0.0f, 0.0f};
+        }
+        SDL_RenderGeometry(renderer, nullptr, head, 3, nullptr, 0);
+    }
+
+    // Outline of a selected (primary brighter) or hovered element.
+    void DrawUIEntityOutline(const UIEntityScreenQuad& quad, const bool selected, const bool primary, const bool hovered) {
         if (!selected && !hovered) return;
 
-        if (selected) SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+        if (primary) SDL_SetRenderDrawColor(renderer, 80, 220, 255, 255);
+        else if (selected) SDL_SetRenderDrawColor(renderer, 80, 220, 255, 170);
         else SDL_SetRenderDrawColor(renderer, 255, 220, 80, 160);
 
         for (int i = 0; i < 4; ++i)
-            DrawThickLine(renderer, quad.corners[i], quad.corners[(i + 1) % 4], selected ? 2.0f : 1.5f);
+            DrawColoredThickLine(quad.corners[i], quad.corners[(i + 1) % 4], primary ? 2.0f : 1.5f);
+    }
 
-        if (!selected) return; // handles/markers are for the active selection only
+    // Pivot and anchor markers, resize/rotate handles and the move arrows of
+    // the primary selection, laid out by GetUIGizmoLayout() so what's drawn
+    // is what UIEditorInput.cpp picks.
+    void DrawUIEntityGizmo(const UIEntityScreenQuad& quad, const ComponentUITransform& transform) {
+        UIGizmoLayout layout;
+        if (!GetUIGizmoLayout(&layout)) return;
+
+        const UIGizmoPart highlighted = GetHighlightedUIGizmoPart();
+        const auto colorFor = [highlighted](const UIGizmoPart part, const Vector3& color) -> Vector3 {
+            return highlighted == part ? highlightedHandleColor : color;
+        };
 
         // Pivot marker - where `pivot` currently sits on the (rotated) rect;
         // visual reference only, not the rotation centre (see the file
-        // comment at the top for why those differ now).
+        // comment at the top for why those differ).
         SDL_SetRenderDrawColor(renderer, 90, 220, 255, 255);
-        constexpr float pivotRadius = 4.0f;
+        constexpr float pivotRadius = 3.0f;
         const SDL_FRect pivotRect = {
             quad.pivotMarkerScreen.x - pivotRadius, quad.pivotMarkerScreen.y - pivotRadius,
             pivotRadius * 2.0f, pivotRadius * 2.0f
@@ -352,8 +420,7 @@ namespace {
         SDL_RenderFillRect(renderer, &pivotRect);
 
         // Anchor markers - where anchorMin/anchorMax currently sit against
-        // the full current-screen canvas (independent of this entity's own
-        // rotation - anchors are always axis-aligned against the canvas).
+        // the full current-screen canvas (always axis-aligned against it).
         SDL_SetRenderDrawColor(renderer, 255, 150, 60, 255);
         const Vector2 screenRes = CurrentScreenResolution();
         const Vector2 anchorMinScreen = UICanvasToScreen({
@@ -367,37 +434,122 @@ namespace {
             SDL_RenderRect(renderer, &marker);
         }
 
-        // Rotation handle - offset outward from the rect's own top-centre
-        // edge, along the direction from the TRUE rotation centre (not the
-        // pivot marker) to that edge midpoint, so it tracks the shape
-        // correctly as it rotates.
-        const Vector2 topCenter = {
-            (quad.corners[0].x + quad.corners[1].x) * 0.5f,
-            (quad.corners[0].y + quad.corners[1].y) * 0.5f
+        // Drawn bottom to top in the reverse of the order UIEditorInput.cpp
+        // picks them in, so the part on top is the one a click grabs.
+
+        // Move arrows and the free-move square, in the map editor gizmo's colours.
+        constexpr float squareHalf = 7.0f; // must match UI_GIZMO_SQUARE_HALF in UIEditorInput.cpp
+        DrawUIGizmoArrow({layout.center.x + squareHalf, layout.center.y}, layout.xTip, colorFor(UI_GIZMO_MOVE_X, gizmoXColor));
+        DrawUIGizmoArrow({layout.center.x, layout.center.y + squareHalf}, layout.yTip, colorFor(UI_GIZMO_MOVE_Y, gizmoZColor));
+
+        const auto drawMoveSquare = [&] {
+            DrawFilledQuad(layout.center, squareHalf, ToFColor(colorFor(UI_GIZMO_MOVE_FREE, gizmoYColor)), handleOutlineColor);
         };
-        Vector2 outward = {topCenter.x - quad.centerScreen.x, topCenter.y - quad.centerScreen.y};
-        const float outwardLen = std::sqrt(outward.x * outward.x + outward.y * outward.y);
-        if (outwardLen > 0.0001f) {
-            outward.x /= outwardLen;
-            outward.y /= outwardLen;
+        if (!layout.moveSquareOnTop) drawMoveSquare();
+
+        // Resize handles.
+        for (int i = 0; i < 8; ++i) {
+            if (!layout.resizeShown[i]) continue;
+            const auto part = static_cast<UIGizmoPart>(UI_GIZMO_RESIZE_FIRST + i);
+            DrawFilledQuad(layout.resizeHandles[i], 4.5f, ToFColor(colorFor(part, Vector3{245, 245, 245})), handleOutlineColor);
         }
-        else outward = {0.0f, -1.0f};
 
-        const Vector2 rotationHandlePos = {topCenter.x + outward.x * 24.0f, topCenter.y + outward.y * 24.0f};
+        if (layout.moveSquareOnTop) drawMoveSquare();
 
-        SDL_SetRenderDrawColor(renderer, 170, 255, 130, 255);
-        DrawThickLine(renderer, topCenter, rotationHandlePos, 1.5f);
-        const SDL_FRect rotationHandleRect = {
-            rotationHandlePos.x - 5.0f, rotationHandlePos.y - 5.0f, 10.0f, 10.0f
+        // Rotation handle, out from the middle of the top edge.
+        const Vector3 rotateColor = colorFor(UI_GIZMO_ROTATE, Vector3{170, 255, 130});
+        SDL_SetRenderDrawColor(renderer, rotateColor.x, rotateColor.y, rotateColor.z, 255);
+        DrawColoredThickLine(layout.rotateStem, layout.rotateHandle, 2.0f);
+        DrawFilledQuad(layout.rotateHandle, 5.0f, ToFColor(rotateColor), handleOutlineColor);
+    }
+
+    // Guides for the snaps the current drag landed on, across the whole window.
+    void DrawUISnapGuides() {
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 255, 80, 200, 220);
+
+        for (const UISnapGuide& guide : GetUISnapGuides()) {
+            if (guide.vertical) {
+                const float x = UICanvasToScreen({guide.canvasValue, 0.0f}).x;
+                SDL_RenderLine(renderer, x, 0.0f, x, static_cast<float>(screenHeight));
+            }
+            else {
+                const float y = UICanvasToScreen({0.0f, guide.canvasValue}).y;
+                SDL_RenderLine(renderer, 0.0f, y, static_cast<float>(screenWidth), y);
+            }
+        }
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    }
+
+    void DrawUIBoxSelection() {
+        Vector2 start, end;
+        if (!GetUIBoxSelection(&start, &end)) return;
+
+        const SDL_FRect rect = {
+            std::min(start.x, end.x), std::min(start.y, end.y), std::fabs(end.x - start.x), std::fabs(end.y - start.y)
         };
-        SDL_RenderFillRect(renderer, &rotationHandleRect);
 
-        // Scale handle - the rect's own bottom-right corner (index 2).
-        SDL_SetRenderDrawColor(renderer, 255, 120, 220, 255);
-        const SDL_FRect scaleHandleRect = {
-            quad.corners[2].x - 5.0f, quad.corners[2].y - 5.0f, 10.0f, 10.0f
-        };
-        SDL_RenderFillRect(renderer, &scaleHandleRect);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 80, 160, 255, 40);
+        SDL_RenderFillRect(renderer, &rect);
+        SDL_SetRenderDrawColor(renderer, 80, 160, 255, 200);
+        SDL_RenderRect(renderer, &rect);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    }
+
+    // A small tag of text with a dark backdrop, its top-left at `screenPos`
+    // (kept inside the window).
+    void DrawCanvasTag(const std::string& text, Vector2 screenPos) {
+        if (font == nullptr || textEngine == nullptr || text.empty()) return;
+
+        TTF_Text* renderedText = TTF_CreateText(textEngine, font, text.c_str(), 0);
+        if (renderedText == nullptr) return;
+
+        int textWidth = 0, textHeight = 0;
+        TTF_GetTextSize(renderedText, &textWidth, &textHeight);
+
+        constexpr float padding = 4.0f;
+        const float tagWidth = static_cast<float>(textWidth) + padding * 2.0f;
+        const float tagHeight = static_cast<float>(textHeight) + padding * 2.0f;
+        screenPos.x = std::clamp(screenPos.x, 2.0f, std::max(2.0f, static_cast<float>(screenWidth) - tagWidth - 2.0f));
+        screenPos.y = std::clamp(screenPos.y, 2.0f, std::max(2.0f, static_cast<float>(screenHeight) - tagHeight - 2.0f));
+
+        const SDL_FRect backdrop = {screenPos.x, screenPos.y, tagWidth, tagHeight};
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 20, 20, 26, 210);
+        SDL_RenderFillRect(renderer, &backdrop);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+        TTF_SetTextColor(renderedText, 235, 235, 240, 255);
+        TTF_DrawRendererText(renderedText, screenPos.x + padding, screenPos.y + padding);
+        TTF_DestroyText(renderedText);
+    }
+
+    // The hovered element's name above it, and the drag's readout by the cursor.
+    void DrawUICanvasLabels(Level& level, const std::unordered_map<ID, const ComponentUITransform*>& transformsByOwner) {
+        const std::string& readout = GetUIDragReadout();
+        if (!readout.empty()) {
+            const Vector2 mouse = InputManager::GetMousePosition();
+            DrawCanvasTag(readout, {mouse.x + 16.0f, mouse.y + 16.0f});
+            return;
+        }
+
+        if (hoveredUIEntityID == INVALID_ID || GetHighlightedUIGizmoPart() != UI_GIZMO_NONE) return;
+
+        const Entity* entity = level.GetEntity(hoveredUIEntityID);
+        const auto transformIt = transformsByOwner.find(hoveredUIEntityID);
+        if (entity == nullptr || transformIt == transformsByOwner.end()) return;
+
+        const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
+        float minX = quad.corners[0].x, minY = quad.corners[0].y;
+        for (const Vector2& corner : quad.corners) {
+            minX = std::min(minX, corner.x);
+            minY = std::min(minY, corner.y);
+        }
+
+        const std::string name = entity->name.empty() ? "#" + std::to_string(entity->id) : entity->name;
+        DrawCanvasTag(name, {minX, minY - 26.0f});
     }
 }
 
@@ -442,21 +594,25 @@ namespace MapEditorInternal {
             transformsByOwner.emplace(transform.ownerID, &transform);
         }
 
-        // Draw sprites.
+        // Draw sprites. One without a texture is a solid rectangle of its colour.
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
         for (const ComponentUISprite &sprite: level.ui_sprites.components) {
-            if (sprite.texture.empty()) continue;
-
             const auto transformIt = transformsByOwner.find(sprite.ownerID);
             if (transformIt == transformsByOwner.end()) continue;
 
-            SDL_Texture *texture = GetEditorTexture(sprite.texture);
-            if (texture == nullptr) continue;
+            SDL_Texture *texture = sprite.texture.empty() ? nullptr : GetEditorTexture(sprite.texture);
+            if (!sprite.texture.empty() && texture == nullptr) continue;
 
             const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
 
             // Inactive sprites aren't drawn in game; show them faded so they can still be found.
-            DrawUISpriteQuad(quad, texture, SDL_FColor{1.0f, 1.0f, 1.0f, sprite.isActive ? 1.0f : 0.25f});
+            const SDL_FColor tint = {
+                std::clamp(sprite.color.x, 0.0f, 1.0f), std::clamp(sprite.color.y, 0.0f, 1.0f),
+                std::clamp(sprite.color.z, 0.0f, 1.0f), std::clamp(sprite.color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f)
+            };
+            DrawUISpriteQuad(quad, texture, tint);
         }
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
         // Draw text.
         for (const ComponentUIText &text: level.ui_texts.components) {
@@ -467,13 +623,6 @@ namespace MapEditorInternal {
             DrawUITextEntity(text, *transformIt->second);
         }
 
-        // Draw transform gizmos last.
-        for (const ComponentUITransform &transform: level.ui_transforms.components) {
-            const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(transform);
-
-            DrawUIEntityGizmos(quad, transform, transform.ownerID == selectedUIEntityID, transform.ownerID == hoveredUIEntityID);
-        }
-
         SDL_SetRenderClipRect(renderer, nullptr);
 
         // Overlays drawn last (on top of entity content) so they stay
@@ -481,5 +630,23 @@ namespace MapEditorInternal {
         DrawUICanvasBoundary();
         DrawUICanvasCenterLines();
         DrawUICanvasSafeArea();
+        DrawUISnapGuides();
+
+        // Outlines and the gizmo aren't clipped, so handles on an element at
+        // the screen's edge can still be grabbed.
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        const ComponentUITransform* primaryTransform = nullptr;
+        for (const ComponentUITransform &transform: level.ui_transforms.components) {
+            const bool primary = transform.ownerID == selectedUIEntityID;
+            if (primary) primaryTransform = &transform;
+
+            DrawUIEntityOutline(ComputeUIEntityScreenQuad(transform), IsUIEntitySelected(transform.ownerID), primary,
+                                transform.ownerID == hoveredUIEntityID);
+        }
+        if (primaryTransform != nullptr) DrawUIEntityGizmo(ComputeUIEntityScreenQuad(*primaryTransform), *primaryTransform);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+        DrawUIBoxSelection();
+        DrawUICanvasLabels(level, transformsByOwner);
     }
 } // namespace MapEditorInternal

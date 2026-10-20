@@ -647,7 +647,8 @@ namespace {
         if (changed) uiHasUnsavedChanges = true;
     }
 
-    void DrawUISpriteInspector(ComponentUISprite& sprite) {
+    // `transform` is the owner's, for Set Native Size; may be null.
+    void DrawUISpriteInspector(ComponentUISprite& sprite, ComponentUITransform* transform) {
         ImGuiDrawFunctions::BeginSection("Preview");
 
         // ---- Preview, checkerboard backdrop so alpha is visible ----
@@ -670,13 +671,19 @@ namespace {
 
         SDL_Texture* preview = sprite.texture.empty() ? nullptr : GetEditorTexture(sprite.texture);
 
-        if (preview != nullptr) {
-            // ASSUMPTION: SDL3's SDL_GetTextureSize(texture, &w, &h). If your
-            // SDL3 revision exposes this differently (e.g. reading w/h fields
-            // directly off SDL_Texture), swap this call for that.
-            float texW = 0.0f, texH = 0.0f;
-            SDL_GetTextureSize(preview, &texW, &texH);
+        const ImU32 tint = ImGui::ColorConvertFloat4ToU32(ImVec4(
+            std::clamp(sprite.color.x, 0.0f, 1.0f), std::clamp(sprite.color.y, 0.0f, 1.0f),
+            std::clamp(sprite.color.z, 0.0f, 1.0f), std::clamp(sprite.color.w, 0.0f, 1.0f)));
 
+        float texW = 0.0f, texH = 0.0f;
+        if (preview != nullptr) SDL_GetTextureSize(preview, &texW, &texH);
+
+        if (sprite.texture.empty()) {
+            // No texture: the game draws a solid rectangle of the colour.
+            drawList->AddRectFilled(ImVec2(cursor.x + 8.0f, cursor.y + 8.0f),
+                                    ImVec2(cursor.x + previewSize - 8.0f, cursor.y + previewSize - 8.0f), tint);
+        }
+        else if (preview != nullptr) {
             float drawW = previewSize, drawH = previewSize;
             if (texW > 0.0f && texH > 0.0f) {
                 const float aspect = texW / texH;
@@ -684,9 +691,9 @@ namespace {
                 else drawW = previewSize * aspect;
             }
 
-            ImGui::SetCursorScreenPos(ImVec2(cursor.x + (previewSize - drawW) * 0.5f,
-                                              cursor.y + (previewSize - drawH) * 0.5f));
-            ImGui::Image(reinterpret_cast<ImTextureID>(preview), ImVec2(drawW, drawH));
+            const ImVec2 imageMin(cursor.x + (previewSize - drawW) * 0.5f, cursor.y + (previewSize - drawH) * 0.5f);
+            drawList->AddImage(reinterpret_cast<ImTextureID>(preview), imageMin,
+                               ImVec2(imageMin.x + drawW, imageMin.y + drawH), ImVec2(0, 0), ImVec2(1, 1), tint);
         } else if (!sprite.texture.empty()) {
             // Assigned but not resolvable -> missing-texture feedback.
             const auto warn = "!";
@@ -711,10 +718,42 @@ namespace {
                 changed = true;
         }
 
+        if (sprite.texture.empty()) ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.sprite.no_texture").c_str());
+
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("color");
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::ColorEdit4(
+                Get("editor.ui.sprite.color").c_str(),
+                &sprite.color.x,
+                ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Float
+            )) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.sprite.color").c_str());
+        }
+
         {
             ImGuiDrawFunctions::PrefabField prefabField("isActive");
             if (ImGui::Checkbox(Get("editor.ui.sprite.is_active").c_str(), &sprite.isActive))
                 changed = true;
+        }
+
+        // Sizes the element to the texture's own pixel size.
+        if (preview != nullptr && transform != nullptr && texW > 0.0f && texH > 0.0f) {
+            const bool stretched = transform->anchorMin.x != transform->anchorMax.x || transform->anchorMin.y != transform->anchorMax.y;
+            ImGui::BeginDisabled(stretched);
+            if (ImGui::Button(Get("editor.ui.sprite.native_size").c_str())) {
+                // Not while the prefab editor has its prefab swapped in as the
+                // current level: the history belongs to the loaded level.
+                const int levelIndex = LevelManager::currentLevelIndex;
+                if (levelIndex >= 0 && &LevelManager::CurrentLevel() == &LevelManager::loadedLevels[levelIndex])
+                    PushEntitiesUndo(CaptureEntitiesSnapshot(), "editor.history.ui_native_size");
+                transform->scale = {texW, texH};
+                changed = true;
+            }
+            ImGui::EndDisabled();
+            HoverTooltip(Get(stretched ? "editor.tooltip.ui.sprite.native_size_stretched" : "editor.tooltip.ui.sprite.native_size").c_str());
+            ImGui::SameLine();
+            ImGuiDrawFunctions::SmallMetaText("%.0f x %.0f", texW, texH);
         }
 
         if (!sprite.texture.empty() && preview == nullptr) {
@@ -989,8 +1028,7 @@ namespace {
         ImGui::PushID("ui_entity_buttons");
 
         if (state.allowDelete) {
-            if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str()) ||
-                InputManager::GetKeyDown(SDL_SCANCODE_DELETE)) {
+            if (ImGuiDrawFunctions::DangerButton(Get("common.delete").c_str())) {
                 deleteRequested = true;
                 state.editingComponent = false;
                 state.selectedComponent = -1;
@@ -1087,7 +1125,7 @@ namespace {
         }
         else if (componentType == UIComponentType::Sprite) {
             if (ComponentUISprite* sprite = entity.GetComponentInstance<ComponentUISprite>(state.selectedInstanceID)) {
-                DrawUISpriteInspector(*sprite);
+                DrawUISpriteInspector(*sprite, entity.GetComponent<ComponentUITransform>());
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -1140,7 +1178,8 @@ namespace {
 
         if (deleteRequested) {
             const ID idToDelete = entity->id;
-            selectedUIEntityID = INVALID_ID;
+            PushEntitiesUndo(CaptureEntitiesSnapshot(), "editor.history.ui_delete");
+            ToggleUIEntitySelection(idToDelete);
             ResetUIInspectorState();
             level.DestroyEntity(idToDelete);
             uiHasUnsavedChanges = true;
@@ -1187,11 +1226,25 @@ namespace {
 
         Spacing();
 
+        ImGui::SameLine();
+        if (ImGui::Button(Get("editor.ui.canvas.frame").c_str())) FrameUISelection();
+        HoverTooltip(FormatKeyBinds(Get("editor.ui.canvas.tooltip_frame")).c_str());
+
+        Spacing();
+
         ImGui::Checkbox(Get("editor.ui.canvas.grid").c_str(), &showUIGrid);
         ImGui::SameLine();
         ImGui::Checkbox(Get("editor.ui.canvas.center_lines").c_str(), &showUICenterLines);
         ImGui::SameLine();
         ImGui::Checkbox(Get("editor.ui.canvas.safe_area").c_str(), &showUISafeArea);
+
+        ImGui::Checkbox(Get("editor.ui.canvas.snap").c_str(), &uiSnapEnabled);
+        HoverTooltip(FormatKeyBinds(Get("editor.ui.canvas.tooltip_snap")).c_str());
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!uiSnapEnabled);
+        ImGui::Checkbox(Get("editor.ui.canvas.snap_elements").c_str(), &uiSnapToElements);
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.ui.canvas.tooltip_snap_elements").c_str());
 
         // Not user-editable: UI_vs.glsl resolves uPosition/uSize straight
         // against uScreenSize (the actual current screen), with no separate
@@ -1199,6 +1252,52 @@ namespace {
         // whatever the real screen size is, read-only here.
         ImGuiDrawFunctions::SmallMetaText("%s: %d x %d", Get("editor.ui.canvas.previewing_at").c_str(),
                                            screenWidth, screenHeight);
+
+        if (ImGui::TreeNode(Get("editor.ui.canvas.controls").c_str())) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGuiDrawFunctions::SmallMetaText("%s", FormatKeyBinds(Get("editor.ui.canvas.controls_text")).c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::TreePop();
+        }
+    }
+
+    // Align/distribute buttons for the selection, and how many are selected.
+    void DrawUIArrangeControls() {
+        if (selectedUIEntities.empty()) return;
+
+        SectionHeader(Get("editor.ui.arrange").c_str());
+        Spacing();
+
+        if (selectedUIEntities.size() > 1)
+            ImGuiDrawFunctions::SmallMetaText(Get("editor.ui.arrange.selected_count").c_str(), static_cast<int>(selectedUIEntities.size()));
+        else ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.arrange.to_screen").c_str());
+
+        const auto alignButton = [](const char* labelKey, const UIAlignment alignment) {
+            if (ImGui::Button(Get(labelKey).c_str())) AlignSelectedUIEntities(alignment);
+        };
+
+        alignButton("editor.ui.arrange.left", UI_ALIGN_LEFT);
+        ImGui::SameLine();
+        alignButton("editor.ui.arrange.center_x", UI_ALIGN_CENTER_X);
+        ImGui::SameLine();
+        alignButton("editor.ui.arrange.right", UI_ALIGN_RIGHT);
+
+        alignButton("editor.ui.arrange.top", UI_ALIGN_TOP);
+        ImGui::SameLine();
+        alignButton("editor.ui.arrange.center_y", UI_ALIGN_CENTER_Y);
+        ImGui::SameLine();
+        alignButton("editor.ui.arrange.bottom", UI_ALIGN_BOTTOM);
+
+        ImGui::BeginDisabled(selectedUIEntities.size() < 3);
+        if (ImGui::Button(Get("editor.ui.arrange.distribute_x").c_str())) DistributeSelectedUIEntities(true);
+        ImGui::SameLine();
+        if (ImGui::Button(Get("editor.ui.arrange.distribute_y").c_str())) DistributeSelectedUIEntities(false);
+        ImGui::EndDisabled();
+        HoverTooltip(Get("editor.ui.arrange.tooltip_distribute").c_str());
+
+        Spacing();
+        ImGui::Separator();
+        Spacing();
     }
 
     // ---------------------------------------------------------------------
@@ -1208,19 +1307,6 @@ namespace {
 
     void DrawUIHierarchyPanel(Level& level) {
         ImGui::Begin(Get("editor.ui.hierarchy").c_str());
-
-        PushAccentStyle();
-        const bool addRequested = FullWidthButton(Get("editor.ui.hierarchy.add_entity").c_str());
-        PopAccentStyle();
-        HoverTooltip(Get("editor.ui.hierarchy.tooltip_add_entity").c_str());
-
-        if (addRequested) {
-            const ID newEntityID = level.CreateEntity(true);
-            selectedUIEntityID = newEntityID;
-            uiHasUnsavedChanges = true;
-        }
-
-        Spacing();
 
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 4.0f);
         ImGui::InputText("##UIHierarchySearch", uiHierarchySearchBuf, sizeof(uiHierarchySearchBuf));
@@ -1295,9 +1381,14 @@ namespace {
                     );
                     ImGui::SameLine(0.0f, 6.0f);
 
-                    const bool selected = selectedUIEntityID == entity.id;
-                    if (ImGui::Selectable(label.c_str(), selected))
-                        selectedUIEntityID = entity.id;
+                    const bool selected = IsUIEntitySelected(entity.id);
+                    if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
+                        if (GetKeyBind(KEYBIND_UI_ADD_TO_SELECTION)) ToggleUIEntitySelection(entity.id);
+                        else SelectUIEntity(entity.id);
+
+                        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) FrameUISelection();
+                    }
+                    HoverTooltip(FormatKeyBinds(Get("editor.ui.hierarchy.tooltip_entity")).c_str());
 
                     HierarchyRowDragSource(ENTITY_REF_PAYLOAD, entity.id, label);
 
@@ -1312,7 +1403,8 @@ namespace {
                 ImGui::Unindent();
 
                 if (entityPendingDelete != INVALID_ID) {
-                    if (selectedUIEntityID == entityPendingDelete) selectedUIEntityID = INVALID_ID;
+                    PushEntitiesUndo(CaptureEntitiesSnapshot(), "editor.history.ui_delete");
+                    if (IsUIEntitySelected(entityPendingDelete)) ToggleUIEntitySelection(entityPendingDelete);
                     level.DestroyEntity(entityPendingDelete);
                     uiHasUnsavedChanges = true;
                 }
@@ -1477,6 +1569,64 @@ namespace {
     // ---------------------------------------------------------------------
     // Dockspace
     // ---------------------------------------------------------------------
+    // The `position` that puts the pivot of an element with `transform`'s
+    // anchors on `canvasPoint`: position is measured from the anchor point
+    // (see UISystem::UpdateTransform), and the pivot sits on anchor point + position.
+    Vector2 PositionAtCanvasPoint(const ComponentUITransform& transform, const Vector2 canvasPoint) {
+        const float width = static_cast<float>(screenWidth);
+        const float height = static_cast<float>(screenHeight);
+        const Vector2 anchorPoint = {
+            (transform.anchorMin.x + transform.anchorMax.x) * 0.5f * width,
+            (transform.anchorMin.y + transform.anchorMax.y) * 0.5f * height
+        };
+        return {canvasPoint.x - anchorPoint.x, canvasPoint.y - anchorPoint.y};
+    }
+
+    const Vector2 NEW_UI_ENTITY_SIZE = {100.0f, 100.0f};
+
+    // A new empty UI entity centred on `canvasPoint`, selected.
+    void CreateUIEntityAt(const Vector2 canvasPoint) {
+        Level& level = LevelManager::CurrentLevel();
+
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
+        const ID id = level.CreateEntity(true);
+
+        if (ComponentUITransform* transform = level.ui_transforms.Get(id)) {
+            transform->scale = NEW_UI_ENTITY_SIZE;
+            transform->position = PositionAtCanvasPoint(*transform, canvasPoint);
+        }
+
+        PushEntitiesUndo(std::move(before), "editor.history.ui_add");
+        SelectUIEntity(id);
+        uiHasUnsavedChanges = true;
+    }
+
+    // Right click on the canvas: create here, and for the element clicked
+    // (now selected) duplicate/delete. Opened from HandleUIEditorInput().
+    void DrawUICanvasContextMenu() {
+        static Vector2 menuCanvasPoint{};
+        static bool menuOnElement = false;
+
+        if (ConsumeUICanvasContextMenuRequest(&menuCanvasPoint, &menuOnElement))
+            ImGui::OpenPopup("##UICanvasContextMenu");
+
+        if (!ImGui::BeginPopup("##UICanvasContextMenu")) return;
+
+        if (ImGui::MenuItem(Get("editor.ui.context.create_entity").c_str())) CreateUIEntityAt(menuCanvasPoint);
+
+        if (menuOnElement && !selectedUIEntities.empty()) {
+            ImGui::Separator();
+            if (ImGui::MenuItem(Get("editor.ui.context.duplicate").c_str(), ComboName(COMBO_UI_DUPLICATE).c_str()))
+                DuplicateSelectedUIEntities();
+            if (ImGui::MenuItem(Get("editor.ui.context.frame").c_str(), KeyBindName(KEYBIND_UI_FOCUS_SELECTION).c_str()))
+                FrameUISelection();
+            if (ImGui::MenuItem(Get("editor.ui.context.delete").c_str(), KeyBindName(KEYBIND_UI_DELETE).c_str()))
+                DeleteSelectedUIEntities();
+        }
+
+        ImGui::EndPopup();
+    }
+
     void PlaceUIPrefab(const std::string& reference, const Vector2 canvasPoint) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -1488,22 +1638,15 @@ namespace {
             return;
         }
 
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
         const ID id = Prefab::Instantiate(level, reference);
         if (id == INVALID_ID) return;
+        PushEntitiesUndo(std::move(before), "editor.history.ui_place_prefab");
 
-        // position is measured from the anchor point (see UISystem::UpdateTransform),
-        // and the pivot sits on anchor point + position.
-        if (ComponentUITransform* transform = level.ui_transforms.Get(id)) {
-            const float width = static_cast<float>(screenWidth);
-            const float height = static_cast<float>(screenHeight);
-            const Vector2 anchorPoint = {
-                (transform->anchorMin.x + transform->anchorMax.x) * 0.5f * width,
-                (transform->anchorMin.y + transform->anchorMax.y) * 0.5f * height
-            };
-            transform->position = {canvasPoint.x - anchorPoint.x, canvasPoint.y - anchorPoint.y};
-        }
+        if (ComponentUITransform* transform = level.ui_transforms.Get(id))
+            transform->position = PositionAtCanvasPoint(*transform, canvasPoint);
 
-        selectedUIEntityID = id;
+        SelectUIEntity(id);
         uiHasUnsavedChanges = true;
     }
 
@@ -1541,6 +1684,10 @@ namespace {
 
 namespace MapEditorInternal {
     using namespace Localisation;
+
+    void MarkUIUnsavedChanges() {
+        uiHasUnsavedChanges = true;
+    }
 
     void HandleUIEditorShortcuts(const bool keyboardBlockedByImgui) {
         if (keyboardBlockedByImgui) return;
@@ -1601,6 +1748,7 @@ namespace MapEditorInternal {
 
     void DrawUIEditorUI() {
         DrawUIEditorDockSpace();
+        DrawUICanvasContextMenu();
 
         Level& level = LevelManager::CurrentLevel();
 
@@ -1630,6 +1778,8 @@ namespace MapEditorInternal {
         Spacing();
         ImGui::Separator();
         Spacing();
+
+        DrawUIArrangeControls();
 
         // ---- Inspector (mirrors DrawEditorUI()'s own inline call exactly -
         // no header, just separator/spacing around it either side) ----
