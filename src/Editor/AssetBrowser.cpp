@@ -780,14 +780,10 @@ end
             return false;
         }
 
-        std::error_code canonicalEc;
-        const fs::path normalizedLevelPath = fs::weakly_canonical(levelPath, canonicalEc);
-        const fs::path& levelPathToOpen = canonicalEc ? levelPath : normalizedLevelPath;
-
-        if (!LevelManager::LoadLevelFromFile(levelPathToOpen)) {
-            errorMessage = "Failed to open level (see log for details): " + levelPathToOpen.string();
-            return false;
-        }
+        // Through the editor, not straight into LevelManager: the editor
+        // has to know which level is open, or its next save writes this
+        // level's contents under the previous level's name.
+        Editor::OpenLevel(levelPath.stem().string());
 
         return true;
     }

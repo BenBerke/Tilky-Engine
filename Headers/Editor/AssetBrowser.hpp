@@ -193,7 +193,7 @@ private:
 };
 
 // Level files - AssetBrowser::kLevelFileExtension (".bson"). Double-
-// clicking one opens it through LevelManager rather than treating it as a
+// clicking one opens it through Editor::OpenLevel rather than treating it as a
 // field-reference asset; see LevelEntry::OnDoubleClick in AssetBrowser.cpp.
 class LevelEntry final : public GenericFileEntry {
 public:

@@ -916,9 +916,7 @@ namespace {
 
                 PushAccentStyle();
                 if (ImGui::Button(Get("levels.load_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                    if (!Editor::currentMap.empty()) Save(Editor::currentMap);
-                    QueueLevelLoad(name);
-                    spdlog::info("Queued level load: {}", name);
+                    Editor::OpenLevel(name);
                 }
                 PopAccentStyle();
                 HoverTooltip(Get("levels.tooltip.load").c_str());
@@ -4659,3 +4657,10 @@ namespace MapEditorInternal {
         DrawNotification(dt);
     }
 } // namespace MapEditorInternal
+
+namespace Editor {
+    void OpenLevel(const std::string& levelName) {
+        if (!currentMap.empty()) MapEditorInternal::Save(currentMap);
+        MapEditorInternal::QueueLevelLoad(LevelSerialization::CleanLevelName(levelName));
+    }
+}

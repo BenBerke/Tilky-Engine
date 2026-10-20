@@ -35,6 +35,9 @@ namespace Editor {
     bool PlayRequested();
     bool SwitchToRuntimeEditorRequested();
     bool LoadLevel(const std::string& levelName);
+    // Saves the open level, then switches to levelName on the editor's next
+    // frame. What the Levels panel and the Asset Browser use to open a level.
+    void OpenLevel(const std::string& levelName);
 
     // Readies the level in memory for the runtime editor or Play, as loading
     // its just-saved file would, without reading it back from disk.

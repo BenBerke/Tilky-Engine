@@ -435,7 +435,7 @@ namespace {
             ListenerSettings &listenerSettings = level.listenerSettings;
 
             listenerSettings.masterGain = listenerJson.value("masterGain", 1.0f);
-            listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 1.0f);
+            listenerSettings.dopplerFactor = listenerJson.value("dopplerFactor", 0.0f);
             listenerSettings.speedOfSound = listenerJson.value("speedOfSound", 343.3f);
 
             const int distanceModel = listenerJson.value(

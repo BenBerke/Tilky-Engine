@@ -17,7 +17,7 @@
 
 struct ListenerSettings {
     float masterGain = 1.0f;
-    float dopplerFactor = 1.0f;
+    float dopplerFactor = 0.0f;
     float speedOfSound = 343.3f;
     ALenum distanceModel = AL_INVERSE_DISTANCE_CLAMPED;
 };

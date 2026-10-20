@@ -154,9 +154,9 @@ struct ComponentCollider {
     bool isTrigger = false;
 
     // Type = Box -> Use these values as AABB; Type = Sphere -> Use size.x as the radius
-    Vector3 scale = {3.0f, 3.0f, 3.0f};
+    Vector3 scale = {6.0f, 6.0f, 6.0f};
 
-    float stepSize = 8.0f;
+    float stepSize = 15.0f;
 };
 
 struct ComponentPlayerController {
