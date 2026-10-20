@@ -1243,13 +1243,59 @@ namespace {
         });
     }
 
+    // How many surfaces a texture dropped now would change: the whole
+    // selection when the surface under the cursor is part of it, else 1 (or 0
+    // with nothing under the cursor).
+    int DropTargetCount() {
+        if (hoveredSurface.type == RayHitType::Wall && std::ranges::find(selectedWalls, hoveredSurface.wallIndex) != selectedWalls.end())
+            return static_cast<int>(selectedWalls.size());
+
+        if (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling) {
+            const SelectedFlat hovered{hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type};
+            if (std::ranges::find(selectedFlats, hovered) != selectedFlats.end()) return static_cast<int>(selectedFlats.size());
+        }
+
+        return hoveredSurface.type == RayHitType::None ? 0 : 1;
+    }
+
+    // A drop onto a selected surface textures the whole selection: the
+    // dropped-on slot (top or bottom) of every selected wall, or every
+    // selected flat. Anywhere else only the surface under the cursor changes.
+    int ApplyTextureToDropTarget(Level& level, const std::string& textureReference) {
+        if (DropTargetCount() <= 1) return ApplyTextureToHoveredSurface(level, textureReference) ? 1 : 0;
+
+        int count = 0;
+
+        if (hoveredSurface.type == RayHitType::Wall) {
+            for (const int wallIndex : selectedWalls) {
+                if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
+
+                level.walls[wallIndex].Surface(hoveredSurface.wallSlot).texture = textureReference;
+                ++count;
+            }
+            return count;
+        }
+
+        for (const SelectedFlat& flat : selectedFlats) {
+            if (flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+            Sector& sector = level.sectors[flat.sectorIndex];
+            if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
+
+            SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
+            (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture = textureReference;
+            ++count;
+        }
+        return count;
+    }
+
     // A drop that doesn't land leaves no undo step behind.
-    bool ApplyTextureToHoveredSurfaceWithUndo(Level& level, const std::string& textureReference) {
-        PushUndo(level, "runtime_editor.history.apply_texture");
-        if (ApplyTextureToHoveredSurface(level, textureReference)) return true;
+    int ApplyTextureToDropTargetWithUndo(Level& level, const std::string& textureReference) {
+        PushUndo(level, "runtime_editor.history.apply_texture", DropTargetCount());
+        if (const int count = ApplyTextureToDropTarget(level, textureReference); count > 0) return count;
 
         undoStack.pop_back();
-        return false;
+        return 0;
     }
 
     void ShowToastf(const char* key, const int value) {
@@ -1906,7 +1952,10 @@ namespace RuntimeEditorUi {
 
             const bool overViewport = !ImGui::IsWindowHovered(hoverFlags);
             const std::string textureReference = PayloadToTextureReference(payload);
-            const std::string surfaceName = DescribeHoveredSurface();
+            const int dropCount = DropTargetCount();
+            const std::string surfaceName = dropCount > 1
+                ? std::to_string(dropCount) + (hoveredSurface.type == RayHitType::Wall ? " selected walls" : " selected flats")
+                : DescribeHoveredSurface();
 
             if (DEBUG_DRAG_DROP) {
                 DrawDropHint(
@@ -1927,7 +1976,7 @@ namespace RuntimeEditorUi {
                 !textureReference.empty() &&
                 !surfaceName.empty() &&
                 ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-                ApplyTextureToHoveredSurfaceWithUndo(level, textureReference)) {
+                ApplyTextureToDropTargetWithUndo(level, textureReference) > 0) {
                 // Every image in Assets is already in the atlas, so this only
                 // rebuilds for one added since it was built.
                 if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
