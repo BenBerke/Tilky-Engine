@@ -459,4 +459,7 @@ namespace MapEditorInternal {
     }
 
     SDL_Scancode* keyBindBeingListened = nullptr;
+
+    double autoSaveInSeconds = 60.0;
+    bool hasUnsavedChanges = false;
 }

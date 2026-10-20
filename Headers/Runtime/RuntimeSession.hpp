@@ -35,6 +35,11 @@ namespace RuntimeSession {
     void Shutdown();
 #ifndef TILKY_STANDALONE
     void HideWindow();
+
+    // The game window's VSync (1 on, -1 adaptive, 0 off), from the editor's
+    // Engine Settings. Applied when a Play / runtime editor session starts.
+    void SetVSyncMode(int mode);
+    [[nodiscard]] int GetVSyncMode();
 #endif
 }
 

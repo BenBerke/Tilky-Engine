@@ -213,8 +213,8 @@ bool OpenGL::InitializeOpenGL() {
 
     glViewport(0, 0, screenWidth, screenHeight);
 
-    if (!SDL_GL_SetSwapInterval(-1))
-        spdlog::warn("SDL_GL_SetSwapInterval failed. VSync setting may not apply: {}",SDL_GetError());
+    // Default fallback incase something happens to user defined settings
+    SetVSync(-1);
 
     glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
     glClearDepth(0.0);

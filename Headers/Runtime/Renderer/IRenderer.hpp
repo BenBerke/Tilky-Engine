@@ -26,6 +26,10 @@ public:
     // keeps its own alive next to them, so call this before using either.
     virtual void MakeCurrent() = 0;
 
+    // Swap interval of the game window: 1 VSync, -1 adaptive VSync, 0 off.
+    // Call with this renderer's context current (after MakeCurrent()).
+    virtual void SetVSync(int mode) = 0;
+
     // Session state that shouldn't outlive one Play / runtime editor session.
     void EndSession() {
         useEditorCamera = false;

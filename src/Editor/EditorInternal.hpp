@@ -873,6 +873,13 @@ namespace MapEditorInternal {
 
     bool Save(const std::string& saveTo);
 
+    // Copies the current level on this thread and writes it on a background
+    // one. False when it couldn't start (empty name, a save already running).
+    bool StartAutoSave(const std::string& saveTo);
+    enum class AutoSaveStatus { Idle, Running, Saved, Failed };
+    // Main thread, each frame. Saved / Failed once, when the save finishes.
+    AutoSaveStatus PollAutoSave();
+
     float DistancePointToSegmentSq(const Vector2& point, const Vector2& a, const Vector2& b);
     int GetWallAtPoint(const Vector2& worldPoint);
 
@@ -1254,6 +1261,10 @@ namespace MapEditorInternal {
     extern const RuntimeStepInfo RUNTIME_STEP_INFO[RT_STEP_COUNT];
     extern float runtimeSteps[RT_STEP_COUNT];
     extern SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS];
+
+    // 0 turns auto save off.
+    extern double autoSaveInSeconds;
+    extern bool hasUnsavedChanges;
 
     // Pressed this frame / held, on any of its slots. A key some combo of
     // the same editor is using right now - its first key is held - doesn't

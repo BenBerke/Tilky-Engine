@@ -425,6 +425,9 @@ namespace {
 
     bool TryRenameEntry(const fs::path& targetPath, const bool targetIsDirectory, const std::string& enteredName,
                          fs::path& newPath, std::string& errorMessage) {
+        // The file, or a level inside the folder, may be one being auto saved.
+        Editor::WaitForAutoSave();
+
         if (!IsValidNewFileSystemName(enteredName, errorMessage)) return false;
 
         std::error_code existsEc;
@@ -492,6 +495,9 @@ namespace {
     // --- Delete ------------------------------------------------------------
 
     bool TryDeleteEntry(const fs::path& targetPath, const bool targetIsDirectory, std::string& errorMessage) {
+        // The file, or a level inside the folder, may be one being auto saved.
+        Editor::WaitForAutoSave();
+
         std::error_code existsEc;
         if (!fs::exists(targetPath, existsEc)) {
             errorMessage = "This item no longer exists.";
@@ -520,6 +526,9 @@ namespace {
     // collision.
     bool TryMoveEntry(const fs::path& sourcePath, const bool sourceIsDirectory,
                        const fs::path& destinationDirectory, fs::path& newPath, std::string& errorMessage) {
+        // The file, or a level inside the folder, may be one being auto saved.
+        Editor::WaitForAutoSave();
+
         std::error_code existsEc;
         if (!fs::exists(sourcePath, existsEc)) {
             errorMessage = "This item no longer exists.";

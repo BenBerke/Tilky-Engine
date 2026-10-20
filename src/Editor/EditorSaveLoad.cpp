@@ -1,7 +1,10 @@
+#include "Headers/Runtime/RuntimeSession.hpp"
 #include "EditorInternal.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -33,6 +36,43 @@ namespace {
         return LevelManager::CurrentLevel();
     }
 
+    // The auto save running in the background, if any, and the level it saves.
+    std::future<bool> autoSaveTask;
+    std::string autoSaveLevelName;
+
+    nlohmann::json ProjectSettingsJson() {
+        return {
+            {"formatVersion", 1},
+            {"tagToId", TagRegistry::GetAll()},
+            {"nextTagId", TagRegistry::GetNextId()}
+        };
+    }
+
+    // Touches no editor state, so the auto save thread can call it.
+    bool WriteProjectSettings(const fs::path& settingsPath, const nlohmann::json& settings) {
+        try {
+            std::ofstream file(settingsPath, std::ios::trunc);
+
+            if (!file.is_open()) {
+                spdlog::error("Failed to open project settings for writing: {}",settingsPath.string());
+                return false;
+            }
+
+            file << settings.dump(4);
+
+            if (!file.good()) {
+                spdlog::error("Failed while writing project settings: {}",settingsPath.string());
+                return false;
+            }
+
+            return true;
+        }
+        catch (const std::exception& error) {
+            spdlog::error("Failed to save project settings: {}",error.what());
+            return false;
+        }
+    }
+
     nlohmann::json SerializeColor(const Vector3& color) {
         return nlohmann::json::array({
             color.x,
@@ -58,35 +98,7 @@ namespace MapEditorInternal {
     }
 
     bool SaveProjectSettings() {
-        const fs::path settingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json";
-
-        try {
-            const nlohmann::json settings = {
-                {"formatVersion", 1},
-                {"tagToId", TagRegistry::GetAll()},
-                {"nextTagId", TagRegistry::GetNextId()}
-            };
-
-            std::ofstream file(settingsPath, std::ios::trunc);
-
-            if (!file.is_open()) {
-                spdlog::error("Failed to open project settings for writing: {}",settingsPath.string());
-                return false;
-            }
-
-            file << settings.dump(4);
-
-            if (!file.good()) {
-                spdlog::error("Failed while writing project settings: {}",settingsPath.string());
-                return false;
-            }
-
-            return true;
-        }
-        catch (const std::exception& error) {
-            spdlog::error("Failed to save project settings: {}",error.what());
-            return false;
-        }
+        return WriteProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json", ProjectSettingsJson());
     }
 
     bool LoadUserSettings() {
@@ -195,6 +207,12 @@ namespace MapEditorInternal {
                 static_cast<int>(EntityMarkerMode::Count) - 1
             ));
 
+            autoSaveInSeconds = std::max(0.0, settings.value("autoSaveInSeconds", autoSaveInSeconds));
+
+#ifndef TILKY_STANDALONE
+            RuntimeSession::SetVSyncMode(settings.value("vsync", RuntimeSession::GetVSyncMode()));
+#endif
+
             // A binding missing from the file, or a slot that isn't a valid
             // scancode, keeps its current (default) key. 0 is an empty slot.
             if (const auto keysIt = settings.find("keyBindings"); keysIt != settings.end() && keysIt->is_object()) {
@@ -296,7 +314,7 @@ namespace MapEditorInternal {
         }
 
         try {
-            const nlohmann::json settings = {
+            nlohmann::json settings = {
                 // When changing this, dont forget to change it in Editor.cpp LoadUserSettings() as well
                 {"formatVersion", 1},
                 {"colors", {
@@ -380,8 +398,13 @@ namespace MapEditorInternal {
                 {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
-                {"runtimeSteps", SerializeRuntimeSteps()}
+                {"runtimeSteps", SerializeRuntimeSteps()},
+                {"autoSaveInSeconds", autoSaveInSeconds}
             };
+
+#ifndef TILKY_STANDALONE
+            settings["vsync"] = RuntimeSession::GetVSyncMode();
+#endif
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());
             spdlog::info("Absolute settings path: '{}'", fs::absolute(settingsPath).string());
@@ -433,6 +456,8 @@ namespace MapEditorInternal {
     }
 
     bool Save(const std::string& saveTo) {
+        Editor::WaitForAutoSave();
+
         Level& level = GetOrCreateCurrentLevel();
 
         const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
@@ -469,11 +494,75 @@ namespace MapEditorInternal {
         return true;
     }
 
+    // Save(), split in two: what reads or changes editor state runs here, the
+    // serializing and writing on a copy of the level, on another thread.
+    bool StartAutoSave(const std::string& saveTo) {
+        if (autoSaveTask.valid()) return false;
+
+        const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
+        if (cleanName.empty()) return false;
+
+        Level& level = GetOrCreateCurrentLevel();
+        level.name = cleanName;
+        Prefab::RefreshAllOverrides(level);
+
+        autoSaveLevelName = cleanName;
+        autoSaveTask = std::async(std::launch::async, [
+            snapshot = level,
+            projectSettingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json",
+            projectSettings = ProjectSettingsJson()
+        ]() -> bool {
+            try {
+                LevelSerialization::LevelExtraData extraData;
+
+                std::string errorMessage;
+                const fs::path path = LevelSerialization::ResolveLevelSavePath(snapshot.name, &errorMessage);
+
+                if (path.empty() || !LevelSerialization::SaveLevelToFile(path, snapshot, &extraData, &errorMessage)) {
+                    spdlog::critical("Failed to auto save level to file {}", errorMessage);
+                    return false;
+                }
+
+                if (!WriteProjectSettings(projectSettingsPath, projectSettings)) {
+                    spdlog::critical("Failed to save project settings during auto save");
+                    return false;
+                }
+
+                spdlog::info("Level auto saved {}", path.string());
+                return true;
+            }
+            catch (const std::exception& e) {
+                spdlog::critical("Auto save failed: {}", e.what());
+                return false;
+            }
+        });
+
+        return true;
+    }
+
+    AutoSaveStatus PollAutoSave() {
+        if (!autoSaveTask.valid()) return AutoSaveStatus::Idle;
+        if (autoSaveTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return AutoSaveStatus::Running;
+
+        if (!autoSaveTask.get()) return AutoSaveStatus::Failed;
+
+        // A level saved for the first time isn't in the list yet.
+        if (std::ranges::find(Editor::maps, autoSaveLevelName) == Editor::maps.end()) UpdateLevels();
+
+        return AutoSaveStatus::Saved;
+    }
+
 }
 
 namespace Editor {
+    void WaitForAutoSave() {
+        if (autoSaveTask.valid()) autoSaveTask.wait();
+    }
+
     bool LoadLevel(const std::string& levelName) {
         using namespace MapEditorInternal;
+
+        WaitForAutoSave();
 
         const std::string cleanName = LevelSerialization::CleanLevelName(levelName);
         Level loadedLevel;
@@ -557,6 +646,8 @@ namespace Editor {
     // level's contents under a new name.
     bool NewLevel(const std::string& levelName) {
         using namespace MapEditorInternal;
+
+        WaitForAutoSave();
 
         const std::string cleanName = LevelSerialization::CleanLevelName(levelName);
 

@@ -52,5 +52,10 @@ namespace Editor {
     // recreate the old name.
     void LevelFileRenamed(const std::string& oldName, const std::string& newName);
 
+    // Blocks until an auto save running in the background has written its
+    // files. Call before anything that writes, renames, moves or deletes
+    // level files, so it can't race the save.
+    void WaitForAutoSave();
+
     SDL_Window* GetWindow();
 }

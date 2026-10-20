@@ -36,6 +36,47 @@ namespace {
     // skips its save, so the defaults the editor fell back to never overwrite
     // that file.
     bool userSettingsSafeToSave = false;
+
+    uint64_t lastAutoSaveTime = 0;
+    // The level the running auto save is writing - a failed save only marks
+    // the level unsaved again if it is still the one open.
+    std::string autoSavingLevel;
+
+    // Every autoSaveInSeconds, starts a background save of the open level if
+    // it has unsaved changes, and reports the result once it finishes.
+    void UpdateAutoSave() {
+        using namespace MapEditorInternal;
+
+        switch (PollAutoSave()) {
+            case AutoSaveStatus::Saved:
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get("levels.notification.auto_saved").c_str());
+                break;
+            case AutoSaveStatus::Failed:
+                if (Editor::currentMap == autoSavingLevel) hasUnsavedChanges = true;
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
+                break;
+            case AutoSaveStatus::Running:
+                return;
+            case AutoSaveStatus::Idle:
+                break;
+        }
+
+        if (autoSaveInSeconds <= 0.0) return;
+
+        const uint64_t now = SDL_GetTicks();
+        if (now - lastAutoSaveTime < static_cast<uint64_t>(autoSaveInSeconds * 1000.0)) return;
+        lastAutoSaveTime = now;
+
+        // A level that has never been saved has no name to save under yet.
+        if (!hasUnsavedChanges || Editor::currentMap.empty()) return;
+
+        // Cleared now: anything edited while the save runs isn't in its copy,
+        // so it sets the flag again.
+        if (StartAutoSave(Editor::currentMap)) {
+            autoSavingLevel = Editor::currentMap;
+            hasUnsavedChanges = false;
+        }
+    }
 }
 
 namespace Editor {
@@ -307,6 +348,8 @@ namespace Editor {
         SDL_GetWindowSize(window, &screenWidth, &screenHeight);
 
         SDL_RenderPresent(renderer);
+
+        UpdateAutoSave();
     }
 
     bool QuitRequested() {
@@ -327,6 +370,8 @@ namespace Editor {
 
     void Destroy() {
         using namespace MapEditorInternal;
+
+        WaitForAutoSave();
 
         if (imguiContext == nullptr) return;
 

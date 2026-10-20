@@ -2,6 +2,7 @@
 // Created by berke on 6/2/2026.
 //
 
+#include "Headers/Runtime/RuntimeSession.hpp"
 #include "../EditorInternal.hpp"
 
 #include "imgui.h"
@@ -394,6 +395,7 @@ namespace {
     bool userSettingsOpen = false;
 
     bool layoutMenuOpen = false;
+    bool engineSettingsOpen = false;
 
     bool createLevelModalRequested = false;
 
@@ -407,7 +409,6 @@ namespace {
 
     // Unsaved-changes flag — set on any edit, cleared on Save / new level.
     // Other files set it through MapEditorInternal::MarkUnsavedChanges().
-    bool hasUnsavedChanges = false;
 
     // Set when the wall inspector moves an endpoint, cleared once the
     // topology rebuild it needs has run. Drag-style widgets report a
@@ -955,6 +956,7 @@ namespace {
 
             PushDangerStyle();
             if (ImGui::Button(Get("common.delete").c_str(), ImVec2(90.0f, 0.0f))) {
+                Editor::WaitForAutoSave();
                 const std::filesystem::path path = LevelSerialization::FindLevelPath(deleteLevelPending);
 
                 try {
@@ -1932,6 +1934,60 @@ namespace {
     //  Top menu bar: Project | Project Settings | User Settings
     // =========================================================================
 
+    // The game window's swap interval, saved with the user settings as soon
+    // as it changes. Takes effect on the next Play / runtime editor session.
+    void DrawVSyncCombo() {
+        struct VSyncOption {
+            int mode;
+            const char* labelKey;
+        };
+        static constexpr VSyncOption options[] = {
+            {1, "editor.engine_settings.vsync.on"},
+            {-1, "editor.engine_settings.vsync.adaptive"},
+            {0, "editor.engine_settings.vsync.off"},
+        };
+
+        const int current = RuntimeSession::GetVSyncMode();
+        const char* currentLabelKey = options[0].labelKey;
+        for (const VSyncOption& option : options)
+            if (option.mode == current) currentLabelKey = option.labelKey;
+
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::BeginCombo(Get("editor.engine_settings.vsync").c_str(), Get(currentLabelKey).c_str())) {
+            for (const VSyncOption& option : options) {
+                const bool selected = option.mode == current;
+                if (ImGui::Selectable(Get(option.labelKey).c_str(), selected) && !selected) {
+                    RuntimeSession::SetVSyncMode(option.mode);
+                    SaveUserSettings();
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        HoverTooltip(Get("editor.tooltip.engine_settings.vsync").c_str());
+    }
+
+    void DrawEngineSettingsWindow() {
+        ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
+
+        const bool windowVisible = ImGui::Begin(Get("editor.menu.engine_settings").c_str(), &engineSettingsOpen);
+
+        if (windowVisible) {
+            DrawVSyncCombo();
+
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::InputDouble(Get("editor.engine_settings.auto_save_in_seconds").c_str(), &autoSaveInSeconds, 1, 10, "%.0f")) {
+                autoSaveInSeconds = std::max(0.0, autoSaveInSeconds);
+                SaveUserSettings();
+            }
+            HoverTooltip(Get("editor.tooltip.engine_settings.auto_save_in_seconds").c_str());
+        }
+
+        ImGui::End();
+    }
+
     void DrawMainMenuBar() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
@@ -1958,6 +2014,9 @@ namespace {
             if (ImGui::MenuItem(Get("editor.layout_menu").c_str(), nullptr, layoutMenuOpen))
                 layoutMenuOpen = !layoutMenuOpen;
 
+            if (ImGui::MenuItem(Get("editor.menu.engine_settings").c_str(), nullptr, engineSettingsOpen))
+                engineSettingsOpen = !engineSettingsOpen;
+
             ImGui::EndMainMenuBar();
         }
 
@@ -1965,6 +2024,7 @@ namespace {
         if (userSettingsOpen) DrawUserSettingsWindow();
         else keyBindBeingListened = nullptr;
         if (layoutMenuOpen) DrawLayoutMenu();
+        if (engineSettingsOpen) DrawEngineSettingsWindow();
 
         DrawShutdownConfirmModal();
     }

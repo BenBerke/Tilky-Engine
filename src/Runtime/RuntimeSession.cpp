@@ -7,6 +7,7 @@
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -55,6 +56,8 @@ namespace {
 
     float fpsTimer = 0.0f;
     int fps = 0;
+
+    int vsyncMode = -1; // adaptive, OpenGLInit.cpp's own default
 #endif
 
     // Creates the renderer and its window. The engine does this once at
@@ -113,6 +116,7 @@ namespace {
         }
 
         renderer->MakeCurrent();
+        renderer->SetVSync(vsyncMode);
         renderer->SetUseEditorCamera(useEditorCamera);
 
         if (!mapCreated) {
@@ -502,6 +506,14 @@ namespace RuntimeSession {
     }
 
 #else
+
+    void SetVSyncMode(const int mode) {
+        vsyncMode = std::clamp(mode, -1, 1);
+    }
+
+    int GetVSyncMode() {
+        return vsyncMode;
+    }
 
     bool Initialize(const std::string& windowName) {
         // Hidden until a session shows it.

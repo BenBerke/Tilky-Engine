@@ -3130,11 +3130,14 @@ namespace MapEditorInternal {
         return snapshot;
     }
 
+    // Every undoable edit lands here, so it's also where the level is marked
+    // unsaved - creating a sector or wall marks nothing else.
     void PushUndoStep(UndoStep step) {
         undoSteps.push_back(std::move(step));
         if (undoSteps.size() > MAX_MAP_UNDO_STEPS) undoSteps.erase(undoSteps.begin());
 
         redoSteps.clear();
+        MarkUnsavedChanges();
     }
 
     void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, const int count) {
@@ -3165,6 +3168,7 @@ namespace MapEditorInternal {
 
         SwapUndoStep(step);
         redoSteps.push_back(std::move(step));
+        MarkUnsavedChanges();
     }
 
     void RedoLastAction() {
@@ -3175,6 +3179,7 @@ namespace MapEditorInternal {
 
         SwapUndoStep(step);
         undoSteps.push_back(std::move(step));
+        MarkUnsavedChanges();
     }
 
     void JumpToUndoPosition(const std::size_t position) {

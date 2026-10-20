@@ -35,6 +35,16 @@ void OpenGL::MakeCurrent() {
     if (imguiContext != nullptr) ImGui::SetCurrentContext(imguiContext);
 }
 
+void OpenGL::SetVSync(const int mode) {
+    if (SDL_GL_SetSwapInterval(mode)) return;
+
+    spdlog::warn("SDL_GL_SetSwapInterval({}) failed: {}", mode, SDL_GetError());
+
+    // Not every driver has adaptive VSync; plain VSync is the closest.
+    if (mode == -1 && !SDL_GL_SetSwapInterval(1))
+        spdlog::warn("SDL_GL_SetSwapInterval(1) failed too: {}", SDL_GetError());
+}
+
 void OpenGL::SetWindowVisible(const bool visible) {
     if (window == nullptr) return;
 
