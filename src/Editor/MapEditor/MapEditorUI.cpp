@@ -2082,7 +2082,7 @@ namespace {
 
         PushSuccessStyle();
         const bool playPressed = ToolbarButton("save_and_play", ICON_FA_PLAY, ">", Get("editor.save_and_play"),
-                                               Get("editor.tooltip.save_and_play"));
+                                               FormatKeyBinds(Get("editor.tooltip.save_and_play")));
         PopSuccessStyle();
         if (playPressed) SaveAndPlayFromEditor();
 
@@ -2112,6 +2112,7 @@ namespace MapEditorInternal {
 
         if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_UI;
         else if (GetKeyBindDown(KEYBIND_TOGGLE_RUNTIME_EDITOR)) OpenRuntimeEditorFromEditor();
+        else if (GetKeyBindDown(KEYBIND_SAVE_AND_PLAY)) SaveAndPlayFromEditor(); // same as the toolbar's Save & Play
     }
 } // namespace MapEditorInternal
 

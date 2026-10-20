@@ -1144,6 +1144,7 @@ namespace MapEditorInternal {
         KEYBIND_TOGGLE_UI_EDITOR,
         KEYBIND_TOGGLE_RUNTIME_EDITOR,
         KEYBIND_TOGGLE_TEXTURE_VIEW,
+        KEYBIND_SAVE_AND_PLAY,
 
         // Editing
         KEYBIND_PLACE_ENTITY,

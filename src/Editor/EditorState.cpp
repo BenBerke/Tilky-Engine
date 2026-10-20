@@ -229,6 +229,7 @@ namespace MapEditorInternal {
         {"toggle_ui_editor", "editor.key.toggle_ui_editor", "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_U}},
         {"toggle_runtime_editor", "editor.key.toggle_runtime_editor", "editor.key_group.modes", KEYSCOPE_MAP, {SDL_SCANCODE_V}},
         {"toggle_texture_view", "editor.key.toggle_texture_view", "editor.key_group.modes", KEYSCOPE_MAP, {SDL_SCANCODE_M}},
+        {"save_and_play",    "editor.key.save_and_play",    "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_P}},
 
         {"place_entity",     "editor.key.place_entity",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_E}},
         {"delete",           "editor.key.delete",           "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_DELETE}},
