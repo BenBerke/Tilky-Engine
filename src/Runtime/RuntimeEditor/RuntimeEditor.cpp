@@ -1782,6 +1782,10 @@ namespace RuntimeEditorUi {
     }
 
     void Draw(Level& level) {
+        // Lets panels dock to the window's edges and corners, like in the Map
+        // Editor. The empty middle lets clicks through to the game.
+        ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
+
         // The browser is shared with the Map Editor, which hands it a font
         // from the editor's ImGui context every frame. This context has its
         // own copy; drawing with the other one shows the wrong glyphs.
