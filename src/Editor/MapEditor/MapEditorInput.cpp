@@ -1291,6 +1291,63 @@ namespace MapEditorInternal {
         }
     }
 
+    bool DropTextureOnCanvas(const std::string& texture, const Vector2& mouseWorld) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const ID hovered = HoveredCanvasItem(level, mouseWorld);
+        if (hovered == INVALID_ID) return false;
+
+        // Same targets as a paste: the whole selection when dropped on a
+        // selected item, otherwise just the one under the cursor.
+        const std::vector<ID>& selection = CanvasSelection();
+        const std::vector<ID> targets = std::ranges::find(selection, hovered) != selection.end()
+            ? selection
+            : std::vector<ID>{hovered};
+
+        constexpr const char* labelKey = "runtime_editor.history.apply_texture";
+        int changed = 0;
+
+        if (currentMode == MODE_ENTITY) {
+            EntitiesSnapshot before = CaptureEntitiesSnapshot();
+
+            for (const ID id : targets) {
+                ComponentSprite* sprite = level.sprites.Get(id);
+                if (sprite == nullptr) continue;
+
+                sprite->textureFileNames[0] = texture;
+                ++changed;
+            }
+
+            if (changed > 0) PushEntitiesUndo(std::move(before), labelKey, changed);
+            return changed > 0;
+        }
+
+        GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+
+        for (const ID id : targets) {
+            if (currentMode == MODE_GEOMETRY) {
+                const int index = WallIndexOf(level, id);
+                if (index < 0) continue;
+
+                level.walls[index].top.texture = texture;
+            }
+            else {
+                const int index = SectorIndexOf(level, id);
+                if (index < 0) continue;
+
+                SectorSurface* flat = ShownFlat(level.sectors[index]);
+                if (flat == nullptr) continue;
+
+                flat->texture = texture;
+            }
+
+            ++changed;
+        }
+
+        if (changed > 0) PushGeometryUndoSnapshot(std::move(before), labelKey, changed);
+        return changed > 0;
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 

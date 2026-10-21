@@ -870,6 +870,10 @@ namespace MapEditorInternal {
     // An asset of `kind` dragged from the Asset Browser and released over the
     // canvas (the middle of the dockspace `dockspaceID`) this frame.
     bool AcceptCanvasAssetDrop(ImGuiID dockspaceID, AssetKind kind, std::string& outReference);
+    // A texture dropped on the canvas goes to the wall, sector or sprite
+    // under the cursor in the current mode (a sector's floor or ceiling by
+    // the texture view mode, Off counting as floor). False if nothing took it.
+    bool DropTextureOnCanvas(const std::string& texture, const Vector2& mouseWorld);
     // The UI entity inspector (entity window plus its component windows) for
     // an entity the UI editor doesn't have selected - the prefab editor's.
     // idSuffix keeps its windows (and their state) apart from the UI

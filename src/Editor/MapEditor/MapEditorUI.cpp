@@ -546,6 +546,11 @@ namespace {
         if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Prefab, droppedPrefab))
             PlacePrefab(droppedPrefab, ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
 
+        // A texture dropped on a wall, sector or sprite is applied to it.
+        std::string droppedTexture;
+        if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Texture, droppedTexture))
+            DropTextureOnCanvas(droppedTexture, ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+
         ImGui::End();
     }
 
