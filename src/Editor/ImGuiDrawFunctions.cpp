@@ -1160,42 +1160,6 @@ namespace ImGuiDrawFunctions {
 
             BeginSection(Get("sector.textures").c_str());
 
-            // Floor texture
-            ImGui::PushID("floor_texture");
-
-            MapEditorInternal::DrawAssetField(
-                Get("sector.floor_texture").c_str(),
-                sectorFloor.floor.texture,
-                AssetKind::Texture,
-                MapEditorInternal::textureFieldSize
-            );
-            Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_offset").c_str(),
-                &sectorFloor.floor.textureOffset.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_scale").c_str(),
-                &sectorFloor.floor.textureScale.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
-
-            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(), &sectorFloor.floor.flipTextureX);
-            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(), &sectorFloor.floor.flipTextureY);
-
-            ImGui::PopID();
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
             // Ceiling texture
             ImGui::PushID("ceiling_texture");
 
@@ -1233,8 +1197,6 @@ namespace ImGuiDrawFunctions {
 
             ImGui::PopID();
 
-            // ── Colors ───────────────────────────────────────────────────────────
-
             FieldWidth(220.0f);
 
             if (ImGui::ColorEdit4(
@@ -1246,8 +1208,43 @@ namespace ImGuiDrawFunctions {
                 ImGuiColorEditFlags_Float
             )) {}
 
-            if (ImGui::SmallButton("Reset##floor_color"))
-                sectorFloor.floor.color = {1.0f, 1.0f, 1.0f, 1.0f};
+            if (ImGui::SmallButton("Reset##floor_color")) sectorFloor.floor.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+            // Floor texture
+            ImGui::PushID("floor_texture");
+
+            MapEditorInternal::DrawAssetField(
+                Get("sector.floor_texture").c_str(),
+                sectorFloor.floor.texture,
+                AssetKind::Texture,
+                MapEditorInternal::textureFieldSize
+            );
+            Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
+
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_offset").c_str(),
+                &sectorFloor.floor.textureOffset.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
+
+            FieldWidth(200.0f);
+            InputOrDrag2(
+                Get("sector.texture_scale").c_str(),
+                &sectorFloor.floor.textureScale.x,
+                draggable
+            );
+            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
+
+            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(), &sectorFloor.floor.flipTextureX);
+            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(), &sectorFloor.floor.flipTextureY);
+
+            ImGui::PopID();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
 
             FieldWidth(220.0f);
 
@@ -1262,6 +1259,9 @@ namespace ImGuiDrawFunctions {
 
             if (ImGui::SmallButton("Reset##ceiling_color"))
                 sectorFloor.ceiling.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+            // End texture
+
 
             ImGui::Spacing();
 
