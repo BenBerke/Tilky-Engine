@@ -409,6 +409,30 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     }
 
     if (entityMarkers != EntityMarkers::Off) {
+        ZoneScopedN("Editor Gizmos");
+
+        // Not for the camera being looked through: its gizmos sit at the eye.
+        BuildGpuEditorGizmos(useEditorCamera ? INVALID_ENTITY_ID : camera->ownerID, renderCameraTransform, *camera);
+
+        if (editorGizmoVertexCount > 0) {
+            // They write depth so an arrow's own faces sort. Always mode
+            // shows them through walls by dropping the scene's depth first;
+            // nothing after this pass reads it.
+            if (entityMarkers == EntityMarkers::Always) {
+                glDepthMask(GL_TRUE);
+                glClear(GL_DEPTH_BUFFER_BIT);
+            }
+
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_GEQUAL);
+
+            glUniform1i(renderModeUniform, RENDER_EDITOR_GIZMO);
+            glDrawArrays(GL_TRIANGLES, 0, editorGizmoVertexCount);
+        }
+    }
+
+    if (entityMarkers != EntityMarkers::Off) {
         ZoneScopedN("Entity Markers");
 
         BuildGpuEntityMarkers();

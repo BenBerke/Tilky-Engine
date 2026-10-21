@@ -36,6 +36,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_COLLIDER = 4;
     inline constexpr int RENDER_MODEL = 5;
     inline constexpr int RENDER_ENTITY_MARKER = 6;
+    inline constexpr int RENDER_EDITOR_GIZMO = 7;
 
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
@@ -172,6 +173,15 @@ namespace OpenGLRendererInternal {
     };
 
     static_assert(sizeof(GpuCollider) == sizeof(float) * 8);
+
+    // One corner of a runtime editor gizmo (facing arrows, camera frustums),
+    // built on the CPU in world space.
+    struct GpuEditorGizmoVertex {
+        Vector4 position; // w unused
+        Vector4 color;
+    };
+
+    static_assert(sizeof(GpuEditorGizmoVertex) == sizeof(float) * 8);
 
     // One entity drawing a model. Matches ModelInstance in Rendering.vs.glsl
     // (std430, SSBO binding 3). Matrices are column major.
@@ -399,6 +409,9 @@ private:
     GLuint entityMarkerSSBO = 0;
     GLsizei entityMarkerCount = 0;
 
+    GLuint editorGizmoSSBO = 0;
+    GLsizei editorGizmoVertexCount = 0; // triangles
+
     GLuint modelSSBO = 0;
     GLsizeiptr modelSSBOCapacity = 0;
 
@@ -447,6 +460,7 @@ private:
     std::vector<GpuSprite> gpuSprites;
     std::vector<GpuCollider> gpuColliders;
     std::vector<Vector4> gpuEntityMarkers; // xyz = position
+    std::vector<OpenGLRendererInternal::GpuEditorGizmoVertex> gpuEditorGizmoTriangles;
 
     // Keyed by ComponentModel::fileName. Assets nobody used for
     // MODEL_UNUSED_LIFETIME_MS are released; failed loads are remembered so a
@@ -485,6 +499,9 @@ private:
     void BuildGpuSprites();
     void BuildGpuColliders();
     void BuildGpuEntityMarkers();
+    // Skips `cameraOwner`'s gizmos: the view is from its own eye. The view
+    // sizes them, so they keep a fixed width on screen.
+    void BuildGpuEditorGizmos(ID cameraOwner, const ComponentTransform& viewTransform, const ComponentCamera& viewCamera);
 
     // OpenGLModel.cpp
     void BuildGpuModels();

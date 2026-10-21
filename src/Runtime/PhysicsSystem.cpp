@@ -17,7 +17,6 @@
 
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/Constants.hpp"
-#include "Headers/Math/Geometry/Geometry.hpp"
 #include "Headers/Math/SIMD/SSECompat.hpp"
 #include "Headers/Objects/Level.hpp"
 
@@ -465,35 +464,42 @@ namespace {
         float bestCorrection = std::numeric_limits<float>::max();
         bool bestCentreInside = false;
 
-        for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
-            const SectorFloor& floor = sector.floors[floorIndex];
+        // Slabs the body fits in come first. When none does (a low ceiling,
+        // or a sloped floor rising toward one) the body still needs a floor:
+        // with none picked nothing held it up and it fell out of the map.
+        for (const bool requireFit : {true, false}) {
+            for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+                const SectorFloor& floor = sector.floors[floorIndex];
 
-            const float floorHeight = GetSurfaceHeight(floor.floor, bounds, point);
-            const float ceilingHeight = GetSurfaceHeight(floor.ceiling, bounds, point);
+                const float floorHeight = GetSurfaceHeight(floor.floor, bounds, point);
+                const float ceilingHeight = GetSurfaceHeight(floor.ceiling, bounds, point);
 
-            if (ceilingHeight - floorHeight + Constants::Epsilon < bodyHeight) continue;
+                if (requireFit && ceilingHeight - floorHeight + Constants::Epsilon < bodyHeight) continue;
 
-            const float overlap =
-                std::max(0.0f, std::min(headHeight, ceilingHeight) - std::max(feetHeight, floorHeight));
+                const float overlap =
+                    std::max(0.0f, std::min(headHeight, ceilingHeight) - std::max(feetHeight, floorHeight));
 
-            float correction = 0.0f;
+                float correction = 0.0f;
 
-            if (feetHeight < floorHeight) correction = floorHeight - feetHeight;
-            else if (headHeight > ceilingHeight) correction = ceilingHeight - headHeight;
+                if (feetHeight < floorHeight) correction = floorHeight - feetHeight;
+                else if (headHeight > ceilingHeight) correction = ceilingHeight - headHeight;
 
-            const float correctionMagnitude = std::abs(correction);
-            const bool centreInside = centreHeight >= floorHeight && centreHeight <= ceilingHeight;
+                const float correctionMagnitude = std::abs(correction);
+                const bool centreInside = centreHeight >= floorHeight && centreHeight <= ceilingHeight;
 
-            if ((centreInside && !bestCentreInside) ||
-                (centreInside == bestCentreInside && overlap > bestOverlap + Constants::Epsilon) ||
-                (centreInside == bestCentreInside &&
-                 std::abs(overlap - bestOverlap) <= Constants::Epsilon &&
-                 correctionMagnitude < bestCorrection)) {
-                bestFloorIndex = floorIndex;
-                bestOverlap = overlap;
-                bestCorrection = correctionMagnitude;
-                bestCentreInside = centreInside;
+                if ((centreInside && !bestCentreInside) ||
+                    (centreInside == bestCentreInside && overlap > bestOverlap + Constants::Epsilon) ||
+                    (centreInside == bestCentreInside &&
+                     std::abs(overlap - bestOverlap) <= Constants::Epsilon &&
+                     correctionMagnitude < bestCorrection)) {
+                    bestFloorIndex = floorIndex;
+                    bestOverlap = overlap;
+                    bestCorrection = correctionMagnitude;
+                    bestCentreInside = centreInside;
+                }
             }
+
+            if (bestFloorIndex >= 0) break;
         }
 
         return bestFloorIndex;
@@ -861,9 +867,16 @@ namespace PhysicsSystem {
                     colliderBase.z
                 };
 
-                if (sector.vertices.empty() || !Geometry::IsPointInPolygon(sector.vertices, feetPoint)) continue;
+                // sectorIndex is only updated after physics, so on the frame
+                // the body crosses into a neighbour it is stale. Clamp to the
+                // sector the feet are really over: skipping the clamp there
+                // left the body with no floor for that frame.
+                const int feetSectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, feetPoint, sectorIndex);
+                if (feetSectorIndex < 0) continue;
 
-                const SectorBounds& sectorBounds = boundsCache.Get(&sector);
+                const Sector& feetSector = level.sectors[feetSectorIndex];
+
+                const SectorBounds& sectorBounds = boundsCache.Get(&feetSector);
 
                 const auto getSlopeAxis = [](const SlopeDirection direction) -> Vector2 {
                     switch (direction) {
@@ -911,7 +924,7 @@ namespace PhysicsSystem {
                 const float headHeight = colliderBase.y + bodyHeight;
 
                 const int floorIndex = FindBestSectorFloor(
-                    sector,
+                    feetSector,
                     sectorBounds,
                     feetPoint,
                     feetHeight,
@@ -923,7 +936,7 @@ namespace PhysicsSystem {
                     continue;
                 }
 
-                const SectorFloor &floor = sector.floors[floorIndex];
+                const SectorFloor &floor = feetSector.floors[floorIndex];
 
                 const float floorHeight = getSurfaceHeight(floor.floor);
                 const float ceilingHeight = getSurfaceHeight(floor.ceiling);
@@ -949,7 +962,11 @@ namespace PhysicsSystem {
                 }
 
                 if (correctedHeadHeight > ceilingHeight) {
-                    const float correction = ceilingHeight - correctedHeadHeight;
+                    // The floor wins: in a slab shorter than the body the head
+                    // stays in the ceiling instead of the feet being pushed
+                    // back through the floor.
+                    const float correction =
+                        std::min(0.0f, std::max(ceilingHeight - correctedHeadHeight, floorHeight - correctedFeetHeight));
 
                     selfTransform->AddPosition({0.0f, correction, 0.0f});
 

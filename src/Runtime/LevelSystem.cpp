@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
@@ -344,13 +345,18 @@ namespace LevelSystem {
 
                     if (collider == nullptr) continue;
 
+                    // Sampled under the entity: a sloped floor's height is
+                    // only its height at the sector's edge.
+                    const Vector2 point = {transform.position.x, transform.position.z};
+
+                    const Sector& oldSector = level.sectors[oldSectorIndex];
+                    const Sector& newSector = level.sectors[newSectorIndex];
+
                     const float oldHeight =
-                        level.sectors[oldSectorIndex]
-                            .floors[0].floor.height;
+                        MapQueries::SurfaceHeightAt(oldSector, oldSector.floors[0].floor, point);
 
                     const float newHeight =
-                        level.sectors[newSectorIndex]
-                            .floors[0].floor.height;
+                        MapQueries::SurfaceHeightAt(newSector, newSector.floors[0].floor, point);
 
                     // Upward stepping and camera smoothing are already detected
                     // from the physical Y change in the renderer.

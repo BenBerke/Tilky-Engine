@@ -345,6 +345,11 @@ bool OpenGL::CreateMap() {
     glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, entityMarkerSSBO);
 
+    glGenBuffers(1, &editorGizmoSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, editorGizmoSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, editorGizmoSSBO);
+
     // Per-entity model transforms. Grown on demand by BuildGpuModels().
     glGenBuffers(1, &modelSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, modelSSBO);

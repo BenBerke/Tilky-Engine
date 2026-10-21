@@ -6,6 +6,7 @@
 #define RENDER_COLLIDER 4
 #define RENDER_MODEL 5
 #define RENDER_ENTITY_MARKER 6
+#define RENDER_EDITOR_GIZMO 7
 
 // Entity marker quad, in pixels from its centre to an edge: a ring of radius
 // 6 and 2 wide, plus a pixel to fade out. Same value in Rendering.fs.glsl.
@@ -171,6 +172,16 @@ layout(std430, binding = 7) readonly buffer SectorFloorBuffer {
 
 layout(std430, binding = 8) readonly buffer EntityMarkerBuffer {
     vec4 entityMarkers[]; // xyz = position
+};
+
+// Must match OpenGLRendererInternal::GpuEditorGizmoVertex (OpenGL.hpp).
+struct EditorGizmoVertex {
+    vec4 position; // w unused
+    vec4 color;
+};
+
+layout(std430, binding = 9) readonly buffer EditorGizmoBuffer {
+    EditorGizmoVertex editorGizmoVertices[];
 };
 
 // Model vertices. Every other mode is procedural and leaves these disabled.
@@ -820,6 +831,19 @@ void renderModel() {
     gl_Position = uProjection * uView * worldPos;
 }
 
+// Runtime editor facing arrows and camera frustums, already in world space.
+void RenderEditorGizmoVertex() {
+    EditorGizmoVertex gizmoVertex = editorGizmoVertices[gl_VertexID];
+
+    vColor = gizmoVertex.color;
+
+    vWorldPos = gizmoVertex.position.xyz;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
+    gl_Position = uProjection * uView * vec4(gizmoVertex.position.xyz, 1.0);
+}
+
 void main() {
     vSurfaceMetaData = 0;
 
@@ -829,5 +853,6 @@ void main() {
     else if (renderMode == RENDER_COLLIDER) RenderColliderVertex();
     else if (renderMode == RENDER_MODEL) renderModel();
     else if (renderMode == RENDER_ENTITY_MARKER) RenderEntityMarkerVertex();
+    else if (renderMode == RENDER_EDITOR_GIZMO) RenderEditorGizmoVertex();
     else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
 }

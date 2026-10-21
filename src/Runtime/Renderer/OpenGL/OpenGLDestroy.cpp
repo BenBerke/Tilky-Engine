@@ -46,6 +46,11 @@ void OpenGL::Shutdown() {
         entityMarkerSSBO = 0;
     }
 
+    if (editorGizmoSSBO != 0) {
+        glDeleteBuffers(1, &editorGizmoSSBO);
+        editorGizmoSSBO = 0;
+    }
+
     if (sectorFloorSSBO != 0) {
         glDeleteBuffers(1, &sectorFloorSSBO);
         sectorFloorSSBO = 0;
