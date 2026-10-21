@@ -234,7 +234,7 @@ namespace OpenGLRendererInternal {
 
     struct GPUTextureRegion {
         Vector4 uvRect; // x = uMin, y = vMin, z = uMax, w = vMax
-        Vector4 data;   // x = valid, y = atlas page (texture array layer), z/w unused for now
+        Vector4 data;   // x = valid, y = atlas page (texture array layer), z/w = image width/height in pixels
     };
 
     // An image decoded to tightly packed RGBA8, kept between atlas rebuilds

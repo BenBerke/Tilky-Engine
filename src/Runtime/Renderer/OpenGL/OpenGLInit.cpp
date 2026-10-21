@@ -478,7 +478,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         textureRegions[i] = {
             {uMin, vMin, uMax, vMax},
-            {1.0f, static_cast<float>(page), 0.0f, 0.0f}
+            {1.0f, static_cast<float>(page), static_cast<float>(textureWidth), static_cast<float>(textureHeight)}
         };
 
         // Only recorded once packing has actually succeeded, so a texture

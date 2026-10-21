@@ -1841,6 +1841,27 @@ namespace {
                 ShowNotification(Get("editor.project.ui_reference_height_failed").c_str(), /*isError=*/true);
             HoverTooltip(Get("editor.tooltip.project.ui_reference_height").c_str());
 
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Textures ---------------------------------------------------------
+            SectionHeader(Get("editor.project.textures").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Saved to project.tilky when the edit is finished, not every keystroke.
+            static float texelsPerUnitEdit = ProjectManager::DEFAULT_TEXELS_PER_UNIT;
+            static bool editingTexelsPerUnit = false;
+            if (!editingTexelsPerUnit) texelsPerUnitEdit = ProjectManager::GetTexelsPerUnit();
+
+            ImGui::SetNextItemWidth(120.0f);
+            ImGui::InputFloat(Get("editor.project.texels_per_unit").c_str(), &texelsPerUnitEdit, 0.0f, 0.0f, "%.2f");
+            editingTexelsPerUnit = ImGui::IsItemActive();
+            if (ImGui::IsItemDeactivatedAfterEdit() && !ProjectManager::SetTexelsPerUnit(texelsPerUnitEdit))
+                ShowNotification(Get("editor.project.texels_per_unit_failed").c_str(), /*isError=*/true);
+            HoverTooltip(Get("editor.tooltip.project.texels_per_unit").c_str());
+
 
             //todo TILKYTODO make an editor settings menu
         }

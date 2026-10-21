@@ -151,7 +151,16 @@ layout(std430, binding = 4) readonly buffer SectorBuffer {
     Sector sectors[];
 };
 
-// 5 is used in the fragment shader
+// Same layout as the fragment shader's; data.zw = image size in pixels.
+struct TextureRegion {
+    vec4 uvRect;
+    vec4 data;
+};
+
+layout(std430, binding = 5) readonly buffer TextureRegionBuffer {
+    TextureRegion textureRegions[];
+};
+
 layout(std430, binding = 6) readonly buffer ColliderBuffer {
     Collider colliders[];
 };
@@ -205,8 +214,25 @@ flat out vec2 vSurfaceSize;
 out vec3 vModelNormal;
 out vec2 vModelUV;
 
-const float tileSize = 32.0;
+uniform int uTextureCount;
+
+// Texture pixels per world unit at scale 1 (project setting).
+uniform float uTexelsPerUnit;
+
+// World size of one repeat for a missing texture, so UVs stay finite.
+const float FALLBACK_TILE_SIZE = 32.0;
 const float PI = 3.14159265359;
+
+// World units one repeat of the texture covers at scale 1: its pixel size
+// over texels per unit, so it keeps its aspect ratio.
+vec2 GetTextureTileSize(int textureIndex) {
+    if (textureIndex < 0 || textureIndex >= uTextureCount) return vec2(FALLBACK_TILE_SIZE);
+
+    vec2 pixels = textureRegions[textureIndex].data.zw;
+    if (pixels.x < 0.5 || pixels.y < 0.5) return vec2(FALLBACK_TILE_SIZE);
+
+    return pixels / max(uTexelsPerUnit, 0.01);
+}
 
 vec3 ToRenderWorld(vec3 entityWorld) {
     return vec3(
@@ -621,6 +647,7 @@ void renderFlat() {
 
     // Match wall UV behaviour: scale, then flip, then offset.
     // Map X/Y correspond to world X/Z. A scale of 2.0 doubles repeats.
+    vec2 tileSize = GetTextureTileSize(vFlatTextureIndex);
     vec2 uv = (point.xy / tileSize) * textureScale;
 
     if (textureFlip.x > 0.5) uv.x = -uv.x;
@@ -643,8 +670,8 @@ void renderFlat() {
 
 // V grows downward from the anchor on both faces, so a texture reads
 // upright whichever side the wall is seen from.
-float GetWallV(float height, float anchorHeight) {
-    return (anchorHeight - height) / tileSize;
+float GetWallV(float height, float anchorHeight, float tileHeight) {
+    return (anchorHeight - height) / tileHeight;
 }
 
 void renderWall() {
@@ -666,14 +693,16 @@ void renderWall() {
 
     float textureAnchorHeight = wall.data.z;
 
+    vec2 tileSize = GetTextureTileSize(int(wall.data.x));
+
     // The anchor stays a single world height, so the texture keeps a
     // constant vertical alignment and the sloped edges just cut it.
-    float bottomStartV = GetWallV(bottomStartHeight, textureAnchorHeight);
-    float topStartV = GetWallV(topStartHeight, textureAnchorHeight);
-    float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight);
-    float topEndV = GetWallV(topEndHeight, textureAnchorHeight);
+    float bottomStartV = GetWallV(bottomStartHeight, textureAnchorHeight, tileSize.y);
+    float topStartV = GetWallV(topStartHeight, textureAnchorHeight, tileSize.y);
+    float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight, tileSize.y);
+    float topEndV = GetWallV(topEndHeight, textureAnchorHeight, tileSize.y);
 
-    float rightU = wallLength / tileSize;
+    float rightU = wallLength / tileSize.x;
 
     vec2 uvOffset = wall.data2.xy / tileSize;
 

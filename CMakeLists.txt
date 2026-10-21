@@ -327,6 +327,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Map/LevelSerialization.cpp
         src/Map/MapQueries.cpp
         src/Map/WallPieces.cpp
+        src/Map/TextureTiling.cpp
 
         src/UISytem.cpp
 
@@ -345,6 +346,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Map/LevelSerialization.hpp
         Headers/Map/MapQueries.hpp
         Headers/Map/WallPieces.hpp
+        Headers/Map/TextureTiling.hpp
 
         Headers/Math/Geometry/Geometry.hpp
         Headers/Math/Vector/Vector2Math.hpp

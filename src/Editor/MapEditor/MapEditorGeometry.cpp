@@ -17,6 +17,7 @@
 
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/MapTopology.hpp"
+#include "Headers/Map/TextureTiling.hpp"
 #include "Headers/Map/WallPieces.hpp"
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Objects/Prefab.hpp"
@@ -2371,9 +2372,12 @@ namespace MapEditorInternal {
     // =========================================================================
 
     namespace {
-        // Map units one texture repeat covers at scale 1 (tileSize in
-        // Rendering.vs.glsl). A wall's U is s * scale / tile + offset / tile.
-        constexpr float WALL_TEXTURE_TILE = 32.0f;
+        // Map units one repeat of the surface's texture covers at scale 1
+        // (GetTextureTileSize() in Rendering.vs.glsl). A wall's U is
+        // s * scale / tile + offset / tile.
+        Vector2 SurfaceTile(const WallSurface& surface) {
+            return TextureTiling::GetTileSize(surface.texture);
+        }
 
         // Neither half of a split may be shorter than this.
         constexpr float MIN_SPLIT_LENGTH = 0.5f;
@@ -2394,9 +2398,10 @@ namespace MapEditorInternal {
         }
 
         // An offset only matters modulo one repeat; keeps the numbers small.
-        float WrapTextureOffset(const float offset) {
-            const float wrapped = std::fmod(offset, WALL_TEXTURE_TILE);
-            return wrapped < 0.0f ? wrapped + WALL_TEXTURE_TILE : wrapped;
+        float WrapTextureOffset(const WallSurface& surface, const float offset) {
+            const float tile = SurfaceTile(surface).x;
+            const float wrapped = std::fmod(offset, tile);
+            return wrapped < 0.0f ? wrapped + tile : wrapped;
         }
 
         // +1 when U grows from start to end, -1 when Flip X reverses it.
@@ -2470,7 +2475,7 @@ namespace MapEditorInternal {
 
             for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                 WallSurface& surface = second.Surface(slot);
-                surface.textureOffset.x = WrapTextureOffset(surface.textureOffset.x + USign(surface) * startDistance * surface.textureScale.x);
+                surface.textureOffset.x = WrapTextureOffset(surface, surface.textureOffset.x + USign(surface) * startDistance * surface.textureScale.x);
             }
 
             second.RefreshDerived();
@@ -2543,7 +2548,7 @@ namespace MapEditorInternal {
 
                 for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
                     WallSurface& surface = first->Surface(slot);
-                    surface.textureOffset.x = WrapTextureOffset(surface.textureOffset.x - USign(surface) * secondLength * surface.textureScale.x);
+                    surface.textureOffset.x = WrapTextureOffset(surface, surface.textureOffset.x - USign(surface) * secondLength * surface.textureScale.x);
                 }
             }
 
@@ -2613,10 +2618,11 @@ namespace MapEditorInternal {
             const float sign = direction * chainSign;
             surface.flipTextureX = sign < 0.0f;
 
+            const float tile = SurfaceTile(surface).x;
             const float entryS = direction > 0.0f ? 0.0f : length;
-            surface.textureOffset.x = WrapTextureOffset(WALL_TEXTURE_TILE * entryU - sign * entryS * surface.textureScale.x);
+            surface.textureOffset.x = WrapTextureOffset(surface, tile * entryU - sign * entryS * surface.textureScale.x);
 
-            return entryU + chainSign * length * surface.textureScale.x / WALL_TEXTURE_TILE;
+            return entryU + chainSign * length * surface.textureScale.x / tile;
         }
 
         // Moves the given entities, recording one undo entry if any moved.
@@ -2782,8 +2788,9 @@ namespace MapEditorInternal {
 
             // The walk keeps the primary's U direction the whole way round.
             const float chainSign = USign(first);
-            const float startU = first.textureOffset.x / WALL_TEXTURE_TILE;
-            const float endU = startU + chainSign * primary->length * first.textureScale.x / WALL_TEXTURE_TILE;
+            const float firstTile = SurfaceTile(first).x;
+            const float startU = first.textureOffset.x / firstTile;
+            const float endU = startU + chainSign * primary->length * first.textureScale.x / firstTile;
 
             float u = endU;
             for (const ChainStep& step : forward) {
@@ -2801,7 +2808,7 @@ namespace MapEditorInternal {
                 Wall* wall = FindWall(level, step.wallID);
                 WallSurface& surface = wall->Surface(slot);
 
-                const float entryU = u - chainSign * wall->length * surface.textureScale.x / WALL_TEXTURE_TILE;
+                const float entryU = u - chainSign * wall->length * surface.textureScale.x / SurfaceTile(surface).x;
                 ContinueChain(surface, wall->length, step.direction, chainSign, entryU);
                 surface.textureOffset.y = first.textureOffset.y;
                 u = entryU;
@@ -2866,7 +2873,7 @@ namespace MapEditorInternal {
                 if (tallest < 0.01f) continue;
 
                 WallSurface& surface = wall->Surface(slot);
-                surface.textureScale.y = WALL_TEXTURE_TILE / tallest;
+                surface.textureScale.y = SurfaceTile(surface).y / tallest;
                 surface.textureOffset.y = 0.0f;
                 wallChanged = true;
             }

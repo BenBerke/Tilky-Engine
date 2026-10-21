@@ -11,6 +11,7 @@
 #include "imgui_impl_sdl3.h"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 #include "Headers/UISystem.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
@@ -289,6 +290,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 
         glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
+        glUniform1f(glGetUniformLocation(projectionShader->ID, "uTexelsPerUnit"), ProjectManager::GetTexelsPerUnit());
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
 

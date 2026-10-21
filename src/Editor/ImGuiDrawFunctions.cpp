@@ -1262,7 +1262,6 @@ namespace ImGuiDrawFunctions {
 
             // End texture
 
-
             ImGui::Spacing();
 
             ImGui::BeginDisabled(sector.floors.size() <= 1);
@@ -1543,6 +1542,11 @@ namespace ImGuiDrawFunctions {
 
         BeginSection("Identity");
         SmallMetaText("ID: %u", wall.id);
+
+        ImGui::SameLine(60);
+
+        SmallMetaText("%s: %f", Get("editor.wall.length").c_str(), wall.length);
+
         FieldWidth(220.0f);
         ImGui::InputText(Get("wall.name").c_str(), &wall.name);
         EndSection();

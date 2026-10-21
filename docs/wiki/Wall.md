@@ -119,13 +119,13 @@ check `isValid`.
 | `bottomTexture` | string | read/write | Bottom texture path. Only shows on a portal. |
 | `topTextureOffset` | Vector2 | read/write | Top texture shift in map units. Change it over time to scroll. |
 | `bottomTextureOffset` | Vector2 | read/write | Bottom texture shift in map units. |
-| `topTextureScale` | Vector2 | read/write | Top texture repeats per 32 map units. |
-| `bottomTextureScale` | Vector2 | read/write | Bottom texture repeats per 32 map units. |
+| `topTextureScale` | Vector2 | read/write | Top texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
+| `bottomTextureScale` | Vector2 | read/write | Bottom texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
 | `topAnchor` | WallAnchor | read/write | Where the top texture is pinned, e.g. `WallAnchor.World`. |
 | `bottomAnchor` | WallAnchor | read/write | Where the bottom texture is pinned. |
 | `middleTexture` | string | read/write | Middle texture path, filling the openings. `""` means no middle. |
 | `middleTextureOffset` | Vector2 | read/write | Middle texture shift in map units. |
-| `middleTextureScale` | Vector2 | read/write | Middle texture repeats per 32 map units. |
+| `middleTextureScale` | Vector2 | read/write | Middle texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
 | `middleAnchor` | WallAnchor | read/write | Where the middle texture is pinned. |
 | `middleHasCollision` | boolean | read/write | The middle blocks entity colliders. |
 | `middleIgnoredByRaycast` | boolean | read/write | Raycasts and `LineOfSight` pass through the middle. |
