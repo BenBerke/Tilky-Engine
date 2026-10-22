@@ -73,6 +73,7 @@ namespace {
     void ResetCopiedRuntimeState(ComponentRigidbody& rigidbody) {
         rigidbody.velocity = {};
         rigidbody.isGrounded = false;
+        rigidbody.slideNormal = {};
     }
 
     void ResetCopiedRuntimeState(ComponentUITransform& transform) {

@@ -16,6 +16,7 @@
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/SIMD/SSECompat.hpp"
 #include "Headers/Objects/Level.hpp"
@@ -57,14 +58,17 @@ namespace {
     constexpr float GROUND_CONTACT_SLOP = 0.025f;
     constexpr float MAX_GROUND_SEPARATING_SPEED = 0.05f;
 
+    // Ground snapping treats a maxSlope above this as this steep, so a body
+    // allowed to stand on near-vertical floors doesn't get yanked down a
+    // huge distance.
+    constexpr float MAX_SNAP_SLOPE = 60.0f;
+
     const __m128 XZ_MASK = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
 
-    // Slope strength is authored in degrees. BuildGpuSectors() converts it
-    // with DegToRad before upload and the shader uses the result as a plain
-    // rise-per-unit gradient, so anything that wants to agree with what is
-    // on screen has to convert the same way.
+    // Slope strength is the slope's angle in degrees. BuildGpuSectors()
+    // uploads the same rise-per-unit gradient the shader draws with.
     float SlopeGradient(const float slopeStrength) {
-        return slopeStrength * Constants::DegToRad;
+        return SectorSurface::GradientFromDegrees(slopeStrength);
     }
 
     // Axis aligned bounds of the sector in map XY. Slope offsets are measured
@@ -182,13 +186,16 @@ namespace {
         float end = 0.0f;
     };
 
-    // Bottom and top at each end of the wall, so a span can follow a sloped
-    // floor or ceiling instead of being a flat box.
+    // Bottom and top at each end of the span, so it can follow a sloped
+    // floor or ceiling instead of being a flat box. A span covers the part of
+    // the wall from startT to endT (fractions from its start to its end).
     struct WallSpan {
         float bottomStart = 0.0f;
         float bottomEnd = 0.0f;
         float topStart = 0.0f;
         float topEnd = 0.0f;
+        float startT = 0.0f;
+        float endT = 1.0f;
     };
 
     bool IsSectorOpenAtHeight(
@@ -251,63 +258,122 @@ namespace {
         return best;
     }
 
-    // With `solidOpenings` (a middle texture with collision), the parts open
-    // on both sides are solid too.
+    Vector2 PointAlong(const Vector2& start, const Vector2& end, const float t) {
+        return {start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t};
+    }
+
+    // Where two of the planes cross between the wall's ends, as fractions
+    // along it. Planes are straight lines along a straight wall, so between
+    // two neighbouring crossings their order never changes. Sorting by the
+    // middle alone misordered the part past a crossing (a sloped floor rising
+    // through the neighbour's floor), and that part had no collision.
+    void FindPlaneCrossings(const std::vector<HeightSample>& heights, std::vector<float>& crossings) {
+        constexpr float MIN_T = 0.0001f;
+
+        for (size_t i = 0; i < heights.size(); ++i) {
+            for (size_t j = i + 1; j < heights.size(); ++j) {
+                const float startDifference = heights[i].start - heights[j].start;
+                const float endDifference = heights[i].end - heights[j].end;
+
+                if (std::abs(startDifference) <= MIN_WALL_HEIGHT || std::abs(endDifference) <= MIN_WALL_HEIGHT) continue;
+                if ((startDifference < 0.0f) == (endDifference < 0.0f)) continue;
+
+                const float t = startDifference / (startDifference - endDifference);
+
+                if (t > MIN_T && t < 1.0f - MIN_T) crossings.push_back(t);
+            }
+        }
+
+        std::ranges::sort(crossings);
+        crossings.erase(
+            std::unique(crossings.begin(), crossings.end(), [](const float a, const float b) { return b - a <= MIN_T; }),
+            crossings.end()
+        );
+    }
+
+    // The wall is cut at every plane crossing and each part is split on its
+    // own. With `solidOpenings` (a middle texture with collision), the parts
+    // open on both sides are solid too.
     std::vector<WallSpan> BuildWallSpans(
         const SectorSample& frontSector,
         const SectorSample& backSector,
-        const WallSamplePoints& points,
+        const Vector2& wallStart,
+        const Vector2& wallEnd,
         const bool solidOpenings
     ) {
         std::vector<HeightSample> heights;
+        std::vector<float> cuts;
 
-        AddSectorHeights(frontSector, points, heights);
-        AddSectorHeights(backSector, points, heights);
+        const WallSamplePoints wallPoints{wallStart, PointAlong(wallStart, wallEnd, 0.5f), wallEnd};
 
-        std::ranges::sort(
-            heights,
-            [](const HeightSample& a, const HeightSample& b) { return a.middle < b.middle; }
-        );
+        AddSectorHeights(frontSector, wallPoints, heights);
+        AddSectorHeights(backSector, wallPoints, heights);
 
-        // Two planes are only the same plane if they agree along the whole
-        // wall - equal in the middle but diverging at the ends is a real gap.
-        heights.erase(
-            std::unique(
-                heights.begin(),
-                heights.end(),
-                [](const HeightSample& a, const HeightSample& b) {
-                    return std::abs(a.start - b.start) <= MIN_WALL_HEIGHT &&
-                           std::abs(a.middle - b.middle) <= MIN_WALL_HEIGHT &&
-                           std::abs(a.end - b.end) <= MIN_WALL_HEIGHT;
-                }
-            ),
-            heights.end()
-        );
+        cuts.push_back(0.0f);
+        FindPlaneCrossings(heights, cuts);
+        cuts.push_back(1.0f);
 
         std::vector<WallSpan> spans;
 
-        for (size_t i = 0; i + 1 < heights.size(); ++i) {
-            const HeightSample& bottom = heights[i];
-            const HeightSample& top = heights[i + 1];
+        for (size_t cut = 0; cut + 1 < cuts.size(); ++cut) {
+            const float startT = cuts[cut];
+            const float endT = cuts[cut + 1];
 
-            const SpanProbe probe = PickThickestProbe(bottom, top, points);
+            const WallSamplePoints points{
+                PointAlong(wallStart, wallEnd, startT),
+                PointAlong(wallStart, wallEnd, (startT + endT) * 0.5f),
+                PointAlong(wallStart, wallEnd, endT)
+            };
 
-            if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
+            heights.clear();
 
-            const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
+            AddSectorHeights(frontSector, points, heights);
+            AddSectorHeights(backSector, points, heights);
 
-            const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
-            const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
+            std::ranges::sort(
+                heights,
+                [](const HeightSample& a, const HeightSample& b) { return a.middle < b.middle; }
+            );
 
-            if (frontOpen == backOpen && !(frontOpen && solidOpenings)) continue;
+            // Two planes are only the same plane if they agree along the whole
+            // part - equal in the middle but diverging at the ends is a real gap.
+            heights.erase(
+                std::unique(
+                    heights.begin(),
+                    heights.end(),
+                    [](const HeightSample& a, const HeightSample& b) {
+                        return std::abs(a.start - b.start) <= MIN_WALL_HEIGHT &&
+                               std::abs(a.middle - b.middle) <= MIN_WALL_HEIGHT &&
+                               std::abs(a.end - b.end) <= MIN_WALL_HEIGHT;
+                    }
+                ),
+                heights.end()
+            );
 
-            if (!spans.empty() &&
-                std::abs(spans.back().topStart - bottom.start) <= MIN_WALL_HEIGHT &&
-                std::abs(spans.back().topEnd - bottom.end) <= MIN_WALL_HEIGHT) {
-                spans.back().topStart = top.start;
-                spans.back().topEnd = top.end;
+            for (size_t i = 0; i + 1 < heights.size(); ++i) {
+                const HeightSample& bottom = heights[i];
+                const HeightSample& top = heights[i + 1];
+
+                const SpanProbe probe = PickThickestProbe(bottom, top, points);
+
+                if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
+
+                const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
+
+                const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
+                const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
+
+                if (frontOpen == backOpen && !(frontOpen && solidOpenings)) continue;
+
+                if (!spans.empty() &&
+                    spans.back().startT == startT &&
+                    std::abs(spans.back().topStart - bottom.start) <= MIN_WALL_HEIGHT &&
+                    std::abs(spans.back().topEnd - bottom.end) <= MIN_WALL_HEIGHT) {
+                    spans.back().topStart = top.start;
+                    spans.back().topEnd = top.end;
+                }
+                else spans.push_back({bottom.start, bottom.end, top.start, top.end, startT, endT});
             }
-            else spans.push_back({bottom.start, bottom.end, top.start, top.end});
         }
 
         return spans;
@@ -340,6 +406,10 @@ namespace {
     };
 
     WallSpanCache wallSpanCache;
+
+    // Per rigidbody (same index as level.rigidbodies.components): grounded
+    // when the run started, which is what the last run left it at.
+    std::vector<uint8_t> groundedBeforeRun;
 
     void BuildSectorKey(const Sector& sector, std::vector<float>& key) {
         key.clear();
@@ -426,17 +496,8 @@ namespace {
             const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
             const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
 
-            const WallSamplePoints points{
-                wall.start,
-                Vector2{
-                    (wall.start.x + wall.end.x) * 0.5f,
-                    (wall.start.y + wall.end.y) * 0.5f
-                },
-                wall.end
-            };
-
             std::vector<WallSpan>& spans = cache.spans[wallIndex];
-            spans = BuildWallSpans(frontSector, backSector, points, key.solidOpenings);
+            spans = BuildWallSpans(frontSector, backSector, wall.start, wall.end, key.solidOpenings);
 
             if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr)
                 spans.push_back({0.0f, 0.0f, 32.0f, 32.0f});
@@ -449,15 +510,44 @@ namespace {
         return rebuilt;
     }
 
+    // How far straight up from a sloped plane a round body's bottom sits
+    // while touching it - zero on a flat one. Its rounded end meets the slope
+    // off centre, a little above the plane's height under the centre.
+    float RoundSlopeLift(const SectorSurface& surface, const float radius) {
+        const float gradient = SlopeGradient(surface.slopeStrength);
+        return radius * (std::sqrt(1.0f + gradient * gradient) - 1.0f);
+    }
+
+    // The lowest a round body's bottom can go over this floor.
+    float RestingFloorHeight(
+        const SectorSurface& floor,
+        const SectorBounds& bounds,
+        const Vector2& point,
+        const float radius
+    ) {
+        return GetSurfaceHeight(floor, bounds, point) + RoundSlopeLift(floor, radius);
+    }
+
+    // The highest a round body's top can go under this ceiling.
+    float RestingCeilingHeight(
+        const SectorSurface& ceiling,
+        const SectorBounds& bounds,
+        const Vector2& point,
+        const float radius
+    ) {
+        return GetSurfaceHeight(ceiling, bounds, point) - RoundSlopeLift(ceiling, radius);
+    }
+
     int FindBestSectorFloor(
         const Sector& sector,
         const SectorBounds& bounds,
         const Vector2& point,
-        const float feetHeight,
-        const float headHeight
+        const float bottomHeight,
+        const float topHeight,
+        const float radius
     ) {
-        const float bodyHeight = headHeight - feetHeight;
-        const float centreHeight = (feetHeight + headHeight) * 0.5f;
+        const float bodyHeight = topHeight - bottomHeight;
+        const float centreHeight = (bottomHeight + topHeight) * 0.5f;
 
         int bestFloorIndex = -1;
         float bestOverlap = -1.0f;
@@ -471,18 +561,18 @@ namespace {
             for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
                 const SectorFloor& floor = sector.floors[floorIndex];
 
-                const float floorHeight = GetSurfaceHeight(floor.floor, bounds, point);
-                const float ceilingHeight = GetSurfaceHeight(floor.ceiling, bounds, point);
+                const float floorHeight = RestingFloorHeight(floor.floor, bounds, point, radius);
+                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, bounds, point, radius);
 
                 if (requireFit && ceilingHeight - floorHeight + Constants::Epsilon < bodyHeight) continue;
 
                 const float overlap =
-                    std::max(0.0f, std::min(headHeight, ceilingHeight) - std::max(feetHeight, floorHeight));
+                    std::max(0.0f, std::min(topHeight, ceilingHeight) - std::max(bottomHeight, floorHeight));
 
                 float correction = 0.0f;
 
-                if (feetHeight < floorHeight) correction = floorHeight - feetHeight;
-                else if (headHeight > ceilingHeight) correction = ceilingHeight - headHeight;
+                if (bottomHeight < floorHeight) correction = floorHeight - bottomHeight;
+                else if (topHeight > ceilingHeight) correction = ceilingHeight - topHeight;
 
                 const float correctionMagnitude = std::abs(correction);
                 const bool centreInside = centreHeight >= floorHeight && centreHeight <= ceilingHeight;
@@ -505,59 +595,112 @@ namespace {
         return bestFloorIndex;
     }
 
-    bool SphereIntersectsWallSpan(
+    // An upright capsule: every point within `radius` of the vertical segment
+    // between its two cap centres. A sphere is one whose cap centres meet.
+    struct RoundBody {
+        Vector3 base; // the collider's bottom
+        float radius = 0.0f;
+        float height = 0.0f;
+
+        [[nodiscard]] float Bottom() const { return base.y; }
+        [[nodiscard]] float Top() const { return base.y + height; }
+        [[nodiscard]] float LowCentre() const { return base.y + radius; }
+        [[nodiscard]] float HighCentre() const { return base.y + height - radius; }
+    };
+
+    RoundBody MakeRoundBody(const ComponentTransform& transform, const ComponentCollider& collider) {
+        return {transform.LocalToWorld(collider.offset), collider.Radius(), collider.Height()};
+    }
+
+    // Where two vertical ranges come closest: one height on each. Inside an
+    // overlap both are the overlap's middle.
+    void ClosestHeights(
+        const float aLow,
+        const float aHigh,
+        const float bLow,
+        const float bHigh,
+        float& a,
+        float& b
+    ) {
+        if (aHigh < bLow) {
+            a = aHigh;
+            b = bLow;
+        }
+        else if (bHigh < aLow) {
+            a = aLow;
+            b = bHigh;
+        }
+        else a = b = (std::max(aLow, bLow) + std::min(aHigh, bHigh)) * 0.5f;
+    }
+
+    // From the closest point of `b` to the closest point of `a`. They overlap
+    // when its length is under the two radii summed.
+    __m128 RoundBodyDelta(const RoundBody& a, const RoundBody& b) {
+        float aHeight, bHeight;
+        ClosestHeights(a.LowCentre(), a.HighCentre(), b.LowCentre(), b.HighCentre(), aHeight, bHeight);
+
+        return _mm_set_ps(0.0f, a.base.z - b.base.z, aHeight - bHeight, a.base.x - b.base.x);
+    }
+
+    bool RoundBodyIntersectsWallSpan(
         const Wall &wall,
         const WallSpan &span,
-        const float radius,
         const float stepSize,
-        Vector3 &sphereCentre,
+        RoundBody &body,
         ComponentTransform &transform,
         ComponentRigidbody &rigidbody
     ) {
+        const float radius = body.radius;
+
         // Conservative vertical extent: the span is a trapezoid now, so the
         // broadphase box has to cover the taller of the two ends.
         const float spanMinHeight = std::min(span.bottomStart, span.bottomEnd);
         const float spanMaxHeight = std::max(span.topStart, span.topEnd);
 
-        const float minX = std::min(wall.start.x, wall.end.x) - radius;
-        const float maxX = std::max(wall.start.x, wall.end.x) + radius;
-        const float minY = spanMinHeight - radius;
-        const float maxY = spanMaxHeight + radius;
-        const float minZ = std::min(wall.start.y, wall.end.y) - radius;
-        const float maxZ = std::max(wall.start.y, wall.end.y) + radius;
+        // Only the part of the wall the span covers.
+        const Vector2 segmentStart = PointAlong(wall.start, wall.end, span.startT);
+        const Vector2 segmentEnd = PointAlong(wall.start, wall.end, span.endT);
+        const Vector2 segment = {segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y};
 
-        const __m128 aabbMin = _mm_set_ps(0.0f, minZ, minY, minX);
-        const __m128 aabbMax = _mm_set_ps(0.0f, maxZ, maxY, maxX);
-        const __m128 belowMin = _mm_cmplt_ps(sphereCentre.reg, aabbMin);
-        const __m128 aboveMax = _mm_cmpgt_ps(sphereCentre.reg, aabbMax);
+        const float minX = std::min(segmentStart.x, segmentEnd.x) - radius;
+        const float maxX = std::max(segmentStart.x, segmentEnd.x) + radius;
+        const float minZ = std::min(segmentStart.y, segmentEnd.y) - radius;
+        const float maxZ = std::max(segmentStart.y, segmentEnd.y) + radius;
 
-        if ((_mm_movemask_ps(_mm_or_ps(belowMin, aboveMax)) & 0x7) != 0) return false;
+        const __m128 bodyXZ = _mm_set_ps(0.0f, body.base.z, 0.0f, body.base.x);
+        const __m128 aabbMin = _mm_set_ps(0.0f, minZ, 0.0f, minX);
+        const __m128 aabbMax = _mm_set_ps(0.0f, maxZ, 0.0f, maxX);
+        const __m128 belowMin = _mm_cmplt_ps(bodyXZ, aabbMin);
+        const __m128 aboveMax = _mm_cmpgt_ps(bodyXZ, aabbMax);
 
-        const float wallLengthSq = wall.vector.x * wall.vector.x + wall.vector.y * wall.vector.y;
-        if (wallLengthSq <= Constants::Epsilon) return false;
+        if ((_mm_movemask_ps(_mm_or_ps(belowMin, aboveMax)) & 0x5) != 0) return false;
+        if (body.Top() < spanMinHeight || body.Bottom() > spanMaxHeight) return false;
 
-        const float toSphereX = sphereCentre.x - wall.start.x;
-        const float toSphereZ = sphereCentre.z - wall.start.y;
+        const float segmentLengthSq = segment.x * segment.x + segment.y * segment.y;
+        if (segmentLengthSq <= Constants::Epsilon) return false;
+
+        const float toBodyX = body.base.x - segmentStart.x;
+        const float toBodyZ = body.base.z - segmentStart.y;
         const float t = std::clamp(
-            (toSphereX * wall.vector.x + toSphereZ * wall.vector.y) *
-                _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(wallLengthSq))),
+            (toBodyX * segment.x + toBodyZ * segment.y) *
+                _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(segmentLengthSq))),
             0.0f,
             1.0f
         );
 
         // The span's real extent at the closest point. Crossing slopes could
-        // invert it, so keep the top pinned at or above the bottom - clamp()
-        // with a reversed range is undefined.
+        // invert it, so keep the top pinned at or above the bottom.
         const float spanBottom = span.bottomStart + (span.bottomEnd - span.bottomStart) * t;
         const float spanTop =
             std::max(span.topStart + (span.topEnd - span.topStart) * t, spanBottom);
 
-        const float closestX = wall.start.x + wall.vector.x * t;
-        const float closestY = std::clamp(sphereCentre.y, spanBottom, spanTop);
-        const float closestZ = wall.start.y + wall.vector.y * t;
+        float bodyY, wallY;
+        ClosestHeights(body.LowCentre(), body.HighCentre(), spanBottom, spanTop, bodyY, wallY);
 
-        const __m128 closestPoint = _mm_set_ps(0.0f, closestZ, closestY, closestX);
-        const __m128 delta = _mm_sub_ps(sphereCentre.reg, closestPoint);
+        const float closestX = segmentStart.x + segment.x * t;
+        const float closestZ = segmentStart.y + segment.y * t;
+
+        const __m128 delta = _mm_set_ps(0.0f, body.base.z - closestZ, bodyY - wallY, body.base.x - closestX);
         const __m128 distanceSqReg = dot3_ss(delta, delta);
         const float distanceSq = _mm_cvtss_f32(distanceSqReg);
         const float radiusSq = radius * radius;
@@ -576,7 +719,7 @@ namespace {
         const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(delta, inverseDistance), XZ_MASK);
 
         const float planeDistance =
-            (sphereCentre.x - wall.start.x) * wall.normal.x + (sphereCentre.z - wall.start.y) * wall.normal.y;
+            (body.base.x - wall.start.x) * wall.normal.x + (body.base.z - wall.start.y) * wall.normal.y;
 
         const float normalDirection = planeDistance < 0.0f ? -1.0f : 1.0f;
 
@@ -616,21 +759,21 @@ namespace {
 
         const float velocityIntoWall = _mm_cvtss_f32(dot3_ss(rigidbody.velocity.reg, collisionNormal));
 
-        const float feetHeight = transform.position.y;
-        const float stepHeight = spanTop - feetHeight;
+        const float bodyBottom = body.Bottom();
+        const float stepHeight = spanTop - bodyBottom;
 
-        const bool wallStartsAtFeet = spanBottom <= feetHeight + GROUND_CONTACT_SLOP;
+        const bool wallStartsAtBottom = spanBottom <= bodyBottom + GROUND_CONTACT_SLOP;
 
         const bool isClimbableStep =
                 stepSize > 0.0f &&
-                wallStartsAtFeet &&
+                wallStartsAtBottom &&
                 stepHeight > Constants::Epsilon &&
                 stepHeight <= stepSize + Constants::Epsilon;
 
         // A step the body could climb never pushes it sideways: walking into
         // it steps up, anything else leaves it alone. Right after stepping
         // down (LevelSystem drops the body once its centre crosses the
-        // edge), the sphere still overhangs the step it left; pushing it out
+        // edge), the body still overhangs the step it left; pushing it out
         // of that riser shoved the body - and the camera - forward by up to
         // a full radius in one frame.
         if (isClimbableStep && velocityIntoWall >= -Constants::Epsilon) return false;
@@ -640,7 +783,7 @@ namespace {
 
             transform.AddPosition({0.0f, verticalCorrection, 0.0f});
 
-            sphereCentre.reg = _mm_add_ps(sphereCentre.reg,_mm_set_ps(0.0f, 0.0f, verticalCorrection,0.0f));
+            body.base.y += verticalCorrection;
 
             if (rigidbody.velocity.y < 0.0f) rigidbody.velocity.y = 0.0f;
 
@@ -655,7 +798,7 @@ namespace {
         const __m128 correction = _mm_mul_ps(collisionNormal, _mm_set1_ps(correctedPenetration));
 
         transform.AddPosition(Vector3(correction));
-        sphereCentre.reg = _mm_add_ps(sphereCentre.reg, correction);
+        body.base.reg = _mm_add_ps(body.base.reg, correction);
 
         if (velocityIntoWall < 0.0f)
             rigidbody.velocity.reg = _mm_sub_ps(rigidbody.velocity.reg, _mm_mul_ps(collisionNormal,_mm_set1_ps(velocityIntoWall))
@@ -666,12 +809,42 @@ namespace {
 }
 
 namespace PhysicsSystem {
+    const ComponentCollider* FindBaseCollider(const Level& level, const ID ownerID) {
+        const ComponentTransform* transform = level.transforms.Get(ownerID);
+        if (transform == nullptr) return nullptr;
+
+        const ComponentCollider* base = nullptr;
+        float baseBottom = std::numeric_limits<float>::max();
+
+        for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(ownerID)) {
+            const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
+
+            if (!collider->isActive || collider->isTrigger || !collider->IsRound()) continue;
+
+            const float bottom = transform->LocalToWorld(collider->offset).y;
+
+            if (bottom < baseBottom) {
+                base = collider;
+                baseBottom = bottom;
+            }
+        }
+
+        return base;
+    }
+
     void Run(Level& level, Contacts& contacts) {
         ZoneScopedN("PhysicsSystem::Run");
 
-        for (ComponentRigidbody& rigidbody : level.rigidbodies.components) {
+        groundedBeforeRun.resize(level.rigidbodies.components.size());
+
+        for (size_t index = 0; index < level.rigidbodies.components.size(); ++index) {
+            ComponentRigidbody& rigidbody = level.rigidbodies.components[index];
+
+            groundedBeforeRun[index] = rigidbody.isGrounded ? 1 : 0;
+
             rigidbody.isGrounded = false;
             rigidbody.groundNormal = {};
+            rigidbody.slideNormal = {};
         }
 
         ColliderStorage& colliders = level.colliders;
@@ -690,8 +863,10 @@ namespace PhysicsSystem {
         allEntities.reserve(64);
         allWalls.reserve(64);
 
-        for (ComponentCollider& selfCollider : colliders.ActiveSpheres()) {
-            ZoneScopedN("Sphere iteration");
+        // Spheres and capsules. Each collider of an entity is pushed out on
+        // its own and moves the whole entity (a compound shape).
+        for (ComponentCollider& selfCollider : colliders.ActiveRound()) {
+            ZoneScopedN("Round collider iteration");
 
             if (selfCollider.isTrigger) continue;
 
@@ -747,16 +922,7 @@ namespace PhysicsSystem {
                 allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
             }
 
-            const float selfRadius = std::max(0.0f, selfCollider.scale.x);
-
-            // An entity's colliders form one compound shape: each one sits at
-            // its offset and pushes the whole entity.
-            const auto selfCentre = [&] {
-                const Vector3 base = selfTransform->LocalToWorld(selfCollider.offset);
-                return Vector3{base.x, base.y + selfRadius, base.z};
-            };
-
-            Vector3 selfPosition = selfCentre();
+            RoundBody selfBody = MakeRoundBody(*selfTransform, selfCollider);
 
             {
                 ZoneScopedN("Entity narrowphase");
@@ -777,19 +943,12 @@ namespace PhysicsSystem {
 
                         if (!otherCollider->isActive ||
                             otherCollider->isTrigger ||
-                            otherCollider->type != COLLIDERTYPE_SPHERE) continue;
+                            !otherCollider->IsRound()) continue;
 
-                        const float otherRadius = std::max(0.0f, otherCollider->scale.x);
-                        const float radiusSum = selfRadius + otherRadius;
+                        const RoundBody otherBody = MakeRoundBody(*otherTransform, *otherCollider);
+                        const float radiusSum = selfBody.radius + otherBody.radius;
 
-                        const Vector3 otherBase = otherTransform->LocalToWorld(otherCollider->offset);
-                        const Vector3 otherPosition = {
-                            otherBase.x,
-                            otherBase.y + otherRadius,
-                            otherBase.z
-                        };
-
-                        const __m128 delta = _mm_sub_ps(selfPosition.reg, otherPosition.reg);
+                        const __m128 delta = RoundBodyDelta(selfBody, otherBody);
                         const __m128 distanceSqReg = dot3_ss(delta, delta);
                         const float distanceSq = _mm_cvtss_f32(distanceSqReg);
 
@@ -827,14 +986,12 @@ namespace PhysicsSystem {
                             otherTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f))));
 
 
-                        selfPosition = selfCentre();
+                        selfBody = MakeRoundBody(*selfTransform, selfCollider);
                     }
                 }
             }
 
-            {
-                ZoneScopedN("Wall narrowphase");
-
+            const auto resolveWalls = [&] {
                 for (const Wall* wall : allWalls) {
                     if (wall == nullptr || level.walls.empty()) continue;
 
@@ -843,40 +1000,43 @@ namespace PhysicsSystem {
                     if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
 
                     for (const WallSpan &span: wallSpans[wallIndex])
-                        SphereIntersectsWallSpan(
+                        RoundBodyIntersectsWallSpan(
                             *wall,
                             span,
-                            selfRadius,
                             selfCollider.stepSize,
-                            selfPosition,
+                            selfBody,
                             *selfTransform,
                             *selfRigidbody
                         );
                 }
+            };
+
+            {
+                ZoneScopedN("Wall narrowphase");
+                resolveWalls();
             }
 
             {
                 ZoneScopedN("Sector room clamp");
 
-                // This collider's bottom; the entity's feet when it has no offset.
-                const Vector3 colliderBase = selfTransform->LocalToWorld(selfCollider.offset);
-                const float baseAboveFeet = colliderBase.y - selfTransform->position.y;
+                // relativeHeight belongs to the entity's base collider only.
+                const bool isBase = PhysicsSystem::FindBaseCollider(level, selfCollider.ownerID) == &selfCollider;
 
-                const Vector2 feetPoint = {
-                    colliderBase.x,
-                    colliderBase.z
+                const Vector2 basePoint = {
+                    selfBody.base.x,
+                    selfBody.base.z
                 };
 
                 // sectorIndex is only updated after physics, so on the frame
                 // the body crosses into a neighbour it is stale. Clamp to the
-                // sector the feet are really over: skipping the clamp there
+                // sector the collider is really over: skipping the clamp there
                 // left the body with no floor for that frame.
-                const int feetSectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, feetPoint, sectorIndex);
-                if (feetSectorIndex < 0) continue;
+                const int baseSectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, basePoint, sectorIndex);
+                if (baseSectorIndex < 0) continue;
 
-                const Sector& feetSector = level.sectors[feetSectorIndex];
+                const Sector& baseSector = level.sectors[baseSectorIndex];
 
-                const SectorBounds& sectorBounds = boundsCache.Get(&feetSector);
+                const SectorBounds& sectorBounds = boundsCache.Get(&baseSector);
 
                 const auto getSlopeAxis = [](const SlopeDirection direction) -> Vector2 {
                     switch (direction) {
@@ -886,10 +1046,6 @@ namespace PhysicsSystem {
                         case MINUS_Z: return {0.0f, -1.0f};
                     }
                     return {1.0f, 0.0f};
-                };
-
-                const auto getSurfaceHeight = [&](const SectorSurface &surface) -> float {
-                    return GetSurfaceHeight(surface, sectorBounds, feetPoint);
                 };
 
                 const auto getFloorNormal = [&](const SectorSurface &surface) -> Vector3 {
@@ -914,64 +1070,206 @@ namespace PhysicsSystem {
                     });
                 };
 
-                // The entity's top stays at feet + scale.y, whichever collider this is.
-                const float bodyHeight = std::max(std::abs(selfTransform->scale.y) - baseAboveFeet, selfRadius * 2.0f);
-
-                // Feet rest on the floor, not the collider's base: gravity
-                // stops at relativeHeight 0 (feet on the floor), so grounding
-                // against an offset collider's base never saw the ground.
-                const float feetHeight = selfTransform->position.y;
-                const float headHeight = colliderBase.y + bodyHeight;
+                const float radius = selfBody.radius;
+                const float bottomHeight = selfBody.Bottom();
+                const float topHeight = selfBody.Top();
 
                 const int floorIndex = FindBestSectorFloor(
-                    feetSector,
+                    baseSector,
                     sectorBounds,
-                    feetPoint,
-                    feetHeight,
-                    headHeight
+                    basePoint,
+                    bottomHeight,
+                    topHeight,
+                    radius
                 );
 
                 if (floorIndex < 0) {
-                    selfTransform->relativeHeight = selfTransform->position.y;
+                    if (isBase) selfTransform->relativeHeight = bottomHeight;
                     continue;
                 }
 
-                const SectorFloor &floor = feetSector.floors[floorIndex];
+                const SectorFloor &floor = baseSector.floors[floorIndex];
 
-                const float floorHeight = getSurfaceHeight(floor.floor);
-                const float ceilingHeight = getSurfaceHeight(floor.ceiling);
-
-                const Vector3 floorNormal = getFloorNormal(floor.floor);
+                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, sectorBounds, basePoint, radius);
                 const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
 
-                float correctedFeetHeight = feetHeight;
-                float correctedHeadHeight = headHeight;
+                const float horizontalSpeed = std::sqrt(
+                    selfRigidbody->velocity.x * selfRigidbody->velocity.x +
+                    selfRigidbody->velocity.z * selfRigidbody->velocity.z
+                );
 
-                if (correctedFeetHeight < floorHeight) {
-                    const float correction = floorHeight - correctedFeetHeight;
+                // The floor the body rests on: its own slab's, unless a sloped
+                // floor next door rises under its rounded edge.
+                const SectorSurface* ground = &floor.floor;
+                const SectorBounds* groundBounds = &sectorBounds;
+                float floorHeight = RestingFloorHeight(floor.floor, sectorBounds, basePoint, radius);
 
-                    selfTransform->AddPosition({0.0f, correction, 0.0f});
+                // A round body touches a sloped plane uphill of its centre, by
+                // radius * sin(angle). At the foot of a ramp in the next sector
+                // that point is across the edge before the centre is, and only
+                // testing the floor under the centre let the body sink into the
+                // ramp, then threw it up or back once the centre crossed. A
+                // ramp whose foot is a ledge too high to climb is left to the
+                // wall between the sectors.
+                for (const Sector* neighbour : baseSector.neighbors) {
+                    if (neighbour == nullptr || neighbour == &baseSector) continue;
 
-                    correctedFeetHeight += correction;
-                    correctedHeadHeight += correction;
+                    const SectorBounds& neighbourBounds = boundsCache.Get(neighbour);
 
-                    const float velocityIntoFloor = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
+                    const int neighbourFloorIndex = FindBestSectorFloor(
+                        *neighbour,
+                        neighbourBounds,
+                        basePoint,
+                        bottomHeight,
+                        topHeight,
+                        radius
+                    );
+                    if (neighbourFloorIndex < 0) continue;
 
-                    if (velocityIntoFloor < 0.0f)
-                        selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * velocityIntoFloor;
+                    const SectorSurface& candidate = neighbour->floors[neighbourFloorIndex].floor;
+                    if (candidate.slopeStrength == 0.0f) continue;
+
+                    const float gradient = SlopeGradient(candidate.slopeStrength);
+                    const Vector2 axis = getSlopeAxis(candidate.slopeDirection);
+                    const float reach = radius * gradient / std::sqrt(1.0f + gradient * gradient);
+                    const Vector2 contact = {basePoint.x + axis.x * reach, basePoint.y + axis.y * reach};
+
+                    const int neighbourIndex = static_cast<int>(neighbour - level.sectors.data());
+                    if (MapQueries::FindSectorContainingPoint(level.sectors, contact, neighbourIndex) != neighbourIndex) continue;
+
+                    const float candidateHeight = RestingFloorHeight(candidate, neighbourBounds, basePoint, radius);
+                    const float reachable = std::max(selfCollider.stepSize, horizontalSpeed * GameTime::deltaTime * std::abs(gradient));
+
+                    if (candidateHeight > floorHeight && candidateHeight <= bottomHeight + reachable + GROUND_CONTACT_SLOP) {
+                        ground = &candidate;
+                        groundBounds = &neighbourBounds;
+                        floorHeight = candidateHeight;
+                    }
                 }
 
-                if (correctedHeadHeight > ceilingHeight) {
-                    // The floor wins: in a slab shorter than the body the head
-                    // stays in the ceiling instead of the feet being pushed
+                // Gradients are rise per unit, so the slope's angle is their
+                // arctangent. A negative strength slopes the other way.
+                const auto isWalkable = [&](const float gradient) {
+                    return std::atan(std::abs(gradient)) * Constants::RadToDeg <= selfCollider.maxSlope + Constants::Epsilon;
+                };
+
+                Vector3 floorNormal = getFloorNormal(*ground);
+                float floorGradient = SlopeGradient(ground->slopeStrength);
+                bool floorIsWalkable = isWalkable(floorGradient);
+
+                // Map direction the floor rises toward, and how fast the body
+                // is moving that way.
+                const Vector2 floorSlopeAxis = getSlopeAxis(ground->slopeDirection);
+                const Vector2 uphill = floorGradient < 0.0f ? -floorSlopeAxis : floorSlopeAxis;
+                const float uphillSpeed =
+                    selfRigidbody->velocity.x * uphill.x + selfRigidbody->velocity.z * uphill.y;
+
+                float correctedBottomHeight = bottomHeight;
+                float correctedTopHeight = topHeight;
+
+                if (correctedBottomHeight < floorHeight) {
+                    const float correction = floorHeight - correctedBottomHeight;
+
+                    if (floorIsWalkable) {
+                        // Straight up, so a body standing on a slope doesn't slide.
+                        selfTransform->AddPosition({0.0f, correction, 0.0f});
+
+                        correctedBottomHeight += correction;
+                        correctedTopHeight += correction;
+                    }
+                    else {
+                        // A slope too steep to stand on is a wall to walk
+                        // into: the part of the overlap this step's uphill
+                        // movement made is undone straight back downhill, so
+                        // walking never gains height on it. Pushing all of it
+                        // out along the slope's normal kept most of the
+                        // movement, and holding forward walked right up.
+                        const float steepness = std::abs(floorGradient);
+                        const float wallCorrection =
+                            std::clamp(uphillSpeed * GameTime::deltaTime * steepness, 0.0f, correction);
+                        const float wallDistance = wallCorrection / steepness;
+
+                        // The rest (falling onto it) goes out along the normal:
+                        // (-gradient, 1) * rest / (1 + gradient^2) clears
+                        // exactly `rest` of height above the plane.
+                        const float scale = (correction - wallCorrection) / (1.0f + floorGradient * floorGradient);
+                        const Vector3 push = {
+                            -uphill.x * wallDistance - floorSlopeAxis.x * floorGradient * scale,
+                            scale,
+                            -uphill.y * wallDistance - floorSlopeAxis.y * floorGradient * scale
+                        };
+
+                        selfTransform->AddPosition(push);
+
+                        // The push can put the body back into a wall, and a
+                        // wall can stop it (a body wedged between a wall and
+                        // the slope) - pushed only sideways it then sank into
+                        // the slope a little every step until it fell out of
+                        // the map. So walls go again, then the body is lifted
+                        // onto whatever holds it where it ended up: the slope,
+                        // or its own floor when it was pushed back off a ramp
+                        // next door.
+                        selfBody = MakeRoundBody(*selfTransform, selfCollider);
+                        resolveWalls();
+
+                        const Vector2 pushedPoint = {selfBody.base.x, selfBody.base.z};
+                        const float slopeHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, radius);
+                        const float ownHeight = RestingFloorHeight(floor.floor, sectorBounds, pushedPoint, radius);
+
+                        // At the crease both hold it; the own floor counts, so
+                        // a body pressing into a ramp's foot stays on the ground.
+                        if (ground != &floor.floor && ownHeight >= slopeHeight - GROUND_CONTACT_SLOP) {
+                            ground = &floor.floor;
+                            groundBounds = &sectorBounds;
+                            floorNormal = getFloorNormal(*ground);
+                            floorGradient = SlopeGradient(ground->slopeStrength);
+                            floorIsWalkable = isWalkable(floorGradient);
+                        }
+
+                        floorHeight = std::max(slopeHeight, ownHeight);
+
+                        const float lift = std::max(0.0f, floorHeight - selfBody.Bottom());
+                        selfTransform->AddPosition({0.0f, lift, 0.0f});
+                        selfBody.base.y += lift;
+
+
+                        correctedBottomHeight = selfBody.Bottom();
+                        correctedTopHeight = selfBody.Top();
+                        floorHeight = std::min(floorHeight, correctedBottomHeight);
+                    }
+
+                    // A walkable floor only stops the fall: taking the velocity
+                    // into its tilted surface instead left a downhill part, and
+                    // a body landing on a gentle slope slid all the way down.
+                    // A steep one stops uphill movement like a wall and keeps
+                    // the downhill part, which is what slides it.
+                    if (floorIsWalkable) {
+                        if (selfRigidbody->velocity.y < 0.0f) selfRigidbody->velocity.y = 0.0f;
+                    }
+                    else {
+                        if (uphillSpeed > 0.0f) {
+                            selfRigidbody->velocity.x -= uphill.x * uphillSpeed;
+                            selfRigidbody->velocity.z -= uphill.y * uphillSpeed;
+                        }
+
+                        const float velocityIntoFloor = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
+
+                        if (velocityIntoFloor < 0.0f)
+                            selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * velocityIntoFloor;
+                    }
+                }
+
+                if (correctedTopHeight > ceilingHeight) {
+                    // The floor wins: in a slab shorter than the body the top
+                    // stays in the ceiling instead of the bottom being pushed
                     // back through the floor.
                     const float correction =
-                        std::min(0.0f, std::max(ceilingHeight - correctedHeadHeight, floorHeight - correctedFeetHeight));
+                        std::min(0.0f, std::max(ceilingHeight - correctedTopHeight, floorHeight - correctedBottomHeight));
 
                     selfTransform->AddPosition({0.0f, correction, 0.0f});
 
-                    correctedFeetHeight += correction;
-                    correctedHeadHeight += correction;
+                    correctedBottomHeight += correction;
+                    correctedTopHeight += correction;
 
                     const float velocityIntoCeiling = Vector3Math::Dot(selfRigidbody->velocity, ceilingBottomNormal);
 
@@ -979,19 +1277,105 @@ namespace PhysicsSystem {
                         selfRigidbody->velocity = selfRigidbody->velocity - ceilingBottomNormal * velocityIntoCeiling;
                 }
 
-                const float groundDistance = correctedFeetHeight - floorHeight;
+                // Still in the ceiling: the slab is too short here, because the
+                // ceiling slopes down or the floor slopes up toward it. Pushing
+                // down stopped at the floor, so push back sideways to where the
+                // slab is tall enough - otherwise the body walked right through.
+                const float ceilingPenetration = correctedTopHeight - ceilingHeight;
 
-                const float groundSeparatingSpeed = Vector3Math::Dot(selfRigidbody->velocity, floorNormal);
+                if (ceilingPenetration > PENETRATION_SLOP) {
+                    const Vector2 ceilingAxis = getSlopeAxis(floor.ceiling.slopeDirection);
+                    const Vector2 floorAxis = getSlopeAxis(ground->slopeDirection);
+                    const float ceilingGradient = SlopeGradient(floor.ceiling.slopeStrength);
 
-                if (groundDistance <= GROUND_CONTACT_SLOP && groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
+                    // How much taller the slab gets per unit moved along X and Z.
+                    const Vector2 opening = {
+                        ceilingAxis.x * ceilingGradient - floorAxis.x * floorGradient,
+                        ceilingAxis.y * ceilingGradient - floorAxis.y * floorGradient
+                    };
+                    const float openingRate = std::sqrt(opening.x * opening.x + opening.y * opening.y);
+
+                    if (openingRate > Constants::Epsilon) {
+                        const Vector3 pushDirection = {opening.x / openingRate, 0.0f, opening.y / openingRate};
+                        const float pushDistance = (ceilingPenetration - PENETRATION_SLOP) / openingRate;
+
+                        const Vector2 pushedPoint = {
+                            basePoint.x + pushDirection.x * pushDistance,
+                            basePoint.y + pushDirection.z * pushDistance
+                        };
+                        const float pushedFloorHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, radius);
+
+                        // A body resting on a sloped floor follows it down, so
+                        // it stays grounded instead of hovering after the push.
+                        const float bottomDrop = correctedBottomHeight - floorHeight <= GROUND_CONTACT_SLOP
+                            ? std::min(0.0f, pushedFloorHeight - floorHeight)
+                            : 0.0f;
+
+                        selfTransform->AddPosition({pushDirection.x * pushDistance, bottomDrop, pushDirection.z * pushDistance});
+
+                        correctedBottomHeight += bottomDrop;
+                        correctedTopHeight += bottomDrop;
+                        floorHeight = pushedFloorHeight;
+
+                        const float velocityIntoPinch = Vector3Math::Dot(selfRigidbody->velocity, pushDirection);
+
+                        if (velocityIntoPinch < 0.0f)
+                            selfRigidbody->velocity = selfRigidbody->velocity - pushDirection * velocityIntoPinch;
+                    }
+                }
+
+                float groundDistance = correctedBottomHeight - floorHeight;
+
+                // Straight up, matching how walkable floors push.
+                const float groundSeparatingSpeed = selfRigidbody->velocity.y;
+
+                // Walking down a slope moves the body sideways off a floor
+                // that drops away under it: it left the ground every frame,
+                // fell back and bounced all the way down. A body that was
+                // grounded and isn't moving up follows the floor down by as
+                // much as a walkable floor can drop in this step - its
+                // horizontal move times the steepest walkable gradient, plus
+                // how much higher a round body rests on such a slope than on
+                // a flat floor. Going faster than that, or off a ledge, it
+                // still falls.
+                const size_t rigidbodyIndex = static_cast<size_t>(selfRigidbody - level.rigidbodies.components.data());
+                const bool wasGrounded = rigidbodyIndex < groundedBeforeRun.size() && groundedBeforeRun[rigidbodyIndex] != 0;
+
+                if (wasGrounded &&
+                    floorIsWalkable &&
+                    groundDistance > GROUND_CONTACT_SLOP &&
+                    groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
+                    const float maxAngle = std::min(selfCollider.maxSlope, MAX_SNAP_SLOPE) * Constants::DegToRad;
+                    const float maxGradient = std::tan(maxAngle);
+
+                    const float snapDistance =
+                        horizontalSpeed * GameTime::deltaTime * maxGradient +
+                        radius * (1.0f / std::cos(maxAngle) - 1.0f) +
+                        GROUND_CONTACT_SLOP;
+
+                    if (groundDistance <= snapDistance) {
+                        selfTransform->AddPosition({0.0f, -groundDistance, 0.0f});
+
+                        correctedBottomHeight -= groundDistance;
+                        groundDistance = 0.0f;
+                    }
+                }
+
+                // A slope steeper than maxSlope isn't ground: gravity keeps
+                // pulling and the body slides down it.
+                if (floorIsWalkable &&
+                    groundDistance <= GROUND_CONTACT_SLOP &&
+                    groundSeparatingSpeed <= MAX_GROUND_SEPARATING_SPEED) {
                     selfRigidbody->isGrounded = true;
                     selfRigidbody->groundNormal = floorNormal;
 
-                    if (groundSeparatingSpeed < 0.0f)
-                        selfRigidbody->velocity = selfRigidbody->velocity - floorNormal * groundSeparatingSpeed;
+                    if (groundSeparatingSpeed < 0.0f) selfRigidbody->velocity.y = 0.0f;
+                }
+                else if (!floorIsWalkable && groundDistance <= GROUND_CONTACT_SLOP) {
+                    selfRigidbody->slideNormal = floorNormal;
                 }
 
-                selfTransform->relativeHeight = correctedFeetHeight - floorHeight;
+                if (isBase) selfTransform->relativeHeight = groundDistance;
             }
         }
 
@@ -1071,7 +1455,7 @@ namespace PhysicsSystem {
             // After every push-out above, so overlaps are tested at the
             // frame's final positions. Triggers don't need a rigidbody -
             // a static trigger volume is the common case.
-            for (const ComponentCollider& trigger : colliders.ActiveSpheres()) {
+            for (const ComponentCollider& trigger : colliders.ActiveRound()) {
                 if (!trigger.isTrigger) continue;
 
                 const ComponentTransform* triggerTransform = level.transforms.Get(trigger.ownerID);
@@ -1093,14 +1477,7 @@ namespace PhysicsSystem {
                 std::ranges::sort(allEntities);
                 allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
 
-                const float triggerRadius = std::max(0.0f, trigger.scale.x);
-
-                const Vector3 triggerBase = triggerTransform->LocalToWorld(trigger.offset);
-                const Vector3 triggerPosition = {
-                    triggerBase.x,
-                    triggerBase.y + triggerRadius,
-                    triggerBase.z
-                };
+                const RoundBody triggerBody = MakeRoundBody(*triggerTransform, trigger);
 
                 for (const ID otherID : allEntities) {
                     if (otherID == trigger.ownerID) continue;
@@ -1116,19 +1493,12 @@ namespace PhysicsSystem {
                         const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
                         if (!otherCollider->isActive ||
-                            otherCollider->type != COLLIDERTYPE_SPHERE) continue;
+                            !otherCollider->IsRound()) continue;
 
-                        const float otherRadius = std::max(0.0f, otherCollider->scale.x);
-                        const float radiusSum = triggerRadius + otherRadius;
+                        const RoundBody otherBody = MakeRoundBody(*otherTransform, *otherCollider);
+                        const float radiusSum = triggerBody.radius + otherBody.radius;
 
-                        const Vector3 otherBase = otherTransform->LocalToWorld(otherCollider->offset);
-                        const Vector3 otherPosition = {
-                            otherBase.x,
-                            otherBase.y + otherRadius,
-                            otherBase.z
-                        };
-
-                        const __m128 delta = _mm_sub_ps(triggerPosition.reg, otherPosition.reg);
+                        const __m128 delta = RoundBodyDelta(triggerBody, otherBody);
                         const float distanceSq = _mm_cvtss_f32(dot3_ss(delta, delta));
 
                         if (distanceSq >= radiusSum * radiusSum) continue;

@@ -200,11 +200,11 @@ nothing within `length`, the result is `nil`. Otherwise it is a table:
 
 - **Walls**: every solid part of a wall, including the steps above and below an opening.
   The open part of a doorway lets the ray through.
-- **Floors and ceilings** of every interval of every sector. Slopes are **not** taken into
-  account: a sloped surface is hit as if it were flat at its **Height** setting.
+- **Floors and ceilings** of every interval of every sector, slopes included: a sloped
+  surface is hit where it actually is, as drawn.
 - **Entities**, depending on `requireCollider`:
-  - `true`: only entities with an active, non-trigger [Collider](Collider.md). Sphere and box
-    shapes are both used.
+  - `true`: only entities with an active, non-trigger [Collider](Collider.md). Sphere, capsule
+    and box shapes are all used.
   - `false`: every entity with a [Transform](Transform.md), using a box the size of its
     `scale`, standing on its position. Colliders are ignored. This also hits things like
     invisible markers, so `true` is usually what you want.

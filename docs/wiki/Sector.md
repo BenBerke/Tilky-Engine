@@ -45,9 +45,9 @@ Each floor and each ceiling is a **surface** with its own settings:
 ### Slopes
 
 A surface can be tilted so that it rises along one axis: **+X**, **-X**, **+Z** or **-Z**. The
-**Strength** sets how steep it is. The surface rises by `strength × 0.01745` units for every unit
-you move along the slope direction. So a strength of `45` rises about 0.79 units per unit, a
-little under 45°. The rise is measured from the edge of the sector's bounding rectangle on the
+**Strength** sets how steep it is. It is the slope's angle in degrees: `45` rises one unit for every
+unit you move along the slope direction, `30` about 0.58. A negative strength slopes the other
+way. Angles are held just short of 90°. The rise is measured from the edge of the sector's bounding rectangle on the
 "low" side. So the **Height** setting is the height at that edge, and the surface climbs from
 there.
 

@@ -40,7 +40,6 @@ namespace PlayerControllerSystem {
         ComponentCamera *ownCamera,
         const ComponentCamera *activeCamera,
         ComponentRigidbody &rigidbody,
-        ComponentCollider *sphereCollider,
         const std::vector<Sector> &sectors
     );
 }

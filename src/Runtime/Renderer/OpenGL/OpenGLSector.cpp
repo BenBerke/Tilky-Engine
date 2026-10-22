@@ -46,9 +46,9 @@ void OpenGL::BuildGpuSectors() {
 
             gpuFloor.slopeData = {
                 static_cast<float>(floor.floor.slopeDirection),
-                floor.floor.slopeStrength * Constants::DegToRad,
+                floor.floor.SlopeGradient(),
                 static_cast<float>(floor.ceiling.slopeDirection),
-                floor.ceiling.slopeStrength * Constants::DegToRad,
+                floor.ceiling.SlopeGradient(),
             };
 
             const Vector3 light = SectorLight(sector);

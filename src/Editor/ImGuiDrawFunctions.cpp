@@ -2658,11 +2658,6 @@ namespace ImGuiDrawFunctions {
 
                 BeginSection("State");
                 {
-                    PrefabField prefabField("noClip");
-                    ImGui::Checkbox(Get("component.player_controller.no_clip").c_str(),  &c->noClip);
-                    Tooltip(Get("editor.tooltip.component.player_controller.no_clip").c_str());
-                }
-                {
                     PrefabField prefabField("isActive");
                     if (ImGui::Checkbox(Get("component.player_controller.is_active").c_str(), &c->isActive) && c->isActive)
                         LevelManager::CurrentLevel().ActivatePlayerController(*c);
@@ -2749,12 +2744,14 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 BeginSection("Shape");
 
-                const std::array<std::string, 2> typeLabels = {
+                // In ColliderType order, so the index is the type.
+                const std::array<std::string, 3> typeLabels = {
                     Get("component.collider.type.sphere"),
-                    Get("component.collider.type.box")
+                    Get("component.collider.type.box"),
+                    Get("component.collider.type.capsule")
                 };
-                const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str() };
-                int selectedColliderIndex = c->type == COLLIDERTYPE_BOX ? 1 : 0;
+                const char *items[] = { typeLabels[0].c_str(), typeLabels[1].c_str(), typeLabels[2].c_str() };
+                int selectedColliderIndex = static_cast<int>(c->type);
 
                 {
                     PrefabField prefabField("type");
@@ -2764,17 +2761,25 @@ namespace ImGuiDrawFunctions {
                         // Type decides where the collider sits in the storage, so it goes
                         // through SetType. That can move the component, so fetch it again.
                         LevelManager::CurrentLevel().colliders.SetType(
-                            state.selectedInstanceID, selectedColliderIndex == 1 ? COLLIDERTYPE_BOX : COLLIDERTYPE_SPHERE);
+                            state.selectedInstanceID, static_cast<ColliderType>(selectedColliderIndex));
                         c = entity.GetComponentInstance<ComponentCollider>(state.selectedInstanceID);
                     }
                 }
 
                 {
                     PrefabField prefabField("scale");
-                    if (selectedColliderIndex == 0) {
+                    if (c->type == COLLIDERTYPE_SPHERE) {
                         FieldWidth(120.0f);
                         InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
                         Tooltip(Get("editor.tooltip.component.collider.sphere_radius").c_str());
+                    }
+                    else if (c->type == COLLIDERTYPE_CAPSULE) {
+                        FieldWidth(120.0f);
+                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
+                        Tooltip(Get("editor.tooltip.component.collider.capsule_radius").c_str());
+                        FieldWidth(120.0f);
+                        InputOrDrag(Get("component.collider.capsule.height").c_str(), &c->scale.y, draggable);
+                        Tooltip(Get("editor.tooltip.component.collider.capsule_height").c_str());
                     }
                     else {
                         ImGui::TextDisabled("X                Y               Z");
@@ -2791,6 +2796,12 @@ namespace ImGuiDrawFunctions {
                     PrefabField prefabField("stepSize");
                     InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
                     Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
+                }
+                {
+                    PrefabField prefabField("maxSlope");
+                    InputOrDrag(Get("component.collider.max_slope").c_str(), &c->maxSlope, draggable);
+                    Tooltip(Get("editor.tooltip.component.collider.max_slope").c_str());
+                    c->maxSlope = std::clamp(c->maxSlope, 0.0f, 90.0f);
                 }
                 {
                     PrefabField prefabField("isTrigger");
@@ -2826,6 +2837,9 @@ namespace ImGuiDrawFunctions {
             if (c) {
                 if (entity.GetComponent<ComponentRigidbody>() != c)
                     ImGui::TextWrapped("%s", Get("component.rigidbody.not_first").c_str());
+
+                if (!entity.HasComponent<ComponentCollider>())
+                    ImGui::TextWrapped("%s", Get("component.rigidbody.no_collider").c_str());
 
                 BeginSection("Physics");
                 FieldWidth(160.0f);

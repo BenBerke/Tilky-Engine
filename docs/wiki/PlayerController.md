@@ -12,10 +12,10 @@ The player entity needs:
 
 | Component | Why |
 |---|---|
-| [Transform](Transform.md) | Where the player is (at the feet). |
+| [Transform](Transform.md) | Where the player is. |
 | [Rigidbody](Rigidbody.md) | **Required.** The controller moves the player by setting the Rigidbody's velocity. Without one the controller is skipped and an error is logged. Leave **Is Static** off. |
-| [Collider](Collider.md), Sphere | Needed to stand on floors, bump into walls and climb steps. Give it a **Step Size** (e.g. `8`) so the player can walk up stairs. |
-| [Camera](Camera.md) | What you see through. It is normally on the same entity, so the view sits at **Eye Height** above the feet. |
+| [Collider](Collider.md), Capsule | The player's body: needed to stand on floors, bump into walls and ceilings and climb steps. Keep its offset at `0, 0, 0` so the player's position is at the bottom of the capsule, and make it taller than **Eye Height**. Give it a **Step Size** (e.g. `8`) so the player can walk up stairs. |
+| [Camera](Camera.md) | What you see through. It is normally on the same entity, so the view sits at **Eye Height** above the player's position. |
 | Player Controller | Tick **Is Active**. |
 
 ## How it works
@@ -46,7 +46,6 @@ Every frame, while it is active:
 | **A** / **D** | Strafe left / right. |
 | **Left Shift + W** | Run at **Running Speed**. It only works while moving forward. |
 | **Space** | Jump, if the Rigidbody is on the ground. |
-| **V** | Toggle **No Clip**. |
 | Mouse | Look around. |
 
 - "Forward" is the direction the player's **own** [Camera](Camera.md) faces (its `yaw`), flattened
@@ -88,14 +87,6 @@ another entity's camera is in use, the mouse does nothing. Horizontal movement c
 kept between **Min Pitch** and **Max Pitch**. Yaw wraps around to stay within `0..360`, then is
 kept between **Min Yaw** and **Max Yaw** (the defaults allow a full turn).
 
-### No Clip
-
-**No Clip** switches the player's collider off, so they walk through walls. Press **V** to toggle
-it while playing. It's meant for debugging. There's no fly up/down control.
-
-While a Player Controller is active it sets its entity's `collider.isActive` every frame to match
-No Clip. A script can't turn the player's collider on or off separately.
-
 ### Sound
 
 The audio **listener**, the "ears" for every [Audio Source](AudioSource.md), follows the active
@@ -111,14 +102,13 @@ the player's eye position, facing where they look.
 | **Running Speed** | `runningSpeed` | `90` | Speed while holding Left Shift + W. |
 | **Jump Strength** | `jumpPower` | `100` | Upward speed at the start of a jump. |
 | **Jump Buffer Milliseconds** | | `5` | How early before landing a jump press is kept. Editor only. |
-| **Eye Height** | `eyeHeight` | `12` | Camera height above the feet. |
+| **Eye Height** | `eyeHeight` | `12` | Camera height above the player's position. |
 | **Acceleration** | `acceleration` | `80` | Units/s² the player speeds up while a movement key is held. See [Movement](#movement). |
 | **Deceleration** | `deceleration` | `60` | Units/s² the player slows down with no movement key held. |
 | **Air Control** | `airControl` | `0.3` | Multiplies both rates while airborne. `1` = full control, `0` = none. |
 | **Sensitivity X** / **Y** | `sensitivityX` / `sensitivityY` | `0.5` | Degrees per mouse unit. |
 | **Min Pitch** / **Max Pitch** | | `-89` / `89` | Editor only. |
 | **Min Yaw** / **Max Yaw** | | `0` / `360` | Editor only. |
-| **No Clip** | `noClip` | off | Walk through everything. |
 
 ## Scripting
 
@@ -135,7 +125,6 @@ the player's eye position, facing where they look.
 | `airControl` | number | read/write | Multiplier while airborne. |
 | `sensitivityX` | number | read/write | |
 | `sensitivityY` | number | read/write | |
-| `noClip` | boolean | read/write | |
 | `currentSpeed` | number | read-only | `speed` or `runningSpeed`, whichever was used this frame. |
 | `velocity` | Vector3 | read-only | Always `0,0,0`. Read `entity.rigidbody.velocity` for the real velocity. |
 | `currentEyeHeight` | number | read-only | Always `0`. Use `eyeHeight`. |

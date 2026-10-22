@@ -18,9 +18,10 @@ namespace {
     using namespace LuaBindingMetadata;
 
     void RegisterComponentMetadata() {
-        RegisterType(Type("ColliderType", "Enum: Sphere or Box - see Collider.type.", {
+        RegisterType(Type("ColliderType", "Enum: Sphere, Box or Capsule - see Collider.type.", {
             Prop("Sphere", "integer", true),
             Prop("Box", "integer", true),
+            Prop("Capsule", "integer", true),
         }));
 
         RegisterType(Type("AudioSource", "OpenAL audio source component.", {
@@ -87,14 +88,15 @@ namespace {
             Method("GetFrame", {}, "string", "Name of the frame being shown (empty if there is no flipbook)."),
         }));
 
-        RegisterType(Type("Collider", "Sphere or box collision volume.", {
+        RegisterType(Type("Collider", "Sphere, capsule or box collision volume. It is the body for every physics contact.", {
             Prop("isValid", "boolean", true),
-            Prop("offset", "Vector3", false, "Local position relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
+            Prop("offset", "Vector3", false, "Local position of the collider's bottom relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("type", "ColliderType"),
             Prop("isActive", "boolean"),
             Prop("isTrigger", "boolean"),
-            Prop("scale", "Vector3", false, "Box: full extents. Sphere: scale.x is the radius."),
+            Prop("scale", "Vector3", false, "Box: full extents. Sphere: scale.x is the radius. Capsule: scale.x is the radius, scale.y the total height."),
             Prop("stepSize", "number"),
+            Prop("maxSlope", "number", false, "Steepest floor in degrees the collider can stand on. Steeper floors aren't ground: the body slides down."),
         }));
 
         RegisterType(Type("PlayerController", "First-person player movement/look component.", {
@@ -109,7 +111,6 @@ namespace {
             Prop("airControl", "number", false, "Multiplies acceleration and deceleration while airborne. 1 = full control, 0 = none."),
             Prop("sensitivityX", "number"),
             Prop("sensitivityY", "number"),
-            Prop("noClip", "boolean"),
             Prop("velocity", "Vector3", true),
             Prop("currentSpeed", "number", true),
             Prop("currentEyeHeight", "number", true),
@@ -172,7 +173,7 @@ namespace {
             Prop("position", "Vector3"),
             Prop("rotation", "Vector4", false, "Quaternion, stored as (x, y, z, w)."),
             Prop("scale", "Vector3"),
-            Prop("relativeHeight", "number", false, "Height above the current sector floor."),
+            Prop("relativeHeight", "number", false, "Height of the lowest collider's bottom above the current sector floor."),
             Prop("sectorIndex", "integer", true),
             Prop("isDirty", "boolean"),
             Prop("forward", "Vector3", true, "Unit vector the entity faces (local +Z), from rotation."),
@@ -226,7 +227,7 @@ namespace {
 void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
     RegisterComponentMetadata();
 
-    lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX);
+    lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX, "Capsule", COLLIDERTYPE_CAPSULE);
 
     lua.new_usertype<ScriptAudioSource>(
         "AudioSource",
@@ -418,6 +419,11 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             "stepSize", sol::property(
                 &ScriptCollider::GetStepSize,
                 &ScriptCollider::SetStepSize
+            ),
+
+            "maxSlope", sol::property(
+                &ScriptCollider::GetMaxSlope,
+                &ScriptCollider::SetMaxSlope
             )
         );
 
@@ -474,11 +480,6 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             "sensitivityY", sol::property(
                 &ScriptPlayerController::GetSensitivityY,
                 &ScriptPlayerController::SetSensitivityY
-            ),
-
-            "noClip", sol::property(
-                &ScriptPlayerController::GetNoClip,
-                &ScriptPlayerController::SetNoClip
             ),
 
             "velocity", sol::property(&ScriptPlayerController::GetVelocity),

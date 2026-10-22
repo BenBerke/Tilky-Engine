@@ -38,7 +38,7 @@ namespace MapQueries {
 
         if (first) return surface.height;
 
-        const float gradient = surface.slopeStrength * Constants::DegToRad;
+        const float gradient = surface.SlopeGradient();
 
         switch (surface.slopeDirection) {
             case PLUS_X:  return surface.height + (point.x - minimum.x) * gradient;

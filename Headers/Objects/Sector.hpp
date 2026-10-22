@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "Headers/Math/Constants.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Objects/EntityTypes.hpp"
@@ -34,7 +35,17 @@ struct SectorSurface {
     std::string texture;
 
     SlopeDirection slopeDirection = PLUS_X;
-    float slopeStrength = 0.0f;
+    float slopeStrength = 0.0f; // the slope's angle in degrees
+
+    // Height gained per world unit for a slope of `degrees`. Held just short
+    // of vertical so it stays finite.
+    static float GradientFromDegrees(const float degrees) {
+        constexpr float MAX_DEGREES = 89.0f;
+        return std::tan(std::clamp(degrees, -MAX_DEGREES, MAX_DEGREES) * Constants::DegToRad);
+    }
+
+    // Height gained per world unit along slopeDirection.
+    [[nodiscard]] float SlopeGradient() const { return GradientFromDegrees(slopeStrength); }
 
     Vector2 textureOffset = {0.0f, 0.0f};
     Vector2 textureScale = {1.0f, 1.0f};

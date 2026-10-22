@@ -10,6 +10,7 @@
 #include "Headers/Objects/EntityTypes.hpp"
 
 struct Level;
+struct ComponentCollider;
 namespace PhysicsSystem {
     // Two entities whose colliders were resolved against each other.
     // Always stored with a < b, so one contact is never listed in both orders.
@@ -37,6 +38,11 @@ namespace PhysicsSystem {
     // `contacts`. Not deduplicated - the caller may run physics several
     // times per frame.
     void Run(Level& level, Contacts& contacts);
+
+    // The collider that stands for the entity's bottom: its active, solid
+    // sphere or capsule with the lowest bottom. It owns relativeHeight and
+    // the step down between sectors. Null when the entity has none.
+    const ComponentCollider* FindBaseCollider(const Level& level, ID ownerID);
 }
 
 #endif //TILKY_ENGINE_PHYSICSSYSTEM_HPP

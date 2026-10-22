@@ -109,8 +109,8 @@ namespace OpenGLRendererInternal {
         Vector4 data3;
         //x = flipX
         //y = flipY
-        //z = unused
-        //w = unused
+        //z = distance from the wall's start to the piece's start
+        //w = length of the whole wall
     };
 
     struct alignas(16) IntVector4 {

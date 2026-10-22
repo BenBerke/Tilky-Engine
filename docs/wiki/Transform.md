@@ -10,16 +10,17 @@ instead.
 
 ## How it works
 
-### Position is at the feet
+### Position is the pivot
 
-`position` is the point at the **bottom** of the entity, where it touches the floor, not its
-centre:
+`position` is the point the entity's components hang off:
 
 - A sprite is drawn upward from it.
-- A sphere collider sits on it: its centre is one radius above `position`.
+- A [Collider](Collider.md)'s bottom sits at it plus the collider's `offset`. Physics only moves
+  `position` to keep the collider out of floors, walls and ceilings.
 - The player camera is `eyeHeight` above it.
 
-So an entity standing on a floor at height 0 has `position.y == 0`.
+With the default collider offset of `0, 0, 0`, an entity standing on a floor at height 0 has
+`position.y == 0`.
 
 ### Sector membership
 
@@ -28,8 +29,9 @@ contains its `(x, z)` position. This drives `entity:GetSector()`, the sector's o
 the `OnSectorChange` / `OnEntityEnter` / `OnEntityExit` callbacks. It doesn't matter what moved the
 entity: physics, the player controller or a script.
 
-`relativeHeight` is the height of the feet above the current floor. Physics keeps it up to date for
-entities with a Rigidbody and a Collider, and uses it to decide whether gravity applies.
+`relativeHeight` is the height of the entity's base collider's bottom above the current floor (the
+base collider is its lowest active sphere or capsule). Physics keeps it up to date for entities with
+a Rigidbody and a Collider.
 
 ### Scale
 
@@ -39,7 +41,6 @@ entities with a Rigidbody and a Collider, and uses it to decide whether gravity 
 |---|---|
 | [Sprite](Sprite.md) | `scale.x` is the sprite's **width**, `scale.z` its **height**. `scale.y` is not used. |
 | [Model](Model.md) | Multiplies the model on each axis. |
-| Physics | `scale.y` is the body height used for ceiling collision (at least the collider's diameter). |
 
 New entities start at `32, 32, 32`.
 
@@ -63,7 +64,7 @@ It does not move the camera. The camera has its own `yaw` and `pitch` (see [Came
 
 | Field | Lua | Default | Notes |
 |---|---|---|---|
-| **Position** (X, Y, Z) | `position` | `0, 0, 0` | World position of the feet. |
+| **Position** (X, Y, Z) | `position` | `0, 0, 0` | World position of the entity's pivot. |
 | **Rotation** (X, Y, Z) | `rotation` | `0, 0, 0` | Degrees in the inspector, a quaternion in Lua. |
 | **Scale** (X, Y, Z) | `scale` | `32, 32, 32` | See [Scale](#scale). |
 
@@ -72,10 +73,10 @@ It does not move the camera. The camera has its own `yaw` and `pitch` (see [Came
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Transform is gone. |
-| `position` | Vector3 | read/write | Feet position. Setting it updates sector membership this frame. |
+| `position` | Vector3 | read/write | Pivot position. Setting it updates sector membership this frame. |
 | `rotation` | Vector4 | read/write | Quaternion `(x, y, z, w)`. Normalised when written. |
 | `scale` | Vector3 | read/write | |
-| `relativeHeight` | number | read/write | Height above the floor. Physics overwrites it every frame on physics bodies. |
+| `relativeHeight` | number | read/write | Height of the base collider's bottom above the floor. Physics overwrites it every frame on physics bodies. |
 | `sectorIndex` | integer | read-only | Internal index of the current sector, `-1` outside the map. Use `entity:GetSector()` instead: it returns the sector itself and survives map edits. |
 | `isDirty` | boolean | read/write | Engine flag meaning "moved this frame". You shouldn't need it. |
 | `forward` | Vector3 | read-only | Unit vector the entity faces (local +Z), from `rotation`. |

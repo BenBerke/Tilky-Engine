@@ -3,8 +3,14 @@
 **Inspector name:** Collider · **Lua:** `entity.collider` · **Public field type:** `Collider`
 
 A Collider gives an entity a physical shape. With one, the entity can stand on floors, bump into
-walls, climb steps and push against other entities. A collider can also be a **trigger**: a volume
-that things pass through, which tells your scripts when something enters or leaves it.
+walls and ceilings, climb steps and push against other entities. A collider can also be a
+**trigger**: a volume that things pass through, which tells your scripts when something enters or
+leaves it.
+
+The collider **is** the body. Every physics check (walls, floors, ceilings, slopes, steps,
+grounding, other entities, triggers) uses the collider's shape and offset. The
+[Transform](Transform.md)'s position is only the point the collider hangs off, and its `scale`
+doesn't affect collision at all.
 
 A collider only **moves** if its entity also has a non-static [Rigidbody](Rigidbody.md). Without
 one it is an immovable obstacle that other bodies bump into.
@@ -13,60 +19,79 @@ one it is an immovable obstacle that other bodies bump into.
 
 | Type | Lua | Size | Status |
 |---|---|---|---|
+| **Capsule** | `ColliderType.Capsule` | **Radius** (`scale.x`) and **Height** (`scale.y`) | Fully working. The default. |
 | **Sphere** | `ColliderType.Sphere` | **Radius** (`scale.x`) | Fully working. |
 | **AABB** (box) | `ColliderType.Box` | **Scale** (`scale.x`, `.y`, `.z`), the box size | **Not simulated yet.** Box colliders don't collide with anything and don't fire trigger or collision callbacks. |
 
-Use spheres for now.
+A **capsule** is an upright cylinder with rounded ends. It never tilts, even when the entity
+rotates. Its **Height** is the total height from bottom to top, rounded ends included, and is never
+less than twice the radius. Use capsules for characters: they can be tall and thin, which a sphere
+can't. Use spheres for balls and projectiles.
 
-### Where the sphere sits
+### Where the collider sits
 
-The sphere rests **on** the entity's feet. Its centre is one radius above the
-[Transform](Transform.md) position, so an entity with `position.y == 0` and a radius of 8 has a
-sphere touching the floor at 0 with its centre at 8. A collider's `offset` moves it from the feet;
-see [Several on one entity](#several-on-one-entity).
+The collider's **bottom** is at the [Transform](Transform.md) position plus its `offset` (turned
+with the entity's rotation). A capsule or sphere rests its bottom on the floor, so with the default
+offset of `0, 0, 0` the entity's position stays on the floor. A sphere's centre is one radius
+above its bottom; a capsule's top is **Height** above it.
+
+An offset of `0, 4, 0` puts the collider's bottom 4 units above the position. The collider still
+stands on the floor, so the position ends up 4 units **below** the floor, and sprites and models
+drawn from it sink in. Keep the offset at `0, 0, 0` for anything that stands on the floor.
 
 ### Several on one entity
 
 An entity can have several Colliders. Together they make **one compound shape**:
 
-- Each sphere sits at the Transform position plus its `offset` (turned with the entity's rotation),
-  then one radius up, as above.
-- Each one is resolved against walls, other entities, the floor and the ceiling, and every push
-  moves the whole entity. The entity's top stays at its feet plus the Transform's `scale.y`
-  whichever collider is touching the ceiling.
-- Other entities collide with any of its active, non-trigger spheres, and triggers are touched by
-  any of them.
+- Each collider's bottom sits at the Transform position plus its `offset`, as above.
+- Each one is resolved against walls, other entities, the floor and the ceiling on its own, and
+  every push moves the whole entity.
+- The **base collider** is the active, non-trigger sphere or capsule whose bottom is lowest. It
+  owns the Transform's `relativeHeight` and the step down onto a lower floor (with its own Step
+  Size).
+- Other entities collide with any of its active, non-trigger spheres and capsules, and triggers are
+  touched by any of them.
 - Collision and trigger callbacks still fire **once per pair of entities**, however many of their
   colliders touch.
 - Each collider has its own Step Size; ray casts test every collider.
-- Floor and ceiling checks use the sector the entity's feet are in. A collider offset into another
-  sector isn't held by that sector's floor.
+- Floor and ceiling checks use the sector under each collider's bottom.
 
 `entity.collider` is the first one; `entity:GetComponents(Component.Collider)` lists them all.
 
 ## How it works
 
 Each frame, after scripts and the [Player Controller](PlayerController.md) have set velocities and
-the Rigidbodies have moved, physics resolves every **active, non-trigger sphere on an entity with a
-non-static Rigidbody**:
+the Rigidbodies have moved, physics resolves every **active, non-trigger sphere or capsule on an
+entity with a non-static Rigidbody**:
 
-1. **Other entities.** It is pushed out of every other active, non-trigger sphere nearby. If the
+1. **Other entities.** It is pushed out of every other active, non-trigger sphere or capsule
+   nearby. If the
    other entity is static (no Rigidbody, or a static one), only this entity moves. If both are
    moving bodies, each is pushed half the overlap.
 2. **Walls.** It is pushed out of the solid parts of nearby [walls](Wall.md), and its velocity into
    the wall is removed so it slides along instead of sticking.
-3. **Floor and ceiling.** It is kept between the floor and ceiling of the sector it stands in. The
-   body's height for this is the larger of the Transform's `scale.y` and the sphere's diameter. If
-   its feet end up on the floor, the Rigidbody is marked **grounded**.
+3. **Floor and ceiling.** It is kept between the floor and ceiling of the sector it stands in: its
+   bottom above the floor, its top below the ceiling. On a sloped floor or ceiling the real
+   rounded shape touches the slope, so a wider collider stops sooner under a ceiling sloping down.
+   Where the gap gets shorter than the collider, it is pushed back to where it fits, like a wall.
+   If its bottom ends up on a floor no steeper than **Max Slope**, the Rigidbody is marked
+   **grounded**.
 
-"Nearby" means in the entity's own sector or a neighbouring one. A very large sphere can reach
+"Nearby" means in the entity's own sector or a neighbouring one. A very large collider can reach
 past its neighbours, and things beyond them aren't tested.
+
+### Max Slope
+
+**Max Slope** is the steepest floor, in degrees, the collider can stand on (default `45`). On a
+steeper floor the body isn't grounded: gravity keeps pulling, it slides down the slope, and the
+[Player Controller](PlayerController.md) can't jump off it. A steep slope is a wall to walk into:
+moving uphill on it gains no height, while moving across or down it still works.
 
 ### Step Size
 
 **Step Size** lets a body walk up small ledges instead of being stopped by them. When the body walks
 into the solid lower part of a wall (the face of a step) whose top is no more than Step Size above
-its feet, it is lifted onto the step. The same limit applies going **down**: walking off a ledge
+the collider's bottom, it is lifted onto the step. The same limit applies going **down**: walking off a ledge
 no taller than Step Size snaps the body down onto the lower floor instead of making it fall.
 
 `0` turns stepping off. For a player, `8` to `12` feels right with the default scale. The
@@ -77,8 +102,8 @@ no taller than Step Size snaps the body down onto the lower floor instead of mak
 A collider with **Is Trigger** ticked isn't solid. Nothing is pushed out of it and it isn't pushed
 by anything. Instead, the engine reports overlaps each frame:
 
-- A trigger overlaps any other active sphere collider nearby, trigger or not, that its sphere
-  intersects.
+- A sphere or capsule trigger overlaps any other active sphere or capsule collider nearby, trigger
+  or not, that it intersects.
 - A trigger doesn't need a Rigidbody. A static trigger volume is the normal setup.
 - Its entity must stand inside a sector.
 
@@ -96,35 +121,36 @@ and floors don't fire these callbacks: only entity-to-entity contacts do.
 
 An inactive collider is ignored completely. It also keeps its setting when the level is saved and
 loaded. The entity passes through walls and other entities,
-floors and ceilings no longer hold it in, and triggers don't notice it. The
-[Player Controller](PlayerController.md) uses this for No Clip, and it sets the player's
-`isActive` every frame.
+floors and ceilings no longer hold it in, and triggers don't notice it. A moving body whose
+colliders are all inactive falls through the floor.
 
 ## In the editor
 
 | Field | Lua | Default | Notes |
 |---|---|---|---|
 | **Is Active** | `isActive` | on | |
-| **Collider Type** | `type` | Sphere | Sphere or AABB. |
+| **Collider Type** | `type` | Capsule | Sphere, AABB or Capsule. |
 | **Is Trigger** | `isTrigger` | off | See [Triggers](#triggers). |
-| **Radius** (sphere) / **Scale** (AABB) | `scale` | `1, 1, 1` | Sphere radius is `scale.x`. |
-| **Step Size** | `stepSize` | `0` | See [Step Size](#step-size). |
-| **Offset** | `offset` | `0, 0, 0` | See [Several on one entity](#several-on-one-entity). |
+| **Radius** (sphere, capsule) / **Height** (capsule) / **Scale** (AABB) | `scale` | `6, 16, 6` | Radius is `scale.x`, a capsule's height `scale.y`. |
+| **Step Size** | `stepSize` | `15` | See [Step Size](#step-size). |
+| **Max Slope** | `maxSlope` | `45` | Degrees, `0` to `90`. See [Max Slope](#max-slope). |
+| **Offset** | `offset` | `0, 0, 0` | Where the collider's bottom sits. See [Where the collider sits](#where-the-collider-sits). |
 
-The default radius of `1` is tiny next to the default Transform scale of 32. Give characters a
-radius of about 6 to 10.
+The default capsule is 16 tall, taller than the [Player Controller](PlayerController.md)'s default
+Eye Height of 12, so the camera stays inside the body.
 
 ## Scripting
 
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Collider is gone. |
-| `type` | ColliderType | read/write | `ColliderType.Sphere` or `ColliderType.Box`. |
+| `type` | ColliderType | read/write | `ColliderType.Capsule`, `ColliderType.Sphere` or `ColliderType.Box`. |
 | `isActive` | boolean | read/write | |
 | `isTrigger` | boolean | read/write | |
-| `scale` | Vector3 | read/write | Sphere radius is `scale.x`. |
+| `scale` | Vector3 | read/write | Radius is `scale.x`; a capsule's height is `scale.y`. |
 | `stepSize` | number | read/write | |
-| `offset` | Vector3 | read/write | Position relative to the Transform, turned with its rotation. See [Several on one entity](#several-on-one-entity). |
+| `maxSlope` | number | read/write | Degrees, clamped to `0`..`90`. |
+| `offset` | Vector3 | read/write | Position of the collider's bottom relative to the Transform, turned with its rotation. See [Where the collider sits](#where-the-collider-sits). |
 
 ## Examples
 

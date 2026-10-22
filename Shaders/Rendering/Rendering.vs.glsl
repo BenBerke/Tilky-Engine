@@ -64,7 +64,8 @@ struct Wall {
     vec4 data3;
 // data3.x = flip texture X (0.0 or 1.0)
 // data3.y = flip texture Y (0.0 or 1.0)
-// data3.zw = unused
+// data3.z = distance from the wall's start to this piece's start
+// data3.w = length of the whole wall (a piece can cover only part of it)
 };
 
 struct FlatTriangle {
@@ -92,9 +93,9 @@ struct SectorFloor {
 
     vec4 slopeData;
 // slopeData.x = floor slope direction
-// slopeData.y = floor slope strength
+// slopeData.y = floor slope gradient (height gained per unit)
 // slopeData.z = ceiling slope direction
-// slopeData.w = ceiling slope strength
+// slopeData.w = ceiling slope gradient
 
     vec4 floorColor;
     vec4 ceilingColor;
@@ -388,10 +389,16 @@ vec3 GetSphereVertex(Collider collider, int localVertex) {
     float c = cos(angle);
     float s = sin(angle);
 
-    if (ring == 0) return center + vec3(c * radius, s * radius, 0.0);
+    // A capsule's upright rings split at the middle: the top half rises to
+    // the upper cap, the bottom half sinks to the lower one, and the segment
+    // crossing the split draws the straight side. Zero for a sphere.
+    float capOffset = collider.scale.w;
+    float verticalShift = s >= -0.0001 ? capOffset : -capOffset;
+
+    if (ring == 0) return center + vec3(c * radius, s * radius + verticalShift, 0.0);
     if (ring == 1) return center + vec3(c * radius, 0.0, s * radius);
 
-    return center + vec3(0.0, c * radius, s * radius);
+    return center + vec3(0.0, c * radius + (c >= -0.0001 ? capOffset : -capOffset), s * radius);
 }
 
 void RenderColliderVertex() {
@@ -400,13 +407,14 @@ void RenderColliderVertex() {
 
     Collider collider = colliders[colliderIndex];
 
-    bool isSphere = collider.positionType.w < 0.5;
+    // Spheres and capsules (types 0 and 2) are round; boxes are type 1.
+    bool isRound = abs(collider.positionType.w - 1.0) > 0.5;
 
-    vec3 worldPosition = isSphere
+    vec3 worldPosition = isRound
     ? GetSphereVertex(collider, localVertex)
     : GetBoxVertex(collider, localVertex);
 
-    vColor = isSphere
+    vColor = isRound
     ? vec4(0.2, 0.8, 1.0, 1.0)
     : vec4(1.0, 0.8, 0.2, 1.0);
 
@@ -713,7 +721,10 @@ void renderWall() {
     float bottomEndV = GetWallV(bottomEndHeight, textureAnchorHeight, tileSize.y);
     float topEndV = GetWallV(topEndHeight, textureAnchorHeight, tileSize.y);
 
-    float rightU = wallLength / tileSize.x;
+    // U runs along the whole wall, so the pieces of a wall cut at a slope
+    // crossing line up.
+    float leftU = wall.data3.z / tileSize.x;
+    float rightU = (wall.data3.z + wallLength) / tileSize.x;
 
     vec2 uvOffset = wall.data2.xy / tileSize;
 
@@ -752,12 +763,12 @@ void renderWall() {
     );
 
     vec2 uvs[6] = vec2[6](
-    vec2(0.0, bottomStartV),
-    vec2(0.0, topStartV),
+    vec2(leftU, bottomStartV),
+    vec2(leftU, topStartV),
     vec2(rightU, bottomEndV),
 
     vec2(rightU, bottomEndV),
-    vec2(0.0, topStartV),
+    vec2(leftU, topStartV),
     vec2(rightU, topEndV)
     );
 
@@ -766,14 +777,17 @@ void renderWall() {
 
     float wallHeight = max(max(startHeight, endHeight), 0.0001);
 
-    vec2 surfaceCoords[6] = vec2[6](
-    vec2(0.0, 0.0),
-    vec2(0.0, startHeight),
-    vec2(wallLength, 0.0),
+    float leftX = wall.data3.z;
+    float rightX = wall.data3.z + wallLength;
 
-    vec2(wallLength, 0.0),
-    vec2(0.0, startHeight),
-    vec2(wallLength, endHeight)
+    vec2 surfaceCoords[6] = vec2[6](
+    vec2(leftX, 0.0),
+    vec2(leftX, startHeight),
+    vec2(rightX, 0.0),
+
+    vec2(rightX, 0.0),
+    vec2(leftX, startHeight),
+    vec2(rightX, endHeight)
     );
 
     vec3 worldPos = positions[gl_VertexID];
@@ -798,7 +812,7 @@ void renderWall() {
 
     vWorldPos = worldPos;
     vSurfaceCoord = surfaceCoords[gl_VertexID];
-    vSurfaceSize = vec2(max(wallLength, 0.0001), wallHeight);
+    vSurfaceSize = vec2(max(wall.data3.w, 0.0001), wallHeight);
 
     gl_Position = uProjection * uView * vec4(worldPos, 1.0);
 }

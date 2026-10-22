@@ -3,21 +3,22 @@
 **Inspector name:** Rigidbody · **Lua:** `entity.rigidbody` · **Public field type:** `Rigidbody`
 
 A Rigidbody lets physics move an entity. It holds a **velocity**, and every frame the engine applies
-gravity to it and moves the entity by it. Pair it with a [Collider](Collider.md) so the entity lands
-on floors and stops at walls. The player needs one, and so does anything that should fall, be
-pushed or be launched.
+gravity to it and moves the entity by it. The Rigidbody is only the motion: all contact comes from
+a [Collider](Collider.md). Without an active Collider the body collides with nothing and falls
+through floors (the inspector warns about this). The player needs one, and so does anything that
+should fall, be pushed or be launched.
 
 ## How it works
 
 Every frame, for every Rigidbody:
 
-1. **Gravity.** If the entity is inside a sector **and** above the floor, its vertical velocity is
+1. **Gravity.** If the entity is inside a sector **and** isn't grounded, its vertical velocity is
    reduced by `level gravity × gravityScale × deltaTime`. Standing on the floor, no gravity is
    added.
 2. **Friction.** The horizontal velocity (`x` and `z`) is slowed toward zero by `friction` units per
    second, every second. Vertical velocity isn't affected.
 3. **Move.** The entity's [Transform](Transform.md) moves by `velocity × deltaTime`.
-4. **Collide.** If the entity has an active sphere [Collider](Collider.md), physics pushes it out of
+4. **Collide.** If the entity has an active sphere or capsule [Collider](Collider.md), physics pushes it out of
    walls, other entities, the floor and the ceiling, removes the velocity going into them, and
    updates `isGrounded`.
 
@@ -31,8 +32,8 @@ The level's **Gravity** (the Physics section of the level settings, default `9.8
 Rigidbody's **Gravity Scale** (default `9.8`). So a default body falls with an acceleration of about
 **96 units/s²**. To make one thing float or fall slowly, lower its Gravity Scale. `0` means no gravity.
 
-Gravity only applies inside a sector and while the body is above the floor. Physics tracks the
-height above the floor for bodies with a sphere Collider, so give falling things a collider.
+Gravity only applies inside a sector and while the body isn't grounded. Only a Collider can ground
+a body, so give falling things a collider or they fall through the floor.
 
 ### Static bodies
 
@@ -42,8 +43,9 @@ props that should block the player but never move.
 
 ### Grounded
 
-`isGrounded` is `true` when physics found the body resting on a floor this frame (its feet within a
-small distance of the floor and not moving away from it), or when it just climbed a step. The
+`isGrounded` is `true` when physics found the body resting on a floor this frame (a collider's
+bottom within a small distance of a floor no steeper than its **Max Slope**, and not moving away
+from it), or when it just climbed a step. On a steeper slope it is `false` and the body slides. The
 [Player Controller](PlayerController.md) only jumps when it is `true`. It is recalculated every
 frame, so writing it from a script has no lasting effect.
 
@@ -167,4 +169,4 @@ end
 ```
 
 A static body floating in the air starts falling as soon as it's made non-static. It lands on the
-floor below, because its sphere Collider keeps track of the floor under it.
+floor below, because its Collider keeps track of the floor under it.

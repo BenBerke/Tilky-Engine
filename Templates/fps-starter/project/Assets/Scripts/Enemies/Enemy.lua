@@ -12,7 +12,7 @@
 --   pain   - flinching after being hit
 --   dead   - playing its death frames, then lying there
 --
--- Needs: Sprite (8-sided), Rigidbody, sphere Collider, Audio Source.
+-- Needs: Sprite (8-sided), Rigidbody, capsule Collider, Audio Source.
 
 public int health = 20
 public number speed = 18

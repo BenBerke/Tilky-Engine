@@ -1003,6 +1003,18 @@ struct ScriptCollider {
         if (collider == nullptr) return;
         collider->stepSize = stepSize;
     }
+
+    [[nodiscard]] float GetMaxSlope() const {
+        const ComponentCollider* collider = GetComponent();
+        if (collider == nullptr) return 0.0f;
+        return collider->maxSlope;
+    }
+
+    void SetMaxSlope(const float maxSlope) const {
+        ComponentCollider* collider = GetComponent();
+        if (collider == nullptr) return;
+        collider->maxSlope = std::clamp(maxSlope, 0.0f, 90.0f);
+    }
 };
 
 // ---------------------------------------------------------
@@ -1144,18 +1156,6 @@ struct ScriptPlayerController {
         ComponentPlayerController* pc = GetComponent();
         if (pc == nullptr) return;
         pc->sensitivityY = sensitivity;
-    }
-
-    [[nodiscard]] bool GetNoClip() const {
-        const ComponentPlayerController* pc = GetComponent();
-        if (pc == nullptr) return false;
-        return pc->noClip;
-    }
-
-    void SetNoClip(const bool noClip) const {
-        ComponentPlayerController* pc = GetComponent();
-        if (pc == nullptr) return;
-        pc->noClip = noClip;
     }
 
     [[nodiscard]] Vector3 GetVelocity() const {
@@ -2856,7 +2856,7 @@ private:
                                  const Vector2& maximum, const Vector2& point) {
         if (surface.slopeStrength == 0.0f) return surface.height;
 
-        const float gradient = surface.slopeStrength * Constants::DegToRad;
+        const float gradient = surface.SlopeGradient();
 
         switch (surface.slopeDirection) {
             case PLUS_X:  return surface.height + (point.x - minimum.x) * gradient;

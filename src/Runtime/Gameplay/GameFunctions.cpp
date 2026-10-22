@@ -72,6 +72,49 @@ namespace {
         return t;
     }
 
+    // An upright capsule: the side between its cap centres, then each cap.
+    std::optional<float> RayCapsuleIntersection(
+        const Vector3& origin,
+        const Vector3& dir,
+        const Vector3& lowCentre,
+        const float highCentreY,
+        const float radius,
+        const float maxDistance
+    ) {
+        std::optional<float> best;
+
+        const auto consider = [&](const std::optional<float> t) {
+            if (t.has_value() && (!best.has_value() || *t < *best)) best = t;
+        };
+
+        // The side: an infinite vertical cylinder, kept between the caps.
+        const float ox = origin.x - lowCentre.x;
+        const float oz = origin.z - lowCentre.z;
+        const float a = dir.x * dir.x + dir.z * dir.z;
+
+        if (a > Constants::Epsilon) {
+            const float b = ox * dir.x + oz * dir.z;
+            const float c = ox * ox + oz * oz - radius * radius;
+            const float discriminant = b * b - a * c;
+
+            if (discriminant >= 0.0f) {
+                const float sqrtDiscriminant = std::sqrt(discriminant);
+
+                for (const float t : {(-b - sqrtDiscriminant) / a, (-b + sqrtDiscriminant) / a}) {
+                    if (t < 0.0f || t > maxDistance) continue;
+
+                    const float y = origin.y + dir.y * t;
+                    if (y >= lowCentre.y && y <= highCentreY) consider(t);
+                }
+            }
+        }
+
+        consider(RaySphereIntersection(origin, dir, lowCentre, radius, maxDistance));
+        consider(RaySphereIntersection(origin, dir, {lowCentre.x, highCentreY, lowCentre.z}, radius, maxDistance));
+
+        return best;
+    }
+
     std::optional<float> RayAABBIntersection(
         const Vector3& rayOrigin,
         const Vector3& rayDir,
@@ -314,10 +357,13 @@ namespace {
             for (const WallPieces::WallPiece& piece : scratch.pieces) {
                 if (piece.slot == WallSurfaceSlot::Middle && wall.middleIgnoredByRaycast) continue;
 
-                const Vector3 bottomStart = {wall.start.x, piece.bottomStart, wall.start.y};
-                const Vector3 bottomEnd = {wall.end.x, piece.bottomEnd, wall.end.y};
-                const Vector3 topEnd = {wall.end.x, piece.topEnd, wall.end.y};
-                const Vector3 topStart = {wall.start.x, piece.topStart, wall.start.y};
+                const Vector2 pieceStart = piece.Start(wall);
+                const Vector2 pieceEnd = piece.End(wall);
+
+                const Vector3 bottomStart = {pieceStart.x, piece.bottomStart, pieceStart.y};
+                const Vector3 bottomEnd = {pieceEnd.x, piece.bottomEnd, pieceEnd.y};
+                const Vector3 topEnd = {pieceEnd.x, piece.topEnd, pieceEnd.y};
+                const Vector3 topStart = {pieceStart.x, piece.topStart, pieceStart.y};
 
                 const std::optional<float> firstHit = RayTriangleIntersection(
                     pos,
@@ -491,6 +537,13 @@ namespace {
 
                     hitDistance = RaySphereIntersection(pos, normalizedDir, center, radius, closestDistance);
                 }
+                else if (collider.type == COLLIDERTYPE_CAPSULE) {
+                    const float radius = collider.Radius();
+                    const Vector3 lowCentre = {base.x, base.y + radius, base.z};
+                    const float highCentreY = base.y + collider.Height() - radius;
+
+                    hitDistance = RayCapsuleIntersection(pos, normalizedDir, lowCentre, highCentreY, radius, closestDistance);
+                }
                 else if (collider.type == COLLIDERTYPE_BOX) {
                     const Vector3 halfSize = collider.scale * 0.5f;
                     const Vector3 boxMin = {base.x - halfSize.x, base.y, base.z - halfSize.z};
@@ -502,7 +555,7 @@ namespace {
                 if (hitDistance.has_value()) submitEntityHit(collider.ownerID, *hitDistance);
             };
 
-            for (const ComponentCollider& collider : level.colliders.ActiveSpheres()) testCollider(collider);
+            for (const ComponentCollider& collider : level.colliders.ActiveRound()) testCollider(collider);
             for (const ComponentCollider& collider : level.colliders.ActiveBoxes()) testCollider(collider);
         }
         else if (hitEntities) {

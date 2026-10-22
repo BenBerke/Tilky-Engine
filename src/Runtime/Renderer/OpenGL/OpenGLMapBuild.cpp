@@ -81,11 +81,15 @@ namespace {
             static_cast<float>(metaData)
         };
 
+        // Only the part of the wall the piece covers.
+        const Vector2 pieceStart = piece.Start(wall);
+        const Vector2 pieceEnd = piece.End(wall);
+
         gpuWall.startEnd = {
-            wall.start.x,
-            wall.start.y,
-            wall.end.x,
-            wall.end.y
+            pieceStart.x,
+            pieceStart.y,
+            pieceEnd.x,
+            pieceEnd.y
         };
 
         gpuWall.color = LitWallColor(wall, piece, wallContrast, fullbright);
@@ -107,12 +111,16 @@ namespace {
             surface.textureScale.y
         };
 
-        // Store flip flags as floats to match the GPU vec4 layout.
+        // Store flip flags as floats to match the GPU vec4 layout. zw place
+        // the piece along its wall, so a wall cut into pieces keeps one
+        // continuous texture.
+        const float wallLength = wall.length;
+
         gpuWall.data3 = {
             surface.flipTextureX ? 1.0f : 0.0f,
             surface.flipTextureY ? 1.0f : 0.0f,
-            0.0f,
-            0.0f
+            piece.startT * wallLength,
+            wallLength
         };
 
         gpuWalls.push_back(gpuWall);

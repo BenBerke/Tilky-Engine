@@ -1469,7 +1469,6 @@ namespace LevelSerialization {
             {"maxPitch", c.maxPitch},
             {"minYaw", c.minYaw},
             {"maxYaw", c.maxYaw},
-            {"noClip", c.noClip},
             {"jumpBufferMs", c.jumpBufferMs},
             {"acceleration", c.acceleration},
             {"deceleration", c.deceleration},
@@ -1489,7 +1488,6 @@ namespace LevelSerialization {
         c.minPitch = j.value("minPitch", -89.0f);
         c.maxYaw = j.value("maxYaw", 360.0f);
         c.minYaw = j.value("minYaw", .0f);
-        c.noClip = j.value("noClip", false);
         c.jumpBufferMs = j.value("jumpBufferMs", 100.0f);
         c.acceleration = j.value("acceleration", 80.0f);
         c.deceleration = j.value("deceleration", 60.0f);
@@ -1536,7 +1534,8 @@ namespace LevelSerialization {
             {"isTrigger", c.isTrigger},
             {"type", c.type},
             {"scale", Vec3Json(c.scale)},
-            {"stepSize", c.stepSize}
+            {"stepSize", c.stepSize},
+            {"maxSlope", c.maxSlope}
         };
     }
 
@@ -1545,6 +1544,7 @@ namespace LevelSerialization {
         c.isTrigger = j.value("isTrigger", false);
         c.type = j.value("type", COLLIDERTYPE_SPHERE);
         c.stepSize = j.value("stepSize", c.stepSize);
+        c.maxSlope = j.value("maxSlope", c.maxSlope);
         if (j.contains("scale")) c.scale = Vec3FromJson(j["scale"]);
         if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
         return true;

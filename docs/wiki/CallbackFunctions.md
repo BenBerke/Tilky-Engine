@@ -239,7 +239,7 @@ pass straight through, and the engine reports the overlap instead.
 - A trigger does **not** need a Rigidbody. A static trigger volume is the usual setup.
 - Two overlapping triggers call each other too.
 - A pair involving a trigger only ever calls the `OnTrigger*` callbacks, never `OnCollision*`.
-- Only Sphere colliders are checked. The trigger's entity must be inside a sector.
+- Only Sphere and Capsule colliders are checked. The trigger's entity must be inside a sector.
 - They fire at the end of the frame, just after the collision callbacks.
 
 ```lua

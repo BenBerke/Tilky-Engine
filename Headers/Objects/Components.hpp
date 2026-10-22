@@ -129,6 +129,10 @@ struct ComponentRigidbody {
     bool isGrounded = false;
     Vector3 groundNormal = {.0f, 1.0f, .0f};
 
+    // Normal of the floor too steep to stand on that the body is sliding
+    // down, zero when it isn't sliding. Set by physics each run.
+    Vector3 slideNormal = {.0f, .0f, .0f};
+
     void AddVelocity(const Vector3 &_velocity);
     void ApplyFriction(float _friction, float dt);
     void ApplyAirResistance(float resistance, float dt);
@@ -137,26 +141,47 @@ struct ComponentRigidbody {
 
 enum ColliderType {
     COLLIDERTYPE_SPHERE,
-    COLLIDERTYPE_BOX
+    COLLIDERTYPE_BOX,
+    COLLIDERTYPE_CAPSULE
 };
+
+// The collider is the body: every physics contact (walls, floors, ceilings,
+// slopes, steps, other bodies, triggers) uses its shape, never the
+// Transform's position or scale.
 struct ComponentCollider {
-    // Sphere Collider
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
-    // Local position relative to the owner's Transform, turned with its
-    // rotation. Lets several of these sit at different spots on one entity.
-    Vector3 offset = {0.0f, 4.0f, 0.0f};
+    // Local position of the collider's bottom relative to the owner's
+    // Transform, turned with its rotation. Lets several of these sit at
+    // different spots on one entity.
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
 
-    ColliderType type = COLLIDERTYPE_SPHERE;
+    ColliderType type = COLLIDERTYPE_CAPSULE;
 
     bool isActive = true;
     bool isTrigger = false;
 
-    // Type = Box -> Use these values as AABB; Type = Sphere -> Use size.x as the radius
-    Vector3 scale = {6.0f, 6.0f, 6.0f};
+    // Box: the AABB's size. Sphere: x is the radius.
+    // Capsule: x is the radius, y the total height (caps included, at least 2 * radius).
+    Vector3 scale = {6.0f, 16.0f, 6.0f};
 
     float stepSize = 15.0f;
+
+    // Steepest floor, in degrees, the body can stand on. On a steeper one it
+    // isn't grounded and slides down.
+    float maxSlope = 45.0f;
+
+    [[nodiscard]] bool IsRound() const { return type == COLLIDERTYPE_SPHERE || type == COLLIDERTYPE_CAPSULE; }
+
+    [[nodiscard]] float Radius() const { return std::max(0.0f, scale.x); }
+
+    // Bottom to top: a sphere is as tall as it is wide.
+    [[nodiscard]] float Height() const {
+        if (type == COLLIDERTYPE_CAPSULE) return std::max(scale.y, Radius() * 2.0f);
+        if (type == COLLIDERTYPE_SPHERE) return Radius() * 2.0f;
+        return std::max(0.0f, scale.y);
+    }
 };
 
 struct ComponentPlayerController {
@@ -185,8 +210,6 @@ struct ComponentPlayerController {
     //todo TILKYTODO Max-Min pitch is acting weirdly
     float minPitch = -89.0f, maxPitch = 89.0f;
     float minYaw =  .0f, maxYaw = 360.0f;
-
-    bool noClip = false;
 
     float acceleration = 480.f;
     float deceleration = 570.0f;
@@ -706,8 +729,8 @@ protected:
 };
 
 struct ColliderStorage : ComponentStorage<ComponentCollider> {
-    // components layout: [active spheres | active boxes | inactive]
-    //                     0        firstBoxIndex  firstInactiveIndex  size
+    // components layout: [active spheres and capsules | active boxes | inactive]
+    //                     0                  firstBoxIndex  firstInactiveIndex  size
     size_t firstBoxIndex      = 0;
     size_t firstInactiveIndex = 0;
 
@@ -719,11 +742,12 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
         return { components.data(), firstInactiveIndex };
     }
 
-    std::span<ComponentCollider> ActiveSpheres() {
+    // Spheres and capsules: the round shapes physics handles together.
+    std::span<ComponentCollider> ActiveRound() {
         return { components.data(), firstBoxIndex };
     }
 
-    std::span<const ComponentCollider> ActiveSpheres() const {
+    std::span<const ComponentCollider> ActiveRound() const {
         return { components.data(), firstBoxIndex };
     }
 
@@ -760,14 +784,15 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
         if (it == instanceToIndex.end()) return;
         ComponentCollider& c = components[it->second];
         if (c.type == type) return;
-        if (!c.isActive) { c.type = type; return; } // inactive: just change the field
+        const bool wasRound = c.IsRound();
         c.type = type;
-        if (type == COLLIDERTYPE_SPHERE) _promoteToSphere(it->second);
+        if (!c.isActive || wasRound == c.IsRound()) return; // same region
+        if (c.IsRound()) _promoteToRound(it->second);
         else _demoteToBox(it->second);
     }
 
     // ── Overrides that keep boundaries consistent ────────────────────
-    // New components default to an active sphere. They're appended at the
+    // New components default to an active capsule. They're appended at the
     // back (the inactive region), then activated, which walks them through
     // the inactive and box boundaries so the elements they displace stay in
     // their regions.
@@ -835,16 +860,16 @@ private:
         instanceToIndex[components[b].instanceID] = b;
     }
 
-    // Returns new index after promotion into sphere region
-    size_t _promoteToSphere(size_t idx) {
+    // Returns new index after promotion into the round region
+    size_t _promoteToRound(size_t idx) {
         // idx must already be in the active-box region [firstBoxIndex, firstInactiveIndex)
-        // Swap it to the boundary between sphere and box regions, then advance the boundary.
+        // Swap it to the boundary between round and box regions, then advance the boundary.
         if (idx != firstBoxIndex)
             _swapElements(idx, firstBoxIndex);
         return firstBoxIndex++;
     }
 
-    // Demote an active sphere at idx to the box region
+    // Demote an active round collider at idx to the box region
     void _demoteToBox(size_t idx) {
         // idx must be in [0, firstBoxIndex)
         if (firstBoxIndex == 0) return;
@@ -859,18 +884,16 @@ private:
             _swapElements(idx, firstInactiveIndex);
         firstInactiveIndex++;
 
-        // Now it's in the box region. If it's a sphere, promote further.
+        // Now it's in the box region. If it's round, promote further.
         const size_t newIdx = firstInactiveIndex - 1;
-        if (components[newIdx].type == COLLIDERTYPE_SPHERE)
-            _promoteToSphere(newIdx);
+        if (components[newIdx].IsRound())
+            _promoteToRound(newIdx);
     }
 
     // Move an active component at idx out into the inactive region
     void _deactivateComponent(size_t idx) {
-        const bool isSphere = components[idx].type == COLLIDERTYPE_SPHERE;
-
-        if (isSphere) {
-            // Move out of sphere region into box region first
+        if (components[idx].IsRound()) {
+            // Move out of the round region into the box region first
             _swapElements(idx, firstBoxIndex - 1);
             idx = firstBoxIndex - 1;
             firstBoxIndex--;

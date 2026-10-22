@@ -28,7 +28,6 @@ namespace PlayerControllerSystem {
         ComponentCamera* ownCamera,
         const ComponentCamera* activeCamera,
         ComponentRigidbody& rigidbody,
-        ComponentCollider* sphereCollider,
         const std::vector<Sector>& sectors
     ) {
         (void)sectors;
@@ -63,10 +62,6 @@ namespace PlayerControllerSystem {
             InputManager::GetKey(SDL_SCANCODE_W)
                 ? controller.runningSpeed
                 : controller.speed;
-
-        if (InputManager::GetKeyDown(SDL_SCANCODE_V)) controller.noClip = !controller.noClip;
-
-        if (sphereCollider != nullptr) sphereCollider->isActive = !controller.noClip;
 
         // Mouse look only while the player's own camera is the one in use.
         if (ownCamera != nullptr && ownCamera->isActive) {
@@ -117,6 +112,20 @@ namespace PlayerControllerSystem {
 
         Vector2 newVelocity = targetVelocity;
         if (diffLen > maxDelta && diffLen > 0.0f) newVelocity = currentVelocity + diff * (maxDelta / diffLen);
+
+        // Sliding down a slope too steep to stand on, the controller steers
+        // but never brakes the slide: braking toward the target is stronger
+        // than gravity along any slope, and the body barely slid at all.
+        const Vector2 slideDirection = {rigidbody.slideNormal.x, rigidbody.slideNormal.z};
+        const float slideDirectionLength = std::sqrt(slideDirection.x * slideDirection.x + slideDirection.y * slideDirection.y);
+
+        if (slideDirectionLength > 0.0f) {
+            const Vector2 downhill = slideDirection * (1.0f / slideDirectionLength);
+            const float slideBefore = currentVelocity.x * downhill.x + currentVelocity.y * downhill.y;
+            const float slideAfter = newVelocity.x * downhill.x + newVelocity.y * downhill.y;
+
+            if (slideAfter < slideBefore) newVelocity = newVelocity + downhill * (slideBefore - slideAfter);
+        }
 
         rigidbody.velocity.x = newVelocity.x;
         rigidbody.velocity.z = newVelocity.y;

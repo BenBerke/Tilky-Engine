@@ -38,8 +38,8 @@ When the level starts:
 The view is placed at the camera entity's [Transform](Transform.md) position:
 
 - If the **same entity** also has an active [Player Controller](PlayerController.md), the view is
-  raised by the controller's **Eye Height**. Transform positions are at the feet, so this puts
-  the eye at head height.
+  raised by the controller's **Eye Height**. A player stands with its position at the
+  bottom of its collider, so this puts the eye at head height.
 - Otherwise the view is **exactly** at the Transform position. For a standalone camera, put its
   Transform at the height you want to see from.
 

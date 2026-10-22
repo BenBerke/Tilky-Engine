@@ -270,7 +270,6 @@ namespace LevelSystem {
                     ownCamera,
                     activeCamera,
                     *playerRigidbody,
-                    level.colliders.Get(ownerID),
                     level.sectors
                 );
             }
@@ -297,8 +296,10 @@ namespace LevelSystem {
                         continue;
                     }
 
+                    // Only a collider can ground a body, so one without
+                    // a collider falls through everything.
                     if (transform->sectorIndex != -1) [[unlikely]]
-                        if (transform->relativeHeight > 0.0001f)
+                        if (!r.isGrounded)
                             r.ApplyGravity(level.worldSettings.gravity, subDeltaTime);
 
                     // Apply Rb's base friction
@@ -340,14 +341,17 @@ namespace LevelSystem {
                 // UpdateObjectSectorAndFloor() shouldn't change the transform position
                 // Doing this is technically slower but it is cleaner
                 if (oldSectorIndex != newSectorIndex) {
-                    const ComponentCollider* collider =
-                        owner->GetComponent<ComponentCollider>();
+                    // Measured from the base collider's bottom: the collider
+                    // is what stands on the floor.
+                    const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, transform.ownerID);
 
                     if (collider == nullptr) continue;
 
-                    // Sampled under the entity: a sloped floor's height is
+                    const Vector3 colliderBottom = transform.LocalToWorld(collider->offset);
+
+                    // Sampled under the collider: a sloped floor's height is
                     // only its height at the sector's edge.
-                    const Vector2 point = {transform.position.x, transform.position.z};
+                    const Vector2 point = {colliderBottom.x, colliderBottom.z};
 
                     const Sector& oldSector = level.sectors[oldSectorIndex];
                     const Sector& newSector = level.sectors[newSectorIndex];
@@ -362,7 +366,7 @@ namespace LevelSystem {
                     // from the physical Y change in the renderer.
                     if (newHeight >= oldHeight) continue;
 
-                    const float distanceToStep = transform.position.y - newHeight;
+                    const float distanceToStep = colliderBottom.y - newHeight;
 
                     const bool canStepDown = collider->stepSize > 0.0f &&
                         distanceToStep > Constants::Epsilon &&

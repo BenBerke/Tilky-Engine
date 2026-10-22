@@ -21,13 +21,12 @@ namespace WallPieces {
             Opening // open on both sides: where a middle texture goes
         };
 
-        // Mirrors GetSlopeOffset() in Rendering_vs.glsl. slopeStrength is used
-        // as a direct height-per-unit gradient here because that is what the
-        // shader does
+        // Mirrors GetSlopeOffset() in Rendering_vs.glsl, which is handed the
+        // same rise-per-unit gradient by BuildGpuSectors().
         float GetSlopeOffset(const Vector2& point, const SectorBounds& bounds, const SlopeDirection slopeDirection, const float slopeStrength) {
             if (!bounds.valid || slopeStrength == 0.0f) return 0.0f;
 
-            const float gradient = slopeStrength * Constants::DegToRad;
+            const float gradient = SectorSurface::GradientFromDegrees(slopeStrength);
 
             switch (slopeDirection) {
                 case PLUS_X: return (point.x - bounds.minX) * gradient;
@@ -103,10 +102,14 @@ namespace WallPieces {
             uint8_t owners = 0;
         };
 
+        // `bottom`/`top` are sampled at the span's own ends, which are
+        // startT/endT along the wall.
         struct WallSpan {
             HeightSample bottom;
             HeightSample top;
             WallSpanSide side;
+            float startT = 0.0f;
+            float endT = 1.0f;
         };
 
         bool IsSectorOpenAtHeight(
@@ -183,19 +186,51 @@ namespace WallPieces {
             std::vector<WallSpan>& spans,
             const HeightSample& bottom,
             const HeightSample& top,
-            const WallSpanSide side
+            const WallSpanSide side,
+            const float startT,
+            const float endT
         ) {
             if (!spans.empty()) {
                 WallSpan& previous = spans.back();
 
-                if (previous.side == side && SamePlane(previous.top, bottom)) {
+                if (previous.side == side && previous.startT == startT && SamePlane(previous.top, bottom)) {
                     previous.top = top;
 
                     return;
                 }
             }
 
-            spans.push_back({bottom, top, side});
+            spans.push_back({bottom, top, side, startT, endT});
+        }
+
+        // Where two of the planes cross between the wall's ends, as fractions
+        // along the wall. Planes are straight lines along a straight wall, so
+        // between two neighbouring crossings their order never changes.
+        // Sorting by the middle alone misordered the half past a crossing (a
+        // sloped floor rising through the neighbour's floor), and that half
+        // got no piece - a hole in the wall.
+        void FindPlaneCrossings(const std::vector<HeightSample>& heights, std::vector<float>& crossings) {
+            constexpr float MIN_T = 0.0001f;
+
+            for (size_t i = 0; i < heights.size(); ++i) {
+                for (size_t j = i + 1; j < heights.size(); ++j) {
+                    const float startDifference = heights[i].start - heights[j].start;
+                    const float endDifference = heights[i].end - heights[j].end;
+
+                    if (std::abs(startDifference) <= MIN_WALL_HEIGHT || std::abs(endDifference) <= MIN_WALL_HEIGHT) continue;
+                    if ((startDifference < 0.0f) == (endDifference < 0.0f)) continue;
+
+                    const float t = startDifference / (startDifference - endDifference);
+
+                    if (t > MIN_T && t < 1.0f - MIN_T) crossings.push_back(t);
+                }
+            }
+
+            std::ranges::sort(crossings);
+            crossings.erase(
+                std::unique(crossings.begin(), crossings.end(), [](const float a, const float b) { return b - a <= MIN_T; }),
+                crossings.end()
+            );
         }
 
         struct SpanProbe {
@@ -231,42 +266,73 @@ namespace WallPieces {
 
         // With `withOpenings`, the parts open on both sides come back too,
         // as Opening spans.
+        Vector2 PointAlong(const Vector2& start, const Vector2& end, const float t) {
+            return {start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t};
+        }
+
+        // The wall is cut at every plane crossing and each part is split on
+        // its own. With `withOpenings`, the parts open on both sides come
+        // back too, as Opening spans.
         std::vector<WallSpan> BuildWallSpans(
             const SectorSample& frontSector,
             const SectorSample& backSector,
-            const WallSamplePoints& points,
+            const Vector2& wallStart,
+            const Vector2& wallEnd,
             const bool withOpenings
         ) {
             std::vector<HeightSample> heights;
+            std::vector<float> cuts;
 
-            AddSectorHeights(frontSector, points, FRONT_FLOOR, FRONT_CEILING, heights);
-            AddSectorHeights(backSector, points, BACK_FLOOR, BACK_CEILING, heights);
+            const WallSamplePoints wallPoints{wallStart, PointAlong(wallStart, wallEnd, 0.5f), wallEnd};
 
-            SortAndMergeDuplicateHeights(heights);
+            AddSectorHeights(frontSector, wallPoints, FRONT_FLOOR, FRONT_CEILING, heights);
+            AddSectorHeights(backSector, wallPoints, BACK_FLOOR, BACK_CEILING, heights);
+
+            cuts.push_back(0.0f);
+            FindPlaneCrossings(heights, cuts);
+            cuts.push_back(1.0f);
 
             std::vector<WallSpan> spans;
 
-            for (size_t i = 0; i + 1 < heights.size(); ++i) {
-                const HeightSample& bottom = heights[i];
-                const HeightSample& top = heights[i + 1];
+            for (size_t cut = 0; cut + 1 < cuts.size(); ++cut) {
+                const float startT = cuts[cut];
+                const float endT = cuts[cut + 1];
 
-                const SpanProbe probe = PickThickestProbe(bottom, top, points);
+                const WallSamplePoints points{
+                    PointAlong(wallStart, wallEnd, startT),
+                    PointAlong(wallStart, wallEnd, (startT + endT) * 0.5f),
+                    PointAlong(wallStart, wallEnd, endT)
+                };
 
-                if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
+                heights.clear();
 
-                const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
+                AddSectorHeights(frontSector, points, FRONT_FLOOR, FRONT_CEILING, heights);
+                AddSectorHeights(backSector, points, BACK_FLOOR, BACK_CEILING, heights);
 
-                const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
+                SortAndMergeDuplicateHeights(heights);
 
-                const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
+                for (size_t i = 0; i + 1 < heights.size(); ++i) {
+                    const HeightSample& bottom = heights[i];
+                    const HeightSample& top = heights[i + 1];
 
-                WallSpanSide side;
+                    const SpanProbe probe = PickThickestProbe(bottom, top, points);
 
-                if (frontOpen != backOpen) side = frontOpen ? WallSpanSide::Front : WallSpanSide::Back;
-                else if (frontOpen && withOpenings) side = WallSpanSide::Opening;
-                else continue;
+                    if (probe.top - probe.bottom <= MIN_WALL_HEIGHT) continue;
 
-                PushOrMergeWallSpan(spans, bottom, top, side);
+                    const float sampleHeight = (probe.bottom + probe.top) * 0.5f;
+
+                    const bool frontOpen = IsSectorOpenAtHeight(frontSector, probe.point, sampleHeight);
+
+                    const bool backOpen = IsSectorOpenAtHeight(backSector, probe.point, sampleHeight);
+
+                    WallSpanSide side;
+
+                    if (frontOpen != backOpen) side = frontOpen ? WallSpanSide::Front : WallSpanSide::Back;
+                    else if (frontOpen && withOpenings) side = WallSpanSide::Opening;
+                    else continue;
+
+                    PushOrMergeWallSpan(spans, bottom, top, side, startT, endT);
+                }
             }
 
             return spans;
@@ -301,9 +367,14 @@ namespace WallPieces {
             const HeightSample& top,
             const WallSpanSide side,
             const bool hasNeighbour,
-            const Sector* facingSector
+            const Sector* facingSector,
+            const float startT,
+            const float endT
         ) {
             WallPiece piece;
+
+            piece.startT = startT;
+            piece.endT = endT;
 
             piece.bottomStart = bottom.start;
             piece.bottomEnd = bottom.end;
@@ -321,12 +392,28 @@ namespace WallPieces {
             piece.frontFacing = side != WallSpanSide::Back;
             piece.facingSector = facingSector;
 
+            // Anchors are taken from the edge planes over the whole wall, so
+            // pieces of one plane cut apart at a slope crossing still line up.
+            WallPiece wholeWall = piece;
+            const float length = endT - startT;
+
+            if (length > 0.0f && length < 1.0f) {
+                const auto atWallEnds = [&](const HeightSample& plane, float& atStart, float& atEnd) {
+                    const float rate = (plane.end - plane.start) / length;
+                    atStart = plane.start - rate * startT;
+                    atEnd = plane.end + rate * (1.0f - endT);
+                };
+
+                atWallEnds(bottom, wholeWall.bottomStart, wholeWall.bottomEnd);
+                atWallEnds(top, wholeWall.topStart, wholeWall.topEnd);
+            }
+
             // Seen from both sides, so neither sector's floor or ceiling
             // decides anything: always Middle, anchored at the top like a
             // solid wall.
             if (side == WallSpanSide::Opening) {
                 piece.slot = WallSurfaceSlot::Middle;
-                piece.anchorHeight = ResolveAnchorHeight(wall.middle.anchor, WallTextureAnchor::TopEdge, piece);
+                piece.anchorHeight = ResolveAnchorHeight(wall.middle.anchor, WallTextureAnchor::TopEdge, wholeWall);
                 pieces.push_back(piece);
                 return;
             }
@@ -345,7 +432,7 @@ namespace WallPieces {
                 ? WallTextureAnchor::BottomEdge
                 : WallTextureAnchor::TopEdge;
 
-            piece.anchorHeight = ResolveAnchorHeight(wall.Surface(piece.slot).anchor, autoAnchor, piece);
+            piece.anchorHeight = ResolveAnchorHeight(wall.Surface(piece.slot).anchor, autoAnchor, wholeWall);
 
             pieces.push_back(piece);
         }
@@ -372,16 +459,7 @@ namespace WallPieces {
 
         const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
 
-        const WallSamplePoints points{
-            wall.start,
-            Vector2{
-                (wall.start.x + wall.end.x) * 0.5f,
-                (wall.start.y + wall.end.y) * 0.5f
-            },
-            wall.end
-        };
-
-        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, points, wall.HasMiddle());
+        const std::vector<WallSpan> spans = BuildWallSpans(frontSector, backSector, wall.start, wall.end, wall.HasMiddle());
 
         if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr) {
             PushPiece(
@@ -391,7 +469,9 @@ namespace WallPieces {
                 HeightSample{ORPHAN_WALL_HEIGHT, ORPHAN_WALL_HEIGHT, ORPHAN_WALL_HEIGHT},
                 WallSpanSide::Front,
                 false,
-                nullptr
+                nullptr,
+                0.0f,
+                1.0f
             );
 
             return;
@@ -403,7 +483,7 @@ namespace WallPieces {
             const bool hasNeighbour = frontSide ? backSectorPtr != nullptr : frontSectorPtr != nullptr;
 
             PushPiece(pieces, wall, span.bottom, span.top, span.side, hasNeighbour,
-                      frontSide ? frontSectorPtr : backSectorPtr);
+                      frontSide ? frontSectorPtr : backSectorPtr, span.startT, span.endT);
         }
     }
 
@@ -426,8 +506,13 @@ namespace WallPieces {
         // over one it only touches within the tolerance.
         for (const float tolerance : {0.0f, TOLERANCE}) {
             for (const WallPiece& piece : pieces) {
-                const float bottom = piece.bottomStart + (piece.bottomEnd - piece.bottomStart) * t;
-                const float top = piece.topStart + (piece.topEnd - piece.topStart) * t;
+                if (t < piece.startT - TOLERANCE || t > piece.endT + TOLERANCE) continue;
+
+                const float length = piece.endT - piece.startT;
+                const float local = length > 0.0f ? std::clamp((t - piece.startT) / length, 0.0f, 1.0f) : 0.0f;
+
+                const float bottom = piece.bottomStart + (piece.bottomEnd - piece.bottomStart) * local;
+                const float top = piece.topStart + (piece.topEnd - piece.topStart) * local;
 
                 if (height >= bottom - tolerance && height <= top + tolerance) return piece.slot;
             }

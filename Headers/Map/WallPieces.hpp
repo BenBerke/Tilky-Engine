@@ -47,7 +47,16 @@ namespace WallPieces {
     float GetSurfaceHeight(const SectorSurface& surface, const SectorBounds& bounds, const Vector2& point);
 
     struct WallPiece {
-        // Heights at the wall's start and end points.
+        // The part of the wall the piece covers, as fractions from the wall's
+        // start to its end. A wall is cut where a sloped floor or ceiling
+        // crosses another one, so a piece can cover only part of it.
+        float startT = 0.0f;
+        float endT = 1.0f;
+
+        [[nodiscard]] Vector2 Start(const Wall& wall) const { return wall.start + (wall.end - wall.start) * startT; }
+        [[nodiscard]] Vector2 End(const Wall& wall) const { return wall.start + (wall.end - wall.start) * endT; }
+
+        // Heights at the piece's start and end points.
         float bottomStart = 0.0f;
         float bottomEnd = 0.0f;
         float topStart = 0.0f;
