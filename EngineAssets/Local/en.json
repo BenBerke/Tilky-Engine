@@ -138,6 +138,7 @@
   "editor.key.rt_fine_scroll": "Fine Scroll (hold)",
   "editor.key.rt_brightness_scroll": "Brightness Scroll (hold)",
   "editor.key.rt_back_to_editor": "Back to Map Editor",
+  "editor.key.rt_save_and_play": "Save & Play",
   "editor.key_group.ui_editor": "UI Editor",
   "editor.key.ui_nudge_up": "Nudge Up",
   "editor.key.ui_nudge_down": "Nudge Down",

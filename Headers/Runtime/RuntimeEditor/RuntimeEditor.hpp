@@ -24,6 +24,9 @@ namespace RuntimeEditor {
 
     // The key back to the Map Editor was pressed. Reset by Start().
     bool BackToEditorRequested();
+
+    // Save & Play was pressed and the level saved.
+    bool PlayRequested();
 }
 
 #endif //TILKY_ENGINE_RUNTIMEEDITOR_H

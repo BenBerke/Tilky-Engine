@@ -1209,6 +1209,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_FINE_SCROLL,       // held while scrolling
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
         KEYBIND_RT_BACK_TO_EDITOR,
+        KEYBIND_RT_SAVE_AND_PLAY,
 
         // UI editor
         KEYBIND_UI_NUDGE_UP,

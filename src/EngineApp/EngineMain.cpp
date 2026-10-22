@@ -124,7 +124,6 @@ namespace {
         switch (currentMode) {
             case EngineMode::EDITOR:
                 Editor::Stop();
-                if (prepareEditorLevelForRuntime) Editor::PrepareLevelForRuntime();
                 break;
 
             case EngineMode::PLAY:
@@ -132,6 +131,8 @@ namespace {
                 RuntimeSession::Shutdown();
                 break;
         }
+
+        if (prepareEditorLevelForRuntime) Editor::PrepareLevelForRuntime();
 
         modeActive = false;
     }
@@ -150,7 +151,11 @@ namespace {
         if (modeActive && currentMode == newMode) return true;
 
         const EngineMode previousMode = currentMode;
-        const bool prepareEditorLevelForRuntime = currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR;
+        // The runtime editor edits the level too (placed prefabs, scripts), so
+        // Play started from it gets the same preparation.
+        const bool prepareEditorLevelForRuntime =
+            (currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR) ||
+            (currentMode == EngineMode::RUNTIME_EDITOR && newMode == EngineMode::PLAY);
 
         StopCurrentMode(prepareEditorLevelForRuntime);
 
@@ -297,12 +302,31 @@ namespace {
         return shiftHeld && InputManager::GetKeyDown(SDL_SCANCODE_F1);
     }
 
+    // Play started from the runtime editor goes back there when it ends,
+    // like Play from the map editor goes back to the map editor.
+    bool playFromRuntimeEditor = false;
+
     bool UpdateRuntimeMode() {
         RuntimeSession::Update();
+
+        if (currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::PlayRequested()) {
+            playFromRuntimeEditor = true;
+            const bool switched = SwitchMode(EngineMode::PLAY);
+
+            // Play failed to start and the map editor took over instead.
+            if (currentMode != EngineMode::PLAY) playFromRuntimeEditor = false;
+
+            return switched;
+        }
 
         const bool backToEditor = currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::BackToEditorRequested();
 
         if (!InputManager::QuitRequested() && !StopKeyPressed() && !backToEditor) return true;
+
+        if (currentMode == EngineMode::PLAY && playFromRuntimeEditor) {
+            playFromRuntimeEditor = false;
+            return SwitchMode(EngineMode::RUNTIME_EDITOR);
+        }
 
         return SwitchMode(EngineMode::EDITOR);
     }

@@ -264,7 +264,7 @@ namespace MapEditorInternal {
         {"rt_fly_down",         "editor.key.rt_fly_down",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT}},
         {"rt_speed_up",         "editor.key.rt_speed_up",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_B}},
         {"rt_speed_down",       "editor.key.rt_speed_down",       "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_N}},
-        {"rt_reset_speed",      "editor.key.rt_reset_speed",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_M}},
+        {"rt_reset_speed",      "editor.key.rt_reset_speed",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_COMMA}},
 
         {"rt_move_tool",        "editor.key.rt_move_tool",        "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_1}},
         {"rt_rotate_tool",      "editor.key.rt_rotate_tool",      "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_2}},
@@ -278,12 +278,13 @@ namespace MapEditorInternal {
         {"rt_next_texture",     "editor.key.rt_next_texture",     "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_RIGHTBRACKET}},
         {"rt_fullbright",       "editor.key.rt_fullbright",       "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_L}},
         {"rt_focus_selection",  "editor.key.rt_focus_selection",  "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_F}},
-        {"rt_toggle_entity_markers", "editor.key.rt_toggle_entity_markers", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_P}},
+        {"rt_toggle_entity_markers", "editor.key.rt_toggle_entity_markers", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_M}},
         {"rt_place_entity",     "editor.key.rt_place_entity",     "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_E}},
         {"rt_select_by_texture", "editor.key.rt_select_by_texture", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
         {"rt_back_to_editor",   "editor.key.rt_back_to_editor",   "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_V}},
+        {"rt_save_and_play",    "editor.key.rt_save_and_play",    "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_P}},
 
         {"ui_nudge_up",         "editor.key.ui_nudge_up",         "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_UP}},
         {"ui_nudge_down",       "editor.key.ui_nudge_down",       "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_DOWN}},

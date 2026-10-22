@@ -11,6 +11,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
+#include "Headers/Editor/Editor.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
@@ -146,6 +147,9 @@ namespace {
     bool cameraLooking = false;
 
     bool backToEditorRequested = false;
+
+    // Set by the Save & Play key once the level saved.
+    bool playRequested = false;
 
     bool cursorLocked = false;
     Vector2 cursorBeforeLock = {};
@@ -2113,6 +2117,7 @@ namespace RuntimeEditor {
         (void)level;
 
         backToEditorRequested = false;
+        playRequested = false;
 
         spdlog::info("Runtime editor started");
 
@@ -2610,6 +2615,13 @@ namespace RuntimeEditor {
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_BACK_TO_EDITOR)) backToEditorRequested = true;
 
+            // Same as the map editor's Save & Play; play returns here.
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_SAVE_AND_PLAY) &&
+                MapEditorInternal::Save(Editor::currentMap)) {
+                MapEditorInternal::hasUnsavedChanges = false;
+                playRequested = true;
+            }
+
             // Texture copy / paste. With placement wins when both fire.
             const bool copyWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_COPY_TEXTURE_PLACEMENT);
 
@@ -2934,6 +2946,10 @@ namespace RuntimeEditor {
 
     bool BackToEditorRequested() {
         return backToEditorRequested;
+    }
+
+    bool PlayRequested() {
+        return playRequested;
     }
 
     void Shutdown(Level& level) {
