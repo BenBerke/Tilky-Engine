@@ -1,6 +1,7 @@
 #include "EditorInternal.hpp"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 
@@ -249,6 +250,13 @@ namespace Editor {
 #ifndef TILKY_STANDALONE
         LevelManager::CurrentLevel().editorCamPos = cameraPos;
 #endif
+
+        // ImGui only saves the layout a few seconds after a change; write any
+        // pending one now so it isn't lost while the editor is stopped. Not
+        // before the first frame has read the file, or it would be emptied.
+        ImGui::SetCurrentContext(imguiContext);
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.IniFilename != nullptr && GImGui->SettingsLoaded) ImGui::SaveIniSettingsToDisk(io.IniFilename);
     }
 
     void HideWindow() {

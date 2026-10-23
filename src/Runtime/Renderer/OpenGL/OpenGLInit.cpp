@@ -294,6 +294,9 @@ bool OpenGL::InitImGui() {
     ImGui::SetCurrentContext(imguiContext);
 
     ImGuiIO& io = ImGui::GetIO();
+    // Its own layout file: sharing the editor's imgui.ini let each context
+    // overwrite the other's window positions and dock ids.
+    io.IniFilename = "imgui_runtime.ini";
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // the runtime editor's windows dock into each other
 
