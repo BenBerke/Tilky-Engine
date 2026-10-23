@@ -16,6 +16,7 @@ namespace MapEditorInternal {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     TTF_Font* font = nullptr;
+    TTF_Font* labelFont = nullptr;
     TTF_TextEngine* textEngine = nullptr;
 
     ImFont* scriptEditorFont = nullptr;
@@ -167,7 +168,8 @@ namespace MapEditorInternal {
     Vector3 spriteEntityColor = {100, 200, 100};
 
     Vector3 normalWallColor = {205, 205, 205};
-    Vector3 highlightedWallColor = {15, 15, 200};
+    Vector3 portalWallColor = {150, 150, 150};
+    Vector3 highlightedWallColor = {80, 220, 255};
 
     Vector3 hoveredSectorColor = {250, 250, 100};
     Vector3 highlightedSectorColor = {40, 40, 220};

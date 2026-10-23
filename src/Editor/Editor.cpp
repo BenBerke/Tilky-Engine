@@ -203,6 +203,11 @@ namespace Editor {
             return false;
         }
 
+        // A separate small font rather than resizing `font`, which other
+        // canvas text is drawn with this same frame.
+        labelFont = TTF_OpenFont(fontPath.string().c_str(), LABEL_FONT_SIZE);
+        if (!labelFont) spdlog::warn("TTF_OpenFont failed for the label font {}", SDL_GetError());
+
         textEngine = TTF_CreateRendererTextEngine(renderer);
 
         IMGUI_CHECKVERSION();
@@ -389,6 +394,11 @@ namespace Editor {
         if (font) {
             TTF_CloseFont(font);
             font = nullptr;
+        }
+
+        if (labelFont) {
+            TTF_CloseFont(labelFont);
+            labelFont = nullptr;
         }
 
         TTF_Quit();

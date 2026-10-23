@@ -2168,8 +2168,15 @@ namespace MapEditorInternal {
         // divergent points and silently breaking the sector loops built
         // on top of it.
         for (Wall& wall : level.walls) {
-            if (SamePoint(wall.start, from)) wall.start = to;
-            if (SamePoint(wall.end, from)) wall.end = to;
+            const bool touchesStart = SamePoint(wall.start, from);
+            const bool touchesEnd = SamePoint(wall.end, from);
+
+            if (touchesStart) wall.start = to;
+            if (touchesEnd) wall.end = to;
+
+            // length/dir/normal are cached from start/end and nothing else
+            // in a move path refreshes them.
+            if (touchesStart || touchesEnd) wall.RefreshDerived();
         }
 
         // ...and so does every sector corner sitting on it. The sector
@@ -2231,6 +2238,7 @@ namespace MapEditorInternal {
 
             wall.start = follows(original.start) ? offset(original.start) : original.start;
             wall.end = follows(original.end) ? offset(original.end) : original.end;
+            wall.RefreshDerived();
         }
 
         std::unordered_map<ID, const Sector*> originalSectorByID;

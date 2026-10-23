@@ -329,7 +329,6 @@ namespace {
     }
 
     // A line `thickness` pixels wide in the current draw colour.
-    // (MapEditorInternal::DrawThickLine always draws in the wall colour.)
     void DrawColoredThickLine(const Vector2& start, const Vector2& end, const float thickness) {
         const float dx = end.x - start.x;
         const float dy = end.y - start.y;

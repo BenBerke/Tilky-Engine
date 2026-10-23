@@ -819,6 +819,21 @@ namespace MapEditorInternal {
         }
     }
 
+    bool IsWallMovedByGeometryDrag(const ID wallID) {
+        if (!draggingWallGeometry) return false;
+
+        for (const Wall& wall : dragOriginalWalls) {
+            if (wall.id != wallID) continue;
+
+            for (const Vector2& point : dragMovingPoints)
+                if (SamePoint(point, wall.start) || SamePoint(point, wall.end)) return true;
+
+            return false;
+        }
+
+        return false;
+    }
+
     void SubmitCanvasEntityDragSource() {
         if (!holdingEntity || currentMode != MODE_ENTITY) return;
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;

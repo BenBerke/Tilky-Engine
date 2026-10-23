@@ -20,6 +20,7 @@
 
 namespace MapEditorInternal {
     inline constexpr float UI_FONT_SIZE = 34.0f;
+    inline constexpr float LABEL_FONT_SIZE = 15.0f;
     inline constexpr float UI_TEXT_PADDING = 8.0f;
 
     extern int screenWidth;
@@ -210,6 +211,7 @@ namespace MapEditorInternal {
     extern SDL_Window* window;
     extern SDL_Renderer* renderer;
     extern TTF_Font* font;
+    extern TTF_Font* labelFont; // small canvas labels (wall lengths)
     extern TTF_TextEngine* textEngine;
 
     extern ImFont* scriptEditorFont;
@@ -544,6 +546,7 @@ namespace MapEditorInternal {
     extern Vector3 spriteEntityColor;
 
     extern Vector3 normalWallColor;
+    extern Vector3 portalWallColor;
     extern Vector3 highlightedWallColor;
 
     extern Vector3 hoveredSectorColor;
@@ -939,6 +942,10 @@ namespace MapEditorInternal {
     // an unselected wall must never have an invisible grab zone.
     // `outIsStart` distinguishes wall.start from wall.end.
     [[nodiscard]] bool PickSelectedWallEndpointAt(const Vector2& mouseWorld, ID* outWallID, bool* outIsStart);
+
+    // True while a Geometry Mode drag is moving at least one endpoint of
+    // this wall. Used to keep its length label up during the drag.
+    [[nodiscard]] bool IsWallMovedByGeometryDrag(ID wallID);
 
     // The supported ways to change the wall selection (see the invariants
     // next to selectedWalls above). SelectWall replaces the selection and

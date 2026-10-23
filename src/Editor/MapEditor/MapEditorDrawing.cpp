@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <string>
 
 #include <spdlog/spdlog.h>
@@ -46,14 +47,7 @@ namespace MapEditorInternal {
 
         const int halfThickness = static_cast<int>(thickness * 0.5f);
 
-        // walls should the be the opposite of the theme
-        // if (currentTheme == THEME_DARK)
-        // SDL_SetRenderDrawColor(renderer, 205, 205, 205, 255);
-        // else if (currentTheme == THEME_LIGHT)
-        //     SDL_SetRenderDrawColor(renderer, 45, 45, 45, 255);
-
-        SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, 255);
-
+        // Draws in the caller's current draw colour.
         for (int i = -halfThickness; i <= halfThickness; ++i) {
             const float offsetX = normalX * static_cast<float>(i);
             const float offsetY = normalY * static_cast<float>(i);
@@ -206,7 +200,7 @@ namespace MapEditorInternal {
             if (points.size() < 2) return;
 
             const Vector3 color = valid ? kValidLineColor : kInvalidLineColor;
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
 
             const std::size_t segmentCount = closeLoop ? points.size() : points.size() - 1;
 
@@ -404,9 +398,8 @@ namespace MapEditorInternal {
 
         // Simple two-stroke arrowhead from `fromWorld` to `toWorld`, used
         // to show the staircase's rising direction. Deliberately its own
-        // tiny primitive rather than a reuse of DrawThickLine (which
-        // forces the theme wall colour) or DrawColoredThickLine (defined
-        // further down this file, after this point uses it).
+        // tiny primitive rather than a reuse of DrawThickLine, since it
+        // draws a single-pixel shaft.
         void DrawArrow(const Vector2& fromWorld, const Vector2& toWorld, const Vector3& color) {
             const Vector2 from = WorldToScreen(fromWorld, cameraPos);
             const Vector2 to = WorldToScreen(toWorld, cameraPos);
@@ -726,31 +719,8 @@ namespace MapEditorInternal {
     // instead is Geometry Mode's hover highlight, selection highlight and
     // endpoint handles.
     namespace {
-        // DrawThickLine() deliberately forces the theme's wall colour, so
-        // it can't be used for highlights - this is the same thickness
-        // logic with the caller's draw colour left alone.
         void DrawColoredThickLine(const Vector2& startScreen, const Vector2& endScreen, const float thickness) {
-            const float dx = endScreen.x - startScreen.x;
-            const float dy = endScreen.y - startScreen.y;
-
-            const float length = std::sqrt(dx * dx + dy * dy);
-            if (length <= Constants::Epsilon) return;
-
-            const float normalX = -dy / length;
-            const float normalY = dx / length;
-
-            const int halfThickness = static_cast<int>(thickness * 0.5f);
-
-            for (int i = -halfThickness; i <= halfThickness; ++i) {
-                const float offsetX = normalX * static_cast<float>(i);
-                const float offsetY = normalY * static_cast<float>(i);
-
-                SDL_RenderLine(
-                    renderer,
-                    startScreen.x + offsetX, startScreen.y + offsetY,
-                    endScreen.x + offsetX, endScreen.y + offsetY
-                );
-            }
+            DrawThickLine(renderer, startScreen, endScreen, thickness);
         }
 
         // Fixed *pixel* size, like the picking tolerance it mirrors: a
@@ -774,6 +744,72 @@ namespace MapEditorInternal {
 
             SDL_SetRenderDrawColor(renderer, handleOutlineColor.r, handleOutlineColor.g, handleOutlineColor.b, 255);
             SDL_RenderRect(renderer, &handle);
+        }
+
+        // Small light text on a translucent dark pill at each wall's
+        // midpoint. A label that doesn't fit along its wall on screen is
+        // skipped, unless the wall is hovered, selected or being dragged.
+        void DrawWallLengthLabels(const Level& level, const std::function<bool(ID)>& isSelected) {
+            if (labelFont == nullptr || textEngine == nullptr) return;
+
+            constexpr float PAD_X = 5.0f;
+            constexpr float PAD_Y = 1.0f;
+            constexpr float FIT_MARGIN = 10.0f; // wall must be this much longer than the pill
+            constexpr SDL_Color TEXT_COLOR = {225, 225, 225, 255};
+            constexpr SDL_Color PILL_COLOR = {18, 18, 22, 200};
+
+            SDL_BlendMode previousBlend = SDL_BLENDMODE_NONE;
+            SDL_GetRenderDrawBlendMode(renderer, &previousBlend);
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+            char buffer[32];
+
+            for (const Wall& wall : level.walls) {
+                const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
+                const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
+                const Vector2 mid = {(startScreen.x + endScreen.x) * 0.5f, (startScreen.y + endScreen.y) * 0.5f};
+
+                if (mid.x < 0.0f || mid.y < 0.0f || mid.x > static_cast<float>(screenWidth) || mid.y > static_cast<float>(screenHeight)) continue;
+
+                std::snprintf(buffer, sizeof(buffer), "%.1f", wall.length);
+
+                TTF_Text* text = TTF_CreateText(textEngine, labelFont, buffer, 0);
+                if (text == nullptr) continue;
+
+                int textWidth = 0;
+                int textHeight = 0;
+                TTF_GetTextSize(text, &textWidth, &textHeight);
+
+                const float pillW = static_cast<float>(textWidth) + PAD_X * 2.0f;
+                const float pillH = static_cast<float>(textHeight) + PAD_Y * 2.0f;
+
+                const bool forced = wall.id == hoveredWallID || isSelected(wall.id) || IsWallMovedByGeometryDrag(wall.id);
+                const float screenLength = std::sqrt(Vector2Math::DistanceSquared(startScreen, endScreen));
+
+                if (!forced && screenLength < pillW + FIT_MARGIN) {
+                    TTF_DestroyText(text);
+                    continue;
+                }
+
+                const float x = std::floor(mid.x - pillW * 0.5f);
+                const float y = std::floor(mid.y - pillH * 0.5f);
+
+                // Corners cut by one pixel; the three rects don't overlap,
+                // so the translucent fill stays even.
+                SDL_SetRenderDrawColor(renderer, PILL_COLOR.r, PILL_COLOR.g, PILL_COLOR.b, PILL_COLOR.a);
+                const SDL_FRect pill[3] = {
+                    {x, y + 1.0f, pillW, pillH - 2.0f},
+                    {x + 1.0f, y, pillW - 2.0f, 1.0f},
+                    {x + 1.0f, y + pillH - 1.0f, pillW - 2.0f, 1.0f}
+                };
+                SDL_RenderFillRects(renderer, pill, 3);
+
+                TTF_SetTextColor(text, TEXT_COLOR.r, TEXT_COLOR.g, TEXT_COLOR.b, TEXT_COLOR.a);
+                TTF_DrawRendererText(text, x + PAD_X, y + PAD_Y);
+                TTF_DestroyText(text);
+            }
+
+            SDL_SetRenderDrawBlendMode(renderer, previousBlend);
         }
     }
 
@@ -808,13 +844,12 @@ namespace MapEditorInternal {
             }
         }
 
-        // Selection highlight, cyan - matching the selected-sector outline
-        // and the snap indicator.
+        // Selection highlight, in the user's highlighted wall colour.
         for (const ID wallID : selectedWalls) {
             const Wall* wall = findWall(wallID);
             if (wall == nullptr) continue;
 
-            SDL_SetRenderDrawColor(renderer, kAnchorColor.r, kAnchorColor.g, kAnchorColor.b, 255);
+            SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, 255);
 
             DrawColoredThickLine(
                 WorldToScreen(wall->start, cameraPos),
@@ -822,6 +857,8 @@ namespace MapEditorInternal {
                 7.0f
             );
         }
+
+        DrawWallLengthLabels(level, isSelected);
 
         // Handles last, so they sit on top of every selected wall's line.
         // Asking PickSelectedWallEndpointAt() which handle is hovered
@@ -860,6 +897,38 @@ namespace MapEditorInternal {
         }
     }
 
+    namespace {
+        // A wall as one quad of exactly `thickness` pixels. DrawThickLine
+        // only steps in odd whole pixels, which can't make a 2px portal.
+        void DrawWallLine(const Vector2& startScreen, const Vector2& endScreen, const float thickness,
+                          const Vector3& color, const Uint8 alpha) {
+            const float dx = endScreen.x - startScreen.x;
+            const float dy = endScreen.y - startScreen.y;
+
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= Constants::Epsilon) return;
+
+            const float halfX = -dy / length * thickness * 0.5f;
+            const float halfY = dx / length * thickness * 0.5f;
+
+            const SDL_FColor fc = ToFColor(color, static_cast<float>(alpha) / 255.0f);
+
+            SDL_Vertex vertices[4];
+            vertices[0].position = {startScreen.x + halfX, startScreen.y + halfY};
+            vertices[1].position = {endScreen.x + halfX, endScreen.y + halfY};
+            vertices[2].position = {endScreen.x - halfX, endScreen.y - halfY};
+            vertices[3].position = {startScreen.x - halfX, startScreen.y - halfY};
+
+            for (SDL_Vertex& vertex : vertices) {
+                vertex.color = fc;
+                vertex.tex_coord = {0.0f, 0.0f};
+            }
+
+            constexpr int indices[6] = {0, 1, 2, 0, 2, 3};
+            SDL_RenderGeometry(renderer, nullptr, vertices, 4, indices, 6);
+        }
+    }
+
     void DrawWalls() {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -872,13 +941,14 @@ namespace MapEditorInternal {
             // Filtered out in the Geometry Mode panel: still there, but faint.
             const Uint8 alpha = currentMode == MODE_GEOMETRY && !WallPassesFilter(wall) ? FILTERED_ALPHA : 255;
 
-            //todo TILKYTODO make this a user editable sector
+            // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
-                editingWall && currentMode == MODE_GEOMETRY)
-                SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, alpha);
-            else SDL_SetRenderDrawColor(renderer, normalWallColor.r, normalWallColor.g, normalWallColor.b, alpha);
+                editingWall && currentMode == MODE_GEOMETRY) continue;
 
-            DrawThickLine(renderer, startScreen, endScreen, 5.0f);
+            if (wall.frontSector == -1 || wall.backSector == -1)
+                DrawWallLine(startScreen, endScreen, 5.0f, normalWallColor, alpha);
+            else
+                DrawWallLine(startScreen, endScreen, 2.0f, portalWallColor, alpha);
         }
     }
 

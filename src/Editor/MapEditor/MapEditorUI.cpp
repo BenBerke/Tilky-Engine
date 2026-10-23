@@ -151,7 +151,8 @@ namespace {
     constexpr Vector3 defaultSpriteEntityColor = {100, 200, 100};
 
     constexpr Vector3 defaultNormalWallColor = {205, 205, 205};
-    constexpr Vector3 defaultHighlightedWallColor = {15, 15, 200};
+    constexpr Vector3 defaultPortalWallColor = {150, 150, 150};
+    constexpr Vector3 defaultHighlightedWallColor = {80, 220, 255};
 
     constexpr Vector3 defaultHoveredSectorColor = {250, 250, 100};
     constexpr Vector3 defaultHighlightedSectorColor = {40, 40, 220};
@@ -1517,6 +1518,12 @@ namespace {
                         "editor.user_settings.normal_wall_color",
                         normalWallColor,
                         defaultNormalWallColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.portal_wall_color",
+                        portalWallColor,
+                        defaultPortalWallColor
                     );
 
                     DrawColor3Setting(

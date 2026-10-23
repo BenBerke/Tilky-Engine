@@ -163,6 +163,7 @@ namespace MapEditorInternal {
             LoadColor3("highlightedEntityColor", highlightedEntityColor);
             LoadColor3("spriteEntityColor", spriteEntityColor);
             LoadColor3("normalWallColor", normalWallColor);
+            LoadColor3("portalWallColor", portalWallColor);
             LoadColor3("highlightedWallColor", highlightedWallColor);
             LoadColor3("hoveredSectorColor", hoveredSectorColor);
             LoadColor3("highlightedSectorColor", highlightedSectorColor);
@@ -329,6 +330,10 @@ namespace MapEditorInternal {
 
                     {"normalWallColor",
                      SerializeColor(normalWallColor)},
+
+                    {"portalWallColor",
+                        SerializeColor(portalWallColor)
+                       },
 
                     {"highlightedWallColor",
                      SerializeColor(highlightedWallColor)},

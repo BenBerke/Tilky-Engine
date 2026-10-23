@@ -27,6 +27,7 @@
   "editor.user_settings.gizmo_y_color": "Gizmo Y Color",
   "editor.user_settings.gizmo_z_color": "Gizmo Z Color",
   "editor.user_settings.normal_wall_color": "Wall Color",
+  "editor.user_settings.portal_wall_color": "Portal Wall Color",
   "editor.user_settings.highlighted_wall_color": "Highlighted Wall Color",
   "editor.user_settings.hovered_sector_color": "Hovered Sector Color",
   "editor.user_settings.highlighted_sector_color": "Highlighted Sector Color",
