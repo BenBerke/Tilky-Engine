@@ -2,9 +2,11 @@
 
 #include <SDL3/SDL_init.h>
 
+#ifndef TILKY_STANDALONE
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#endif
 
 void OpenGL::Shutdown() {
     // Textures must be deleted while the OpenGL context still exists, and is current.
@@ -101,6 +103,7 @@ void OpenGL::Shutdown() {
     flatLayoutSignature = 0;
     spriteCount = 0;
 
+#ifndef TILKY_STANDALONE
     if (imguiContext != nullptr) {
         ImGui::SetCurrentContext(imguiContext);
         ImGui_ImplOpenGL3_Shutdown();
@@ -109,6 +112,7 @@ void OpenGL::Shutdown() {
         imguiContext = nullptr;
         imguiIconFont = nullptr;
     }
+#endif
 
     if (glContext != nullptr) {
         SDL_GL_DestroyContext(glContext);

@@ -258,8 +258,10 @@ namespace MapEditorInternal {
                 }
             }
 
+#ifndef TILKY_STANDALONE
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
+#endif
         }
         catch (std::exception& e) {
             spdlog::error("Error while loading user settings {}", e.what());

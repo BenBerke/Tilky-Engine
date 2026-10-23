@@ -6,9 +6,11 @@
 
 #include <spdlog/spdlog.h>
 
+#ifndef TILKY_STANDALONE
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#endif
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Project/ProjectManager.hpp"
@@ -523,6 +525,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     }
 }
 
+#ifndef TILKY_STANDALONE
 void OpenGL::BeginImGuiFrame() const {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -533,3 +536,4 @@ void OpenGL::EndImGuiFrame() const {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
+#endif

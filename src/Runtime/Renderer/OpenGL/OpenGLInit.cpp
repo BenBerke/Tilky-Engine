@@ -7,7 +7,9 @@
 
 #include <spdlog/spdlog.h>
 
+#ifndef TILKY_STANDALONE
 #include "Headers/Editor/EditorStyle.hpp"
+#endif
 #include "Headers/Engine/FolderWatcher.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
@@ -23,9 +25,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#ifndef TILKY_STANDALONE
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#endif
 #include "Headers/Map/LevelManager.hpp"
 
 namespace fs = std::filesystem;
@@ -286,6 +290,8 @@ bool OpenGL::InitSDL(const std::string& windowName, const bool startHidden) {
     return true;
 }
 
+// Only for the runtime editor; the standalone game has no ImGui.
+#ifndef TILKY_STANDALONE
 bool OpenGL::InitImGui() {
     IMGUI_CHECKVERSION();
     // In the engine the editor's context already exists, and CreateContext
@@ -303,8 +309,7 @@ bool OpenGL::InitImGui() {
     // The same text and icon fonts the editor loads (Editor.cpp), so the
     // runtime editor's panels - the asset browser's icons especially - look
     // the same. Each context has its own font atlas, so they're loaded again
-    // here rather than shared. Missing files just fall back (the standalone
-    // game may not ship them).
+    // here rather than shared. Missing files just fall back.
     std::error_code ec;
 
     if (const std::filesystem::path textFont = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
@@ -329,6 +334,7 @@ bool OpenGL::InitImGui() {
 
     return true;
 }
+#endif
 
 bool OpenGL::BuildTextureAtlasFromLevel() {
     using namespace OpenGLRendererInternal;
@@ -873,10 +879,12 @@ bool OpenGL::Initialize(const std::string windowName, const bool startHidden) {
 
     RefreshTexturesFromLevel();
 
+#ifndef TILKY_STANDALONE
     if (!InitImGui()) {
         spdlog::critical("Renderer initialization stopped at InitImGui");
         return false;
     }
+#endif
 
     if (!InitProjection()) {
         spdlog::critical("Renderer initialization stopped at InitProjection");

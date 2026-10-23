@@ -271,9 +271,6 @@ namespace {
             constexpr bool RENDER_UI = true;
             renderer->Update(RENDER_DEBUG, RENDER_UI);
 
-            renderer->BeginImGuiFrame();
-            renderer->EndImGuiFrame();
-
             renderer->EndFrame();
         }
 

@@ -1,7 +1,9 @@
 #ifndef TILKY_ENGINE_IRENDERER_HPP
 #define TILKY_ENGINE_IRENDERER_HPP
 
+#ifndef TILKY_STANDALONE
 #include <imgui.h>
+#endif
 #include <string>
 #include <vector>
 
@@ -43,8 +45,11 @@ public:
     virtual void Update(bool renderDebug, bool renderUI) = 0;
     virtual void EndFrame() = 0;
 
+#ifndef TILKY_STANDALONE
+    // Not in the standalone game, which draws nothing with ImGui.
     virtual void BeginImGuiFrame() const = 0;
     virtual void EndImGuiFrame() const = 0;
+#endif
 
     int screenWidth = 1600, screenHeight = 900;
     virtual void OnResize(int width, int height) = 0;
@@ -92,6 +97,7 @@ public:
         return editorCameraTransform;
     }
 
+#ifndef TILKY_STANDALONE
     [[nodiscard]] virtual ImTextureID GetImGuiTextureID(const std::string& fileName) {
         return static_cast<ImTextureID>(0);
     }
@@ -101,6 +107,7 @@ public:
     [[nodiscard]] virtual ImFont* GetImGuiIconFont() const {
         return nullptr;
     }
+#endif
 
     // Surfaces to draw differently (see SurfaceMetaData). Kept until
     // cleared, so a caller re-marking every frame clears first.

@@ -832,8 +832,6 @@ function(configure_tilky_engine_executable target_name)
             SDL3_ttf::SDL3_ttf
             Freetype::Freetype
             glad
-            imgui
-            imgui_text_editor
             Tilky_Project
             Tilky_Local
             nlohmann_json::nlohmann_json
@@ -865,21 +863,15 @@ function(configure_tilky_engine_executable target_name)
             $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<CONFIG:MinSizeRel>>:/OPT:REF;/OPT:ICF>
     )
 
-    if(TILKY_USE_IMGUI)
-        target_compile_definitions(${target_name} PRIVATE TILKY_USE_IMGUI=1)
-    else()
-        target_compile_definitions(${target_name} PRIVATE TILKY_USE_IMGUI=0)
-    endif()
+    # ImGui is linked (and TILKY_USE_IMGUI set) per executable below: the
+    # standalone game has none.
 
+    # Header only here, so the Zone macros compile (to nothing without
+    # TRACY_ENABLE). The client is linked into Tilky_Engine only below:
+    # it opens a network port, which made exported games ask for network
+    # access.
     if(EXISTS "${TRACY_DIR}/public/tracy/Tracy.hpp")
         target_include_directories(${target_name} PRIVATE "${TRACY_DIR}/public")
-    endif()
-
-    if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
-        target_link_libraries(${target_name} PRIVATE TracyClient)
-        target_compile_definitions(${target_name} PRIVATE
-                $<$<NOT:$<CONFIG:Release,MinSizeRel>>:TRACY_ENABLE>
-        )
     endif()
 
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
@@ -971,7 +963,22 @@ configure_tilky_engine_executable(Tilky_Engine)
 
 target_link_libraries(Tilky_Engine PRIVATE
         Tilky_LauncherCore
+        imgui
+        imgui_text_editor
 )
+
+if(TILKY_USE_IMGUI)
+    target_compile_definitions(Tilky_Engine PRIVATE TILKY_USE_IMGUI=1)
+else()
+    target_compile_definitions(Tilky_Engine PRIVATE TILKY_USE_IMGUI=0)
+endif()
+
+if(TARGET TracyClient AND TILKY_ENABLE_TRACY)
+    target_link_libraries(Tilky_Engine PRIVATE TracyClient)
+    target_compile_definitions(Tilky_Engine PRIVATE
+            $<$<NOT:$<CONFIG:Release,MinSizeRel>>:TRACY_ENABLE>
+    )
+endif()
 
 target_compile_definitions(Tilky_Engine PRIVATE
         TILKY_EDITOR=1
@@ -1161,8 +1168,17 @@ set_target_properties(Tilky_Standalone PROPERTIES
 
 configure_tilky_engine_executable(Tilky_Standalone)
 
+# No ImGui in the standalone game: it never draws any, so the library
+# isn't linked. Only its headers are visible, for the editor-state types
+# the shared editor sources (EditorState, EditorSaveLoad) declare.
 target_compile_definitions(Tilky_Standalone PRIVATE
         TILKY_STANDALONE=1
+        TILKY_USE_IMGUI=0
+)
+
+target_include_directories(Tilky_Standalone PRIVATE
+        $<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:imgui_text_editor,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 add_dependencies(Tilky_Engine Tilky_Standalone)
@@ -1373,19 +1389,16 @@ endif()
 endif()
 
 # ============================================================
-# Hide console window in Release builds on Windows
+# Hide the console window of exported games on Windows
 # ============================================================
 
-function(make_gui_in_release target_name)
-    if(WIN32)
-        set_target_properties(${target_name} PROPERTIES
-                WIN32_EXECUTABLE "$<CONFIG:Release>"
-        )
-    endif()
-endfunction()
-
-# Keep Tilky_Engine console visible.
-make_gui_in_release(Tilky_Standalone)
+# In every configuration: the exported game is whichever Standalone.exe the
+# engine was built with. Tilky_Engine keeps its console.
+if(WIN32)
+    set_target_properties(Tilky_Standalone PROPERTIES
+            WIN32_EXECUTABLE ON
+    )
+endif()
 
 # ============================================================
 # Engine-version package

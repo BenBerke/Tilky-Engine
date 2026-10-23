@@ -2,8 +2,10 @@
 
 #include <spdlog/spdlog.h>
 
+#ifndef TILKY_STANDALONE
 #include "imgui.h"
 #include "Headers/Editor/EditorStyle.hpp"
+#endif
 
 void OpenGL::BeginFrame() {
     glEnable(GL_DEPTH_TEST);
@@ -32,7 +34,9 @@ void OpenGL::MakeCurrent() {
     if (window != nullptr && glContext != nullptr && SDL_GL_GetCurrentContext() != glContext)
         SDL_GL_MakeCurrent(window, glContext);
 
+#ifndef TILKY_STANDALONE
     if (imguiContext != nullptr) ImGui::SetCurrentContext(imguiContext);
+#endif
 }
 
 void OpenGL::SetVSync(const int mode) {
@@ -56,8 +60,10 @@ void OpenGL::SetWindowVisible(const bool visible) {
 
     MakeCurrent();
 
+#ifndef TILKY_STANDALONE
     // The editor's design may have changed since the last session.
     if (imguiContext != nullptr) EditorStyle::Apply(EditorStyle::ActiveDesign());
+#endif
 
     SDL_ShowWindow(window);
 
