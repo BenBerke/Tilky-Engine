@@ -1,5 +1,6 @@
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <utility>
 
@@ -7,6 +8,8 @@
 
 namespace {
     std::vector<LuaBindingMetadata::TypeDoc> registeredTypes;
+    std::vector<LuaBindingMetadata::CallbackDoc> registeredCallbacks;
+    std::vector<LuaBindingMetadata::PropertyDoc> registeredScriptGlobals;
 }
 
 namespace LuaBindingMetadata {
@@ -16,6 +19,61 @@ namespace LuaBindingMetadata {
 
     const std::vector<TypeDoc>& AllTypes() {
         return registeredTypes;
+    }
+
+    void RegisterCallback(CallbackDoc callback) {
+        registeredCallbacks.push_back(std::move(callback));
+    }
+
+    const std::vector<CallbackDoc>& AllCallbacks() {
+        return registeredCallbacks;
+    }
+
+    void RegisterScriptGlobal(PropertyDoc global) {
+        registeredScriptGlobals.push_back(std::move(global));
+    }
+
+    const std::vector<PropertyDoc>& AllScriptGlobals() {
+        return registeredScriptGlobals;
+    }
+
+    const std::vector<std::string>& LuaKeywordNames() {
+        static const std::vector<std::string> keywords = {
+            "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+            "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
+            "true", "until", "while"
+        };
+        return keywords;
+    }
+
+    bool IsLuaKeyword(const std::string_view name) {
+        return std::ranges::find(LuaKeywordNames(), name) != LuaKeywordNames().end();
+    }
+
+    bool IsEngineName(const std::string_view name) {
+        return std::ranges::find(registeredCallbacks, name, &CallbackDoc::name) != registeredCallbacks.end()
+            || std::ranges::find(registeredScriptGlobals, name, &PropertyDoc::name) != registeredScriptGlobals.end()
+            || std::ranges::find(registeredTypes, name, &TypeDoc::name) != registeredTypes.end();
+    }
+
+    std::string CallbackSignature(const CallbackDoc& callback) {
+        std::string signature = callback.name + "(";
+
+        for (std::size_t i = 0; i < callback.params.size(); ++i) {
+            if (i > 0) signature += ", ";
+            signature += callback.params[i].name + ": " + callback.params[i].luaType;
+        }
+
+        return signature + ")";
+    }
+
+    std::string CallbackOwnerNote(const CallbackOwner owner) {
+        switch (owner) {
+            case CallbackOwner::Entity: return "Entity scripts only. ";
+            case CallbackOwner::Sector: return "Sector scripts only. ";
+            case CallbackOwner::Any: break;
+        }
+        return {};
     }
 
     bool GenerateLuaLSStub(const std::string& outputPath) {
@@ -76,9 +134,28 @@ namespace LuaBindingMetadata {
             }
         }
 
-        file << "---The Entity this script is attached to.\n---@type Entity\nentity = nil\n\n";
-        file << "---Sector scripts only: the sector this script is attached to.\n---@type Sector\nsector = nil\n\n";
-        file << "---One table shared by every script. Kept across level changes, empty again each time the game starts.\n---@type table\nGlobal = {}\n";
+        for (const PropertyDoc& global : registeredScriptGlobals) {
+            if (!global.doc.empty()) file << "---" << global.doc << "\n";
+            file << "---@type " << global.luaType << "\n" << global.name << " = nil\n\n";
+        }
+
+        // Callbacks are defined by the script, not the engine - declaring
+        // them here gives LuaLS their names, parameters and docs.
+        for (const CallbackDoc& callback : registeredCallbacks) {
+            file << "---" << CallbackOwnerNote(callback.owner) << callback.doc << "\n";
+
+            for (const ParamDoc& param : callback.params)
+                file << "---@param " << param.name << " " << param.luaType << "\n";
+
+            file << "function " << callback.name << "(";
+
+            for (std::size_t i = 0; i < callback.params.size(); ++i) {
+                if (i > 0) file << ", ";
+                file << callback.params[i].name;
+            }
+
+            file << ") end\n\n";
+        }
 
         return true;
     }

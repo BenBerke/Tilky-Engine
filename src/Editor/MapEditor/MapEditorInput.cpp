@@ -78,18 +78,18 @@ namespace {
 }
 
 namespace MapEditorInternal {
-    void UpdateEditorZoom() {
+    void UpdateEditorZoom(const bool keyboardBlockedByImgui) {
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorldBeforeZoom = ScreenToWorld(mouseScreen, cameraPos);
 
         bool zoomChanged = false;
 
-        if (GetKeyBindDown(KEYBIND_ZOOM_IN) || InputManager::GetMouseWheelScrollUp()) {
+        if ((!keyboardBlockedByImgui && GetKeyBindDown(KEYBIND_ZOOM_IN)) || InputManager::GetMouseWheelScrollUp()) {
             editorZoom *= 1.15f;
             zoomChanged = true;
         }
 
-        if (GetKeyBindDown(KEYBIND_ZOOM_OUT) || InputManager::GetMouseWheelScrollDown()) {
+        if ((!keyboardBlockedByImgui && GetKeyBindDown(KEYBIND_ZOOM_OUT)) || InputManager::GetMouseWheelScrollDown()) {
             editorZoom /= 1.15f;
             zoomChanged = true;
         }
@@ -1525,7 +1525,7 @@ namespace MapEditorInternal {
                 activeGizmoPart = GIZMO_NONE;
             }
 
-            UpdateEditorZoom();
+            UpdateEditorZoom(keyboardBlockedByImgui);
         }
 
         UpdateBoxSelect(mouseWorld);
@@ -1628,19 +1628,21 @@ namespace MapEditorInternal {
             quit = true;
         }
 
+        // Everything below is keyboard-only, and a text field or the script
+        // editor has its own Ctrl+Z, Delete, Ctrl+C/V.
+        if (keyboardBlockedByImgui) return;
+
         if (GetComboDown(COMBO_REDO)) RedoLastAction();
         else if (GetComboDown(COMBO_UNDO)) {
             if (undoSteps.empty()) return;
             UndoLastAction();
         }
 
-        // Not while a text field has the keyboard: Ctrl+C/V there are its own.
         // Texture copy/paste first: in Entity Mode it shares Ctrl+C/V with
         // entity copy/paste, and wins while the cursor is on an entity.
-        const bool textureShortcutTaken =
-            !keyboardBlockedByImgui && HandleCanvasTextureShortcuts(level, mouseWorld, mouseBlockedByImGui);
+        const bool textureShortcutTaken = HandleCanvasTextureShortcuts(level, mouseWorld, mouseBlockedByImGui);
 
-        if (!keyboardBlockedByImgui && !textureShortcutTaken && currentMode == MODE_ENTITY) {
+        if (!textureShortcutTaken && currentMode == MODE_ENTITY) {
             if (GetComboDown(COMBO_COPY_ENTITIES) && !selectedEntities.empty()) [[unlikely]] {
                 // Any selection, not only a dragged or inspected entity.
                 // The primary goes first: paste places it under the cursor.

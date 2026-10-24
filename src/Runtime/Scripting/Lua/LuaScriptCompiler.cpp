@@ -5,6 +5,7 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
 #include "Headers/Objects/Components.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 #include <fmt/format.h>
@@ -131,12 +132,9 @@ namespace {
         return tokens;
     }
 
+    // Lua 5.4's keywords plus `global` (a keyword from Lua 5.5 on).
     bool IsLuaKeyword(const std::string_view word) {
-        static constexpr std::array<std::string_view, 23> kKeywords = {
-            "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "global", "goto", "if",
-            "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
-        };
-        return std::ranges::find(kKeywords, word) != kKeywords.end();
+        return word == "global" || LuaBindingMetadata::IsLuaKeyword(word);
     }
 
     // ------------------------------------------------------------------
@@ -247,15 +245,7 @@ namespace {
     }
 
     bool IsReservedFieldName(const std::string& name) {
-        static const std::unordered_set<std::string> reserved = {
-            "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-            "OnEntityEnter", "OnEntityExit",
-            "OnCollisionEnter", "OnCollision", "OnCollisionExit",
-            "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
-            "entity", "sector", "Global", "GameTime", "Input", "Game", "Debug",
-            LuaScriptCompiler::kVectorRefFunction
-        };
-        return reserved.contains(name);
+        return LuaBindingMetadata::IsEngineName(name) || name == LuaScriptCompiler::kVectorRefFunction;
     }
 
     // `public` - an Inspector-editable field. Returns the Lua the declaration compiles to.

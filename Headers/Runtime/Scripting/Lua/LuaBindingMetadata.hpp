@@ -2,6 +2,7 @@
 #define TILKY_ENGINE_LUABINDINGMETADATA_HPP
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 // A small, engine-side registry describing the Lua-visible scripting API
@@ -14,7 +15,11 @@
 // Every binding file (LuaEntityBindings.cpp, LuaComponentBindings.cpp,
 // LuaVectorBindings.cpp, ...) registers its usertypes' documentation here
 // right alongside the matching sol::new_usertype<>()/set_function() calls,
-// so the two never drift apart silently.
+// so the two never drift apart silently. LuaSystem.cpp does the same for
+// the callbacks it looks up in a script and the globals it injects into
+// one, so everything a script can see or define is described here: the
+// editor's autocomplete and tooltips, reserved-name checks and the LuaLS
+// stub all read it instead of keeping their own lists.
 namespace LuaBindingMetadata {
     struct ParamDoc {
         std::string name;
@@ -58,6 +63,18 @@ namespace LuaBindingMetadata {
         std::vector<EnumValueDoc> enumValues;
     };
 
+    // Which scripts a callback is looked up in.
+    enum class CallbackOwner { Any, Entity, Sector };
+
+    // A function a script defines and the engine calls (Start,
+    // OnTriggerEnter, ...).
+    struct CallbackDoc {
+        std::string name;
+        CallbackOwner owner = CallbackOwner::Any;
+        std::vector<ParamDoc> params;
+        std::string doc;
+    };
+
     // Terse, positional constructors for RegisterType() call sites - a
     // binding file documenting a few dozen properties/methods gets
     // unwieldy fast with `.name = ..., .luaType = ..., ...` on every single
@@ -94,6 +111,37 @@ namespace LuaBindingMetadata {
 
     // Every type registered so far, in registration order.
     const std::vector<TypeDoc>& AllTypes();
+
+    // Registers one callback's documentation. LuaSystem.cpp calls this
+    // from the same table it looks the callbacks up with.
+    void RegisterCallback(CallbackDoc callback);
+    const std::vector<CallbackDoc>& AllCallbacks();
+
+    // Registers a global the engine injects into every script's
+    // environment (entity, sector, Global), as opposed to a global table
+    // registered with RegisterType().
+    void RegisterScriptGlobal(PropertyDoc global);
+    const std::vector<PropertyDoc>& AllScriptGlobals();
+
+    // Lua 5.4's reserved words.
+    const std::vector<std::string>& LuaKeywordNames();
+    [[nodiscard]] bool IsLuaKeyword(std::string_view name);
+
+    // True for any name the engine defines for scripts: a callback, a
+    // script global, or a registered type/global table/enum. A script
+    // variable with such a name would hide the engine's, so public fields
+    // and flipbook event functions can't use one. Lua keywords are checked
+    // separately (IsLuaKeyword) so callers can word the error differently.
+    // Only complete once scripting has initialized.
+    [[nodiscard]] bool IsEngineName(std::string_view name);
+
+    // "OnTriggerEnter(other: Entity)" - a callback's signature as shown in
+    // the editor.
+    [[nodiscard]] std::string CallbackSignature(const CallbackDoc& callback);
+
+    // "Entity scripts only. " / "Sector scripts only. " / "" - prefixed to
+    // a callback's doc wherever it is shown.
+    [[nodiscard]] std::string CallbackOwnerNote(CallbackOwner owner);
 
     // Writes a LuaLS-compatible `---@meta` stub file (---@class / ---@field
     // / ---@param / ---@return annotations) built from AllTypes(). Point

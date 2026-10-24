@@ -7,6 +7,7 @@
 #include "TextEditor.h"
 
 #include "imgui.h"
+#include "imgui_internal.h" // ImGuiContext::PlatformImeData, see HandleKeyboardInputs()
 
 // TODO
 // - multiline comments vs single-line: latter is blocking start of a ML
@@ -707,9 +708,6 @@ void TextEditor::HandleKeyboardInputs()
 			ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
 		//ImGui::CaptureKeyboardFromApp(true);
 
-		io.WantCaptureKeyboard = true;
-		io.WantTextInput = true;
-
 		if (!IsReadOnly() && ctrl && !shift && !alt && ImGui::IsKeyPressed(ImGuiKey_Z))
 			Undo();
 		else if (!IsReadOnly() && !ctrl && !shift && alt && ImGui::IsKeyPressed(ImGuiKey_Backspace))
@@ -1142,6 +1140,24 @@ void TextEditor::Render(const char* aTitle, const ImVec2& aSize, bool aBorder)
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 	if (!mIgnoreImGuiChild)
 		ImGui::BeginChild(aTitle, aSize, aBorder, ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_AlwaysHorizontalScrollbar | ImGuiWindowFlags_NoMove);
+
+	// Tilky: tell the app the keyboard is busy while the editor is focused,
+	// so its shortcuts and WASD stay quiet. Writing io.WantCaptureKeyboard/
+	// WantTextInput directly (as upstream did) does nothing - NewFrame()
+	// recomputes both before the app reads them - so request them the way
+	// InputText does. Outside the mHandleKeyboardInputs check: the app may
+	// switch keyboard handling off for a frame and still be typing here.
+	if (ImGui::IsWindowFocused())
+	{
+		ImGui::SetNextFrameWantCaptureKeyboard(true);
+		ImGui::GetCurrentContext()->PlatformImeData.WantTextInput = true;
+
+		// Own Escape so keyboard navigation doesn't treat it as "leave this
+		// child window" and drop focus. Unlocked: code reading it with
+		// ImGui::IsKeyPressed() (owner Any), like the app's autocomplete,
+		// still sees it.
+		ImGui::SetKeyOwner(ImGuiKey_Escape, ImGui::GetCurrentWindow()->ID);
+	}
 
 	if (mHandleKeyboardInputs)
 	{

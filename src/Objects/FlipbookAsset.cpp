@@ -16,6 +16,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -216,23 +217,9 @@ namespace FlipbookIO {
         if (!std::ranges::all_of(name, [&](const char c) { return isIdentifierChar(static_cast<unsigned char>(c)); }))
             return fail("Only letters, digits and _ are allowed");
 
-        static const std::unordered_set<std::string_view> keywords = {
-            "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
-            "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
-            "true", "until", "while"
-        };
+        if (LuaBindingMetadata::IsLuaKeyword(name)) return fail("'" + std::string(name) + "' is a Lua keyword");
 
-        if (keywords.contains(name)) return fail("'" + std::string(name) + "' is a Lua keyword");
-
-        static const std::unordered_set<std::string_view> reserved = {
-            "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-            "OnEntityEnter", "OnEntityExit",
-            "OnCollisionEnter", "OnCollision", "OnCollisionExit",
-            "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
-            "entity", "sector", "Global", "GameTime", "Input", "Game", "Debug", "mathT"
-        };
-
-        if (reserved.contains(name)) return fail("'" + std::string(name) + "' is reserved by the engine");
+        if (LuaBindingMetadata::IsEngineName(name)) return fail("'" + std::string(name) + "' is reserved by the engine");
 
         return true;
     }

@@ -473,6 +473,9 @@ private:
     std::string autocompleteWordStart;
     int autocompleteSelectedIndex = 0;
     bool autocompleteActive = false;
+    // Set by Escape: keeps the popup closed until the text or cursor
+    // changes, so the next Enter/Tab reaches the editor instead.
+    bool autocompleteSuppressed = false;
 
     // Screen rect the popup last drew itself into (see DrawAutocompletePopup()).
     // Cached because DrawTextEditorWindow() needs to know whether THIS

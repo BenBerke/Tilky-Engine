@@ -69,8 +69,9 @@ namespace FlipbookIO {
     bool Save(const std::filesystem::path& file, const FlipbookAsset& asset, std::string* errorMessage = nullptr);
 
     // Whether `name` can be a frame event function: a plain Lua identifier
-    // that isn't a keyword, a lifecycle function (Start, Update, ...) or an
-    // engine global. Empty is valid (no event). On false, `reason` says why.
+    // that isn't a keyword or a name the engine defines for scripts (see
+    // LuaBindingMetadata::IsEngineName - needs scripting initialized). Empty
+    // is valid (no event). On false, `reason` says why.
     bool IsValidEventFunction(std::string_view name, std::string* reason = nullptr);
 
     // Replaces every texture equal to oldReference in every .fpk under the

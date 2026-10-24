@@ -29,27 +29,68 @@
 namespace fs = std::filesystem;
 
 namespace {
-    // Every identifier the script editor's autocomplete can suggest: Lua
-    // keywords, Tilky's declaration keywords/field types/attributes (see
-    // LuaScriptCompiler), the lifecycle function names a Behaviour can
-    // define, a handful of always-available globals, and - the main point - every
-    // type/property/method name registered with LuaBindingMetadata (see
-    // that header), so autocomplete and the future generated LuaLS stubs
-    // are driven by the same data instead of two hand-maintained lists.
-    // Built once, lazily, on first use.
+    // Breaks `text` into lines of at most `width` characters at spaces, so
+    // a long doc string doesn't stretch a tooltip across the screen.
+    std::string WrapText(const std::string& text, const std::size_t width = 80) {
+        std::string wrapped;
+        std::size_t lineLength = 0;
+
+        for (std::size_t start = 0; start < text.size();) {
+            std::size_t end = text.find(' ', start);
+            if (end == std::string::npos) end = text.size();
+            const std::size_t wordLength = end - start;
+
+            if (lineLength > 0 && lineLength + 1 + wordLength > width) {
+                wrapped += '\n';
+                lineLength = 0;
+            }
+            else if (lineLength > 0) {
+                wrapped += ' ';
+                ++lineLength;
+            }
+
+            wrapped.append(text, start, wordLength);
+            lineLength += wordLength;
+            start = end + 1;
+        }
+
+        return wrapped;
+    }
+
     // Lua highlighting plus Tilky's declaration keywords (`public`) as
-    // keywords and its field types as known identifiers.
+    // keywords, and as known identifiers (hover tooltip + their own color)
+    // its field types plus every callback, script global and type
+    // registered with LuaBindingMetadata.
     const TextEditor::LanguageDefinition& ScriptLanguageDefinition() {
+        LevelSystem::EnsureScriptingInitialized();
+
         static const TextEditor::LanguageDefinition definition = [] {
             TextEditor::LanguageDefinition lua = TextEditor::LanguageDefinition::Lua();
 
             for (const std::string& keyword : LuaScriptCompiler::DeclarationKeywordNames())
                 lua.mKeywords.insert(keyword);
 
-            for (const std::string& type : LuaScriptCompiler::FieldTypeNames()) {
+            const auto addIdentifier = [&](const std::string& name, const std::string& declaration) {
                 TextEditor::Identifier identifier;
-                identifier.mDeclaration = "Field type";
-                lua.mIdentifiers.insert_or_assign(type, identifier);
+                identifier.mDeclaration = declaration;
+                lua.mIdentifiers.insert_or_assign(name, identifier);
+            };
+
+            const std::vector<std::string> fieldTypes = LuaScriptCompiler::FieldTypeNames();
+            for (const std::string& type : fieldTypes) addIdentifier(type, "Field type");
+
+            for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
+                std::string declaration = WrapText(type.doc.empty() ? "Engine type." : type.doc);
+                if (std::ranges::find(fieldTypes, type.name) != fieldTypes.end()) declaration = "Field type\n" + declaration;
+                addIdentifier(type.name, declaration);
+            }
+
+            for (const LuaBindingMetadata::PropertyDoc& global : LuaBindingMetadata::AllScriptGlobals())
+                addIdentifier(global.name, global.name + ": " + global.luaType + "\n" + WrapText(global.doc));
+
+            for (const LuaBindingMetadata::CallbackDoc& callback : LuaBindingMetadata::AllCallbacks()) {
+                addIdentifier(callback.name, LuaBindingMetadata::CallbackSignature(callback) + "\n" +
+                    WrapText(LuaBindingMetadata::CallbackOwnerNote(callback.owner) + callback.doc));
             }
 
             return lua;
@@ -58,21 +99,20 @@ namespace {
         return definition;
     }
 
+    // Every identifier the script editor's autocomplete can suggest: Lua
+    // keywords, Tilky's declaration keywords/field types/attributes (see
+    // LuaScriptCompiler), and every callback, script global and
+    // type/property/method/enum value name registered with
+    // LuaBindingMetadata - the same data the LuaLS stub is generated from.
+    // Built once, lazily, on first use.
     const std::vector<std::string>& AutocompleteCandidates() {
         LevelSystem::EnsureScriptingInitialized();
 
         static const std::vector<std::string> candidates = [] {
-            std::vector<std::string> list = {
-                "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
-                "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
-                "true", "until", "while",
-                "Start", "Update", "FixedUpdate", "OnEnable", "OnDisable", "OnDestroy",
-                "OnEntityEnter", "OnEntityExit",
-                "OnCollisionEnter", "OnCollision", "OnCollisionExit",
-                "OnTriggerEnter", "OnTrigger", "OnTriggerExit", "OnSectorChange",
-                "entity", "sector",
-                "GameTime", "Input", "Game", "Debug", "Global", "mathT"
-            };
+            std::vector<std::string> list = LuaBindingMetadata::LuaKeywordNames();
+
+            for (const LuaBindingMetadata::CallbackDoc& callback : LuaBindingMetadata::AllCallbacks()) list.push_back(callback.name);
+            for (const LuaBindingMetadata::PropertyDoc& global : LuaBindingMetadata::AllScriptGlobals()) list.push_back(global.name);
 
             for (std::vector<std::string> names : {LuaScriptCompiler::DeclarationKeywordNames(),
                                                    LuaScriptCompiler::FieldTypeNames(),
@@ -917,6 +957,7 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
     scriptEditorOpen = true;
     scriptEditorDirty = false;
     autocompleteActive = false;
+    autocompleteSuppressed = false;
     lastOperationError.clear();
 }
 
@@ -1151,12 +1192,16 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         autocompleteSelectedIndex = (autocompleteSelectedIndex + autocompleteNavDelta + count) % count;
     }
 
+    // Typing or moving the cursor ends an Escape dismissal.
+    if (scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged()) autocompleteSuppressed = false;
+
     if (autocompleteDismiss) {
         autocompleteActive = false;
+        autocompleteSuppressed = true;
     } else if (autocompleteAccept && !autocompleteMatches.empty()) {
         AcceptAutocomplete(autocompleteSelectedIndex);
     } else if (openFileIsLua && autocompleteNavDelta == 0 && !autocompleteClickPending &&
-               (!autocompleteActive || scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged())) {
+               ((!autocompleteActive && !autocompleteSuppressed) || scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged())) {
         // Only re-derive suggestions from the buffer when something that
         // should actually invalidate the current list happened: the text
         // changed, the cursor moved for a reason other than interacting

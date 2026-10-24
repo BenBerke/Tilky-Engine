@@ -294,6 +294,67 @@ namespace {
         return value.as<sol::protected_function>();
     }
 
+    // Every callback a script can define. LoadScriptIntoInstance() looks
+    // them up from this table and RegisterScriptEnvironmentMetadata()
+    // documents them from it, so adding an entry here is all a new
+    // callback needs to show up in autocomplete, tooltips, reserved-name
+    // checks and the LuaLS stub.
+    struct LifecycleCallback {
+        sol::protected_function ScriptInstance::* function;
+        LuaBindingMetadata::CallbackDoc doc;
+    };
+
+    const std::vector<LifecycleCallback>& LifecycleCallbacks() {
+        using LuaBindingMetadata::CallbackOwner;
+        using LuaBindingMetadata::Param;
+
+        static const std::vector<LifecycleCallback> callbacks = {
+            {&ScriptInstance::startFunction, {"Start", CallbackOwner::Any, {},
+                "Called once, the first time the script is active. Every script in the level is loaded before any Start runs."}},
+            {&ScriptInstance::updateFunction, {"Update", CallbackOwner::Any, {},
+                "Called every frame while the script is active. GameTime.deltaTime is the time since the last frame."}},
+            {&ScriptInstance::fixedUpdateFunction, {"FixedUpdate", CallbackOwner::Any, {},
+                "Called on a fixed 60 Hz step while the script is active. GameTime.fixedDeltaTime is the step length."}},
+            {&ScriptInstance::onEnableFunction, {"OnEnable", CallbackOwner::Any, {},
+                "Called when the script becomes active, including right before Start."}},
+            {&ScriptInstance::onDisableFunction, {"OnDisable", CallbackOwner::Any, {},
+                "Called when the script stops being active."}},
+            {&ScriptInstance::onDestroyFunction, {"OnDestroy", CallbackOwner::Any, {},
+                "Called when the script is torn down, if Start has run."}},
+
+            {&ScriptInstance::onEntityEnterFunction, {"OnEntityEnter", CallbackOwner::Sector, {Param("entity", "Entity")},
+                "Called when an entity enters this sector."}},
+            {&ScriptInstance::onEntityExitFunction, {"OnEntityExit", CallbackOwner::Sector, {Param("entity", "Entity")},
+                "Called when an entity leaves this sector."}},
+
+            {&ScriptInstance::onCollisionEnterFunction, {"OnCollisionEnter", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called when another solid collider starts touching this entity."}},
+            {&ScriptInstance::onCollisionFunction, {"OnCollision", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called every frame while another solid collider touches this entity."}},
+            {&ScriptInstance::onCollisionExitFunction, {"OnCollisionExit", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called when another solid collider stops touching this entity."}},
+            {&ScriptInstance::onTriggerEnterFunction, {"OnTriggerEnter", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called when this entity and another collider start overlapping, where one of them is a trigger."}},
+            {&ScriptInstance::onTriggerFunction, {"OnTrigger", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called every frame while this entity and another collider overlap, where one of them is a trigger."}},
+            {&ScriptInstance::onTriggerExitFunction, {"OnTriggerExit", CallbackOwner::Entity, {Param("other", "Entity")},
+                "Called when this entity and another collider stop overlapping, where one of them is a trigger."}},
+            {&ScriptInstance::onSectorChangeFunction, {"OnSectorChange", CallbackOwner::Entity, {Param("sector", "Sector?")},
+                "Called when this entity moves into a different sector. sector is nil when it is outside every sector."}},
+        };
+
+        return callbacks;
+    }
+
+    bool CallbackAppliesTo(const LuaBindingMetadata::CallbackOwner owner, const ScriptOwnerKind kind) {
+        switch (owner) {
+            case LuaBindingMetadata::CallbackOwner::Any: return true;
+            case LuaBindingMetadata::CallbackOwner::Entity: return kind == ScriptOwnerKind::Entity;
+            case LuaBindingMetadata::CallbackOwner::Sector: return kind == ScriptOwnerKind::Sector;
+        }
+        return false;
+    }
+
     // Every Lua script error goes through here: logged via spdlog (for the
     // engine's own logs/console window) AND pushed to the in-game console
     // in red (EditorFunctions::Print), so a broken script is visible to
@@ -770,27 +831,9 @@ namespace {
             }
         }
 
-        instance.startFunction       = GetOptionalScriptFunction(instance.environment, "Start", assetId);
-        instance.updateFunction      = GetOptionalScriptFunction(instance.environment, "Update", assetId);
-        instance.fixedUpdateFunction = GetOptionalScriptFunction(instance.environment, "FixedUpdate", assetId);
-        instance.onEnableFunction    = GetOptionalScriptFunction(instance.environment, "OnEnable", assetId);
-        instance.onDisableFunction   = GetOptionalScriptFunction(instance.environment, "OnDisable", assetId);
-        instance.onDestroyFunction   = GetOptionalScriptFunction(instance.environment, "OnDestroy", assetId);
-
-        if (ownerKind == ScriptOwnerKind::Sector) {
-            instance.onEntityEnterFunction = GetOptionalScriptFunction(instance.environment, "OnEntityEnter", assetId);
-            instance.onEntityExitFunction  = GetOptionalScriptFunction(instance.environment, "OnEntityExit", assetId);
-        }
-
-        if (ownerKind == ScriptOwnerKind::Entity) {
-            instance.onCollisionEnterFunction = GetOptionalScriptFunction(instance.environment, "OnCollisionEnter", assetId);
-            instance.onCollisionFunction      = GetOptionalScriptFunction(instance.environment, "OnCollision", assetId);
-            instance.onCollisionExitFunction  = GetOptionalScriptFunction(instance.environment, "OnCollisionExit", assetId);
-            instance.onTriggerEnterFunction   = GetOptionalScriptFunction(instance.environment, "OnTriggerEnter", assetId);
-            instance.onTriggerFunction        = GetOptionalScriptFunction(instance.environment, "OnTrigger", assetId);
-            instance.onTriggerExitFunction    = GetOptionalScriptFunction(instance.environment, "OnTriggerExit", assetId);
-            instance.onSectorChangeFunction   = GetOptionalScriptFunction(instance.environment, "OnSectorChange", assetId);
-        }
+        for (const LifecycleCallback& callback : LifecycleCallbacks())
+            if (CallbackAppliesTo(callback.doc.owner, ownerKind))
+                instance.*callback.function = GetOptionalScriptFunction(instance.environment, callback.doc.name.c_str(), assetId);
 
         return true;
     }
@@ -979,6 +1022,20 @@ namespace {
         notifyBoth(now, callbacks.stay, callbacks.stayName);
     }
 
+    // The callbacks a script can define and the globals InjectOwnerGlobals()
+    // / LoadScriptIntoInstance() put into its environment.
+    void RegisterScriptEnvironmentMetadata() {
+        for (const LifecycleCallback& callback : LifecycleCallbacks())
+            LuaBindingMetadata::RegisterCallback(callback.doc);
+
+        LuaBindingMetadata::RegisterScriptGlobal(LuaBindingMetadata::Prop("entity", "Entity", true,
+            "The Entity this script is attached to. Invalid in sector scripts."));
+        LuaBindingMetadata::RegisterScriptGlobal(LuaBindingMetadata::Prop("sector", "Sector", true,
+            "Sector scripts only: the sector this script is attached to."));
+        LuaBindingMetadata::RegisterScriptGlobal(LuaBindingMetadata::Prop("Global", "table", false,
+            "One table shared by every script. Kept across level changes, empty again each time the game starts."));
+    }
+
     void RegisterGameTimeMetadata() {
         LuaBindingMetadata::RegisterType(LuaBindingMetadata::GlobalTable("GameTime", "Global frame-timing table.", {
             LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
@@ -1073,6 +1130,7 @@ namespace {
 
         RegisterGameTimeBindings(lua);
         RegisterBehaviourRefBindings(lua);
+        RegisterScriptEnvironmentMetadata();
     }
 }
 

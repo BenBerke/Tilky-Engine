@@ -14,6 +14,7 @@
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 
 namespace fs = std::filesystem;
 
@@ -49,6 +50,10 @@ void FlipbookEditor::Open(const fs::path& absolutePath) {
         document->focusRequested = true;
         return;
     }
+
+    // Event function validation checks names against the scripting
+    // registry, which is filled in when scripting initializes.
+    LevelSystem::EnsureScriptingInitialized();
 
     auto document = std::make_unique<Document>();
     document->id = nextDocumentId++;

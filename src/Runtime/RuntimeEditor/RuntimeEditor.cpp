@@ -2241,8 +2241,8 @@ namespace RuntimeEditor {
         Vector3 movement = {0.0f, 0.0f, 0.0f};
 
         // Keeps running during a gizmo drag, so you can fly while moving or
-        // rotating an entity.
-        {
+        // rotating an entity. Not while typing in a text field or script.
+        if (!keyboardBlockedByImGui) {
             const Vector3 forward = camera->forward;
             const Vector3 left = GetCameraLeft(*camera);
 

@@ -2188,8 +2188,9 @@ namespace ImGuiDrawFunctions {
         ImGui::PushID("entity_buttons");
 
         if (state.allowDelete) {
+            // Not the Delete key while typing: it deletes text there.
             if (DangerButton(Get("common.delete").c_str())
-                || InputManager::GetKeyDown(SDL_SCANCODE_DELETE))
+                || (!ImGui::GetIO().WantTextInput && InputManager::GetKeyDown(SDL_SCANCODE_DELETE)))
             {
                 deleteRequested            = true;
                 state.editingComponent     = false;

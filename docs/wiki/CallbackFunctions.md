@@ -354,7 +354,8 @@ frame, the function is called on every enabled script on the entity that defines
 
 - It fires each time playback reaches the frame, including every time a loop comes back to it,
   and for frames skipped over in a slow frame. `SetFrame` doesn't fire it.
-- The callback names in the table above can't be used as event functions.
+- The callback names in the table above, and other names the engine defines (`entity`, `Game`,
+  `Key`, ...), can't be used as event functions.
 - If no script on the entity defines it, a warning is logged once.
 
 See [Flipbook: Frame events](Flipbook.md#frame-events).

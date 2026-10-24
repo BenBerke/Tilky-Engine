@@ -102,8 +102,9 @@ end
   isn't accepted. To pick a second or third one, use the dropdown.
 - A `Behaviour` field lets one script read and write another script's variables. See
   [Using another script's variables](#using-another-scripts-variables) below.
-- Sector scripts can't declare fields named `sector` or `entity`. Those names are reserved
-  for the built-in globals.
+- A field can't use a name the engine already defines for scripts: a callback (`Start`,
+  `OnTriggerEnter`, ...), a built-in global (`entity`, `sector`, `Global`) or an engine type or
+  table (`Entity`, `Game`, `Input`, `Key`, ...). It would hide the engine's version inside the script.
 - Enum defaults are written as a number (`mode = 1`), and the option's position in the annotation
   decides its number, so keep that order stable once levels use it.
 
