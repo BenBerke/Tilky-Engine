@@ -880,6 +880,10 @@ namespace MapEditorInternal {
     // under the cursor in the current mode (a sector's floor or ceiling by
     // the texture view mode, Off counting as floor). False if nothing took it.
     bool DropTextureOnCanvas(const std::string& texture, const Vector2& mouseWorld);
+    // The Asset Browser's AssignHandler for the map editor: a texture goes to
+    // every selected wall, sector or sprite in the current mode, like a drop
+    // on a selected item. Other kinds are ignored. False if nothing took it.
+    bool AssignAssetToCanvasSelection(AssetKind kind, const std::string& reference);
     // The UI entity inspector (entity window plus its component windows) for
     // an entity the UI editor doesn't have selected - the prefab editor's.
     // idSuffix keeps its windows (and their state) apart from the UI

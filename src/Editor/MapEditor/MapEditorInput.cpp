@@ -1289,6 +1289,53 @@ namespace MapEditorInternal {
 
             return true;
         }
+
+        // The wall's top, the shown flat, or sprite texture 0 of each target
+        // in the current mode, as one undo step. False if none changed.
+        bool ApplyTextureToCanvasItems(Level& level, const std::vector<ID>& targets, const std::string& texture) {
+            constexpr const char* labelKey = "runtime_editor.history.apply_texture";
+            int changed = 0;
+
+            if (currentMode == MODE_ENTITY) {
+                EntitiesSnapshot before = CaptureEntitiesSnapshot();
+
+                for (const ID id : targets) {
+                    ComponentSprite* sprite = level.sprites.Get(id);
+                    if (sprite == nullptr) continue;
+
+                    sprite->textureFileNames[0] = texture;
+                    ++changed;
+                }
+
+                if (changed > 0) PushEntitiesUndo(std::move(before), labelKey, changed);
+                return changed > 0;
+            }
+
+            GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+
+            for (const ID id : targets) {
+                if (currentMode == MODE_GEOMETRY) {
+                    const int index = WallIndexOf(level, id);
+                    if (index < 0) continue;
+
+                    level.walls[index].top.texture = texture;
+                }
+                else {
+                    const int index = SectorIndexOf(level, id);
+                    if (index < 0) continue;
+
+                    SectorSurface* flat = ShownFlat(level.sectors[index]);
+                    if (flat == nullptr) continue;
+
+                    flat->texture = texture;
+                }
+
+                ++changed;
+            }
+
+            if (changed > 0) PushGeometryUndoSnapshot(std::move(before), labelKey, changed);
+            return changed > 0;
+        }
     }
 
     bool DropTextureOnCanvas(const std::string& texture, const Vector2& mouseWorld) {
@@ -1304,48 +1351,16 @@ namespace MapEditorInternal {
             ? selection
             : std::vector<ID>{hovered};
 
-        constexpr const char* labelKey = "runtime_editor.history.apply_texture";
-        int changed = 0;
+        return ApplyTextureToCanvasItems(level, targets, texture);
+    }
 
-        if (currentMode == MODE_ENTITY) {
-            EntitiesSnapshot before = CaptureEntitiesSnapshot();
+    bool AssignAssetToCanvasSelection(const AssetKind kind, const std::string& reference) {
+        if (kind != AssetKind::Texture) return false;
 
-            for (const ID id : targets) {
-                ComponentSprite* sprite = level.sprites.Get(id);
-                if (sprite == nullptr) continue;
+        const std::vector<ID>& selection = CanvasSelection();
+        if (selection.empty()) return false;
 
-                sprite->textureFileNames[0] = texture;
-                ++changed;
-            }
-
-            if (changed > 0) PushEntitiesUndo(std::move(before), labelKey, changed);
-            return changed > 0;
-        }
-
-        GeometrySnapshot before = CaptureGeometryUndoSnapshot();
-
-        for (const ID id : targets) {
-            if (currentMode == MODE_GEOMETRY) {
-                const int index = WallIndexOf(level, id);
-                if (index < 0) continue;
-
-                level.walls[index].top.texture = texture;
-            }
-            else {
-                const int index = SectorIndexOf(level, id);
-                if (index < 0) continue;
-
-                SectorSurface* flat = ShownFlat(level.sectors[index]);
-                if (flat == nullptr) continue;
-
-                flat->texture = texture;
-            }
-
-            ++changed;
-        }
-
-        if (changed > 0) PushGeometryUndoSnapshot(std::move(before), labelKey, changed);
-        return changed > 0;
+        return ApplyTextureToCanvasItems(LevelManager::CurrentLevel(), selection, reference);
     }
 
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {

@@ -1329,6 +1329,58 @@ namespace {
         return 0;
     }
 
+    // The Asset Browser's AssignHandler: a texture goes to the top of every
+    // selected wall, every selected flat, or sprite texture 0 of every
+    // selected entity, as one undo step. Other kinds are ignored.
+    bool AssignAssetToSelection(Level& level, const AssetKind kind, const std::string& reference) {
+        if (kind != AssetKind::Texture) return false;
+
+        int count = 0;
+
+        if (!selectedEntityIds.empty()) {
+            GeometryState before = CaptureEntities(level, "runtime_editor.history.apply_texture");
+
+            for (const ID id : selectedEntityIds) {
+                ComponentSprite* sprite = level.sprites.Get(id);
+                if (sprite == nullptr) continue;
+
+                sprite->textureFileNames[0] = reference;
+                ++count;
+            }
+
+            CommitUndoIf(std::move(before), count);
+        }
+        else {
+            GeometryState before = CaptureGeometry(level, "runtime_editor.history.apply_texture");
+
+            for (const int wallIndex : selectedWalls) {
+                if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
+
+                level.walls[wallIndex].top.texture = reference;
+                ++count;
+            }
+
+            for (const SelectedFlat& flat : selectedFlats) {
+                if (flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+                Sector& sector = level.sectors[flat.sectorIndex];
+                if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
+
+                SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
+                (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture = reference;
+                ++count;
+            }
+
+            CommitUndoIf(std::move(before), count);
+        }
+
+        if (count == 0) return false;
+
+        // Same as a drop: only rebuilds for an image added since the atlas was built.
+        if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+        return true;
+    }
+
     void ShowToastf(const char* key, const int value) {
         char message[128];
         std::snprintf(message, sizeof(message), Localisation::Get(key).c_str(), value);
@@ -2017,7 +2069,8 @@ namespace RuntimeEditorUi {
             // the inspector previews can never disagree about what a texture
             // name maps to. Routes back through previewTextureProvider, which
             // Start() pointed at this renderer.
-            MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID);
+            MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID,
+                [&level](const AssetKind kind, const std::string& reference) { return AssignAssetToSelection(level, kind, reference); });
 
             ImGui::End();
 

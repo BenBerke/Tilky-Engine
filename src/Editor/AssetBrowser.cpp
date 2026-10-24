@@ -1605,6 +1605,10 @@ void AssetEntry::OnDoubleClick(AssetBrowser&) {
     // should happen on double-click / Enter.
 }
 
+void AssetEntry::OnCtrlLeftClick(AssetBrowser&) {
+    // Default: no-op.
+}
+
 void AssetEntry::DrawContextMenu(AssetBrowser&) {
     // Default: no extra context-menu content.
 }
@@ -1653,6 +1657,11 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
 
     if (kind != AssetKind::Other) browser.RequestConsumeAsFieldReference(kind, GetPath());
 
+}
+
+void GenericFileEntry::OnCtrlLeftClick(AssetBrowser& browser) {
+    // The host decides which kinds its edit target takes.
+    if (kind != AssetKind::Other) browser.RequestAssignToEditTarget(kind, GetPath());
 }
 
 void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const {
@@ -2269,6 +2278,7 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     if (clicked) {
         selectedFile = entry.GetPath();
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) entry.OnDoubleClick(*this);
+        else if (ImGui::GetIO().KeyCtrl) entry.OnCtrlLeftClick(*this);
     }
 
     if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
@@ -2777,8 +2787,10 @@ void AssetBrowser::HandleKeyboardShortcuts() {
         selectedEntry->OnDoubleClick(*this);
 }
 
-void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
+void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider, const AssignHandler& assignHandler) {
     if (rootDirectory.empty()) return; // SetRootDirectory() hasn't been called yet
+
+    activeAssignHandler = &assignHandler;
 
     const ImVec2 windowPos = ImGui::GetWindowPos();
     const ImVec2 windowSize = ImGui::GetWindowSize();
@@ -2843,6 +2855,8 @@ void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider) {
         pendingNavigation.reset();
         NavigateTo(destination);
     }
+
+    activeAssignHandler = nullptr;
 }
 
 bool AssetBrowser::HasSelection() const {
@@ -2973,6 +2987,11 @@ void AssetBrowser::RequestOpenLevel(const std::filesystem::path& absolutePath) {
 void AssetBrowser::RequestConsumeAsFieldReference(const AssetKind kind, const std::filesystem::path& absolutePath) {
     pendingConfirmedPath = absolutePath;
     pendingConfirmedKind = kind;
+}
+
+bool AssetBrowser::RequestAssignToEditTarget(const AssetKind kind, const std::filesystem::path& absolutePath) {
+    if (activeAssignHandler == nullptr || !*activeAssignHandler) return false;
+    return (*activeAssignHandler)(kind, ToAssetReference(absolutePath, kind));
 }
 
 void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {

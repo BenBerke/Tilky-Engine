@@ -3271,7 +3271,7 @@ namespace {
 
         ImGui::Spacing();
 
-        assetBrowser.Draw(&GetPreviewTextureID);
+        assetBrowser.Draw(&GetPreviewTextureID, &AssignAssetToCanvasSelection);
 
         ImGui::End();
 

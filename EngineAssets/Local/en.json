@@ -728,7 +728,7 @@
   "editor.asset_browser.refresh": "Refresh",
   "editor.asset_browser.open_explorer": "Open In Explorer",
   "editor.tooltip.asset_browser_refresh": "Re-scan the current folder for new or removed files.",
-  "editor.asset_browser.hint": "Browse and import project assets.",
+  "editor.asset_browser.hint": "Browse and import project assets. Ctrl+click a texture to apply it to the selection.",
   "editor.asset_browser.notification.imported": "Imported asset: %s",
   "editor.asset_field.tooltip": "Click to select an asset.",
   "editor.asset_field.clear": "Clear",

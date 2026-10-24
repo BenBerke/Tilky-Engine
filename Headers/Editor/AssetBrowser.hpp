@@ -95,6 +95,11 @@ public:
     // opens the level.
     virtual void OnDoubleClick(AssetBrowser& browser);
 
+    // Invoked when this entry is Ctrl+left-clicked. Default is a no-op.
+    // GenericFileEntry offers itself to whatever the host editor is
+    // currently editing - see AssetBrowser::RequestAssignToEditTarget().
+    virtual void OnCtrlLeftClick(AssetBrowser& browser);
+
     // Draws this entry's right-click context-menu content. The caller
     // (AssetBrowser) has already opened the popup via
     // ImGui::BeginPopupContextItem() and will call ImGui::EndPopup()
@@ -158,6 +163,7 @@ public:
         , kind(kind) {}
 
     void OnDoubleClick(AssetBrowser& browser) override;
+    void OnCtrlLeftClick(AssetBrowser& browser) override;
     void DrawContextMenu(AssetBrowser& browser) override;
     [[nodiscard]] AssetEntryType GetType() const override { return AssetEntryType::GenericFile; }
     [[nodiscard]] AssetKind GetAssetKind() const override { return kind; }
@@ -302,6 +308,12 @@ class AssetBrowser {
 public:
     using ThumbnailProvider = std::function<ImTextureID(const std::string&)>;
 
+    // Supplied by the host editor to Draw(): applies an asset (its kind and
+    // ToAssetReference() string) to whatever that editor is currently
+    // editing, e.g. the Map Editor's selected walls. Returns false if
+    // nothing there takes that kind. See RequestAssignToEditTarget().
+    using AssignHandler = std::function<bool(AssetKind, const std::string&)>;
+
     // Opens a .lua script, or a plain text file (see IsPlainTextFile), in
     // the shared script editor. Text files get no highlighting and none of
     // the Lua-only tools (autocomplete, comment toggling, bracket pairing).
@@ -363,8 +375,9 @@ public:
     // folder/asset grid, every modal, and handles keyboard shortcuts. Call
     // this between the host window's ImGui::Begin()/End().
     // `renderer` is only used to lazily load texture thumbnails via
-    // EditorTextureCache.
-    void Draw(const ThumbnailProvider& thumbnailProvider);
+    // EditorTextureCache. `assignHandler` receives Ctrl+left-clicked assets;
+    // without one Ctrl+click does nothing.
+    void Draw(const ThumbnailProvider& thumbnailProvider, const AssignHandler& assignHandler = {});
 
     [[nodiscard]] bool HasSelection() const;
     [[nodiscard]] const std::filesystem::path& GetSelectedFile() const;
@@ -428,6 +441,9 @@ public:
     void RequestCreatePrefab(const std::filesystem::path& destinationDirectory, bool uiEntity);
     void RequestOpenLevel(const std::filesystem::path& absolutePath);
     void RequestConsumeAsFieldReference(AssetKind kind, const std::filesystem::path& absolutePath);
+    // Hands the asset to the AssignHandler passed to the current Draw().
+    // Returns false without one, or if the handler didn't take it.
+    bool RequestAssignToEditTarget(AssetKind kind, const std::filesystem::path& absolutePath);
 
     // Extensible "Create File" submenu content, shared by DirectoryEntry's
     // context menu and the empty-space context menu. Add another
@@ -600,6 +616,9 @@ private:
 
     std::optional<std::filesystem::path> pendingConfirmedPath;
     AssetKind pendingConfirmedKind = AssetKind::Other;
+
+    // Only non-null while Draw() runs - the host's handler for that frame.
+    const AssignHandler* activeAssignHandler = nullptr;
 
     // Last known on-screen rectangle of the host ImGui window, captured at
     // the top of Draw(). Used to scope OS-level file drops (and the
