@@ -1315,6 +1315,7 @@
   "entity.tags": "Tags",
   "editor.user_settings.ui_design": "UI Design",
   "editor.user_settings.texture_field_size": "Texture Field Size",
+  "editor.user_settings.filtered_alpha": "Filtered Alpha",
   "editor.tooltip.user_settings.ui_design": "How the editor's panels and menus look. Press Save to keep it for next time.",
   "editor.tooltip.user_settings.texture_field_size": "Size in pixels of the texture previews in the wall and sector inspectors.",
   "editor.tooltip.user_settings.runtime_camera_fov": "Field of view of the runtime editor's camera, in degrees. Only affects the editor view, not the game's cameras.",

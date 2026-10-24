@@ -610,6 +610,9 @@ namespace MapEditorInternal {
 
     extern EntityMarkerMode entityMarkerMode;
 
+    // How opaque a wall or entity hidden by a panel filter is drawn.
+    extern int filteredAlpha;
+
     // Canvas-space (0,0 = top-left of the current screen, matching how
     // UI_vs.glsl's uPosition/uScreenSize work at runtime - there is no
     // separate design/reference resolution, so the canvas boundary is

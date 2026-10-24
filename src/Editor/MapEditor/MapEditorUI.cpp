@@ -175,6 +175,8 @@ namespace {
     constexpr Vector3 defaultGizmoXColor = {230, 60, 60};
     constexpr Vector3 defaultGizmoYColor = {80, 200, 80};
     constexpr Vector3 defaultGizmoZColor = {60, 110, 240};
+
+    constexpr Uint8 defaultFilterdAlpha = 60;
 } // namespace
 
 // =============================================================================
@@ -1635,6 +1637,11 @@ namespace {
             );
 
             SectionHeader(Get("editor.user_settings.editor_settings").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            ImGui::SliderInt(Get("editor.user_settings.filtered_alpha").c_str(), &filteredAlpha, 0, 255);
+
             ImGui::Separator();
             ImGui::Spacing();
 

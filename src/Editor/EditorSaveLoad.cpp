@@ -209,6 +209,7 @@ namespace MapEditorInternal {
             ));
 
             autoSaveInSeconds = std::max(0.0, settings.value("autoSaveInSeconds", autoSaveInSeconds));
+            filteredAlpha = settings.value("filteredAlpha", 60);
 
 #ifndef TILKY_STANDALONE
             RuntimeSession::SetVSyncMode(settings.value("vsync", RuntimeSession::GetVSyncMode()));
@@ -406,7 +407,8 @@ namespace MapEditorInternal {
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
                 {"runtimeSteps", SerializeRuntimeSteps()},
-                {"autoSaveInSeconds", autoSaveInSeconds}
+                {"autoSaveInSeconds", autoSaveInSeconds},
+                {"filteredAlpha", filteredAlpha}
             };
 
 #ifndef TILKY_STANDALONE

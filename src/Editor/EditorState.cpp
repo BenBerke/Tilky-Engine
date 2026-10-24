@@ -195,6 +195,9 @@ namespace MapEditorInternal {
     Vector3 gizmoYColor = {80, 200, 80};
     Vector3 gizmoZColor = {60, 110, 240};
 
+    // has to be an int because Imgui doesnt support chars
+    int filteredAlpha = 60;
+
     float cameraSpeed = 1.0f;
     float cameraStepSize = 50.0f;
 

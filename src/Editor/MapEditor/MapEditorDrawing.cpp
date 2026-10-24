@@ -31,9 +31,6 @@ namespace {
 }
 
 namespace MapEditorInternal {
-    // How opaque a wall or entity hidden by a panel filter is drawn.
-    constexpr Uint8 FILTERED_ALPHA = 50;
-
     void DrawThickLine(SDL_Renderer* renderer, const Vector2 start, const Vector2 end, const float thickness) {
         const float dx = end.x - start.x;
         const float dy = end.y - start.y;
@@ -931,7 +928,7 @@ namespace MapEditorInternal {
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 
             // Filtered out in the Geometry Mode panel: still there, but faint.
-            const Uint8 alpha = currentMode == MODE_GEOMETRY && !WallPassesFilter(wall) ? FILTERED_ALPHA : 255;
+            const Uint8 alpha = currentMode == MODE_GEOMETRY && !WallPassesFilter(wall) ? filteredAlpha : 255;
 
             // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
@@ -966,7 +963,7 @@ namespace MapEditorInternal {
             Vector3 entityColor = normalEntityColor;
 
             // Filtered out in the Entity Mode panel: still there, but faint.
-            const Uint8 alpha = currentMode == MODE_ENTITY && !EntityPassesFilter(entity) ? FILTERED_ALPHA : 255;
+            const Uint8 alpha = (currentMode == MODE_ENTITY && !EntityPassesFilter(entity)) || currentMode != MODE_ENTITY ? filteredAlpha : 255;
 
             // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the
