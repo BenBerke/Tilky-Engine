@@ -943,10 +943,6 @@ namespace MapEditorInternal {
     // `outIsStart` distinguishes wall.start from wall.end.
     [[nodiscard]] bool PickSelectedWallEndpointAt(const Vector2& mouseWorld, ID* outWallID, bool* outIsStart);
 
-    // True while a Geometry Mode drag is moving at least one endpoint of
-    // this wall. Used to keep its length label up during the drag.
-    [[nodiscard]] bool IsWallMovedByGeometryDrag(ID wallID);
-
     // The supported ways to change the wall selection (see the invariants
     // next to selectedWalls above). SelectWall replaces the selection and
     // opens the inspector; ExtendWallSelectionTo mirrors the hierarchy's

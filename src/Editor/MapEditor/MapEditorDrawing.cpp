@@ -746,15 +746,13 @@ namespace MapEditorInternal {
             SDL_RenderRect(renderer, &handle);
         }
 
-        // Small light text on a translucent dark pill at each wall's
-        // midpoint. A label that doesn't fit along its wall on screen is
-        // skipped, unless the wall is hovered, selected or being dragged.
+        // Small light text on a translucent dark pill at each selected
+        // wall's midpoint.
         void DrawWallLengthLabels(const Level& level, const std::function<bool(ID)>& isSelected) {
             if (labelFont == nullptr || textEngine == nullptr) return;
 
             constexpr float PAD_X = 5.0f;
             constexpr float PAD_Y = 1.0f;
-            constexpr float FIT_MARGIN = 10.0f; // wall must be this much longer than the pill
             constexpr SDL_Color TEXT_COLOR = {225, 225, 225, 255};
             constexpr SDL_Color PILL_COLOR = {18, 18, 22, 200};
 
@@ -765,6 +763,8 @@ namespace MapEditorInternal {
             char buffer[32];
 
             for (const Wall& wall : level.walls) {
+                if (!isSelected(wall.id)) continue;
+
                 const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
                 const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
                 const Vector2 mid = {(startScreen.x + endScreen.x) * 0.5f, (startScreen.y + endScreen.y) * 0.5f};
@@ -782,14 +782,6 @@ namespace MapEditorInternal {
 
                 const float pillW = static_cast<float>(textWidth) + PAD_X * 2.0f;
                 const float pillH = static_cast<float>(textHeight) + PAD_Y * 2.0f;
-
-                const bool forced = wall.id == hoveredWallID || isSelected(wall.id) || IsWallMovedByGeometryDrag(wall.id);
-                const float screenLength = std::sqrt(Vector2Math::DistanceSquared(startScreen, endScreen));
-
-                if (!forced && screenLength < pillW + FIT_MARGIN) {
-                    TTF_DestroyText(text);
-                    continue;
-                }
 
                 const float x = std::floor(mid.x - pillW * 0.5f);
                 const float y = std::floor(mid.y - pillH * 0.5f);
