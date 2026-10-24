@@ -3249,9 +3249,12 @@ namespace {
 
         ImGui::Begin(Get("editor.asset_browser").c_str());
 
-        if (ImGui::Button(Get("editor.asset_browser.refresh").c_str())) {
-            assetBrowser.Refresh();
-        }
+        if (ImGui::Button(Get("editor.asset_browser.open_explorer").c_str()))
+            if (!SDL_OpenURL(ProjectManager::GetAssetsPath().string().c_str())) spdlog::error("Failed to open file explorer");
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(Get("editor.asset_browser.refresh").c_str())) assetBrowser.Refresh();
         HoverTooltip(Get("editor.tooltip.asset_browser_refresh").c_str());
 
         ImGui::SameLine();
