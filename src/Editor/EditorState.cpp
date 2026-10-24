@@ -183,7 +183,7 @@ namespace MapEditorInternal {
     Vector4 kInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
 
     Vector3 themeTextColor = {255, 255, 255};
-    Vector3 gridColor = {255, 255, 255};
+    Vector4 gridColor = {1.0f, 1.0f, 1.0f, 0.5f};
 
     Vector3 backgroundColor = {45, 45, 45};
 

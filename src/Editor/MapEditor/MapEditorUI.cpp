@@ -164,7 +164,7 @@ namespace {
     constexpr Vector4 defaultKInvalidFillColor = {0.90f, 0.27f, 0.27f, 0.28f};
 
     constexpr Vector3 defaultThemeTextColor = {255, 255, 255};
-    constexpr Vector3 defaultGridColor = {255, 255, 255};
+    constexpr Vector4 defaultGridColor = {1.0f, 1.0f, 1.0f, 0.5f};
 
     constexpr Vector3 defaultBackgroundColor = {45, 45, 45};
 
@@ -1622,7 +1622,7 @@ namespace {
                         defaultThemeTextColor
                     );
 
-                    DrawColor3Setting(
+                    DrawColor4Setting(
                         "editor.user_settings.grid_color",
                         gridColor,
                         defaultGridColor
@@ -1676,9 +1676,9 @@ namespace {
                                MIN_RUNTIME_CAMERA_FOV, MAX_RUNTIME_CAMERA_FOV, "%.0f");
             HoverTooltip(Get("editor.tooltip.user_settings.runtime_camera_fov").c_str());
 
-            PushSuccessStyle();
-            if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
-            PopSuccessStyle();
+            // PushSuccessStyle();
+            // if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
+            // PopSuccessStyle();
 
             ImGui::Spacing();
 
@@ -1744,6 +1744,8 @@ namespace {
         else keyBindBeingListened = nullptr;
 
         ImGui::End();
+
+        SaveUserSettings();
     }
 
     // =========================================================================

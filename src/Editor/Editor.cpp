@@ -311,8 +311,8 @@ namespace Editor {
             // drawn back on its wall.
             if (WallSnap::Enforce(LevelManager::CurrentLevel())) MarkUnsavedChanges();
 
-            DrawGridDots();
             DrawExistingSectors();
+            DrawGridDots();
             DrawWalls();
 
             // Geometry Mode's hover/selection highlights and endpoint

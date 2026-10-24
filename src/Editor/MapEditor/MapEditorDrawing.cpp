@@ -928,7 +928,7 @@ namespace MapEditorInternal {
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 
             // Filtered out in the Geometry Mode panel: still there, but faint.
-            const Uint8 alpha = currentMode == MODE_GEOMETRY && !WallPassesFilter(wall) ? filteredAlpha : 255;
+            const Uint8 alpha = (currentMode == MODE_GEOMETRY && !WallPassesFilter(wall)) || currentMode != MODE_GEOMETRY ? filteredAlpha : 255;
 
             // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
@@ -1114,7 +1114,11 @@ namespace MapEditorInternal {
                 const float dotSize = major ? majorDotSize : minorDotSize;
                 const Uint8 alpha = major ? 255 : minorAlpha;
 
-                SDL_SetRenderDrawColor(renderer, gridColor.r, gridColor.g, gridColor.b, alpha);
+                SDL_SetRenderDrawColor(renderer,
+                    static_cast<Uint8>(gridColor.r * 255.0f),
+                    static_cast<Uint8>(gridColor.g * 255.0f),
+                    static_cast<Uint8>(gridColor.b * 255.0f),
+                    static_cast<Uint8>(gridColor.a * 255.0f));
 
                 const Vector2 screenPos = WorldToScreen({worldX, worldY}, cameraPos);
 

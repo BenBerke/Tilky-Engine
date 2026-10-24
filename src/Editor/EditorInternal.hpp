@@ -577,7 +577,7 @@ namespace MapEditorInternal {
     void MarkUnsavedChanges();
 
     extern Vector3 themeTextColor;
-    extern Vector3 gridColor;
+    extern Vector4 gridColor;
 
     extern Vector3 backgroundColor;
 

@@ -180,7 +180,7 @@ namespace MapEditorInternal {
             LoadColor3("gizmoYColor", gizmoYColor);
             LoadColor3("gizmoZColor", gizmoZColor);
             LoadColor3("themeTextColor", themeTextColor);
-            LoadColor3("gridColor", gridColor);
+            LoadColor4("gridColor", gridColor);
             LoadColor3("backgroundColor", backgroundColor);
 
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
