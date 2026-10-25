@@ -184,6 +184,7 @@
   "editor.combo.ui_select_all": "Select All",
   "editor.user_settings.key_listening": "Press a key...",
   "editor.wall.length": "Length",
+  "editor.wall.angle": "Angle",
   "runtime_editor.tools_window": "Tools",
   "runtime_editor.toast.texture_copied": "Texture copied",
   "runtime_editor.toast.fullbright_on": "Fullbright on",

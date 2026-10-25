@@ -113,6 +113,7 @@ struct Wall {
     Vector2 dir, normal, vector;
     float lengthSq; // lengthSquared
     float length;
+    float angle;
 
     std::array<std::array<Vector3, 4>, 2> quads3D = {};
     int quad3DCount = 0;
@@ -191,6 +192,13 @@ struct Wall {
             dir = {0.0f, 0.0f};
             normal = {0.0f, 0.0f};
         }
+
+        // Degrees in [0, 360), measured from +X towards +Y along start -> end.
+        if (length > Constants::Epsilon) {
+            angle = std::atan2(vector.y, vector.x) * Constants::RadToDeg;
+            if (angle < 0.0f) angle += 360.0f;
+        }
+        else angle = 0.0f;
     }
 
     void RebuildQuadAabbs() {

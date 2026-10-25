@@ -729,6 +729,7 @@ namespace {
             if (wallJson.contains("middle")) LoadWallSurface(wallJson.at("middle"), wall.middle);
             wall.middleHasCollision = wallJson.value("middleHasCollision", wall.middleHasCollision);
             wall.middleIgnoredByRaycast = wallJson.value("middleIgnoredByRaycast", wall.middleIgnoredByRaycast);
+            wall.angle = wallJson.value("angle", 0.0f);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
 
@@ -809,7 +810,8 @@ namespace {
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
                 {"tags", wall.tags},
-                {"tagIds", wall.tagIds}
+                {"tagIds", wall.tagIds},
+                {"angle", wall.angle}
             });
         }
     }

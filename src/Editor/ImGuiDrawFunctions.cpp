@@ -1547,6 +1547,10 @@ namespace ImGuiDrawFunctions {
 
         SmallMetaText("%s: %f", Get("editor.wall.length").c_str(), wall.length);
 
+        ImGui::SameLine();
+
+        SmallMetaText("%s: %f", Get("editor.wall.angle").c_str(), wall.angle);
+
         FieldWidth(220.0f);
         ImGui::InputText(Get("wall.name").c_str(), &wall.name);
         EndSection();
@@ -1582,16 +1586,16 @@ namespace ImGuiDrawFunctions {
 
         // Only a portal has a step under the neighbour's floor, so only a
         // portal gets a Bottom texture; a solid wall shows Top everywhere.
-        // Only a portal has openings too, so Middle is greyed out on the rest.
+        // Only a portal has openings too, so only a portal gets a Middle.
         const bool portal = wall.IsPortal();
 
         DrawWallTextureField(portal ? Get("wall.texture_top").c_str() : Get("wall.texture").c_str(), wall.top);
-        if (portal) DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
+        if (portal) {
+            DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
 
-        ImGui::BeginDisabled(!portal);
-        MapEditorInternal::DrawAssetField(Get("wall.texture_middle").c_str(), wall.middle.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
-        ImGui::EndDisabled();
-        Tooltip(Get("editor.tooltip.wall.texture_middle").c_str());
+            MapEditorInternal::DrawAssetField(Get("wall.texture_middle").c_str(), wall.middle.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
+            Tooltip(Get("editor.tooltip.wall.texture_middle").c_str());
+        }
 
         FieldWidth(220.0f);
 
@@ -1617,21 +1621,17 @@ namespace ImGuiDrawFunctions {
 
             SmallMetaText("%s", Get("wall.texture_bottom").c_str());
             DrawWallSurfaceSettings("Bottom", wall.bottom, draggable);
+
+            SmallMetaText("%s", Get("wall.texture_middle").c_str());
+            DrawWallSurfaceSettings("Middle", wall.middle, draggable);
+
+            ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
+            Tooltip(Get("editor.tooltip.wall.middle_has_collision").c_str());
+
+            ImGui::Checkbox(Get("wall.ignored_by_raycast").c_str(), &wall.middleIgnoredByRaycast);
+            Tooltip(Get("editor.tooltip.wall.middle_ignored_by_raycast").c_str());
         }
         else DrawWallSurfaceSettings("Top", wall.top, draggable);
-
-        ImGui::BeginDisabled(!portal);
-
-        SmallMetaText("%s", Get("wall.texture_middle").c_str());
-        DrawWallSurfaceSettings("Middle", wall.middle, draggable);
-
-        ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
-        Tooltip(Get("editor.tooltip.wall.middle_has_collision").c_str());
-
-        ImGui::Checkbox(Get("wall.ignored_by_raycast").c_str(), &wall.middleIgnoredByRaycast);
-        Tooltip(Get("editor.tooltip.wall.middle_ignored_by_raycast").c_str());
-
-        ImGui::EndDisabled();
 
         EndSection();
 
