@@ -420,6 +420,7 @@ namespace {
         switch (mode) {
             case MapEditorInternal::EntityMarkerMode::Always: return "runtime_editor.entity_markers.always";
             case MapEditorInternal::EntityMarkerMode::VisibleOnly: return "runtime_editor.entity_markers.visible_only";
+            case MapEditorInternal::EntityMarkerMode::Wireframe: return "runtime_editor.entity_markers.wireframe";
             default: return "runtime_editor.entity_markers.off";
         }
     }
@@ -446,7 +447,11 @@ namespace {
         switch (MapEditorInternal::entityMarkerMode) {
             case EntityMarkerMode::Always: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::Always); break;
             case EntityMarkerMode::VisibleOnly: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::VisibleOnly); break;
-            default: runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::Off); break;
+            case EntityMarkerMode::Wireframe: runtimeRenderer->SetDrawMode(IRenderer::DrawMode::WIREFRAME); break;
+            default:
+                runtimeRenderer->SetEntityMarkers(IRenderer::EntityMarkers::Off);
+                runtimeRenderer->SetDrawMode(IRenderer::DrawMode::SOLID);
+                break;
         }
     }
 

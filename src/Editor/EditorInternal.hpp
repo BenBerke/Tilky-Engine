@@ -604,6 +604,7 @@ namespace MapEditorInternal {
     enum class EntityMarkerMode {
         Always,      // through walls too
         VisibleOnly, // hidden behind level geometry
+        Wireframe,
         Off,
         Count
     };

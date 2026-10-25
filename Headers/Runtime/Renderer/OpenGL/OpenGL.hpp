@@ -281,6 +281,7 @@ public:
     void SetWindowVisible(bool visible) override;
     void MakeCurrent() override;
     void SetVSync(int mode) override;
+    void SetDrawMode(DrawMode mode) override;
 
     void BeginFrame() override;
     void Update(bool renderDebug, bool renderUI) override;

@@ -88,6 +88,7 @@ namespace {
 
         if (!CreateRenderer(windowName, false)) return false;
 
+        renderer->SetDrawMode(IRenderer::DrawMode::SOLID);
         renderer->SetUseEditorCamera(useEditorCamera);
 
         if (!renderer->CreateMap()) {
@@ -118,6 +119,7 @@ namespace {
         renderer->MakeCurrent();
         renderer->SetVSync(vsyncMode);
         renderer->SetUseEditorCamera(useEditorCamera);
+        renderer->SetDrawMode(IRenderer::DrawMode::SOLID);
 
         if (!mapCreated) {
             // The atlas built at engine start is reused if no image changed since.

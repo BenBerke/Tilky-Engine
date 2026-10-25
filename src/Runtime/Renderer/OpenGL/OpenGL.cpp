@@ -84,3 +84,8 @@ void OpenGL::OnResize(const int width, const int height) {
 
     glViewport(0, 0, screenWidth, screenHeight);
 }
+
+void OpenGL::SetDrawMode(DrawMode mode) {
+    if (mode == DrawMode::WIREFRAME) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else if (mode == DrawMode::SOLID) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+}

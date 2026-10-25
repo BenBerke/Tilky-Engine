@@ -32,6 +32,13 @@ public:
     // Call with this renderer's context current (after MakeCurrent()).
     virtual void SetVSync(int mode) = 0;
 
+    enum class DrawMode : bool {
+        WIREFRAME = false,
+        SOLID = true
+    };
+
+    virtual void SetDrawMode(DrawMode mode) = 0;
+
     // Session state that shouldn't outlive one Play / runtime editor session.
     void EndSession() {
         useEditorCamera = false;
