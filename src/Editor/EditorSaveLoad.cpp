@@ -281,6 +281,13 @@ namespace MapEditorInternal {
                 }
             }
 
+            runtimeGravityMode = settings.value("runtimeGravityMode", false);
+            runtimeEyeHeight = std::clamp(
+                settings.value("runtimeEyeHeight", DEFAULT_RUNTIME_EYE_HEIGHT),
+                MIN_RUNTIME_EYE_HEIGHT,
+                MAX_RUNTIME_EYE_HEIGHT
+            );
+
 #ifndef TILKY_STANDALONE
             // An id no design has (or none, from older settings files) gets the default.
             EditorStyle::Apply(settings.value("editorDesign", std::string(EditorStyle::DEFAULT_DESIGN)));
@@ -450,6 +457,8 @@ namespace MapEditorInternal {
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
                 {"runtimeSteps", SerializeRuntimeSteps()},
+                {"runtimeGravityMode", runtimeGravityMode},
+                {"runtimeEyeHeight", runtimeEyeHeight},
                 {"autoSaveInSeconds", autoSaveInSeconds},
                 {"filteredAlpha", filteredAlpha}
             };

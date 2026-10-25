@@ -275,6 +275,7 @@ namespace MapEditorInternal {
         {"rt_speed_up",         "editor.key.rt_speed_up",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_B}},
         {"rt_speed_down",       "editor.key.rt_speed_down",       "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_N}},
         {"rt_reset_speed",      "editor.key.rt_reset_speed",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_COMMA}},
+        {"rt_gravity_mode",     "editor.key.rt_gravity_mode",     "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_G}},
 
         {"rt_move_tool",        "editor.key.rt_move_tool",        "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_1}},
         {"rt_rotate_tool",      "editor.key.rt_rotate_tool",      "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_2}},
@@ -355,6 +356,9 @@ namespace MapEditorInternal {
     };
 
     float runtimeSteps[RT_STEP_COUNT] = {};
+
+    bool runtimeGravityMode = false;
+    float runtimeEyeHeight = DEFAULT_RUNTIME_EYE_HEIGHT;
 
     namespace {
         // keyBindings and comboBindings start as copies of the defaults.

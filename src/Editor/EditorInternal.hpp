@@ -1209,6 +1209,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_SPEED_UP,
         KEYBIND_RT_SPEED_DOWN,
         KEYBIND_RT_RESET_SPEED,
+        KEYBIND_RT_GRAVITY_MODE,
 
         // Runtime editor: editing
         KEYBIND_RT_MOVE_TOOL,
@@ -1295,6 +1296,15 @@ namespace MapEditorInternal {
 
     extern const RuntimeStepInfo RUNTIME_STEP_INFO[RT_STEP_COUNT];
     extern float runtimeSteps[RT_STEP_COUNT];
+
+    // Runtime editor gravity mode: while on, the camera sits eyeHeight above
+    // the floor under it, like a play-mode camera. Saved with the user
+    // settings.
+    constexpr float DEFAULT_RUNTIME_EYE_HEIGHT = 12.0f; // ComponentPlayerController's default
+    constexpr float MIN_RUNTIME_EYE_HEIGHT = 0.0f;
+    constexpr float MAX_RUNTIME_EYE_HEIGHT = 64.0f;
+    extern bool runtimeGravityMode;
+    extern float runtimeEyeHeight;
     extern SDL_Scancode keyBindings[KEYBIND_COUNT][KEYBIND_SLOTS];
 
     // 0 turns auto save off.

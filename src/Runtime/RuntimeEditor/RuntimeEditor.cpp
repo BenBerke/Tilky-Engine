@@ -1662,6 +1662,7 @@ namespace RuntimeEditorUi {
 
     // Toolbar menus that stay open until their button is pressed again.
     bool stepsMenuOpen = false;
+    bool gravityMenuOpen = false;
     bool statisticsMenuOpen = false;
     bool paletteMenuOpen = false;
 
@@ -1752,6 +1753,27 @@ namespace RuntimeEditorUi {
         ImGui::SliderFloat("##CameraFov", &MapEditorInternal::runtimeCameraFov,
                            MapEditorInternal::MIN_RUNTIME_CAMERA_FOV, MapEditorInternal::MAX_RUNTIME_CAMERA_FOV,
                            fovFormat.c_str());
+
+        ImGui::SameLine();
+
+        // ---- Gravity mode
+        if (ToolbarButton("gravity", ICON_FA_PERSON_WALKING, "Gr",
+                          Localisation::Get("runtime_editor.gravity_mode") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.gravity_mode")),
+                          MapEditorInternal::runtimeGravityMode))
+            gravityMenuOpen = !gravityMenuOpen;
+
+        if (gravityMenuOpen && BeginToolbarMenu("##RuntimeEditorGravity")) {
+            using namespace MapEditorInternal;
+
+            ImGui::Checkbox(Localisation::Get("runtime_editor.gravity_mode").c_str(), &runtimeGravityMode);
+
+            ImGui::SetNextItemWidth(TOOLBAR_SLIDER_WIDTH);
+            ImGui::SliderFloat(Localisation::Get("runtime_editor.gravity_mode.eye_height").c_str(), &runtimeEyeHeight,
+                               MIN_RUNTIME_EYE_HEIGHT, MAX_RUNTIME_EYE_HEIGHT, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+            HoverTooltip(Localisation::Get("runtime_editor.tooltip.gravity_mode.eye_height"));
+        }
+
+        if (gravityMenuOpen) ImGui::End();
 
         DrawToolbarSeparator();
 
@@ -2375,6 +2397,34 @@ namespace RuntimeEditor {
             if (movementLengthSq > 0.0f) {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
                 transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
+            }
+
+            if (GetKeyBindDown(KEYBIND_RT_GRAVITY_MODE)) {
+                runtimeGravityMode = !runtimeGravityMode;
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(runtimeGravityMode
+                    ? "runtime_editor.toast.gravity_on"
+                    : "runtime_editor.toast.gravity_off").c_str(), false, 1.5f);
+            }
+        }
+
+        // Gravity mode: eye height above the floor under the camera, the same
+        // height a play-mode camera with that eye height renders at. Outside
+        // every sector the camera keeps its height.
+        if (MapEditorInternal::runtimeGravityMode) {
+            const Vector2 point = {transform->position.x, transform->position.z};
+            const float eyeHeight = MapEditorInternal::runtimeEyeHeight;
+            const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, point);
+
+            if (sectorIndex >= 0) {
+                const Sector& sector = level.sectors[sectorIndex];
+                const int floorIndex = MapQueries::FindFloorAtHeight(sector, point, transform->position.y - eyeHeight);
+
+                if (floorIndex >= 0)
+                    transform->SetPosition({
+                        transform->position.x,
+                        MapQueries::SurfaceHeightAt(sector, sector.floors[floorIndex].floor, point) + eyeHeight,
+                        transform->position.z
+                    });
             }
         }
 
