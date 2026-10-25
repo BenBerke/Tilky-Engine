@@ -1504,6 +1504,34 @@ namespace MapEditorInternal {
     // EndInspectorEdit, recorded in the map editor's history.
     void RecordInspectorEdit(Level& level, InspectorEditTracker& tracker, const std::vector<ID>& others = {});
 
+    // The same for the wall and sector inspectors: Begin before the
+    // inspector draws, End right after it, before the edit is passed on to
+    // the rest of a selection or a sector's children. One drag or one
+    // typing session is one step.
+    struct GeometryInspectorEditTracker {
+        bool isSector = false;
+        ID id = INVALID_ID;
+        nlohmann::json before; // in the save format, to spot changes
+        std::optional<Wall> wallBefore;
+        std::optional<Sector> sectorBefore;
+
+        // As InspectorEditTracker's.
+        bool stepOpen = false;
+        std::uint64_t historyVersion = 0;
+    };
+
+    void BeginWallInspectorEdit(GeometryInspectorEditTracker& tracker, const Wall& wall);
+    void BeginSectorInspectorEdit(GeometryInspectorEditTracker& tracker, const Sector& sector);
+
+    // When the wall or sector changed since Begin: every wall and sector as
+    // they are now, with that one put back as it was.
+    [[nodiscard]] bool EndGeometryInspectorEdit(const Level& level, GeometryInspectorEditTracker& tracker,
+                                                std::vector<Wall>* walls, std::vector<Sector>* sectors);
+
+    // EndGeometryInspectorEdit, recorded in the map editor's history. True
+    // when it changed something.
+    bool RecordGeometryInspectorEdit(const Level& level, GeometryInspectorEditTracker& tracker, const char* labelKey);
+
     struct UndoStep {
         UndoKind kind = UNDO_GEOMETRY;
         const char* labelKey = ""; // en.json
@@ -1537,6 +1565,11 @@ namespace MapEditorInternal {
     [[nodiscard]] EntitiesSnapshot CaptureEntitiesSnapshot();
     void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, int count = 0);
     void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, int count = 0);
+
+    // WallSnap::Disable and WallSnap::SetGap for either editor's inspector,
+    // with an undo step. Gap changes close together - one drag - are one.
+    void DisableWallSnapsWithUndo(const std::vector<ID>& entities);
+    void SetWallSnapGapWithUndo(Level& level, const std::vector<ID>& entities, float gap);
 
     // "Label" or "Label (count)", localised.
     [[nodiscard]] std::string HistoryLabel(const char* labelKey, int count);

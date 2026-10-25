@@ -392,6 +392,8 @@ namespace {
 
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
     InspectorEditTracker entityInspectorEdit;
+    GeometryInspectorEditTracker sectorInspectorEdit;
+    GeometryInspectorEditTracker wallInspectorEdit;
 
     std::optional<std::string> pendingLevelToLoad;
 
@@ -3036,6 +3038,8 @@ namespace {
 
         bool copyRequested = false;
 
+        BeginSectorInspectorEdit(sectorInspectorEdit, sector);
+
         if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
@@ -3051,6 +3055,10 @@ namespace {
             hasUnsavedChanges = true;
             return;
         }
+
+        // Before the propagation below, so the step also holds the rest of
+        // the selection and the children as they were.
+        RecordGeometryInspectorEdit(level, sectorInspectorEdit, "editor.history.edit_sectors");
 
         if (multiEdit && PropagateSectorEdits(level, beforeEdit, sector, selectedSectors, selectedSectorID))
             hasUnsavedChanges = true;
@@ -3092,6 +3100,8 @@ namespace {
         const WallEditSnapshot appearanceBeforeEdit =
                 multiEdit ? CaptureWallEditSnapshot(wall) : WallEditSnapshot{};
 
+        BeginWallInspectorEdit(wallInspectorEdit, wall);
+
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE);
 
@@ -3105,26 +3115,28 @@ namespace {
             return;
         }
 
-        if (multiEdit &&
-            PropagateWallEdits(level, appearanceBeforeEdit, wall, selectedWalls, selectedWallID))
-            hasUnsavedChanges = true;
-
         const Vector2 startAfterEdit = wall.start;
         const Vector2 endAfterEdit = wall.end;
 
         const bool startMoved = !SamePoint(startBeforeEdit, startAfterEdit);
         const bool endMoved = !SamePoint(endBeforeEdit, endAfterEdit);
 
+        // Before the propagation and the shared-endpoint move below, so the
+        // step also holds the rest of the selection and every wall joined to
+        // a moved corner as they were.
+        RecordGeometryInspectorEdit(level, wallInspectorEdit,
+                                    startMoved || endMoved ? "editor.history.edit_wall_points" : "editor.history.edit_walls");
+
+        if (multiEdit &&
+            PropagateWallEdits(level, appearanceBeforeEdit, wall, selectedWalls, selectedWallID))
+            hasUnsavedChanges = true;
+
         if (startMoved || endMoved) {
-            // Put the edited endpoints back first, so the undo snapshot
-            // records the pre-edit geometry and MoveSharedEndpoint sees
-            // this wall in the same state as everything else joined to
-            // that corner. Then move them all together.
+            // Put the edited endpoints back first, so MoveSharedEndpoint
+            // sees this wall in the same state as everything else joined
+            // to that corner. Then move them all together.
             wall.start = startBeforeEdit;
             wall.end = endBeforeEdit;
-
-            if (!wallGeometryDirtyFromInspector)
-                PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot(), "editor.history.edit_wall_points");
 
             if (startMoved) MoveSharedEndpoint(startBeforeEdit, startAfterEdit);
             if (endMoved) MoveSharedEndpoint(endBeforeEdit, endAfterEdit);
@@ -3261,7 +3273,7 @@ namespace {
             switch (entityInspectorState.wallSnapStatus) {
                 case WallSnapStatus::Off: WallSnap::BeginPicking(wallSnapTargets, entity.id); break;
                 case WallSnapStatus::Picking: WallSnap::CancelPicking(); break;
-                case WallSnapStatus::Snapped: WallSnap::Disable(wallSnapTargets); break;
+                case WallSnapStatus::Snapped: DisableWallSnapsWithUndo(wallSnapTargets); break;
             }
         }
 
@@ -3285,8 +3297,7 @@ namespace {
         if (entityInspectorState.wallSnapGapChanged) {
             entityInspectorState.wallSnapGapChanged = false;
 
-            WallSnap::SetGap(level, wallSnapTargets, entityInspectorState.wallSnapGap);
-            hasUnsavedChanges = true;
+            SetWallSnapGapWithUndo(level, wallSnapTargets, entityInspectorState.wallSnapGap);
         }
     }
 

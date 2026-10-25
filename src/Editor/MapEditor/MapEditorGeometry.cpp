@@ -3254,6 +3254,70 @@ namespace MapEditorInternal {
         tracker.historyVersion = undoHistoryVersion;
     }
 
+    namespace {
+        void BeginGeometryInspectorEdit(GeometryInspectorEditTracker& tracker, const bool isSector, const ID id) {
+            if (tracker.isSector != isSector || tracker.id != id || !ImGui::IsAnyItemActive()) tracker.stepOpen = false;
+
+            tracker.isSector = isSector;
+            tracker.id = id;
+        }
+    }
+
+    void BeginWallInspectorEdit(GeometryInspectorEditTracker& tracker, const Wall& wall) {
+        BeginGeometryInspectorEdit(tracker, false, wall.id);
+        tracker.before = LevelSerialization::WallToJson(wall);
+        tracker.wallBefore = wall;
+        tracker.sectorBefore.reset();
+    }
+
+    void BeginSectorInspectorEdit(GeometryInspectorEditTracker& tracker, const Sector& sector) {
+        BeginGeometryInspectorEdit(tracker, true, sector.id);
+        tracker.before = LevelSerialization::SectorToJson(sector);
+        tracker.sectorBefore = sector;
+        tracker.wallBefore.reset();
+    }
+
+    bool EndGeometryInspectorEdit(const Level& level, GeometryInspectorEditTracker& tracker,
+                                  std::vector<Wall>* walls, std::vector<Sector>* sectors) {
+        if (tracker.isSector) {
+            const Sector* sector = level.GetSector(tracker.id);
+            if (sector == nullptr || LevelSerialization::SectorToJson(*sector) == tracker.before) return false;
+        }
+        else {
+            const auto it = std::ranges::find(level.walls, tracker.id, &Wall::id);
+            if (it == level.walls.end() || LevelSerialization::WallToJson(*it) == tracker.before) return false;
+        }
+
+        *walls = level.walls;
+        *sectors = level.sectors;
+
+        if (tracker.isSector) *std::ranges::find(*sectors, tracker.id, &Sector::id) = *tracker.sectorBefore;
+        else *std::ranges::find(*walls, tracker.id, &Wall::id) = *tracker.wallBefore;
+
+        return true;
+    }
+
+    bool RecordGeometryInspectorEdit(const Level& level, GeometryInspectorEditTracker& tracker, const char* labelKey) {
+        std::vector<Wall> walls;
+        std::vector<Sector> sectors;
+        if (!EndGeometryInspectorEdit(level, tracker, &walls, &sectors)) return false;
+
+        // A step already open holds the state from before the whole drag.
+        if (!tracker.stepOpen || tracker.historyVersion != undoHistoryVersion ||
+            undoSteps.empty() || undoSteps.back().kind != UNDO_GEOMETRY) {
+            GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+            snapshot.walls = std::move(walls);
+            snapshot.sectors = std::move(sectors);
+
+            PushGeometryUndoSnapshot(std::move(snapshot), labelKey);
+        }
+
+        tracker.stepOpen = true;
+        tracker.historyVersion = undoHistoryVersion;
+        MarkUnsavedChanges();
+        return true;
+    }
+
     EntitiesSnapshot CaptureEntitiesSnapshot() {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -3297,6 +3361,55 @@ namespace MapEditorInternal {
         step.positions = std::move(before);
 
         PushUndoStep(std::move(step));
+    }
+
+    void DisableWallSnapsWithUndo(const std::vector<ID>& entities) {
+        int snapped = 0;
+        for (const ID entityID : entities) if (WallSnap::Find(entityID) != nullptr) ++snapped;
+        if (snapped == 0) return;
+
+        // Only the snaps change; the entities stay where they are.
+        UndoStep step;
+        step.kind = UNDO_ENTITY_POSITIONS;
+        step.labelKey = "editor.history.disable_wall_snap";
+        step.count = snapped;
+        step.wallSnaps = WallSnap::All();
+
+        WallSnap::Disable(entities);
+        PushUndoStep(std::move(step));
+    }
+
+    namespace {
+        // Gap changes closer together than this are one undo step.
+        constexpr Uint64 WALL_SNAP_GAP_MERGE_MS = 500;
+        Uint64 lastWallSnapGapTicks = 0;
+        std::uint64_t lastWallSnapGapVersion = 0;
+    }
+
+    void SetWallSnapGapWithUndo(Level& level, const std::vector<ID>& entities, const float gap) {
+        const Uint64 now = SDL_GetTicks();
+        const bool merge = now - lastWallSnapGapTicks < WALL_SNAP_GAP_MERGE_MS &&
+                           lastWallSnapGapVersion == undoHistoryVersion && !undoSteps.empty();
+
+        if (!merge) {
+            UndoStep step;
+            step.kind = UNDO_ENTITY_POSITIONS;
+            step.labelKey = "editor.history.wall_snap_gap";
+            step.count = static_cast<int>(entities.size());
+            step.wallSnaps = WallSnap::All();
+
+            for (const ID entityID : entities)
+                if (const ComponentTransform* transform = level.transforms.Get(entityID))
+                    step.positions.positions.emplace_back(entityID, transform->position);
+
+            PushUndoStep(std::move(step));
+        }
+
+        WallSnap::SetGap(level, entities, gap);
+        MarkUnsavedChanges();
+
+        lastWallSnapGapTicks = now;
+        lastWallSnapGapVersion = undoHistoryVersion;
     }
 
     void UndoLastAction() {

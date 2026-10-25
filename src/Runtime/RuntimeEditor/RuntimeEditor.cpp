@@ -873,44 +873,20 @@ namespace {
     }
 
     // ---- Undo / redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) ---------------------
-    // Covers the edits made straight in the view - texture drags, scrolling,
-    // flips, pastes, resets, texture cycling, alignment, dropped textures and
-    // wall deletes - as whole copies of the level's walls and sectors, and
-    // placed entities as a copy of every entity. Of the inspector's edits,
-    // only the entity inspector's.
-    struct GeometryState {
-        std::vector<Wall> walls;
-        std::vector<Sector> sectors;
-
-        // Names the step in the History window.
-        const char* labelKey = ""; // en.json
-        int count = 0;             // shown after the label when above 1
-
-        // Set on entity steps, which hold every entity instead of the walls
-        // and sectors.
-        std::optional<MapEditorInternal::EntitiesSnapshot> entities;
-
-        // Set on entity inspector steps, which hold only the edited entities.
-        std::optional<MapEditorInternal::EntityComponentsSnapshot> components;
-
-        // Set on steps that change wall snaps: every snap, swapped with
-        // WallSnap::All() along with the rest.
-        std::optional<WallSnap::Snaps> wallSnaps;
-    };
-
-    constexpr std::size_t MAX_UNDO_STEPS = 64;
-
-    std::vector<GeometryState> undoStack;
-    std::vector<GeometryState> redoStack;
-
-    // Changes whenever a step is committed, undone or redone.
-    std::uint64_t undoHistoryVersion = 0;
+    // One history with the Map Editor: its steps and this editor's undo
+    // and redo in either editor, in the order they were made. This editor
+    // records the edits made straight in the view - texture drags,
+    // scrolling, flips, pastes, resets, texture cycling, alignment, dropped
+    // textures, wall deletes and placed entities - and the inspectors'.
+    using UndoStep = MapEditorInternal::UndoStep;
 
     MapEditorInternal::InspectorEditTracker entityInspectorEdit;
+    MapEditorInternal::GeometryInspectorEditTracker wallInspectorEdit;
+    MapEditorInternal::GeometryInspectorEditTracker sectorInspectorEdit;
 
     // Every entity as the gizmo drag in progress found them, committed as an
     // undo step once the drag has changed something.
-    GeometryState gizmoUndo;
+    UndoStep gizmoUndo;
 
     // Scroll notches of the same kind closer together than this are one
     // undo step.
@@ -920,25 +896,27 @@ namespace {
 
     // A texture drag's state from the press. It only becomes an undo step
     // once the drag moves something, so a plain click leaves none.
-    GeometryState uvDragUndo;
+    UndoStep uvDragUndo;
     bool uvDragPushedUndo = false;
 
     // The walls and sectors as they are now, to record once an edit has
     // changed something.
-    GeometryState CaptureGeometry(const Level& level, const char* labelKey) {
-        return {level.walls, level.sectors, labelKey, 0};
+    UndoStep CaptureGeometry(const Level& level, const char* labelKey) {
+        (void)level;
+
+        UndoStep step;
+        step.kind = MapEditorInternal::UNDO_GEOMETRY;
+        step.labelKey = labelKey;
+        step.geometry = MapEditorInternal::CaptureGeometryUndoSnapshot();
+        return step;
     }
 
-    void CommitUndo(GeometryState before) {
-        undoStack.push_back(std::move(before));
-        if (undoStack.size() > MAX_UNDO_STEPS) undoStack.erase(undoStack.begin());
-
-        redoStack.clear();
-        ++undoHistoryVersion;
+    void CommitUndo(UndoStep before) {
+        MapEditorInternal::PushUndoStep(std::move(before));
     }
 
     // Records `before` when the edit changed `count` (more than 0) things.
-    void CommitUndoIf(GeometryState before, const int count) {
+    void CommitUndoIf(UndoStep before, const int count) {
         if (count <= 0) return;
 
         before.count = count;
@@ -947,66 +925,29 @@ namespace {
 
     // Call before changing walls or sectors.
     void PushUndo(const Level& level, const char* labelKey, const int count = 0) {
-        GeometryState state = CaptureGeometry(level, labelKey);
-        state.count = count;
-        CommitUndo(std::move(state));
+        UndoStep step = CaptureGeometry(level, labelKey);
+        step.count = count;
+        CommitUndo(std::move(step));
     }
 
     // Call before adding or removing entities.
-    GeometryState CaptureEntities(const Level& level, const char* labelKey) {
-        GeometryState state;
-        state.labelKey = labelKey;
-        state.entities.emplace();
-        state.entities->entities = level.entities;
-        state.entities->nextEntityID = level.nextEntityID;
+    UndoStep CaptureEntities(const Level& level, const char* labelKey) {
+        (void)level;
 
-#define CAPTURE_STORAGE(Type, Bit, Storage, LabelKey) state.entities->Storage = level.Storage;
-        TILKY_COMPONENTS(CAPTURE_STORAGE)
-#undef CAPTURE_STORAGE
-
-        return state;
+        UndoStep step;
+        step.kind = MapEditorInternal::UNDO_ENTITIES;
+        step.labelKey = labelKey;
+        step.entities = MapEditorInternal::CaptureEntitiesSnapshot();
+        return step;
     }
 
-    void SwapEntities(Level& level, MapEditorInternal::EntitiesSnapshot& snapshot) {
-        std::swap(level.entities, snapshot.entities);
-        std::swap(level.nextEntityID, snapshot.nextEntityID);
-
-#define SWAP_STORAGE(Type, Bit, Storage, LabelKey) std::swap(level.Storage, snapshot.Storage);
-        TILKY_COMPONENTS(SWAP_STORAGE)
-#undef SWAP_STORAGE
-
+    // After an undo or redo: selected indices and entities that no longer
+    // exist are dropped.
+    void AfterHistoryChange(Level& level) {
         std::erase_if(selectedEntityIds, [&](const ID id) { return level.GetEntity(id) == nullptr; });
 
         if (selectedEntityIds.empty()) ClearEntitySelection();
         else if (!selectedEntityId.has_value() || level.GetEntity(*selectedEntityId) == nullptr) SelectOnlyEntity(selectedEntityIds.back());
-
-        runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
-        MapEditorInternal::MarkUnsavedChanges();
-    }
-
-    // Swaps `state` in, leaving what was there in `state`. Selected indices
-    // that no longer exist are dropped.
-    void SwapGeometry(Level& level, GeometryState& state) {
-        if (state.wallSnaps.has_value()) std::swap(*state.wallSnaps, WallSnap::All());
-
-        if (state.entities.has_value()) {
-            SwapEntities(level, *state.entities);
-            return;
-        }
-
-        if (state.components.has_value()) {
-            MapEditorInternal::SwapEntityComponents(level, *state.components);
-            runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
-            MapEditorInternal::MarkUnsavedChanges();
-            return;
-        }
-
-        std::swap(level.walls, state.walls);
-        std::swap(level.sectors, state.sectors);
-
-        // Sector::walls points into level.walls, which is now a different
-        // array - every raycast and wall query walks those pointers.
-        MapQueries::RebuildSectorRuntimeLinks(level);
 
         const int wallCount = static_cast<int>(level.walls.size());
         std::erase_if(selectedWalls, [&](const int index) { return index < 0 || index >= wallCount; });
@@ -1023,56 +964,24 @@ namespace {
         if (selectedFlats.empty()) ClearFlatSelection();
         else if (std::ranges::find(selectedFlats, SelectedFlat{selectedSector, selectedSectorFloor, selectedSectorSurface}) == selectedFlats.end())
             SetPrimaryFlat(selectedFlats.back());
+
+        if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
     }
 
     bool Undo(Level& level) {
-        if (undoStack.empty()) return false;
+        if (MapEditorInternal::undoSteps.empty()) return false;
 
-        GeometryState state = std::move(undoStack.back());
-        undoStack.pop_back();
-
-        SwapGeometry(level, state);
-        redoStack.push_back(std::move(state));
-        ++undoHistoryVersion;
+        MapEditorInternal::UndoLastAction();
+        AfterHistoryChange(level);
         return true;
     }
 
     bool Redo(Level& level) {
-        if (redoStack.empty()) return false;
+        if (MapEditorInternal::redoSteps.empty()) return false;
 
-        GeometryState state = std::move(redoStack.back());
-        redoStack.pop_back();
-
-        SwapGeometry(level, state);
-        undoStack.push_back(std::move(state));
-        ++undoHistoryVersion;
+        MapEditorInternal::RedoLastAction();
+        AfterHistoryChange(level);
         return true;
-    }
-
-    // MapEditorInternal::RecordInspectorEdit, for this editor's history.
-    void RecordInspectorEdit(Level& level, const std::vector<ID>& others) {
-        std::optional<MapEditorInternal::EntityComponentsSnapshot> before =
-            MapEditorInternal::EndInspectorEdit(level, entityInspectorEdit, others);
-        if (!before.has_value()) return;
-
-        if (entityInspectorEdit.stepOpen && entityInspectorEdit.historyVersion == undoHistoryVersion &&
-            !undoStack.empty() && undoStack.back().components.has_value()) {
-            GeometryState& step = undoStack.back();
-            MapEditorInternal::AddMissingEntityComponents(*step.components, std::move(*before));
-            step.count = static_cast<int>(step.components->size());
-        }
-        else {
-            GeometryState step;
-            step.labelKey = "editor.history.edit_entities";
-            step.count = static_cast<int>(before->size());
-            step.components = std::move(*before);
-
-            CommitUndo(std::move(step));
-        }
-
-        entityInspectorEdit.stepOpen = true;
-        entityInspectorEdit.historyVersion = undoHistoryVersion;
-        MapEditorInternal::MarkUnsavedChanges();
     }
 
     // ---- Texture shortcuts ------------------------------------------------
@@ -1133,18 +1042,14 @@ namespace {
     }
 
     // Runs one of the Map Editor's wall texture tools - they work on its own
-    // selection - on this editor's selected walls. The tool's undo step
-    // lands on the Map Editor's history, so it's taken back off and that
-    // history's redo steps put back: this editor's own undo covers the
-    // change. Returns how many walls the tool changed.
+    // selection - on this editor's selected walls, with the tool's own undo
+    // step. Returns how many walls the tool changed.
     int RunMapEditorWallTool(Level& level, int (*tool)()) {
         if (selectedWalls.empty() || &level != &LevelManager::CurrentLevel()) return 0;
 
         const std::vector<ID> savedSelection = MapEditorInternal::selectedWalls;
         const ID savedPrimary = MapEditorInternal::selectedWallID;
         const bool savedEditing = MapEditorInternal::editingWall;
-        const std::size_t savedSteps = MapEditorInternal::undoSteps.size();
-        std::vector<MapEditorInternal::UndoStep> savedRedo = std::move(MapEditorInternal::redoSteps);
 
         MapEditorInternal::selectedWalls.clear();
         for (const int index : selectedWalls)
@@ -1155,9 +1060,6 @@ namespace {
             : INVALID_ID;
 
         const int changed = MapEditorInternal::selectedWalls.empty() ? 0 : tool();
-
-        while (MapEditorInternal::undoSteps.size() > savedSteps) MapEditorInternal::undoSteps.pop_back();
-        MapEditorInternal::redoSteps = std::move(savedRedo);
 
         MapEditorInternal::selectedWalls = savedSelection;
         MapEditorInternal::selectedWallID = savedPrimary;
@@ -1279,7 +1181,7 @@ namespace {
 
         constexpr float PULL_BACK = 0.01f;
 
-        GeometryState before = CaptureEntities(level, "editor.history.place_entity");
+        UndoStep before = CaptureEntities(level, "editor.history.place_entity");
 
         const ID id = create(hoveredHitPosition - hoveredRayDirection * PULL_BACK);
 
@@ -1371,11 +1273,13 @@ namespace {
 
     // A drop that doesn't land leaves no undo step behind.
     int ApplyTextureToDropTargetWithUndo(Level& level, const std::string& textureReference) {
-        PushUndo(level, "runtime_editor.history.apply_texture", DropTargetCount());
-        if (const int count = ApplyTextureToDropTarget(level, textureReference); count > 0) return count;
+        UndoStep before = CaptureGeometry(level, "runtime_editor.history.apply_texture");
+        before.count = DropTargetCount();
 
-        undoStack.pop_back();
-        return 0;
+        const int count = ApplyTextureToDropTarget(level, textureReference);
+        if (count > 0) CommitUndo(std::move(before));
+
+        return count;
     }
 
     // The Asset Browser's AssignHandler: a texture goes to the top of every
@@ -1387,7 +1291,7 @@ namespace {
         int count = 0;
 
         if (!selectedEntityIds.empty()) {
-            GeometryState before = CaptureEntities(level, "runtime_editor.history.apply_texture");
+            UndoStep before = CaptureEntities(level, "runtime_editor.history.apply_texture");
 
             for (const ID id : selectedEntityIds) {
                 ComponentSprite* sprite = level.sprites.Get(id);
@@ -1400,7 +1304,7 @@ namespace {
             CommitUndoIf(std::move(before), count);
         }
         else {
-            GeometryState before = CaptureGeometry(level, "runtime_editor.history.apply_texture");
+            UndoStep before = CaptureGeometry(level, "runtime_editor.history.apply_texture");
 
             for (const int wallIndex : selectedWalls) {
                 if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
@@ -1885,8 +1789,7 @@ namespace RuntimeEditorUi {
         ImGui::End();
     }
 
-    // Same list as the map editor's History window, over this editor's own
-    // undo steps.
+    // The map editor's History window, here.
     void DrawHistoryWindow(Level& level) {
         ImGui::SetNextWindowSize(ImVec2(260.0f, 320.0f), ImGuiCond_FirstUseEver);
 
@@ -1894,14 +1797,14 @@ namespace RuntimeEditorUi {
             std::vector<std::string> undoLabels;
             std::vector<std::string> redoLabels;
 
-            for (const GeometryState& state : undoStack) undoLabels.push_back(MapEditorInternal::HistoryLabel(state.labelKey, state.count));
-            for (auto it = redoStack.rbegin(); it != redoStack.rend(); ++it) redoLabels.push_back(MapEditorInternal::HistoryLabel(it->labelKey, it->count));
+            for (const UndoStep& step : MapEditorInternal::undoSteps) undoLabels.push_back(MapEditorInternal::HistoryLabel(step.labelKey, step.count));
+            for (auto it = MapEditorInternal::redoSteps.rbegin(); it != MapEditorInternal::redoSteps.rend(); ++it) redoLabels.push_back(MapEditorInternal::HistoryLabel(it->labelKey, it->count));
 
             const int position = ImGuiDrawFunctions::DrawHistoryList(undoLabels, redoLabels, Localisation::Get("editor.history.initial_state"));
 
             if (position >= 0) {
-                while (static_cast<int>(undoStack.size()) > position && Undo(level)) {}
-                while (static_cast<int>(undoStack.size()) < position && Redo(level)) {}
+                MapEditorInternal::JumpToUndoPosition(static_cast<std::size_t>(position));
+                AfterHistoryChange(level);
             }
         }
 
@@ -1976,7 +1879,7 @@ namespace RuntimeEditorUi {
             }
 
             if (!editingEntity) {
-                RecordInspectorEdit(level, {});
+                MapEditorInternal::RecordInspectorEdit(level, entityInspectorEdit);
                 ClearEntitySelection();
                 return;
             }
@@ -1991,7 +1894,7 @@ namespace RuntimeEditorUi {
 
             // Before the mirroring below, so the step also holds the rest of
             // the selection as it was.
-            RecordInspectorEdit(level, mirrors ? selectedEntityIds : std::vector<ID>{});
+            MapEditorInternal::RecordInspectorEdit(level, entityInspectorEdit, mirrors ? selectedEntityIds : std::vector<ID>{});
 
             if (mirrors) {
                 const nlohmann::json after = MultiEdit::EntityState(level, primaryID);
@@ -2006,7 +1909,7 @@ namespace RuntimeEditorUi {
             if (entityInspectorState.snapToFloorRequested) {
                 entityInspectorState.snapToFloorRequested = false;
 
-                GeometryState undo = CaptureEntities(level, "editor.history.snap_to_floor");
+                UndoStep undo = CaptureEntities(level, "editor.history.snap_to_floor");
                 int snapped = 0;
 
                 for (const ID id : selectedEntityIds)
@@ -2025,14 +1928,14 @@ namespace RuntimeEditorUi {
                 switch (entityInspectorState.wallSnapStatus) {
                     case WallSnapStatus::Off: WallSnap::BeginPicking(selectedEntityIds, primaryID); break;
                     case WallSnapStatus::Picking: WallSnap::CancelPicking(); break;
-                    case WallSnapStatus::Snapped: WallSnap::Disable(selectedEntityIds); break;
+                    case WallSnapStatus::Snapped: MapEditorInternal::DisableWallSnapsWithUndo(selectedEntityIds); break;
                 }
             }
 
             if (entityInspectorState.switchSidesRequested) {
                 entityInspectorState.switchSidesRequested = false;
 
-                GeometryState undo = CaptureEntities(level, "editor.history.switch_wall_side");
+                UndoStep undo = CaptureEntities(level, "editor.history.switch_wall_side");
                 undo.wallSnaps = WallSnap::All();
 
                 const int switched = WallSnap::SwitchSides(level, selectedEntityIds);
@@ -2043,8 +1946,7 @@ namespace RuntimeEditorUi {
             if (entityInspectorState.wallSnapGapChanged) {
                 entityInspectorState.wallSnapGapChanged = false;
 
-                WallSnap::SetGap(level, selectedEntityIds, entityInspectorState.wallSnapGap);
-                MapEditorInternal::MarkUnsavedChanges();
+                MapEditorInternal::SetWallSnapGapWithUndo(level, selectedEntityIds, entityInspectorState.wallSnapGap);
             }
         }
 
@@ -2058,6 +1960,8 @@ namespace RuntimeEditorUi {
 
             const bool mirrors = selectedWalls.size() > 1;
             const nlohmann::json before = mirrors ? MultiEdit::WallState(level.walls[selectedWall]) : nlohmann::json{};
+
+            MapEditorInternal::BeginWallInspectorEdit(wallInspectorEdit, level.walls[selectedWall]);
 
             const bool deleteRequested =
                 ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE);
@@ -2076,6 +1980,10 @@ namespace RuntimeEditorUi {
                 MapQueries::RebuildSectorRuntimeLinks(level);
                 return;
             }
+
+            // Before the mirroring below, so the step also holds the rest of
+            // the selection as it was.
+            MapEditorInternal::RecordGeometryInspectorEdit(level, wallInspectorEdit, "editor.history.edit_walls");
 
             if (!editingWall) {
                 ClearWallSelection();
@@ -2113,11 +2021,16 @@ namespace RuntimeEditorUi {
 
                 bool open = true;
 
+                MapEditorInternal::BeginSectorInspectorEdit(sectorInspectorEdit, level.sectors[selectedSector]);
+
                 ImGuiDrawFunctions::DrawSectorEditor(
                     level.sectors[selectedSector],
                     &open,
                     true
                 );
+
+                // Before the mirroring below, as for walls.
+                MapEditorInternal::RecordGeometryInspectorEdit(level, sectorInspectorEdit, "editor.history.edit_sectors");
 
                 if (!open) {
                     ClearFlatSelection();
@@ -2764,7 +2677,7 @@ namespace RuntimeEditor {
 
             // The hovered fallback needs the cursor on the view, not a panel.
             if (flipX || flipY) {
-                GeometryState before = CaptureGeometry(level, "runtime_editor.history.flip_texture");
+                UndoStep before = CaptureGeometry(level, "runtime_editor.history.flip_texture");
                 CommitUndoIf(std::move(before), FlipTextures(level, flipX, flipY, !mouseBlockedByImGui));
             }
         }
@@ -2794,7 +2707,7 @@ namespace RuntimeEditor {
             const bool pasteWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE_PLACEMENT);
 
             if (pasteWithPlacement || GetComboDown(MapEditorInternal::COMBO_RT_PASTE_TEXTURE)) {
-                GeometryState before = CaptureGeometry(level, pasteWithPlacement
+                UndoStep before = CaptureGeometry(level, pasteWithPlacement
                     ? "runtime_editor.history.paste_texture_placement"
                     : "runtime_editor.history.paste_texture");
                 CommitUndoIf(std::move(before), PasteSurface(level, pasteWithPlacement, !mouseBlockedByImGui));
@@ -2811,29 +2724,25 @@ namespace RuntimeEditor {
             }
 
             if (GetComboDown(MapEditorInternal::COMBO_RT_PASTE_PROPERTIES)) {
-                GeometryState before = CaptureGeometry(level, "runtime_editor.history.paste_properties");
+                UndoStep before = CaptureGeometry(level, "runtime_editor.history.paste_properties");
                 CommitUndoIf(std::move(before), PasteProperties(level, !mouseBlockedByImGui));
                 runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
             }
 
             // Reset offset, scale and flip.
             if (GetComboDown(MapEditorInternal::COMBO_RT_RESET_PLACEMENT)) {
-                GeometryState before = CaptureGeometry(level, "runtime_editor.history.reset_placement");
+                UndoStep before = CaptureGeometry(level, "runtime_editor.history.reset_placement");
                 CommitUndoIf(std::move(before), ResetTexturePlacement(level, !mouseBlockedByImGui));
             }
 
             // Fit each selected wall's texture to its height, or continue the
             // textures across the selected walls' corners.
             if (GetComboDown(MapEditorInternal::COMBO_RT_FIT_TEXTURES)) {
-                GeometryState before = CaptureGeometry(level, "editor.history.fit_wall_textures");
                 const int changed = RunMapEditorWallTool(level, &MapEditorInternal::FitSelectedWallTexturesToHeight);
-                CommitUndoIf(std::move(before), changed);
                 ShowToastf("editor.geometry.align.fit_done", changed);
             }
             else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES)) {
-                GeometryState before = CaptureGeometry(level, "editor.history.align_wall_textures");
                 const int changed = RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures);
-                CommitUndoIf(std::move(before), changed);
                 ShowToastf("editor.geometry.align.chain_done", changed);
             }
 
@@ -2844,7 +2753,7 @@ namespace RuntimeEditor {
             const bool cycleForward = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_NEXT_TEXTURE);
 
             if (cycleBack != cycleForward) {
-                GeometryState before = CaptureGeometry(level, "runtime_editor.history.change_texture");
+                UndoStep before = CaptureGeometry(level, "runtime_editor.history.change_texture");
                 CommitUndoIf(std::move(before), CycleTextures(level, cycleForward ? 1 : -1, !mouseBlockedByImGui));
             }
 
@@ -2880,7 +2789,7 @@ namespace RuntimeEditor {
 
             if (!wallHit.has_value() || !wallHit->HitWall()) WallSnap::CancelPicking();
             else {
-                GeometryState undo = CaptureEntities(level, "editor.history.snap_to_wall");
+                UndoStep undo = CaptureEntities(level, "editor.history.snap_to_wall");
                 undo.wallSnaps = WallSnap::All();
 
                 const int snapped = WallSnap::FinishPicking(

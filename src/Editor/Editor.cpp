@@ -100,7 +100,9 @@ namespace Editor {
 
         sectorBeingCreated.clear();
         pendingSectorParams = {};
-        ClearUndoHistory();
+
+        // The undo history is kept: Play puts the level back as it was, and
+        // the runtime editor records its edits in the same history.
 
         dots.clear();
         dotIDToIndex.clear();
