@@ -16,6 +16,7 @@
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
 #include "Headers/Editor/Editor.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 #include "EditorInternal.hpp" // SaveUserSettings()
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -1246,29 +1247,29 @@ std::span<const AssetBrowser::ScriptEditorColorInfo> AssetBrowser::ScriptEditorC
     // Only the slots Lua and plain text actually use (no preprocessor,
     // breakpoints or error markers).
     static constexpr ScriptEditorColorInfo kColors[] = {
-        {PI::Default, "default", "Plain Text"},
-        {PI::Keyword, "keyword", "Keyword"},
-        {PI::Number, "number", "Number"},
-        {PI::String, "string", "String"},
-        {PI::Punctuation, "punctuation", "Punctuation"},
-        {PI::Identifier, "identifier", "Identifier"},
-        {PI::KnownIdentifier, "knownIdentifier", "Engine / Built-in Name"},
-        {PI::Comment, "comment", "Comment"},
-        {PI::MultiLineComment, "multiLineComment", "Block Comment"},
-        {PI::Background, "background", "Background"},
-        {PI::Cursor, "cursor", "Cursor"},
-        {PI::Selection, "selection", "Selection"},
-        {PI::LineNumber, "lineNumber", "Line Number"},
-        {PI::CurrentLineFill, "currentLineFill", "Current Line"},
-        {PI::CurrentLineFillInactive, "currentLineFillInactive", "Current Line (Unfocused)"},
-        {PI::CurrentLineEdge, "currentLineEdge", "Current Line Edge"},
+        {PI::Default, "default", "editor.script_editor.color.default"},
+        {PI::Keyword, "keyword", "editor.script_editor.color.keyword"},
+        {PI::Number, "number", "editor.script_editor.color.number"},
+        {PI::String, "string", "editor.script_editor.color.string"},
+        {PI::Punctuation, "punctuation", "editor.script_editor.color.punctuation"},
+        {PI::Identifier, "identifier", "editor.script_editor.color.identifier"},
+        {PI::KnownIdentifier, "knownIdentifier", "editor.script_editor.color.known_identifier"},
+        {PI::Comment, "comment", "editor.script_editor.color.comment"},
+        {PI::MultiLineComment, "multiLineComment", "editor.script_editor.color.multi_line_comment"},
+        {PI::Background, "background", "editor.script_editor.color.background"},
+        {PI::Cursor, "cursor", "editor.script_editor.color.cursor"},
+        {PI::Selection, "selection", "editor.script_editor.color.selection"},
+        {PI::LineNumber, "lineNumber", "editor.script_editor.color.line_number"},
+        {PI::CurrentLineFill, "currentLineFill", "editor.script_editor.color.current_line_fill"},
+        {PI::CurrentLineFillInactive, "currentLineFillInactive", "editor.script_editor.color.current_line_fill_inactive"},
+        {PI::CurrentLineEdge, "currentLineEdge", "editor.script_editor.color.current_line_edge"},
     };
 
     return kColors;
 }
 
 void AssetBrowser::DrawColorsMenu() {
-    if (!ImGui::BeginMenu("Colors")) {
+    if (!ImGui::BeginMenu(Localisation::Get("editor.script_editor.colors").c_str())) {
         if (scriptEditorColorsChanged) {
             scriptEditorColorsChanged = false;
             MapEditorInternal::SaveUserSettings();
@@ -1296,7 +1297,7 @@ void AssetBrowser::DrawColorsMenu() {
 
             ImGui::TableSetColumnIndex(0);
             ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(info.label);
+            ImGui::TextUnformatted(Localisation::Get(info.labelKey).c_str());
 
             ImGui::TableSetColumnIndex(1);
             ImVec4 edited = ImGui::ColorConvertU32ToFloat4(color);
@@ -1307,7 +1308,7 @@ void AssetBrowser::DrawColorsMenu() {
 
             ImGui::TableSetColumnIndex(2);
             ImGui::BeginDisabled(color == defaults[static_cast<std::size_t>(info.index)]);
-            if (ImGui::SmallButton("Default")) {
+            if (ImGui::SmallButton(Localisation::Get("editor.user_settings.default").c_str())) {
                 color = defaults[static_cast<std::size_t>(info.index)];
                 changed = true;
             }
@@ -1321,7 +1322,7 @@ void AssetBrowser::DrawColorsMenu() {
 
     ImGui::Separator();
 
-    if (ImGui::MenuItem("Reset All to Default", nullptr, false, palette != defaults)) {
+    if (ImGui::MenuItem(Localisation::Get("editor.script_editor.colors.reset_all").c_str(), nullptr, false, palette != defaults)) {
         palette = defaults;
         changed = true;
     }

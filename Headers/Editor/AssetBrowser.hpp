@@ -330,7 +330,7 @@ public:
     struct ScriptEditorColorInfo {
         TextEditor::PaletteIndex index;
         const char* saveName;
-        const char* label;
+        const char* labelKey;
     };
     [[nodiscard]] static std::span<const ScriptEditorColorInfo> ScriptEditorColors();
 
