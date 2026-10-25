@@ -5,6 +5,8 @@
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
+#include "Headers/Map/MapQueries.hpp"
+#include "Headers/Math/Constants.hpp"
 
 #include <algorithm>
 
@@ -405,6 +407,81 @@ void Level::PropagateSectorChanges(const ID sectorID, const std::vector<SectorFl
     }
 }
 
+namespace {
+    // One collider of an entity inside a moving sector, measured before the
+    // sector moves.
+    struct SectorBody {
+        Vector2 point; // map (x, z) of the collider's bottom
+        float bottom = 0.0f;
+        float height = 0.0f;
+        int floorIndex = -1; // the floor interval it is in
+    };
+
+    std::vector<SectorBody> CollectSectorBodies(const Level& level, const Sector& sector) {
+        std::vector<SectorBody> bodies;
+
+        for (const ID entityID : sector.entitiesInside) {
+            const ComponentTransform* transform = level.transforms.Get(entityID);
+            if (transform == nullptr) continue;
+
+            for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(entityID)) {
+                const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
+                if (!collider->isActive || collider->isTrigger) continue;
+
+                const Vector3 base = transform->LocalToWorld(collider->offset);
+                const Vector2 point = {base.x, base.z};
+
+                bodies.push_back({point, base.y, collider->Height(), MapQueries::FindFloorAtHeight(sector, point, base.y)});
+            }
+        }
+
+        return bodies;
+    }
+
+    // How far `body` pokes through the ceiling with the floor and ceiling at
+    // these heights (slopes kept). A floor that has risen into the body
+    // carries it up first, so a lift only hits a body once it squeezes it.
+    float CeilingOverlap(const Sector& sector, const SectorFloor& floor, const SectorBody& body,
+                         const float floorHeight, const float ceilingHeight) {
+        const float floorAt = floorHeight + MapQueries::SurfaceHeightAt(sector, floor.floor, body.point) - floor.floor.height;
+        const float ceilingAt = ceilingHeight + MapQueries::SurfaceHeightAt(sector, floor.ceiling, body.point) - floor.ceiling.height;
+        return std::max(body.bottom, floorAt) + body.height - ceilingAt;
+    }
+
+    // True if moving from the `before` heights to the `after` heights pushes
+    // any body in floor interval `floorIndex` further into its ceiling.
+    bool MoveHitsBody(const Sector& sector, const SectorFloor& floor, const int floorIndex,
+                      const std::vector<SectorBody>& bodies,
+                      const float floorBefore, const float ceilingBefore,
+                      const float floorAfter, const float ceilingAfter) {
+        return std::ranges::any_of(bodies, [&](const SectorBody& body) {
+            if (body.floorIndex != floorIndex) return false;
+
+            const float after = CeilingOverlap(sector, floor, body, floorAfter, ceilingAfter);
+            return after > Constants::LargeEpsilon &&
+                   after > CeilingOverlap(sector, floor, body, floorBefore, ceilingBefore);
+        });
+    }
+
+    // Undoes this frame's step of a blocked move, then reacts per its mode.
+    void BlockMove(SurfaceMove& move, float& height, const float heightBefore) {
+        height = heightBefore;
+
+        switch (move.collision) {
+            case SECTOR_STOP: move.active = false; break;
+            case SECTOR_RETRACT: SectorFloor::Retract(move); break;
+            // Waits in place and tries again next frame. Still active even
+            // if this step would have finished the move.
+            case SECTOR_DONT_MOVE: move.active = true; break;
+            case SECTOR_FORCE_MOVE: break;
+        }
+    }
+
+    bool ChecksEntities(const SurfaceMove& move) {
+        return move.active && move.collision != SECTOR_FORCE_MOVE;
+    }
+}
+
 void Level::UpdateSectorMovement(const float deltaTime) {
     for (Sector& sector : sectors) {
         const bool floorsMoving = std::ranges::any_of(sector.floors, &SectorFloor::IsMoving);
@@ -416,7 +493,15 @@ void Level::UpdateSectorMovement(const float deltaTime) {
 
         bool changed = sector.UpdateLightFade(deltaTime);
 
+        // Measured before anything moves, and only if some move cares.
+        const bool checksEntities = std::ranges::any_of(sector.floors, [](const SectorFloor& floor) {
+            return ChecksEntities(floor.floorMove) || ChecksEntities(floor.ceilingMove);
+        });
+        const std::vector<SectorBody> bodies = checksEntities ? CollectSectorBodies(*this, sector) : std::vector<SectorBody>{};
+
         for (size_t i = 0; i < sector.floors.size(); ++i) {
+            SectorFloor& floor = sector.floors[i];
+
             const float lowest = i > 0
                 ? sector.floors[i - 1].ceiling.height
                 : -std::numeric_limits<float>::infinity();
@@ -424,7 +509,25 @@ void Level::UpdateSectorMovement(const float deltaTime) {
                 ? sector.floors[i + 1].floor.height
                 : std::numeric_limits<float>::infinity();
 
-            changed |= sector.floors[i].UpdateMovement(deltaTime, lowest, highest);
+            const float floorBefore = floor.floor.height;
+            const float ceilingBefore = floor.ceiling.height;
+            const bool checkFloor = ChecksEntities(floor.floorMove);
+            const bool checkCeiling = ChecksEntities(floor.ceilingMove);
+
+            floor.UpdateMovement(deltaTime, lowest, highest);
+
+            // Each surface is judged on its own step, the other held still.
+            // Only a rising floor or a lowering ceiling can hit a body.
+            const int floorIndex = static_cast<int>(i);
+            if (checkFloor && floor.floor.height > floorBefore &&
+                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floor.floor.height, ceilingBefore))
+                BlockMove(floor.floorMove, floor.floor.height, floorBefore);
+
+            if (checkCeiling && floor.ceiling.height < ceilingBefore &&
+                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floorBefore, floor.ceiling.height))
+                BlockMove(floor.ceilingMove, floor.ceiling.height, ceilingBefore);
+
+            changed |= floor.floor.height != floorBefore || floor.ceiling.height != ceilingBefore;
         }
 
         if (changed && !sector.children.empty())

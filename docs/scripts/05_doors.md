@@ -26,6 +26,10 @@ Things to know:
 - With several floor intervals in one sector, the engine stops the ceiling at the next interval's
   floor instead of erroring.
 - A `speed` of 0 or less raises an error.
+- A closing door goes straight through whoever is standing in it. Pass a `SectorCollision` as the
+  fourth argument to change that: `sector:MoveCeilingToFloor(1, speed, 0, SectorCollision.Retract)`
+  reopens the door when it would hit a collider, `SectorCollision.Stop` stops it on the entity's
+  head, and `SectorCollision.DontMove` waits until they leave.
 - Scripts with a **player** field need the player assigned in the inspector. You could look it up
   with `Game.FindEntity("Player")` in `Start` instead, but then renaming the entity breaks it.
 - `sector:DistanceToSector(player)` measures to the sector's outline, so it works for a door of

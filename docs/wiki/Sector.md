@@ -1,289 +1,601 @@
-# Sector
+# Sector API
 
-A sector is a **room**. On the map it is a 2D shape, a polygon you draw in the map editor. In the
-game it becomes a space with a floor at one height and a ceiling at another. Its outline becomes
-[walls](Wall.md): solid where nothing is on the other side, and openings where another sector
-shares the edge. A step, a window, a doorway and a lift are all just two sectors next to each other
-with different floor and ceiling heights.
+Everything a Lua script can do with a sector.
 
-Sectors also hold a **light colour**, **tags** and **scripts**. Sector scripts are how you build
-doors, lifts, crushers, traps and flickering lights.
-
-This page explains what sectors are and what every setting does. The complete list of sector
-functions, with full parameter details, is in [`docs/sector.md`](../sector.md).
-
----
-
-## How a sector works
-
-### Floors and ceilings
-
-Every sector has at least one **floor interval**: a floor surface at the bottom and a ceiling
-surface at the top. The space between them is where things can stand. A new sector's floor is at
-height `0` and its ceiling at `40`.
-
-A sector can have **several** intervals stacked on top of each other (**Add Floor** in the
-inspector). That makes a multi-storey room: a balcony above a hall, or a bridge over a pit. The
-intervals are numbered from `1` at the bottom. Each one must sit entirely above the one below it:
-a floor has to stay below its own ceiling and can't reach into the interval under it.
-
-Entities stand in whichever interval fits them best at their height. Physics keeps them between
-that interval's floor and ceiling.
-
-### Surfaces
-
-Each floor and each ceiling is a **surface** with its own settings:
-
-| Setting | Meaning |
-|---|---|
-| Height | World height of the surface. |
-| Texture | Image drawn on the surface. Empty means no texture, just the colour. |
-| Color | Tint, `0..1` per channel. |
-| Slope Direction / Strength | Tilts the surface. See below. |
-| Texture Offset / Scale / Flip X / Flip Y | How the texture is placed on the surface. |
-
-### Slopes
-
-A surface can be tilted so that it rises along one axis: **+X**, **-X**, **+Z** or **-Z**. The
-**Strength** sets how steep it is. It is the slope's angle in degrees: `45` rises one unit for every
-unit you move along the slope direction, `30` about 0.58. A negative strength slopes the other
-way. Angles are held just short of 90°. The rise is measured from the edge of the sector's bounding rectangle on the
-"low" side. So the **Height** setting is the height at that edge, and the surface climbs from
-there.
-
-Physics, rendering and `sector:GetFloorHeightAt(point)` all use the same slope maths, so what you
-see is what entities stand on.
-
-### Light
-
-`light` is the sector's light colour, `0..255` per channel. `255, 255, 255` means fully lit and
-lower values darken everything in the sector: walls, floors, ceilings, and the sprites and models
-of entities standing in it. Tinted light like `255, 80, 80` gives a red room.
-
-### Parent and child sectors
-
-A sector can have a **Parent Sector** (in the inspector). Its children then **follow** it: when you
-change the parent's heights, colours, slopes, texture offsets or light, every child changes **by the
-same amount**. For example, raising a parent's floor from 10 to 20 takes a child floor from 5 to 15. Texture
-names, slope directions and flips are copied over when the parent's change. This works for edits
-in the inspector, for script changes and for moves started by scripts. It's how a pillar or
-platform inside a room rises with the room's floor.
-
-Separately from that setting, a sector drawn completely inside another one is cut out of it
-geometrically. The inner sector is a hole in the outer one's floor, like an island or a pillar.
-An entity standing on the inner sector is inside the **inner** sector, not the outer one.
-
-### Occupancy
-
-The engine always knows which entities are inside each sector:
-
-- An entity is inside the sector that contains its `(x, z)` position. **Height is ignored**, so all
-  storeys of a multi-storey sector count as the same sector.
-- An entity is inside **exactly one** sector: the innermost one.
-- Entities without a [Transform](Transform.md) (UI entities) are never inside any sector.
-- Membership updates every frame for every entity that moved, however it moved.
-
-This drives `sector:ContainsEntity`, `sector:GetEntities`, `entity:GetSector()`, and the
-`OnEntityEnter` / `OnEntityExit` / `OnSectorChange` callbacks.
-
----
-
-## In the editor
-
-| Section | Field | Lua | Notes |
-|---|---|---|---|
-| | **Name** | `name` | Free text, handy for finding the sector in scripts and logs. |
-| **Parent Sector** | **Parent** | | The logical parent. See [Parent and child sectors](#parent-and-child-sectors). |
-| **Floor** (per interval) | **Floor Height** / **Ceiling Height** | `GetFloor(i).floorHeight` / `ceilingHeight` | |
-| | **Floor Texture** / **Ceiling Texture** | `floorTexture` / `ceilingTexture` | |
-| | **Floor Color** / **Ceiling Color** | `floorColor` / `ceilingColor` | `Vector4`, `0..1`. |
-| | **Floor Slope** / **Ceiling Slope** (Direction, Strength) | | Editor only. |
-| | **Texture Offset / Scale / Flip** | | Editor only. |
-| | **Add Floor** / **Remove Floor** | | Adds or removes an interval. |
-| **Lighting** | **Light Color** | `light` | `Vector3`, `0..255`. |
-| **Tags** | | `HasTag`, `GetTag`, `tagCount` | Read-only from scripts. |
-| **Scripts** | **Add Script** / **Remove Script** | | Attach any number of Lua scripts. |
-
----
-
-## Scripting
-
-### Getting a sector
+## Getting a sector
 
 | Where from | How |
 |---|---|
 | A script attached to the sector | the global `sector` |
 | A public field | `public Sector door` |
-| A point on the map | `Game.GetSectorAt(position)` |
-| An entity | `entity:GetSector()` |
+| A point in the map  | `Game.GetSectorAt(position)` |
+| An entity  | `entity:GetSector()` |
 | A raycast hit | `hit.sector` |
 | A neighbour | `sector:GetNeighbor(i)` |
 
-A `Sector` value is a safe handle. If the sector is deleted, `isValid` becomes `false` and any other
-use raises an error.
+## Conventions
 
-### Properties
-
-| Property | Type | | Description |
-|---|---|---|---|
-| `id` | integer | read-only | Stable ID, the `#` number shown in the editor. |
-| `isValid` | boolean | read-only | `false` once the sector no longer exists. |
-| `name` | string | read/write | |
-| `floorHeight` | number | read/write | Floor height of interval 1. Same as `GetFloor(1).floorHeight`. |
-| `light` | Vector3 | read/write | `0..255`. Children follow. Setting it cancels a running `FadeLight`. |
-| `floorCount` | integer | read-only | Number of floor intervals. |
-| `vertexCount` | integer | read-only | Corners of the outline. |
-| `wallCount` | integer | read-only | Walls on the outline. |
-| `entityCount` | integer | read-only | Entities inside right now. |
-| `neighborCount` | integer | read-only | Sectors sharing a wall with this one. |
-| `tagCount` | integer | read-only | |
-
-### Functions
-
-| Group | Functions |
-|---|---|
-| Floors | `GetFloor(i)` returns a `SectorFloor` with read/write `floorHeight`, `ceilingHeight`, `floorColor`, `ceilingColor`, `floorTexture`, `ceilingTexture`, plus `ClearFloorTexture()` and `ClearCeilingTexture()`. `GetFloorHeightAt(point[, i])` and `GetCeilingHeightAt(point[, i])` include slopes. |
-| Movement | `MoveFloorToCeiling(i, speed[, gap])`, `MoveCeilingToFloor(i, speed[, gap])`, their `...OverTime(i, seconds[, gap])` versions, `MoveFloorTo(i, height, speed)`, `MoveCeilingTo(i, height, speed)`, their `...OverTime(i, height, seconds)` versions, `IsMoving(i)`, `IsFloorMoving(i)`, `IsCeilingMoving(i)`, `StopMoving(i)` |
-| Light | `FadeLight(color, seconds)`, `IsLightFading()` |
-| Occupancy | `ContainsEntity(e)`, `ContainsEntityWithTag(tag)`, `GetEntities()`, `GetEntitiesWithTag(tag)`, `CountEntities([tag])`, `IsEmpty()`, `GetEntity(i)` |
-| Shape | `GetArea()`, `GetCenter()`, `GetBounds()` (returns two values), `RandomPointInside([i])`, `DistanceToSector(e)`, `DistanceToSectorSquared(e)` |
-| Geometry | `GetVertex(i)`, `GetWall(i)`, `GetNeighbor(i)` |
-| Tags | `HasTag(tag)`, `GetTag(i)` |
-
-> **Any image in `Assets` can be switched to.** When the level loads, the engine packs every
-> `.png`, `.jpg` and `.jpeg` file under `Assets` into the texture atlas, so a script can switch to
-> an image the level doesn't use yet. An image added to `Assets` while the game is running is only
-> picked up the next time the level loads.
-
-Every move is **fire-and-forget**: call it once and the engine moves the surface a little each
-frame until it arrives. No `Update` code is needed. Starting another move on the same surface
-replaces the old one. A floor never passes its ceiling, and neither passes into the next interval.
-
-Full parameters, rules and more examples: [`docs/sector.md`](../sector.md).
-
-### Callbacks
-
-Sector scripts can define these, on top of `Start`, `Update` and the other
-[lifecycle callbacks](CallbackFunctions.md):
-
-| Callback | Called when |
-|---|---|
-| `OnEntityEnter(entity)` | An entity moved into this sector, at the end of that frame. |
-| `OnEntityExit(entity)` | An entity moved out, left the map or was destroyed while inside. |
-
-Entities already inside when the level starts don't trigger `OnEntityEnter`.
-
-Entity scripts have the opposite view: `OnSectorChange(sector)` runs on an entity when **it**
-changes sector. See [Callback Functions](CallbackFunctions.md#onsectorchange).
-
-### Things to know
-
-- In a sector script, `entity` exists but is an empty placeholder (`entity.isValid == false`).
-  Use `sector`.
-- Other scripts can't reach a sector script through `GetScript`. Share state through the `Global`
-  table, or have the sector script look up the entities it needs.
-- Setting a height that would put a floor at or above its ceiling, or into another interval, raises
-  an error. Wrap uncertain writes in `pcall`.
+- **Indices are 1-based**: floors, vertices, walls, entities, neighbours and tags.
+- **Map space.** A `Vector2` position is `(x, z)` on the map: `.x` is world x and `.y` is world z.
+  Functions that take a position accept a `Vector3` too and use only its `x` and `z`.
+- **`floorIndex`** picks one floor/ceiling interval of a multi-storey sector. Most sectors have
+  only one, `1`. When it's optional, it defaults to `1`.
+- **Bad arguments raise a Lua error.** Examples: a floor index out of range, a speed of 0 or a
+  negative time. Wrap the call in `pcall` if the values come from somewhere you don't control.
+- **Every sector handle stays safe.** If the sector no longer exists, `isValid` is `false` and any
+  other call raises an error.
 
 ---
 
-## Examples
-
-### Door that opens when the player walks up
+## Game.GetSectorAt
 
 ```lua
--- Scripts/Doors/ProximityDoor.lua (sector script on the door sector)
--- Draw the door as a thin sector whose ceiling starts at its floor (closed).
-public number openHeight = 40
-public number speed = 80
-public number range = 48
-public number stayOpen = 3
+Game.GetSectorAt(position) -> Sector?
+```
 
-local player
-local openTimer = 0
+| Parameter | Type | |
+|---|---|---|
+| `position` | `Vector2` or `Vector3` | Map position. Height is ignored. |
 
-function Start()
-    player = Game.FindEntity("Player")
+Returns the sector containing `position`, or `nil` if the point is outside every sector. It uses
+the same lookup that decides which sector an entity is in (see [Occupancy](#occupancy)).
+
+```lua
+local here = Game.GetSectorAt(entity.transform.position)
+if here ~= nil and here:HasTag("water") then Debug.Print("splash") end
+```
+
+## entity:GetSector
+
+```lua
+entity:GetSector() -> Sector?
+```
+
+Returns the sector the entity is standing in. It returns `nil` if the entity is outside the map
+or has no Transform (UI entities, for example). This is the same membership `ContainsEntity` and
+`OnEntityEnter` use.
+
+## OnSectorChange
+
+A callback you **define** in a script attached to an entity. The engine calls it when that entity
+ends up in a different sector.
+
+```lua
+function OnSectorChange(sector) end
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `sector` | `Sector?` | The sector the entity is in now, or `nil` if it left the map. |
+
+- It fires at the end of the frame the entity crossed over, right after the sectors'
+  `OnEntityExit` / `OnEntityEnter`.
+- The sector the entity starts the level in does not count as a change.
+- It only runs on **entity** scripts, and only while the script is enabled. On a sector script it
+  is ignored. `OnSectorChange` is a reserved name, so you can't use it for a public field.
+
+```lua
+function OnSectorChange(sector)
+    if sector ~= nil and sector:HasTag("water") then Debug.Print(entity.name .. " is swimming") end
+end
+```
+
+---
+
+## Properties
+
+| Property | Type | | Notes |
+|---|---|---|---|
+| `id` | integer | read-only | Stable sector ID (the `#` number in the editor). |
+| `isValid` | boolean | read-only | `false` once the sector no longer exists. |
+| `name` | string | read/write | Set in the sector inspector. Empty if unnamed. |
+| `floorHeight` | number | read/write | Floor height of floor 1. Same as `GetFloor(1).floorHeight`. |
+| `light` | Vector3 | read/write | Light colour, 0-255 per channel. Changes reach child sectors. Setting it cancels a running `FadeLight`. |
+| `floorCount` | integer | read-only | Number of floor/ceiling intervals. |
+| `vertexCount` | integer | read-only | |
+| `wallCount` | integer | read-only | |
+| `entityCount` | integer | read-only | Entities inside right now. Same as `CountEntities()`. |
+| `neighborCount` | integer | read-only | |
+| `tagCount` | integer | read-only | Tags are set in the editor; scripts can't add or remove them. |
+
+---
+
+## Occupancy
+
+### How "inside" is decided
+
+- An entity is inside the sector that contains its `(x, z)` position. **Height is ignored**, so
+  on a multi-storey sector every storey counts as the same sector.
+- An entity is inside **exactly one** sector: the innermost one. An entity standing on a pillar
+  or platform that is a child sector is inside the child, **not** the parent.
+- Entities without a Transform are never inside a sector.
+- Membership updates every frame for every entity that moved, whether a Rigidbody, the player
+  controller or a script moved it.
+
+### ContainsEntity
+
+```lua
+sector:ContainsEntity(entity) -> boolean
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `entity` | `Entity` | The entity to look for. |
+
+Returns `true` if `entity` is inside this sector.
+
+```lua
+public Entity player = nil
+
+function Update()
+    if sector:ContainsEntity(player) then sector:FadeLight(Vector3(255, 80, 80), 0.5) end
+end
+```
+
+### ContainsEntityWithTag 
+
+```lua
+sector:ContainsEntityWithTag(tag) -> boolean
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `tag` | string | Tag name, as created in Project Settings. |
+
+Returns `true` if at least one entity inside this sector has `tag`. An unknown tag returns
+`false`.
+
+```lua
+if not sector:ContainsEntityWithTag("enemy") then OpenExitDoor() end
+```
+
+### GetEntities 
+
+```lua
+sector:GetEntities() -> Entity[]
+```
+
+Every entity inside this sector, as a Lua list. The order isn't meaningful.
+
+### GetEntitiesWithTag 
+
+```lua
+sector:GetEntitiesWithTag(tag) -> Entity[]
+```
+
+Every entity inside this sector that has `tag`.
+
+```lua
+for _, e in ipairs(sector:GetEntitiesWithTag("burnable")) do
+    e:GetScript("Health"):TakeDamage(5)
+end
+```
+
+### CountEntities 
+
+```lua
+sector:CountEntities() -> integer
+sector:CountEntities(tag) -> integer
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `tag` | string, optional | Count only entities with this tag. |
+
+The number of entities inside, or only those with `tag`.
+
+### IsEmpty 
+
+```lua
+sector:IsEmpty() -> boolean
+```
+
+Returns `true` if no entity is inside this sector.
+
+### GetEntity
+
+```lua
+sector:GetEntity(index) -> Entity
+```
+
+The `index`-th entity inside (1-based, up to `entityCount`). This is the old way to walk the list.
+`GetEntities()` is usually simpler.
+
+### OnEntityEnter / OnEntityExit 
+
+These are callbacks. You **define** them in a script attached to a sector and the engine calls
+them.
+
+```lua
+function OnEntityEnter(entity) end
+function OnEntityExit(entity) end
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `entity` | `Entity` | The entity that came in or went out. |
+
+- They fire once, at the end of the frame the entity crossed the boundary, after all movement and
+  physics for that frame.
+- Entities already inside when the level starts **do not** trigger `OnEntityEnter`. Use
+  `sector:GetEntities()` in `Start` if you need them.
+- Moving from one sector to another fires the old sector's `OnEntityExit` first, then the new
+  sector's `OnEntityEnter`.
+- An entity that is destroyed while inside, or that leaves the map entirely, also fires
+  `OnEntityExit`. After a destroy, `entity.isValid` is `false`, so check it before using the
+  entity.
+- They only run on **sector** scripts, and only while the script is enabled. On an entity script
+  they are ignored.
+- `OnEntityEnter` and `OnEntityExit` are reserved names: you can't use them for public fields.
+
+```lua
+-- Trap room: slam the door behind the player, reopen it when the room is clear.
+public Sector door = nil
+
+function OnEntityEnter(entity)
+    if entity.hasPlayerController then door:MoveCeilingToFloor(1, 200) end
+end
+
+function OnEntityExit(entity)
+    if sector:CountEntities("enemy") == 0 then door:MoveFloorToCeiling(1, 60) end
+end
+```
+
+---
+
+## Floors
+
+### GetFloor
+
+```lua
+sector:GetFloor(floorIndex) -> SectorFloor
+```
+
+One floor/ceiling interval. `SectorFloor` has `floorHeight`, `ceilingHeight`, `floorColor`,
+`ceilingColor`, `floorTexture` and `ceilingTexture` (all read/write), plus `index`, `isValid`,
+`ClearFloorTexture()` and `ClearCeilingTexture()`. Writing a height raises an error if the floor
+would reach its ceiling or overlap another interval.
+
+### GetFloorHeightAt 
+
+```lua
+sector:GetFloorHeightAt(position) -> number
+sector:GetFloorHeightAt(position, floorIndex) -> number
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `position` | `Vector2` or `Vector3` | Map position (x, z). |
+| `floorIndex` | integer, optional | Default `1`. |
+
+The floor height at `position`, **including slope**. On a flat floor this is just
+`GetFloor(i).floorHeight`. On a sloped one, it's the height where something standing at
+`position` would actually be. It uses the same slope math as physics and rendering. Points
+outside the sector are extrapolated along the slope.
+
+```lua
+local p = Vector2(12, 4)
+spawned.transform.position = Vector3(p.x, sector:GetFloorHeightAt(p), p.y)
+```
+
+### GetCeilingHeightAt 
+
+```lua
+sector:GetCeilingHeightAt(position) -> number
+sector:GetCeilingHeightAt(position, floorIndex) -> number
+```
+
+Same as `GetFloorHeightAt`, for the ceiling.
+
+---
+
+## Movement
+
+Every move below is **fire-and-forget**. You call it once and the engine moves the surface a bit
+each frame until it arrives. No `Update` code is needed.
+
+- Starting a new move on the same surface replaces the old one.
+- A floor never passes its ceiling and a ceiling never passes its floor (they stop 0.01 apart).
+  Neither passes into the interval above or below.
+- Moves pass on to child sectors, the same as an edit in the inspector.
+- Every move takes an optional last `collision` argument (a [SectorCollision](#sectorcollision)
+  value) that decides what happens when the surface would hit an entity. Leaving it out moves
+  through entities.
+
+### SectorCollision
+
+What a moving floor or ceiling does when it would hit an entity's collider. Pass it as the last
+argument of any move.
+
+| Value | |
+|---|---|
+| `SectorCollision.ForceMove` | Moves through entities as if they weren't there. The default. |
+| `SectorCollision.Stop` | Stops the move at the last height that fit. The move is over (`IsMoving` turns `false`). |
+| `SectorCollision.Retract` | Goes back to the height the move started from, at the same speed. The way back doesn't check for entities. |
+| `SectorCollision.DontMove` | Holds still while blocked and carries on once the entity is out of the way. Stays moving the whole time. |
+
+The check is a simple height test, done every frame the surface moves:
+
+- Only entities inside this sector count (see [How "inside" is decided](#how-inside-is-decided)),
+  and only their active, non-trigger colliders, in the interval being moved.
+- A **ceiling coming down** hits an entity when it would go below the top of its collider.
+- A **floor going up** carries entities standing on it, so it only hits one when it would push
+  it into the ceiling (the collider no longer fits between floor and ceiling).
+- A floor going down or a ceiling going up moves away from entities and is never blocked.
+
+```lua
+-- A door that won't close on the player: it bounces back open instead.
+sector:MoveCeilingToFloor(1, 80, 0, SectorCollision.Retract)
+
+-- A lift that waits for whoever is stuck under the ceiling to get out of the way.
+sector:MoveFloorTo(1, 128, 40, SectorCollision.DontMove)
+```
+
+### MoveFloorToCeiling / MoveCeilingToFloor
+
+```lua
+sector:MoveFloorToCeiling(floorIndex, speed)
+sector:MoveFloorToCeiling(floorIndex, speed, gap)
+sector:MoveFloorToCeiling(floorIndex, speed, gap, collision)
+sector:MoveCeilingToFloor(floorIndex, speed)
+sector:MoveCeilingToFloor(floorIndex, speed, gap)
+sector:MoveCeilingToFloor(floorIndex, speed, gap, collision)
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `floorIndex` | integer | Which interval. |
+| `speed` | number | Units per second, above 0. |
+| `gap` | number, optional | Stop this far short of the opposite surface. Default 0 (really 0.01). Not negative. |
+| `collision` | [SectorCollision](#sectorcollision), optional | What to do on hitting an entity. Default `SectorCollision.ForceMove`. Needs `gap` before it. |
+
+Moves the floor up to its ceiling, or the ceiling down to its floor. The target follows the
+opposite surface, so it still stops at the right place if that surface is moving too.
+
+### MoveFloorToCeilingOverTime / MoveCeilingToFloorOverTime
+
+```lua
+sector:MoveFloorToCeilingOverTime(floorIndex, seconds)
+sector:MoveFloorToCeilingOverTime(floorIndex, seconds, gap)
+sector:MoveFloorToCeilingOverTime(floorIndex, seconds, gap, collision)
+sector:MoveCeilingToFloorOverTime(floorIndex, seconds)
+sector:MoveCeilingToFloorOverTime(floorIndex, seconds, gap)
+sector:MoveCeilingToFloorOverTime(floorIndex, seconds, gap, collision)
+```
+
+The same moves, but arriving after `seconds` (not negative; `0` snaps next frame) instead of at a
+set speed. A `SectorCollision.Retract` goes back at the speed the move was given.
+
+### MoveFloorTo / MoveCeilingTo 
+
+```lua
+sector:MoveFloorTo(floorIndex, height, speed)
+sector:MoveFloorTo(floorIndex, height, speed, collision)
+sector:MoveCeilingTo(floorIndex, height, speed)
+sector:MoveCeilingTo(floorIndex, height, speed, collision)
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `floorIndex` | integer | Which interval. |
+| `height` | number | Absolute world height to move to. Can be above or below the current height. |
+| `speed` | number | Units per second, above 0. |
+| `collision` | [SectorCollision](#sectorcollision), optional | What to do on hitting an entity. Default `SectorCollision.ForceMove`. |
+
+Moves the floor or ceiling to an exact height, up or down. Use these for multi-stop lifts,
+crushers that stop partway and rising water. If `height` is past the opposite surface, the move
+stops just short of it.
+
+```lua
+-- Three-stop lift.
+local stops = {0, 64, 128}
+local current = 1
+
+function GoTo(stop)
+    current = stop
+    sector:MoveFloorTo(1, stops[stop], 40)
+end
+```
+
+### MoveFloorToOverTime / MoveCeilingToOverTime 
+
+```lua
+sector:MoveFloorToOverTime(floorIndex, height, seconds)
+sector:MoveFloorToOverTime(floorIndex, height, seconds, collision)
+sector:MoveCeilingToOverTime(floorIndex, height, seconds)
+sector:MoveCeilingToOverTime(floorIndex, height, seconds, collision)
+```
+
+`MoveFloorTo` / `MoveCeilingTo`, arriving after `seconds` (not negative).
+
+### IsMoving
+
+```lua
+sector:IsMoving(floorIndex) -> boolean
+```
+
+Returns `true` while this interval's floor **or** ceiling is still moving.
+
+### IsFloorMoving / IsCeilingMoving
+
+```lua
+sector:IsFloorMoving(floorIndex) -> boolean
+sector:IsCeilingMoving(floorIndex) -> boolean
+```
+
+The same check for just one surface. For example, a door can wait for its ceiling to finish
+opening before starting its close timer:
+
+```lua
+local waiting = false
+
+function Open()
+    sector:MoveCeilingTo(1, 128, 80)
+    waiting = true
 end
 
 function Update()
-    if player == nil or not player.isValid then return end
-
-    local center = sector:GetCenter()
-    local p = player.transform.position
-    local near = Vector2(p.x - center.x, p.z - center.y).length < range
-
-    if near then
-        openTimer = stayOpen
-        sector:MoveCeilingTo(1, sector.floorHeight + openHeight, speed)
-    elseif openTimer > 0 then
-        openTimer = openTimer - GameTime.deltaTime
-        if openTimer <= 0 then sector:MoveCeilingToFloor(1, speed) end
+    if waiting and not sector:IsCeilingMoving(1) then
+        waiting = false
+        -- fully open: start the close timer here
     end
 end
 ```
 
-### Lift that rides up when stepped on
+### StopMoving
 
 ```lua
--- Scripts/Lifts/StepLift.lua (sector script on the lift platform)
-public number topHeight = 64
-public number speed = 30
-public number wait = 2
+sector:StopMoving(floorIndex)
+```
 
-local bottom
-local timer = 0
+Stops this interval's floor and ceiling where they are.
 
-function Start()
-    bottom = sector.floorHeight
-end
+---
 
-function OnEntityEnter(e)
-    if e.hasPlayerController then sector:MoveFloorTo(1, topHeight, speed) end
-end
+## Light
 
-function Update()
-    -- Once it's at the top and empty, wait, then go back down.
-    if sector:IsFloorMoving(1) or sector.floorHeight == bottom then return end
+### FadeLight
 
-    if sector:IsEmpty() then
-        timer = timer + GameTime.deltaTime
-        if timer >= wait then
-            timer = 0
-            sector:MoveFloorTo(1, bottom, speed)
-        end
-    else
-        timer = 0
-    end
+```lua
+sector:FadeLight(color, seconds)
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `color` | `Vector3` | Target light, 0-255 per channel. |
+| `seconds` | number | Fade length. Not negative; `0` snaps next frame. |
+
+Fades `light` from its current value to `color` over `seconds`, in a straight line. It runs by
+itself each frame and child sectors follow along. Starting another fade replaces this one, and
+setting `sector.light` directly cancels it.
+
+```lua
+-- Power cut
+sector:FadeLight(Vector3(20, 20, 30), 2.0)
+```
+
+### IsLightFading
+
+```lua
+sector:IsLightFading() -> boolean
+```
+
+Returns `true` while a `FadeLight` is running.
+
+---
+
+## Shape
+
+All shape values are in map space. Child sectors cut out of this one (pillars, islands) are
+**not** part of its area.
+
+### GetArea
+
+```lua
+sector:GetArea() -> number
+```
+
+Floor area in square units.
+
+### GetCenter
+
+```lua
+sector:GetCenter() -> Vector2
+```
+
+The area-weighted centre, `(x, z)`. For L-shaped or ring-shaped sectors this point can fall
+**outside** the sector, like any centroid. Use `RandomPointInside` when you need a point that is
+guaranteed to be inside.
+
+### GetBounds
+
+```lua
+sector:GetBounds() -> Vector2, Vector2
+```
+
+Returns **two** values: the minimum and maximum corner of the sector's bounding rectangle,
+`(x, z)`.
+
+```lua
+local min, max = sector:GetBounds()
+local width, depth = max.x - min.x, max.y - min.y
+```
+
+### DistanceToSector
+
+```lua
+sector:DistanceToSector(entity) -> number
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `entity` | Entity | Measured from its transform's `x` and `z`. Height is ignored. |
+
+Distance from the entity to the nearest edge of the sector's outline. Returns `0` while the entity
+is inside the sector. Child sectors cut out of this one count as **outside**, same as
+`ContainsEntity`, and their edges count as part of the outline. Works for a sector of any shape.
+Raises an error if the entity has no Transform.
+
+```lua
+-- Open a door when the player comes within 30 units of it.
+if sector:DistanceToSector(player) <= 30 then
+    sector:MoveCeilingToFloor(1, 60, 40)
 end
 ```
 
-### Flickering light
+### DistanceToSectorSquared
 
 ```lua
--- Scripts/Lights/Flicker.lua (sector script)
-public Vector3 onColor = Vector3(255, 240, 200)
-public Vector3 offColor = Vector3(40, 35, 30)
+sector:DistanceToSectorSquared(entity) -> number
+```
 
-local timer = 0
+`DistanceToSector` squared, without the square root. Compare it against a squared range when you
+only need "is it within range":
 
-function Update()
-    timer = timer - GameTime.deltaTime
-    if timer > 0 then return end
-
-    timer = mathT.RandomF(0.05, 0.4)
-    sector:FadeLight(mathT.RandomBool() and onColor or offColor, 0.05)
+```lua
+if sector:DistanceToSectorSquared(player) <= range * range then
+    -- in range
 end
 ```
 
-### Spawn points spread across a room
+### RandomPointInside
 
 ```lua
--- Scripts/Scatter.lua (sector script)
--- Moves every entity tagged "pickup" to a random spot in this sector.
-function Start()
-    for _, e in ipairs(Game.FindEntitiesWithTag("pickup")) do
-        e.transform.position = sector:RandomPointInside()
-    end
+sector:RandomPointInside() -> Vector3
+sector:RandomPointInside(floorIndex) -> Vector3
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `floorIndex` | integer, optional | Which floor to stand the point on. Default `1`. |
+
+Returns a random point inside the sector, evenly spread over its area and never inside a child
+sector. `y` is the floor height at that spot, slope included, so the point is ready to use as an
+entity position. It uses the same generator as `mathT.Random*`, so `mathT.RandomSeed` makes it
+repeatable.
+
+```lua
+for i = 1, 5 do
+    local e = Game.FindEntity("Coin" .. i)
+    if e ~= nil then e.transform.position = sector:RandomPointInside() end
 end
 ```
+
+---
+
+## Geometry and links
+
+| Function | Returns | |
+|---|---|---|
+| `GetVertex(index)` | `Vector2` | Outer boundary corner, 1-based. |
+| `GetWall(index)` | `Wall` | A wall on this sector's boundary, 1-based. |
+| `GetNeighbor(index)` | `Sector` | A sector sharing a wall with this one, 1-based. |
+
+## Tags
+
+| Function | Returns | |
+|---|---|---|
+| `HasTag(tag)` | boolean | `true` if this sector has `tag`. |
+| `GetTag(index)` | string | The `index`-th tag, 1-based. |
+
+Tags are assigned in the editor. Scripts can read them but not change them.

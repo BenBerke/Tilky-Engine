@@ -2426,24 +2426,31 @@ struct ScriptSector {
         if (gap < 0.0f) throw sol::error("Move gap must not be negative");
     }
 
-    void MoveFloorToCeiling(const int luaIndex, const float speed, const float gap) const {
+    // Lua passes a SectorCollision value as a plain integer.
+    static SectorCollision CheckCollision(const int collision) {
+        if (collision < SECTOR_FORCE_MOVE || collision > SECTOR_DONT_MOVE)
+            throw sol::error("Move collision expects a SectorCollision value, e.g. SectorCollision.Stop");
+        return static_cast<SectorCollision>(collision);
+    }
+
+    void MoveFloorToCeiling(const int luaIndex, const float speed, const float gap, const int collision) const {
         CheckMoveArguments(speed, gap, false);
-        GetMovableFloor(luaIndex).MoveFloorToCeiling(speed, gap);
+        GetMovableFloor(luaIndex).MoveFloorToCeiling(speed, gap, CheckCollision(collision));
     }
 
-    void MoveCeilingToFloor(const int luaIndex, const float speed, const float gap) const {
+    void MoveCeilingToFloor(const int luaIndex, const float speed, const float gap, const int collision) const {
         CheckMoveArguments(speed, gap, false);
-        GetMovableFloor(luaIndex).MoveCeilingToFloor(speed, gap);
+        GetMovableFloor(luaIndex).MoveCeilingToFloor(speed, gap, CheckCollision(collision));
     }
 
-    void MoveFloorToCeilingOverTime(const int luaIndex, const float seconds, const float gap) const {
+    void MoveFloorToCeilingOverTime(const int luaIndex, const float seconds, const float gap, const int collision) const {
         CheckMoveArguments(seconds, gap, true);
-        GetMovableFloor(luaIndex).MoveFloorToCeilingOverTime(seconds, gap);
+        GetMovableFloor(luaIndex).MoveFloorToCeilingOverTime(seconds, gap, CheckCollision(collision));
     }
 
-    void MoveCeilingToFloorOverTime(const int luaIndex, const float seconds, const float gap) const {
+    void MoveCeilingToFloorOverTime(const int luaIndex, const float seconds, const float gap, const int collision) const {
         CheckMoveArguments(seconds, gap, true);
-        GetMovableFloor(luaIndex).MoveCeilingToFloorOverTime(seconds, gap);
+        GetMovableFloor(luaIndex).MoveCeilingToFloorOverTime(seconds, gap, CheckCollision(collision));
     }
 
     [[nodiscard]] bool IsMoving(const int luaIndex) const {
@@ -2654,24 +2661,24 @@ struct ScriptSector {
 
     // ---- Moving to a set height -----------------------------------------
 
-    void MoveFloorTo(const int luaIndex, const float height, const float speed) const {
+    void MoveFloorTo(const int luaIndex, const float height, const float speed, const int collision) const {
         CheckMoveArguments(speed, 0.0f, false);
-        GetMovableFloor(luaIndex).MoveFloorTo(height, speed);
+        GetMovableFloor(luaIndex).MoveFloorTo(height, speed, CheckCollision(collision));
     }
 
-    void MoveCeilingTo(const int luaIndex, const float height, const float speed) const {
+    void MoveCeilingTo(const int luaIndex, const float height, const float speed, const int collision) const {
         CheckMoveArguments(speed, 0.0f, false);
-        GetMovableFloor(luaIndex).MoveCeilingTo(height, speed);
+        GetMovableFloor(luaIndex).MoveCeilingTo(height, speed, CheckCollision(collision));
     }
 
-    void MoveFloorToOverTime(const int luaIndex, const float height, const float seconds) const {
+    void MoveFloorToOverTime(const int luaIndex, const float height, const float seconds, const int collision) const {
         CheckMoveArguments(seconds, 0.0f, true);
-        GetMovableFloor(luaIndex).MoveFloorToOverTime(height, seconds);
+        GetMovableFloor(luaIndex).MoveFloorToOverTime(height, seconds, CheckCollision(collision));
     }
 
-    void MoveCeilingToOverTime(const int luaIndex, const float height, const float seconds) const {
+    void MoveCeilingToOverTime(const int luaIndex, const float height, const float seconds, const int collision) const {
         CheckMoveArguments(seconds, 0.0f, true);
-        GetMovableFloor(luaIndex).MoveCeilingToOverTime(height, seconds);
+        GetMovableFloor(luaIndex).MoveCeilingToOverTime(height, seconds, CheckCollision(collision));
     }
 
     [[nodiscard]] bool IsFloorMoving(const int luaIndex) const {

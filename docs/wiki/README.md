@@ -57,7 +57,7 @@ Besides these, a script also gets `entity` (or `sector` in a sector script) and 
 
 ## More
 
-- [`docs/sector.md`](../sector.md) is the full Sector scripting API. The [Sector](Sector.md) page
+- [`docs/sector.md`](Sector.md) is the full Sector scripting API. The [Sector](Sector.md) page
   here summarises it and explains what sectors are.
 - [`docs/scripts/`](../scripts/README.md) has ready-to-use example scripts: doors, lifts,
   pickups, enemy AI, UI and more.

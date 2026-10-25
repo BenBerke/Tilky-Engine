@@ -45,13 +45,13 @@ namespace {
             Method("GetNeighbor", {Param("index", "integer")}, "Sector", "1-based."),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this sector has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
-            Method("MoveFloorToCeiling", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?")}, {},
-                   "Moves floor `floorIndex` (1-based) toward its ceiling at `speed` units/s, stopping `gap` below it (default 0). The move runs by itself every frame; starting another replaces it."),
-            Method("MoveCeilingToFloor", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?")}, {},
+            Method("MoveFloorToCeiling", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?"), Param("collision", "SectorCollision?")}, {},
+                   "Moves floor `floorIndex` (1-based) toward its ceiling at `speed` units/s, stopping `gap` below it (default 0). The move runs by itself every frame; starting another replaces it. `collision` (default SectorCollision.ForceMove) is what happens when it would hit an entity's collider."),
+            Method("MoveCeilingToFloor", {Param("floorIndex", "integer"), Param("speed", "number"), Param("gap", "number?"), Param("collision", "SectorCollision?")}, {},
                    "Moves the ceiling of floor `floorIndex` (1-based) toward its floor at `speed` units/s, stopping `gap` above it (default 0)."),
-            Method("MoveFloorToCeilingOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?")}, {},
+            Method("MoveFloorToCeilingOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?"), Param("collision", "SectorCollision?")}, {},
                    "Like MoveFloorToCeiling, but arrives after `seconds` instead of moving at a set speed."),
-            Method("MoveCeilingToFloorOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?")}, {},
+            Method("MoveCeilingToFloorOverTime", {Param("floorIndex", "integer"), Param("seconds", "number"), Param("gap", "number?"), Param("collision", "SectorCollision?")}, {},
                    "Like MoveCeilingToFloor, but arrives after `seconds` instead of moving at a set speed."),
             Method("IsMoving", {Param("floorIndex", "integer")}, "boolean", "True while the floor or ceiling of floor `floorIndex` is still moving."),
             Method("StopMoving", {Param("floorIndex", "integer")}, {}, "Stops floor `floorIndex`'s floor and ceiling where they are."),
@@ -66,13 +66,13 @@ namespace {
             Method("IsEmpty", {}, "boolean", "True if no entity is inside this sector."),
 
             // Moving to a set height
-            Method("MoveFloorTo", {Param("floorIndex", "integer"), Param("height", "number"), Param("speed", "number")}, {},
-                   "Moves floor `floorIndex`'s floor up or down to `height` at `speed` units/s. Never passes its ceiling."),
-            Method("MoveCeilingTo", {Param("floorIndex", "integer"), Param("height", "number"), Param("speed", "number")}, {},
+            Method("MoveFloorTo", {Param("floorIndex", "integer"), Param("height", "number"), Param("speed", "number"), Param("collision", "SectorCollision?")}, {},
+                   "Moves floor `floorIndex`'s floor up or down to `height` at `speed` units/s. Never passes its ceiling. `collision` defaults to SectorCollision.ForceMove."),
+            Method("MoveCeilingTo", {Param("floorIndex", "integer"), Param("height", "number"), Param("speed", "number"), Param("collision", "SectorCollision?")}, {},
                    "Moves floor `floorIndex`'s ceiling up or down to `height` at `speed` units/s. Never passes its floor."),
-            Method("MoveFloorToOverTime", {Param("floorIndex", "integer"), Param("height", "number"), Param("seconds", "number")}, {},
+            Method("MoveFloorToOverTime", {Param("floorIndex", "integer"), Param("height", "number"), Param("seconds", "number"), Param("collision", "SectorCollision?")}, {},
                    "Like MoveFloorTo, but arrives after `seconds`."),
-            Method("MoveCeilingToOverTime", {Param("floorIndex", "integer"), Param("height", "number"), Param("seconds", "number")}, {},
+            Method("MoveCeilingToOverTime", {Param("floorIndex", "integer"), Param("height", "number"), Param("seconds", "number"), Param("collision", "SectorCollision?")}, {},
                    "Like MoveCeilingTo, but arrives after `seconds`."),
             Method("IsFloorMoving", {Param("floorIndex", "integer")}, "boolean", "True while floor `floorIndex`'s floor is moving."),
             Method("IsCeilingMoving", {Param("floorIndex", "integer")}, "boolean", "True while floor `floorIndex`'s ceiling is moving."),
@@ -97,6 +97,14 @@ namespace {
             Method("GetCeilingHeightAt", {Param("position", "Vector2|Vector3"), Param("floorIndex", "integer?")}, "number",
                    "Ceiling height at `position` (x, z), slopes included. floorIndex defaults to 1."),
         }));
+
+        RegisterType(Enum("SectorCollision",
+                          "What a moving floor or ceiling does when it would hit an entity's collider: a ceiling coming down onto it, or a floor lifting it into the ceiling. Last argument of the Sector move functions.", {
+            {"ForceMove", SECTOR_FORCE_MOVE, "Moves through entities as if they weren't there. The default."},
+            {"Stop", SECTOR_STOP, "Stops the move at the last height that fit."},
+            {"Retract", SECTOR_RETRACT, "Goes back to the height the move started from, at the same speed."},
+            {"DontMove", SECTOR_DONT_MOVE, "Holds still while blocked and carries on once the entity is out of the way."},
+        }));
     }
 }
 
@@ -114,6 +122,12 @@ namespace {
 
 void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
     RegisterSectorMetadata();
+
+    lua.create_named_table("SectorCollision",
+        "ForceMove", static_cast<int>(SECTOR_FORCE_MOVE),
+        "Stop", static_cast<int>(SECTOR_STOP),
+        "Retract", static_cast<int>(SECTOR_RETRACT),
+        "DontMove", static_cast<int>(SECTOR_DONT_MOVE));
 
     lua.new_usertype<ScriptSectorFloor>(
         "SectorFloor",
@@ -223,29 +237,42 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "HasTag", &ScriptSector::HasTag,
         "GetTag", &ScriptSector::GetTag,
 
-        // Each move has a gap-less overload that leaves the default gap (0).
+        // Each move has overloads that leave out the default gap (0) and
+        // collision (SectorCollision.ForceMove).
         "MoveFloorToCeiling", sol::overload(
             &ScriptSector::MoveFloorToCeiling,
+            [](const ScriptSector& self, const int floorIndex, const float speed, const float gap) {
+                self.MoveFloorToCeiling(floorIndex, speed, gap, SECTOR_FORCE_MOVE);
+            },
             [](const ScriptSector& self, const int floorIndex, const float speed) {
-                self.MoveFloorToCeiling(floorIndex, speed, 0.0f);
+                self.MoveFloorToCeiling(floorIndex, speed, 0.0f, SECTOR_FORCE_MOVE);
             }
         ),
         "MoveCeilingToFloor", sol::overload(
             &ScriptSector::MoveCeilingToFloor,
+            [](const ScriptSector& self, const int floorIndex, const float speed, const float gap) {
+                self.MoveCeilingToFloor(floorIndex, speed, gap, SECTOR_FORCE_MOVE);
+            },
             [](const ScriptSector& self, const int floorIndex, const float speed) {
-                self.MoveCeilingToFloor(floorIndex, speed, 0.0f);
+                self.MoveCeilingToFloor(floorIndex, speed, 0.0f, SECTOR_FORCE_MOVE);
             }
         ),
         "MoveFloorToCeilingOverTime", sol::overload(
             &ScriptSector::MoveFloorToCeilingOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float seconds, const float gap) {
+                self.MoveFloorToCeilingOverTime(floorIndex, seconds, gap, SECTOR_FORCE_MOVE);
+            },
             [](const ScriptSector& self, const int floorIndex, const float seconds) {
-                self.MoveFloorToCeilingOverTime(floorIndex, seconds, 0.0f);
+                self.MoveFloorToCeilingOverTime(floorIndex, seconds, 0.0f, SECTOR_FORCE_MOVE);
             }
         ),
         "MoveCeilingToFloorOverTime", sol::overload(
             &ScriptSector::MoveCeilingToFloorOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float seconds, const float gap) {
+                self.MoveCeilingToFloorOverTime(floorIndex, seconds, gap, SECTOR_FORCE_MOVE);
+            },
             [](const ScriptSector& self, const int floorIndex, const float seconds) {
-                self.MoveCeilingToFloorOverTime(floorIndex, seconds, 0.0f);
+                self.MoveCeilingToFloorOverTime(floorIndex, seconds, 0.0f, SECTOR_FORCE_MOVE);
             }
         ),
         "IsMoving", &ScriptSector::IsMoving,
@@ -265,10 +292,30 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "IsEmpty", &ScriptSector::IsEmpty,
 
         // ---- Moving to a set height ----
-        "MoveFloorTo", &ScriptSector::MoveFloorTo,
-        "MoveCeilingTo", &ScriptSector::MoveCeilingTo,
-        "MoveFloorToOverTime", &ScriptSector::MoveFloorToOverTime,
-        "MoveCeilingToOverTime", &ScriptSector::MoveCeilingToOverTime,
+        "MoveFloorTo", sol::overload(
+            &ScriptSector::MoveFloorTo,
+            [](const ScriptSector& self, const int floorIndex, const float height, const float speed) {
+                self.MoveFloorTo(floorIndex, height, speed, SECTOR_FORCE_MOVE);
+            }
+        ),
+        "MoveCeilingTo", sol::overload(
+            &ScriptSector::MoveCeilingTo,
+            [](const ScriptSector& self, const int floorIndex, const float height, const float speed) {
+                self.MoveCeilingTo(floorIndex, height, speed, SECTOR_FORCE_MOVE);
+            }
+        ),
+        "MoveFloorToOverTime", sol::overload(
+            &ScriptSector::MoveFloorToOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float height, const float seconds) {
+                self.MoveFloorToOverTime(floorIndex, height, seconds, SECTOR_FORCE_MOVE);
+            }
+        ),
+        "MoveCeilingToOverTime", sol::overload(
+            &ScriptSector::MoveCeilingToOverTime,
+            [](const ScriptSector& self, const int floorIndex, const float height, const float seconds) {
+                self.MoveCeilingToOverTime(floorIndex, height, seconds, SECTOR_FORCE_MOVE);
+            }
+        ),
         "IsFloorMoving", &ScriptSector::IsFloorMoving,
         "IsCeilingMoving", &ScriptSector::IsCeilingMoving,
 

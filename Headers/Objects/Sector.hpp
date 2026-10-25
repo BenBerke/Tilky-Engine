@@ -53,6 +53,16 @@ struct SectorSurface {
     bool flipTextureY = false;
 };
 
+// What a moving floor or ceiling does when it would hit an entity's collider
+// (Lua: SectorCollision). Only a floor going up or a ceiling going down can
+// hit one; checked by Level::UpdateSectorMovement.
+enum SectorCollision {
+    SECTOR_FORCE_MOVE, // move through entities, as if they weren't there
+    SECTOR_STOP,       // stop the move at the last height that fit
+    SECTOR_RETRACT,    // go back to the height the move started from
+    SECTOR_DONT_MOVE   // hold still while blocked, carry on once clear
+};
+
 // A floor or ceiling travelling toward the opposite surface of its
 // SectorFloor, or toward a fixed height. Started from Lua
 // (Sector:MoveFloorToCeiling, Sector:MoveFloorTo and friends) and advanced
@@ -67,6 +77,9 @@ struct SurfaceMove {
     // the opposite surface. Still never passes the opposite surface.
     bool hasTargetHeight = false;
     float targetHeight = 0.0f;
+
+    SectorCollision collision = SECTOR_FORCE_MOVE;
+    float startHeight = 0.0f; // where SECTOR_RETRACT goes back to
 };
 
 // A light colour change spread over time (Sector:FadeLight), advanced once
@@ -103,43 +116,50 @@ struct SectorFloor {
         return ceilingMove.hasTargetHeight ? std::max(ceilingMove.targetHeight, limit) : limit;
     }
 
-    void MoveFloorToCeiling(const float speed, const float gap) {
-        floorMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
+    void MoveFloorToCeiling(const float speed, const float gap, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        floorMove = {true, speed, std::max(gap, MIN_MOVE_GAP), false, 0.0f, collision, floor.height};
     }
 
-    void MoveCeilingToFloor(const float speed, const float gap) {
-        ceilingMove = {true, speed, std::max(gap, MIN_MOVE_GAP)};
+    void MoveCeilingToFloor(const float speed, const float gap, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        ceilingMove = {true, speed, std::max(gap, MIN_MOVE_GAP), false, 0.0f, collision, ceiling.height};
     }
 
     // Moves toward an absolute height, up or down.
-    void MoveFloorTo(const float height, const float speed) {
-        floorMove = {true, speed, MIN_MOVE_GAP, true, height};
+    void MoveFloorTo(const float height, const float speed, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        floorMove = {true, speed, MIN_MOVE_GAP, true, height, collision, floor.height};
     }
 
-    void MoveCeilingTo(const float height, const float speed) {
-        ceilingMove = {true, speed, MIN_MOVE_GAP, true, height};
+    void MoveCeilingTo(const float height, const float speed, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        ceilingMove = {true, speed, MIN_MOVE_GAP, true, height, collision, ceiling.height};
     }
 
-    void MoveFloorToOverTime(const float height, const float seconds) {
-        MoveFloorTo(height, 0.0f);
+    void MoveFloorToOverTime(const float height, const float seconds, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        MoveFloorTo(height, 0.0f, collision);
         floorMove.speed = SpeedForDuration(FloorMoveTarget() - floor.height, seconds);
     }
 
-    void MoveCeilingToOverTime(const float height, const float seconds) {
-        MoveCeilingTo(height, 0.0f);
+    void MoveCeilingToOverTime(const float height, const float seconds, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        MoveCeilingTo(height, 0.0f, collision);
         ceilingMove.speed = SpeedForDuration(CeilingMoveTarget() - ceiling.height, seconds);
     }
 
     // Same as above, with the speed picked so the move takes `seconds` from
     // the current heights. 0 seconds snaps on the next update.
-    void MoveFloorToCeilingOverTime(const float seconds, const float gap) {
-        MoveFloorToCeiling(0.0f, gap);
+    void MoveFloorToCeilingOverTime(const float seconds, const float gap, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        MoveFloorToCeiling(0.0f, gap, collision);
         floorMove.speed = SpeedForDuration(FloorMoveTarget() - floor.height, seconds);
     }
 
-    void MoveCeilingToFloorOverTime(const float seconds, const float gap) {
-        MoveCeilingToFloor(0.0f, gap);
+    void MoveCeilingToFloorOverTime(const float seconds, const float gap, const SectorCollision collision = SECTOR_FORCE_MOVE) {
+        MoveCeilingToFloor(0.0f, gap, collision);
         ceilingMove.speed = SpeedForDuration(CeilingMoveTarget() - ceiling.height, seconds);
+    }
+
+    // Turns a blocked move around (SECTOR_RETRACT): heads back to where it
+    // started at the same speed. Going back moves away from whatever blocked
+    // it, so the way back doesn't check for entities.
+    static void Retract(SurfaceMove& move) {
+        move = {true, move.speed, MIN_MOVE_GAP, true, move.startHeight, SECTOR_FORCE_MOVE, move.startHeight};
     }
 
     [[nodiscard]] bool IsMoving() const {

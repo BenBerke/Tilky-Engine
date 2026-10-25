@@ -37,10 +37,10 @@ surface for you. You call them once, and the engine moves the surface a bit ever
 arrives, so there is no `Update` code and no `pcall` needed.
 
 ```lua
-sector:MoveFloorToCeiling(floorIndex, speed, gap)          -- speed in units/s
-sector:MoveCeilingToFloor(floorIndex, speed, gap)
-sector:MoveFloorToCeilingOverTime(floorIndex, seconds, gap) -- arrives after `seconds`
-sector:MoveCeilingToFloorOverTime(floorIndex, seconds, gap)
+sector:MoveFloorToCeiling(floorIndex, speed, gap, collision)          -- speed in units/s
+sector:MoveCeilingToFloor(floorIndex, speed, gap, collision)
+sector:MoveFloorToCeilingOverTime(floorIndex, seconds, gap, collision) -- arrives after `seconds`
+sector:MoveCeilingToFloorOverTime(floorIndex, seconds, gap, collision)
 
 sector:IsMoving(floorIndex)   -- true while that floor or ceiling is still moving
 sector:StopMoving(floorIndex) -- stops both where they are
@@ -52,9 +52,32 @@ sector:StopMoving(floorIndex) -- stops both where they are
 | `speed` | Units per second. Must be above 0 |
 | `seconds` | How long the move takes, measured from the heights when you call it. `0` snaps on the next frame |
 | `gap` | Optional, default `0`. How far short of the other surface to stop. `MoveFloorToCeiling(1, 30, 10)` leaves 10 units between floor and ceiling |
+| `collision` | Optional, default `SectorCollision.ForceMove`. What to do when the surface would hit an entity, see below. Needs `gap` before it |
 
 Lua has no overloading on "a number that means speed" vs "a number that means seconds", so the
-timed versions have their own `...OverTime` names. `gap` can be left out of all four.
+timed versions have their own `...OverTime` names. `gap` and `collision` can be left out of all
+four.
+
+**Running into entities**
+
+By default a moving surface goes straight through entities. The last argument changes that:
+
+| `collision` | What happens when the surface would hit an entity |
+|---|---|
+| `SectorCollision.ForceMove` | Nothing, it keeps moving (the default) |
+| `SectorCollision.Stop` | The move ends at the last height that fit |
+| `SectorCollision.Retract` | It goes back to where the move started, at the same speed |
+| `SectorCollision.DontMove` | It waits in place and carries on once the entity is gone |
+
+"Hit" is a simple height check against the active, non-trigger colliders of the entities inside
+the sector: a ceiling coming down hits a collider when it reaches its top, and a floor going up
+hits one when the collider it lifts would no longer fit under the ceiling. Moving away (floor
+down, ceiling up) is never blocked. `MoveFloorTo`, `MoveCeilingTo` and their `...OverTime`
+versions take the same last argument.
+
+```lua
+sector:MoveCeilingToFloor(1, 60, 0, SectorCollision.Retract) -- a door that bounces off the player
+```
 
 **How they behave**
 
