@@ -1154,6 +1154,7 @@ namespace MapEditorInternal {
         KEYBIND_ZOOM_IN,
         KEYBIND_ZOOM_OUT,
         KEYBIND_FOCUS_SELECTION,
+        KEYBIND_FRAME_MAP,
 
         // Modes
         KEYBIND_CYCLE_MODE,

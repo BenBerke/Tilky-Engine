@@ -228,6 +228,7 @@ namespace MapEditorInternal {
         {"zoom_in",          "editor.key.zoom_in",          "editor.key_group.camera",     KEYSCOPE_MAP, {SDL_SCANCODE_EQUALS, SDL_SCANCODE_KP_PLUS}},
         {"zoom_out",         "editor.key.zoom_out",         "editor.key_group.camera",     KEYSCOPE_MAP, {SDL_SCANCODE_MINUS, SDL_SCANCODE_KP_MINUS}},
         {"focus_selection",  "editor.key.focus_selection",  "editor.key_group.camera",     KEYSCOPE_MAP, {SDL_SCANCODE_F}},
+        {"frame_map",        "editor.key.frame_map",        "editor.key_group.camera",     KEYSCOPE_MAP, {SDL_SCANCODE_J}},
 
         {"cycle_mode",       "editor.key.cycle_mode",       "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_Q}},
         {"geometry_mode",    "editor.key.geometry_mode",    "editor.key_group.modes",      KEYSCOPE_MAP, {SDL_SCANCODE_G}},

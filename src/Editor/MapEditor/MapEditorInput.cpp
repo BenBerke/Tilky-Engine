@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <vector>
 
 #include "../EditorInternal.hpp"
@@ -365,6 +366,48 @@ namespace MapEditorInternal {
             if (currentMode == MODE_ENTITY && editingEntity)
                 if (const ComponentTransform* transform = level.transforms.Get(selectedEntity.id))
                     cameraPos = {transform->position.x, transform->position.y};
+        }
+
+        // Centres the camera on the middle of the map's bounding box (every
+        // sector vertex, wall end and entity) and zooms so all of it fits.
+        void FrameWholeMap() {
+            const Level& level = LevelManager::CurrentLevel();
+
+            Vector2 min{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+            Vector2 max{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+            bool any = false;
+
+            const auto Include = [&](const float x, const float y) {
+                min.x = std::min(min.x, x);
+                min.y = std::min(min.y, y);
+                max.x = std::max(max.x, x);
+                max.y = std::max(max.y, y);
+                any = true;
+            };
+
+            for (const Sector& sector : level.sectors)
+                for (const Vector2& v : sector.vertices) Include(v.x, v.y);
+
+            for (const Wall& wall : level.walls) {
+                Include(wall.start.x, wall.start.y);
+                Include(wall.end.x, wall.end.y);
+            }
+
+            for (const ComponentTransform& transform : level.transforms.components)
+                Include(transform.position.x, transform.position.y);
+
+            if (!any) return;
+
+            cameraPos = {(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
+
+            // Leave a margin so the edges aren't hidden under the panels.
+            constexpr float FIT_MARGIN = 0.8f;
+            const float width = std::max(max.x - min.x, 1.0f);
+            const float height = std::max(max.y - min.y, 1.0f);
+            const float fitZoom = std::min(static_cast<float>(screenWidth) / width,
+                                           static_cast<float>(screenHeight) / height) * FIT_MARGIN;
+
+            editorZoom = std::clamp(fitZoom, MIN_EDITOR_ZOOM, MAX_EDITOR_ZOOM);
         }
 
         // =====================================================================
@@ -1556,6 +1599,7 @@ namespace MapEditorInternal {
 
             if (currentMode == MODE_SECTOR && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) CancelActiveDrawing();
             if (GetKeyBindDown(KEYBIND_FOCUS_SELECTION)) FocusCameraOnSelection();
+            if (GetKeyBindDown(KEYBIND_FRAME_MAP)) FrameWholeMap();
 
             // E places a new entity under the cursor. Only while the cursor
             // is on the canvas - over a panel there is no world point to

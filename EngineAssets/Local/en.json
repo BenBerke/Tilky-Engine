@@ -77,6 +77,7 @@
   "editor.key.zoom_in": "Zoom In",
   "editor.key.zoom_out": "Zoom Out",
   "editor.key.focus_selection": "Focus Selection",
+  "editor.key.frame_map": "Frame Whole Map",
   "editor.key.cycle_mode": "Cycle Mode",
   "editor.key.geometry_mode": "Geometry Mode",
   "editor.key.entity_mode": "Entity Mode",
