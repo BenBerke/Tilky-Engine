@@ -591,6 +591,10 @@ namespace MapEditorInternal {
     // Field of view of the runtime editor's fly camera, in degrees.
     extern float runtimeCameraFov;
 
+    // On: the runtime editor opens where its camera was last left. Off: it
+    // opens at the 2D editor's mouse position instead.
+    extern bool rememberCameraPosition;
+
     // Preview size of the inspector's wall and sector texture fields, in pixels.
     extern float textureFieldSize;
 

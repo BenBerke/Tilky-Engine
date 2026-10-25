@@ -365,7 +365,7 @@ namespace MapEditorInternal {
 
             if (currentMode == MODE_ENTITY && editingEntity)
                 if (const ComponentTransform* transform = level.transforms.Get(selectedEntity.id))
-                    cameraPos = {transform->position.x, transform->position.y};
+                    cameraPos = {transform->position.x, transform->position.z};
         }
 
         // Centres the camera on the middle of the map's bounding box (every
@@ -394,7 +394,7 @@ namespace MapEditorInternal {
             }
 
             for (const ComponentTransform& transform : level.transforms.components)
-                Include(transform.position.x, transform.position.y);
+                Include(transform.position.x, transform.position.z);
 
             if (!any) return;
 

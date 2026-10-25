@@ -211,6 +211,7 @@ namespace MapEditorInternal {
                 MIN_RUNTIME_CAMERA_FOV,
                 MAX_RUNTIME_CAMERA_FOV
             );
+            rememberCameraPosition = settings.value("rememberCameraPosition", true);
             textureFieldSize = std::clamp(
                 settings.value("textureFieldSize", DEFAULT_TEXTURE_FIELD_SIZE),
                 MIN_TEXTURE_FIELD_SIZE,
@@ -436,6 +437,7 @@ namespace MapEditorInternal {
                    {"cameraSpeed", cameraSpeed},
                 {"cameraStepSize", cameraStepSize},
                 {"runtimeCameraFov", runtimeCameraFov},
+                {"rememberCameraPosition", rememberCameraPosition},
                 {"textureFieldSize", textureFieldSize},
                 {"editorDesign", EditorStyle::ActiveDesign()},
                 {"hierarchyVisible", hierarchyVisible},

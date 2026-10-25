@@ -1676,6 +1676,8 @@ namespace {
             ImGui::SliderFloat(Get("editor.user_settings.runtime_camera_fov").c_str(), &runtimeCameraFov,
                                MIN_RUNTIME_CAMERA_FOV, MAX_RUNTIME_CAMERA_FOV, "%.0f");
             HoverTooltip(Get("editor.tooltip.user_settings.runtime_camera_fov").c_str());
+            ImGui::Checkbox(Get("editor.user_settings.remember_camera_position").c_str(), &rememberCameraPosition);
+            HoverTooltip(Get("editor.tooltip.user_settings.remember_camera_position").c_str());
 
             // PushSuccessStyle();
             // if (ImGui::Button(Get("editor.user_settings.save").c_str())) SaveUserSettings();
@@ -1953,7 +1955,32 @@ namespace {
         }
     }
 
+    // Puts the runtime editor camera over the 2D mouse position, at eye
+    // height above the floor there. Its height is left alone outside every
+    // sector, and its rotation always is.
+    void MoveRuntimeCameraToMouse() {
+        Level& level = LevelManager::CurrentLevel();
+
+        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+        Vector3& position = level.runtimeCamPos;
+
+        position.x = mouseWorld.x;
+        position.z = mouseWorld.y;
+
+        const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, mouseWorld);
+        if (sectorIndex < 0) return;
+
+        const Sector& sector = level.sectors[sectorIndex];
+        const int floorIndex = MapQueries::FindFloorAtHeight(sector, mouseWorld, position.y);
+        if (floorIndex < 0) return;
+
+        position.y = MapQueries::SurfaceHeightAt(sector, sector.floors[floorIndex].floor, mouseWorld) +
+                     ComponentPlayerController{}.eyeHeight;
+    }
+
     void OpenRuntimeEditorFromEditor() {
+        if (!rememberCameraPosition) MoveRuntimeCameraToMouse();
+
         if (Save(Editor::currentMap)) {
             hasUnsavedChanges = false;
             SDL_Log("%s", Editor::currentMap.c_str());
