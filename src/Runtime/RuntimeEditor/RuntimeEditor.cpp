@@ -876,8 +876,8 @@ namespace {
     // Covers the edits made straight in the view - texture drags, scrolling,
     // flips, pastes, resets, texture cycling, alignment, dropped textures and
     // wall deletes - as whole copies of the level's walls and sectors, and
-    // placed entities as a copy of every entity. Not the inspector's field
-    // edits.
+    // placed entities as a copy of every entity. Of the inspector's edits,
+    // only the entity inspector's.
     struct GeometryState {
         std::vector<Wall> walls;
         std::vector<Sector> sectors;
@@ -890,6 +890,9 @@ namespace {
         // and sectors.
         std::optional<MapEditorInternal::EntitiesSnapshot> entities;
 
+        // Set on entity inspector steps, which hold only the edited entities.
+        std::optional<MapEditorInternal::EntityComponentsSnapshot> components;
+
         // Set on steps that change wall snaps: every snap, swapped with
         // WallSnap::All() along with the rest.
         std::optional<WallSnap::Snaps> wallSnaps;
@@ -899,6 +902,11 @@ namespace {
 
     std::vector<GeometryState> undoStack;
     std::vector<GeometryState> redoStack;
+
+    // Changes whenever a step is committed, undone or redone.
+    std::uint64_t undoHistoryVersion = 0;
+
+    MapEditorInternal::InspectorEditTracker entityInspectorEdit;
 
     // Every entity as the gizmo drag in progress found them, committed as an
     // undo step once the drag has changed something.
@@ -926,6 +934,7 @@ namespace {
         if (undoStack.size() > MAX_UNDO_STEPS) undoStack.erase(undoStack.begin());
 
         redoStack.clear();
+        ++undoHistoryVersion;
     }
 
     // Records `before` when the edit changed `count` (more than 0) things.
@@ -985,6 +994,13 @@ namespace {
             return;
         }
 
+        if (state.components.has_value()) {
+            MapEditorInternal::SwapEntityComponents(level, *state.components);
+            runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+            MapEditorInternal::MarkUnsavedChanges();
+            return;
+        }
+
         std::swap(level.walls, state.walls);
         std::swap(level.sectors, state.sectors);
 
@@ -1017,6 +1033,7 @@ namespace {
 
         SwapGeometry(level, state);
         redoStack.push_back(std::move(state));
+        ++undoHistoryVersion;
         return true;
     }
 
@@ -1028,7 +1045,34 @@ namespace {
 
         SwapGeometry(level, state);
         undoStack.push_back(std::move(state));
+        ++undoHistoryVersion;
         return true;
+    }
+
+    // MapEditorInternal::RecordInspectorEdit, for this editor's history.
+    void RecordInspectorEdit(Level& level, const std::vector<ID>& others) {
+        std::optional<MapEditorInternal::EntityComponentsSnapshot> before =
+            MapEditorInternal::EndInspectorEdit(level, entityInspectorEdit, others);
+        if (!before.has_value()) return;
+
+        if (entityInspectorEdit.stepOpen && entityInspectorEdit.historyVersion == undoHistoryVersion &&
+            !undoStack.empty() && undoStack.back().components.has_value()) {
+            GeometryState& step = undoStack.back();
+            MapEditorInternal::AddMissingEntityComponents(*step.components, std::move(*before));
+            step.count = static_cast<int>(step.components->size());
+        }
+        else {
+            GeometryState step;
+            step.labelKey = "editor.history.edit_entities";
+            step.count = static_cast<int>(before->size());
+            step.components = std::move(*before);
+
+            CommitUndo(std::move(step));
+        }
+
+        entityInspectorEdit.stepOpen = true;
+        entityInspectorEdit.historyVersion = undoHistoryVersion;
+        MapEditorInternal::MarkUnsavedChanges();
     }
 
     // ---- Texture shortcuts ------------------------------------------------
@@ -1895,6 +1939,8 @@ namespace RuntimeEditorUi {
                 if (snap != nullptr) entityInspectorState.wallSnapGap = snap->gap;
             }
 
+            MapEditorInternal::BeginInspectorEdit(level, entityInspectorEdit, primaryID);
+
             const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
 
@@ -1908,6 +1954,7 @@ namespace RuntimeEditorUi {
             }
 
             if (!editingEntity) {
+                RecordInspectorEdit(level, {});
                 ClearEntitySelection();
                 return;
             }
@@ -1919,6 +1966,10 @@ namespace RuntimeEditorUi {
                     &entityInspectorState.editingComponent, DRAGGABLE
                 );
             }
+
+            // Before the mirroring below, so the step also holds the rest of
+            // the selection as it was.
+            RecordInspectorEdit(level, mirrors ? selectedEntityIds : std::vector<ID>{});
 
             if (mirrors) {
                 const nlohmann::json after = MultiEdit::EntityState(level, primaryID);

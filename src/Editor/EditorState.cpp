@@ -54,10 +54,12 @@ namespace MapEditorInternal {
     // and that code is in the standalone build too.
     std::vector<UndoStep> undoSteps;
     std::vector<UndoStep> redoSteps;
+    std::uint64_t undoHistoryVersion = 0;
 
     void ClearUndoHistory() {
         undoSteps.clear();
         redoSteps.clear();
+        ++undoHistoryVersion;
     }
 
     std::string HistoryLabel(const char* labelKey, const int count) {

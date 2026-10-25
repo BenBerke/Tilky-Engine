@@ -177,6 +177,8 @@ namespace {
     // fields, Entity/Wall/Sector pickers and hierarchy drag-and-drop included.
     ImGuiDrawFunctions::EntityInspectorState uiScriptEditorState;
 
+    InspectorEditTracker uiInspectorEdit;
+
     void ResetUIInspectorState() {
         uiEntityInspectorState = {};
         uiScriptEditorState = {};
@@ -1173,6 +1175,8 @@ namespace {
             return;
         }
 
+        BeginInspectorEdit(level, uiInspectorEdit, entity->id);
+
         bool windowOpen = true;
         const bool deleteRequested = DrawUIEntityEditor(*entity, uiEntityInspectorState, &windowOpen);
 
@@ -1187,6 +1191,7 @@ namespace {
         }
 
         if (!windowOpen) {
+            RecordInspectorEdit(level, uiInspectorEdit);
             selectedUIEntityID = INVALID_ID;
             ResetUIInspectorState();
             return;
@@ -1198,6 +1203,8 @@ namespace {
         if (uiScriptEditorState.editingComponent && uiScriptEditorState.selectedComponent != -1)
             ImGuiDrawFunctions::DrawComponentEditor(*entity, uiScriptEditorState,
                                                     &uiScriptEditorState.editingComponent, false);
+
+        RecordInspectorEdit(level, uiInspectorEdit);
     }
 
     // ---------------------------------------------------------------------

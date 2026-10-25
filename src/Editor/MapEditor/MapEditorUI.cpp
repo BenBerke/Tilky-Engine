@@ -391,6 +391,7 @@ namespace {
     using namespace MapEditorInternal;
 
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
+    InspectorEditTracker entityInspectorEdit;
 
     std::optional<std::string> pendingLevelToLoad;
 
@@ -2069,6 +2070,31 @@ namespace {
         DrawShutdownConfirmModal();
     }
 
+    // Bottom bar styled like the main menu bar, showing the mouse position in
+    // level coordinates. Submitted before the dockspace so it shrinks the
+    // viewport's work area instead of covering docked panels.
+    void DrawStatusBar() {
+        constexpr ImGuiWindowFlags flags =
+                ImGuiWindowFlags_NoScrollbar |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_MenuBar;
+
+        const float height = ImGui::GetFrameHeight();
+        if (ImGui::BeginViewportSideBar("##MapEditorStatusBar", ImGui::GetMainViewport(), ImGuiDir_Down, height, flags)) {
+            if (ImGui::BeginMenuBar()) {
+                const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+
+                char text[64];
+                std::snprintf(text, sizeof(text), "X: %.2f   Y: %.2f", mouseWorld.x, mouseWorld.y);
+                ImGui::TextUnformatted(text);
+
+                ImGui::EndMenuBar();
+            }
+        }
+
+        ImGui::End();
+    }
+
     // =========================================================================
     //  Toolbar: square icon buttons, centred just below the menu bar
     // =========================================================================
@@ -3128,6 +3154,8 @@ namespace {
             if (snap != nullptr) entityInspectorState.wallSnapGap = snap->gap;
         }
 
+        BeginInspectorEdit(level, entityInspectorEdit, entity.id);
+
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
@@ -3149,6 +3177,7 @@ namespace {
         }
 
         if (!editingEntity) {
+            RecordInspectorEdit(level, entityInspectorEdit);
             ResetInspectorState();
             return;
         }
@@ -3161,6 +3190,10 @@ namespace {
             );
             editingComponent = entityInspectorState.editingComponent;
         }
+
+        // Before the propagation below, so the step also holds the rest of
+        // the selection as it was.
+        RecordInspectorEdit(level, entityInspectorEdit, multiEdit ? selectedEntities : std::vector<ID>{});
 
         if (multiEdit &&
             PropagateEntityTransformEdits(level, transformBeforeEdit, selectedEntities, entity.id))
@@ -4671,6 +4704,7 @@ namespace MapEditorInternal {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
         DrawMainMenuBar();
+        DrawStatusBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
 

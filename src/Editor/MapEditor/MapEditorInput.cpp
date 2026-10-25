@@ -849,7 +849,10 @@ namespace MapEditorInternal {
     void RevertCanvasEntityDrag() {
         Level& level = LevelManager::CurrentLevel();
 
-        if (canvasDragPushedUndo && !undoSteps.empty()) undoSteps.pop_back();
+        if (canvasDragPushedUndo && !undoSteps.empty()) {
+            undoSteps.pop_back();
+            ++undoHistoryVersion;
+        }
         canvasDragPushedUndo = false;
 
         for (const auto& [entityID, position] : canvasDragStartPositions) {

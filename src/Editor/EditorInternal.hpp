@@ -10,9 +10,13 @@
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "WallSnap.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
@@ -1422,9 +1426,10 @@ namespace MapEditorInternal {
     // swaps the current state of that kind into it, so the same step, moved
     // to redoSteps, redoes it.
     enum UndoKind {
-        UNDO_GEOMETRY,          // walls and sectors
-        UNDO_ENTITY_POSITIONS,  // some entities' positions
-        UNDO_ENTITIES,          // every entity and component - adds and deletes
+        UNDO_GEOMETRY,           // walls and sectors
+        UNDO_ENTITY_POSITIONS,   // some entities' positions
+        UNDO_ENTITIES,           // every entity and component - adds and deletes
+        UNDO_ENTITY_COMPONENTS,  // some entities and their components - inspector edits
     };
 
     struct EntitiesSnapshot {
@@ -1436,14 +1441,63 @@ namespace MapEditorInternal {
 #undef TILKY_SNAPSHOT_STORAGE
     };
 
+    // One entity and every component it owns, each type in the entity's
+    // own order.
+    struct EntityComponentsState {
+        Entity entity;
+
+#define TILKY_ENTITY_STATE_STORAGE(Type, Bit, Storage, LabelKey) std::vector<Type> Storage;
+        TILKY_COMPONENTS(TILKY_ENTITY_STATE_STORAGE)
+#undef TILKY_ENTITY_STATE_STORAGE
+    };
+
+    using EntityComponentsSnapshot = std::vector<EntityComponentsState>;
+
+    // Entities that don't exist are left out.
+    [[nodiscard]] EntityComponentsSnapshot CaptureEntityComponents(Level& level, const std::vector<ID>& entityIDs);
+
+    // Puts each entity in `snapshot` back as it was and leaves its current
+    // state in `snapshot`, so the same call takes it back the other way.
+    // Entities that no longer exist are skipped.
+    void SwapEntityComponents(Level& level, EntityComponentsSnapshot& snapshot);
+
+    // Adds the states in `from` for entities `into` doesn't have yet.
+    void AddMissingEntityComponents(EntityComponentsSnapshot& into, EntityComponentsSnapshot from);
+
+    // Turns the inspector's edits of an entity - its fields, name, tags,
+    // added, removed or reordered components - into undo steps. Each frame,
+    // BeginInspectorEdit goes before the inspectors draw and EndInspectorEdit
+    // right after them, before the edit is passed on to the rest of a
+    // multi-selection. One drag or one typing session is one step.
+    struct InspectorEditTracker {
+        ID entityID = INVALID_ID;
+        nlohmann::json before;               // in the save format, to spot changes
+        EntityComponentsSnapshot beforeState;
+
+        // The edit in progress already has its step, the last one, if the
+        // history hasn't changed since (historyVersion).
+        bool stepOpen = false;
+        std::uint64_t historyVersion = 0;
+    };
+
+    void BeginInspectorEdit(Level& level, InspectorEditTracker& tracker, ID entityID);
+
+    // When the entity changed since BeginInspectorEdit: its state from then,
+    // plus `others` (the rest of the selection) as they are now.
+    [[nodiscard]] std::optional<EntityComponentsSnapshot> EndInspectorEdit(Level& level, InspectorEditTracker& tracker, const std::vector<ID>& others = {});
+
+    // EndInspectorEdit, recorded in the map editor's history.
+    void RecordInspectorEdit(Level& level, InspectorEditTracker& tracker, const std::vector<ID>& others = {});
+
     struct UndoStep {
         UndoKind kind = UNDO_GEOMETRY;
         const char* labelKey = ""; // en.json
         int count = 0;             // shown after the label when above 1
 
-        GeometrySnapshot geometry;       // UNDO_GEOMETRY
-        EntityTransformUndo positions;   // UNDO_ENTITY_POSITIONS
-        EntitiesSnapshot entities;       // UNDO_ENTITIES
+        GeometrySnapshot geometry;            // UNDO_GEOMETRY
+        EntityTransformUndo positions;        // UNDO_ENTITY_POSITIONS
+        EntitiesSnapshot entities;            // UNDO_ENTITIES
+        EntityComponentsSnapshot components;  // UNDO_ENTITY_COMPONENTS
 
         // Set on steps that change wall snaps (any kind): every snap, swapped
         // with WallSnap::All() along with the step's own state.
@@ -1454,6 +1508,10 @@ namespace MapEditorInternal {
 
     extern std::vector<UndoStep> undoSteps; // oldest first
     extern std::vector<UndoStep> redoSteps; // the next one to redo last
+
+    // Changes whenever a step is pushed, undone or redone, or the history is
+    // cleared.
+    extern std::uint64_t undoHistoryVersion;
 
     // Level loads and new levels start a fresh history.
     void ClearUndoHistory();

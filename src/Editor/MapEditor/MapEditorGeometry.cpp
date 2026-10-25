@@ -15,6 +15,9 @@
 
 #include <spdlog/spdlog.h>
 
+#include <imgui.h>
+
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/MapTopology.hpp"
 #include "Headers/Map/TextureTiling.hpp"
@@ -3124,8 +3127,131 @@ namespace MapEditorInternal {
                     step.entities = std::move(current);
                     break;
                 }
+                case UNDO_ENTITY_COMPONENTS: {
+                    SwapEntityComponents(level, step.components);
+
+                    if (const Entity* primary = level.GetEntity(selectedEntity.id)) selectedEntity = *primary;
+                    MarkUnsavedChanges();
+                    break;
+                }
             }
         }
+
+        EntityComponentsState CaptureEntityComponentsState(Level& level, const Entity& entity) {
+            EntityComponentsState state;
+            state.entity = entity;
+
+#define CAPTURE_OWNED(Type, Bit, Storage, LabelKey) \
+            for (const Type* component : level.Storage.GetAll(entity.id)) state.Storage.push_back(*component);
+            TILKY_COMPONENTS(CAPTURE_OWNED)
+#undef CAPTURE_OWNED
+
+            return state;
+        }
+
+        // Replaces everything the owner has in `storage` with `components`,
+        // keeping their instance IDs.
+        template<typename Storage, typename T>
+        void RestoreOwnedComponents(Storage& storage, const ID ownerID, const std::vector<T>& components) {
+            storage.RemoveAll(ownerID);
+
+            for (const T& component : components) {
+                if constexpr (std::is_same_v<T, ComponentScript>) {
+                    ComponentScript& script = storage.Add(ownerID, component.instanceID);
+                    const ScriptInstanceID instanceID = script.instanceID;
+                    script = component;
+                    script.instanceID = instanceID;
+                }
+                else storage.InsertLoaded(component);
+            }
+        }
+    }
+
+    EntityComponentsSnapshot CaptureEntityComponents(Level& level, const std::vector<ID>& entityIDs) {
+        EntityComponentsSnapshot snapshot;
+
+        for (const ID entityID : entityIDs)
+            if (const Entity* entity = level.GetEntity(entityID))
+                snapshot.push_back(CaptureEntityComponentsState(level, *entity));
+
+        return snapshot;
+    }
+
+    void SwapEntityComponents(Level& level, EntityComponentsSnapshot& snapshot) {
+        for (EntityComponentsState& state : snapshot) {
+            Entity* entity = level.GetEntity(state.entity.id);
+            if (entity == nullptr) continue;
+
+            EntityComponentsState current = CaptureEntityComponentsState(level, *entity);
+            *entity = state.entity;
+
+#define RESTORE_OWNED(Type, Bit, Storage, LabelKey) RestoreOwnedComponents(level.Storage, state.entity.id, state.Storage);
+            TILKY_COMPONENTS(RESTORE_OWNED)
+#undef RESTORE_OWNED
+
+            if (ComponentTransform* transform = level.transforms.Get(state.entity.id)) transform->isDirty = true;
+
+            state = std::move(current);
+        }
+    }
+
+    void AddMissingEntityComponents(EntityComponentsSnapshot& into, EntityComponentsSnapshot from) {
+        for (EntityComponentsState& state : from) {
+            const bool present = std::ranges::any_of(into, [&state](const EntityComponentsState& existing) {
+                return existing.entity.id == state.entity.id;
+            });
+
+            if (!present) into.push_back(std::move(state));
+        }
+    }
+
+    void BeginInspectorEdit(Level& level, InspectorEditTracker& tracker, const ID entityID) {
+        // A drag or typing session ends when its widget lets go, still
+        // reported here from the frame before.
+        if (tracker.entityID != entityID || !ImGui::IsAnyItemActive()) tracker.stepOpen = false;
+
+        tracker.entityID = entityID;
+        tracker.before = LevelSerialization::EntitiesToJson(level, {entityID});
+        tracker.beforeState = CaptureEntityComponents(level, {entityID});
+    }
+
+    std::optional<EntityComponentsSnapshot> EndInspectorEdit(Level& level, InspectorEditTracker& tracker, const std::vector<ID>& others) {
+        if (level.GetEntity(tracker.entityID) == nullptr) return std::nullopt;
+        if (LevelSerialization::EntitiesToJson(level, {tracker.entityID}) == tracker.before) return std::nullopt;
+
+        std::vector<ID> otherIDs;
+        for (const ID id : others) if (id != tracker.entityID) otherIDs.push_back(id);
+
+        EntityComponentsSnapshot snapshot = std::move(tracker.beforeState);
+        AddMissingEntityComponents(snapshot, CaptureEntityComponents(level, otherIDs));
+        tracker.beforeState.clear();
+
+        return snapshot;
+    }
+
+    void RecordInspectorEdit(Level& level, InspectorEditTracker& tracker, const std::vector<ID>& others) {
+        std::optional<EntityComponentsSnapshot> before = EndInspectorEdit(level, tracker, others);
+        if (!before.has_value()) return;
+
+        if (tracker.stepOpen && tracker.historyVersion == undoHistoryVersion &&
+            !undoSteps.empty() && undoSteps.back().kind == UNDO_ENTITY_COMPONENTS) {
+            UndoStep& step = undoSteps.back();
+            AddMissingEntityComponents(step.components, std::move(*before));
+            step.count = static_cast<int>(step.components.size());
+            MarkUnsavedChanges();
+        }
+        else {
+            UndoStep step;
+            step.kind = UNDO_ENTITY_COMPONENTS;
+            step.labelKey = "editor.history.edit_entities";
+            step.count = static_cast<int>(before->size());
+            step.components = std::move(*before);
+
+            PushUndoStep(std::move(step));
+        }
+
+        tracker.stepOpen = true;
+        tracker.historyVersion = undoHistoryVersion;
     }
 
     EntitiesSnapshot CaptureEntitiesSnapshot() {
@@ -3149,6 +3275,7 @@ namespace MapEditorInternal {
         if (undoSteps.size() > MAX_MAP_UNDO_STEPS) undoSteps.erase(undoSteps.begin());
 
         redoSteps.clear();
+        ++undoHistoryVersion;
         MarkUnsavedChanges();
     }
 
@@ -3180,6 +3307,7 @@ namespace MapEditorInternal {
 
         SwapUndoStep(step);
         redoSteps.push_back(std::move(step));
+        ++undoHistoryVersion;
         MarkUnsavedChanges();
     }
 
@@ -3191,6 +3319,7 @@ namespace MapEditorInternal {
 
         SwapUndoStep(step);
         undoSteps.push_back(std::move(step));
+        ++undoHistoryVersion;
         MarkUnsavedChanges();
     }
 

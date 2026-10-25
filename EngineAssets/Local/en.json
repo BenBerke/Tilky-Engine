@@ -271,6 +271,7 @@
   "editor.history.distribute_entities": "Distribute Entities",
   "editor.history.snap_entities": "Snap Entities to Grid",
   "editor.history.drop_entities": "Drop Entities to Floor",
+  "editor.history.edit_entities": "Edit Entities",
   "runtime_editor.tooltip.history": "Show or hide the list of recent edits. Click an entry to undo or redo up to it.",
   "runtime_editor.history.drag_texture": "Drag Texture",
   "runtime_editor.history.apply_texture": "Apply Texture",
