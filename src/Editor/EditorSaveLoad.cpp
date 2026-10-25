@@ -183,6 +183,27 @@ namespace MapEditorInternal {
             LoadColor4("gridColor", gridColor);
             LoadColor3("backgroundColor", backgroundColor);
 
+#ifndef TILKY_STANDALONE
+            // Script editor colors as RGBA 0-255; a missing one keeps its default.
+            if (const auto scriptIt = settings.find("scriptEditorColors"); scriptIt != settings.end() && scriptIt->is_object()) {
+                TextEditor::Palette palette = assetBrowser.GetScriptEditorPalette();
+
+                for (const AssetBrowser::ScriptEditorColorInfo& info : AssetBrowser::ScriptEditorColors()) {
+                    const auto it = scriptIt->find(info.saveName);
+                    if (it == scriptIt->end() || !it->is_array() || it->size() < 4) continue;
+                    if (!std::ranges::all_of(*it, [](const nlohmann::json& value) { return value.is_number(); })) continue;
+
+                    palette[static_cast<std::size_t>(info.index)] = IM_COL32(
+                        std::clamp((*it)[0].get<int>(), 0, 255),
+                        std::clamp((*it)[1].get<int>(), 0, 255),
+                        std::clamp((*it)[2].get<int>(), 0, 255),
+                        std::clamp((*it)[3].get<int>(), 0, 255));
+                }
+
+                assetBrowser.SetScriptEditorPalette(palette);
+            }
+#endif
+
             cameraSpeed = settings.value("cameraSpeed", 1.0f);
             cameraStepSize = settings.value("cameraStepSize", 50.0f);
             runtimeCameraFov = std::clamp(
@@ -309,6 +330,26 @@ namespace MapEditorInternal {
         return steps;
     }
 
+#ifndef TILKY_STANDALONE
+    // {"keyword": [86, 156, 214, 255], ...} - RGBA 0-255.
+    nlohmann::json SerializeScriptEditorColors() {
+        nlohmann::json colors = nlohmann::json::object();
+        const TextEditor::Palette& palette = assetBrowser.GetScriptEditorPalette();
+
+        for (const AssetBrowser::ScriptEditorColorInfo& info : AssetBrowser::ScriptEditorColors()) {
+            const ImU32 color = palette[static_cast<std::size_t>(info.index)];
+            colors[info.saveName] = {
+                (color >> IM_COL32_R_SHIFT) & 0xFF,
+                (color >> IM_COL32_G_SHIFT) & 0xFF,
+                (color >> IM_COL32_B_SHIFT) & 0xFF,
+                (color >> IM_COL32_A_SHIFT) & 0xFF
+            };
+        }
+
+        return colors;
+    }
+#endif
+
     bool SaveUserSettings() {
         const fs::path settingsPath = ProjectManager::GetUserSettingsPath();
 
@@ -413,6 +454,7 @@ namespace MapEditorInternal {
 
 #ifndef TILKY_STANDALONE
             settings["vsync"] = RuntimeSession::GetVSyncMode();
+            settings["scriptEditorColors"] = SerializeScriptEditorColors();
 #endif
 
             spdlog::info("Saving user settings to: '{}'", settingsPath.string());

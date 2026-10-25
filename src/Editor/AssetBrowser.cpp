@@ -16,6 +16,7 @@
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
 #include "Headers/Editor/Editor.hpp"
+#include "EditorInternal.hpp" // SaveUserSettings()
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
@@ -1021,6 +1022,8 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
             ImGui::EndMenu();
         }
 
+        DrawColorsMenu();
+
         ImGui::EndMenuBar();
     }
 
@@ -1235,6 +1238,100 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     );
 
     ImGui::End();
+}
+
+std::span<const AssetBrowser::ScriptEditorColorInfo> AssetBrowser::ScriptEditorColors() {
+    using PI = TextEditor::PaletteIndex;
+
+    // Only the slots Lua and plain text actually use (no preprocessor,
+    // breakpoints or error markers).
+    static constexpr ScriptEditorColorInfo kColors[] = {
+        {PI::Default, "default", "Plain Text"},
+        {PI::Keyword, "keyword", "Keyword"},
+        {PI::Number, "number", "Number"},
+        {PI::String, "string", "String"},
+        {PI::Punctuation, "punctuation", "Punctuation"},
+        {PI::Identifier, "identifier", "Identifier"},
+        {PI::KnownIdentifier, "knownIdentifier", "Engine / Built-in Name"},
+        {PI::Comment, "comment", "Comment"},
+        {PI::MultiLineComment, "multiLineComment", "Block Comment"},
+        {PI::Background, "background", "Background"},
+        {PI::Cursor, "cursor", "Cursor"},
+        {PI::Selection, "selection", "Selection"},
+        {PI::LineNumber, "lineNumber", "Line Number"},
+        {PI::CurrentLineFill, "currentLineFill", "Current Line"},
+        {PI::CurrentLineFillInactive, "currentLineFillInactive", "Current Line (Unfocused)"},
+        {PI::CurrentLineEdge, "currentLineEdge", "Current Line Edge"},
+    };
+
+    return kColors;
+}
+
+void AssetBrowser::DrawColorsMenu() {
+    if (!ImGui::BeginMenu("Colors")) {
+        if (scriptEditorColorsChanged) {
+            scriptEditorColorsChanged = false;
+            MapEditorInternal::SaveUserSettings();
+        }
+        return;
+    }
+
+    constexpr ImGuiColorEditFlags colorFlags =
+            ImGuiColorEditFlags_NoInputs |
+            ImGuiColorEditFlags_NoLabel |
+            ImGuiColorEditFlags_PickerHueBar |
+            ImGuiColorEditFlags_AlphaBar |
+            ImGuiColorEditFlags_AlphaPreviewHalf;
+
+    const TextEditor::Palette& defaults = TextEditor::GetDarkPalette();
+    TextEditor::Palette palette = scriptEditor.GetPalette();
+    bool changed = false;
+
+    if (ImGui::BeginTable("##ScriptEditorColors", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+        for (const ScriptEditorColorInfo& info : ScriptEditorColors()) {
+            ImU32& color = palette[static_cast<std::size_t>(info.index)];
+
+            ImGui::PushID(info.saveName);
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(info.label);
+
+            ImGui::TableSetColumnIndex(1);
+            ImVec4 edited = ImGui::ColorConvertU32ToFloat4(color);
+            if (ImGui::ColorEdit4("##Color", &edited.x, colorFlags)) {
+                color = ImGui::ColorConvertFloat4ToU32(edited);
+                changed = true;
+            }
+
+            ImGui::TableSetColumnIndex(2);
+            ImGui::BeginDisabled(color == defaults[static_cast<std::size_t>(info.index)]);
+            if (ImGui::SmallButton("Default")) {
+                color = defaults[static_cast<std::size_t>(info.index)];
+                changed = true;
+            }
+            ImGui::EndDisabled();
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Separator();
+
+    if (ImGui::MenuItem("Reset All to Default", nullptr, false, palette != defaults)) {
+        palette = defaults;
+        changed = true;
+    }
+
+    if (changed) {
+        scriptEditor.SetPalette(palette);
+        scriptEditorColorsChanged = true;
+    }
+
+    ImGui::EndMenu();
 }
 
 const std::vector<LuaScriptCompiler::DeclarationInfo>& AssetBrowser::OpenScriptDeclarations() {

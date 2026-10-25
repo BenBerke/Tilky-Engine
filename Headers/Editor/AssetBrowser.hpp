@@ -5,6 +5,7 @@
 #include <imgui.h>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -323,6 +324,21 @@ public:
     // Files the script editor opens as plain text: .txt, .md and .json.
     [[nodiscard]] static bool IsPlainTextFile(const std::filesystem::path& path);
 
+    // One color the script editor's Colors menu lets the user change.
+    // `saveName` is its key in UserSettings.bson. Add a row to
+    // ScriptEditorColors() (AssetBrowser.cpp) to expose another palette slot.
+    struct ScriptEditorColorInfo {
+        TextEditor::PaletteIndex index;
+        const char* saveName;
+        const char* label;
+    };
+    [[nodiscard]] static std::span<const ScriptEditorColorInfo> ScriptEditorColors();
+
+    // The script editor's colors, saved with the user settings. Defaults
+    // to TextEditor::GetDarkPalette().
+    [[nodiscard]] const TextEditor::Palette& GetScriptEditorPalette() const { return scriptEditor.GetPalette(); }
+    void SetScriptEditorPalette(const TextEditor::Palette& palette) { scriptEditor.SetPalette(palette); }
+
     // Opens a .fpk in its own flipbook editor window (or focuses the one
     // already showing it). Every editor that hosts this browser draws the
     // windows with DrawFlipbookEditorWindows().
@@ -507,6 +523,11 @@ private:
     // the keybindings that trigger these (Ctrl+/, Ctrl+D, ...).
     void ToggleLineComment();
     void DuplicateCurrentLine();
+
+    // The menu bar's Colors menu. A change is saved to the user settings
+    // once the menu closes.
+    void DrawColorsMenu();
+    bool scriptEditorColorsChanged = false;
 
     void NavigateTo(const std::filesystem::path& absoluteDirectory);
     void NavigateToParent();
