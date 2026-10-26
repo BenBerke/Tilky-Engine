@@ -414,10 +414,6 @@ namespace {
         }
     }
 
-    json TagsJson(const Entity& entity) {
-        return json{entity.tags, entity.tagIds};
-    }
-
     // Calls f(T*) for the component type whose CMP_* value is `bit`.
     template<typename F>
     void WithComponentType(const int bit, F&& f) {
@@ -514,7 +510,7 @@ namespace {
         Entity& root = edited.entities.front();
 
         if (path == "entity/enabled") { root.enabled = instance.enabled; return; }
-        if (path == "entity/tags") { root.tags = instance.tags; root.tagIds = instance.tagIds; return; }
+        if (path == "entity/tags") { root.tagIds = instance.tagIds; return; }
 
         const size_t first = path.find('/');
         const size_t second = first == std::string::npos ? std::string::npos : path.find('/', first + 1);
@@ -543,7 +539,6 @@ namespace {
         Entity& entity = *to.GetEntity(newID);
         entity.name = source.name;
         entity.enabled = source.enabled;
-        entity.tags = source.tags;
         entity.tagIds = source.tagIds;
 
         IdMap toCopy;
@@ -721,7 +716,7 @@ namespace Prefab {
         std::vector<PrefabRemovedComponent> removed;
 
         if (instance.enabled != root.enabled) overrides.emplace_back("entity/enabled");
-        if (TagsJson(instance) != TagsJson(root)) overrides.emplace_back("entity/tags");
+        if (instance.tagIds != root.tagIds) overrides.emplace_back("entity/tags");
 
         const IdMap toPrefab = MakeIdMap(instance, root, true);
         ForEachComponentType([&]<typename T>(T*) {
@@ -737,10 +732,7 @@ namespace Prefab {
         const PrefabLink& link = instance.prefabLink;
 
         if (!HasOverride(link, "entity/enabled")) instance.enabled = root.enabled;
-        if (!HasOverride(link, "entity/tags")) {
-            instance.tags = root.tags;
-            instance.tagIds = root.tagIds;
-        }
+        if (!HasOverride(link, "entity/tags")) instance.tagIds = root.tagIds;
 
         ForEachComponentType([&]<typename T>(T*) { SyncComponents<T>(level, instance, prefab); });
     }
@@ -841,7 +833,7 @@ namespace Prefab {
 
         const Entity& root = RootOf(*prefab);
         if (instance.enabled != root.enabled) fields.emplace_back("enabled");
-        if (TagsJson(instance) != TagsJson(root)) fields.emplace_back("tags");
+        if (instance.tagIds != root.tagIds) fields.emplace_back("tags");
         return fields;
     }
 

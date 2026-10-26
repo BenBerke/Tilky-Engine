@@ -16,7 +16,12 @@ namespace TagRegistry
     using TagId = uint16_t;
     using TagMap = std::unordered_map<std::string, TagId>;
 
+    // Sectors, walls and entities store only tag IDs; the registry is the
+    // one place names live, kept as two maps (name -> ID and ID -> name).
     std::optional<TagId> Find(const std::string& name);
+    // The name of a registered tag, or nullopt if `id` isn't registered
+    // (e.g. a tag deleted while another level still held it).
+    std::optional<std::string> GetName(TagId id);
     TagId GetOrCreate(const std::string& name);
 
     // Strict creation for UI-driven tag creation: fails (returns nullopt,

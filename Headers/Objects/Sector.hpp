@@ -217,7 +217,7 @@ using SectorScript = ScriptAttachmentData;
 struct Sector {
     std::string name;
 
-    std::vector<std::string> tags;
+    // TagRegistry IDs; names are looked up with TagRegistry::GetName.
     std::vector<uint16_t> tagIds;
 
     // Scripts attached to this sector (zero or more). They live on the

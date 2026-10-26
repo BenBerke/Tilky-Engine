@@ -1125,7 +1125,7 @@ namespace MapEditorInternal {
 
     // Component types (CMP_*) and tags whose entities are filtered out.
     extern std::vector<int> hiddenEntityComponentTypes;
-    extern std::vector<std::string> hiddenEntityTags;
+    extern std::vector<uint16_t> hiddenEntityTags;
     [[nodiscard]] bool EntityPassesFilter(const Entity& entity);
 
     // ---- Entity Mode placement (MapEditorGeometry.cpp) ------------------

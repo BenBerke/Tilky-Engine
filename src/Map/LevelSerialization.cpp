@@ -280,55 +280,27 @@ namespace {
         return fallback;
     }
 
-    // Loads the "tags"/"tagIds" parallel-array format shared by sectors,
-    // walls and entities into outTags/outTagIds. Missing fields produce
-    // empty vectors. A length mismatch discards both sides (logged) rather
-    // than risk an index existing in one vector but not the other;
-    // malformed individual entries (wrong JSON type) are skipped and
-    // logged too, keeping whatever parsed cleanly.
-    void LoadTagArrays(const json& objectJson, const char* kind, const ID objectId,
-                        std::vector<std::string>& outTags, std::vector<uint16_t>& outTagIds) {
-        outTags.clear();
+    // Loads the "tagIds" array shared by sectors, walls and entities into
+    // outTagIds (names live only in TagRegistry). A missing field produces
+    // an empty vector; malformed entries (wrong JSON type) are skipped and
+    // logged, keeping whatever parsed cleanly.
+    void LoadTagIds(const json& objectJson, const char* kind, const ID objectId, std::vector<uint16_t>& outTagIds) {
         outTagIds.clear();
 
-        if (!objectJson.contains("tags") && !objectJson.contains("tagIds")) return;
+        if (!objectJson.contains("tagIds")) return;
 
-        std::vector<std::string> loadedTags;
-        std::vector<uint16_t> loadedTagIds;
         bool malformedEntry = false;
 
-        if (objectJson.contains("tags")) {
-            if (objectJson.at("tags").is_array()) {
-                for (const json& tagJson : objectJson.at("tags")) {
-                    if (tagJson.is_string()) loadedTags.push_back(tagJson.get<std::string>());
-                    else malformedEntry = true;
-                }
-            } else malformedEntry = true;
-        }
-
-        if (objectJson.contains("tagIds")) {
-            if (objectJson.at("tagIds").is_array()) {
-                for (const json& tagIdJson : objectJson.at("tagIds")) {
-                    if (tagIdJson.is_number_unsigned() || tagIdJson.is_number_integer())
-                        loadedTagIds.push_back(tagIdJson.get<uint16_t>());
-                    else malformedEntry = true;
-                }
-            } else malformedEntry = true;
-        }
-
-        if (loadedTags.size() != loadedTagIds.size()) {
-            spdlog::warn(
-                "{} {}: tag name/id array length mismatch ({} vs {}) - tags discarded",
-                kind, objectId, loadedTags.size(), loadedTagIds.size()
-            );
-            return;
-        }
+        if (objectJson.at("tagIds").is_array()) {
+            for (const json& tagIdJson : objectJson.at("tagIds")) {
+                if (tagIdJson.is_number_unsigned() || tagIdJson.is_number_integer())
+                    outTagIds.push_back(tagIdJson.get<uint16_t>());
+                else malformedEntry = true;
+            }
+        } else malformedEntry = true;
 
         if (malformedEntry)
             spdlog::warn("{} {}: malformed tag data - invalid entries were skipped", kind, objectId);
-
-        outTags = std::move(loadedTags);
-        outTagIds = std::move(loadedTagIds);
     }
 
     void SetError(std::string* errorMessage, const std::string& message) {
@@ -553,7 +525,7 @@ namespace {
             entity.enabled = entityJson.value("enabled", true);
             entity.attachedLevelId = level.id;
 
-            LoadTagArrays(entityJson, "Entity", entity.id, entity.tags, entity.tagIds);
+            LoadTagIds(entityJson, "Entity", entity.id, entity.tagIds);
 
             if (entityJson.contains("prefab")) entity.prefabLink = PrefabLinkFromJson(entityJson["prefab"]);
 
@@ -572,7 +544,6 @@ namespace {
                 {"id", entity->id},
                 {"name", entity->name},
                 {"enabled", entity->enabled},
-                {"tags", entity->tags},
                 {"tagIds", entity->tagIds}
             };
 
@@ -754,7 +725,7 @@ namespace {
 
             wall.name = wallJson.value("name", std::string{});
 
-            LoadTagArrays(wallJson, "Wall", wall.id, wall.tags, wall.tagIds);
+            LoadTagIds(wallJson, "Wall", wall.id, wall.tagIds);
 
             level.walls.push_back(std::move(wall));
         }
@@ -809,7 +780,6 @@ namespace {
                 {"middleIgnoredByRaycast", wall.middleIgnoredByRaycast},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
-                {"tags", wall.tags},
                 {"tagIds", wall.tagIds},
                 {"angle", wall.angle}
             });
@@ -1138,26 +1108,20 @@ namespace {
 
             sector.name = sectorJson.at("name");
 
-            if (sectorJson.contains("tags") || sectorJson.contains("tagIds")) {
-                LoadTagArrays(sectorJson, "Sector", sector.id, sector.tags, sector.tagIds);
-            } else if (sectorJson.contains("tag") && sectorJson.contains("tagId")) {
+            if (sectorJson.contains("tagIds")) {
+                LoadTagIds(sectorJson, "Sector", sector.id, sector.tagIds);
+            } else if (sectorJson.contains("tagId")) {
                 // Legacy single-tag format (pre-multi-tag) - load as a
                 // one-element vector rather than dropping the tag.
-                sector.tags.clear();
                 sector.tagIds.clear();
 
-                const json &legacyTag = sectorJson.at("tag");
                 const json &legacyTagId = sectorJson.at("tagId");
 
-                if (legacyTag.is_string() &&
-                    (legacyTagId.is_number_unsigned() || legacyTagId.is_number_integer())) {
-                    sector.tags.push_back(legacyTag.get<std::string>());
+                if (legacyTagId.is_number_unsigned() || legacyTagId.is_number_integer())
                     sector.tagIds.push_back(legacyTagId.get<uint16_t>());
-                } else {
+                else
                     spdlog::warn("Sector {}: malformed legacy tag data - skipping", sector.id);
-                }
             } else {
-                sector.tags.clear();
                 sector.tagIds.clear();
             }
 
@@ -1245,7 +1209,6 @@ namespace {
                     }
                 },
                 {"name", sector.name},
-                {"tags", sector.tags},
                 {"tagIds", sector.tagIds},
                     {"parentID", sector.parentID}
             };

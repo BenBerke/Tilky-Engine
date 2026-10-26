@@ -1007,36 +1007,18 @@ namespace {
     // TagRegistry is the authoritative owner of project tags (name <-> stable
     // ID); this panel only drives it through its public API (Create / Rename /
     // Delete / Find) - it never mutates a tag's ID or touches the underlying
-    // map directly. Deleting a project tag here also strips the matching
-    // name/ID pair from every sector, wall and entity of every loaded level,
-    // so none of their tags/tagIds vectors are left referencing a tag the
-    // registry no longer knows about.
+    // map directly. Deleting a project tag here also strips its ID from every
+    // sector, wall and entity of every loaded level, so none of their tagIds
+    // vectors are left referencing a tag the registry no longer knows about.
 
-    // Erases the (tagName, tagId) pair from `tags`/`tagIds` if present. A
-    // single object can't have the same tag twice (see each inspector's
-    // duplicate guard), so at most one pair is ever removed.
-    void RemoveTagAssignment(std::vector<std::string> &tags, std::vector<uint16_t> &tagIds,
-                             const std::string &tagName, const TagRegistry::TagId tagId) {
-        const size_t pairCount = std::min(tags.size(), tagIds.size());
-
-        for (size_t i = 0; i < pairCount; ++i) {
-            if (tags[i] == tagName && tagIds[i] == tagId) {
-                tags.erase(tags.begin() + static_cast<long>(i));
-                tagIds.erase(tagIds.begin() + static_cast<long>(i));
-                return;
-            }
-        }
-    }
-
-    // Removes every (tagName, tagId) assignment from every sector, wall and
-    // entity of every loaded level. Called once a project tag is actually
-    // deleted, so nothing is left pointing at an ID the registry no longer
-    // has.
-    void RemoveTagFromAllLoadedObjects(const std::string &tagName, const TagRegistry::TagId tagId) {
+    // Removes every assignment of `tagId` from every sector, wall and entity
+    // of every loaded level. Called once a project tag is actually deleted,
+    // so nothing is left pointing at an ID the registry no longer has.
+    void RemoveTagFromAllLoadedObjects(const TagRegistry::TagId tagId) {
         for (Level &level: LevelManager::loadedLevels) {
-            for (Sector &sector: level.sectors) RemoveTagAssignment(sector.tags, sector.tagIds, tagName, tagId);
-            for (Wall &wall: level.walls) RemoveTagAssignment(wall.tags, wall.tagIds, tagName, tagId);
-            for (Entity &entity: level.entities) RemoveTagAssignment(entity.tags, entity.tagIds, tagName, tagId);
+            for (Sector &sector: level.sectors) std::erase(sector.tagIds, tagId);
+            for (Wall &wall: level.walls) std::erase(wall.tagIds, tagId);
+            for (Entity &entity: level.entities) std::erase(entity.tagIds, tagId);
         }
     }
 
@@ -1171,7 +1153,7 @@ namespace {
             const auto &[deletedName, deletedId] = *tagPendingDeletion;
 
             TagRegistry::Delete(deletedName);
-            RemoveTagFromAllLoadedObjects(deletedName, deletedId);
+            RemoveTagFromAllLoadedObjects(deletedId);
             tagNameBuffers.erase(deletedId);
 
             hasUnsavedChanges = true;
@@ -4162,11 +4144,11 @@ namespace MapEditorInternal {
             ImGui::TextDisabled("%s", Get("editor.entity_mode.filter.tags").c_str());
 
             for (const auto& [tagName, tagId] : TagRegistry::GetAll()) {
-                const std::string tag = tagName;
-                const bool visible = std::find(hiddenEntityTags.begin(), hiddenEntityTags.end(), tag) == hiddenEntityTags.end();
+                const TagRegistry::TagId tag = tagId;
+                const bool visible = std::ranges::find(hiddenEntityTags, tag) == hiddenEntityTags.end();
 
-                DrawEntityFilterRow(level, tag.c_str(), tag, visible,
-                    [tag](const Entity& entity) { return std::find(entity.tags.begin(), entity.tags.end(), tag) != entity.tags.end(); },
+                DrawEntityFilterRow(level, tagName.c_str(), tagName, visible,
+                    [tag](const Entity& entity) { return std::ranges::find(entity.tagIds, tag) != entity.tagIds.end(); },
                     [&, tag](const bool show) { toggleListEntry(hiddenEntityTags, tag, show); });
             }
         }

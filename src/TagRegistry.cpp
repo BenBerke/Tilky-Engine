@@ -16,6 +16,7 @@
 namespace
 {
     TagRegistry::TagMap tagToId;
+    std::unordered_map<TagRegistry::TagId, std::string> idToTag;
     uint32_t nextTagId = 0;
 }
 
@@ -27,6 +28,14 @@ std::optional<TagRegistry::TagId> TagRegistry::Find(const std::string& name) {
     return iterator->second;
 }
 
+std::optional<std::string> TagRegistry::GetName(const TagId id) {
+    const auto iterator = idToTag.find(id);
+
+    if (iterator == idToTag.end()) return std::nullopt;
+
+    return iterator->second;
+}
+
 TagRegistry::TagId TagRegistry::GetOrCreate(const std::string& name) {
     if (const auto id = Find(name)) return *id;
 
@@ -34,6 +43,7 @@ TagRegistry::TagId TagRegistry::GetOrCreate(const std::string& name) {
 
     const auto id = static_cast<TagId>(nextTagId++);
     tagToId.emplace(name, id);
+    idToTag[id] = name;
 
     return id;
 }
@@ -46,6 +56,7 @@ std::optional<TagRegistry::TagId> TagRegistry::Create(const std::string& name) {
 
     const auto id = static_cast<TagId>(nextTagId++);
     tagToId.emplace(name, id);
+    idToTag[id] = name;
 
     return id;
 }
@@ -62,13 +73,20 @@ bool TagRegistry::Rename(const std::string& oldName, const std::string& newName)
     const TagId id = iterator->second;
     tagToId.erase(iterator);
     tagToId.emplace(newName, id);
+    idToTag[id] = newName;
 
     return true;
 }
 
 bool TagRegistry::Delete(const std::string& name) {
     // Do not decrease nextTagId. Deleted IDs should not be reused.
-    return tagToId.erase(name) > 0;
+    const auto iterator = tagToId.find(name);
+    if (iterator == tagToId.end()) return false;
+
+    idToTag.erase(iterator->second);
+    tagToId.erase(iterator);
+
+    return true;
 }
 
 bool TagRegistry::Exists(const std::string& name) {
@@ -86,6 +104,9 @@ uint32_t TagRegistry::GetNextId() {
 void TagRegistry::Load(TagMap tags, const uint32_t nextId) {
     tagToId = std::move(tags);
     nextTagId = nextId;
+
+    idToTag.clear();
+    for (const auto& [name, id] : tagToId) idToTag[id] = name;
 }
 
 bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsPath) {
@@ -135,5 +156,6 @@ bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsP
 
 void TagRegistry::Clear() {
     tagToId.clear();
+    idToTag.clear();
     nextTagId = 0;
 }

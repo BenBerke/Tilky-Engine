@@ -747,7 +747,6 @@ namespace {
         Vector3 light = {};
         std::vector<SectorFloor> floors;
 
-        std::vector<std::string> tags;
         std::vector<uint16_t> tagIds;
     };
 
@@ -769,7 +768,6 @@ namespace {
             propertyClipboard.middle = wall.middle;
             propertyClipboard.middleHasCollision = wall.middleHasCollision;
             propertyClipboard.middleIgnoredByRaycast = wall.middleIgnoredByRaycast;
-            propertyClipboard.tags = wall.tags;
             propertyClipboard.tagIds = wall.tagIds;
             return true;
         }
@@ -783,7 +781,6 @@ namespace {
             propertyClipboard.kind = PropertyClipboard::Kind::Sector;
             propertyClipboard.light = sector.light;
             propertyClipboard.floors = sector.floors;
-            propertyClipboard.tags = sector.tags;
             propertyClipboard.tagIds = sector.tagIds;
             return true;
         }
@@ -798,7 +795,6 @@ namespace {
         wall.middle = propertyClipboard.middle;
         wall.middleHasCollision = propertyClipboard.middleHasCollision;
         wall.middleIgnoredByRaycast = propertyClipboard.middleIgnoredByRaycast;
-        wall.tags = propertyClipboard.tags;
         wall.tagIds = propertyClipboard.tagIds;
     }
 
@@ -807,7 +803,6 @@ namespace {
         const Vector3 lightBefore = sector.light;
 
         sector.light = propertyClipboard.light;
-        sector.tags = propertyClipboard.tags;
         sector.tagIds = propertyClipboard.tagIds;
 
         // The surfaces only: a floor that's mid-move keeps moving.

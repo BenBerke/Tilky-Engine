@@ -109,7 +109,6 @@ namespace MultiEdit {
 
         // Only the saved, non-excluded fields; geometry and derived data stay.
         target.name = std::move(loaded.name);
-        target.tags = std::move(loaded.tags);
         target.tagIds = std::move(loaded.tagIds);
         target.color = loaded.color;
         target.top = std::move(loaded.top);
@@ -137,7 +136,6 @@ namespace MultiEdit {
         // Only the saved, non-excluded fields. Everything else on a Sector -
         // its outline, triangles, neighbours, PVS, entities - stays.
         target.name = std::move(loaded.name);
-        target.tags = std::move(loaded.tags);
         target.tagIds = std::move(loaded.tagIds);
         target.floors = std::move(loaded.floors);
         target.light = loaded.light;
@@ -163,7 +161,6 @@ namespace MultiEdit {
 
         return {
             {"name", entity->name},
-            {"tags", entity->tags},
             {"tagIds", entity->tagIds},
             {"components", std::move(components)}
         };
@@ -179,7 +176,6 @@ namespace MultiEdit {
         if (!ApplyChanges(edited, Changes(before, after), {})) return;
 
         target->name = edited.value("name", target->name);
-        target->tags = edited.value("tags", target->tags);
         target->tagIds = edited.value("tagIds", target->tagIds);
 
         bool transformChanged = false;

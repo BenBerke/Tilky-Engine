@@ -2908,7 +2908,7 @@ namespace MapEditorInternal {
     bool showPortalWalls = true;
 
     std::vector<int> hiddenEntityComponentTypes;
-    std::vector<std::string> hiddenEntityTags;
+    std::vector<uint16_t> hiddenEntityTags;
 
     bool WallPassesFilter(const Wall& wall) {
         return wall.IsPortal() ? showPortalWalls : showSolidWalls;
@@ -2918,8 +2918,8 @@ namespace MapEditorInternal {
         for (const int type : hiddenEntityComponentTypes)
             if (entity.componentsMask.test(static_cast<size_t>(type))) return false;
 
-        for (const std::string& tag : hiddenEntityTags)
-            if (std::find(entity.tags.begin(), entity.tags.end(), tag) != entity.tags.end()) return false;
+        for (const uint16_t tagId : hiddenEntityTags)
+            if (std::ranges::find(entity.tagIds, tagId) != entity.tagIds.end()) return false;
 
         return true;
     }
@@ -2972,10 +2972,8 @@ namespace MapEditorInternal {
         if (Entity* entity = level.GetEntity(id); entity != nullptr && !placeDefaultTag.empty()) {
             const auto tagId = TagRegistry::Find(placeDefaultTag);
 
-            if (tagId && std::find(entity->tags.begin(), entity->tags.end(), placeDefaultTag) == entity->tags.end()) {
-                entity->tags.push_back(placeDefaultTag);
+            if (tagId && std::ranges::find(entity->tagIds, *tagId) == entity->tagIds.end())
                 entity->tagIds.push_back(*tagId);
-            }
         }
 
         return id;

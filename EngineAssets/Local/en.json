@@ -1326,13 +1326,13 @@
   "editor.project.texels_per_unit_failed": "Could not save Texels Per Unit to project.tilky. Check the logs.",
   "tags.none_found": "No tags yet.",
   "tags.new_placeholder": "New tag name",
-  "tags.add_placeholder": "Add tag by name",
+  "tags.add_placeholder": "Add tag...",
+  "tags.none_available": "No more tags. Create them in Project Settings.",
+  "tags.missing": "(deleted tag)",
   "tags.tooltip.delete": "Delete this tag from the project. Removes it from every sector, wall and entity that has it.",
   "tags.notification.duplicate_name": "A tag with that name already exists.",
   "tags.notification.empty_name": "Tag name can't be empty.",
   "tags.notification.save_failed": "Failed to save project settings. Check logs.",
-  "tags.unknown_error": "No tag with that name exists. Create it in Project Settings first.",
-  "tags.duplicate_error": "This already has that tag.",
   "editor.tooltip.tag_delete": "Remove this tag from here. The tag itself is not deleted from the project.",
   "sector.tags": "Tags",
   "sector.scripts": "Scripts",
@@ -1358,5 +1358,9 @@
   "editor.design.dark": "Dark",
   "editor.design.light": "Light",
   "editor.design.midnight": "Midnight",
-  "editor.design.classic": "Classic"
+  "editor.design.classic": "Classic",
+  "event.line.entity_collide": "Entity Collide",
+  "event.line.entity_cross": "Entity Crossover",
+  "event.sector.entity_enter": "Entity Enter",
+  "event.sector.entity_exit": "Entity Exit"
 }

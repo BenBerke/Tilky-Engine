@@ -1787,7 +1787,7 @@ struct ScriptEntity {
 
     [[nodiscard]] int GetTagCount() const {
         const Entity* entity = GetEntity();
-        return entity == nullptr ? 0 : static_cast<int>(entity->tags.size());
+        return entity == nullptr ? 0 : static_cast<int>(entity->tagIds.size());
     }
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
@@ -1796,10 +1796,11 @@ struct ScriptEntity {
 
         const int index = luaIndex - 1;
 
-        if (index < 0 || index >= static_cast<int>(entity->tags.size()))
+        if (index < 0 || index >= static_cast<int>(entity->tagIds.size()))
             throw sol::error("Entity tag index out of range");
 
-        return entity->tags[index];
+        // A tag deleted from the project but still held here reads as "".
+        return TagRegistry::GetName(entity->tagIds[index]).value_or("");
     }
 
     [[nodiscard]] bool HasPlayerController() const {
@@ -2111,7 +2112,7 @@ struct ScriptWall {
     [[nodiscard]] int GetTagCount() const {
         const Wall* wall = GetWall();
         if (wall == nullptr) throw sol::error("Invalid Wall");
-        return static_cast<int>(wall->tags.size());
+        return static_cast<int>(wall->tagIds.size());
     }
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
@@ -2120,10 +2121,11 @@ struct ScriptWall {
 
         const int index = luaIndex - 1;
 
-        if (index < 0 || index >= static_cast<int>(wall->tags.size()))
+        if (index < 0 || index >= static_cast<int>(wall->tagIds.size()))
             throw sol::error("Wall tag index out of range");
 
-        return wall->tags[index];
+        // A tag deleted from the project but still held here reads as "".
+        return TagRegistry::GetName(wall->tagIds[index]).value_or("");
     }
 
     [[nodiscard]] ID GetFrontSector() const {
@@ -2581,7 +2583,7 @@ struct ScriptSector {
     [[nodiscard]] int GetTagCount() const {
         const Sector* sector = GetSector();
         if (sector == nullptr) throw sol::error("Invalid Sector");
-        return static_cast<int>(sector->tags.size());
+        return static_cast<int>(sector->tagIds.size());
     }
 
     [[nodiscard]] std::string GetTag(const int luaIndex) const {
@@ -2590,10 +2592,11 @@ struct ScriptSector {
 
         const int index = luaIndex - 1;
 
-        if (index < 0 || index >= static_cast<int>(sector->tags.size()))
+        if (index < 0 || index >= static_cast<int>(sector->tagIds.size()))
             throw sol::error("Sector tag index out of range");
 
-        return sector->tags[index];
+        // A tag deleted from the project but still held here reads as "".
+        return TagRegistry::GetName(sector->tagIds[index]).value_or("");
     }
 
     // ---------------------------------------------------------------------

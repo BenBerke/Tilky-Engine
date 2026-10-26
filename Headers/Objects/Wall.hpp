@@ -85,7 +85,7 @@ struct Wall {
 
     std::string name;
 
-    std::vector<std::string> tags;
+    // TagRegistry IDs; names are looked up with TagRegistry::GetName.
     std::vector<uint16_t> tagIds;
 
     Vector2 start, end;

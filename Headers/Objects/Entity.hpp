@@ -17,7 +17,7 @@ struct Entity {
     ID id = static_cast<ID>(-1);
     ID attachedLevelId = static_cast<ID>(-1);
 
-    std::vector<std::string> tags;
+    // TagRegistry IDs; names are looked up with TagRegistry::GetName.
     std::vector<uint16_t> tagIds;
 
     // Entity-level active state (Lua: Entity.enabled / Entity:SetEnabled()).

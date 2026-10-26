@@ -563,6 +563,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Objects/ScriptPublicType.hpp
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
+        Headers/Objects/Event.hpp
 )
 
 # ============================================================
