@@ -1416,6 +1416,20 @@ namespace MapEditorInternal {
         // inspector can follow the selection again.
         if (!holdingEntity) inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
+        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+            editingComponent = false;
+            editingEntity = false;
+            editingSector = false;
+            editingWall = false;
+
+            selectedEntities = {};
+            selectedEntity = {};
+            selectedWalls = {};
+            selectedWallID = -1;
+            selectedSectors = {};
+            selectedSectorID = -1;
+        }
+
         ValidateSelections(level);
 
         const Vector2 mouseScreen = InputManager::GetMousePosition();
