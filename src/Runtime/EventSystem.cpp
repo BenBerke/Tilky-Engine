@@ -522,6 +522,9 @@ namespace EventSystem {
             [&](const PayloadDispatchEntityDisable&) {
                 if (Entity* entity = level.GetEntity(ownerID)) entity->enabled = false;
             },
+            [&](const PayloadDispatchEntityEnable&) {
+                if (Entity* entity = level.GetEntity(ownerID)) entity->enabled = true;
+            },
             [&](const PayloadDispatchEntityCallFunction& call) {
                 if (hooks.callFunction && !call.functionName.empty())
                     hooks.callFunction(level, ownerID, call.functionName, instigatorID);

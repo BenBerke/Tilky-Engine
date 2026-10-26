@@ -110,7 +110,7 @@ struct PayloadEntityChangeSector {
     TagFilter filter;
 };
 
-struct PayloadEntityEnable { // Nothing needed
+struct PayloadEntityEnable {
     static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
     static constexpr const char* translationKey = "event.entity.enable";
     static constexpr const char* saveName = "entity.enable"; // level file name, never change
@@ -185,6 +185,13 @@ struct PayloadDispatchEntityDisable {
     bool operator==(const PayloadDispatchEntityDisable&) const = default;
 };
 
+struct PayloadDispatchEntityEnable {
+    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr const char* translationKey = "event.dispatch.entity.enable";
+    static constexpr const char* saveName = "dispatch.entity.enable"; // level file name, never change
+    bool operator==(const PayloadDispatchEntityEnable&) const = default;
+};
+
 // Supporting parameters would be too complicated (?)
 struct PayloadDispatchEntityCallFunction {
     static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
@@ -204,7 +211,7 @@ using EventPayload = std::variant<
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor,
     PayloadDispatchSectorMoveCeilingToFloor, PayloadDispatchSectorMoveFloorToCeiling,
-    PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityTeleport>;
+    PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable, PayloadDispatchEntityTeleport>;
 
 template <typename Payload>
 [[nodiscard]] constexpr EventOwnerKind GetOwnerKind(const Payload& payload) noexcept {

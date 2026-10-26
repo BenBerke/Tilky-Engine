@@ -1377,6 +1377,7 @@
   "event.dispatch.entity.destroy": "Destroy",
   "event.dispatch.entity.teleport": "Teleport",
   "event.dispatch.entity.disable": "Disable",
+  "event.dispatch.entity.enable": "Enable",
   "event.dispatch.entity.call_function": "Call Function",
   "events.title": "Events",
   "dispatches.title": "Dispatches",
