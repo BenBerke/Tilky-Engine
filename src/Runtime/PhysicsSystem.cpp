@@ -609,7 +609,7 @@ namespace {
     };
 
     RoundBody MakeRoundBody(const ComponentTransform& transform, const ComponentCollider& collider) {
-        return {transform.LocalToWorld(collider.offset), collider.Radius(), collider.Height()};
+        return {collider.Base(transform), collider.Radius(transform), collider.Height(transform)};
     }
 
     // Where two vertical ranges come closest: one height on each. Inside an
@@ -821,7 +821,7 @@ namespace PhysicsSystem {
 
             if (!collider->isActive || collider->isTrigger || !collider->IsRound()) continue;
 
-            const float bottom = transform->LocalToWorld(collider->offset).y;
+            const float bottom = collider->Base(*transform).y;
 
             if (bottom < baseBottom) {
                 base = collider;
@@ -1382,8 +1382,8 @@ namespace PhysicsSystem {
         for (ComponentCollider& selfCollider : colliders.ActiveBoxes()) {
             ZoneScopedN("AABB");
             // TODO TILKY_TODO AABB Collision
-            /* use boxCollider.scale.x/y/z for the AABB size
-               selfTransform.position for the position
+            /* use boxCollider.WorldSize(transform) for the AABB size
+               boxCollider.Base(transform) for the position
                 Make sure to follow the SIMD style as sphere
                 You can look at the sphere collision to see how things are done
 

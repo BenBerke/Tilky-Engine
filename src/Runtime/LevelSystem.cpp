@@ -347,7 +347,7 @@ namespace LevelSystem {
 
                     if (collider == nullptr) continue;
 
-                    const Vector3 colliderBottom = transform.LocalToWorld(collider->offset);
+                    const Vector3 colliderBottom = collider->Base(transform);
 
                     // Sampled under the collider: a sloped floor's height is
                     // only its height at the sector's edge.

@@ -90,12 +90,12 @@ namespace {
 
         RegisterType(Type("Collider", "Sphere, capsule or box collision volume. It is the body for every physics contact.", {
             Prop("isValid", "boolean", true),
-            Prop("offset", "Vector3", false, "Local position of the collider's bottom relative to the Entity's Transform, turned with its rotation. Lets several sit at different spots on one Entity."),
+            Prop("offset", "Vector3", false, "Local position of the collider's bottom relative to the Entity's Transform, multiplied by its scale and turned with its rotation. Lets several sit at different spots on one Entity."),
             Prop("type", "ColliderType"),
             Prop("isActive", "boolean"),
             Prop("isTrigger", "boolean"),
-            Prop("scale", "Vector3", false, "Box: full extents. Sphere: scale.x is the radius. Capsule: scale.x is the radius, scale.y the total height."),
-            Prop("stepSize", "number"),
+            Prop("scale", "Vector3", false, "Local size, multiplied by the Transform's scale. Box: full extents. Sphere: scale.x is the radius (times Transform scale.x). Capsule: scale.x is the radius (times Transform scale.x), scale.y the total height (times Transform scale.y)."),
+            Prop("stepSize", "number", false, "Max step-up height in world units, not scaled by the Transform."),
             Prop("maxSlope", "number", false, "Steepest floor in degrees the collider can stand on. Steeper floors aren't ground: the body slides down."),
         }));
 

@@ -528,26 +528,27 @@ namespace {
                 const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
                 if (transform == nullptr) [[unlikely]] return;
 
-                const Vector3 base = transform->LocalToWorld(collider.offset);
+                const Vector3 base = collider.Base(*transform);
                 std::optional<float> hitDistance;
 
                 if (collider.type == COLLIDERTYPE_SPHERE) {
-                    const float radius = std::max(0.0f, collider.scale.x);
+                    const float radius = collider.Radius(*transform);
                     const Vector3 center = {base.x, base.y + radius, base.z};
 
                     hitDistance = RaySphereIntersection(pos, normalizedDir, center, radius, closestDistance);
                 }
                 else if (collider.type == COLLIDERTYPE_CAPSULE) {
-                    const float radius = collider.Radius();
+                    const float radius = collider.Radius(*transform);
                     const Vector3 lowCentre = {base.x, base.y + radius, base.z};
-                    const float highCentreY = base.y + collider.Height() - radius;
+                    const float highCentreY = base.y + collider.Height(*transform) - radius;
 
                     hitDistance = RayCapsuleIntersection(pos, normalizedDir, lowCentre, highCentreY, radius, closestDistance);
                 }
                 else if (collider.type == COLLIDERTYPE_BOX) {
-                    const Vector3 halfSize = collider.scale * 0.5f;
+                    const Vector3 size = collider.WorldSize(*transform);
+                    const Vector3 halfSize = size * 0.5f;
                     const Vector3 boxMin = {base.x - halfSize.x, base.y, base.z - halfSize.z};
-                    const Vector3 boxMax = {base.x + halfSize.x, base.y + collider.scale.y, base.z + halfSize.z};
+                    const Vector3 boxMax = {base.x + halfSize.x, base.y + size.y, base.z + halfSize.z};
 
                     hitDistance = RayAABBIntersection(pos, normalizedDir, boxMin, boxMax, closestDistance);
                 }

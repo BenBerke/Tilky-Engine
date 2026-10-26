@@ -272,8 +272,8 @@ namespace MapEditorInternal {
         {"rt_fly_right",        "editor.key.rt_fly_right",        "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_D}},
         {"rt_fly_up",           "editor.key.rt_fly_up",           "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_SPACE}},
         {"rt_fly_down",         "editor.key.rt_fly_down",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT}},
-        {"rt_speed_up",         "editor.key.rt_speed_up",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_B}},
-        {"rt_speed_down",       "editor.key.rt_speed_down",       "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_N}},
+        {"rt_speed_up",         "editor.key.rt_speed_up",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_N}},
+        {"rt_speed_down",       "editor.key.rt_speed_down",       "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_B}},
         {"rt_reset_speed",      "editor.key.rt_reset_speed",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_COMMA}},
         {"rt_gravity_mode",     "editor.key.rt_gravity_mode",     "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_G}},
 

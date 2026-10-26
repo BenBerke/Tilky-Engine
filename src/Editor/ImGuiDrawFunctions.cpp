@@ -2247,14 +2247,14 @@ namespace ImGuiDrawFunctions {
         auto CloseEditor    = [&]() { closeRequested = true; };
 
         // Sprite/Model/Collider/AudioSource sit at an offset from the Transform.
-        auto DrawOffsetSection = [&](Vector3 &offset) {
+        auto DrawOffsetSection = [&](Vector3 &offset, const char* tooltipKey = "editor.tooltip.component.offset", const float speed = 1.0f) {
             {
                 PrefabField prefabField("offset");
                 BeginSection(Get("component.offset").c_str());
                 ImGui::TextDisabled("X                Y               Z");
                 FieldWidth(220.0f);
-                InputOrDrag3("##offset", &offset.x, draggable);
-                Tooltip(Get("editor.tooltip.component.offset").c_str());
+                InputOrDrag3("##offset", &offset.x, draggable, speed);
+                Tooltip(Get(tooltipKey).c_str());
                 ResetFloat3Button("rst_offset", &offset.x);
                 EndSection();
             }
@@ -2769,23 +2769,27 @@ namespace ImGuiDrawFunctions {
 
                 {
                     PrefabField prefabField("scale");
+                    // Relative to the Transform's scale, so small steps.
+                    constexpr float COLLIDER_SIZE_SPEED = 0.01f;
+
                     if (c->type == COLLIDERTYPE_SPHERE) {
                         FieldWidth(120.0f);
-                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
+                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable, COLLIDER_SIZE_SPEED);
                         Tooltip(Get("editor.tooltip.component.collider.sphere_radius").c_str());
                     }
                     else if (c->type == COLLIDERTYPE_CAPSULE) {
                         FieldWidth(120.0f);
-                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable);
+                        InputOrDrag(Get("component.collider.sphere.scale").c_str(), &c->scale.x, draggable, COLLIDER_SIZE_SPEED);
                         Tooltip(Get("editor.tooltip.component.collider.capsule_radius").c_str());
                         FieldWidth(120.0f);
-                        InputOrDrag(Get("component.collider.capsule.height").c_str(), &c->scale.y, draggable);
+                        InputOrDrag(Get("component.collider.capsule.height").c_str(), &c->scale.y, draggable, COLLIDER_SIZE_SPEED);
                         Tooltip(Get("editor.tooltip.component.collider.capsule_height").c_str());
                     }
                     else {
                         ImGui::TextDisabled("X                Y               Z");
                         FieldWidth(220.0f);
-                        InputOrDrag3("##collider_scale", &c->scale.x, draggable);
+                        InputOrDrag3("##collider_scale", &c->scale.x, draggable, COLLIDER_SIZE_SPEED);
+                        Tooltip(Get("editor.tooltip.component.collider.box_scale").c_str());
                     }
                 }
 
@@ -2820,7 +2824,7 @@ namespace ImGuiDrawFunctions {
                 }
                 EndSection();
 
-                DrawOffsetSection(c->offset);
+                DrawOffsetSection(c->offset, "editor.tooltip.component.collider.offset", 0.01f);
 
                 ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
                 if (DangerButton(Get("common.delete").c_str())) {

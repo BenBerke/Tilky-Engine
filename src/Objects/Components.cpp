@@ -9,6 +9,8 @@
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Entity.hpp"
 
+#include <cmath>
+
 void ComponentTransform::SetPosition(const Vector3 &position) {
     this->position = position;
     isDirty = true;
@@ -17,6 +19,28 @@ void ComponentTransform::SetPosition(const Vector3 &position) {
 Vector3 ComponentTransform::LocalToWorld(const Vector3& offset) const {
     if (offset.x == 0.0f && offset.y == 0.0f && offset.z == 0.0f) return position;
     return position + QuaternionMath::Rotate(rotation, offset);
+}
+
+Vector3 ComponentCollider::Base(const ComponentTransform& transform) const {
+    return transform.LocalToWorld({offset.x * transform.scale.x, offset.y * transform.scale.y, offset.z * transform.scale.z});
+}
+
+Vector3 ComponentCollider::WorldSize(const ComponentTransform& transform) const {
+    return {
+        std::max(0.0f, scale.x * std::abs(transform.scale.x)),
+        std::max(0.0f, scale.y * std::abs(transform.scale.y)),
+        std::max(0.0f, scale.z * std::abs(transform.scale.z))
+    };
+}
+
+float ComponentCollider::Radius(const ComponentTransform& transform) const {
+    return std::max(0.0f, scale.x * std::abs(transform.scale.x));
+}
+
+float ComponentCollider::Height(const ComponentTransform& transform) const {
+    if (type == COLLIDERTYPE_CAPSULE) return std::max(scale.y * std::abs(transform.scale.y), Radius(transform) * 2.0f);
+    if (type == COLLIDERTYPE_SPHERE) return Radius(transform) * 2.0f;
+    return WorldSize(transform).y;
 }
 
 void ComponentTransform::AddPosition(const Vector3& position) {

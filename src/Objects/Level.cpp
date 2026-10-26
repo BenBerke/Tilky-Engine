@@ -428,10 +428,10 @@ namespace {
                 const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
                 if (!collider->isActive || collider->isTrigger) continue;
 
-                const Vector3 base = transform->LocalToWorld(collider->offset);
+                const Vector3 base = collider->Base(*transform);
                 const Vector2 point = {base.x, base.z};
 
-                bodies.push_back({point, base.y, collider->Height(), MapQueries::FindFloorAtHeight(sector, point, base.y)});
+                bodies.push_back({point, base.y, collider->Height(*transform),MapQueries::FindFloorAtHeight(sector, point, base.y)});
             }
         }
 

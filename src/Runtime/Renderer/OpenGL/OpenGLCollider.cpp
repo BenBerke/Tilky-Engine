@@ -28,8 +28,10 @@ void OpenGL::BuildGpuColliders() {
         // The collider's bottom, as physics and Raycast place it: a sphere or
         // capsule rests on it, a box stands on it. The shader draws them
         // around a centre, so lift that by half the height.
-        const Vector3 position = transform->LocalToWorld(collider.offset);
-        const float height = collider.Height();
+        const Vector3 position = collider.Base(*transform);
+        const float height = collider.Height(*transform);
+        const float radius = collider.Radius(*transform);
+        const Vector3 size = collider.WorldSize(*transform);
 
         gpuCollider.positionType.x = position.x;
         gpuCollider.positionType.y = position.y + height * 0.5f;
@@ -38,11 +40,12 @@ void OpenGL::BuildGpuColliders() {
         // The ColliderType: 0 sphere, 1 box, 2 capsule.
         gpuCollider.positionType.w = static_cast<float>(collider.type);
 
-        gpuCollider.scale.x = collider.scale.x;
-        gpuCollider.scale.y = collider.scale.y;
-        gpuCollider.scale.z = collider.scale.z;
+        // World sizes: x is a sphere's or capsule's radius, xyz a box's size.
+        gpuCollider.scale.x = collider.IsRound() ? radius : size.x;
+        gpuCollider.scale.y = size.y;
+        gpuCollider.scale.z = size.z;
         // A capsule's caps sit this far above and below the centre.
-        gpuCollider.scale.w = collider.type == COLLIDERTYPE_CAPSULE ? height * 0.5f - collider.Radius() : 0.0f;
+        gpuCollider.scale.w = collider.type == COLLIDERTYPE_CAPSULE ? height * 0.5f - radius : 0.0f;
 
         gpuColliders.push_back(gpuCollider);
     }
