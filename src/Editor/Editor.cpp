@@ -326,6 +326,7 @@ namespace Editor {
             DrawWallSnapPickHighlight();
 
             DrawEntities();
+            DrawEventLinks();
             DrawEntityMoveGizmo();
             DrawSelectionBox();
 

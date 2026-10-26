@@ -129,6 +129,21 @@ ID Level::CreateEntity(Entity& copy) {
     entity.name = copy.name + "Copy";
     entity.enabled = copy.enabled;
     entity.attachedLevelId = id;
+    entity.tagIds = copy.tagIds;
+    entity.dispatches = copy.dispatches;
+    entity.events = copy.events;
+
+    // Runtime-only: the copy's events haven't fired yet.
+    for (Event& event : entity.events) event.triggerCount = 0;
+
+#ifndef TILKY_STANDALONE
+    // A copy of a snapped entity is snapped to the same wall too (see
+    // WallSnap::Enforce, which puts it on the wall).
+    if (const auto snap = wallSnaps.find(copy.id); snap != wallSnaps.end()) {
+        const WallSnapData data = snap->second; // the insert below can rehash
+        wallSnaps[entity.id] = data;
+    }
+#endif
 
     CopyComponents(transforms, copy.id, entity.id, entity.componentsMask, CMP_TRANSFORM);
     CopyComponents(sprites, copy.id, entity.id, entity.componentsMask, CMP_SPRITE);

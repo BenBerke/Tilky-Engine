@@ -63,6 +63,9 @@ public:
     // (enabled or not) defines it.
     bool DispatchEntityEvent(Level& level, ID entityID, const std::string& functionName, const std::string& argument);
 
+    // Same, with an Entity as the argument (nil if `argumentEntityID` doesn't exist).
+    bool DispatchEntityEvent(Level& level, ID entityID, const std::string& functionName, ID argumentEntityID);
+
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
 

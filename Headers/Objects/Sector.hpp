@@ -224,6 +224,9 @@ struct Sector {
     // still be bound to it. Not serialized - rebuilt from `scripts` on load.
     ScriptInstanceID nextScriptInstanceID = 1;
 
+    std::vector<Event> events;
+    std::vector<Dispatch> dispatches;
+
     SectorScript& AddScript() {
         SectorScript& script = scripts.emplace_back();
         script.instanceID = nextScriptInstanceID++;

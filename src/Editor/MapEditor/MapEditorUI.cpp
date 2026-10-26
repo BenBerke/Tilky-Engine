@@ -157,6 +157,8 @@ namespace {
     constexpr Vector3 defaultHoveredSectorColor = {250, 250, 100};
     constexpr Vector3 defaultHighlightedSectorColor = {40, 40, 220};
 
+    constexpr Vector3 defaultEventLinkColor = {255, 0, 0};
+
     constexpr Vector3 defaultKValidLineColor = {255, 220, 80};
     constexpr Vector3 defaultKInvalidLineColor = {230, 70, 70};
     constexpr Vector3 defaultKAnchorColor = {80, 220, 255};
@@ -1521,6 +1523,18 @@ namespace {
             );
 
             DrawGroup(
+                "editor.user_settings.group.events",
+                "##EventColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.event_link_color",
+                        eventLinkColor,
+                        defaultEventLinkColor
+                    );
+                }
+            );
+
+            DrawGroup(
                 "editor.user_settings.group.sectors",
                 "##SectorColorSettings",
                 [&] {
@@ -1625,6 +1639,10 @@ namespace {
             ImGui::Spacing();
 
             ImGui::SliderInt(Get("editor.user_settings.filtered_alpha").c_str(), &filteredAlpha, 0, 255);
+
+            ImGui::SliderFloat(Get("editor.user_settings.event_link_thickness").c_str(), &eventLinkThickness,
+                               MIN_EVENT_LINK_THICKNESS, MAX_EVENT_LINK_THICKNESS, "%.1f");
+            HoverTooltip(Get("editor.tooltip.user_settings.event_link_thickness").c_str());
 
             ImGui::Separator();
             ImGui::Spacing();

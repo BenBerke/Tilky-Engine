@@ -27,6 +27,9 @@ struct Entity {
     // each script's individual state exactly as it was. See LevelSystem::Update.
     bool enabled = true;
 
+    std::vector<Event> events;
+    std::vector<Dispatch> dispatches;
+
     ComponentMask componentsMask;
 
     // Which .prefab this entity is an instance of, if any.

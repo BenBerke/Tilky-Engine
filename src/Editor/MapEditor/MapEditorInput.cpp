@@ -933,6 +933,7 @@ namespace MapEditorInternal {
         if (entityClipboard.empty()) return;
 
         EntitiesSnapshot before = CaptureEntitiesSnapshot();
+        WallSnap::Snaps snapsBefore = WallSnap::All(); // copies of snapped entities are snapped too
 
         // Offsets are measured from the first copied entity that has a transform.
         const ComponentTransform* anchor = nullptr;
@@ -957,7 +958,7 @@ namespace MapEditorInternal {
             pasted.push_back(copyID);
         }
 
-        PushEntitiesUndo(std::move(before), labelKey, static_cast<int>(pasted.size()));
+        PushEntitiesUndo(std::move(before), labelKey, static_cast<int>(pasted.size()), std::move(snapsBefore));
 
         SelectEntity(pasted.front());
         selectedEntities = pasted;

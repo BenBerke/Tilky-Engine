@@ -9,6 +9,10 @@
 #include <unordered_set>
 #include <vector>
 #include <stdexcept>
+#include <optional>
+#include <type_traits>
+#include <utility>
+#include <variant>
 
 #include <nlohmann/json.hpp>
 
@@ -508,6 +512,238 @@ namespace {
         return link;
     }
 
+    // ── Events and dispatches ───────────────────────────────────────────────
+    // Saved as {"payload": {"type": <saveName>, ...fields}, "tag", ...}.
+    // Every field is optional on load (missing = the struct's default); an
+    // entry with an unknown type or a field of the wrong type is skipped
+    // with a warning, and the rest of the level still loads.
+
+    // Enum <-> name tables, so files never depend on enum values.
+    template <typename Enum, size_t N>
+    const char* EnumName(const std::pair<Enum, const char*> (&names)[N], const Enum value) {
+        for (const auto& [enumValue, name] : names)
+            if (enumValue == value) return name;
+        return names[0].second;
+    }
+
+    template <typename Enum, size_t N>
+    Enum EnumFromName(const std::pair<Enum, const char*> (&names)[N], const std::string& name) {
+        for (const auto& [enumValue, enumName] : names)
+            if (name == enumName) return enumValue;
+        throw std::runtime_error("unknown value \"" + name + "\"");
+    }
+
+    constexpr std::pair<TagType, const char*> kTagTypeNames[] = {
+        {TagType::INCLUDE, "include"}, {TagType::EXCLUDE, "exclude"}, {TagType::ALL, "all"}
+    };
+
+    constexpr std::pair<PayloadLineEntityCross::EntityCrossDirection, const char*> kCrossDirectionNames[] = {
+        {PayloadLineEntityCross::FORWARD, "forward"},
+        {PayloadLineEntityCross::BACKWARD, "backward"},
+        {PayloadLineEntityCross::EITHER, "either"}
+    };
+
+    constexpr std::pair<SectorCollision, const char*> kSectorCollisionNames[] = {
+        {SECTOR_FORCE_MOVE, "force_move"}, {SECTOR_STOP, "stop"}, {SECTOR_RETRACT, "retract"}, {SECTOR_DONT_MOVE, "dont_move"}
+    };
+
+    // Reads `key` into `out` if present; throws on a value of the wrong type.
+    template <typename T>
+    void ReadOptional(const json& j, const char* key, T& out) {
+        if (j.contains(key)) out = j.at(key).get<T>();
+    }
+
+    template <typename Enum, size_t N>
+    void ReadOptionalEnum(const json& j, const char* key, const std::pair<Enum, const char*> (&names)[N], Enum& out) {
+        if (j.contains(key)) out = EnumFromName(names, j.at(key).get<std::string>());
+    }
+
+    void ReadOptionalVector3(const json& j, const char* key, Vector3& out) {
+        if (!j.contains(key)) return;
+        const json& v = j.at(key);
+        out = {v.at(0).get<float>(), v.at(1).get<float>(), v.at(2).get<float>()};
+    }
+
+    json TagFilterToJson(const TagFilter& filter) {
+        return {{"type", EnumName(kTagTypeNames, filter.tagType)}, {"tag", filter.tag}};
+    }
+
+    void TagFilterFromJson(const json& j, TagFilter& filter) {
+        ReadOptionalEnum(j, "type", kTagTypeNames, filter.tagType);
+        ReadOptional(j, "tag", filter.tag);
+    }
+
+    // Per payload type: its fields (without "type").
+    template <typename Payload>
+    json PayloadFieldsToJson(const Payload& payload) {
+        json j = json::object();
+
+        if constexpr (requires { payload.filter; }) j["filter"] = TagFilterToJson(payload.filter);
+
+        if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>)
+            j["direction"] = EnumName(kCrossDirectionNames, payload.direction);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
+            j["color"] = {payload.color.x, payload.color.y, payload.color.z};
+            j["speed"] = payload.speed;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
+                      std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
+            j["gap"] = payload.gap;
+            j["speed"] = payload.speed;
+            j["floorIndex"] = payload.floorIndex;
+            j["collision"] = EnumName(kSectorCollisionNames, payload.collisionType);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+            j["position"] = {payload.position.x, payload.position.y, payload.position.z};
+            j["rotation"] = {payload.rotation.x, payload.rotation.y, payload.rotation.z, payload.rotation.w};
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
+            j["functionName"] = payload.functionName;
+
+        return j;
+    }
+
+    template <typename Payload>
+    void PayloadFieldsFromJson(const json& j, Payload& payload) {
+        if constexpr (requires { payload.filter; })
+            if (j.contains("filter")) TagFilterFromJson(j.at("filter"), payload.filter);
+
+        if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>)
+            ReadOptionalEnum(j, "direction", kCrossDirectionNames, payload.direction);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
+            ReadOptionalVector3(j, "color", payload.color);
+            ReadOptional(j, "speed", payload.speed);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
+                      std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
+            ReadOptional(j, "gap", payload.gap);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptionalEnum(j, "collision", kSectorCollisionNames, payload.collisionType);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+            ReadOptionalVector3(j, "position", payload.position);
+            if (j.contains("rotation")) {
+                const json& r = j.at("rotation");
+                payload.rotation = Quaternion{
+                    r.at(0).get<float>(), r.at(1).get<float>(), r.at(2).get<float>(), r.at(3).get<float>()
+                }.Normalized();
+            }
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
+            ReadOptional(j, "functionName", payload.functionName);
+    }
+
+    template <typename Variant>
+    json PayloadToJson(const Variant& payload) {
+        return std::visit([](const auto& p) {
+            json j = PayloadFieldsToJson(p);
+            j["type"] = std::decay_t<decltype(p)>::saveName;
+            return j;
+        }, payload);
+    }
+
+    // Throws if the type is unknown or a field is malformed.
+    template <typename Variant>
+    Variant PayloadFromJson(const json& j) {
+        const std::string type = j.at("type").get<std::string>();
+        std::optional<Variant> result;
+
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            ([&] {
+                using Payload = std::variant_alternative_t<I, Variant>;
+                if (result || type != Payload::saveName) return;
+
+                Payload payload;
+                PayloadFieldsFromJson(j, payload);
+                result = std::move(payload);
+            }(), ...);
+        }(std::make_index_sequence<std::variant_size_v<Variant>>{});
+
+        if (!result) throw std::runtime_error("unknown type \"" + type + "\"");
+        return std::move(*result);
+    }
+
+    json EventToJson(const Event& event) {
+        return {
+            {"payload", PayloadToJson(event.payload)},
+            {"tag", event.tagId},
+            {"maxTriggers", event.maxTriggers},
+            {"chance", event.chance}
+        };
+    }
+
+    Event EventFromJson(const json& j) {
+        Event event;
+        event.payload = PayloadFromJson<EventPayload>(j.at("payload"));
+        ReadOptional(j, "tag", event.tagId);
+        ReadOptional(j, "maxTriggers", event.maxTriggers);
+        ReadOptional(j, "chance", event.chance);
+        return event;
+    }
+
+    json DispatchToJson(const Dispatch& dispatch) {
+        return {{"payload", PayloadToJson(dispatch.payload)}, {"tag", dispatch.tagId}};
+    }
+
+    Dispatch DispatchFromJson(const json& j) {
+        Dispatch dispatch;
+        dispatch.payload = PayloadFromJson<DispatchPayload>(j.at("payload"));
+        ReadOptional(j, "tag", dispatch.tagId);
+        return dispatch;
+    }
+
+    // Only written when there is something to write, so objects without
+    // events save exactly as before.
+    void SaveEventsAndDispatches(json& objectJson, const std::vector<Event>& events, const std::vector<Dispatch>& dispatches) {
+        if (!events.empty()) {
+            json eventArray = json::array();
+            for (const Event& event : events) eventArray.push_back(EventToJson(event));
+            objectJson["events"] = std::move(eventArray);
+        }
+
+        if (!dispatches.empty()) {
+            json dispatchArray = json::array();
+            for (const Dispatch& dispatch : dispatches) dispatchArray.push_back(DispatchToJson(dispatch));
+            objectJson["dispatches"] = std::move(dispatchArray);
+        }
+    }
+
+    template <typename T, typename FromJson>
+    void LoadList(const json& objectJson, const char* key, const char* ownerKind, const ID ownerID,
+                  std::vector<T>& out, FromJson&& fromJson) {
+        out.clear();
+        if (!objectJson.contains(key)) return;
+
+        const json& array = objectJson.at(key);
+        if (!array.is_array()) {
+            spdlog::warn("{} {}: \"{}\" is not an array, ignored", ownerKind, ownerID, key);
+            return;
+        }
+
+        for (size_t i = 0; i < array.size(); ++i) {
+            try {
+                out.push_back(fromJson(array[i]));
+            } catch (const std::exception& exception) {
+                spdlog::warn("{} {}: skipped {} entry {}: {}", ownerKind, ownerID, key, i, exception.what());
+            }
+        }
+    }
+
+    void LoadEventsAndDispatches(const json& objectJson, const char* ownerKind, const ID ownerID,
+                                 std::vector<Event>& events, std::vector<Dispatch>& dispatches) {
+        LoadList(objectJson, "events", ownerKind, ownerID, events, EventFromJson);
+        LoadList(objectJson, "dispatches", ownerKind, ownerID, dispatches, DispatchFromJson);
+    }
+
     void LoadEntities(const json& levelData, Level& level) {
         level.entities.clear();
 
@@ -526,6 +762,7 @@ namespace {
             entity.attachedLevelId = level.id;
 
             LoadTagIds(entityJson, "Entity", entity.id, entity.tagIds);
+            LoadEventsAndDispatches(entityJson, "Entity", entity.id, entity.events, entity.dispatches);
 
             if (entityJson.contains("prefab")) entity.prefabLink = PrefabLinkFromJson(entityJson["prefab"]);
 
@@ -548,6 +785,7 @@ namespace {
             };
 
             if (entity->prefabLink.IsInstance()) entityJson["prefab"] = PrefabLinkToJson(entity->prefabLink);
+            SaveEventsAndDispatches(entityJson, entity->events, entity->dispatches);
 
             levelData["entities"].push_back(std::move(entityJson));
         }
@@ -726,6 +964,7 @@ namespace {
             wall.name = wallJson.value("name", std::string{});
 
             LoadTagIds(wallJson, "Wall", wall.id, wall.tagIds);
+            LoadEventsAndDispatches(wallJson, "Wall", wall.id, wall.events, wall.dispatches);
 
             level.walls.push_back(std::move(wall));
         }
@@ -750,7 +989,7 @@ namespace {
         levelData["walls"] = json::array();
 
         for (const Wall &wall: level.walls) {
-            levelData["walls"].push_back({
+            json wallJson = {
                 {"id", wall.id},
                 {"name", wall.name},
                 {
@@ -782,7 +1021,10 @@ namespace {
                 {"backSector", wall.backSector},
                 {"tagIds", wall.tagIds},
                 {"angle", wall.angle}
-            });
+            };
+
+            SaveEventsAndDispatches(wallJson, wall.events, wall.dispatches);
+            levelData["walls"].push_back(std::move(wallJson));
         }
     }
 
@@ -1126,6 +1368,7 @@ namespace {
             }
 
             LoadSectorScripts(sectorJson, sector);
+            LoadEventsAndDispatches(sectorJson, "Sector", sector.id, sector.events, sector.dispatches);
 
             level.sectors.push_back(std::move(sector));
         }
@@ -1223,6 +1466,8 @@ namespace {
 
                 sectorJson["scripts"] = std::move(scriptArray);
             }
+
+            SaveEventsAndDispatches(sectorJson, sector.events, sector.dispatches);
 
             sectorArray.push_back(std::move(sectorJson));
         }

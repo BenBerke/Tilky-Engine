@@ -168,6 +168,7 @@ namespace MapEditorInternal {
             LoadColor3("hoveredSectorColor", hoveredSectorColor);
             LoadColor3("highlightedSectorColor", highlightedSectorColor);
             LoadColor3("snapIndicatorColor", snapIndicatorColor);
+            LoadColor3("eventLinkColor", eventLinkColor);
             LoadColor3("validLineColor", kValidLineColor);
             LoadColor3("invalidLineColor", kInvalidLineColor);
             LoadColor3("anchorColor", kAnchorColor);
@@ -232,6 +233,11 @@ namespace MapEditorInternal {
 
             autoSaveInSeconds = std::max(0.0, settings.value("autoSaveInSeconds", autoSaveInSeconds));
             filteredAlpha = settings.value("filteredAlpha", 60);
+            eventLinkThickness = std::clamp(
+                settings.value("eventLinkThickness", DEFAULT_EVENT_LINK_THICKNESS),
+                MIN_EVENT_LINK_THICKNESS,
+                MAX_EVENT_LINK_THICKNESS
+            );
 
 #ifndef TILKY_STANDALONE
             RuntimeSession::SetVSyncMode(settings.value("vsync", RuntimeSession::GetVSyncMode()));
@@ -399,6 +405,9 @@ namespace MapEditorInternal {
                     {"snapIndicatorColor",
                      SerializeColor(snapIndicatorColor)},
 
+                    {"eventLinkColor",
+                     SerializeColor(eventLinkColor)},
+
                     {"validLineColor",
                      SerializeColor(kValidLineColor)},
 
@@ -460,7 +469,8 @@ namespace MapEditorInternal {
                 {"runtimeGravityMode", runtimeGravityMode},
                 {"runtimeEyeHeight", runtimeEyeHeight},
                 {"autoSaveInSeconds", autoSaveInSeconds},
-                {"filteredAlpha", filteredAlpha}
+                {"filteredAlpha", filteredAlpha},
+                {"eventLinkThickness", eventLinkThickness}
             };
 
 #ifndef TILKY_STANDALONE

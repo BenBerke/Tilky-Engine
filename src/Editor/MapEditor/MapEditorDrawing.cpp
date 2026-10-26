@@ -18,6 +18,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Math/Geometry/Geometry.hpp"
+#include "../EventLinks.hpp"
 
 namespace {
     // UTILITY
@@ -938,6 +939,54 @@ namespace MapEditorInternal {
                 DrawWallLine(startScreen, endScreen, 5.0f, normalWallColor, alpha);
             else
                 DrawWallLine(startScreen, endScreen, 2.0f, portalWallColor, alpha);
+        }
+    }
+
+    void DrawEventLinks() {
+        const Level& level = LevelManager::CurrentLevel();
+
+        std::vector<EventLinks::Link> links;
+        const auto add = [&](const EventOwnerKind kind, const ID id) {
+            const std::vector<EventLinks::Link> found = EventLinks::Collect(level, kind, id);
+            links.insert(links.end(), found.begin(), found.end());
+        };
+
+        if (editingWall && selectedWallID != INVALID_ID) add(EventOwnerKind::LINE, selectedWallID);
+        if (editingSector && selectedSectorID != INVALID_ID) add(EventOwnerKind::SECTOR, selectedSectorID);
+        if (editingEntity && selectedEntity.id != INVALID_ID) add(EventOwnerKind::ENTITY, selectedEntity.id);
+
+        if (links.empty()) return;
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        const SDL_FColor color = ToFColor(eventLinkColor);
+
+        for (const EventLinks::Link& link : links) {
+            const Vector2 from = WorldToScreen({link.from.x, link.from.z}, cameraPos);
+            const Vector2 to = WorldToScreen({link.to.x, link.to.z}, cameraPos);
+
+            const float dx = to.x - from.x;
+            const float dy = to.y - from.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= Constants::Epsilon) continue;
+
+            // The arrowhead at the dispatch end grows with the line.
+            const Vector2 direction = {dx / length, dy / length};
+            const float headLength = std::min(length, 8.0f + eventLinkThickness * 3.0f);
+            const float headHalfWidth = 4.0f + eventLinkThickness * 1.5f;
+            const Vector2 headBase = {to.x - direction.x * headLength, to.y - direction.y * headLength};
+
+            DrawWallLine(from, headBase, eventLinkThickness, eventLinkColor, 255);
+
+            const Vector2 side = {-direction.y * headHalfWidth, direction.x * headHalfWidth};
+            SDL_Vertex head[3];
+            head[0].position = {to.x, to.y};
+            head[1].position = {headBase.x + side.x, headBase.y + side.y};
+            head[2].position = {headBase.x - side.x, headBase.y - side.y};
+            for (SDL_Vertex& vertex : head) {
+                vertex.color = color;
+                vertex.tex_coord = {0.0f, 0.0f};
+            }
+            SDL_RenderGeometry(renderer, nullptr, head, 3, nullptr, 0);
         }
     }
 

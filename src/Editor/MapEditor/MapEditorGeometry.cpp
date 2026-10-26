@@ -3341,12 +3341,14 @@ namespace MapEditorInternal {
         MarkUnsavedChanges();
     }
 
-    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, const int count) {
+    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, const int count,
+                          std::optional<WallSnap::Snaps> wallSnapsBefore) {
         UndoStep step;
         step.kind = UNDO_ENTITIES;
         step.labelKey = labelKey;
         step.count = count;
         step.entities = std::move(before);
+        step.wallSnaps = std::move(wallSnapsBefore);
 
         PushUndoStep(std::move(step));
     }

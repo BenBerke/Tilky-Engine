@@ -21,7 +21,8 @@
 // value clears it. The entity's name and its position and rotation
 // (Transform, or UITransform for UI entities) are always the instance's own.
 //
-// Override paths: "entity/enabled", "entity/tags", and
+// Override paths: "entity/enabled", "entity/tags", "entity/events",
+// "entity/dispatches" (each list as a whole), and
 // "<components key>/<prefab instance ID>/<field>" using level.bson's keys,
 // e.g. "sprites/2/color". A script's public fields are one level deeper:
 // "scripts/3/publicValues/speed".
@@ -116,7 +117,7 @@ namespace Prefab {
     // "publicValues/speed"). Empty for added components.
     std::vector<std::string> ComponentOverrides(const Level& level, const Entity& instance, int componentType, std::uint64_t instanceID);
 
-    // "enabled" and/or "tags" when they differ from the prefab.
+    // "enabled", "tags", "events" and/or "dispatches" when they differ from the prefab.
     std::vector<std::string> EntityOverrides(const Entity& instance);
 
     // Writes the instance's value of one overridden field into the .prefab

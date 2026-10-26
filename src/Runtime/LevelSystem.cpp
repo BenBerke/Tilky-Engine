@@ -19,8 +19,10 @@
 #include <utility>
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
@@ -199,6 +201,14 @@ namespace LevelSystem {
 
         // After scripts, so a first-frame event finds their functions.
         FlipbookSystem::Start(level);
+
+        // After the transforms' sectors are set, so they are the baseline.
+        EventSystem::Start(level, {
+            .callFunction = [](Level& lvl, const ID entityID, const std::string& functionName, const ID instigatorID) {
+                scriptingSystem.DispatchEntityEvent(lvl, entityID, functionName, instigatorID);
+            },
+            .destroyEntity = [](const ID entityID) { LuaScriptRuntime::QueueEntityDestroy(entityID); },
+        });
         // Future level start systems will run here.
     }
 
@@ -416,6 +426,13 @@ namespace LevelSystem {
             scriptingSystem.DispatchContactEvents(level, frameContacts);
         }
 
+        {
+            // After every position and sector change, and before destroys
+            // are flushed so a DESTROY dispatch is applied this frame.
+            ZoneScopedN("Map Events");
+            EventSystem::Update(level, frameContacts);
+        }
+
         for (ComponentTransform &transform: level.transforms.components) transform.isDirty = false;
 
         // Runs last, after every system above has finished reading this
@@ -426,6 +443,7 @@ namespace LevelSystem {
     }
 
     void Shutdown(Level &level) {
+        EventSystem::Stop();
         scriptingSystem.Shutdown();
         scriptingInitialized = false;
         reportedControllerID = INVALID_ENTITY_ID;
@@ -434,6 +452,7 @@ namespace LevelSystem {
     }
 
     void StopLevel(Level &level) {
+        EventSystem::Stop();
         scriptingSystem.Stop(level);
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;

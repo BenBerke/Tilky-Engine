@@ -14,6 +14,7 @@ using UIElementID = ID;
 
 using TagId = uint16_t;
 using EventId = TagId;
+using DispatchId = EventId;
 
 constexpr ID INVALID_ID = std::numeric_limits<ID>::max();
 constexpr ID INVALID_ENTITY_ID = INVALID_ID;

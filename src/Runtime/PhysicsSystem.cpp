@@ -1000,14 +1000,15 @@ namespace PhysicsSystem {
                     if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
 
                     for (const WallSpan &span: wallSpans[wallIndex])
-                        RoundBodyIntersectsWallSpan(
-                            *wall,
-                            span,
-                            selfCollider.stepSize,
-                            selfBody,
-                            *selfTransform,
-                            *selfRigidbody
-                        );
+                        if (RoundBodyIntersectsWallSpan(
+                                *wall,
+                                span,
+                                selfCollider.stepSize,
+                                selfBody,
+                                *selfTransform,
+                                *selfRigidbody
+                            ))
+                            contacts.walls.push_back({selfCollider.ownerID, wall->id});
                 }
             };
 

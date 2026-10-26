@@ -1435,28 +1435,44 @@ void LuaScriptSystem::DispatchContactEvents(Level& level, const PhysicsSystem::C
     DispatchContactSet(level, contacts.triggers, lastTriggers, kTriggerCallbacks);
 }
 
+namespace {
+    template<typename Argument>
+    bool DispatchToEntityScripts(const ID entityID, const std::string& functionName, const Argument& argument) {
+        bool defined = false;
+
+        // By index: a handler can attach a script, which can grow the vector.
+        for (size_t i = 0; i < scriptInstances.size(); ++i) {
+            if (scriptInstances[i].ownerKind != ScriptOwnerKind::Entity || scriptInstances[i].ownerID != entityID) continue;
+            if (scriptInstances[i].destroyed) continue;
+
+            const sol::object value = scriptInstances[i].environment[functionName];
+            if (value.get_type() != sol::type::function) continue;
+
+            defined = true;
+            if (!scriptInstances[i].enabled) continue;
+
+            // Copied: the instance can move while the handler runs.
+            const sol::protected_function function = value.as<sol::protected_function>();
+            const ScriptInstance instance = scriptInstances[i];
+            CallLifecycle(instance, function, functionName.c_str(), argument);
+        }
+
+        return defined;
+    }
+}
+
 bool LuaScriptSystem::DispatchEntityEvent(Level&, const ID entityID, const std::string& functionName,
                                           const std::string& argument) {
-    bool defined = false;
+    return DispatchToEntityScripts(entityID, functionName, argument);
+}
 
-    // By index: a handler can attach a script, which can grow the vector.
-    for (size_t i = 0; i < scriptInstances.size(); ++i) {
-        if (scriptInstances[i].ownerKind != ScriptOwnerKind::Entity || scriptInstances[i].ownerID != entityID) continue;
-        if (scriptInstances[i].destroyed) continue;
+bool LuaScriptSystem::DispatchEntityEvent(Level& level, const ID entityID, const std::string& functionName,
+                                          const ID argumentEntityID) {
+    const sol::object argument = level.GetEntity(argumentEntityID) == nullptr
+        ? sol::make_object(lua, sol::nil)
+        : sol::make_object(lua, ScriptEntity{&level, argumentEntityID});
 
-        const sol::object value = scriptInstances[i].environment[functionName];
-        if (value.get_type() != sol::type::function) continue;
-
-        defined = true;
-        if (!scriptInstances[i].enabled) continue;
-
-        // Copied: the instance can move while the handler runs.
-        const sol::protected_function function = value.as<sol::protected_function>();
-        const ScriptInstance instance = scriptInstances[i];
-        CallLifecycle(instance, function, functionName.c_str(), argument);
-    }
-
-    return defined;
+    return DispatchToEntityScripts(entityID, functionName, argument);
 }
 
 void LuaScriptSystem::Stop(Level&) {

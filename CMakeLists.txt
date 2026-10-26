@@ -287,6 +287,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/RuntimeSession.cpp
         src/Runtime/LevelSystem.cpp
+        src/Runtime/EventSystem.cpp
 
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
@@ -531,6 +532,8 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/FlipbookEditor.cpp
         src/Editor/PrefabEditor.cpp
         src/Editor/WallSnap.cpp
+        src/Editor/EventLinks.cpp
+        src/Editor/EventLinks.hpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp
@@ -564,6 +567,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
         Headers/Objects/Event.hpp
+        Headers/Runtime/EventSystem.hpp
+        Headers/Math/MathFunctions.hpp
 )
 
 # ============================================================

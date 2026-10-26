@@ -91,6 +91,50 @@ namespace Vector3Math {
         v.reg = _mm_div_ps(a.reg, b.reg);
         return v;
     }
+
+    // Moves current toward target by at most maxDistance, never overshooting.
+    inline Vector3 MoveTowards(const Vector3& current, const Vector3& target, const float maxDistance) {
+        const __m128 delta = _mm_sub_ps(target.reg, current.reg);
+        const float distSq = Dot3(delta, delta);
+
+        if (distSq == 0.0f || (maxDistance >= 0.0f && distSq <= maxDistance * maxDistance)) return target;
+
+        const __m128 distReg = _mm_sqrt_ss(_mm_set_ss(distSq));
+        __m128 step          = _mm_div_ss(_mm_set_ss(maxDistance), distReg);
+        step                 = TILKY_MM_SHUFFLE_PS(step, step, _MM_SHUFFLE(0, 0, 0, 0));
+
+        return {_mm_add_ps(current.reg, _mm_mul_ps(delta, step))};
+    }
+
+    // Projects v onto the line along onto; zero if onto is zero.
+    inline Vector3 Project(const Vector3& v, const Vector3& onto) {
+        const float lenSq = Dot3(onto.reg, onto.reg);
+
+        if (lenSq == 0.0f) return Vector3{};
+
+        __m128 scale = _mm_div_ss(_mm_set_ss(Dot3(v.reg, onto.reg)), _mm_set_ss(lenSq));
+        scale        = TILKY_MM_SHUFFLE_PS(scale, scale, _MM_SHUFFLE(0, 0, 0, 0));
+
+        return {_mm_mul_ps(onto.reg, scale)};
+    }
+
+    // Removes the part of v along planeNormal.
+    inline Vector3 ProjectOnPlane(const Vector3& v, const Vector3& planeNormal) {
+        return {_mm_sub_ps(v.reg, Project(v, planeNormal).reg)};
+    }
+
+    // Shortens v to maxLength if it is longer; shorter vectors are returned unchanged.
+    inline Vector3 ClampLength(const Vector3& v, const float maxLength) {
+        const float lenSq = Dot3(v.reg, v.reg);
+
+        if (lenSq == 0.0f || (maxLength >= 0.0f && lenSq <= maxLength * maxLength)) return v;
+
+        const __m128 lenReg = _mm_sqrt_ss(_mm_set_ss(lenSq));
+        __m128 scale        = _mm_div_ss(_mm_set_ss(maxLength), lenReg);
+        scale               = TILKY_MM_SHUFFLE_PS(scale, scale, _MM_SHUFFLE(0, 0, 0, 0));
+
+        return {_mm_mul_ps(v.reg, scale)};
+    }
 }
 #else
 namespace Vector3Math {
@@ -142,6 +186,60 @@ namespace Vector3Math {
 
     inline float Distance(const Vector3& a, const Vector3& b) {
         return std::sqrt(DistanceSquared(a, b));
+    }
+
+    // Moves current toward target by at most maxDistance, never overshooting.
+    inline Vector3 MoveTowards(const Vector3& current, const Vector3& target, const float maxDistance) {
+        const float dx = target.x - current.x;
+        const float dy = target.y - current.y;
+        const float dz = target.z - current.z;
+        const float distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq == 0.0f || (maxDistance >= 0.0f && distSq <= maxDistance * maxDistance)) return target;
+
+        const float step = maxDistance / std::sqrt(distSq);
+
+        return {
+            current.x + dx * step,
+            current.y + dy * step,
+            current.z + dz * step
+        };
+    }
+
+    // Projects v onto the line along onto; zero if onto is zero.
+    inline Vector3 Project(const Vector3& v, const Vector3& onto) {
+        const float lenSq = LengthSquared(onto);
+
+        if (lenSq == 0.0f) return Vector3{};
+
+        const float scale = Dot(v, onto) / lenSq;
+
+        return {
+            onto.x * scale,
+            onto.y * scale,
+            onto.z * scale
+        };
+    }
+
+    // Removes the part of v along planeNormal.
+    inline Vector3 ProjectOnPlane(const Vector3& v, const Vector3& planeNormal) {
+        const Vector3 along = Project(v, planeNormal);
+        return {v.x - along.x, v.y - along.y, v.z - along.z};
+    }
+
+    // Shortens v to maxLength if it is longer; shorter vectors are returned unchanged.
+    inline Vector3 ClampLength(const Vector3& v, const float maxLength) {
+        const float lenSq = LengthSquared(v);
+
+        if (lenSq == 0.0f || (maxLength >= 0.0f && lenSq <= maxLength * maxLength)) return v;
+
+        const float scale = maxLength / std::sqrt(lenSq);
+
+        return {
+            v.x * scale,
+            v.y * scale,
+            v.z * scale
+        };
     }
 }
 #endif

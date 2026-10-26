@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "Types.hpp"
+#include "Event.hpp"
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector3.hpp"
@@ -108,6 +109,9 @@ struct Wall {
     // Stable ID of the sector that is to the back or to the right of the Wall in top down view
     // Should be -1 if there is no sector
     ID backSector   = INVALID_ID;
+
+    std::vector<Event> events;
+    std::vector<Dispatch> dispatches;
 
     // Read only — do not change
     Vector2 dir, normal, vector;

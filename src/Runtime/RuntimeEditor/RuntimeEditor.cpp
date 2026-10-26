@@ -18,6 +18,7 @@
 
 #include "../../Editor/EditorInternal.hpp"
 #include "../../Editor/WallSnap.hpp"
+#include "../../Editor/EventLinks.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -414,6 +415,77 @@ namespace {
         view.viewportSize = gizmoViewportSize;
 
         return true;
+    }
+
+    // Lines from the selected object's events to the dispatches they reach
+    // (and into its dispatches), over the 3D view like the gizmo - visible
+    // through walls. Same color and thickness as in the map editor.
+    void DrawEventLinks(const Level& level, const TransformGizmo::View& view) {
+        std::vector<EventLinks::Link> links;
+        const auto add = [&](const EventOwnerKind kind, const ID id) {
+            const std::vector<EventLinks::Link> found = EventLinks::Collect(level, kind, id);
+            links.insert(links.end(), found.begin(), found.end());
+        };
+
+        if (editingWall && selectedWall >= 0 && selectedWall < static_cast<int>(level.walls.size()))
+            add(EventOwnerKind::LINE, level.walls[selectedWall].id);
+        if (editingSector && selectedSector >= 0 && selectedSector < static_cast<int>(level.sectors.size()))
+            add(EventOwnerKind::SECTOR, level.sectors[selectedSector].id);
+        if (editingEntity && selectedEntityId.has_value()) add(EventOwnerKind::ENTITY, *selectedEntityId);
+
+        if (links.empty()) return;
+
+        // A line running behind the camera is cut where it passes this far
+        // in front of it, so only the visible part is drawn.
+        constexpr float NEAR_DEPTH = 0.05f;
+
+        const float thickness = MapEditorInternal::eventLinkThickness;
+        const Vector3& c = MapEditorInternal::eventLinkColor;
+        const ImU32 color = IM_COL32(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.z), 255);
+
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+        for (const EventLinks::Link& link : links) {
+            Vector3 from = link.from;
+            Vector3 to = link.to;
+
+            const float fromDepth = Vector3Math::Dot(from - view.eye, view.forward);
+            const float toDepth = Vector3Math::Dot(to - view.eye, view.forward);
+            if (fromDepth < NEAR_DEPTH && toDepth < NEAR_DEPTH) continue;
+
+            // The arrowhead only shows when the dispatch end is in view.
+            bool showHead = true;
+            if (fromDepth < NEAR_DEPTH) from = from + (to - from) * ((NEAR_DEPTH - fromDepth) / (toDepth - fromDepth));
+            if (toDepth < NEAR_DEPTH) {
+                to = to + (from - to) * ((NEAR_DEPTH - toDepth) / (fromDepth - toDepth));
+                showHead = false;
+            }
+
+            Vector2 fromScreen, toScreen;
+            if (!TransformGizmo::ProjectPoint(view, from, fromScreen) || !TransformGizmo::ProjectPoint(view, to, toScreen)) continue;
+
+            const float dx = toScreen.x - fromScreen.x;
+            const float dy = toScreen.y - fromScreen.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length <= Constants::Epsilon) continue;
+
+            const Vector2 direction = {dx / length, dy / length};
+            const float headLength = showHead ? std::min(length, 8.0f + thickness * 3.0f) : 0.0f;
+            const float headHalfWidth = 4.0f + thickness * 1.5f;
+            const Vector2 headBase = {toScreen.x - direction.x * headLength, toScreen.y - direction.y * headLength};
+
+            drawList->AddLine({fromScreen.x, fromScreen.y}, {headBase.x, headBase.y}, color, thickness);
+
+            if (showHead) {
+                const Vector2 side = {-direction.y * headHalfWidth, direction.x * headHalfWidth};
+                drawList->AddTriangleFilled(
+                    {toScreen.x, toScreen.y},
+                    {headBase.x + side.x, headBase.y + side.y},
+                    {headBase.x - side.x, headBase.y - side.y},
+                    color
+                );
+            }
+        }
     }
 
     const char* EntityMarkerModeKey(const MapEditorInternal::EntityMarkerMode mode) {
@@ -1817,6 +1889,11 @@ namespace RuntimeEditorUi {
         if (runtimeRenderer != nullptr) MapEditorInternal::assetBrowser.SetIconFont(runtimeRenderer->GetImGuiIconFont());
 
         UpdateEntityMarkers();
+
+        {
+            TransformGizmo::View view;
+            if (BuildGizmoView(view)) DrawEventLinks(level, view);
+        }
 
         if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
             TransformGizmo::View view;

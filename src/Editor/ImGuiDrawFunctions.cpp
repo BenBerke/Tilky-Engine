@@ -864,6 +864,336 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Events / Dispatches — shared by the Sector / Wall / Entity inspectors
+    // ─────────────────────────────────────────────────────────────────────────
+    // An event reaches every dispatch with the same tag. Both tags and the
+    // payloads' tag filters are picked from the project tags.
+
+    // A dropdown of the project tags. A tag that no longer exists shows as
+    // deleted (or as "no tags" while the project has none).
+    static bool DrawTagCombo(const char *label, TagId &tag) {
+        std::vector<std::pair<std::string, TagId> > tags(TagRegistry::GetAll().begin(), TagRegistry::GetAll().end());
+        std::ranges::sort(tags, {}, [](const auto &entry) { return entry.second; });
+
+        const auto name = TagRegistry::GetName(tag);
+        const std::string preview = name ? *name : Get(tags.empty() ? "events.no_tags" : "tags.missing");
+
+        bool changed = false;
+        FieldWidth(200.0f);
+        if (ImGui::BeginCombo(label, preview.c_str())) {
+            for (const auto &[tagName, id]: tags) {
+                const bool selected = id == tag;
+                if (ImGui::Selectable(tagName.c_str(), selected)) {
+                    tag = id;
+                    changed = true;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+
+            if (tags.empty()) ImGui::TextDisabled("%s", Get("tags.none_available").c_str());
+            ImGui::EndCombo();
+        }
+
+        return changed;
+    }
+
+    // A dropdown over {value, translation key} options.
+    template<typename Enum, size_t N>
+    static bool DrawEnumCombo(const char *label, Enum &value, const std::pair<Enum, const char *> (&options)[N]) {
+        const char *previewKey = options[0].second;
+        for (const auto &[optionValue, key]: options)
+            if (optionValue == value) previewKey = key;
+
+        bool changed = false;
+        FieldWidth(200.0f);
+        if (ImGui::BeginCombo(label, Get(previewKey).c_str())) {
+            for (const auto &[optionValue, key]: options) {
+                const bool selected = optionValue == value;
+                if (ImGui::Selectable(Get(key).c_str(), selected)) {
+                    value = optionValue;
+                    changed = true;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        return changed;
+    }
+
+    constexpr std::pair<TagType, const char *> kTagTypeOptions[] = {
+        {TagType::INCLUDE, "event.payload.tag_type.include"},
+        {TagType::EXCLUDE, "event.payload.tag_type.exclude"},
+        {TagType::ALL, "event.payload.tag_type.all"}
+    };
+
+    constexpr std::pair<PayloadLineEntityCross::EntityCrossDirection, const char *> kCrossDirectionOptions[] = {
+        {PayloadLineEntityCross::EITHER, "events.direction.either"},
+        {PayloadLineEntityCross::FORWARD, "events.direction.forward"},
+        {PayloadLineEntityCross::BACKWARD, "events.direction.backward"}
+    };
+
+    constexpr std::pair<SectorCollision, const char *> kSectorCollisionOptions[] = {
+        {SECTOR_FORCE_MOVE, "events.collision.force_move"},
+        {SECTOR_STOP, "events.collision.stop"},
+        {SECTOR_RETRACT, "events.collision.retract"},
+        {SECTOR_DONT_MOVE, "events.collision.dont_move"}
+    };
+
+    // Calls f(std::type_identity<Payload>{}) for every alternative of the variant.
+    template<typename Variant, typename F>
+    static void ForEachPayloadType(F &&f) {
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            (f(std::type_identity<std::variant_alternative_t<I, Variant> >{}), ...);
+        }(std::make_index_sequence<std::variant_size_v<Variant> >{});
+    }
+
+    template<typename Payload>
+    static const TagFilter *FilterOf(const Payload &payload) {
+        if constexpr (requires { payload.filter; }) return &payload.filter;
+        else return nullptr;
+    }
+
+    // The types an object of `kind` can have. Picking another type resets the
+    // fields, except a tag filter both types have.
+    template<typename Variant>
+    static void DrawPayloadTypeCombo(Variant &payload, const EventOwnerKind kind) {
+        FieldWidth(200.0f);
+        if (!ImGui::BeginCombo(Get("events.type").c_str(), Get(GetTranslationKey(payload)).c_str())) return;
+
+        ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
+            if (Payload::owner != kind) return;
+
+            const bool selected = std::holds_alternative<Payload>(payload);
+            if (ImGui::Selectable(Get(Payload::translationKey).c_str(), selected) && !selected) {
+                const TagFilter *oldFilter = std::visit([](const auto &p) { return FilterOf(p); }, payload);
+                const std::optional<TagFilter> keptFilter = oldFilter ? std::optional(*oldFilter) : std::nullopt;
+
+                Payload replacement{};
+                if constexpr (requires { replacement.filter; })
+                    if (keptFilter) replacement.filter = *keptFilter;
+
+                payload = std::move(replacement);
+            }
+            if (selected) ImGui::SetItemDefaultFocus();
+        });
+
+        ImGui::EndCombo();
+    }
+
+    // "Add event..." / "Add dispatch..." listing the types valid for `kind`.
+    template<typename Entry>
+    static void DrawAddEntryCombo(const char *placeholderKey, std::vector<Entry> &entries, const EventOwnerKind kind) {
+        FieldWidth(ImGui::GetContentRegionAvail().x);
+        if (!ImGui::BeginCombo("##Add", Get(placeholderKey).c_str())) return;
+
+        using Variant = decltype(Entry::payload);
+        ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
+            if (Payload::owner != kind) return;
+            if (!ImGui::Selectable(Get(Payload::translationKey).c_str())) return;
+
+            Entry entry;
+            entry.payload = Payload{};
+
+            // The first project tag, so a new entry starts on a real tag.
+            std::optional<TagId> firstTag;
+            for (const auto &[name, id]: TagRegistry::GetAll())
+                if (!firstTag || id < *firstTag) firstTag = id;
+            if (firstTag) entry.tagId = *firstTag;
+
+            entries.push_back(std::move(entry));
+        });
+
+        ImGui::EndCombo();
+    }
+
+    static void DrawTagFilterFields(TagFilter &filter) {
+        DrawEnumCombo(Get("event.payload.tag_type").c_str(), filter.tagType, kTagTypeOptions);
+        Tooltip(Get("editor.tooltip.events.filter").c_str());
+
+        ImGui::BeginDisabled(filter.tagType == TagType::ALL);
+        DrawTagCombo(Get("events.filter_tag").c_str(), filter.tag);
+        ImGui::EndDisabled();
+    }
+
+    static std::string EntryHeader(const char *translationKey, const TagId tag, const char *idSuffix) {
+        const auto tagName = TagRegistry::GetName(tag);
+        return Get(translationKey) + "  ->  " + (tagName ? *tagName : Get("tags.missing")) + idSuffix;
+    }
+
+    static void DrawEventsEditor(std::vector<Event> &events, const EventOwnerKind kind) {
+        int eventToRemove = -1;
+
+        for (size_t i = 0; i < events.size(); ++i) {
+            Event &event = events[i];
+            ImGui::PushID(static_cast<int>(i));
+
+            // "###event" keeps the header's open state while its text changes.
+            const std::string header = EntryHeader(GetTranslationKey(event.payload), event.tagId, "###event");
+
+            if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                DrawPayloadTypeCombo(event.payload, kind);
+
+                DrawTagCombo(Get("events.link_tag").c_str(), event.tagId);
+                Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+
+                int maxTriggers = static_cast<int>(event.maxTriggers);
+                FieldWidth(200.0f);
+                if (ImGui::InputInt(Get("events.max_triggers").c_str(), &maxTriggers))
+                    event.maxTriggers = static_cast<uint32_t>(std::max(0, maxTriggers));
+                Tooltip(Get("editor.tooltip.events.max_triggers").c_str());
+
+                FieldWidth(200.0f);
+                ImGui::SliderFloat(Get("events.chance").c_str(), &event.chance, 0.0f, 100.0f, "%.1f%%",
+                                   ImGuiSliderFlags_AlwaysClamp);
+                Tooltip(Get("editor.tooltip.events.chance").c_str());
+
+                std::visit([&]<typename Payload>(Payload &payload) {
+                    if constexpr (requires { payload.filter; }) DrawTagFilterFields(payload.filter);
+
+                    if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>) {
+                        DrawEnumCombo(Get("events.direction").c_str(), payload.direction, kCrossDirectionOptions);
+                        Tooltip(Get("editor.tooltip.events.direction").c_str());
+                    }
+                }, event.payload);
+
+                ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) eventToRemove = static_cast<int>(i);
+            }
+
+            ImGui::PopID();
+        }
+
+        if (eventToRemove >= 0) events.erase(events.begin() + eventToRemove);
+
+        DrawAddEntryCombo("events.add_placeholder", events, kind);
+    }
+
+    static void DrawDispatchesEditor(std::vector<Dispatch> &dispatches, const EventOwnerKind kind, const ID ownerID,
+                                     const bool draggable) {
+        Level &level = LevelManager::CurrentLevel();
+        int dispatchToRemove = -1;
+
+        for (size_t i = 0; i < dispatches.size(); ++i) {
+            Dispatch &dispatch = dispatches[i];
+            ImGui::PushID(static_cast<int>(i));
+
+            const std::string header = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.tagId, "###dispatch");
+
+            if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                DrawPayloadTypeCombo(dispatch.payload, kind);
+
+                DrawTagCombo(Get("events.link_tag").c_str(), dispatch.tagId);
+                Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+
+                std::visit([&]<typename Payload>(Payload &payload) {
+                    if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
+                        ImGui::ColorEdit3(Get("events.color").c_str(), &payload.color.x);
+
+                        FieldWidth(200.0f);
+                        if (InputOrDrag(Get("events.speed").c_str(), &payload.speed, draggable, 0.05f))
+                            payload.speed = std::max(0.0f, payload.speed);
+                        Tooltip(Get("editor.tooltip.dispatches.color_speed").c_str());
+                    }
+                    else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
+                                       std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
+                        const Sector *sector = level.GetSector(ownerID);
+                        const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
+
+                        // Floors are numbered from 1, as in the sector inspector.
+                        const auto floorLabel = [](const int index) { return Get("events.floor") + " " + std::to_string(index + 1); };
+
+                        FieldWidth(200.0f);
+                        if (ImGui::BeginCombo(Get("events.floor").c_str(), floorLabel(payload.floorIndex).c_str())) {
+                            for (int floor = 0; floor < floorCount; ++floor)
+                                if (ImGui::Selectable(floorLabel(floor).c_str(), floor == payload.floorIndex))
+                                    payload.floorIndex = floor;
+                            ImGui::EndCombo();
+                        }
+
+                        FieldWidth(200.0f);
+                        if (InputOrDrag(Get("events.gap").c_str(), &payload.gap, draggable, 0.1f))
+                            payload.gap = std::max(0.0f, payload.gap);
+                        Tooltip(Get("editor.tooltip.dispatches.gap").c_str());
+
+                        FieldWidth(200.0f);
+                        if (InputOrDrag(Get("events.speed").c_str(), &payload.speed, draggable, 0.1f))
+                            payload.speed = std::max(0.01f, payload.speed);
+                        Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                        DrawEnumCombo(Get("events.collision").c_str(), payload.collisionType, kSectorCollisionOptions);
+                        Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
+                    }
+                    else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+                        FieldWidth(220.0f);
+                        InputOrDrag3(Get("events.position").c_str(), &payload.position.x, draggable);
+
+                        // Euler angles kept between frames, re-read when the
+                        // quaternion was changed elsewhere (as in the
+                        // Transform inspector), so dragging doesn't jump.
+                        static std::pair<ID, size_t> eulerOwner = {INVALID_ID, 0};
+                        static Vector3 euler = {0.0f, 0.0f, 0.0f};
+
+                        const Quaternion shown = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+                        const Quaternion actual = payload.rotation.Normalized();
+                        const float dot = shown.x * actual.x + shown.y * actual.y + shown.z * actual.z + shown.w * actual.w;
+
+                        if (eulerOwner != std::pair{ownerID, i} || std::abs(dot) < 0.99999f) {
+                            eulerOwner = {ownerID, i};
+                            euler = actual.ToEulerDegrees();
+                        }
+
+                        FieldWidth(220.0f);
+                        if (InputOrDrag3(Get("events.rotation").c_str(), &euler.x, draggable))
+                            payload.rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+
+                        const ComponentTransform *transform = level.transforms.Get(ownerID);
+                        ImGui::BeginDisabled(transform == nullptr);
+                        if (ImGui::Button(Get("events.use_entity").c_str()) && transform != nullptr) {
+                            payload.position = transform->position;
+                            payload.rotation = transform->rotation.Normalized();
+                        }
+                        ImGui::EndDisabled();
+                        Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
+                    }
+                    else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>) {
+                        FieldWidth(200.0f);
+                        ImGui::InputText(Get("events.function_name").c_str(), &payload.functionName);
+                        Tooltip(Get("editor.tooltip.dispatches.function_name").c_str());
+                    }
+                    else ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
+                }, dispatch.payload);
+
+                ImGui::Spacing();
+                if (DangerButton(Get("common.delete").c_str())) dispatchToRemove = static_cast<int>(i);
+            }
+
+            ImGui::PopID();
+        }
+
+        if (dispatchToRemove >= 0) dispatches.erase(dispatches.begin() + dispatchToRemove);
+
+        DrawAddEntryCombo("dispatches.add_placeholder", dispatches, kind);
+    }
+
+    // The Events and Dispatches sections, placed right under Tags. An entity
+    // wraps each in its prefab field instead (see the entity inspector).
+    static void DrawEventSections(std::vector<Event> &events, std::vector<Dispatch> &dispatches,
+                                  const EventOwnerKind kind, const ID ownerID, const bool draggable) {
+        BeginSection(Get("events.title").c_str());
+        ImGui::PushID("Events");
+        DrawEventsEditor(events, kind);
+        ImGui::PopID();
+        EndSection();
+
+        BeginSection(Get("dispatches.title").c_str());
+        ImGui::PushID("Dispatches");
+        DrawDispatchesEditor(dispatches, kind, ownerID, draggable);
+        ImGui::PopID();
+        EndSection();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Script attachment body — shared by the entity Script panel and the
     //  sector inspector's Scripts section
     // ─────────────────────────────────────────────────────────────────────────
@@ -1324,6 +1654,8 @@ namespace ImGuiDrawFunctions {
         ImGui::PopID();
         EndSection();
 
+        DrawEventSections(sector.events, sector.dispatches, EventOwnerKind::SECTOR, sector.id, draggable);
+
         // ── Parent Sector ────────────────────────────────────────────────────────
         // Picked from the combo or dropped from the hierarchy. Attaching keeps
         // every value as it is - from then on, edits to the parent move this
@@ -1612,6 +1944,8 @@ namespace ImGuiDrawFunctions {
 
         ImGui::PopID();
         EndSection();
+
+        DrawEventSections(wall.events, wall.dispatches, EventOwnerKind::LINE, wall.id, draggable);
 
         // ── Actions ──────────────────────────────────────────────────────────
         ImGui::Spacing();
@@ -2119,6 +2453,26 @@ namespace ImGuiDrawFunctions {
             DrawTagsEditor(entity.tagIds);
         }
 
+        ImGui::PopID();
+        EndSection();
+
+        // ── Events / Dispatches ──────────────────────────────────────────────
+        // Each list is one prefab field, overridden as a whole.
+        BeginSection(Get("events.title").c_str());
+        ImGui::PushID("Events");
+        {
+            PrefabField prefabField("events");
+            DrawEventsEditor(entity.events, EventOwnerKind::ENTITY);
+        }
+        ImGui::PopID();
+        EndSection();
+
+        BeginSection(Get("dispatches.title").c_str());
+        ImGui::PushID("Dispatches");
+        {
+            PrefabField prefabField("dispatches");
+            DrawDispatchesEditor(entity.dispatches, EventOwnerKind::ENTITY, entity.id, draggable);
+        }
         ImGui::PopID();
         EndSection();
 

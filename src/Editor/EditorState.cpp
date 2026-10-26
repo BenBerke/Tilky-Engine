@@ -178,6 +178,9 @@ namespace MapEditorInternal {
 
     Vector3 snapIndicatorColor = {220, 255, 255};
 
+    Vector3 eventLinkColor = {255, 0, 0};
+    float eventLinkThickness = DEFAULT_EVENT_LINK_THICKNESS;
+
     Vector3 kValidLineColor = {255, 220, 80};
     Vector3 kInvalidLineColor = {230, 70, 70};
     Vector3 kAnchorColor = {80, 220, 255};

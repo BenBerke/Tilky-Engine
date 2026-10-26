@@ -21,16 +21,28 @@ namespace PhysicsSystem {
         bool operator==(const CollisionPair&) const = default;
     };
 
+    // An entity's solid collider pushed out of a wall.
+    struct WallContact {
+        ID entity = INVALID_ENTITY_ID;
+        ID wall = INVALID_ID;
+
+        bool operator==(const WallContact&) const = default;
+    };
+
     struct Contacts {
         // Solid colliders that were pushed apart.
         std::vector<CollisionPair> collisions;
         // A trigger collider overlapping any other collider (trigger or not).
         // Nothing is pushed apart for these.
         std::vector<CollisionPair> triggers;
+        // Not deduplicated either - an entity can hit the same wall with
+        // several colliders or spans.
+        std::vector<WallContact> walls;
 
         void Clear() {
             collisions.clear();
             triggers.clear();
+            walls.clear();
         }
     };
 

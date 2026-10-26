@@ -423,6 +423,10 @@ namespace MapEditorInternal {
 
     constexpr float DEFAULT_TEXTURE_FIELD_SIZE = 200.0f;
     constexpr float MIN_TEXTURE_FIELD_SIZE = 32.0f;
+
+    constexpr float DEFAULT_EVENT_LINK_THICKNESS = 2.0f;
+    constexpr float MIN_EVENT_LINK_THICKNESS = 1.0f;
+    constexpr float MAX_EVENT_LINK_THICKNESS = 10.0f;
     constexpr float MAX_TEXTURE_FIELD_SIZE = 512.0f;
 
     // Selection within the UI Editor. Independent of selectedEntity/editingEntity
@@ -557,6 +561,11 @@ namespace MapEditorInternal {
     extern Vector3 highlightedSectorColor;
 
     extern Vector3 snapIndicatorColor;
+
+    // The event -> dispatch lines drawn for the selected object, in the map
+    // editor and the runtime editor (see EventLinks). Thickness in pixels.
+    extern Vector3 eventLinkColor;
+    extern float eventLinkThickness;
 
     extern Vector3 kValidLineColor;
     extern Vector3 kInvalidLineColor;
@@ -1393,6 +1402,10 @@ namespace MapEditorInternal {
     // (MapEditorDrawing.cpp).
     void DrawWallSnapPickHighlight();
 
+    // Lines from the selected wall/sector/entity's events to the dispatches
+    // they reach, and from the events reaching its dispatches to it.
+    void DrawEventLinks();
+
     // The Entity Mode palette, for the map editor's panel and the runtime
     // editor's toolbar menu (MapEditorUI.cpp).
     void DrawEntityPalette(const char* hintKey);
@@ -1563,7 +1576,10 @@ namespace MapEditorInternal {
     void PushUndoStep(UndoStep step);
 
     [[nodiscard]] EntitiesSnapshot CaptureEntitiesSnapshot();
-    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, int count = 0);
+    // `wallSnapsBefore`: the snaps before the change, for changes that add or
+    // remove snaps too (pasting a snapped entity).
+    void PushEntitiesUndo(EntitiesSnapshot before, const char* labelKey, int count = 0,
+                          std::optional<WallSnap::Snaps> wallSnapsBefore = std::nullopt);
     void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, int count = 0);
 
     // WallSnap::Disable and WallSnap::SetGap for either editor's inspector,
