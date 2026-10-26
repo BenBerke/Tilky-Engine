@@ -105,7 +105,7 @@ function Start()
     entity.uiTransform.position = Vector2(0, -100000) -- hidden
 end
 
-function Flash(self)
+public function Flash()
     timeLeft = duration
     entity.uiTransform.position = Vector2(0, 0)
 end

@@ -50,7 +50,7 @@ local function Explode(source)
     Blast(source)
 end
 
-function TakeDamage(self, amount, source)
+public function TakeDamage(amount, source)
     if exploding then return end
     health = health - amount
     if health <= 0 then Explode(source) end

@@ -112,10 +112,10 @@ Full syntax and all types are in [02_public_fields.md](02_public_fields.md).
    component by component, which works too.
 3. **Set public fields' values in `Start`, not at the top of the file.** The inspector's values are
    applied *after* the file's top level runs, so top-level code only ever sees the inline default.
-4. **Calling into another script uses a colon and an explicit `self`.**
+4. **Calling into another script uses a colon and a `public function`.**
    ```lua
    -- In Health.lua
-   function TakeDamage(self, amount) ... end
+   public function TakeDamage(amount) ... end
 
    -- Anywhere else
    target:GetScript("Health"):TakeDamage(10)

@@ -127,7 +127,7 @@ local totalTime = 1.0
 local offsetYaw, offsetPitch = 0.0, 0.0
 
 -- Public: shakerScript:Shake(degrees, seconds)
-function Shake(self, degrees, seconds)
+public function Shake(degrees, seconds)
     strength = degrees
     timeLeft = seconds
     totalTime = math.max(seconds, 0.001)
@@ -144,7 +144,7 @@ end
 function Update()
     if cam == nil then return end
 
-    if Input.GetKeyDown(testKey) then Shake(nil, 2.0, 0.4) end
+    if Input.GetKeyDown(testKey) then Shake(2.0, 0.4) end
 
     -- The mouse look keeps adding to yaw/pitch, so take back last frame's shake first.
     cam.yaw = cam.yaw - offsetYaw

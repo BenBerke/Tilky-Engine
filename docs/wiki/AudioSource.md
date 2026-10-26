@@ -236,7 +236,7 @@ end
 -- entity:GetScript("FadeOut"):Fade(2) fades this source to silence over 2 seconds.
 local speed = 0
 
-function Fade(self, seconds)
+public function Fade(seconds)
     speed = entity.audioSource.gain / math.max(seconds, 0.001)
 end
 

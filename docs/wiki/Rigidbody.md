@@ -117,7 +117,7 @@ end
 public number radius = 96
 public number force = 250
 
-function Explode(self)
+public function Explode()
     local center = entity.transform.position
 
     for _, e in ipairs(Game.GetEntities()) do
@@ -163,7 +163,7 @@ end
 ```lua
 -- Scripts/HangingCrate.lua (entity with a Collider and a static Rigidbody, placed in the air)
 -- Another script calls crate:GetScript("HangingCrate"):Drop()
-function Drop(self)
+public function Drop()
     entity.rigidbody.isStatic = false
 end
 ```

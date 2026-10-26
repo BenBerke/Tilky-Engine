@@ -14,7 +14,7 @@ end
 - `GetScript("Health")` matches the script by **file name**, ignoring folders.
 - A Behaviour reference has three built-in members: `isValid`, `entity`, `enabled`. Any other
   name is looked up in the target script's own variables and functions.
-- Functions you want others to call take `self` first, because the call uses a colon.
+- Functions you want others to call are declared `public function`, because the call uses a colon.
 
 ---
 
@@ -51,7 +51,7 @@ end
 
 -- Public API used by other scripts ----------------------------------------
 
-function TakeDamage(self, amount)
+public function TakeDamage(amount)
     if dead or invulnerable > 0 then return end
 
     currentHealth = math.max(0, currentHealth - amount)
@@ -60,23 +60,23 @@ function TakeDamage(self, amount)
     if currentHealth <= 0 then Die() end
 end
 
-function Heal(self, amount)
+public function Heal(amount)
     if dead then return end
     currentHealth = math.min(maxHealth, currentHealth + amount)
 end
 
-function IsDead(self)
+public function IsDead()
     return dead
 end
 
 -- Brings a dead (disabled) Entity back to full health. See the respawner in 13_utilities.md.
-function Revive(self)
+public function Revive()
     dead = false
     invulnerable = 0.0
     currentHealth = maxHealth
 end
 
-function GetHealthFraction(self)
+public function GetHealthFraction()
     return currentHealth / maxHealth
 end
 

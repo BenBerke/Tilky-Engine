@@ -121,8 +121,8 @@ public string prompt = "Pull lever"
 
 local isOn = false
 
--- Called by the Interactor. `self` is this script, `who` is the Entity that used it.
-function Interact(self, who)
+-- Called by the Interactor. `who` is the Entity that used it.
+public function Interact(who)
     isOn = not isOn
 
     Global.channels = Global.channels or {}
@@ -134,8 +134,8 @@ end
 
 **Notes**
 
-- Functions that other scripts call with a colon must take `self` as their first parameter:
-  `interactable:Interact(entity)` runs `Interact(interactable, entity)`.
+- Functions that other scripts call with a colon are declared `public function`:
+  `interactable:Interact(entity)` runs `Interact(entity)`.
 - `prompt` is a normal public field, so the Interactor can read it, and designers can edit it.
 
 ---

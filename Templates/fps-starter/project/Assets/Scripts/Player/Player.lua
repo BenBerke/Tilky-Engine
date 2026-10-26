@@ -9,7 +9,7 @@
 -- Other scripts talk to this one through its functions:
 --   player:GetScript("Player"):TakeDamage(10, enemyEntity)
 --   player:GetScript("Player"):Heal(25, 100)
--- Functions called that way take `self` first (see the Script wiki page).
+-- Functions called that way are declared `public function` (see the Script wiki page).
 
 public int startHealth = 100
 public number hurtFlashTime = 0.25
@@ -91,12 +91,12 @@ function Start()
     SetShown(hud.pickup, false)
     SetText(hud.center, "")
 
-    ShowMessage(nil, Game.levelName)
+    ShowMessage(Game.levelName)
 end
 
 -- ── Called by other scripts ────────────────────────────────────────────
 
-function TakeDamage(self, amount, source)
+public function TakeDamage(amount, source)
     if dead or won then return end
     local inv = Global.inventory
 
@@ -116,43 +116,43 @@ end
 
 -- Adds health up to `limit`. Returns false (and changes nothing) when the
 -- player is already at the limit, so the pickup stays on the floor.
-function Heal(self, amount, limit)
+public function Heal(amount, limit)
     local inv = Global.inventory
     if inv.health >= limit then return false end
     inv.health = math.min(limit, inv.health + amount)
     return true
 end
 
-function AddArmor(self, amount, limit)
+public function AddArmor(amount, limit)
     local inv = Global.inventory
     if inv.armor >= limit then return false end
     inv.armor = math.min(limit, inv.armor + amount)
     return true
 end
 
-function GiveKey(self, color)
+public function GiveKey(color)
     keys[color] = true
     if color == "blue" then SetShown(hud.blueKey, true) end
     if color == "red" then SetShown(hud.redKey, true) end
     return true
 end
 
-function HasKey(self, color)
+public function HasKey(color)
     return keys[color] == true
 end
 
-function ShowMessage(self, text)
+public function ShowMessage(text)
     SetText(hud.message, text)
     messageTimer = messageTime
 end
 
 -- Gold flash on the screen when something is picked up.
-function FlashPickup(self)
+public function FlashPickup()
     pickupTimer = pickupFlashTime
 end
 
 -- The last exit calls this instead of loading another level.
-function Win(self)
+public function Win()
     if dead then return end
     won = true
     Freeze()

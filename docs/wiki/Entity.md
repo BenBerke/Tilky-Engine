@@ -346,7 +346,7 @@ function Start()
     shownScale = entity.transform.scale
 end
 
-function SetShown(self, shown)
+public function SetShown(shown)
     if shown then
         entity.transform.scale = shownScale
     else

@@ -136,7 +136,7 @@ end
 -- ── Called by pickups ──────────────────────────────────────────────────
 
 -- Adds ammo up to the carrying limit. Returns false when already full.
-function AddAmmo(self, kind, amount)
+public function AddAmmo(kind, amount)
     local inv = Inventory()
     local limitKey = kind == "bullets" and "maxBullets" or "maxShells"
     if inv[kind] >= inv[limitKey] then return false end
@@ -145,14 +145,14 @@ function AddAmmo(self, kind, amount)
 end
 
 -- Gives a weapon (switching to it if it's new) and some ammo for it.
-function GiveWeapon(self, name, ammoAmount)
+public function GiveWeapon(name, ammoAmount)
     local weapon = WEAPONS[name]
     if weapon == nil then return false end
 
     local inv = Inventory()
     local isNew = not inv.weapons[name]
     inv.weapons[name] = true
-    local gotAmmo = AddAmmo(nil, weapon.ammo, ammoAmount)
+    local gotAmmo = AddAmmo(weapon.ammo, ammoAmount)
 
     if isNew then SwitchTo(name) end
     return isNew or gotAmmo

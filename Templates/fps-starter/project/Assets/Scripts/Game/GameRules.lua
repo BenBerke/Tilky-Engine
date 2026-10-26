@@ -13,7 +13,7 @@
 -- A clock that keeps counting across the whole level, in seconds.
 Global.time = Global.time or 0
 
--- Scripts that can be hurt. Each one has a TakeDamage(self, amount, source)
+-- Scripts that can be hurt. Each one has a public TakeDamage(amount, source)
 -- function. Add your own script's name here to make it damageable.
 local DAMAGEABLE_SCRIPTS = { "Player", "Enemy", "Barrel" }
 

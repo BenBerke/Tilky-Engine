@@ -24,6 +24,19 @@
 // registries in LuaScriptCompiler.cpp (DeclarationKeywords, FieldAttributes),
 // so adding one is one handler plus one table entry.
 //
+// Public functions. `ref:Fn(a)` passes the Behaviour handle as the first
+// argument, so a function other scripts call needs a parameter for it.
+// `public function` adds that parameter, and the script's own calls pass nil
+// for it:
+//
+//     public function TakeDamage(amount)  ->  function TakeDamage(__self, amount)
+//     TakeDamage(5)                       ->  TakeDamage(nil, 5)
+//
+// A public function can only be called by name: using it as a value
+// (`pcall(TakeDamage, 5)`, `cb = TakeDamage`), redefining it or shadowing it
+// with a local, parameter or loop variable is a compile error, since those
+// would skip the rewrite.
+//
 // Vector write-through. Vector properties (transform.position, ...) return
 // copies, so `a.b.position.y = 50` would set .y on a temporary. That exact
 // assignment form is rewritten to `__vref(a.b, "position").y = 50`, which
@@ -36,6 +49,8 @@
 namespace LuaScriptCompiler {
     // Name of the Lua global the vector write-through code calls.
     inline constexpr const char* kVectorRefFunction = "__vref";
+    // Name of the hidden first parameter of every public function.
+    inline constexpr const char* kSelfParameter = "__self";
 
     struct Diagnostic {
         int line = 0; // 1-based
@@ -55,6 +70,7 @@ namespace LuaScriptCompiler {
         std::string luaSource;
         std::vector<ScriptPublicField> publicFields;
         std::vector<DeclarationInfo> declarations;
+        std::vector<std::string> publicFunctions;
         std::vector<Diagnostic> errors;
 
         [[nodiscard]] bool Succeeded() const { return errors.empty(); }

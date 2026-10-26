@@ -131,7 +131,7 @@ public int killsRequired = 3
 public string channel = "exit"
 
 -- Called by an enemy's Health script (its "Death Listener" field points at this script).
-function OnDeath(self, who)
+public function OnDeath(who)
     Global.kills = (Global.kills or 0) + 1
     Debug.Print(who.name .. " down (" .. Global.kills .. "/" .. killsRequired .. ")")
 

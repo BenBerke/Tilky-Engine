@@ -190,7 +190,7 @@ end
 -- Other scripts call player:GetScript("Cutscene"):Play(3)
 local timeLeft = 0
 
-function Play(self, seconds)
+public function Play(seconds)
     timeLeft = seconds
     entity.playerController.isActive = false -- also stops the player's walking velocity
 end

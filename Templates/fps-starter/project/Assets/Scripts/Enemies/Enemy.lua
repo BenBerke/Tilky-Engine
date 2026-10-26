@@ -225,7 +225,7 @@ end
 
 -- ── Called by other scripts ────────────────────────────────────────────
 
-function TakeDamage(self, amount, source)
+public function TakeDamage(amount, source)
     if state == "dead" then return end
     health = health - amount
     if health <= 0 then

@@ -95,6 +95,9 @@ end
   keywords and engine names like `Update` or `Start` are refused. The editor marks a bad name in
   red and won't save until it's fixed.
 - An error in the function is reported like any callback error and doesn't stop the animation.
+- Don't declare an event function `public`. The event calls it without the hidden handle
+  parameter (see [Script: public function](Script.md#calling-functions-public-function)), so
+  `frameName` would arrive empty.
 
 ## In the editor
 

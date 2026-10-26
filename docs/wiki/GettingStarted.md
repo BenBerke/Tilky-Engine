@@ -285,8 +285,8 @@ function Start()
 end
 
 -- Called from other scripts as target:GetScript("Health"):TakeDamage(10).
--- The colon passes the script itself as the first argument, so it needs `self`.
-function TakeDamage(self, amount)
+-- `public function` lets other scripts call it with a colon.
+public function TakeDamage(amount)
     health = health - amount
     if health <= 0 then entity:Destroy() end
 end

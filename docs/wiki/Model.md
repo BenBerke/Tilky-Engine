@@ -112,7 +112,7 @@ public int hitsToBreak = 3
 
 local hits = 0
 
-function Hit(self)
+public function Hit()
     hits = hits + 1
     if hits == hitsToBreak then
         entity.model.fileName = brokenModel

@@ -182,7 +182,7 @@ local strength = 0
 local timeLeft = 0
 local lastYaw, lastPitch = 0, 0
 
-function Shake(self, amount, seconds)
+public function Shake(amount, seconds)
     strength = amount
     timeLeft = seconds
 end

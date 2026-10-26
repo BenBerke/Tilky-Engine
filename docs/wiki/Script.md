@@ -157,11 +157,9 @@ Through the handle you can reach the target script's **globals**, variables and 
 `GetScript` never returns `nil`. When nothing matches, it returns a handle with `isValid == false`,
 and reading anything through it gives `nil`.
 
-### Calling functions: the `self` rule
+### Calling functions: `public function`
 
-`ref:Fn(a, b)` is Lua shorthand for `ref.Fn(ref, a, b)`. The handle is passed as the **first**
-argument. So a function meant to be called from other scripts must take a first parameter for it,
-usually named `self`, even if it never uses it:
+Declare a function that other scripts call with `public function`:
 
 ```lua
 -- Scripts/Health.lua
@@ -173,12 +171,12 @@ function Start()
     health = maxHealth
 end
 
-function TakeDamage(self, amount)
+public function TakeDamage(amount)
     health = math.max(0, health - amount)
     if health == 0 then entity:Destroy() end
 end
 
-function Heal(self, amount)
+public function Heal(amount)
     health = math.min(maxHealth, health + amount)
 end
 ```
@@ -193,6 +191,26 @@ end
 ```
 
 Inside the target function, `entity` and every other global are the **target's**, not the caller's.
+
+`ref:Fn(a, b)` is Lua shorthand for `ref.Fn(ref, a, b)`: the handle goes in as the **first**
+argument. `public function` adds a hidden first parameter that receives it, so `TakeDamage(amount)`
+gets `25`, not the handle. The script's own calls, like `TakeDamage(5)` inside `Health.lua`, work
+as written. Call it with a colon from other scripts; `hp.TakeDamage(25)` with a dot puts `25` in the
+hidden parameter.
+
+Rules for public functions, all reported like a syntax error:
+
+- Only at the top level, with a plain name: not `local`, not `public function a.b()` or
+  `a:b()`, and not a [callback](CallbackFunctions.md) or other engine name.
+- It can only be **called** by name, not used as a value: `pcall(TakeDamage, 5)` or
+  `onHit = TakeDamage` are errors. Wrap it instead: `onHit = function(...) TakeDamage(...) end`.
+- No `local`, parameter or loop variable with the same name, and no second definition.
+
+A function without `public` can still be called through a reference, but it then gets the handle
+as its first parameter.
+
+[Flipbook frame events](Flipbook.md#frame-events) call their function by name with only the frame
+name, so an event function must **not** be `public`.
 
 Only variables declared **without** `local` are visible through a reference. `local` variables stay
 private.

@@ -121,8 +121,8 @@ functions, as if they were your own.
 public number power = 100
 public bool running = true
 
--- Called from other scripts with a colon, so it takes `self` first.
-function Drain(self, amount)
+-- `public function` so other scripts can call it with a colon.
+public function Drain(amount)
     power = math.max(0, power - amount)
     if power == 0 then running = false end
 end

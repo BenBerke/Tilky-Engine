@@ -161,7 +161,7 @@ public number flashTime = 0.15
 
 local timeLeft = 0
 
-function Flash(self)
+public function Flash()
     timeLeft = flashTime
 end
 

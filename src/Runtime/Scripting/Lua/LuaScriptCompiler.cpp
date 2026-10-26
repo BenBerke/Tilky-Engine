@@ -245,8 +245,18 @@ namespace {
     }
 
     bool IsReservedFieldName(const std::string& name) {
-        return LuaBindingMetadata::IsEngineName(name) || name == LuaScriptCompiler::kVectorRefFunction;
+        return LuaBindingMetadata::IsEngineName(name)
+            || name == LuaScriptCompiler::kVectorRefFunction
+            || name == LuaScriptCompiler::kSelfParameter;
     }
+
+    // A parsed `<keyword> function name(params)` header.
+    struct FunctionDeclaration {
+        std::string keyword;
+        std::string name;
+        std::vector<std::string> parameters; // as written, `...` included
+        int line = 0;
+    };
 
     // `public` - an Inspector-editable field. Returns the Lua the declaration compiles to.
     std::string CompilePublic(const Declaration& declaration, CompileContext& context) {
@@ -262,6 +272,10 @@ namespace {
         });
         if (duplicate) {
             context.Error(declaration.line, fmt::format("public field '{}' is declared twice", declaration.name));
+            return {};
+        }
+        if (std::ranges::find(result.publicFunctions, declaration.name) != result.publicFunctions.end()) {
+            context.Error(declaration.line, fmt::format("'{}' is already a public function", declaration.name));
             return {};
         }
 
@@ -282,18 +296,44 @@ namespace {
         return declaration.name + " = " + declaration.luaValue;
     }
 
+    // `public function` - callable from other scripts as `ref:Name(...)`.
+    // Returns false after reporting an error.
+    bool CompilePublicFunction(const FunctionDeclaration& declaration, CompileContext& context) {
+        Result& result = context.result;
+
+        if (IsReservedFieldName(declaration.name)) {
+            context.Error(declaration.line, fmt::format("'{}' is a reserved name and can't be a public function", declaration.name));
+            return false;
+        }
+        if (std::ranges::find(result.publicFunctions, declaration.name) != result.publicFunctions.end()) {
+            context.Error(declaration.line, fmt::format("public function '{}' is declared twice", declaration.name));
+            return false;
+        }
+        if (std::ranges::find(declaration.parameters, LuaScriptCompiler::kSelfParameter) != declaration.parameters.end()) {
+            context.Error(declaration.line, fmt::format("'{}' is a reserved name and can't be a parameter", LuaScriptCompiler::kSelfParameter));
+            return false;
+        }
+
+        result.publicFunctions.push_back(declaration.name);
+        return true;
+    }
+
     struct DeclarationKeyword {
         std::string_view name;
         // Turns a parsed declaration into compiler output; returns the Lua
         // that replaces it (empty after reporting an error).
         std::string (*compile)(const Declaration& declaration, CompileContext& context);
         bool allowsAttributes;
+        // Accepts `<keyword> function name(...)`, which compiles to a function
+        // with the hidden handle parameter whose same-script calls pass nil
+        // for it. nullptr: the keyword can't be used on functions.
+        bool (*compileFunction)(const FunctionDeclaration& declaration, CompileContext& context) = nullptr;
     };
 
     // Every declaration keyword. Add an entry here to introduce one.
     const std::vector<DeclarationKeyword>& DeclarationKeywords() {
         static const std::vector<DeclarationKeyword> keywords = {
-            {"public", CompilePublic, true},
+            {"public", CompilePublic, true, CompilePublicFunction},
         };
         return keywords;
     }
@@ -367,15 +407,24 @@ namespace {
             Result result;
             CompileContext context(result);
 
-            for (std::size_t i = 0; i < tokens.size(); ++i) {
-                if (tokens[i].kind != TokenKind::Name) continue;
-                const DeclarationKeyword* keyword = FindDeclarationKeyword(Text(i));
-                if (keyword == nullptr) continue;
-                if (i > 0 && (IsSymbol(i - 1, ".") || IsSymbol(i - 1, ":"))) continue; // `obj.public` is a field access
+            // Function declarations first, so calls above a definition are
+            // rewritten too.
+            for (const bool functions : {true, false}) {
+                for (std::size_t i = 0; i < tokens.size(); ++i) {
+                    if (tokens[i].kind != TokenKind::Name) continue;
+                    const DeclarationKeyword* keyword = FindDeclarationKeyword(Text(i));
+                    if (keyword == nullptr) continue;
+                    if (i > 0 && (IsSymbol(i - 1, ".") || IsSymbol(i - 1, ":"))) continue; // `obj.public` is a field access
 
-                CompileDeclaration(i, *keyword, context);
+                    const bool function = IsWord(i + 1, "function") || (IsWord(i + 1, "local") && IsWord(i + 2, "function"));
+                    if (function != functions) continue;
+
+                    if (function) CompileFunctionDeclaration(i, *keyword, context);
+                    else CompileDeclaration(i, *keyword, context);
+                }
             }
 
+            CompilePublicFunctionUses(context);
             CompileVectorAssignments();
 
             result.luaSource = ApplyEdits();
@@ -398,6 +447,7 @@ namespace {
         std::vector<std::size_t> lineStarts; // source offset of each line
         std::vector<bool> topLevel;          // token sits outside every block and bracket
         std::vector<Edit> edits;
+        std::vector<std::size_t> declaredFunctions; // name token of each compiled function declaration
 
         // -- token helpers -------------------------------------------------
 
@@ -518,18 +568,27 @@ namespace {
 
         // -- declarations ------------------------------------------------------
 
+        // Top level only, and never after `local`/`global`. `what` is
+        // "variables" or "functions", for the message.
+        bool CheckDeclarationPosition(const std::size_t keywordIndex, const std::string& keywordName,
+                                      const std::string_view what, CompileContext& context) const {
+            const int line = LineOf(keywordIndex);
+            if (!topLevel[keywordIndex]) {
+                context.Error(line, fmt::format("'{}' is only allowed at the top level of a script, outside functions and blocks", keywordName));
+                return false;
+            }
+            if (keywordIndex > 0 && (IsWord(keywordIndex - 1, "local") || IsWord(keywordIndex - 1, "global"))) {
+                context.Error(line, fmt::format("'{} {}' is not allowed - '{}' {} can't be local", Text(keywordIndex - 1), keywordName, keywordName, what));
+                return false;
+            }
+            return true;
+        }
+
         void CompileDeclaration(const std::size_t keywordIndex, const DeclarationKeyword& keyword, CompileContext& context) {
             const int line = LineOf(keywordIndex);
             const std::string keywordName(keyword.name);
 
-            if (!topLevel[keywordIndex]) {
-                context.Error(line, fmt::format("'{}' is only allowed at the top level of a script, outside functions and blocks", keywordName));
-                return;
-            }
-            if (keywordIndex > 0 && (IsWord(keywordIndex - 1, "local") || IsWord(keywordIndex - 1, "global"))) {
-                context.Error(line, fmt::format("'{} {}' is not allowed - '{}' variables can't be local", Text(keywordIndex - 1), keywordName, keywordName));
-                return;
-            }
+            if (!CheckDeclarationPosition(keywordIndex, keywordName, "variables", context)) return;
 
             Declaration declaration;
             declaration.keyword = keywordName;
@@ -594,6 +653,155 @@ namespace {
                 keywordName, declaration.typeName, std::string(declaration.type->luaType), declaration.name, line
             });
             Replace(tokens[keywordIndex].begin, tokens[last].end, std::move(lua));
+        }
+
+        // `<keyword> function name(params)`: drops the keyword and inserts
+        // the hidden handle parameter. CompilePublicFunctionUses rewrites the calls.
+        void CompileFunctionDeclaration(const std::size_t keywordIndex, const DeclarationKeyword& keyword, CompileContext& context) {
+            const int line = LineOf(keywordIndex);
+            const std::string keywordName(keyword.name);
+
+            if (keyword.compileFunction == nullptr) {
+                context.Error(line, fmt::format("'{}' can't be used on functions", keywordName));
+                return;
+            }
+            if (!CheckDeclarationPosition(keywordIndex, keywordName, "functions", context)) return;
+            if (IsWord(keywordIndex + 1, "local")) {
+                context.Error(line, fmt::format("'{} local function' is not allowed - '{}' functions can't be local", keywordName, keywordName));
+                return;
+            }
+
+            const std::size_t nameIndex = keywordIndex + 2;
+            if (!IsPlainName(nameIndex)) {
+                context.Error(line, fmt::format("expected a function name after '{} function'", keywordName));
+                return;
+            }
+            if (IsSymbol(nameIndex + 1, ".") || IsSymbol(nameIndex + 1, ":")) {
+                context.Error(line, fmt::format("'{} function' needs a plain name - '{}' functions can't be fields or methods of a table", keywordName, keywordName));
+                return;
+            }
+            const std::size_t open = nameIndex + 1;
+            if (!IsSymbol(open, "(") || match[open] == npos) {
+                context.Error(line, fmt::format("expected '(' after '{}'", Text(nameIndex)));
+                return;
+            }
+
+            FunctionDeclaration declaration;
+            declaration.keyword = keywordName;
+            declaration.name = std::string(Text(nameIndex));
+            declaration.parameters = Arguments(open);
+            declaration.line = line;
+            if (!keyword.compileFunction(declaration, context)) return;
+
+            declaredFunctions.push_back(nameIndex);
+            Replace(tokens[keywordIndex].begin, tokens[keywordIndex + 1].begin, "");
+            const std::string hidden = LuaScriptCompiler::kSelfParameter;
+            edits.push_back({tokens[open].end, tokens[open].end, declaration.parameters.empty() ? hidden : hidden + ", "});
+        }
+
+        // -- function declaration calls ----------------------------------------
+
+        // Every call of a declared function by name passes nil for its hidden
+        // parameter. Any other use of the name would bypass that, so it's an
+        // error.
+        void CompilePublicFunctionUses(CompileContext& context) {
+            if (declaredFunctions.empty()) return;
+
+            std::unordered_set<std::string_view> names;
+            for (const std::size_t i : declaredFunctions) names.insert(Text(i));
+            const std::vector<bool> parameters = ParameterTokens();
+            const std::vector<std::size_t> enclosing = EnclosingBrackets();
+
+            for (std::size_t i = 0; i < tokens.size(); ++i) {
+                if (tokens[i].kind != TokenKind::Name || !names.contains(Text(i))) continue;
+                if (std::ranges::find(declaredFunctions, i) != declaredFunctions.end()) continue;
+                // `obj.name`, `obj:name`, `goto name`, `::name::`
+                if (i > 0 && (IsSymbol(i - 1, ".") || IsSymbol(i - 1, ":") || IsSymbol(i - 1, "::") || IsWord(i - 1, "goto"))) continue;
+
+                const std::string name(Text(i));
+                const int line = LineOf(i);
+
+                if (i > 0 && IsWord(i - 1, "function") && !(i > 1 && IsWord(i - 2, "local"))) {
+                    context.Error(line, fmt::format("public function '{}' is defined twice", name));
+                    continue;
+                }
+                if (parameters[i] || IsDeclaredVariable(i) || (i > 1 && IsWord(i - 1, "function"))) {
+                    context.Error(line, fmt::format("'{}' is a public function and can't also be a local, parameter or loop variable", name));
+                    continue;
+                }
+
+                // `{ name = value }` is a table key, not the function.
+                const std::size_t open = enclosing[i];
+                const bool tableKey = open != npos && IsSymbol(open, "{") && IsSymbol(i + 1, "=")
+                    && (i - 1 == open || IsSymbol(i - 1, ",") || IsSymbol(i - 1, ";"));
+                if (tableKey) continue;
+
+                if (IsSymbol(i + 1, "(") && match[i + 1] != npos) {
+                    const std::size_t call = i + 1;
+                    edits.push_back({tokens[call].end, tokens[call].end, match[call] == call + 1 ? "nil" : "nil, "});
+                    continue;
+                }
+
+                // `name "text"` / `name { ... }` -> `name(nil, "text")` / `name(nil, { ... })`
+                const bool tableArgument = IsSymbol(i + 1, "{") && match[i + 1] != npos;
+                if (tableArgument || (i + 1 < tokens.size() && tokens[i + 1].kind == TokenKind::String)) {
+                    const std::size_t last = tableArgument ? match[i + 1] : i + 1;
+                    edits.push_back({tokens[i + 1].begin, tokens[i + 1].begin, "(nil, "});
+                    edits.push_back({tokens[last].end, tokens[last].end, ")"});
+                    continue;
+                }
+
+                context.Error(line, fmt::format(
+                    "public function '{}' can only be called, not used as a value - wrap it instead: function(...) {}(...) end", name, name));
+            }
+        }
+
+        // Marks the parameter names of every function definition.
+        [[nodiscard]] std::vector<bool> ParameterTokens() const {
+            std::vector<bool> parameters(tokens.size(), false);
+            for (std::size_t i = 0; i < tokens.size(); ++i) {
+                if (!IsWord(i, "function")) continue;
+
+                // `function a.b:c(` / `function(`
+                std::size_t open = i + 1;
+                if (IsPlainName(open)) {
+                    ++open;
+                    while ((IsSymbol(open, ".") || IsSymbol(open, ":")) && IsPlainName(open + 1)) open += 2;
+                }
+                if (!IsSymbol(open, "(") || match[open] == npos) continue;
+
+                for (std::size_t p = open + 1; p < match[open]; ++p)
+                    parameters[p] = tokens[p].kind == TokenKind::Name;
+            }
+            return parameters;
+        }
+
+        // Innermost open bracket around each token, or npos.
+        [[nodiscard]] std::vector<std::size_t> EnclosingBrackets() const {
+            std::vector<std::size_t> enclosing(tokens.size(), npos);
+            std::vector<std::size_t> stack;
+            for (std::size_t i = 0; i < tokens.size(); ++i) {
+                if ((IsSymbol(i, ")") || IsSymbol(i, "]") || IsSymbol(i, "}")) && !stack.empty()) stack.pop_back();
+                enclosing[i] = stack.empty() ? npos : stack.back();
+                if (IsOpenBracket(i)) stack.push_back(i);
+            }
+            return enclosing;
+        }
+
+        // `name` is one of the variables a `local` or `for` statement declares.
+        [[nodiscard]] bool IsDeclaredVariable(std::size_t name) const {
+            while (name > 0) {
+                const std::size_t previous = name - 1;
+                if (IsWord(previous, "local") || IsWord(previous, "for")) return true;
+                if (!IsSymbol(previous, ",") || previous == 0) return false;
+
+                // Step back over the previous variable: `local a <const>, b`
+                std::size_t before = previous - 1;
+                if (IsSymbol(before, ">") && before >= 2 && IsSymbol(before - 2, "<")) before -= 3;
+                if (!IsPlainName(before)) return false;
+                name = before;
+            }
+            return false;
         }
 
         // Reads the type at `i` (and `enum(...)`'s options); leaves `i` after it.
