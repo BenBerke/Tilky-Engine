@@ -11,9 +11,10 @@
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
-#include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/Types.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
 #include "Wall.hpp"
+#include "Event.hpp"
 
 using ID = uint32_t;
 
@@ -51,16 +52,6 @@ struct SectorSurface {
     Vector2 textureScale = {1.0f, 1.0f};
     bool flipTextureX = false;
     bool flipTextureY = false;
-};
-
-// What a moving floor or ceiling does when it would hit an entity's collider
-// (Lua: SectorCollision). Only a floor going up or a ceiling going down can
-// hit one; checked by Level::UpdateSectorMovement.
-enum SectorCollision {
-    SECTOR_FORCE_MOVE, // move through entities, as if they weren't there
-    SECTOR_STOP,       // stop the move at the last height that fit
-    SECTOR_RETRACT,    // go back to the height the move started from
-    SECTOR_DONT_MOVE   // hold still while blocked, carry on once clear
 };
 
 // A floor or ceiling travelling toward the opposite surface of its

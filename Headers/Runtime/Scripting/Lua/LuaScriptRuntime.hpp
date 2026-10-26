@@ -15,7 +15,7 @@ struct Level;
 
 #include <sol/sol.hpp>
 
-#include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/Types.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
 
 namespace LuaScriptRuntime {

@@ -11,9 +11,10 @@
 #include <string>
 #include <unordered_map>
 
+#include "Objects/Types.hpp"
+
 namespace TagRegistry
 {
-    using TagId = uint16_t;
     using TagMap = std::unordered_map<std::string, TagId>;
 
     // Sectors, walls and entities store only tag IDs; the registry is the

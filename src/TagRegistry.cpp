@@ -16,11 +16,11 @@
 namespace
 {
     TagRegistry::TagMap tagToId;
-    std::unordered_map<TagRegistry::TagId, std::string> idToTag;
+    std::unordered_map<TagId, std::string> idToTag;
     uint32_t nextTagId = 0;
 }
 
-std::optional<TagRegistry::TagId> TagRegistry::Find(const std::string& name) {
+std::optional<TagId> TagRegistry::Find(const std::string& name) {
     const auto iterator = tagToId.find(name);
 
     if (iterator == tagToId.end()) return std::nullopt;
@@ -36,7 +36,7 @@ std::optional<std::string> TagRegistry::GetName(const TagId id) {
     return iterator->second;
 }
 
-TagRegistry::TagId TagRegistry::GetOrCreate(const std::string& name) {
+TagId TagRegistry::GetOrCreate(const std::string& name) {
     if (const auto id = Find(name)) return *id;
 
     if (nextTagId > std::numeric_limits<TagId>::max()) throw std::runtime_error("Maximum number of tags reached");
@@ -48,7 +48,7 @@ TagRegistry::TagId TagRegistry::GetOrCreate(const std::string& name) {
     return id;
 }
 
-std::optional<TagRegistry::TagId> TagRegistry::Create(const std::string& name) {
+std::optional<TagId> TagRegistry::Create(const std::string& name) {
     if (name.empty()) return std::nullopt;
     if (Exists(name)) return std::nullopt;
 

@@ -7,7 +7,7 @@
 
 #include <vector>
 
-#include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/Types.hpp"
 
 struct Level;
 struct ComponentCollider;

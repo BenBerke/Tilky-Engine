@@ -1014,7 +1014,7 @@ namespace {
     // Removes every assignment of `tagId` from every sector, wall and entity
     // of every loaded level. Called once a project tag is actually deleted,
     // so nothing is left pointing at an ID the registry no longer has.
-    void RemoveTagFromAllLoadedObjects(const TagRegistry::TagId tagId) {
+    void RemoveTagFromAllLoadedObjects(const TagId tagId) {
         for (Level &level: LevelManager::loadedLevels) {
             for (Sector &sector: level.sectors) std::erase(sector.tagIds, tagId);
             for (Wall &wall: level.walls) std::erase(wall.tagIds, tagId);
@@ -1023,7 +1023,6 @@ namespace {
     }
 
     void DrawTagsSection() {
-        using TagRegistry::TagId;
 
         // Per-tag rename buffers, persisted across frames (like
         // levelNameBuf below) so an in-progress edit survives frame
@@ -2614,12 +2613,6 @@ namespace {
     //     heights and textures.
     //   - Entity name, and component add/remove.
 
-    // Matches the constant DrawSectorEditor enforces on the sector being
-    // edited - a height copied onto a sector with a different stack has to
-    // respect the same minimum room height, or fanning one out can leave the
-    // others inverted.
-    constexpr float MULTI_EDIT_MIN_ROOM_HEIGHT = 0.01f;
-
     // Componentwise, because the vector types don't promise an operator==.
     // Exact inequality is deliberate rather than an epsilon compare: these
     // compare a value against the same value one frame later, and the only
@@ -2780,7 +2773,7 @@ namespace {
                 // leave the selection half-updated with nothing on screen
                 // explaining why.
                 if (heightWritten && floorTarget.floor.height >= floorTarget.ceiling.height)
-                    floorTarget.ceiling.height = floorTarget.floor.height + MULTI_EDIT_MIN_ROOM_HEIGHT;
+                    floorTarget.ceiling.height = floorTarget.floor.height + MIN_ROOM_HEIGHT;
             }
         }
 
@@ -4144,7 +4137,7 @@ namespace MapEditorInternal {
             ImGui::TextDisabled("%s", Get("editor.entity_mode.filter.tags").c_str());
 
             for (const auto& [tagName, tagId] : TagRegistry::GetAll()) {
-                const TagRegistry::TagId tag = tagId;
+                const TagId tag = tagId;
                 const bool visible = std::ranges::find(hiddenEntityTags, tag) == hiddenEntityTags.end();
 
                 DrawEntityFilterRow(level, tagName.c_str(), tagName, visible,
@@ -4580,7 +4573,6 @@ namespace MapEditorInternal {
             ImGui::Spacing();
 
             constexpr float INPUT_WIDTH = 110.0f;
-            constexpr float MIN_ROOM_HEIGHT = 0.0001f;
 
             ImGui::SetNextItemWidth(INPUT_WIDTH);
 

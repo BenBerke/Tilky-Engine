@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-#include "EntityTypes.hpp"
+#include "Types.hpp"
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"

@@ -46,6 +46,9 @@ struct RendererSettings {
 
 constexpr float MAX_WALL_CONTRAST = 64.0f;
 
+// Smallest gap allowed between a sector floor and its ceiling.
+constexpr float MIN_ROOM_HEIGHT = 0.01f;
+
 // One entity's Snap to Wall (src/Editor/WallSnap.hpp). Editor-only: saved
 // in the level file's metadata, which the game never reads.
 struct WallSnapData {

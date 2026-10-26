@@ -11,7 +11,7 @@
 
 #include "../Math/Vector/Vector2.hpp"
 #include "../Objects/Sector.hpp"
-#include "EntityTypes.hpp"
+#include "Types.hpp"
 #include "ScriptPublicType.hpp"
 #include "VectorIndexCache.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"

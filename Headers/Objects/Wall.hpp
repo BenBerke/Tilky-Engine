@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-#include "EntityTypes.hpp"
+#include "Types.hpp"
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector3.hpp"
@@ -86,7 +86,7 @@ struct Wall {
     std::string name;
 
     // TagRegistry IDs; names are looked up with TagRegistry::GetName.
-    std::vector<uint16_t> tagIds;
+    std::vector<TagId> tagIds;
 
     Vector2 start, end;
     Vector4 color;

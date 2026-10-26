@@ -842,7 +842,7 @@ namespace ImGuiDrawFunctions {
 
         // Project tags not assigned yet, in ID (creation) order like the
         // Project Settings list.
-        std::vector<std::pair<std::string, TagRegistry::TagId> > availableTags;
+        std::vector<std::pair<std::string, TagId> > availableTags;
         for (const auto &[name, id]: TagRegistry::GetAll())
             if (std::ranges::find(tagIds, id) == tagIds.end()) availableTags.emplace_back(name, id);
         std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
@@ -953,8 +953,6 @@ namespace ImGuiDrawFunctions {
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable, bool *copyRequested) {
-        constexpr float MIN_ROOM_HEIGHT = 0.01f;
-
         bool deleteRequested = false;
         int floorToRemove = -1;
 

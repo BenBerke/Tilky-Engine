@@ -8,7 +8,7 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
-#include "Headers/Objects/EntityTypes.hpp"
+#include "Headers/Objects/Types.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"
 #include "Headers/Project/ProjectManager.hpp"

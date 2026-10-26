@@ -2918,7 +2918,6 @@ namespace RuntimeEditor {
         if (wheel != 0.0f && !mouseBlockedByImGui && hit.has_value()) {
             using namespace MapEditorInternal;
 
-            constexpr float MIN_ROOM_HEIGHT = 1.0f;
             // The fine scroll key swaps every step for its fine one.
             const bool fine = GetKeyBind(KEYBIND_RT_FINE_SCROLL);
             const float heightDelta = wheel * runtimeSteps[fine ? RT_STEP_FINE_HEIGHT : RT_STEP_HEIGHT];

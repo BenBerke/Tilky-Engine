@@ -1,7 +1,7 @@
-// Headers/Objects/EntityTypes.hpp
+// Headers/Objects/Types.hpp
 
-#ifndef TILKY_ENGINE_ENTITY_TYPES_HPP
-#define TILKY_ENGINE_ENTITY_TYPES_HPP
+#ifndef TILKY_ENGINE_TYPES_HPP
+#define TILKY_ENGINE_TYPES_HPP
 
 #include <cstdint>
 #include <limits>
@@ -9,8 +9,11 @@
 #include <vector>
 
 using ID = uint32_t;
-using LevelID = ID; // Legacy. //todo remove
+using LevelID = ID;
 using UIElementID = ID;
+
+using TagId = uint16_t;
+using EventId = TagId;
 
 constexpr ID INVALID_ID = std::numeric_limits<ID>::max();
 constexpr ID INVALID_ENTITY_ID = INVALID_ID;
@@ -55,4 +58,4 @@ struct PrefabLink {
     [[nodiscard]] bool IsInstance() const { return !prefab.empty(); }
 };
 
-#endif // TILKY_ENGINE_ENTITY_TYPES_HPP
+#endif // TILKY_ENGINE_TYPES_HPP

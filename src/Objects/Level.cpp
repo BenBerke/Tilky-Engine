@@ -315,9 +315,6 @@ void Level::RebuildSectorChildren() {
 }
 
 namespace {
-    // Same minimum the sector inspector enforces between a floor and its ceiling.
-    constexpr float MIN_ROOM_HEIGHT = 0.01f;
-
     void ApplySurfaceChange(const SectorSurface& before, const SectorSurface& after, SectorSurface& child) {
         // Adding a zero delta leaves the child's value bit-for-bit unchanged,
         // so there's no need to test which numeric fields actually moved.
