@@ -3006,6 +3006,20 @@ namespace RuntimeEditor {
         // have yet. Not a full refresh: that rescans Assets and froze a frame
         // at the end of every inspector edit or UV drag.
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+
+        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+            MapEditorInternal::editingComponent = false;
+            editingEntity = false;
+            editingSector = false;
+            editingWall = false;
+
+            MapEditorInternal::selectedEntities = {};
+            MapEditorInternal::selectedEntity = {};
+            selectedWalls = {};
+            MapEditorInternal::selectedWallID = -1;
+            MapEditorInternal::selectedSectors = {};
+            MapEditorInternal::selectedSectorID = -1;
+        }
     } // Update
 
     void Draw(Level &level) {
