@@ -22,6 +22,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <array>
+#include <cfloat>
 #include <cstring>
 #include <string>
 #include <algorithm>
@@ -815,6 +816,152 @@ namespace ImGuiDrawFunctions {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Inspector layout — shared by the Sector / Wall / Entity inspectors
+    // ─────────────────────────────────────────────────────────────────────────
+    // Fields sit in a two-column property table: labels on the left in one
+    // column, every field filling the rest. Groups are collapsible sections.
+
+    // Starts a property table; call EndProperties only when this returns true.
+    static bool BeginProperties(const char *id) {
+        if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) return false;
+
+        const float labelWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.38f, 80.0f, 150.0f);
+        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+        return true;
+    }
+
+    static void EndProperties() { ImGui::EndTable(); }
+
+    // A new row: the label, then the value column with the next item filling it.
+    static void Property(const char *label) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label);
+        // Long labels are clipped by the column; the full text on hover.
+        if (ImGui::CalcTextSize(label).x > ImGui::GetColumnWidth()) Tooltip(label);
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+    }
+
+    // Color fields too narrow for their number inputs show the swatch only;
+    // clicking it opens the picker with the numbers.
+    static ImGuiColorEditFlags CompactColorFlags(const float width, const int channels) {
+        return width < 52.0f * static_cast<float>(channels) ? ImGuiColorEditFlags_NoInputs : 0;
+    }
+
+    // The width left for a field followed by `buttons` small buttons on the same line.
+    static float WidthBeforeButtons(std::initializer_list<const char *> buttons) {
+        const ImGuiStyle &style = ImGui::GetStyle();
+        float width = ImGui::GetContentRegionAvail().x;
+        for (const char *button: buttons)
+            width -= ImGui::CalcTextSize(button, nullptr, true).x + style.FramePadding.x * 2.0f + style.ItemSpacing.x;
+        return std::max(40.0f, width);
+    }
+
+    // A collapsible section. `count` >= 0 is shown after the title
+    // ("Events (2)"); `id` keeps the open state while the title changes.
+    static bool InspectorSection(const std::string &title, const char *id, const int count = -1,
+                                 const bool defaultOpen = true) {
+        std::string label = title;
+        if (count >= 0) label += " (" + std::to_string(count) + ")";
+        label += "###";
+        label += id;
+
+        ImGui::Spacing();
+        return ImGui::CollapsingHeader(label.c_str(), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+    }
+
+    // Orange wrapped text for problems the user should fix.
+    static void WarningText(const char *text) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
+        ImGui::TextWrapped("%s", text);
+        ImGui::PopStyleColor();
+    }
+
+    // The top row of an inspector: the name field filling the row, the
+    // object's ID, then room for `buttonsWidth` of buttons on the right.
+    static void InspectorNameRow(std::string &name, const ID id, const float buttonsWidth, const char *tooltipKey) {
+        char idText[24];
+        snprintf(idText, sizeof(idText), "#%u", id);
+
+        const ImGuiStyle &style = ImGui::GetStyle();
+        const float idWidth = ImGui::CalcTextSize(idText).x + style.ItemSpacing.x;
+
+        ImGui::SetNextItemWidth(std::max(60.0f, ImGui::GetContentRegionAvail().x - idWidth - buttonsWidth));
+        ImGui::InputTextWithHint("##Name", Get("inspector.name_hint").c_str(), &name);
+        Tooltip(Get(tooltipKey).c_str());
+
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", idText);
+        Tooltip(Get("editor.tooltip.inspector.id").c_str());
+    }
+
+    // The width of small header buttons with these labels, spacing included.
+    static float HeaderButtonsWidth(std::initializer_list<const char *> labels) {
+        const ImGuiStyle &style = ImGui::GetStyle();
+        float width = 0.0f;
+        for (const char *label: labels)
+            width += ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f + style.ItemSpacing.x;
+        return width;
+    }
+
+    // A small red button, for the header row and card corners.
+    static bool SmallDangerButton(const char *label) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.12f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.20f, 0.20f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.50f, 0.08f, 0.08f, 1.0f));
+        const bool pressed = ImGui::SmallButton(label);
+        ImGui::PopStyleColor(3);
+        return pressed;
+    }
+
+    // A property table whose first row is the texture (`drawSettings` adds
+    // the rest), so the texture's settings line up with every other field.
+    // The thumbnail is the Texture Field Size user setting, shrunk to fit the
+    // value column.
+    template<typename DrawSettings>
+    static void TextureBlock(const char *id, std::string &texture, const char *tooltipKey, DrawSettings &&drawSettings) {
+        ImGui::PushID(id);
+
+        if (BeginProperties("##TextureSettings")) {
+            Property(Get("inspector.texture").c_str());
+
+            const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
+            MapEditorInternal::DrawAssetField("", texture, AssetKind::Texture, thumbnail);
+            Tooltip(Get(tooltipKey).c_str());
+
+            drawSettings();
+            EndProperties();
+        }
+
+        ImGui::PopID();
+    }
+
+    // Offset, scale and flips - the settings every floor, ceiling and wall
+    // surface has. `prefix` picks the sector or wall translation keys.
+    static void TextureTransformRows(const char *prefix, Vector2 &offset, Vector2 &scale, bool &flipX, bool &flipY,
+                                     const bool draggable) {
+        const std::string p = prefix;
+
+        Property(Get("inspector.texture_offset").c_str());
+        InputOrDrag2("##Offset", &offset.x, draggable);
+        Tooltip(Get("editor.tooltip." + p + ".texture_offset").c_str());
+
+        Property(Get("inspector.texture_scale").c_str());
+        InputOrDrag2("##Scale", &scale.x, draggable);
+        Tooltip(Get("editor.tooltip." + p + ".texture_scale").c_str());
+
+        Property(Get("inspector.texture_flip").c_str());
+        ImGui::Checkbox("X##FlipX", &flipX);
+        ImGui::SameLine();
+        ImGui::Checkbox("Y##FlipY", &flipY);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Tags — shared assignment editor for Sector / Wall / Entity inspectors
     // ─────────────────────────────────────────────────────────────────────────
     // Assignment only: tags are picked from TagRegistry and never created
@@ -824,24 +971,31 @@ namespace ImGuiDrawFunctions {
     // compact red per-row Delete (removes only this object's assignment, not
     // the tag itself) plus a dropdown at the bottom listing the project tags
     // this object doesn't have yet.
+    // A removable tag chip ("Player  x"), wrapping onto the next line when the
+    // row is full. `rowRight` is the screen x where the row ends.
+    static bool TagChip(const std::string &name, const bool first, const float rowRight, const char *tooltipKey) {
+        const std::string chip = name + "  x";
+
+        if (!first) {
+            const float chipWidth = ImGui::CalcTextSize(chip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + chipWidth <= rowRight) ImGui::SameLine();
+        }
+
+        const bool pressed = ImGui::SmallButton(chip.c_str());
+        Tooltip(Get(tooltipKey).c_str());
+        return pressed;
+    }
+
     static void DrawTagsEditor(std::vector<uint16_t> &tagIds) {
         int tagIndexToRemove = -1;
+        const float rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
 
         for (size_t tagIndex = 0; tagIndex < tagIds.size(); ++tagIndex) {
             ImGui::PushID(static_cast<int>(tagIndex));
 
-            ImGui::AlignTextToFramePadding();
-            if (const auto name = TagRegistry::GetName(tagIds[tagIndex]))
-                ImGui::TextUnformatted(name->c_str());
-            else
-                ImGui::TextDisabled("%s", Get("tags.missing").c_str());
-
-            ImGui::SameLine();
-            ImGui::TextDisabled("#%u", tagIds[tagIndex]);
-
-            ImGui::SameLine();
-            if (DangerButton(Get("common.delete").c_str())) tagIndexToRemove = static_cast<int>(tagIndex);
-            Tooltip(Get("editor.tooltip.tag_delete").c_str());
+            const auto name = TagRegistry::GetName(tagIds[tagIndex]);
+            if (TagChip(name ? *name : Get("tags.missing"), tagIndex == 0, rowRight, "editor.tooltip.tag_delete"))
+                tagIndexToRemove = static_cast<int>(tagIndex);
 
             ImGui::PopID();
         }
@@ -856,7 +1010,7 @@ namespace ImGuiDrawFunctions {
         std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
 
         // Always-available dropdown for assigning another tag.
-        FieldWidth(ImGui::GetContentRegionAvail().x);
+        FieldWidth(-FLT_MIN);
         ImGui::BeginDisabled(availableTags.empty());
 
         const std::string preview = Get(availableTags.empty() ? "tags.none_available" : "tags.add_placeholder");
@@ -887,7 +1041,6 @@ namespace ImGuiDrawFunctions {
         const std::string preview = name ? *name : Get(tags.empty() ? "events.no_tags" : "tags.missing");
 
         bool changed = false;
-        FieldWidth(200.0f);
         if (ImGui::BeginCombo(label, preview.c_str())) {
             for (const auto &[tagName, id]: tags) {
                 const bool selected = id == tag;
@@ -913,7 +1066,6 @@ namespace ImGuiDrawFunctions {
             if (optionValue == value) previewKey = key;
 
         bool changed = false;
-        FieldWidth(200.0f);
         if (ImGui::BeginCombo(label, Get(previewKey).c_str())) {
             for (const auto &[optionValue, key]: options) {
                 const bool selected = optionValue == value;
@@ -962,17 +1114,6 @@ namespace ImGuiDrawFunctions {
         {PayloadDispatchChangeVariable::ADD, "events.operation.add"},
         {PayloadDispatchChangeVariable::SUBTRACT, "events.operation.subtract"}
     };
-
-    static const char *ConditionSymbol(const Condition::ConditionType type) {
-        switch (type) {
-            case Condition::EQUAL: return "=";
-            case Condition::LESS_THAN: return "<";
-            case Condition::GREATER_THAN: return ">";
-            case Condition::LESS_THAN_OR_EQUAL: return "<=";
-            case Condition::GREATER_THAN_OR_EQUAL: return ">=";
-            default: return "";
-        }
-    }
 
     // What a variable reference shows: its name (global ones marked), or
     // none / missing.
@@ -1029,9 +1170,11 @@ namespace ImGuiDrawFunctions {
         return changed;
     }
 
-    // Condition type, then "[variable] <op> [variable or number] [toggle]".
+    // Property rows: the comparison, then (unless None) the variable on the
+    // left and what it is compared to - a number, or another variable.
     static void DrawConditionFields(Condition &condition) {
-        DrawEnumCombo(Get("events.condition").c_str(), condition.type, kConditionTypeOptions);
+        Property(Get("events.condition").c_str());
+        DrawEnumCombo("##ConditionType", condition.type, kConditionTypeOptions);
         Tooltip(Get("editor.tooltip.events.condition").c_str());
 
         if (condition.type == Condition::NONE) return;
@@ -1040,21 +1183,24 @@ namespace ImGuiDrawFunctions {
 
         // The left side is always a variable.
         if (!std::holds_alternative<EventVariableID>(condition.left)) condition.left = EventVariableID{0};
-        DrawEventVariableCombo("##Left", std::get<EventVariableID>(condition.left), 120.0f);
 
-        ImGui::SameLine();
-        ImGui::TextUnformatted(ConditionSymbol(condition.type));
-        ImGui::SameLine();
+        Property(Get("events.condition.left").c_str());
+        DrawEventVariableCombo("##Left", std::get<EventVariableID>(condition.left), -FLT_MIN);
 
         const bool rightIsNumber = std::holds_alternative<float>(condition.right);
+        const std::string toggleLabel = Get(rightIsNumber ? "events.condition.to_variable" : "events.condition.to_number");
+
+        Property(Get("events.condition.right").c_str());
+        const float rightWidth = WidthBeforeButtons({toggleLabel.c_str()});
+
         if (rightIsNumber) {
-            FieldWidth(80.0f);
+            FieldWidth(rightWidth);
             ImGui::InputFloat("##Right", &std::get<float>(condition.right), 0.0f, 0.0f, "%.2f");
         }
-        else DrawEventVariableCombo("##Right", std::get<EventVariableID>(condition.right), 120.0f);
+        else DrawEventVariableCombo("##Right", std::get<EventVariableID>(condition.right), rightWidth);
 
         ImGui::SameLine();
-        if (ImGui::SmallButton(Get(rightIsNumber ? "events.condition.to_variable" : "events.condition.to_number").c_str())) {
+        if (ImGui::Button(toggleLabel.c_str())) {
             if (rightIsNumber) condition.right = EventVariableID{0};
             else condition.right = 0.0f;
         }
@@ -1082,8 +1228,7 @@ namespace ImGuiDrawFunctions {
     // fields, except a tag filter both types have.
     template<typename Variant>
     static void DrawPayloadTypeCombo(Variant &payload, const EventOwnerKind kind) {
-        FieldWidth(200.0f);
-        if (!ImGui::BeginCombo(Get("events.type").c_str(), Get(GetTranslationKey(payload)).c_str())) return;
+        if (!ImGui::BeginCombo("##Type", Get(GetTranslationKey(payload)).c_str())) return;
 
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
             if ((Payload::owners & OwnerBit(kind)) == 0) return;
@@ -1131,32 +1276,26 @@ namespace ImGuiDrawFunctions {
         ImGui::EndCombo();
     }
 
-    // The filter's tags as small removable chips, then a dropdown of the
-    // project tags it doesn't have yet.
+    // Property rows: the filter type, then the filter's tags as removable
+    // chips with a dropdown of the project tags it doesn't have yet.
     static void DrawTagFilterFields(TagFilter &filter) {
-        DrawEnumCombo(Get("event.payload.tag_type").c_str(), filter.tagType, kTagTypeOptions);
+        Property(Get("event.payload.tag_type").c_str());
+        DrawEnumCombo("##TagType", filter.tagType, kTagTypeOptions);
         Tooltip(Get("editor.tooltip.events.filter").c_str());
 
+        Property(Get("events.filter_tags").c_str());
         ImGui::BeginDisabled(filter.tagType == TagType::ALL);
         ImGui::PushID("FilterTags");
 
         int tagToRemove = -1;
+        const float rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
 
         for (size_t i = 0; i < filter.tags.size(); ++i) {
             ImGui::PushID(static_cast<int>(i));
 
             const auto name = TagRegistry::GetName(filter.tags[i]);
-            const std::string chip = (name ? *name : Get("tags.missing")) + "  x";
-
-            // Wraps onto the next line when the row is full.
-            if (i > 0) {
-                const float chipWidth = ImGui::CalcTextSize(chip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-                const float rowEnd = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + chipWidth;
-                if (rowEnd < ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) ImGui::SameLine();
-            }
-
-            if (ImGui::SmallButton(chip.c_str())) tagToRemove = static_cast<int>(i);
-            Tooltip(Get("editor.tooltip.events.filter_tag_remove").c_str());
+            if (TagChip(name ? *name : Get("tags.missing"), i == 0, rowRight, "editor.tooltip.events.filter_tag_remove"))
+                tagToRemove = static_cast<int>(i);
 
             ImGui::PopID();
         }
@@ -1168,9 +1307,9 @@ namespace ImGuiDrawFunctions {
             if (std::ranges::find(filter.tags, id) == filter.tags.end()) availableTags.emplace_back(name, id);
         std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
 
-        FieldWidth(200.0f);
+        FieldWidth(-FLT_MIN);
         const char *previewKey = availableTags.empty() ? "tags.none_available" : "events.filter_tag_add";
-        if (ImGui::BeginCombo(Get("events.filter_tags").c_str(), Get(previewKey).c_str())) {
+        if (ImGui::BeginCombo("##AddFilterTag", Get(previewKey).c_str())) {
             for (const auto &[name, id]: availableTags)
                 if (ImGui::Selectable(name.c_str())) filter.tags.push_back(id);
 
@@ -1185,22 +1324,11 @@ namespace ImGuiDrawFunctions {
 
     // The gap between the fields every entry has and its type's own fields.
     static void EntrySettingsGap() {
-        ImGui::Dummy(ImVec2(0.0f, 4.0f));
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
         ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::GetStyleColorVec4(ImGuiCol_Border));
         ImGui::Separator();
         ImGui::PopStyleColor();
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
-    }
-
-    // A card's Delete, small and on the right, after a little space.
-    static bool EntryDeleteButton() {
-        ImGui::Dummy(ImVec2(0.0f, 2.0f));
-
-        const std::string label = Get("common.delete");
-        const float width = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - width));
-
-        return DangerButton(label.c_str());
     }
 
     // Starts an entry's card: a framed child that grows to fit its contents.
@@ -1222,6 +1350,23 @@ namespace ImGuiDrawFunctions {
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
     }
 
+    // The card's collapsible header with a small Delete at its right end,
+    // usable while collapsed too. Returns whether the card is open.
+    static bool EntryCardHeader(const std::string &header, bool &deleteClicked) {
+        const ImGuiStyle &style = ImGui::GetStyle();
+        const std::string deleteLabel = Get("common.delete");
+        const float deleteWidth = ImGui::CalcTextSize(deleteLabel.c_str()).x + style.FramePadding.x * 2.0f;
+        const float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+
+        const bool open = ImGui::CollapsingHeader(header.c_str(),
+                                                  ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+
+        ImGui::SameLine(right - deleteWidth - style.FramePadding.x);
+        if (SmallDangerButton(deleteLabel.c_str())) deleteClicked = true;
+
+        return open;
+    }
+
     static std::string EntryHeader(const char *translationKey, const TagId tag, const char *idSuffix) {
         const auto tagName = TagRegistry::GetName(tag);
         return Get(translationKey) + "  ->  " + (tagName ? *tagName : Get("tags.missing")) + idSuffix;
@@ -1237,50 +1382,58 @@ namespace ImGuiDrawFunctions {
             // "###event" keeps the header's open state while its text changes.
             const std::string header = EntryHeader(GetTranslationKey(event.payload), event.tagId, "###event");
 
-            if (BeginEntryCard("##EventCard") &&
-                ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool deleteClicked = false;
+            if (BeginEntryCard("##EventCard") && EntryCardHeader(header, deleteClicked)) {
                 // What every event has...
-                DrawPayloadTypeCombo(event.payload, kind);
+                if (BeginProperties("##Common")) {
+                    Property(Get("events.type").c_str());
+                    DrawPayloadTypeCombo(event.payload, kind);
 
-                DrawTagCombo(Get("events.link_tag").c_str(), event.tagId);
-                Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+                    Property(Get("events.link_tag").c_str());
+                    DrawTagCombo("##LinkTag", event.tagId);
+                    Tooltip(Get("editor.tooltip.events.link_tag").c_str());
 
-                int maxTriggers = static_cast<int>(event.maxTriggers);
-                FieldWidth(200.0f);
-                if (ImGui::InputInt(Get("events.max_triggers").c_str(), &maxTriggers))
-                    event.maxTriggers = static_cast<uint32_t>(std::max(0, maxTriggers));
-                Tooltip(Get("editor.tooltip.events.max_triggers").c_str());
+                    int maxTriggers = static_cast<int>(event.maxTriggers);
+                    Property(Get("events.max_triggers").c_str());
+                    if (ImGui::InputInt("##MaxTriggers", &maxTriggers))
+                        event.maxTriggers = static_cast<uint32_t>(std::max(0, maxTriggers));
+                    Tooltip(Get("editor.tooltip.events.max_triggers").c_str());
 
-                FieldWidth(200.0f);
-                ImGui::SliderFloat(Get("events.chance").c_str(), &event.chance, 0.0f, 100.0f, "%.1f%%",
-                                   ImGuiSliderFlags_AlwaysClamp);
-                Tooltip(Get("editor.tooltip.events.chance").c_str());
+                    Property(Get("events.chance").c_str());
+                    ImGui::SliderFloat("##Chance", &event.chance, 0.0f, 100.0f, "%.1f%%", ImGuiSliderFlags_AlwaysClamp);
+                    Tooltip(Get("editor.tooltip.events.chance").c_str());
 
-                DrawConditionFields(event.condition);
+                    DrawConditionFields(event.condition);
+
+                    EndProperties();
+                }
 
                 // ...then what only this type has.
-                EntrySettingsGap();
-
-                std::visit([&]<typename Payload>(Payload &payload) {
-                    bool anySettings = false;
-
-                    if constexpr (requires { payload.filter; }) {
-                        DrawTagFilterFields(payload.filter);
-                        anySettings = true;
-                    }
-
-                    if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>) {
-                        DrawEnumCombo(Get("events.direction").c_str(), payload.direction, kCrossDirectionOptions);
-                        Tooltip(Get("editor.tooltip.events.direction").c_str());
-                        anySettings = true;
-                    }
-
-                    if (!anySettings) ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
+                const bool hasSettings = std::visit([]<typename Payload>(const Payload &payload) {
+                    return requires { payload.filter; } || std::is_same_v<Payload, PayloadLineEntityCross>;
                 }, event.payload);
 
-                if (EntryDeleteButton()) eventToRemove = static_cast<int>(i);
+                if (hasSettings) {
+                    EntrySettingsGap();
+
+                    if (BeginProperties("##Settings")) {
+                        std::visit([&]<typename Payload>(Payload &payload) {
+                            if constexpr (requires { payload.filter; }) DrawTagFilterFields(payload.filter);
+
+                            if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>) {
+                                Property(Get("events.direction").c_str());
+                                DrawEnumCombo("##Direction", payload.direction, kCrossDirectionOptions);
+                                Tooltip(Get("editor.tooltip.events.direction").c_str());
+                            }
+                        }, event.payload);
+
+                        EndProperties();
+                    }
+                }
             }
             EndEntryCard();
+
+            if (deleteClicked) eventToRemove = static_cast<int>(i);
 
             ImGui::PopID();
         }
@@ -1301,108 +1454,131 @@ namespace ImGuiDrawFunctions {
 
             const std::string header = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.tagId, "###dispatch");
 
-            if (BeginEntryCard("##DispatchCard") &&
-                ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool deleteClicked = false;
+            if (BeginEntryCard("##DispatchCard") && EntryCardHeader(header, deleteClicked)) {
                 // What every dispatch has...
-                DrawPayloadTypeCombo(dispatch.payload, kind);
+                if (BeginProperties("##Common")) {
+                    Property(Get("events.type").c_str());
+                    DrawPayloadTypeCombo(dispatch.payload, kind);
 
-                DrawTagCombo(Get("events.link_tag").c_str(), dispatch.tagId);
-                Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+                    Property(Get("events.link_tag").c_str());
+                    DrawTagCombo("##LinkTag", dispatch.tagId);
+                    Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+
+                    EndProperties();
+                }
 
                 // ...then what only this type has.
-                EntrySettingsGap();
-
-                std::visit([&]<typename Payload>(Payload &payload) {
-                    if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
-                        ImGui::ColorEdit3(Get("events.color").c_str(), &payload.color.x);
-
-                        FieldWidth(200.0f);
-                        if (InputOrDrag(Get("events.speed").c_str(), &payload.speed, draggable, 0.05f))
-                            payload.speed = std::max(0.0f, payload.speed);
-                        Tooltip(Get("editor.tooltip.dispatches.color_speed").c_str());
-                    }
-                    else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
-                                       std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
-                        const Sector *sector = level.GetSector(ownerID);
-                        const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
-
-                        // Floors are numbered from 1, as in the sector inspector.
-                        const auto floorLabel = [](const int index) { return Get("events.floor") + " " + std::to_string(index + 1); };
-
-                        FieldWidth(200.0f);
-                        if (ImGui::BeginCombo(Get("events.floor").c_str(), floorLabel(payload.floorIndex).c_str())) {
-                            for (int floor = 0; floor < floorCount; ++floor)
-                                if (ImGui::Selectable(floorLabel(floor).c_str(), floor == payload.floorIndex))
-                                    payload.floorIndex = floor;
-                            ImGui::EndCombo();
-                        }
-
-                        FieldWidth(200.0f);
-                        if (InputOrDrag(Get("events.gap").c_str(), &payload.gap, draggable, 0.1f))
-                            payload.gap = std::max(0.0f, payload.gap);
-                        Tooltip(Get("editor.tooltip.dispatches.gap").c_str());
-
-                        FieldWidth(200.0f);
-                        if (InputOrDrag(Get("events.speed").c_str(), &payload.speed, draggable, 0.1f))
-                            payload.speed = std::max(0.01f, payload.speed);
-                        Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
-
-                        DrawEnumCombo(Get("events.collision").c_str(), payload.collisionType, kSectorCollisionOptions);
-                        Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
-                    }
-                    else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
-                        FieldWidth(220.0f);
-                        InputOrDrag3(Get("events.position").c_str(), &payload.position.x, draggable);
-
-                        // Euler angles kept between frames, re-read when the
-                        // quaternion was changed elsewhere (as in the
-                        // Transform inspector), so dragging doesn't jump.
-                        static std::pair<ID, size_t> eulerOwner = {INVALID_ID, 0};
-                        static Vector3 euler = {0.0f, 0.0f, 0.0f};
-
-                        const Quaternion shown = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
-                        const Quaternion actual = payload.rotation.Normalized();
-                        const float dot = shown.x * actual.x + shown.y * actual.y + shown.z * actual.z + shown.w * actual.w;
-
-                        if (eulerOwner != std::pair{ownerID, i} || std::abs(dot) < 0.99999f) {
-                            eulerOwner = {ownerID, i};
-                            euler = actual.ToEulerDegrees();
-                        }
-
-                        FieldWidth(220.0f);
-                        if (InputOrDrag3(Get("events.rotation").c_str(), &euler.x, draggable))
-                            payload.rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
-
-                        const ComponentTransform *transform = level.transforms.Get(ownerID);
-                        ImGui::BeginDisabled(transform == nullptr);
-                        if (ImGui::Button(Get("events.use_entity").c_str()) && transform != nullptr) {
-                            payload.position = transform->position;
-                            payload.rotation = transform->rotation.Normalized();
-                        }
-                        ImGui::EndDisabled();
-                        Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
-                    }
-                    else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>) {
-                        FieldWidth(200.0f);
-                        ImGui::InputText(Get("events.function_name").c_str(), &payload.functionName);
-                        Tooltip(Get("editor.tooltip.dispatches.function_name").c_str());
-                    }
-                    else if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
-                        DrawEventVariableCombo(Get("events.variable").c_str(), payload.variable, 200.0f);
-                        Tooltip(Get("editor.tooltip.dispatches.variable").c_str());
-
-                        DrawEnumCombo(Get("events.operation").c_str(), payload.operation, kVariableOperationOptions);
-                        Tooltip(Get("editor.tooltip.dispatches.operation").c_str());
-
-                        FieldWidth(200.0f);
-                        InputOrDrag(Get("events.value").c_str(), &payload.value, draggable, 0.1f);
-                    }
-                    else ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
+                const bool hasSettings = std::visit([]<typename Payload>(const Payload &) {
+                    return !std::is_same_v<Payload, PayloadDispatchEntityDestroy> &&
+                           !std::is_same_v<Payload, PayloadDispatchEntityDisable> &&
+                           !std::is_same_v<Payload, PayloadDispatchEntityEnable>;
                 }, dispatch.payload);
 
-                if (EntryDeleteButton()) dispatchToRemove = static_cast<int>(i);
+                if (hasSettings) {
+                    EntrySettingsGap();
+
+                    if (BeginProperties("##Settings")) {
+                        std::visit([&]<typename Payload>(Payload &payload) {
+                            if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
+                                Property(Get("events.color").c_str());
+                                ImGui::ColorEdit3("##Color", &payload.color.x,
+                                                  CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 0.05f))
+                                    payload.speed = std::max(0.0f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.color_speed").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
+                                               std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
+                                const Sector *sector = level.GetSector(ownerID);
+                                const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
+
+                                // Floors are numbered from 1, as in the sector inspector.
+                                const auto floorLabel = [](const int index) { return Get("events.floor") + " " + std::to_string(index + 1); };
+
+                                Property(Get("events.floor").c_str());
+                                if (ImGui::BeginCombo("##Floor", floorLabel(payload.floorIndex).c_str())) {
+                                    for (int floor = 0; floor < floorCount; ++floor)
+                                        if (ImGui::Selectable(floorLabel(floor).c_str(), floor == payload.floorIndex))
+                                            payload.floorIndex = floor;
+                                    ImGui::EndCombo();
+                                }
+
+                                Property(Get("events.gap").c_str());
+                                if (InputOrDrag("##Gap", &payload.gap, draggable, 0.1f))
+                                    payload.gap = std::max(0.0f, payload.gap);
+                                Tooltip(Get("editor.tooltip.dispatches.gap").c_str());
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 0.1f))
+                                    payload.speed = std::max(0.01f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                                Property(Get("events.collision").c_str());
+                                DrawEnumCombo("##Collision", payload.collisionType, kSectorCollisionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+                                Property(Get("events.position").c_str());
+                                InputOrDrag3("##Position", &payload.position.x, draggable);
+
+                                // Euler angles kept between frames, re-read when the
+                                // quaternion was changed elsewhere (as in the
+                                // Transform inspector), so dragging doesn't jump.
+                                static std::pair<ID, size_t> eulerOwner = {INVALID_ID, 0};
+                                static Vector3 euler = {0.0f, 0.0f, 0.0f};
+
+                                const Quaternion shown = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+                                const Quaternion actual = payload.rotation.Normalized();
+                                const float dot = shown.x * actual.x + shown.y * actual.y + shown.z * actual.z + shown.w * actual.w;
+
+                                if (eulerOwner != std::pair{ownerID, i} || std::abs(dot) < 0.99999f) {
+                                    eulerOwner = {ownerID, i};
+                                    euler = actual.ToEulerDegrees();
+                                }
+
+                                Property(Get("events.rotation").c_str());
+                                if (InputOrDrag3("##Rotation", &euler.x, draggable))
+                                    payload.rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+
+                                const ComponentTransform *transform = level.transforms.Get(ownerID);
+                                Property("");
+                                ImGui::BeginDisabled(transform == nullptr);
+                                if (ImGui::Button(Get("events.use_entity").c_str(), ImVec2(-FLT_MIN, 0.0f)) && transform != nullptr) {
+                                    payload.position = transform->position;
+                                    payload.rotation = transform->rotation.Normalized();
+                                }
+                                ImGui::EndDisabled();
+                                Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>) {
+                                Property(Get("events.function_name").c_str());
+                                ImGui::InputText("##Function", &payload.functionName);
+                                Tooltip(Get("editor.tooltip.dispatches.function_name").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
+                                Property(Get("events.variable").c_str());
+                                DrawEventVariableCombo("##Variable", payload.variable, -FLT_MIN);
+                                Tooltip(Get("editor.tooltip.dispatches.variable").c_str());
+
+                                Property(Get("events.operation").c_str());
+                                DrawEnumCombo("##Operation", payload.operation, kVariableOperationOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.operation").c_str());
+
+                                Property(Get("events.value").c_str());
+                                InputOrDrag("##Value", &payload.value, draggable, 0.1f);
+                            }
+                        }, dispatch.payload);
+
+                        EndProperties();
+                    }
+                }
             }
             EndEntryCard();
+
+            if (deleteClicked) dispatchToRemove = static_cast<int>(i);
 
             ImGui::PopID();
         }
@@ -1416,17 +1592,17 @@ namespace ImGuiDrawFunctions {
     // wraps each in its prefab field instead (see the entity inspector).
     static void DrawEventSections(std::vector<Event> &events, std::vector<Dispatch> &dispatches,
                                   const EventOwnerKind kind, const ID ownerID, const bool draggable) {
-        BeginSection(Get("events.title").c_str());
-        ImGui::PushID("Events");
-        DrawEventsEditor(events, kind);
-        ImGui::PopID();
-        EndSection();
+        if (InspectorSection(Get("events.title"), "Events", static_cast<int>(events.size()), false)) {
+            ImGui::PushID("Events");
+            DrawEventsEditor(events, kind);
+            ImGui::PopID();
+        }
 
-        BeginSection(Get("dispatches.title").c_str());
-        ImGui::PushID("Dispatches");
-        DrawDispatchesEditor(dispatches, kind, ownerID, draggable);
-        ImGui::PopID();
-        EndSection();
+        if (InspectorSection(Get("dispatches.title"), "Dispatches", static_cast<int>(dispatches.size()), false)) {
+            ImGui::PushID("Dispatches");
+            DrawDispatchesEditor(dispatches, kind, ownerID, draggable);
+            ImGui::PopID();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1515,6 +1691,48 @@ namespace ImGuiDrawFunctions {
         EndSection();
     }
 
+    // One floor or ceiling of a sector floor: texture with its offset, scale
+    // and flips beside it, then color and slope.
+    static void DrawSectorSurface(const char *id, const char *textureTooltipKey, SectorSurface &surface,
+                                  const bool draggable) {
+        TextureBlock(id, surface.texture, textureTooltipKey, [&] {
+            TextureTransformRows("sector", surface.textureOffset, surface.textureScale,
+                                 surface.flipTextureX, surface.flipTextureY, draggable);
+
+            const std::string resetLabel = Get("common.reset");
+
+            Property(Get("inspector.color").c_str());
+            const float colorWidth = WidthBeforeButtons({resetLabel.c_str()});
+            FieldWidth(colorWidth);
+            ImGui::ColorEdit4("##Color", &surface.color.x,
+                              ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf |
+                              ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float | CompactColorFlags(colorWidth, 4));
+            ImGui::SameLine();
+            if (ImGui::Button((resetLabel + "##color").c_str())) surface.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+            // Direction, strength, Reset on one row.
+            const char *slopeDirections[] = {"+X", "-X", "+Z", "-Z"};
+            int slopeDirection = static_cast<int>(surface.slopeDirection);
+
+            Property(Get("inspector.slope").c_str());
+            FieldWidth(64.0f);
+            if (ImGui::Combo("##SlopeDirection", &slopeDirection, slopeDirections, IM_ARRAYSIZE(slopeDirections)))
+                surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
+            Tooltip(Get("sector.slope_direction").c_str());
+
+            ImGui::SameLine();
+            FieldWidth(WidthBeforeButtons({resetLabel.c_str()}));
+            InputOrDrag("##SlopeStrength", &surface.slopeStrength, draggable, .1f);
+            Tooltip(Get("sector.slope_strength").c_str());
+
+            ImGui::SameLine();
+            if (ImGui::Button((resetLabel + "##slope").c_str())) {
+                surface.slopeDirection = PLUS_X;
+                surface.slopeStrength = 0.0f;
+            }
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
@@ -1536,35 +1754,32 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        const ImVec2 headerStart = ImGui::GetCursorPos();
-        const float headerRight = headerStart.x + ImGui::GetContentRegionAvail().x;
+        // ── Header: name, ID, Copy, Delete ───────────────────────────────────
+        {
+            const std::string copyLabel = Get("sector.copy");
+            const std::string deleteLabel = Get("common.delete");
 
-        DrawInspectorHeader("Sector", DescribeSector(sector).c_str());
+            const float buttonsWidth = copyRequested != nullptr
+                ? HeaderButtonsWidth({copyLabel.c_str(), deleteLabel.c_str()})
+                : HeaderButtonsWidth({deleteLabel.c_str()});
 
-        // Drawn over the right end of the header strip, then the cursor goes
-        // back to where the header left it.
-        if (copyRequested != nullptr) {
-            const ImGuiStyle &style = ImGui::GetStyle();
-            const ImVec2 afterHeader = ImGui::GetCursorPos();
-            const std::string &copyLabel = Get("sector.copy");
+            InspectorNameRow(sector.name, sector.id, buttonsWidth, "editor.tooltip.inspector.name");
 
-            const float buttonWidth = ImGui::CalcTextSize(copyLabel.c_str()).x + style.FramePadding.x * 2.0f;
+            if (copyRequested != nullptr) {
+                ImGui::SameLine();
+                if (ImGui::Button(copyLabel.c_str())) *copyRequested = true;
+                Tooltip(Get("editor.tooltip.sector.copy").c_str());
+            }
 
-            ImGui::SetCursorPos(ImVec2(headerRight - buttonWidth - style.FramePadding.x, headerStart.y + style.ItemSpacing.y));
-
-            if (ImGui::SmallButton(copyLabel.c_str())) *copyRequested = true;
-
-            Tooltip(Get("editor.tooltip.sector.copy").c_str());
-
-            ImGui::SetCursorPos(afterHeader);
+            ImGui::SameLine();
+            if (DangerButton(deleteLabel.c_str())) {
+                deleteRequested = true;
+                if (open != nullptr) *open = false;
+            }
+            Tooltip(Get("editor.tooltip.sector.delete").c_str());
         }
 
-        BeginSection("Identity");
-        SmallMetaText("ID: %u", sector.id);
-        FieldWidth(220.0f);
-        ImGui::InputText(Get("sector.name").c_str(), &sector.name);
-        EndSection();
-
+        // ── Floors ───────────────────────────────────────────────────────────
         for (size_t floorIndex = 0; floorIndex < sector.floors.size(); ++floorIndex) {
             ImGui::PushID(static_cast<int>(floorIndex));
 
@@ -1578,15 +1793,14 @@ namespace ImGuiDrawFunctions {
 
             const bool hasInvalidHeights = invalidRoom || overlapsPrevious || overlapsNext;
 
-            // Everything after "###" is the ID, so the warning marker can come
-            // and go without resetting the header's open/closed state.
+            // The warning marker can come and go without resetting the
+            // header's open/closed state (InspectorSection's "###" ID).
             const std::string sectionTitle =
-                    Get("sector.floor") + " " + std::to_string(floorIndex + 1) +
-                    (hasInvalidHeights ? "  (!)" : "") + "###floor_header";
+                    Get("sector.floor") + " " + std::to_string(floorIndex + 1) + (hasInvalidHeights ? "  (!)" : "");
 
             // DefaultOpen only applies the first time ImGui sees this ID, so a
             // floor the user collapses stays collapsed.
-            const bool floorOpen = ImGui::CollapsingHeader(sectionTitle.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            const bool floorOpen = InspectorSection(sectionTitle, "floor_header");
 
             // The warning is inside the body, which is hidden while collapsed.
             if (hasInvalidHeights) Tooltip(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
@@ -1596,230 +1810,64 @@ namespace ImGuiDrawFunctions {
                 continue;
             }
 
-            // ── Heights ──────────────────────────────────────────────────────────
+            if (hasInvalidHeights) WarningText(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
 
-            float floorHeight = sectorFloor.floor.height;
+            // ── Heights ──────────────────────────────────────────────────────
+            if (BeginProperties("##Heights")) {
+                float floorHeight = sectorFloor.floor.height;
 
-            FieldWidth(160.0f);
+                Property(Get("sector.floor_height").c_str());
+                if (InputOrDrag("##FloorHeight", &floorHeight, draggable)) {
+                    const float minimumHeight = floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
 
-            if (InputOrDrag(Get("sector.floor_height").c_str(), &floorHeight, draggable)) {
-                const float minimumHeight = floorIndex > 0 ? sector.floors[floorIndex - 1].ceiling.height : std::numeric_limits<float>::lowest();
+                    const float maximumHeight = sectorFloor.ceiling.height - MIN_ROOM_HEIGHT;
 
-                const float maximumHeight = sectorFloor.ceiling.height - MIN_ROOM_HEIGHT;
+                    if (minimumHeight <= maximumHeight) sectorFloor.floor.height = std::clamp(floorHeight, minimumHeight, maximumHeight);
+                }
+                Tooltip(Get("editor.tooltip.sector.floor_height").c_str());
 
-                if (minimumHeight <= maximumHeight) sectorFloor.floor.height = std::clamp(floorHeight, minimumHeight, maximumHeight);
+                float ceilingHeight = sectorFloor.ceiling.height;
+
+                Property(Get("sector.ceil_height").c_str());
+                if (InputOrDrag("##CeilingHeight", &ceilingHeight, draggable)) {
+                    const float minimumHeight = sectorFloor.floor.height + MIN_ROOM_HEIGHT;
+
+                    const float maximumHeight = floorIndex + 1 < sector.floors.size() ? sector.floors[floorIndex + 1].floor.height : std::numeric_limits<float>::max();
+
+                    if (minimumHeight <= maximumHeight) sectorFloor.ceiling.height = std::clamp(ceilingHeight, minimumHeight, maximumHeight);
+                }
+                Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
+
+                EndProperties();
             }
 
-            Tooltip(Get("editor.tooltip.sector.floor_height").c_str());
+            // ── Floor / Ceiling tabs, like a wall's Top / Bottom / Middle ────
+            ImGui::Spacing();
+            if (ImGui::BeginTabBar("##Surfaces")) {
+                if (ImGui::BeginTabItem(Get("sector.floor_surface").c_str())) {
+                    DrawSectorSurface("floor", "editor.tooltip.sector.floor_texture", sectorFloor.floor, draggable);
+                    ImGui::EndTabItem();
+                }
 
-            float ceilingHeight = sectorFloor.ceiling.height;
+                if (ImGui::BeginTabItem(Get("sector.ceiling_surface").c_str())) {
+                    DrawSectorSurface("ceiling", "editor.tooltip.sector.ceil_texture", sectorFloor.ceiling, draggable);
+                    ImGui::EndTabItem();
+                }
 
-            FieldWidth(160.0f);
-
-            if (InputOrDrag(Get("sector.ceil_height").c_str(), &ceilingHeight, draggable)) {
-                const float minimumHeight = sectorFloor.floor.height + MIN_ROOM_HEIGHT;
-
-                const float maximumHeight = floorIndex + 1 < sector.floors.size() ? sector.floors[floorIndex + 1].floor.height : std::numeric_limits<float>::max();
-
-                if (minimumHeight <= maximumHeight) sectorFloor.ceiling.height = std::clamp(ceilingHeight, minimumHeight, maximumHeight);
+                ImGui::EndTabBar();
             }
 
-            Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
-
-            if (hasInvalidHeights) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
-
-                ImGui::TextWrapped(Get("editor.tooltip.sector.invalid_floor_heights").c_str());
-
-                ImGui::PopStyleColor();
-            }
-
+            // Small, on the right, after the floor's settings.
             ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ── Slopes ───────────────────────────────────────────────────────────────
-
-            const char *slopeDirections[] = {"+X", "-X", "+Z", "-Z"};
-
-            // Floor slope
-
-            ImGui::TextUnformatted(Get("sector.floor_slope").c_str());
-
-            int floorSlopeDirection = static_cast<int>(sectorFloor.floor.slopeDirection);
-
-            FieldWidth(160.0f);
-
-            const std::string floorDirectionLabel = Get("sector.slope_direction") + "##floor_slope_direction";
-
-            if (ImGui::Combo(floorDirectionLabel.c_str(),&floorSlopeDirection, slopeDirections,IM_ARRAYSIZE(slopeDirections)))
-                sectorFloor.floor.slopeDirection = static_cast<SlopeDirection>(floorSlopeDirection);
-
-            FieldWidth(160.0f);
-
-            const std::string floorStrengthLabel = Get("sector.slope_strength") + "##floor_slope_strength";
-
-            InputOrDrag(floorStrengthLabel.c_str(), &sectorFloor.floor.slopeStrength, draggable, .1f);
-
-            if (ImGui::SmallButton("Reset##floor_slope")) {
-                sectorFloor.floor.slopeDirection = PLUS_X;
-                sectorFloor.floor.slopeStrength = 0.0f;
-            }
-
-            ImGui::Spacing();
-
-            // Ceiling slope
-
-            ImGui::TextUnformatted(Get("sector.ceiling_slope").c_str());
-
-            int ceilingSlopeDirection = static_cast<int>(sectorFloor.ceiling.slopeDirection);
-
-            FieldWidth(160.0f);
-
-            const std::string ceilingDirectionLabel = Get("sector.slope_direction") + "##ceiling_slope_direction";
-
-            if (ImGui::Combo(
-                ceilingDirectionLabel.c_str(),
-                &ceilingSlopeDirection,
-                slopeDirections,
-                IM_ARRAYSIZE(slopeDirections))) {
-                sectorFloor.ceiling.slopeDirection = static_cast<SlopeDirection>(ceilingSlopeDirection);
-            }
-
-            FieldWidth(160.0f);
-
-            const std::string ceilingStrengthLabel = Get("sector.slope_strength") + "##ceiling_slope_strength";
-
-            InputOrDrag(ceilingStrengthLabel.c_str(), &sectorFloor.ceiling.slopeStrength, draggable, .1f);
-
-            if (ImGui::SmallButton("Reset##ceiling_slope")) {
-                sectorFloor.ceiling.slopeDirection = PLUS_X;
-                sectorFloor.ceiling.slopeStrength = 0.0f;
-            }
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            // ── Textures ─────────────────────────────────────────────────────────
-
-            ImGui::PushID(&sectorFloor);
-
-            BeginSection(Get("sector.textures").c_str());
-
-            // Ceiling texture
-            ImGui::PushID("ceiling_texture");
-
-            MapEditorInternal::DrawAssetField(
-                Get("sector.ceil_texture").c_str(),
-                sectorFloor.ceiling.texture,
-                AssetKind::Texture,
-                MapEditorInternal::textureFieldSize
-            );
-            Tooltip(Get("editor.tooltip.sector.ceil_texture").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_offset").c_str(),
-                &sectorFloor.ceiling.textureOffset.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_scale").c_str(),
-                &sectorFloor.ceiling.textureScale.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
-
-            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(),&sectorFloor.ceiling.flipTextureX);
-
-            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(),&sectorFloor.ceiling.flipTextureY);
-
-            ImGui::PopID();
-
-            EndSection();
-
-            ImGui::PopID();
-
-            FieldWidth(220.0f);
-
-            if (ImGui::ColorEdit4(
-                Get("sector.floor_color").c_str(),
-                &sectorFloor.floor.color.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_HDR |
-                ImGuiColorEditFlags_Float
-            )) {}
-
-            if (ImGui::SmallButton("Reset##floor_color")) sectorFloor.floor.color = {1.0f, 1.0f, 1.0f, 1.0f};
-
-            // Floor texture
-            ImGui::PushID("floor_texture");
-
-            MapEditorInternal::DrawAssetField(
-                Get("sector.floor_texture").c_str(),
-                sectorFloor.floor.texture,
-                AssetKind::Texture,
-                MapEditorInternal::textureFieldSize
-            );
-            Tooltip(Get("editor.tooltip.sector.floor_texture").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_offset").c_str(),
-                &sectorFloor.floor.textureOffset.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_offset").c_str());
-
-            FieldWidth(200.0f);
-            InputOrDrag2(
-                Get("sector.texture_scale").c_str(),
-                &sectorFloor.floor.textureScale.x,
-                draggable
-            );
-            Tooltip(Get("editor.tooltip.sector.texture_scale").c_str());
-
-            ImGui::Checkbox(Get("sector.texture_flip_x").c_str(), &sectorFloor.floor.flipTextureX);
-            ImGui::Checkbox(Get("sector.texture_flip_y").c_str(), &sectorFloor.floor.flipTextureY);
-
-            ImGui::PopID();
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            FieldWidth(220.0f);
-
-            if (ImGui::ColorEdit4(
-                Get("sector.ceil_color").c_str(),
-                &sectorFloor.ceiling.color.x,
-                ImGuiColorEditFlags_AlphaBar |
-                ImGuiColorEditFlags_AlphaPreviewHalf |
-                ImGuiColorEditFlags_HDR |
-                ImGuiColorEditFlags_Float
-            )) {}
-
-            if (ImGui::SmallButton("Reset##ceiling_color"))
-                sectorFloor.ceiling.color = {1.0f, 1.0f, 1.0f, 1.0f};
-
-            // End texture
-
-            ImGui::Spacing();
+            const std::string removeLabel = Get("sector.remove_floor");
+            const float removeWidth = ImGui::CalcTextSize(removeLabel.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - removeWidth));
 
             ImGui::BeginDisabled(sector.floors.size() <= 1);
-
-            if (DangerButton(Get("sector.remove_floor").c_str())) floorToRemove = static_cast<int>(floorIndex);
-
+            if (SmallDangerButton(removeLabel.c_str())) floorToRemove = static_cast<int>(floorIndex);
             ImGui::EndDisabled();
-
             Tooltip(Get("editor.tooltip.sector.remove_floor").c_str());
 
-            EndSection();
             ImGui::PopID();
         }
 
@@ -1827,7 +1875,7 @@ namespace ImGuiDrawFunctions {
 
         ImGui::Spacing();
 
-        if (ImGui::Button(Get("sector.add_floor").c_str())) {
+        if (ImGui::Button(Get("sector.add_floor").c_str(), ImVec2(-FLT_MIN, 0.0f))) {
             const float floorHeight = sector.floors.empty() ? 0.0f : sector.floors.back().ceiling.height + 10.0f;
 
             sector.floors.push_back({
@@ -1846,206 +1894,166 @@ namespace ImGuiDrawFunctions {
 
         Tooltip(Get("editor.tooltip.sector.add_floor").c_str());
 
-        // ── Lighting ─────────────────────────────────────────────────────────────
+        // ── Lighting ─────────────────────────────────────────────────────────
+        if (InspectorSection(Get("sector.lighting"), "Lighting") && BeginProperties("##Lighting")) {
+            float lightColor[3] = {
+                sector.light.x / 255.0f,
+                sector.light.y / 255.0f,
+                sector.light.z / 255.0f
+            };
 
-        BeginSection(Get("sector.lighting").c_str());
+            const std::string resetLabel = Get("common.reset");
 
-        float lightColor[3] = {
-            sector.light.x / 255.0f,
-            sector.light.y / 255.0f,
-            sector.light.z / 255.0f
-        };
+            Property(Get("inspector.color").c_str());
+            const float colorWidth = WidthBeforeButtons({resetLabel.c_str()});
+            FieldWidth(colorWidth);
 
-        FieldWidth(220.0f);
+            if (ImGui::ColorEdit3(
+                    "##LightColor", lightColor,
+                    ImGuiColorEditFlags_Uint8 |
+                    ImGuiColorEditFlags_DisplayRGB |
+                    ImGuiColorEditFlags_PickerHueWheel |
+                    CompactColorFlags(colorWidth, 3))) {
+                sector.light.x = lightColor[0] * 255.0f;
+                sector.light.y = lightColor[1] * 255.0f;
+                sector.light.z = lightColor[2] * 255.0f;
+            }
 
-        if (ImGui::ColorEdit3(
-                Get("sector.light_value").c_str(), lightColor,
-                ImGuiColorEditFlags_Uint8 |
-                ImGuiColorEditFlags_DisplayRGB |
-                ImGuiColorEditFlags_PickerHueWheel)) {
-            sector.light.x = lightColor[0] * 255.0f;
-            sector.light.y = lightColor[1] * 255.0f;
-            sector.light.z = lightColor[2] * 255.0f;
-                }
+            Tooltip(Get("editor.tooltip.sector.light_color").c_str());
 
-        Tooltip(Get("editor.tooltip.sector.light_color").c_str());
+            ImGui::SameLine();
 
-        ImGui::SameLine();
+            if (ImGui::Button(resetLabel.c_str())) sector.light = {255.0f, 255.0f, 255.0f};
 
-        if (ImGui::SmallButton(Get("common.reset").c_str()))
-            sector.light = {255.0f, 255.0f, 255.0f};
+            EndProperties();
+        }
 
-        EndSection();
-
-        // ── Tags ─────────────────────────────────────────────────────────────────
-        // Placed immediately above the Delete button per the section
-        // ordering below. See DrawTagsEditor for the shared row/assignment
-        // logic reused by the Wall and Entity inspectors.
-
-        BeginSection(Get("sector.tags").c_str());
-        ImGui::PushID("SectorTags");
-
-        DrawTagsEditor(sector.tagIds);
-
-        ImGui::PopID();
-        EndSection();
+        // ── Tags ─────────────────────────────────────────────────────────────
+        // See DrawTagsEditor for the shared row/assignment logic reused by
+        // the Wall and Entity inspectors.
+        if (InspectorSection(Get("sector.tags"), "Tags", static_cast<int>(sector.tagIds.size()), false)) {
+            ImGui::PushID("SectorTags");
+            DrawTagsEditor(sector.tagIds);
+            ImGui::PopID();
+        }
 
         DrawEventSections(sector.events, sector.dispatches, EventOwnerKind::SECTOR, sector.id, draggable);
 
-        // ── Parent Sector ────────────────────────────────────────────────────────
+        // ── Parent Sector ────────────────────────────────────────────────────
         // Picked from the combo or dropped from the hierarchy. Attaching keeps
         // every value as it is - from then on, edits to the parent move this
         // sector's values by the same amount (Level::PropagateSectorChanges).
+        if (InspectorSection(Get("sector.parent"), "Parent", -1, false)) {
+            ImGui::PushID("SectorParent");
 
-        BeginSection(Get("sector.parent").c_str());
-        ImGui::PushID("SectorParent");
+            Level &level = LevelManager::CurrentLevel();
 
-        Level &level = LevelManager::CurrentLevel();
+            // Keyed by sector ID so an error doesn't follow the user to the next
+            // sector they select.
+            static ID lastParentEditSectorId = INVALID_ID;
+            static bool parentRejected = false;
 
-        // Keyed by sector ID so an error doesn't follow the user to the next
-        // sector they select.
-        static ID lastParentEditSectorId = INVALID_ID;
-        static bool parentRejected = false;
+            if (lastParentEditSectorId != sector.id) {
+                lastParentEditSectorId = sector.id;
+                parentRejected = false;
+            }
 
-        if (lastParentEditSectorId != sector.id) {
-            lastParentEditSectorId = sector.id;
-            parentRejected = false;
-        }
+            const Sector *currentParent = level.GetSector(sector.parentID);
+            const std::string parentPreview = currentParent != nullptr ? DescribeSector(*currentParent) : "(None)";
 
-        const Sector *currentParent = level.GetSector(sector.parentID);
-        const std::string parentPreview = currentParent != nullptr ? DescribeSector(*currentParent) : "(None)";
+            ID requestedParent = sector.parentID;
 
-        ID requestedParent = sector.parentID;
+            const bool parentPicked = DrawLevelObjectRefField(
+                Get("sector.parent_field").c_str(), requestedParent, parentPreview,
+                MapEditorInternal::SECTOR_REF_PAYLOAD, "editor.tooltip.sector.parent",
+                [&level, &sector](ID &id, bool &changed) {
+                    for (const Sector &candidate : level.sectors) {
+                        // The sector itself and its descendants would make a cycle.
+                        if (level.IsSectorAncestor(sector.id, candidate.id)) continue;
 
-        const bool parentPicked = DrawLevelObjectRefField(
-            Get("sector.parent_field").c_str(), requestedParent, parentPreview,
-            MapEditorInternal::SECTOR_REF_PAYLOAD, "editor.tooltip.sector.parent",
-            [&level, &sector](ID &id, bool &changed) {
-                for (const Sector &candidate : level.sectors) {
-                    // The sector itself and its descendants would make a cycle.
-                    if (level.IsSectorAncestor(sector.id, candidate.id)) continue;
+                        const bool isSelected = candidate.id == id;
 
-                    const bool isSelected = candidate.id == id;
+                        if (ImGui::Selectable(DescribeSector(candidate).c_str(), isSelected)) {
+                            id = candidate.id;
+                            changed = true;
+                        }
 
-                    if (ImGui::Selectable(DescribeSector(candidate).c_str(), isSelected)) {
-                        id = candidate.id;
-                        changed = true;
+                        if (isSelected) ImGui::SetItemDefaultFocus();
                     }
-
-                    if (isSelected) ImGui::SetItemDefaultFocus();
                 }
-            }
-        );
+            );
 
-        // Only a drop can get here with a cycle, the combo never lists one.
-        if (parentPicked) parentRejected = !level.SetSectorParent(sector.id, requestedParent);
+            // Only a drop can get here with a cycle, the combo never lists one.
+            if (parentPicked) parentRejected = !level.SetSectorParent(sector.id, requestedParent);
 
-        if (parentRejected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.1f, 1.0f));
-            ImGui::TextWrapped("%s", Get("sector.parent_cycle_error").c_str());
-            ImGui::PopStyleColor();
-        }
+            if (parentRejected) WarningText(Get("sector.parent_cycle_error").c_str());
 
-        if (!sector.children.empty()) SmallMetaText("%s: %d", Get("sector.child_count").c_str(), static_cast<int>(sector.children.size()));
-
-        ImGui::PopID();
-        EndSection();
-
-        // ── Scripts ──────────────────────────────────────────────────────────────
-        // Sector scripts (Sector::scripts). Same per-script controls as an
-        // entity's Script component (DrawScriptAttachmentFields), drawn
-        // inline - one collapsible block per attached script - instead of
-        // behind an Edit button. Sits last, right above Delete.
-
-        BeginSection(Get("sector.scripts").c_str());
-        ImGui::PushID("SectorScripts");
-
-        const std::string scriptOwnerLabel = "sector " + std::to_string(sector.id);
-        ScriptInstanceID scriptToRemove = INVALID_SCRIPT_INSTANCE_ID;
-
-        for (SectorScript &script: sector.scripts) {
-            // std::to_string, not a truncating cast - instance IDs are 64-bit.
-            ImGui::PushID(std::to_string(script.instanceID).c_str());
-
-            const std::string displayName = script.fileName.empty()
-                ? std::string("Script (unassigned)")
-                : std::filesystem::path(script.fileName).filename().string();
-
-            // "###script" keeps the header's ID (and open/closed state)
-            // stable while the visible text changes with the file name.
-            const std::string headerLabel = (script.enabled ? displayName : displayName + " (disabled)") + "###script";
-
-            if (ImGui::CollapsingHeader(headerLabel.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                DrawScriptAttachmentFields(script, scriptOwnerLabel);
-
-                ImGui::Spacing();
-
-                if (DangerButton(Get("sector.remove_script").c_str())) scriptToRemove = script.instanceID;
-
-                Tooltip(Get("editor.tooltip.sector.remove_script").c_str());
-            }
+            if (!sector.children.empty()) SmallMetaText("%s: %d", Get("sector.child_count").c_str(), static_cast<int>(sector.children.size()));
 
             ImGui::PopID();
         }
 
-        if (scriptToRemove != INVALID_SCRIPT_INSTANCE_ID) sector.RemoveScript(scriptToRemove);
+        // ── Scripts ──────────────────────────────────────────────────────────
+        // Sector scripts (Sector::scripts). Same per-script controls as an
+        // entity's Script component (DrawScriptAttachmentFields), drawn
+        // inline - one collapsible block per attached script - instead of
+        // behind an Edit button.
+        if (InspectorSection(Get("sector.scripts"), "Scripts", static_cast<int>(sector.scripts.size()), false)) {
+            ImGui::PushID("SectorScripts");
 
-        if (sector.scripts.empty()) ImGui::TextDisabled("%s", Get("sector.no_scripts").c_str());
+            const std::string scriptOwnerLabel = "sector " + std::to_string(sector.id);
+            ScriptInstanceID scriptToRemove = INVALID_SCRIPT_INSTANCE_ID;
 
-        // Same as entities: adds an unassigned script; the file is picked
-        // from the row it creates.
-        if (ImGui::Button(Get("sector.add_script").c_str())) sector.AddScript();
+            for (SectorScript &script: sector.scripts) {
+                // std::to_string, not a truncating cast - instance IDs are 64-bit.
+                ImGui::PushID(std::to_string(script.instanceID).c_str());
 
-        Tooltip(Get("editor.tooltip.sector.add_script").c_str());
+                const std::string displayName = script.fileName.empty()
+                    ? std::string("Script (unassigned)")
+                    : std::filesystem::path(script.fileName).filename().string();
 
-        ImGui::PopID();
-        EndSection();
+                // "###script" keeps the header's ID (and open/closed state)
+                // stable while the visible text changes with the file name.
+                const std::string headerLabel = (script.enabled ? displayName : displayName + " (disabled)") + "###script";
 
-        // ── Actions ──────────────────────────────────────────────────────────────
+                bool removeClicked = false;
+                if (BeginEntryCard("##ScriptCard") && EntryCardHeader(headerLabel, removeClicked))
+                    DrawScriptAttachmentFields(script, scriptOwnerLabel);
+                EndEntryCard();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+                if (removeClicked) scriptToRemove = script.instanceID;
 
-        if (DangerButton(Get("common.delete").c_str())) {
-            deleteRequested = true;
-            if (open != nullptr) *open = false;
+                ImGui::PopID();
+            }
+
+            if (scriptToRemove != INVALID_SCRIPT_INSTANCE_ID) sector.RemoveScript(scriptToRemove);
+
+            if (sector.scripts.empty()) ImGui::TextDisabled("%s", Get("sector.no_scripts").c_str());
+
+            // Same as entities: adds an unassigned script; the file is picked
+            // from the row it creates.
+            if (ImGui::Button(Get("sector.add_script").c_str(), ImVec2(-FLT_MIN, 0.0f))) sector.AddScript();
+
+            Tooltip(Get("editor.tooltip.sector.add_script").c_str());
+
+            ImGui::PopID();
         }
-
-        Tooltip(Get("editor.tooltip.sector.delete").c_str());
-
-        ImGui::SameLine();
-
-        if (ImGui::Button(Get("common.close").c_str())) if (open != nullptr) *open = false;
 
         ImGui::End();
         return deleteRequested;
     }
-    void DrawWallTextureField(const char *label, WallSurface &surface) {
-        MapEditorInternal::DrawAssetField(label, surface.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
-        Tooltip(Get("editor.tooltip.wall.texture").c_str());
-    }
 
-    // `id` keeps the Top, Bottom and Middle widgets apart when several are shown.
-    void DrawWallSurfaceSettings(const char *id, WallSurface &surface, const bool draggable) {
-        ImGui::PushID(id);
-
-        FieldWidth(200.0f);
-        InputOrDrag2(Get("wall.texture_offset").c_str(), &surface.textureOffset.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_offset").c_str());
-
-        InputOrDrag2(Get("wall.texture_scale").c_str(), &surface.textureScale.x, draggable);
-        Tooltip(Get("editor.tooltip.wall.texture_scale").c_str());
-
-        ImGui::Checkbox(Get("wall.texture_flip_x").c_str(), &surface.flipTextureX);
-        ImGui::Checkbox(Get("wall.texture_flip_y").c_str(), &surface.flipTextureY);
+    // Offset, scale, flips and anchor of one wall surface, as property rows.
+    static void DrawWallSurfaceRows(WallSurface &surface, const bool draggable) {
+        TextureTransformRows("wall", surface.textureOffset, surface.textureScale,
+                             surface.flipTextureX, surface.flipTextureY, draggable);
 
         const WallTextureAnchorInfo *selected = FindWallTextureAnchor(surface.anchor);
         if (selected == nullptr) selected = &WALL_TEXTURE_ANCHORS[0];
 
-        FieldWidth(200.0f);
+        Property(Get("wall.anchor").c_str());
 
-        if (ImGui::BeginCombo(Get("wall.anchor").c_str(), Get(selected->labelKey).c_str())) {
+        if (ImGui::BeginCombo("##Anchor", Get(selected->labelKey).c_str())) {
             for (const WallTextureAnchorInfo &anchor : WALL_TEXTURE_ANCHORS) {
                 const bool isSelected = anchor.anchor == surface.anchor;
 
@@ -2058,8 +2066,6 @@ namespace ImGuiDrawFunctions {
         }
 
         Tooltip(Get(selected->tooltipKey).c_str());
-
-        ImGui::PopID();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2074,130 +2080,103 @@ namespace ImGuiDrawFunctions {
             return false;
         }
 
-        // ── Summary header ───────────────────────────────────────────────────
-        DrawInspectorHeader("Wall", DescribeWall(wall).c_str());
+        // ── Header: name, ID, Delete ─────────────────────────────────────────
+        {
+            const std::string deleteLabel = Get("common.delete");
 
-        BeginSection("Identity");
-        SmallMetaText("ID: %u", wall.id);
+            InspectorNameRow(wall.name, wall.id, HeaderButtonsWidth({deleteLabel.c_str()}), "editor.tooltip.inspector.name");
 
-        ImGui::SameLine(60);
+            ImGui::SameLine();
+            if (DangerButton(deleteLabel.c_str())) {
+                deleteRequested = true;
+                if (open) *open = false;
+            }
+            Tooltip(Get("editor.tooltip.wall.delete").c_str());
+        }
 
-        SmallMetaText("%s: %f", Get("editor.wall.length").c_str(), wall.length);
+        // ── General ──────────────────────────────────────────────────────────
+        if (InspectorSection(Get("inspector.general"), "General") && BeginProperties("##General")) {
+            Property(Get("editor.wall.length").c_str());
+            ImGui::TextDisabled("%.2f", wall.length);
 
-        ImGui::SameLine();
+            Property(Get("editor.wall.angle").c_str());
+            ImGui::TextDisabled("%.2f", wall.angle);
 
-        SmallMetaText("%s: %f", Get("editor.wall.angle").c_str(), wall.angle);
+            bool wallSectorChanged = false;
 
-        FieldWidth(220.0f);
-        ImGui::InputText(Get("wall.name").c_str(), &wall.name);
-        EndSection();
+            Property(Get("wall.front_sector").c_str());
+            wallSectorChanged |= InputID("##FrontSector", wall.frontSector);
+            Tooltip(Get("editor.tooltip.wall.front_sector").c_str());
 
-        // ── Sector Links ─────────────────────────────────────────────────────
-        BeginSection("Sector Links");
+            Property(Get("wall.back_sector").c_str());
+            wallSectorChanged |= InputID("##BackSector", wall.backSector);
+            Tooltip(Get("editor.tooltip.wall.back_sector").c_str());
 
-        bool wallSectorChanged = false;
+            if (wallSectorChanged)
+                MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
 
-        FieldWidth(100.0f);
-        wallSectorChanged |= InputID(Get("wall.front_sector").c_str(), wall.frontSector);
-        Tooltip(Get("editor.tooltip.wall.front_sector").c_str());
+            Property(Get("inspector.color").c_str());
+            ImGui::ColorEdit4(
+                "##WallColor",
+                &wall.color.x,
+                ImGuiColorEditFlags_AlphaBar |
+                ImGuiColorEditFlags_AlphaPreviewHalf |
+                ImGuiColorEditFlags_HDR |
+                ImGuiColorEditFlags_Float |
+                CompactColorFlags(ImGui::GetContentRegionAvail().x, 4)
+            );
+            Tooltip(Get("editor.tooltip.wall.color").c_str());
 
-        FieldWidth(100.0f);
-        wallSectorChanged |= InputID(Get("wall.back_sector").c_str(), wall.backSector);
-        Tooltip(Get("editor.tooltip.wall.back_sector").c_str());
+            EndProperties();
+        }
 
-        if (wallSectorChanged)
-            MapQueries::RebuildSectorRuntimeLinks(LevelManager::CurrentLevel());
-
-        SmallMetaText("Front: %s   Back: %s",
-                      wall.frontSector == INVALID_ID
-                          ? "none"
-                          : std::to_string(static_cast<int>(wall.frontSector)).c_str(),
-                      wall.backSector == INVALID_ID
-                          ? "none"
-                          : std::to_string(static_cast<int>(wall.backSector)).c_str());
-
-        EndSection();
-
-        // ── Appearance ───────────────────────────────────────────────────────
-        BeginSection("Appearance");
-
+        // ── Textures ─────────────────────────────────────────────────────────
         // Only a portal has a step under the neighbour's floor, so only a
         // portal gets a Bottom texture; a solid wall shows Top everywhere.
         // Only a portal has openings too, so only a portal gets a Middle.
-        const bool portal = wall.IsPortal();
+        if (InspectorSection(Get("wall.textures"), "Textures")) {
+            if (wall.IsPortal()) {
+                if (ImGui::BeginTabBar("##Surfaces")) {
+                    if (ImGui::BeginTabItem(Get("wall.texture_top").c_str())) {
+                        TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture",
+                                     [&] { DrawWallSurfaceRows(wall.top, draggable); });
+                        ImGui::EndTabItem();
+                    }
 
-        DrawWallTextureField(portal ? Get("wall.texture_top").c_str() : Get("wall.texture").c_str(), wall.top);
-        if (portal) {
-            DrawWallTextureField(Get("wall.texture_bottom").c_str(), wall.bottom);
+                    if (ImGui::BeginTabItem(Get("wall.texture_bottom").c_str())) {
+                        TextureBlock("Bottom", wall.bottom.texture, "editor.tooltip.wall.texture",
+                                     [&] { DrawWallSurfaceRows(wall.bottom, draggable); });
+                        ImGui::EndTabItem();
+                    }
 
-            MapEditorInternal::DrawAssetField(Get("wall.texture_middle").c_str(), wall.middle.texture, AssetKind::Texture, MapEditorInternal::textureFieldSize);
-            Tooltip(Get("editor.tooltip.wall.texture_middle").c_str());
+                    if (ImGui::BeginTabItem(Get("wall.texture_middle").c_str())) {
+                        TextureBlock("Middle", wall.middle.texture, "editor.tooltip.wall.texture_middle",
+                                     [&] { DrawWallSurfaceRows(wall.middle, draggable); });
+
+                        ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
+                        Tooltip(Get("editor.tooltip.wall.middle_has_collision").c_str());
+
+                        ImGui::Checkbox(Get("wall.ignored_by_raycast").c_str(), &wall.middleIgnoredByRaycast);
+                        Tooltip(Get("editor.tooltip.wall.middle_ignored_by_raycast").c_str());
+
+                        ImGui::EndTabItem();
+                    }
+
+                    ImGui::EndTabBar();
+                }
+            }
+            else TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture",
+                              [&] { DrawWallSurfaceRows(wall.top, draggable); });
         }
-
-        FieldWidth(220.0f);
-
-        if (ImGui::ColorEdit4(
-            Get("wall.color").c_str(),
-            &wall.color.x,
-            ImGuiColorEditFlags_AlphaBar |
-            ImGuiColorEditFlags_AlphaPreviewHalf |
-            ImGuiColorEditFlags_HDR |
-            ImGuiColorEditFlags_Float
-        )) {}
-
-        Tooltip(Get("editor.tooltip.wall.color").c_str());
-
-        EndSection();
-
-        // ── Texture ───────────────────────────────────────────────────
-        BeginSection("Texture");
-
-        if (portal) {
-            SmallMetaText("%s", Get("wall.texture_top").c_str());
-            DrawWallSurfaceSettings("Top", wall.top, draggable);
-
-            SmallMetaText("%s", Get("wall.texture_bottom").c_str());
-            DrawWallSurfaceSettings("Bottom", wall.bottom, draggable);
-
-            SmallMetaText("%s", Get("wall.texture_middle").c_str());
-            DrawWallSurfaceSettings("Middle", wall.middle, draggable);
-
-            ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
-            Tooltip(Get("editor.tooltip.wall.middle_has_collision").c_str());
-
-            ImGui::Checkbox(Get("wall.ignored_by_raycast").c_str(), &wall.middleIgnoredByRaycast);
-            Tooltip(Get("editor.tooltip.wall.middle_ignored_by_raycast").c_str());
-        }
-        else DrawWallSurfaceSettings("Top", wall.top, draggable);
-
-        EndSection();
 
         // ── Tags ─────────────────────────────────────────────────────────────
-        BeginSection(Get("wall.tags").c_str());
-        ImGui::PushID("WallTags");
-
-        DrawTagsEditor(wall.tagIds);
-
-        ImGui::PopID();
-        EndSection();
+        if (InspectorSection(Get("wall.tags"), "Tags", static_cast<int>(wall.tagIds.size()), false)) {
+            ImGui::PushID("WallTags");
+            DrawTagsEditor(wall.tagIds);
+            ImGui::PopID();
+        }
 
         DrawEventSections(wall.events, wall.dispatches, EventOwnerKind::LINE, wall.id, draggable);
-
-        // ── Actions ──────────────────────────────────────────────────────────
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        if (DangerButton(Get("common.delete").c_str())) {
-            deleteRequested = true;
-            if (open) *open = false;
-        }
-        Tooltip(Get("editor.tooltip.wall.delete").c_str());
-
-        ImGui::SameLine();
-
-        if (ImGui::Button(Get("common.close").c_str()))
-            if (open) *open = false;
 
         ImGui::End();
         return deleteRequested;
@@ -2483,7 +2462,17 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
         const std::string entityWindowTitle = state.windowTitle.empty() ? Get("entity.title") : state.windowTitle;
-        if (!ImGui::Begin(entityWindowTitle.c_str(), open, kInspectorFlags)) {
+
+        const bool wasOpen = open == nullptr || *open;
+        const bool windowVisible = ImGui::Begin(entityWindowTitle.c_str(), open, kInspectorFlags);
+
+        // The window's X closes the component window too.
+        if (wasOpen && open != nullptr && !*open) {
+            state.editingComponent = false;
+            state.selectedComponent = -1;
+        }
+
+        if (!windowVisible) {
             ImGui::End();
             return false;
         }
@@ -2493,14 +2482,40 @@ namespace ImGuiDrawFunctions {
         DrawPrefabInstanceBar(entity);
         BeginPrefabFields(entity, -1, 0);
 
-        // ── Identity card ────────────────────────────────────────────────────
+        // ── Header: enabled, name, ID, Delete ────────────────────────────────
+        ImGui::PushID("entity_header");
         {
-            char hdr[128];
-            snprintf(hdr, sizeof(hdr), "%s (#%u)",
-                     entity.name.empty() ? "unnamed" : entity.name.c_str(),
-                     entity.id);
-            DrawInspectorHeader("Entity", hdr);
+            const std::string deleteLabel = Get("common.delete");
+
+            // Entity-level active state (Lua: entity.enabled). Disabling
+            // an Entity pauses every attached script's ticking without
+            // touching each script's own enabled flag - see Entity::enabled.
+            // The prefab mark covers the whole row.
+            PrefabField prefabField("enabled");
+
+            ImGui::Checkbox("##Enabled", &entity.enabled);
+            Tooltip(Get("editor.tooltip.entity.enabled").c_str());
+            ImGui::SameLine();
+
+            InspectorNameRow(entity.name, entity.id, state.allowDelete ? HeaderButtonsWidth({deleteLabel.c_str()}) : 0.0f,
+                             "editor.tooltip.inspector.name");
+
+            if (state.allowDelete) {
+                ImGui::SameLine();
+
+                // Not the Delete key while typing: it deletes text there.
+                if (DangerButton(deleteLabel.c_str())
+                    || (!ImGui::GetIO().WantTextInput && InputManager::GetKeyDown(SDL_SCANCODE_DELETE)))
+                {
+                    deleteRequested            = true;
+                    state.editingComponent     = false;
+                    state.selectedComponent    = -1;
+                    if (open) *open = false;
+                }
+                Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
+            }
         }
+        ImGui::PopID();
 
         // ── Snap to Wall / Snap to Floor, under the name ─────────────────────
         if (state.allowSnapToWall || state.allowSnapToFloor) {
@@ -2514,8 +2529,13 @@ namespace ImGuiDrawFunctions {
                 : "entity.snap_to_wall");
             const std::string floorLabel = Get("entity.snap_to_floor");
 
+            // Side by side, splitting the row.
+            const int buttonCount = (state.allowSnapToWall ? 1 : 0) + (state.allowSnapToFloor ? 1 : 0);
+            const float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * static_cast<float>(buttonCount - 1)) /
+                                      static_cast<float>(buttonCount);
+
             if (state.allowSnapToWall) {
-                if (ImGui::Button(wallLabel.c_str())) state.wallSnapButtonRequested = true;
+                if (ImGui::Button(wallLabel.c_str(), ImVec2(buttonWidth, 0.0f))) state.wallSnapButtonRequested = true;
                 Tooltip(Get(
                     state.wallSnapStatus == WallSnapStatus::Picking ? "editor.tooltip.entity.snap_to_wall_cancel"
                     : state.wallSnapStatus == WallSnapStatus::Snapped ? "editor.tooltip.entity.disable_wall_snap"
@@ -2525,22 +2545,16 @@ namespace ImGuiDrawFunctions {
             }
 
             if (state.allowSnapToFloor) {
-                if (ImGui::Button(floorLabel.c_str())) state.snapToFloorRequested = true;
+                if (ImGui::Button(floorLabel.c_str(), ImVec2(buttonWidth, 0.0f))) state.snapToFloorRequested = true;
                 Tooltip(Get("editor.tooltip.entity.snap_to_floor").c_str());
             }
 
             // A second row while snapped: Gap, Switch Sides.
-            if (state.allowSnapToWall && state.wallSnapStatus == WallSnapStatus::Snapped) {
-                constexpr float GAP_FIELD_WIDTH = 70.0f;
-
-                const std::string gapLabel = Get("entity.wall_gap");
+            if (state.allowSnapToWall && state.wallSnapStatus == WallSnapStatus::Snapped && BeginProperties("##WallSnap")) {
                 const std::string switchLabel = Get("entity.switch_sides");
 
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextUnformatted(gapLabel.c_str());
-                ImGui::SameLine();
-
-                ImGui::SetNextItemWidth(GAP_FIELD_WIDTH);
+                Property(Get("entity.wall_gap").c_str());
+                FieldWidth(WidthBeforeButtons({switchLabel.c_str()}));
 
                 if (ImGui::DragFloat("##WallSnapGap", &state.wallSnapGap, 0.01f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp))
                     state.wallSnapGapChanged = true;
@@ -2549,29 +2563,14 @@ namespace ImGuiDrawFunctions {
                 ImGui::SameLine();
                 if (ImGui::Button(switchLabel.c_str())) state.switchSidesRequested = true;
                 Tooltip(Get("editor.tooltip.entity.switch_sides").c_str());
+
+                EndProperties();
             }
 
             ImGui::PopID();
         }
 
-        BeginSection("Identity");
-        SmallMetaText("ID: %u", entity.id);
-        FieldWidth(220.0f);
-        ImGui::InputText(Get("entity.name").c_str(), &entity.name);
-
-        // Entity-level active state (Lua: entity.enabled). Disabling
-        // an Entity pauses every attached script's ticking without
-        // touching each script's own enabled flag - see Entity::enabled.
-        {
-            PrefabField prefabField("enabled");
-            ImGui::Checkbox("Enabled", &entity.enabled);
-            Tooltip("Disables every attached script on this Entity (OnDisable fires) without changing each script's own Enabled checkbox.");
-        }
-        EndSection();
-
-        // ── Components list ──────────────────────────────────────────────────
-        BeginSection("Components");
-
+        // ── Components ───────────────────────────────────────────────────────
         // One card per component instance: [name]  [Edit]. An entity can have
         // several of every type except Transform, so the Edit button selects
         // the instance (`instanceID`; a ScriptInstanceID for scripts). Cards
@@ -2593,19 +2592,24 @@ namespace ImGuiDrawFunctions {
             // 64-bit and must stay unique across every row in this list.
             ImGui::PushID(std::to_string(instanceID).c_str());
 
+            const ImGuiStyle &style = ImGui::GetStyle();
+            const std::string editLabel = Get("entity.edit_component");
+            const float editWidth = ImGui::CalcTextSize(editLabel.c_str()).x + style.FramePadding.x * 2.0f;
+            const float rowWidth = ImGui::GetContentRegionAvail().x;
+
             // Subtle background for the row
-            ImVec2 rowMin = ImGui::GetCursorScreenPos();
-            float  rowW   = ImGui::GetContentRegionAvail().x;
-            float  rowH   = ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().FramePadding.y * 2.0f + 2.0f;
+            const ImVec2 rowMin = ImGui::GetCursorScreenPos();
+            const float rowHeight = ImGui::GetFrameHeight();
 
             ImDrawList *dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilled(rowMin, ImVec2(rowMin.x + rowW, rowMin.y + rowH),
+            dl->AddRectFilled(rowMin, ImVec2(rowMin.x + rowWidth, rowMin.y + rowHeight),
                               ImGui::GetColorU32(ImGuiCol_FrameBg, 0.6f), 3.0f);
 
-            ImGui::Spacing();
-            ImGui::Indent(6.0f);
             const std::string cardLabel = PrefabCardLabel(entity, componentType, instanceID, label);
-            ImGui::Selectable(cardLabel.c_str(), false, ImGuiSelectableFlags_AllowOverlap, ImVec2(rowW - 72.0f, 0.0f));
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + style.FramePadding.x);
+            ImGui::AlignTextToFramePadding();
+            ImGui::Selectable(cardLabel.c_str(), false, ImGuiSelectableFlags_AllowOverlap,
+                              ImVec2(rowWidth - editWidth - style.FramePadding.x - style.ItemSpacing.x, rowHeight));
             DrawPrefabCardMarks(entity, componentType, instanceID);
 
             if (componentType != CMP_TRANSFORM) {
@@ -2658,16 +2662,14 @@ namespace ImGuiDrawFunctions {
                 Tooltip(Get("editor.tooltip.entity.component_drag").c_str());
             }
 
-            ImGui::SameLine(rowW - 56.0f);
+            ImGui::SameLine(rowWidth - editWidth);
 
-            if (ImGui::SmallButton("Edit")) {
+            if (ImGui::Button(editLabel.c_str())) {
                 state.selectedComponent  = componentType;
                 state.editingComponent   = true;
                 state.selectedInstanceID = instanceID;
             }
 
-            ImGui::Unindent(6.0f);
-            ImGui::Spacing();
             ImGui::PopID();
             ImGui::PopID();
         };
@@ -2680,38 +2682,31 @@ namespace ImGuiDrawFunctions {
             }
         };
 
+        if (InspectorSection(Get("entity.components"), "Components")) {
 #define DRAW_ENTITY_COMPONENT_ROWS(Type, Bit, Storage, LabelKey) \
-        if constexpr (Bit != CMP_SCRIPT) DrawComponentCards(Bit, Get(LabelKey), ComponentInstancesOf<Type>(entity));
+            if constexpr (Bit != CMP_SCRIPT) DrawComponentCards(Bit, Get(LabelKey), ComponentInstancesOf<Type>(entity));
 
-        TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROWS)
+            TILKY_NORMAL_COMPONENTS(DRAW_ENTITY_COMPONENT_ROWS)
 
 #undef DRAW_ENTITY_COMPONENT_ROWS
 
-        // Scripts are labelled by their file instead of the component name.
-        {
-            const std::vector<ComponentScript *> scripts = entity.GetScripts();
+            // Scripts are labelled by their file instead of the component name.
+            {
+                const std::vector<ComponentScript *> scripts = entity.GetScripts();
 
-            for (size_t i = 0; i < scripts.size(); ++i) {
-                const ComponentScript *script = scripts[i];
-                const std::string displayName = script->fileName.empty()
-                    ? std::string("Script (unassigned)")
-                    : std::filesystem::path(script->fileName).filename().string();
+                for (size_t i = 0; i < scripts.size(); ++i) {
+                    const ComponentScript *script = scripts[i];
+                    const std::string displayName = script->fileName.empty()
+                        ? std::string("Script (unassigned)")
+                        : std::filesystem::path(script->fileName).filename().string();
 
-                const std::string label = script->enabled ? displayName : displayName + " (disabled)";
+                    const std::string label = script->enabled ? displayName : displayName + " (disabled)";
 
-                DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID, i);
+                    DrawComponentCard(label.c_str(), CMP_SCRIPT, script->instanceID, i);
+                }
             }
-        }
 
-        EndSection();
-
-        // ── Add Component panel ───────────────────────────────────────────────
-        BeginSection("Add Component");
-
-        if (ImGui::Button(state.addingComponent ? "Cancel" : Get("entity.add_component").c_str()))
-            state.addingComponent = !state.addingComponent;
-
-        if (state.addingComponent) {
+            // "Add component..." - picking a type adds it straight away.
             ImGui::PushID("add_component_combo");
 
             std::array<std::string, CMP_NORMAL_COUNT> componentNames{};
@@ -2721,96 +2716,55 @@ namespace ImGuiDrawFunctions {
             TILKY_NORMAL_COMPONENTS(FILL_COMPONENT_NAME)
 #undef FILL_COMPONENT_NAME
 
-            FieldWidth(200.0f);
-            if (ImGui::BeginCombo(
-                    Get("component.component").c_str(),
-                    componentNames[state.componentToAdd].c_str()))
-            {
+            ImGui::Spacing();
+            FieldWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##AddComponent", Get("entity.add_component_placeholder").c_str())) {
                 for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
                     if (i == CMP_TRANSFORM) continue;
-                    const bool isSel = (state.componentToAdd == i);
-                    if (ImGui::Selectable(componentNames[i].c_str(), isSel))
-                        state.componentToAdd = i;
-                    if (isSel) ImGui::SetItemDefaultFocus();
+                    if (ImGui::Selectable(componentNames[i].c_str())) {
+                        AddEditorComponentByType(entity, i);
+                        state.addingComponent = false;
+                        state.componentToAdd  = CMP_SPRITE;
+                    }
                 }
                 ImGui::EndCombo();
-            }
-
-            //  ImGui::SameLine();
-            if (ImGui::Button(Get("common.add").c_str())) {
-                AddEditorComponentByType(entity, state.componentToAdd);
-                state.addingComponent = false;
-                state.componentToAdd  = CMP_SPRITE;
             }
 
             ImGui::PopID();
         }
 
-        EndSection();
-
         // ── Tags ─────────────────────────────────────────────────────────────
-        BeginSection(Get("entity.tags").c_str());
-        ImGui::PushID("EntityTags");
-
-        {
-            PrefabField prefabField("tags");
-            DrawTagsEditor(entity.tagIds);
+        if (InspectorSection(Get("entity.tags"), "Tags", static_cast<int>(entity.tagIds.size()), false)) {
+            ImGui::PushID("EntityTags");
+            {
+                PrefabField prefabField("tags");
+                DrawTagsEditor(entity.tagIds);
+            }
+            ImGui::PopID();
         }
-
-        ImGui::PopID();
-        EndSection();
 
         // ── Events / Dispatches ──────────────────────────────────────────────
         // Each list is one prefab field, overridden as a whole.
-        BeginSection(Get("events.title").c_str());
-        ImGui::PushID("Events");
-        {
-            PrefabField prefabField("events");
-            DrawEventsEditor(entity.events, EventOwnerKind::ENTITY);
+        if (InspectorSection(Get("events.title"), "Events", static_cast<int>(entity.events.size()), false)) {
+            ImGui::PushID("Events");
+            {
+                PrefabField prefabField("events");
+                DrawEventsEditor(entity.events, EventOwnerKind::ENTITY);
+            }
+            ImGui::PopID();
         }
-        ImGui::PopID();
-        EndSection();
 
-        BeginSection(Get("dispatches.title").c_str());
-        ImGui::PushID("Dispatches");
-        {
-            PrefabField prefabField("dispatches");
-            DrawDispatchesEditor(entity.dispatches, EventOwnerKind::ENTITY, entity.id, draggable);
+        if (InspectorSection(Get("dispatches.title"), "Dispatches", static_cast<int>(entity.dispatches.size()), false)) {
+            ImGui::PushID("Dispatches");
+            {
+                PrefabField prefabField("dispatches");
+                DrawDispatchesEditor(entity.dispatches, EventOwnerKind::ENTITY, entity.id, draggable);
+            }
+            ImGui::PopID();
         }
-        ImGui::PopID();
-        EndSection();
 
         // Runs a Revert/Apply picked from the bar, a card or a field.
         EndPrefabFields();
-
-        // ── Actions ──────────────────────────────────────────────────────────
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::PushID("entity_buttons");
-
-        if (state.allowDelete) {
-            // Not the Delete key while typing: it deletes text there.
-            if (DangerButton(Get("common.delete").c_str())
-                || (!ImGui::GetIO().WantTextInput && InputManager::GetKeyDown(SDL_SCANCODE_DELETE)))
-            {
-                deleteRequested            = true;
-                state.editingComponent     = false;
-                state.selectedComponent    = -1;
-                if (open) *open = false;
-            }
-            Tooltip(Get("editor.tooltip.entity.common.delete").c_str());
-
-            ImGui::SameLine();
-        }
-        if (ImGui::Button(Get("common.close").c_str())) {
-            state.editingComponent  = false;
-            state.selectedComponent = -1;
-            if (open) *open = false;
-        }
-
-        ImGui::PopID();
 
         ImGui::End();
         return deleteRequested;
