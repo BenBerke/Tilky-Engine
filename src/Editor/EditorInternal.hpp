@@ -1187,6 +1187,11 @@ namespace MapEditorInternal {
     [[nodiscard]] ID PickLinedefAt(const Vector2& mouseWorld);
     [[nodiscard]] bool PickSelectedLinedefEndpointAt(const Vector2& mouseWorld, ID* outLinedefID, bool* outIsStart);
 
+    // The end of an unselected linedef under `mouseWorld`, where a click
+    // starts a new linedef. Only on lines long enough on screen to keep a
+    // middle to click (to select or drag them) between the two end zones.
+    [[nodiscard]] bool PickUnselectedLinedefEndpointAt(const Vector2& mouseWorld, Vector2* outPoint);
+
     // Like the wall ones, SelectLinedef opens the inspector.
     void SelectLinedef(ID linedefID);
     void ToggleLinedefSelection(ID linedefID);
@@ -1211,6 +1216,10 @@ namespace MapEditorInternal {
 
     // Splits every selected linedef at its midpoint; returns how many split.
     int SplitSelectedLinedefsAtMidpoint();
+
+    // Swaps the start and end of every selected linedef, which turns its
+    // front (the side with the tick) around. One undo step; returns how many.
+    int FlipSelectedLinedefs();
 
     // ---- Canvas filters (MapEditorGeometry.cpp) -------------------------
     // Filtered-out walls and entities are drawn dimmed and can't be picked.
@@ -1269,6 +1278,7 @@ namespace MapEditorInternal {
         // Editing
         KEYBIND_PLACE_ENTITY,
         KEYBIND_DELETE,
+        KEYBIND_FLIP_LINEDEF,
 
         // Drawing (Sector Mode)
         KEYBIND_FINISH_SHAPE,

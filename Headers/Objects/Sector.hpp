@@ -16,6 +16,8 @@
 #include "Wall.hpp"
 #include "Event.hpp"
 
+struct Linedef;
+
 using ID = uint32_t;
 
 struct Triangle {
@@ -309,6 +311,12 @@ struct Sector {
     std::vector<Sector*> neighbors;
     std::vector<Wall*> walls;
     std::vector<Sector*> pvs;
+
+    // Every linedef touching this sector's floor area (one spanning several
+    // sectors is in each). Runtime only: built by
+    // MapQueries::AssignLinedefsToSectors when the level starts, so it goes
+    // stale if linedefs or sectors are added or removed after that.
+    std::vector<Linedef*> linedefs;
 };
 
 #endif

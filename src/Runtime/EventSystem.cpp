@@ -42,6 +42,14 @@ namespace {
         float speed; // per channel, per second
     };
 
+    // An entity's collider overlapping a linedef, seen from above.
+    struct LinedefContact {
+        ID entity;
+        ID linedef;
+
+        bool operator==(const LinedefContact&) const = default;
+    };
+
     EventSystem::Hooks hooks;
 
     std::unordered_multimap<TagId, DispatchHandle> dispatchRegistry;
@@ -54,6 +62,7 @@ namespace {
     std::unordered_map<ID, bool> lastEnabled;
     std::vector<PhysicsSystem::CollisionPair> lastEntityContacts; // sorted, unique
     std::vector<PhysicsSystem::WallContact> lastWallContacts;     // sorted, unique
+    std::vector<LinedefContact> lastLinedefContacts;              // sorted, unique
 
     bool operator<(const PhysicsSystem::CollisionPair& a, const PhysicsSystem::CollisionPair& b) {
         return std::tie(a.a, a.b) < std::tie(b.a, b.b);
@@ -61,6 +70,10 @@ namespace {
 
     bool operator<(const PhysicsSystem::WallContact& a, const PhysicsSystem::WallContact& b) {
         return std::tie(a.entity, a.wall) < std::tie(b.entity, b.wall);
+    }
+
+    bool operator<(const LinedefContact& a, const LinedefContact& b) {
+        return std::tie(a.entity, a.linedef) < std::tie(b.entity, b.linedef);
     }
 
     template <typename T>
@@ -210,7 +223,8 @@ namespace {
     }
 
     struct Crossing {
-        ID wallID;
+        EventOwnerKind ownerKind; // LINE or LINEDEF
+        ID lineID;
         ID entityID;
         bool forward; // front side -> back side
     };
@@ -244,23 +258,36 @@ namespace {
         }
     }
 
-    // Whether the feet moved from `from` to `to` through the wall segment.
-    bool CrossesWall(const Wall& wall, const Vector2& from, const Vector2& to, bool& endedOnNormalSide) {
-        const float sideFrom = Vector2Math::Cross(wall.vector, from - wall.start);
-        const float sideTo = Vector2Math::Cross(wall.vector, to - wall.start);
+    template <typename Payload>
+    bool HasEvent(const Linedef& linedef) {
+        return std::ranges::any_of(linedef.events, [](const Event& event) {
+            return std::holds_alternative<Payload>(event.payload);
+        });
+    }
+
+    // Whether the feet moved from `from` to `to` through the segment
+    // start -> end (`vector` = end - start).
+    bool CrossesSegment(const Vector2& start, const Vector2& end, const Vector2& vector,
+                        const Vector2& from, const Vector2& to, bool& endedOnNormalSide) {
+        const float sideFrom = Vector2Math::Cross(vector, from - start);
+        const float sideTo = Vector2Math::Cross(vector, to - start);
 
         if ((sideFrom < 0.0f) == (sideTo < 0.0f)) return false;
 
-        // And the wall's ends are on either side of the path, so the path
+        // And the segment's ends are on either side of the path, so the path
         // goes through the segment rather than past its end.
         const Vector2 path = to - from;
-        const float startSide = Vector2Math::Cross(path, wall.start - from);
-        const float endSide = Vector2Math::Cross(path, wall.end - from);
+        const float startSide = Vector2Math::Cross(path, start - from);
+        const float endSide = Vector2Math::Cross(path, end - from);
 
         if (startSide * endSide > 0.0f) return false;
 
         endedOnNormalSide = sideTo >= 0.0f;
         return true;
+    }
+
+    bool CrossesWall(const Wall& wall, const Vector2& from, const Vector2& to, bool& endedOnNormalSide) {
+        return CrossesSegment(wall.start, wall.end, wall.vector, from, to, endedOnNormalSide);
     }
 
     void FireMovementEvents(Level& level) {
@@ -302,7 +329,34 @@ namespace {
                 bool endedOnNormalSide = false;
                 if (!CrossesWall(*wall, previousPosition, position, endedOnNormalSide)) continue;
 
-                crossings.push_back({crossWall.wallID, entityID, endedOnNormalSide != crossWall.frontIsNormalSide});
+                crossings.push_back({EventOwnerKind::LINE, crossWall.wallID, entityID, endedOnNormalSide != crossWall.frontIsNormalSide});
+            }
+
+            // Linedefs of the sector the entity is in, and on the frame it
+            // changes sector also of the one it left, so a line crossed on
+            // the way out isn't missed. Outside every sector: none.
+            std::vector<const Linedef*> nearbyLinedefs;
+
+            const auto addSectorLinedefs = [&](const ID id) {
+                const Sector* sector = id != INVALID_ID ? level.GetSector(id) : nullptr;
+                if (!sector) return;
+
+                for (const Linedef* linedef : sector->linedefs)
+                    if (HasEvent<PayloadLineEntityCross>(*linedef) && std::ranges::find(nearbyLinedefs, linedef) == nearbyLinedefs.end())
+                        nearbyLinedefs.push_back(linedef);
+            };
+
+            addSectorLinedefs(sectorID);
+            if (!newSector && previousSector != sectorID) addSectorLinedefs(previousSector);
+
+            // A linedef's front is its normal side (where the editor draws
+            // its tick: right of start -> end on screen), so ending on the
+            // other side is forward.
+            for (const Linedef* linedef : nearbyLinedefs) {
+                bool endedOnNormalSide = false;
+                if (!CrossesSegment(linedef->start, linedef->end, linedef->vector, previousPosition, position, endedOnNormalSide)) continue;
+
+                crossings.push_back({EventOwnerKind::LINEDEF, linedef->id, entityID, !endedOnNormalSide});
             }
         }
 
@@ -311,7 +365,7 @@ namespace {
 
         for (const Crossing& crossing : crossings) {
             FireEvents<PayloadLineEntityCross>(
-                level, EventOwnerKind::LINE, crossing.wallID, crossing.entityID, EntityTags(level, crossing.entityID),
+                level, crossing.ownerKind, crossing.lineID, crossing.entityID, EntityTags(level, crossing.entityID),
                 [&](const PayloadLineEntityCross& cross) {
                     switch (cross.direction) {
                         case PayloadLineEntityCross::FORWARD: return crossing.forward;
@@ -391,6 +445,93 @@ namespace {
             FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINE, wallID, entityID, EntityTags(level, entityID));
         }
     }
+
+    // Liang-Barsky: does any part of segment a-b lie in the box?
+    bool SegmentTouchesBox(const Vector2& a, const Vector2& b, const Vector2& boxMin, const Vector2& boxMax) {
+        const float dx = b.x - a.x;
+        const float dy = b.y - a.y;
+
+        const float p[4] = {-dx, dx, -dy, dy};
+        const float q[4] = {a.x - boxMin.x, boxMax.x - a.x, a.y - boxMin.y, boxMax.y - a.y};
+
+        float t0 = 0.0f;
+        float t1 = 1.0f;
+
+        for (int i = 0; i < 4; ++i) {
+            if (p[i] == 0.0f) {
+                if (q[i] < 0.0f) return false;
+                continue;
+            }
+
+            const float t = q[i] / p[i];
+
+            if (p[i] < 0.0f) {
+                if (t > t1) return false;
+                t0 = std::max(t0, t);
+            }
+            else {
+                if (t < t0) return false;
+                t1 = std::min(t1, t);
+            }
+        }
+
+        return true;
+    }
+
+    // Whether the collider, seen from above at any height, overlaps the line.
+    bool ColliderTouchesLine(const ComponentCollider& collider, const ComponentTransform& transform,
+                             const Vector2& start, const Vector2& end) {
+        const Vector3 base = collider.Base(transform);
+        const Vector2 centre = {base.x, base.z};
+
+        if (collider.IsRound()) {
+            const float radius = collider.Radius(transform);
+            const Vector2 line = end - start;
+            const float lengthSq = Vector2Math::Dot(line, line);
+            const float t = lengthSq > 0.0f ? std::clamp(Vector2Math::Dot(centre - start, line) / lengthSq, 0.0f, 1.0f) : 0.0f;
+            const Vector2 closest = start + line * t;
+
+            return Vector2Math::DistanceSquared(centre, closest) <= radius * radius;
+        }
+
+        const Vector3 size = collider.WorldSize(transform);
+        const Vector2 half = {size.x * 0.5f, size.z * 0.5f};
+        return SegmentTouchesBox(start, end, centre - half, centre + half);
+    }
+
+    // Linedefs don't collide, so their COLLIDE events come from overlaps
+    // found here rather than from physics. Like a wall: first touch only,
+    // re-armed once the entity is clear of the line again.
+    void FireLinedefContactEvents(Level& level) {
+        std::vector<LinedefContact> contacts;
+
+        // Only the linedefs of the sector the entity is in: one just over
+        // the edge in the next sector is never touched.
+        for (const ComponentCollider& collider : level.colliders.ActiveColliders()) {
+            const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
+            if (!transform) continue;
+
+            if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+            for (const Linedef* linedef : level.sectors[transform->sectorIndex].linedefs) {
+                if (!HasEvent<PayloadLineEntityCollide>(*linedef)) continue;
+                if (!ColliderTouchesLine(collider, *transform, linedef->start, linedef->end)) continue;
+
+                contacts.push_back({collider.ownerID, linedef->id});
+            }
+        }
+
+        SortUnique(contacts);
+
+        const std::vector<LinedefContact> started = Started(contacts, lastLinedefContacts);
+        lastLinedefContacts = std::move(contacts);
+
+        for (const auto& [entityID, linedefID] : started) {
+            if (!IsEnabledEntity(level, entityID)) continue;
+
+            FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINEDEF, linedefID, entityID, EntityTags(level, entityID));
+        }
+    }
 }
 
 namespace EventSystem {
@@ -404,6 +545,7 @@ namespace EventSystem {
         };
 
         for (const Wall& wall : level.walls) add(EventOwnerKind::LINE, wall.id, wall.dispatches);
+        for (const Linedef& linedef : level.linedefs) add(EventOwnerKind::LINEDEF, linedef.id, linedef.dispatches);
         for (const Sector& sector : level.sectors) add(EventOwnerKind::SECTOR, sector.id, sector.dispatches);
         for (const Entity& entity : level.entities) add(EventOwnerKind::ENTITY, entity.id, entity.dispatches);
 
@@ -426,6 +568,7 @@ namespace EventSystem {
     void Start(Level& level, Hooks newHooks) {
         Stop();
         hooks = std::move(newHooks);
+        MapQueries::AssignLinedefsToSectors(level);
         CreateRegistry(level);
 
         // Counts are runtime only: every play session starts from 0.
@@ -433,6 +576,7 @@ namespace EventSystem {
             for (Event& event : events) event.triggerCount = 0;
         };
         for (Wall& wall : level.walls) resetCounts(wall.events);
+        for (Linedef& linedef : level.linedefs) resetCounts(linedef.events);
         for (Sector& sector : level.sectors) resetCounts(sector.events);
         for (Entity& entity : level.entities) resetCounts(entity.events);
 
@@ -452,6 +596,7 @@ namespace EventSystem {
         FireEnableEvents(level);
         FireMovementEvents(level);
         FireContactEvents(level, contacts);
+        FireLinedefContactEvents(level);
     }
 
     void Stop() {
@@ -464,6 +609,7 @@ namespace EventSystem {
         lastEnabled.clear();
         lastEntityContacts.clear();
         lastWallContacts.clear();
+        lastLinedefContacts.clear();
     }
 
     void ExecuteDispatch(Level& level, const Dispatch& dispatch, const EventOwnerKind ownerKind, const ID ownerID,

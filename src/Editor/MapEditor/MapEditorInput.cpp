@@ -870,7 +870,14 @@ namespace MapEditorInternal {
 
             const ID linedefUnderCursor = PickLinedefAt(mouseWorld);
 
-            if (!draggingLinedefGeometry) hoveredLinedefID = drawingLinedef ? INVALID_ID : linedefUnderCursor;
+            // The end of an unselected linedef continues from it rather
+            // than picking the line (its end square is highlighted instead).
+            Vector2 unselectedEnd{};
+            const bool overUnselectedEnd = !drawingLinedef && !overEndpoint &&
+                                           PickUnselectedLinedefEndpointAt(mouseWorld, &unselectedEnd);
+
+            if (!draggingLinedefGeometry)
+                hoveredLinedefID = drawingLinedef || overUnselectedEnd ? INVALID_ID : linedefUnderCursor;
 
             if (!draggingLinedefGeometry && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
                 // Right click drops a half-drawn linedef.
@@ -926,6 +933,15 @@ namespace MapEditorInternal {
                         BeginLinedefDrag(mouseWorld, {{*linedef, endpointIsStart, !endpointIsStart}}, endpoint, false);
                         return;
                     }
+                }
+
+                // An unselected linedef's end: a new linedef starts exactly
+                // there, like a click on empty space.
+                if (overUnselectedEnd) {
+                    ClearLinedefSelection();
+                    linedefDrawStart = unselectedEnd;
+                    drawingLinedef = true;
+                    return;
                 }
 
                 // Empty space: a drag box-selects, a click starts a linedef
@@ -1926,6 +1942,9 @@ namespace MapEditorInternal {
                 std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);
                 ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
             }
+
+            if (GetKeyBindDown(KEYBIND_FLIP_LINEDEF) && currentMode == MODE_GEOMETRY && linedefMode)
+                FlipSelectedLinedefs();
 
             if (GetComboDown(COMBO_SELECT_ALL)) SelectAllInMode();
             if (GetComboDown(COMBO_DUPLICATE) && currentMode == MODE_ENTITY) DuplicateSelectedEntities();

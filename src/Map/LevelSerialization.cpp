@@ -1028,6 +1028,62 @@ namespace {
         }
     }
 
+    void LoadLinedefs(const json &levelData, Level &level) {
+        level.linedefs.clear();
+
+        if (!levelData.contains("linedefs") || !levelData.at("linedefs").is_array()) return;
+
+        ID highestLinedefID = 0;
+        std::unordered_set<ID> seenLinedefIDs;
+
+        const json &linedefsJson = levelData.at("linedefs");
+
+        for (int i = 0; i < static_cast<int>(linedefsJson.size()); ++i) {
+            const json &linedefJson = linedefsJson.at(i);
+
+            Linedef linedef(
+                {linedefJson.at("start").at(0).get<float>(), linedefJson.at("start").at(1).get<float>()},
+                {linedefJson.at("end").at(0).get<float>(), linedefJson.at("end").at(1).get<float>()}
+            );
+
+            linedef.id = LoadIDField(linedefJson, "id", static_cast<ID>(i));
+            if (linedef.id == INVALID_ID) linedef.id = static_cast<ID>(i);
+
+            if (seenLinedefIDs.contains(linedef.id)) {
+                const ID reassigned = highestLinedefID + 1;
+                spdlog::warn("LoadLinedefs: duplicate linedef id {} at array index {} - reassigning to {}",
+                             linedef.id, i, reassigned);
+                linedef.id = reassigned;
+            }
+
+            seenLinedefIDs.insert(linedef.id);
+            highestLinedefID = std::max(highestLinedefID, linedef.id);
+
+            linedef.name = linedefJson.value("name", std::string{});
+            LoadEventsAndDispatches(linedefJson, "Linedef", linedef.id, linedef.events, linedef.dispatches);
+
+            level.linedefs.push_back(std::move(linedef));
+        }
+
+        level.nextLinedefID = std::max(level.nextLinedefID, highestLinedefID + 1);
+    }
+
+    void SaveLinedefs(json &levelData, const Level &level) {
+        levelData["linedefs"] = json::array();
+
+        for (const Linedef &linedef: level.linedefs) {
+            json linedefJson = {
+                {"id", linedef.id},
+                {"name", linedef.name},
+                {"start", {linedef.start.x, linedef.start.y}},
+                {"end", {linedef.end.x, linedef.end.y}}
+            };
+
+            SaveEventsAndDispatches(linedefJson, linedef.events, linedef.dispatches);
+            levelData["linedefs"].push_back(std::move(linedefJson));
+        }
+    }
+
     // Loads a sector's optional "scripts" array. Levels saved before sector
     // scripts existed simply have no such key and load with none attached.
     // Unlike entity scripts, the file name is kept exactly as saved (a
@@ -2163,6 +2219,7 @@ namespace LevelSerialization {
 
             LoadEntities(levelData, loadedLevel);
             LoadWalls(levelData, loadedLevel);
+            LoadLinedefs(levelData, loadedLevel);
             LoadSectors(levelData, loadedLevel);
             LoadComponents(levelData, loadedLevel);
             LoadTextures(levelData, loadedLevel);
@@ -2215,6 +2272,7 @@ namespace LevelSerialization {
         SaveEntities(levelData, entities);
         SaveComponents(levelData, level, entities);
         SaveWalls(levelData, level);
+        SaveLinedefs(levelData, level);
         SaveSectors(levelData, level);
         SaveTextures(levelData, level);
         SaveSounds(levelData, level);

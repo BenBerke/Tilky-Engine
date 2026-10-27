@@ -1453,9 +1453,16 @@
   "editor.tooltip.linedef.split": "Splits each selected linedef in half. {key:split_wall}+click a linedef to split it at the cursor instead.",
   "editor.linedef.split_done": "Split %d linedef(s)",
   "editor.linedef.split_nothing": "Nothing to split: the linedefs are too short.",
-  "editor.linedef.hint.draw": "Click empty space to start a linedef, click again to end it. Right click or Escape cancels.",
+  "editor.linedef.hint.draw": "Click empty space, or the end of an unselected linedef, to start a linedef; click again to end it. Right click or Escape cancels.",
   "editor.linedef.hint.select": "Click a linedef to select it, right click to open its inspector. Drag on empty space to box-select.",
   "editor.linedef.hint.drag": "Drag a linedef to move it, or drag a square handle to move that end. Nothing else moves with it.",
   "editor.linedef.hint.split": "{key:split_wall}+click a linedef to split it at the cursor (snaps to the grid; hold {key:disable_snap} to ignore it).",
-  "editor.linedef.hint.delete": "{key:multi_select}/{key:range_select} click to multi-select ({key:multi_select}+right click works too). {key:delete} removes the selected linedefs."
+  "editor.linedef.hint.delete": "{key:multi_select}/{key:range_select} click to multi-select ({key:multi_select}+right click works too). {key:delete} removes the selected linedefs.",
+  "editor.key.flip_linedef": "Flip Linedef",
+  "editor.history.flip_linedefs": "Flip Linedefs",
+  "editor.linedef.flip": "Flip",
+  "editor.linedef.flip_done": "Flipped %d linedef(s)",
+  "editor.linedef.nothing_selected": "No linedef selected.",
+  "editor.tooltip.linedef.flip": "Swaps the start and end of each selected linedef, turning its front around. The tick marks the front: an entity crossing from that side crosses Forward. Shortcut: {key:flip_linedef}",
+  "editor.linedef.hint.flip": "The tick in the middle of a linedef marks its front: crossing from that side is Forward. {key:flip_linedef} flips the selected linedefs."
 }

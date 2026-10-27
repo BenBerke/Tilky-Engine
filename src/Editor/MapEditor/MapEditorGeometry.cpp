@@ -2248,6 +2248,36 @@ namespace MapEditorInternal {
         return found;
     }
 
+    bool PickUnselectedLinedefEndpointAt(const Vector2& mouseWorld, Vector2* outPoint) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float pickRadiusWorld = WALL_ENDPOINT_PICK_RADIUS_PIXELS / safeZoom;
+
+        // Two end zones plus this much line between them, in pixels.
+        constexpr float MIN_MIDDLE_PIXELS = 8.0f;
+        const float minLengthWorld = (WALL_ENDPOINT_PICK_RADIUS_PIXELS * 2.0f + MIN_MIDDLE_PIXELS) / safeZoom;
+
+        float bestDistSq = pickRadiusWorld * pickRadiusWorld;
+        bool found = false;
+
+        for (const Linedef& linedef : level.linedefs) {
+            if (linedef.length < minLengthWorld) continue;
+            if (std::ranges::find(selectedLinedefs, linedef.id) != selectedLinedefs.end()) continue;
+
+            for (const Vector2& end : {linedef.start, linedef.end}) {
+                const float distSq = Vector2Math::DistanceSquared(mouseWorld, end);
+                if (distSq > bestDistSq) continue;
+
+                bestDistSq = distSq;
+                if (outPoint != nullptr) *outPoint = end;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
     void ClearLinedefSelection() {
         selectedLinedefs.clear();
         selectedLinedefID = INVALID_ID;
@@ -3022,6 +3052,26 @@ namespace MapEditorInternal {
         if (split > 0) PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_linedefs", split);
 
         return split;
+    }
+
+    int FlipSelectedLinedefs() {
+        Level& level = LevelManager::CurrentLevel();
+
+        GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+        int flipped = 0;
+
+        for (const ID linedefID : selectedLinedefs) {
+            Linedef* linedef = level.GetLinedef(linedefID);
+            if (linedef == nullptr) continue;
+
+            std::swap(linedef->start, linedef->end);
+            linedef->RefreshDerived();
+            ++flipped;
+        }
+
+        if (flipped > 0) PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.flip_linedefs", flipped);
+
+        return flipped;
     }
 
     int MergeSelectedWalls() {

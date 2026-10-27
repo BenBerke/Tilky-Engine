@@ -862,6 +862,12 @@ namespace MapEditorInternal {
                 DrawEndpointHandle(linedef->end, hoveredHandleIsOnThis && !hoveredHandleIsStart);
             }
 
+            // An unselected linedef's end a click would draw from.
+            Vector2 unselectedEnd{};
+            if (!drawingLinedef && !handleHovered && !draggingLinedefGeometry &&
+                PickUnselectedLinedefEndpointAt(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), &unselectedEnd))
+                DrawEndpointHandle(unselectedEnd, true);
+
             // The linedef being drawn, from its start to where a click would end it.
             if (drawingLinedef) {
                 const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), {});
@@ -1042,6 +1048,21 @@ namespace MapEditorInternal {
             const Vector2 endScreen = WorldToScreen(end, cameraPos);
 
             DrawWallLine(startScreen, endScreen, linedefThickness, linedefColor, alpha);
+
+            // A tick from the middle on the front side (the normal side, right
+            // of start -> end on screen), where an entity comes from to cross
+            // it Forward.
+            const Vector2 line = end - start;
+            const float length = std::sqrt(Vector2Math::Dot(line, line));
+
+            if (length > Constants::Epsilon) {
+                constexpr float TICK_PIXELS = 6.0f;
+                const Vector2 front = {-line.y / length, line.x / length};
+                const Vector2 middle = (start + end) * 0.5f;
+                const Vector2 tickEnd = middle + front * (TICK_PIXELS / std::max(editorZoom, 0.0001f));
+
+                DrawWallLine(WorldToScreen(middle, cameraPos), WorldToScreen(tickEnd, cameraPos), linedefThickness, linedefColor, alpha);
+            }
 
             // A square at each end tells a linedef apart from a portal wall.
             SDL_SetRenderDrawColor(renderer, linedefEndpointColor.r, linedefEndpointColor.g, linedefEndpointColor.b, alpha);

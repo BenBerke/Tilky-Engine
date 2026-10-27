@@ -42,6 +42,11 @@ namespace MapQueries {
 
     void AssignWallsToSectors(Level& level);
     void AssignNeighborsToSectors(Level& level);
+
+    // Fills every sector's `linedefs` with the linedefs that touch its floor
+    // area: an end inside it, or the line crossing or lying on its edge.
+    // Holes (nested sectors) are not part of the area.
+    void AssignLinedefsToSectors(Level& level);
     void RebuildSectorRuntimeLinks(Level& level);
 
     void BuildPvs(Level& level);

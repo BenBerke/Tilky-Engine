@@ -150,6 +150,63 @@ namespace MapQueries {
         }
     }
 
+    namespace {
+        // Whether segments a-b and c-d share any point, touching included.
+        bool SegmentsTouch(const Vector2& a, const Vector2& b, const Vector2& c, const Vector2& d) {
+            const auto orient = [](const Vector2& p, const Vector2& q, const Vector2& r) {
+                return Vector2Math::Cross(q - p, r - p);
+            };
+
+            const auto onSegment = [](const Vector2& p, const Vector2& q, const Vector2& r) {
+                return std::min(p.x, q.x) <= r.x && r.x <= std::max(p.x, q.x) &&
+                       std::min(p.y, q.y) <= r.y && r.y <= std::max(p.y, q.y);
+            };
+
+            const float o1 = orient(a, b, c);
+            const float o2 = orient(a, b, d);
+            const float o3 = orient(c, d, a);
+            const float o4 = orient(c, d, b);
+
+            if (((o1 > 0.0f && o2 < 0.0f) || (o1 < 0.0f && o2 > 0.0f)) &&
+                ((o3 > 0.0f && o4 < 0.0f) || (o3 < 0.0f && o4 > 0.0f))) return true;
+
+            return (o1 == 0.0f && onSegment(a, b, c)) || (o2 == 0.0f && onSegment(a, b, d)) ||
+                   (o3 == 0.0f && onSegment(c, d, a)) || (o4 == 0.0f && onSegment(c, d, b));
+        }
+
+        bool SegmentTouchesLoop(const Vector2& a, const Vector2& b, const std::vector<Vector2>& loop) {
+            for (size_t i = 0; i < loop.size(); ++i)
+                if (SegmentsTouch(a, b, loop[i], loop[(i + 1) % loop.size()])) return true;
+
+            return false;
+        }
+
+        bool LinedefTouchesSector(const Linedef& linedef, const Sector& sector) {
+            if (sector.vertices.size() < 3) return false;
+
+            if (Geometry::IsPointInPolygon(sector.vertices, sector.innerLoops, linedef.start) ||
+                Geometry::IsPointInPolygon(sector.vertices, sector.innerLoops, linedef.end)) return true;
+
+            // Both ends outside (or in holes): it only touches the area by
+            // crossing or lying on one of the boundaries.
+            if (SegmentTouchesLoop(linedef.start, linedef.end, sector.vertices)) return true;
+
+            for (const std::vector<Vector2>& innerLoop : sector.innerLoops)
+                if (SegmentTouchesLoop(linedef.start, linedef.end, innerLoop)) return true;
+
+            return false;
+        }
+    }
+
+    void AssignLinedefsToSectors(Level& level) {
+        for (Sector& sector : level.sectors) {
+            sector.linedefs.clear();
+
+            for (Linedef& linedef : level.linedefs)
+                if (LinedefTouchesSector(linedef, sector)) sector.linedefs.push_back(&linedef);
+        }
+    }
+
     void AssignNeighborsToSectors(Level& level) {
         for (Sector& sector : level.sectors) sector.neighbors.clear();
 

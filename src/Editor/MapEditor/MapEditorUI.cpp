@@ -3876,9 +3876,15 @@ namespace MapEditorInternal {
         ModePanelSection(Get("editor.geometry.edit").c_str());
         ImGui::BeginDisabled(selectedCount == 0);
 
-        if (FullWidthButton(Get("editor.geometry.split").c_str()))
+        if (ImGui::Button(Get("editor.geometry.split").c_str(), ImVec2(HalfButtonWidth(), 0.0f)))
             NotifyActionResult(SplitSelectedLinedefsAtMidpoint(), "editor.linedef.split_done", "editor.linedef.split_nothing");
         HoverTooltip(FormatKeyBinds(Get("editor.tooltip.linedef.split")).c_str());
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(Get("editor.linedef.flip").c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            NotifyActionResult(FlipSelectedLinedefs(), "editor.linedef.flip_done", "editor.linedef.nothing_selected");
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.linedef.flip")).c_str());
 
         ImGui::EndDisabled();
 
@@ -3890,6 +3896,7 @@ namespace MapEditorInternal {
             HintText(Get("editor.linedef.hint.select").c_str());
             HintText(Get("editor.linedef.hint.drag").c_str());
             HintText(FormatKeyBinds(Get("editor.linedef.hint.split")).c_str());
+            HintText(FormatKeyBinds(Get("editor.linedef.hint.flip")).c_str());
             HintText(FormatKeyBinds(Get("editor.linedef.hint.delete")).c_str());
         }
     }

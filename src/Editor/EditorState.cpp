@@ -261,6 +261,7 @@ namespace MapEditorInternal {
 
         {"place_entity",     "editor.key.place_entity",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_E}},
         {"delete",           "editor.key.delete",           "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_DELETE}},
+        {"flip_linedef",     "editor.key.flip_linedef",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_H}},
 
         {"finish_shape",     "editor.key.finish_shape",     "editor.key_group.drawing",    KEYSCOPE_MAP, {SDL_SCANCODE_RETURN, SDL_SCANCODE_SPACE}},
         {"undo_point",       "editor.key.undo_point",       "editor.key_group.drawing",    KEYSCOPE_MAP, {SDL_SCANCODE_BACKSPACE}},
