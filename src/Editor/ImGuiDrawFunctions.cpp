@@ -1441,7 +1441,7 @@ namespace ImGuiDrawFunctions {
 
             SectorFloor &sectorFloor = sector.floors[floorIndex];
 
-            const bool invalidRoom = sectorFloor.floor.height >= sectorFloor.ceiling.height;
+            const bool invalidRoom = sectorFloor.floor.height > sectorFloor.ceiling.height;
 
             const bool overlapsPrevious = floorIndex > 0 && sectorFloor.floor.height < sector.floors[floorIndex - 1].ceiling.height;
 

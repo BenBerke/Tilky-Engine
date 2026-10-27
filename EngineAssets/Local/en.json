@@ -1464,5 +1464,7 @@
   "editor.linedef.flip_done": "Flipped %d linedef(s)",
   "editor.linedef.nothing_selected": "No linedef selected.",
   "editor.tooltip.linedef.flip": "Swaps the start and end of each selected linedef, turning its front around. The tick marks the front: an entity crossing from that side crosses Forward. Shortcut: {key:flip_linedef}",
-  "editor.linedef.hint.flip": "The tick in the middle of a linedef marks its front: crossing from that side is Forward. {key:flip_linedef} flips the selected linedefs."
+  "editor.linedef.hint.flip": "The tick in the middle of a linedef marks its front: crossing from that side is Forward. {key:flip_linedef} flips the selected linedefs.",
+  "event.condition.none": "None",
+  "event.condition.equal": "Equal"
 }

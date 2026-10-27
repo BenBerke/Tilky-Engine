@@ -12,8 +12,11 @@
 #include <type_traits>
 
 #include "Types.hpp"
+#include "client/TracyThread.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Quaternion/Quaternion.hpp"
+
+#define transKey static constexpr const char*
 
 // What a moving floor or ceiling does when it would hit an entity's collider
 // (Lua: SectorCollision). Only a floor going up or a ceiling going down can
@@ -52,6 +55,60 @@ struct TagFilter {
     bool operator==(const TagFilter&) const = default;
 };
 
+struct EventVariable {
+    std::string name;
+    float value;
+};
+
+struct Condition {
+    using InputField = std::variant<EventVariable, float>;
+    enum ConditionType : uint8_t {
+        NONE = 0,
+        EQUAL = 1,
+        LESS_THAN = 2,
+        GREATER_THAN = 3,
+        LESS_THAN_OR_EQUAL = 4,
+        GREATER_THAN_OR_EQUAL = 5,
+
+        COUNT
+    };
+
+    InputField left;
+    ConditionType type;
+    InputField right;
+
+    bool CheckCondition() {
+        return std::visit([this](auto&& l, auto&& r) -> bool {
+
+            auto to_float = [](const auto& val) -> float {
+                using T = std::decay_t<decltype(val)>;
+
+                if constexpr(std::is_same_v<T, float>) return val;
+                else {
+                    EventVariable v = val;
+                    return v.value;
+                }
+            };
+
+            const float lhs = to_float(l);
+            const float rhs = to_float(r);
+
+            switch (type) {
+                case EQUAL: return lhs == rhs;
+                case LESS_THAN: return lhs < rhs;
+                    case GREATER_THAN: return lhs > rhs;
+                    case LESS_THAN_OR_EQUAL: return lhs <= rhs;
+                    case GREATER_THAN_OR_EQUAL: return lhs >= rhs;
+                default: return false; break;
+            }
+        }, left, right);
+    }
+
+
+    transKey transNone = "event.condition.none";
+    transKey transEqual = "event.condition.equal";
+};
+
 // Each payload type is the event/dispatch kind itself: `owners` is what it
 // can be attached to, `translationKey` its display name, `saveName` what level
 // files store it as.
@@ -59,8 +116,8 @@ struct TagFilter {
 //region Event Payloads
 struct PayloadLineEntityCollide {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::LINEDEF);
-    static constexpr const char* translationKey = "event.line.entity_collide";
-    static constexpr const char* saveName = "line.entity_collide"; // level file name, never change
+    transKey translationKey = "event.line.entity_collide";
+    transKey saveName = "line.entity_collide"; // level file name, never change
     bool operator==(const PayloadLineEntityCollide&) const = default;
 
     TagFilter filter;
@@ -68,8 +125,8 @@ struct PayloadLineEntityCollide {
 
 struct PayloadLineEntityCross {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::LINEDEF);
-    static constexpr const char* translationKey = "event.line.entity_cross";
-    static constexpr const char* saveName = "line.entity_cross"; // level file name, never change
+    transKey translationKey = "event.line.entity_cross";
+    transKey saveName = "line.entity_cross"; // level file name, never change
     bool operator==(const PayloadLineEntityCross&) const = default;
 
     enum EntityCrossDirection {
@@ -85,8 +142,8 @@ struct PayloadLineEntityCross {
 
 struct PayloadSectorEntityEnter {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
-    static constexpr const char* translationKey = "event.sector.entity_enter";
-    static constexpr const char* saveName = "sector.entity_enter"; // level file name, never change
+    transKey translationKey = "event.sector.entity_enter";
+    transKey saveName = "sector.entity_enter"; // level file name, never change
     bool operator==(const PayloadSectorEntityEnter&) const = default;
 
     TagFilter filter;
@@ -94,8 +151,8 @@ struct PayloadSectorEntityEnter {
 
 struct PayloadSectorEntityExit {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
-    static constexpr const char* translationKey = "event.sector.entity_exit";
-    static constexpr const char* saveName = "sector.entity_exit"; // level file name, never change
+    transKey translationKey = "event.sector.entity_exit";
+    transKey saveName = "sector.entity_exit"; // level file name, never change
     bool operator==(const PayloadSectorEntityExit&) const = default;
 
     TagFilter filter;
@@ -103,8 +160,8 @@ struct PayloadSectorEntityExit {
 
 struct PayloadEntityCollide {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.entity.collide";
-    static constexpr const char* saveName = "entity.collide"; // level file name, never change
+    transKey translationKey = "event.entity.collide";
+    transKey saveName = "entity.collide"; // level file name, never change
     bool operator==(const PayloadEntityCollide&) const = default;
 
     TagFilter filter;
@@ -112,8 +169,8 @@ struct PayloadEntityCollide {
 
 struct PayloadEntityChangeSector {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.entity.change_sector";
-    static constexpr const char* saveName = "entity.change_sector"; // level file name, never change
+    transKey translationKey = "event.entity.change_sector";
+    transKey saveName = "entity.change_sector"; // level file name, never change
     bool operator==(const PayloadEntityChangeSector&) const = default;
 
     TagFilter filter;
@@ -121,15 +178,15 @@ struct PayloadEntityChangeSector {
 
 struct PayloadEntityEnable {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.entity.enable";
-    static constexpr const char* saveName = "entity.enable"; // level file name, never change
+    transKey translationKey = "event.entity.enable";
+    transKey saveName = "entity.enable"; // level file name, never change
     bool operator==(const PayloadEntityEnable&) const = default;
 };
 
 struct PayloadEntityDisable { // Nothing needed
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.entity.disable";
-    static constexpr const char* saveName = "entity.disable"; // level file name, never change
+    transKey translationKey = "event.entity.disable";
+    transKey saveName = "entity.disable"; // level file name, never change
     bool operator==(const PayloadEntityDisable&) const = default;
 };
 //endregion
@@ -138,8 +195,8 @@ struct PayloadEntityDisable { // Nothing needed
 // Probably wont be used much but still, good to have
 struct PayloadDispatchLineSetColor {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE);
-    static constexpr const char* translationKey = "event.dispatch.line.set_color";
-    static constexpr const char* saveName = "dispatch.line.set_color"; // level file name, never change
+    transKey translationKey = "event.dispatch.line.set_color";
+    transKey saveName = "dispatch.line.set_color"; // level file name, never change
     bool operator==(const PayloadDispatchLineSetColor&) const = default;
 
     Vector3 color;
@@ -148,8 +205,8 @@ struct PayloadDispatchLineSetColor {
 
 struct PayloadDispatchSectorMoveFloorToCeiling {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
-    static constexpr const char* translationKey = "event.dispatch.sector.move_floor_to_ceiling";
-    static constexpr const char* saveName = "dispatch.sector.move_floor_to_ceiling"; // level file name, never change
+    transKey translationKey = "event.dispatch.sector.move_floor_to_ceiling";
+    transKey saveName = "dispatch.sector.move_floor_to_ceiling"; // level file name, never change
     bool operator==(const PayloadDispatchSectorMoveFloorToCeiling&) const = default;
 
     float gap = .0f, speed = 10.0f;
@@ -160,8 +217,8 @@ struct PayloadDispatchSectorMoveFloorToCeiling {
 
 struct PayloadDispatchSectorMoveCeilingToFloor {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
-    static constexpr const char* translationKey = "event.dispatch.sector.move_ceiling_to_floor";
-    static constexpr const char* saveName = "dispatch.sector.move_ceiling_to_floor"; // level file name, never change
+    transKey translationKey = "event.dispatch.sector.move_ceiling_to_floor";
+    transKey saveName = "dispatch.sector.move_ceiling_to_floor"; // level file name, never change
     bool operator==(const PayloadDispatchSectorMoveCeilingToFloor&) const = default;
 
     float gap = .0f, speed = 10.0f;
@@ -172,15 +229,15 @@ struct PayloadDispatchSectorMoveCeilingToFloor {
 
 struct PayloadDispatchEntityDestroy { // Nothing needed
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.dispatch.entity.destroy";
-    static constexpr const char* saveName = "dispatch.entity.destroy"; // level file name, never change
+    transKey translationKey = "event.dispatch.entity.destroy";
+    transKey saveName = "dispatch.entity.destroy"; // level file name, never change
     bool operator==(const PayloadDispatchEntityDestroy&) const = default;
 };
 
 struct PayloadDispatchEntityTeleport {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.dispatch.entity.teleport";
-    static constexpr const char* saveName = "dispatch.entity.teleport"; // level file name, never change
+    transKey translationKey = "event.dispatch.entity.teleport";
+    transKey saveName = "dispatch.entity.teleport"; // level file name, never change
     bool operator==(const PayloadDispatchEntityTeleport&) const = default;
 
     Vector3 position;
@@ -189,23 +246,23 @@ struct PayloadDispatchEntityTeleport {
 
 struct PayloadDispatchEntityDisable {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.dispatch.entity.disable";
-    static constexpr const char* saveName = "dispatch.entity.disable"; // level file name, never change
+    transKey translationKey = "event.dispatch.entity.disable";
+    transKey saveName = "dispatch.entity.disable"; // level file name, never change
     bool operator==(const PayloadDispatchEntityDisable&) const = default;
 };
 
 struct PayloadDispatchEntityEnable {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.dispatch.entity.enable";
-    static constexpr const char* saveName = "dispatch.entity.enable"; // level file name, never change
+    transKey translationKey = "event.dispatch.entity.enable";
+    transKey saveName = "dispatch.entity.enable"; // level file name, never change
     bool operator==(const PayloadDispatchEntityEnable&) const = default;
 };
 
 // Supporting parameters would be too complicated (?)
 struct PayloadDispatchEntityCallFunction {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    static constexpr const char* translationKey = "event.dispatch.entity.call_function";
-    static constexpr const char* saveName = "dispatch.entity.call_function"; // level file name, never change
+    transKey translationKey = "event.dispatch.entity.call_function";
+    transKey saveName = "dispatch.entity.call_function"; // level file name, never change
     bool operator==(const PayloadDispatchEntityCallFunction&) const = default;
 
     std::string functionName;
