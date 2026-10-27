@@ -202,9 +202,23 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         const ComponentRigidbody *rigidbody = level.rigidbodies.Get(camera->ownerID);
 
+        // A floor rising under the body lifts it every frame: that's the
+        // lift's own motion, not a step, so it isn't smoothed.
+        bool onRisingFloor = false;
+        const int cameraSectorIndex = cameraTransform->sectorIndex;
+
+        if (cameraSectorIndex >= 0 && cameraSectorIndex < static_cast<int>(level.sectors.size())) {
+            const Sector &cameraSector = level.sectors[cameraSectorIndex];
+            const int floorIndex = MapQueries::FindFloorAtHeight(
+                cameraSector, {cameraTransform->position.x, cameraTransform->position.z}, actualTransformY);
+
+            onRisingFloor = floorIndex >= 0 && cameraSector.floors[floorIndex].floorDelta > 0.0f;
+        }
+
         // Detect the upward teleport performed by PhysicsSystem.
         const bool steppedUp =
                 camera->smoothStep &&
+                !onRisingFloor &&
                 collider != nullptr &&
                 rigidbody != nullptr &&
                 rigidbody->isGrounded &&

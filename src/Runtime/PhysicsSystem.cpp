@@ -1103,6 +1103,7 @@ namespace PhysicsSystem {
                 // floor next door rises under its rounded edge.
                 const SectorSurface* ground = &floor.floor;
                 const SectorBounds* groundBounds = &sectorBounds;
+                float groundDrop = std::max(0.0f, -floor.floorDelta);
                 float floorHeight = RestingFloorHeight(floor.floor, sectorBounds, basePoint, radius);
 
                 // A round body touches a sloped plane uphill of its centre, by
@@ -1144,6 +1145,7 @@ namespace PhysicsSystem {
                     if (candidateHeight > floorHeight && candidateHeight <= bottomHeight + reachable + GROUND_CONTACT_SLOP) {
                         ground = &candidate;
                         groundBounds = &neighbourBounds;
+                        groundDrop = std::max(0.0f, -neighbour->floors[neighbourFloorIndex].floorDelta);
                         floorHeight = candidateHeight;
                     }
                 }
@@ -1338,7 +1340,8 @@ namespace PhysicsSystem {
                 // horizontal move times the steepest walkable gradient, plus
                 // how much higher a round body rests on such a slope than on
                 // a flat floor. Going faster than that, or off a ledge, it
-                // still falls.
+                // still falls. A floor lowering under it (a lift going down)
+                // carries it down by however far the floor dropped this frame.
                 const size_t rigidbodyIndex = static_cast<size_t>(selfRigidbody - level.rigidbodies.components.data());
                 const bool wasGrounded = rigidbodyIndex < groundedBeforeRun.size() && groundedBeforeRun[rigidbodyIndex] != 0;
 
@@ -1352,6 +1355,7 @@ namespace PhysicsSystem {
                     const float snapDistance =
                         horizontalSpeed * GameTime::deltaTime * maxGradient +
                         radius * (1.0f / std::cos(maxAngle) - 1.0f) +
+                        groundDrop +
                         GROUND_CONTACT_SLOP;
 
                     if (groundDistance <= snapDistance) {

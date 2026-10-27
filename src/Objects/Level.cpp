@@ -507,6 +507,12 @@ namespace {
 }
 
 void Level::UpdateSectorMovement(const float deltaTime) {
+    // Holds each floor's height before this frame until the deltas are
+    // worked out below. Every sector, since a parent's move also moves its
+    // children's floors.
+    for (Sector& sector : sectors)
+        for (SectorFloor& floor : sector.floors) floor.floorDelta = floor.floor.height;
+
     for (Sector& sector : sectors) {
         const bool floorsMoving = std::ranges::any_of(sector.floors, &SectorFloor::IsMoving);
         if (!floorsMoving && !sector.lightFade.active) continue;
@@ -557,6 +563,9 @@ void Level::UpdateSectorMovement(const float deltaTime) {
         if (changed && !sector.children.empty())
             PropagateSectorChanges(sector.id, floorsBefore, lightBefore);
     }
+
+    for (Sector& sector : sectors)
+        for (SectorFloor& floor : sector.floors) floor.floorDelta = floor.floor.height - floor.floorDelta;
 }
 
 std::vector<Level::SectorValuesSnapshot> Level::SnapshotParentSectorValues() const {

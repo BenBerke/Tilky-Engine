@@ -92,6 +92,13 @@ struct SectorFloor {
     SurfaceMove floorMove;
     SurfaceMove ceilingMove;
 
+    // How far the floor moved in this frame's Level::UpdateSectorMovement
+    // (moves and parent propagation): positive up, negative down. Physics
+    // snaps grounded bodies down a lowering floor instead of letting them
+    // fall after it, and the camera doesn't smooth-step a rising one.
+    // Runtime-only.
+    float floorDelta = 0.0f;
+
     // A move never closes the room completely: the floor has to stay below
     // its ceiling, so any smaller gap is raised to this.
     static constexpr float MIN_MOVE_GAP = 0.01f;
