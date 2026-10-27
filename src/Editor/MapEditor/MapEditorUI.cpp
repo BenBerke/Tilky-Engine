@@ -39,6 +39,7 @@
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/TagRegistry.hpp"
+#include "Headers/GlobalEventVariables.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -576,6 +577,216 @@ namespace {
     //  World Settings panel
     // =========================================================================
 
+    // =========================================================================
+    //  Event variables - World Settings (level) and Project Settings (global)
+    // =========================================================================
+
+    struct EventVariableRow {
+        EventVariableID id;
+        std::string name;
+        float value;
+    };
+
+    // What a variable list does to its table. Rename/create return false on
+    // an empty or taken name.
+    struct EventVariableListActions {
+        std::function<bool(EventVariableID, const std::string &)> rename;
+        std::function<void(EventVariableID, float)> setValue;
+        std::function<void()> valueCommitted; // after a value edit is finished
+        std::function<void(EventVariableID)> remove;
+        std::function<bool(const std::string &)> create;
+    };
+
+    // One row per variable (name, starting value, ID, Delete) plus an empty
+    // row for adding one. `nameBuffers`/`newNameBuffer` belong to the caller so
+    // the level and global lists keep their own in-progress edits.
+    void DrawEventVariableList(const char *id, std::vector<EventVariableRow> rows,
+                               std::unordered_map<EventVariableID, std::array<char, 128> > &nameBuffers,
+                               std::array<char, 128> &newNameBuffer, const EventVariableListActions &actions) {
+        std::ranges::sort(rows, {}, &EventVariableRow::id);
+
+        const auto copyName = [](std::array<char, 128> &buffer, const std::string &name) {
+            std::strncpy(buffer.data(), name.c_str(), buffer.size() - 1);
+            buffer[buffer.size() - 1] = '\0';
+        };
+
+        // Seed buffers for new rows, never overwrite one being edited; drop
+        // buffers of variables that are gone (deleted, or another level).
+        for (const EventVariableRow &row: rows)
+            if (!nameBuffers.contains(row.id)) copyName(nameBuffers[row.id], row.name);
+
+        std::erase_if(nameBuffers, [&](const auto &entry) {
+            return std::ranges::none_of(rows, [&](const EventVariableRow &row) { return row.id == entry.first; });
+        });
+
+        // Deferred so the rows aren't changed while they're drawn.
+        std::optional<EventVariableID> pendingDeletion;
+
+        ImGui::PushID(id);
+
+        const float childHeight = std::min(
+            static_cast<float>(rows.size()) * ImGui::GetFrameHeightWithSpacing() +
+            ImGui::GetStyle().WindowPadding.y * 2.0f,
+            180.0f
+        );
+
+        ImVec4 listBackground = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+        listBackground.w *= 0.45f;
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, listBackground);
+        ImGui::BeginChild("##VariableList", ImVec2(0.0f, std::max(childHeight, 32.0f)), /*border=*/true);
+
+        if (rows.empty()) ImGui::TextDisabled("%s", Get("variables.none_found").c_str());
+
+        for (const EventVariableRow &row: rows) {
+            ImGui::PushID(static_cast<int>(row.id));
+
+            auto &buffer = nameBuffers[row.id];
+
+            constexpr float valueWidth = 70.0f;
+            constexpr float idWidth = 40.0f;
+            constexpr float deleteWidth = 56.0f;
+            const float available = ImGui::GetContentRegionAvail().x;
+
+            ImGui::SetNextItemWidth(std::max(40.0f, available - valueWidth - idWidth - deleteWidth - 18.0f));
+            ImGui::InputText("##Name", buffer.data(), buffer.size());
+            HoverTooltip(Get("variables.tooltip.name").c_str());
+
+            // Commits on Enter or losing focus, never per keystroke.
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                const std::string newName = buffer.data();
+
+                if (newName.empty()) {
+                    copyName(buffer, row.name);
+                    ShowNotification(Get("variables.notification.empty_name").c_str(), /*isError=*/true);
+                } else if (newName != row.name && !actions.rename(row.id, newName)) {
+                    copyName(buffer, row.name);
+                    ShowNotification(Get("variables.notification.duplicate_name").c_str(), /*isError=*/true);
+                }
+            }
+
+            ImGui::SameLine();
+            float value = row.value;
+            ImGui::SetNextItemWidth(valueWidth);
+            if (ImGui::InputFloat("##Value", &value, 0.0f, 0.0f, "%.2f")) actions.setValue(row.id, value);
+            if (ImGui::IsItemDeactivatedAfterEdit() && actions.valueCommitted) actions.valueCommitted();
+            HoverTooltip(Get("variables.tooltip.value").c_str());
+
+            ImGui::SameLine();
+            ImGui::TextDisabled("#%u", row.id & ~GLOBAL_EVENT_VARIABLE_BIT);
+
+            ImGui::SameLine();
+            PushDangerStyle();
+            if (ImGui::SmallButton(Get("common.delete").c_str())) pendingDeletion = row.id;
+            PopDangerStyle();
+            HoverTooltip(Get("variables.tooltip.delete").c_str());
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+
+        // Always-available empty row for adding another variable.
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##NewName", Get("variables.new_placeholder").c_str(),
+                                 newNameBuffer.data(), newNameBuffer.size());
+
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            const std::string enteredName = newNameBuffer.data();
+
+            if (!enteredName.empty()) {
+                if (actions.create(enteredName)) newNameBuffer[0] = '\0';
+                else ShowNotification(Get("variables.notification.duplicate_name").c_str(), /*isError=*/true);
+            }
+        }
+
+        if (pendingDeletion) {
+            actions.remove(*pendingDeletion);
+            nameBuffers.erase(*pendingDeletion);
+        }
+
+        ImGui::PopID();
+    }
+
+    // The current level's own variables. Saved with the level.
+    void DrawLevelEventVariables(Level &level) {
+        static std::unordered_map<EventVariableID, std::array<char, 128> > nameBuffers;
+        static std::array<char, 128> newNameBuffer{};
+
+        std::vector<EventVariableRow> rows;
+        for (const auto &[id, name]: level.worldSettings.eventVariableNames) {
+            const auto value = level.worldSettings.eventVariables.find(id);
+            rows.push_back({id, name, value != level.worldSettings.eventVariables.end() ? value->second : 0.0f});
+        }
+
+        DrawEventVariableList("LevelVariables", std::move(rows), nameBuffers, newNameBuffer, {
+            .rename = [&](const EventVariableID id, const std::string &name) {
+                if (!level.RenameEventVariable(id, name)) return false;
+                hasUnsavedChanges = true;
+                return true;
+            },
+            .setValue = [&](const EventVariableID id, const float value) {
+                level.worldSettings.eventVariables[id] = value;
+                hasUnsavedChanges = true;
+            },
+            .valueCommitted = {},
+            .remove = [&](const EventVariableID id) {
+                level.DeleteEventVariable(id);
+                hasUnsavedChanges = true;
+            },
+            .create = [&](const std::string &name) {
+                if (!level.CreateEventVariable(name)) return false;
+                hasUnsavedChanges = true;
+                return true;
+            },
+        });
+    }
+
+    // A global variable's name can't be one a loaded level already uses.
+    bool IsNameUsedByLoadedLevel(const std::string &name) {
+        return std::ranges::any_of(LevelManager::loadedLevels, [&](const Level &level) {
+            return level.worldSettings.eventVariableIdsByName.contains(name);
+        });
+    }
+
+    void SaveProjectSettingsOrNotify() {
+        hasUnsavedChanges = true;
+        if (!SaveProjectSettings())
+            ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
+    }
+
+    // The project's global variables. Saved to ProjectSettings.json.
+    void DrawGlobalEventVariables() {
+        static std::unordered_map<EventVariableID, std::array<char, 128> > nameBuffers;
+        static std::array<char, 128> newNameBuffer{};
+
+        std::vector<EventVariableRow> rows;
+        for (const auto &[id, definition]: GlobalEventVariables::GetAll())
+            rows.push_back({id, definition.name, definition.defaultValue});
+
+        DrawEventVariableList("GlobalVariables", std::move(rows), nameBuffers, newNameBuffer, {
+            .rename = [](const EventVariableID id, const std::string &name) {
+                if (IsNameUsedByLoadedLevel(name) || !GlobalEventVariables::Rename(id, name)) return false;
+                SaveProjectSettingsOrNotify();
+                return true;
+            },
+            .setValue = [](const EventVariableID id, const float value) {
+                GlobalEventVariables::SetDefaultValue(id, value);
+            },
+            .valueCommitted = [] { SaveProjectSettingsOrNotify(); },
+            .remove = [](const EventVariableID id) {
+                GlobalEventVariables::Delete(id);
+                SaveProjectSettingsOrNotify();
+            },
+            .create = [](const std::string &name) {
+                if (IsNameUsedByLoadedLevel(name) || !GlobalEventVariables::Create(name)) return false;
+                SaveProjectSettingsOrNotify();
+                return true;
+            },
+        });
+    }
+
     void DrawWorldSettings() {
         Level &level = LevelManager::CurrentLevel();
         ListenerSettings &settings = level.listenerSettings;
@@ -681,6 +892,18 @@ namespace {
             &level.worldSettings.gravity, 0.1f, 1.0f, "%.2f"
         );
         HoverTooltip(Get("settings.physics.tooltip.gravity").c_str());
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ---- Event variables ------------------------------------------------
+        SectionHeader(Get("settings.variables.title").c_str());
+        HoverTooltip(Get("settings.variables.tooltip").c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        DrawLevelEventVariables(level);
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -1880,6 +2103,18 @@ namespace {
             ImGui::Spacing();
 
             DrawTagsSection();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Global event variables -------------------------------------
+            SectionHeader(Get("editor.project.variables").c_str());
+            HoverTooltip(Get("editor.tooltip.project.variables").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            DrawGlobalEventVariables();
 
             ImGui::Spacing();
             ImGui::Separator();

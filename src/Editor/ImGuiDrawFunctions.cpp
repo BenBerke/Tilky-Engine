@@ -37,6 +37,7 @@
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/TagRegistry.hpp"
+#include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
@@ -947,6 +948,122 @@ namespace ImGuiDrawFunctions {
         {SECTOR_DONT_MOVE, "events.collision.dont_move"}
     };
 
+    constexpr std::pair<Condition::ConditionType, const char *> kConditionTypeOptions[] = {
+        {Condition::NONE, "event.condition.none"},
+        {Condition::EQUAL, "event.condition.equal"},
+        {Condition::LESS_THAN, "event.condition.less_than"},
+        {Condition::GREATER_THAN, "event.condition.greater_than"},
+        {Condition::LESS_THAN_OR_EQUAL, "event.condition.less_than_or_equal"},
+        {Condition::GREATER_THAN_OR_EQUAL, "event.condition.greater_than_or_equal"}
+    };
+
+    constexpr std::pair<PayloadDispatchChangeVariable::Operation, const char *> kVariableOperationOptions[] = {
+        {PayloadDispatchChangeVariable::SET, "events.operation.set"},
+        {PayloadDispatchChangeVariable::ADD, "events.operation.add"},
+        {PayloadDispatchChangeVariable::SUBTRACT, "events.operation.subtract"}
+    };
+
+    static const char *ConditionSymbol(const Condition::ConditionType type) {
+        switch (type) {
+            case Condition::EQUAL: return "=";
+            case Condition::LESS_THAN: return "<";
+            case Condition::GREATER_THAN: return ">";
+            case Condition::LESS_THAN_OR_EQUAL: return "<=";
+            case Condition::GREATER_THAN_OR_EQUAL: return ">=";
+            default: return "";
+        }
+    }
+
+    // What a variable reference shows: its name (global ones marked), or
+    // none / missing.
+    static std::string EventVariableLabel(const Level &level, const EventVariableID id) {
+        if (id == 0) return Get("events.variable.none");
+
+        const auto name = level.GetEventVariableName(id);
+        if (!name) return Get("events.variable.missing");
+
+        return IsGlobalEventVariable(id) ? *name + "  (" + Get("events.variable.global") + ")" : *name;
+    }
+
+    // A dropdown of the current level's variables, then the project's global
+    // ones, each in ID order.
+    static bool DrawEventVariableCombo(const char *label, EventVariableID &id, const float width) {
+        const Level &level = LevelManager::CurrentLevel();
+        bool changed = false;
+
+        FieldWidth(width);
+        if (!ImGui::BeginCombo(label, EventVariableLabel(level, id).c_str())) return false;
+
+        std::vector<std::pair<EventVariableID, std::string> > levelVariables(
+            level.worldSettings.eventVariableNames.begin(), level.worldSettings.eventVariableNames.end());
+        std::ranges::sort(levelVariables, {}, [](const auto &entry) { return entry.first; });
+
+        std::vector<std::pair<EventVariableID, std::string> > globalVariables;
+        for (const auto &[globalID, definition]: GlobalEventVariables::GetAll())
+            globalVariables.emplace_back(globalID, definition.name);
+        std::ranges::sort(globalVariables, {}, [](const auto &entry) { return entry.first; });
+
+        const auto drawGroup = [&](const char *headerKey, const auto &variables) {
+            if (variables.empty()) return;
+
+            ImGui::SeparatorText(Get(headerKey).c_str());
+            for (const auto &[variableID, name]: variables) {
+                ImGui::PushID(static_cast<int>(variableID));
+                const bool selected = variableID == id;
+                if (ImGui::Selectable(name.c_str(), selected)) {
+                    id = variableID;
+                    changed = true;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+                ImGui::PopID();
+            }
+        };
+
+        drawGroup("events.variable.level_header", levelVariables);
+        drawGroup("events.variable.global_header", globalVariables);
+
+        if (levelVariables.empty() && globalVariables.empty())
+            ImGui::TextDisabled("%s", Get("events.variable.none_available").c_str());
+
+        ImGui::EndCombo();
+        return changed;
+    }
+
+    // Condition type, then "[variable] <op> [variable or number] [toggle]".
+    static void DrawConditionFields(Condition &condition) {
+        DrawEnumCombo(Get("events.condition").c_str(), condition.type, kConditionTypeOptions);
+        Tooltip(Get("editor.tooltip.events.condition").c_str());
+
+        if (condition.type == Condition::NONE) return;
+
+        ImGui::PushID("Condition");
+
+        // The left side is always a variable.
+        if (!std::holds_alternative<EventVariableID>(condition.left)) condition.left = EventVariableID{0};
+        DrawEventVariableCombo("##Left", std::get<EventVariableID>(condition.left), 120.0f);
+
+        ImGui::SameLine();
+        ImGui::TextUnformatted(ConditionSymbol(condition.type));
+        ImGui::SameLine();
+
+        const bool rightIsNumber = std::holds_alternative<float>(condition.right);
+        if (rightIsNumber) {
+            FieldWidth(80.0f);
+            ImGui::InputFloat("##Right", &std::get<float>(condition.right), 0.0f, 0.0f, "%.2f");
+        }
+        else DrawEventVariableCombo("##Right", std::get<EventVariableID>(condition.right), 120.0f);
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton(Get(rightIsNumber ? "events.condition.to_variable" : "events.condition.to_number").c_str())) {
+            if (rightIsNumber) condition.right = EventVariableID{0};
+            else condition.right = 0.0f;
+        }
+        Tooltip(Get(rightIsNumber ? "editor.tooltip.events.condition_to_variable"
+                                  : "editor.tooltip.events.condition_to_number").c_str());
+
+        ImGui::PopID();
+    }
+
     // Calls f(std::type_identity<Payload>{}) for every alternative of the variant.
     template<typename Variant, typename F>
     static void ForEachPayloadType(F &&f) {
@@ -1139,6 +1256,8 @@ namespace ImGuiDrawFunctions {
                                    ImGuiSliderFlags_AlwaysClamp);
                 Tooltip(Get("editor.tooltip.events.chance").c_str());
 
+                DrawConditionFields(event.condition);
+
                 // ...then what only this type has.
                 EntrySettingsGap();
 
@@ -1267,6 +1386,16 @@ namespace ImGuiDrawFunctions {
                         FieldWidth(200.0f);
                         ImGui::InputText(Get("events.function_name").c_str(), &payload.functionName);
                         Tooltip(Get("editor.tooltip.dispatches.function_name").c_str());
+                    }
+                    else if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
+                        DrawEventVariableCombo(Get("events.variable").c_str(), payload.variable, 200.0f);
+                        Tooltip(Get("editor.tooltip.dispatches.variable").c_str());
+
+                        DrawEnumCombo(Get("events.operation").c_str(), payload.operation, kVariableOperationOptions);
+                        Tooltip(Get("editor.tooltip.dispatches.operation").c_str());
+
+                        FieldWidth(200.0f);
+                        InputOrDrag(Get("events.value").c_str(), &payload.value, draggable, 0.1f);
                     }
                     else ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
                 }, dispatch.payload);

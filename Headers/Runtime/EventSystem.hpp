@@ -44,8 +44,8 @@ namespace EventSystem {
     // (INVALID_ID if none), passed to CALL_FUNCTION.
     void ExecuteDispatch(Level& level, const Dispatch& dispatch, EventOwnerKind ownerKind, ID ownerID, ID instigatorID);
 
-    // Checks the trigger limit, the tag filter against the instigator's tags
-    // and the chance, then runs every dispatch with the event's tag.
+    // Checks the trigger limit, the tag filter against the instigator's tags,
+    // the condition and the chance, then runs every dispatch with the event's tag.
     void TriggerEvent(Level& level, Event& event, ID instigatorID);
 }
 

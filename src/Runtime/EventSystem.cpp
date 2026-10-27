@@ -179,6 +179,9 @@ namespace {
         const TagFilter* filter = std::visit([](const auto& p) { return GetTagFilter(p); }, event.payload);
         if (filter && !PassesTagFilter(*filter, filterTags)) return;
 
+        // Like a failed chance roll, a failed condition doesn't use up a trigger.
+        if (!level.CheckCondition(event.condition)) return;
+
         if (event.chance < 100.0f && MathFunctions::GetRandomFloat(0.0f, 100.0f) >= event.chance) return;
 
         ++event.triggerCount;
@@ -683,6 +686,21 @@ namespace EventSystem {
             [&](const PayloadDispatchEntityCallFunction& call) {
                 if (hooks.callFunction && !call.functionName.empty())
                     hooks.callFunction(level, ownerID, call.functionName, instigatorID);
+            },
+            [&](const PayloadDispatchChangeVariable& change) {
+                if (change.variable == 0) return;
+
+                float* value = level.GetEventVariableValue(change.variable);
+                if (!value) {
+                    spdlog::warn("Change Variable dispatch on owner {} uses a variable that no longer exists, skipped", ownerID);
+                    return;
+                }
+
+                switch (change.operation) {
+                    case PayloadDispatchChangeVariable::SET: *value = change.value; break;
+                    case PayloadDispatchChangeVariable::ADD: *value += change.value; break;
+                    case PayloadDispatchChangeVariable::SUBTRACT: *value -= change.value; break;
+                }
             },
         }, dispatch.payload);
     }

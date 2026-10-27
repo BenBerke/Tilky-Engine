@@ -18,6 +18,15 @@ using DispatchId = EventId;
 using EventVariableID = ID;
 
 constexpr ID INVALID_ID = std::numeric_limits<ID>::max();
+
+// Set on the IDs of project-wide event variables (GlobalEventVariables),
+// clear on a level's own (WorldSettings). Both count up from 1, so the bit is
+// what tells a condition which table to read.
+constexpr EventVariableID GLOBAL_EVENT_VARIABLE_BIT = EventVariableID{1} << 31;
+
+[[nodiscard]] constexpr bool IsGlobalEventVariable(const EventVariableID id) noexcept {
+    return (id & GLOBAL_EVENT_VARIABLE_BIT) != 0;
+}
 constexpr ID INVALID_ENTITY_ID = INVALID_ID;
 
 using ScriptInstanceID = std::uint64_t;

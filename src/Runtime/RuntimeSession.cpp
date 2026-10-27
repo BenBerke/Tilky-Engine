@@ -26,6 +26,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/GlobalEventVariables.hpp"
 
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
@@ -167,6 +168,10 @@ namespace {
         // The device was opened at engine start and stays open between sessions.
         SoundManager::BeginSession();
 #endif
+
+        // Global event variables keep between levels (SwitchRuntimeLevel
+        // leaves them alone) but every session starts from the defaults.
+        GlobalEventVariables::ResetValues();
 
         AudioSystem::Start(level);
         LevelSystem::Start(level);

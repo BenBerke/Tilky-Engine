@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <type_traits>
+#include <unordered_map>
 
 #include "Types.hpp"
 #include "client/TracyThread.hpp"
@@ -55,13 +56,11 @@ struct TagFilter {
     bool operator==(const TagFilter&) const = default;
 };
 
-struct EventVariable {
-    std::string name;
-    float value;
-};
-
 struct Condition {
-    using InputField = std::variant<EventVariable, float>;
+    // An event variable or a constant. A variable's ID says its table:
+    // GLOBAL_EVENT_VARIABLE_BIT set = GlobalEventVariables, clear = the
+    // level's WorldSettings::eventVariables.
+    using InputField = std::variant<EventVariableID, float>;
     enum ConditionType : uint8_t {
         NONE = 0,
         EQUAL = 1,
@@ -73,35 +72,39 @@ struct Condition {
         COUNT
     };
 
-    InputField left;
-    ConditionType type;
-    InputField right;
+    // The editor always puts a variable on the left (0 = none picked, reads
+    // as 0); the right is a variable or a number.
+    InputField left = EventVariableID{0};
+    ConditionType type = NONE;
+    InputField right = 0.0f;
 
-    bool CheckCondition() {
-        return std::visit([this](auto&& l, auto&& r) -> bool {
+    bool operator==(const Condition&) const = default;
 
-            auto to_float = [](const auto& val) -> float {
-                using T = std::decay_t<decltype(val)>;
+    // A missing variable (deleted, or from another level) reads as 0.
+    // Level::CheckCondition passes the current tables.
+    [[nodiscard]] bool Check(const std::unordered_map<EventVariableID, float>& levelVariables,
+                             const std::unordered_map<EventVariableID, float>& globalVariables) const {
+        auto to_float = [&](const InputField& field) -> float {
+            if (const float* constant = std::get_if<float>(&field)) return *constant;
 
-                if constexpr(std::is_same_v<T, float>) return val;
-                else {
-                    EventVariable v = val;
-                    return v.value;
-                }
-            };
+            const EventVariableID id = std::get<EventVariableID>(field);
+            const auto& variables = IsGlobalEventVariable(id) ? globalVariables : levelVariables;
+            const auto it = variables.find(id);
+            return it != variables.end() ? it->second : 0.0f;
+        };
 
-            const float lhs = to_float(l);
-            const float rhs = to_float(r);
+        const float lhs = to_float(left);
+        const float rhs = to_float(right);
 
-            switch (type) {
-                case EQUAL: return lhs == rhs;
-                case LESS_THAN: return lhs < rhs;
-                    case GREATER_THAN: return lhs > rhs;
-                    case LESS_THAN_OR_EQUAL: return lhs <= rhs;
-                    case GREATER_THAN_OR_EQUAL: return lhs >= rhs;
-                default: return false; break;
-            }
-        }, left, right);
+        switch (type) {
+            case NONE: return true;
+            case EQUAL: return lhs == rhs;
+            case LESS_THAN: return lhs < rhs;
+            case GREATER_THAN: return lhs > rhs;
+            case LESS_THAN_OR_EQUAL: return lhs <= rhs;
+            case GREATER_THAN_OR_EQUAL: return lhs >= rhs;
+            default: return false;
+        }
     }
 
 
@@ -267,6 +270,26 @@ struct PayloadDispatchEntityCallFunction {
 
     std::string functionName;
 };
+
+// Changes an event variable (level or global, by the ID's scope bit). Acts on
+// the variable, not the owner: the owner only decides which events reach it.
+struct PayloadDispatchChangeVariable {
+    static constexpr EventOwnerMask owners =
+        OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::SECTOR) | OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.dispatch.change_variable";
+    transKey saveName = "dispatch.change_variable"; // level file name, never change
+    bool operator==(const PayloadDispatchChangeVariable&) const = default;
+
+    enum Operation : uint8_t {
+        SET = 0,
+        ADD = 1,
+        SUBTRACT = 2
+    };
+
+    EventVariableID variable = 0; // 0 = none picked, does nothing
+    Operation operation = SET;
+    float value = 0.0f;
+};
 //endregion
 
 using EventPayload = std::variant<
@@ -277,7 +300,8 @@ using EventPayload = std::variant<
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor,
     PayloadDispatchSectorMoveCeilingToFloor, PayloadDispatchSectorMoveFloorToCeiling,
-    PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable, PayloadDispatchEntityTeleport>;
+    PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable, PayloadDispatchEntityTeleport,
+    PayloadDispatchChangeVariable>;
 
 template <typename Payload>
 [[nodiscard]] constexpr EventOwnerMask GetOwners(const Payload& payload) noexcept {
@@ -299,13 +323,15 @@ struct Event {
 
     TagId tagId = 0;
 
+    Condition condition;
+
     uint32_t maxTriggers = 0; // 0 = unlimited, 1 = once
     float chance = 100.0f;    // percentage, out of 100. A failed roll doesn't count as a trigger
     uint32_t triggerCount = 0; // runtime only: not saved, reset when play starts
 
     // Authored data only - triggerCount is left out.
     [[nodiscard]] bool operator==(const Event& other) const {
-        return payload == other.payload && tagId == other.tagId &&
+        return payload == other.payload && tagId == other.tagId && condition == other.condition &&
                maxTriggers == other.maxTriggers && chance == other.chance;
     }
 

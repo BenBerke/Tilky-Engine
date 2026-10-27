@@ -284,6 +284,70 @@ namespace {
         return fallback;
     }
 
+    // A level's own event variables: [{id, name, value}]. Broken entries,
+    // global-scope IDs and duplicates are skipped with a warning.
+    void LoadEventVariables(const json& worldSettingsJson, WorldSettings& worldSettings) {
+        worldSettings.eventVariables.clear();
+        worldSettings.eventVariableNames.clear();
+        worldSettings.eventVariableIdsByName.clear();
+        worldSettings.nextEventVariableID = 1;
+
+        if (!worldSettingsJson.contains("eventVariables")) return;
+
+        const json& variables = worldSettingsJson.at("eventVariables");
+
+        if (!variables.is_array()) {
+            spdlog::warn("worldSettings: \"eventVariables\" is not an array, ignored");
+            return;
+        }
+
+        // Never hand out an ID at or below one already saved, even if
+        // nextEventVariableId is missing or too low.
+        EventVariableID minimumNextId = 1;
+
+        for (size_t i = 0; i < variables.size(); ++i) {
+            try {
+                const json& variable = variables[i];
+
+                const auto id = variable.at("id").get<EventVariableID>();
+                const auto name = variable.at("name").get<std::string>();
+                const float value = variable.value("value", 0.0f);
+
+                if (id == 0 || IsGlobalEventVariable(id)) throw std::runtime_error("id is not a level event variable id");
+                if (name.empty()) throw std::runtime_error("empty name");
+                if (worldSettings.eventVariables.contains(id)) throw std::runtime_error("duplicate id");
+                if (worldSettings.eventVariableIdsByName.contains(name)) throw std::runtime_error("duplicate name \"" + name + "\"");
+
+                worldSettings.eventVariables[id] = value;
+                worldSettings.eventVariableNames[id] = name;
+                worldSettings.eventVariableIdsByName[name] = id;
+                minimumNextId = std::max(minimumNextId, id + 1);
+            }
+            catch (const std::exception& exception) {
+                spdlog::warn("worldSettings: skipped event variable {}: {}", i, exception.what());
+            }
+        }
+
+        worldSettings.nextEventVariableID = std::max(
+            worldSettingsJson.value("nextEventVariableId", minimumNextId), minimumNextId);
+    }
+
+    json SaveEventVariables(const WorldSettings& worldSettings) {
+        json variables = json::array();
+
+        for (const auto& [id, name] : worldSettings.eventVariableNames) {
+            const auto value = worldSettings.eventVariables.find(id);
+
+            variables.push_back({
+                {"id", id},
+                {"name", name},
+                {"value", value != worldSettings.eventVariables.end() ? value->second : 0.0f}
+            });
+        }
+
+        return variables;
+    }
+
     // Loads the "tagIds" array shared by sectors, walls and entities into
     // outTagIds (names live only in TagRegistry). A missing field produces
     // an empty vector; malformed entries (wrong JSON type) are skipped and
@@ -431,6 +495,8 @@ namespace {
             WorldSettings &worldSettings = level.worldSettings;
 
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+
+            LoadEventVariables(worldSettingsJson, worldSettings);
         }
 
         if (levelStatsJson.contains("rendererSettings") && levelStatsJson["rendererSettings"].is_object()) {
@@ -465,7 +531,9 @@ namespace {
             },
             {
                 "worldSettings", {
-                    {"gravity", worldSettings.gravity}
+                    {"gravity", worldSettings.gravity},
+                    {"eventVariables", SaveEventVariables(worldSettings)},
+                    {"nextEventVariableId", worldSettings.nextEventVariableID}
                 }
             },
             {
@@ -547,6 +615,21 @@ namespace {
         {SECTOR_FORCE_MOVE, "force_move"}, {SECTOR_STOP, "stop"}, {SECTOR_RETRACT, "retract"}, {SECTOR_DONT_MOVE, "dont_move"}
     };
 
+    constexpr std::pair<Condition::ConditionType, const char*> kConditionTypeNames[] = {
+        {Condition::NONE, "none"},
+        {Condition::EQUAL, "equal"},
+        {Condition::LESS_THAN, "less_than"},
+        {Condition::GREATER_THAN, "greater_than"},
+        {Condition::LESS_THAN_OR_EQUAL, "less_than_or_equal"},
+        {Condition::GREATER_THAN_OR_EQUAL, "greater_than_or_equal"}
+    };
+
+    constexpr std::pair<PayloadDispatchChangeVariable::Operation, const char*> kVariableOperationNames[] = {
+        {PayloadDispatchChangeVariable::SET, "set"},
+        {PayloadDispatchChangeVariable::ADD, "add"},
+        {PayloadDispatchChangeVariable::SUBTRACT, "subtract"}
+    };
+
     // Reads `key` into `out` if present; throws on a value of the wrong type.
     template <typename T>
     void ReadOptional(const json& j, const char* key, T& out) {
@@ -562,6 +645,34 @@ namespace {
         if (!j.contains(key)) return;
         const json& v = j.at(key);
         out = {v.at(0).get<float>(), v.at(1).get<float>(), v.at(2).get<float>()};
+    }
+
+    // One side of a condition: {"variable": id} or {"number": value}.
+    json ConditionFieldToJson(const Condition::InputField& field) {
+        if (const float* number = std::get_if<float>(&field)) return {{"number", *number}};
+        return {{"variable", std::get<EventVariableID>(field)}};
+    }
+
+    Condition::InputField ConditionFieldFromJson(const json& j) {
+        if (j.contains("variable")) return j.at("variable").get<EventVariableID>();
+        if (j.contains("number")) return j.at("number").get<float>();
+        throw std::runtime_error("condition side has neither \"variable\" nor \"number\"");
+    }
+
+    json ConditionToJson(const Condition& condition) {
+        return {
+            {"type", EnumName(kConditionTypeNames, condition.type)},
+            {"left", ConditionFieldToJson(condition.left)},
+            {"right", ConditionFieldToJson(condition.right)}
+        };
+    }
+
+    Condition ConditionFromJson(const json& j) {
+        Condition condition;
+        ReadOptionalEnum(j, "type", kConditionTypeNames, condition.type);
+        if (j.contains("left")) condition.left = ConditionFieldFromJson(j.at("left"));
+        if (j.contains("right")) condition.right = ConditionFieldFromJson(j.at("right"));
+        return condition;
     }
 
     json TagFilterToJson(const TagFilter& filter) {
@@ -604,6 +715,12 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
             j["functionName"] = payload.functionName;
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
+            j["variable"] = payload.variable;
+            j["operation"] = EnumName(kVariableOperationNames, payload.operation);
+            j["value"] = payload.value;
+        }
+
         return j;
     }
 
@@ -640,6 +757,12 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
             ReadOptional(j, "functionName", payload.functionName);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
+            ReadOptional(j, "variable", payload.variable);
+            ReadOptionalEnum(j, "operation", kVariableOperationNames, payload.operation);
+            ReadOptional(j, "value", payload.value);
+        }
     }
 
     template <typename Variant>
@@ -673,12 +796,17 @@ namespace {
     }
 
     json EventToJson(const Event& event) {
-        return {
+        json j = {
             {"payload", PayloadToJson(event.payload)},
             {"tag", event.tagId},
             {"maxTriggers", event.maxTriggers},
             {"chance", event.chance}
         };
+
+        // Only written when there is one, so events without a condition save as before.
+        if (event.condition.type != Condition::NONE) j["condition"] = ConditionToJson(event.condition);
+
+        return j;
     }
 
     Event EventFromJson(const json& j) {
@@ -687,6 +815,7 @@ namespace {
         ReadOptional(j, "tag", event.tagId);
         ReadOptional(j, "maxTriggers", event.maxTriggers);
         ReadOptional(j, "chance", event.chance);
+        if (j.contains("condition")) event.condition = ConditionFromJson(j.at("condition"));
         return event;
     }
 

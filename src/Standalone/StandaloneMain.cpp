@@ -7,6 +7,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "Headers/TagRegistry.hpp"
+#include "Headers/GlobalEventVariables.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -32,6 +33,10 @@ int main(int argc, char* argv[]) {
     // Tag names, for entity:HasTag and Game.FindEntitiesWithTag.
     if (!TagRegistry::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))
         std::cerr << "Failed to load ProjectSettings.json; tags won't be found by name\n";
+
+    // Project-wide event variables, read by event conditions.
+    if (!GlobalEventVariables::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))
+        std::cerr << "Failed to load global event variables from ProjectSettings.json\n";
 
     LevelSerialization::LevelExtraData extraData;
 

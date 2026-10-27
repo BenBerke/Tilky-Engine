@@ -58,6 +58,12 @@ namespace {
             Method("GetEntities", {}, "Entity[]", "Every Entity in the level."),
             Method("GetSectorAt", {Param("position", "Vector2|Vector3")}, "Sector?",
                    "The innermost sector containing `position` (x, z; height ignored), or nil if it is outside the map."),
+            Method("GetVariable", {Param("name", "string")}, "number",
+                   "The value of an event variable: one of this level's (World Settings) or a global one (Project Settings). "
+                   "Raises an error if there is no variable with that name."),
+            Method("SetVariable", {Param("name", "string"), Param("value", "number")}, {},
+                   "Sets an event variable, as a Change Variable dispatch would. Level variables reset when a level loads; "
+                   "global ones keep their value until play stops. Raises an error if there is no variable with that name."),
 
             Method("SetSkyMode", {Param("mode", "SkyMode")}, {}, "How the sky image wraps around the camera, e.g. SkyMode.Cylinder."),
             Method("GetSkyMode", {}, "SkyMode"),
@@ -225,6 +231,24 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         }
 
         return sol::as_table(std::move(result));
+    });
+
+    // Event variables, level or global, found by name. Never creates one.
+    const auto variableValue = [](const std::string& name, const char* function) -> float& {
+        Level& level = LevelManager::CurrentLevel();
+        const std::optional<EventVariableID> id = level.FindEventVariable(name);
+        float* value = id ? level.GetEventVariableValue(*id) : nullptr;
+
+        if (!value) throw sol::error(std::string(function) + ": no event variable named \"" + name + "\"");
+        return *value;
+    };
+
+    game.set_function("GetVariable", [variableValue](const std::string& name) {
+        return variableValue(name, "Game.GetVariable");
+    });
+
+    game.set_function("SetVariable", [variableValue](const std::string& name, const float value) {
+        variableValue(name, "Game.SetVariable") = value;
     });
 
     game.set_function("GetEntity", [](sol::this_state state, const ID id) -> sol::object {

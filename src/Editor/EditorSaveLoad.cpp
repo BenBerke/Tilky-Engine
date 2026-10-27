@@ -17,6 +17,7 @@
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/TagRegistry.hpp"
+#include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -41,11 +42,15 @@ namespace {
     std::string autoSaveLevelName;
 
     nlohmann::json ProjectSettingsJson() {
-        return {
+        nlohmann::json settings = {
             {"formatVersion", 1},
             {"tagToId", TagRegistry::GetAll()},
             {"nextTagId", TagRegistry::GetNextId()}
         };
+
+        GlobalEventVariables::WriteToProjectSettings(settings);
+
+        return settings;
     }
 
     // Touches no editor state, so the auto save thread can call it.
@@ -94,7 +99,12 @@ namespace {
 namespace MapEditorInternal {
     bool LoadProjectSettings()
     {
-        return TagRegistry::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json");
+        const fs::path settingsPath = ProjectManager::GetProjectFolder() / "ProjectSettings.json";
+
+        const bool tagsLoaded = TagRegistry::LoadFromProjectSettings(settingsPath);
+        const bool variablesLoaded = GlobalEventVariables::LoadFromProjectSettings(settingsPath);
+
+        return tagsLoaded && variablesLoaded;
     }
 
     bool SaveProjectSettings() {

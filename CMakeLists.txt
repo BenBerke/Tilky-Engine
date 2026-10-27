@@ -374,6 +374,8 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Math/Quaternion/Quaternion.hpp
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
+        Headers/GlobalEventVariables.hpp
+        src/GlobalEventVariables.cpp
 
         src/Runtime/Renderer/OpenGL/OpenGLModel.cpp
         src/Runtime/Renderer/ModelLoader.cpp
@@ -566,6 +568,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/Objects/ScriptPublicType.hpp
         Headers/TagRegistry.hpp
         src/TagRegistry.cpp
+        Headers/GlobalEventVariables.hpp
+        src/GlobalEventVariables.cpp
         Headers/Objects/Event.hpp
         Headers/Runtime/EventSystem.hpp
         Headers/Math/MathFunctions.hpp
