@@ -569,6 +569,7 @@ set(TILKY_EDITOR_SOURCES
         Headers/Objects/Event.hpp
         Headers/Runtime/EventSystem.hpp
         Headers/Math/MathFunctions.hpp
+        Headers/Objects/Linedef.hpp
 )
 
 # ============================================================

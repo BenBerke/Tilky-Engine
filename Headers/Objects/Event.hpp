@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <variant>
 #include <string>
+#include <vector>
 #include <type_traits>
 
 #include "Types.hpp"
@@ -24,32 +25,40 @@ enum SectorCollision {
     SECTOR_DONT_MOVE   // hold still while blocked, carry on once clear
 };
 
-// What an event or dispatch is attached to (linedefs in the future)
+// What an event or dispatch is attached to
 enum class EventOwnerKind : uint8_t {
     LINE = 0,
     SECTOR = 1,
     ENTITY = 2,
+    LINEDEF = 3,
 };
 
+// A set of EventOwnerKinds, one bit each: what a payload can be attached to.
+using EventOwnerMask = uint8_t;
+
+[[nodiscard]] constexpr EventOwnerMask OwnerBit(const EventOwnerKind kind) noexcept {
+    return static_cast<EventOwnerMask>(1u << static_cast<uint8_t>(kind));
+}
+
 enum class TagType : uint8_t {
-    INCLUDE, // Call event for entities with the tag
-    EXCLUDE, // Call event for entities without the tag
-    ALL, // ignore tag and call event for all entity
+    INCLUDE, // Call event for entities with any of the tags
+    EXCLUDE, // Call event for entities with none of the tags
+    ALL, // ignore tags and call event for all entity
 };
 struct TagFilter {
     TagType tagType = TagType::INCLUDE;
-    TagId tag = 0;
+    std::vector<TagId> tags;
 
     bool operator==(const TagFilter&) const = default;
 };
 
-// Each payload type is the event/dispatch kind itself: `owner` is what it can
-// be attached to, `translationKey` its display name, `saveName` what level
+// Each payload type is the event/dispatch kind itself: `owners` is what it
+// can be attached to, `translationKey` its display name, `saveName` what level
 // files store it as.
 
 //region Event Payloads
 struct PayloadLineEntityCollide {
-    static constexpr EventOwnerKind owner = EventOwnerKind::LINE;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::LINEDEF);
     static constexpr const char* translationKey = "event.line.entity_collide";
     static constexpr const char* saveName = "line.entity_collide"; // level file name, never change
     bool operator==(const PayloadLineEntityCollide&) const = default;
@@ -58,7 +67,7 @@ struct PayloadLineEntityCollide {
 };
 
 struct PayloadLineEntityCross {
-    static constexpr EventOwnerKind owner = EventOwnerKind::LINE;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::LINEDEF);
     static constexpr const char* translationKey = "event.line.entity_cross";
     static constexpr const char* saveName = "line.entity_cross"; // level file name, never change
     bool operator==(const PayloadLineEntityCross&) const = default;
@@ -75,7 +84,7 @@ struct PayloadLineEntityCross {
 };
 
 struct PayloadSectorEntityEnter {
-    static constexpr EventOwnerKind owner = EventOwnerKind::SECTOR;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
     static constexpr const char* translationKey = "event.sector.entity_enter";
     static constexpr const char* saveName = "sector.entity_enter"; // level file name, never change
     bool operator==(const PayloadSectorEntityEnter&) const = default;
@@ -84,7 +93,7 @@ struct PayloadSectorEntityEnter {
 };
 
 struct PayloadSectorEntityExit {
-    static constexpr EventOwnerKind owner = EventOwnerKind::SECTOR;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
     static constexpr const char* translationKey = "event.sector.entity_exit";
     static constexpr const char* saveName = "sector.entity_exit"; // level file name, never change
     bool operator==(const PayloadSectorEntityExit&) const = default;
@@ -93,7 +102,7 @@ struct PayloadSectorEntityExit {
 };
 
 struct PayloadEntityCollide {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.entity.collide";
     static constexpr const char* saveName = "entity.collide"; // level file name, never change
     bool operator==(const PayloadEntityCollide&) const = default;
@@ -102,7 +111,7 @@ struct PayloadEntityCollide {
 };
 
 struct PayloadEntityChangeSector {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.entity.change_sector";
     static constexpr const char* saveName = "entity.change_sector"; // level file name, never change
     bool operator==(const PayloadEntityChangeSector&) const = default;
@@ -111,14 +120,14 @@ struct PayloadEntityChangeSector {
 };
 
 struct PayloadEntityEnable {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.entity.enable";
     static constexpr const char* saveName = "entity.enable"; // level file name, never change
     bool operator==(const PayloadEntityEnable&) const = default;
 };
 
 struct PayloadEntityDisable { // Nothing needed
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.entity.disable";
     static constexpr const char* saveName = "entity.disable"; // level file name, never change
     bool operator==(const PayloadEntityDisable&) const = default;
@@ -128,7 +137,7 @@ struct PayloadEntityDisable { // Nothing needed
 //region Dispatch Payloads
 // Probably wont be used much but still, good to have
 struct PayloadDispatchLineSetColor {
-    static constexpr EventOwnerKind owner = EventOwnerKind::LINE;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LINE);
     static constexpr const char* translationKey = "event.dispatch.line.set_color";
     static constexpr const char* saveName = "dispatch.line.set_color"; // level file name, never change
     bool operator==(const PayloadDispatchLineSetColor&) const = default;
@@ -138,7 +147,7 @@ struct PayloadDispatchLineSetColor {
 };
 
 struct PayloadDispatchSectorMoveFloorToCeiling {
-    static constexpr EventOwnerKind owner = EventOwnerKind::SECTOR;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
     static constexpr const char* translationKey = "event.dispatch.sector.move_floor_to_ceiling";
     static constexpr const char* saveName = "dispatch.sector.move_floor_to_ceiling"; // level file name, never change
     bool operator==(const PayloadDispatchSectorMoveFloorToCeiling&) const = default;
@@ -150,7 +159,7 @@ struct PayloadDispatchSectorMoveFloorToCeiling {
 };
 
 struct PayloadDispatchSectorMoveCeilingToFloor {
-    static constexpr EventOwnerKind owner = EventOwnerKind::SECTOR;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
     static constexpr const char* translationKey = "event.dispatch.sector.move_ceiling_to_floor";
     static constexpr const char* saveName = "dispatch.sector.move_ceiling_to_floor"; // level file name, never change
     bool operator==(const PayloadDispatchSectorMoveCeilingToFloor&) const = default;
@@ -162,14 +171,14 @@ struct PayloadDispatchSectorMoveCeilingToFloor {
 };
 
 struct PayloadDispatchEntityDestroy { // Nothing needed
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.dispatch.entity.destroy";
     static constexpr const char* saveName = "dispatch.entity.destroy"; // level file name, never change
     bool operator==(const PayloadDispatchEntityDestroy&) const = default;
 };
 
 struct PayloadDispatchEntityTeleport {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.dispatch.entity.teleport";
     static constexpr const char* saveName = "dispatch.entity.teleport"; // level file name, never change
     bool operator==(const PayloadDispatchEntityTeleport&) const = default;
@@ -179,14 +188,14 @@ struct PayloadDispatchEntityTeleport {
 };
 
 struct PayloadDispatchEntityDisable {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.dispatch.entity.disable";
     static constexpr const char* saveName = "dispatch.entity.disable"; // level file name, never change
     bool operator==(const PayloadDispatchEntityDisable&) const = default;
 };
 
 struct PayloadDispatchEntityEnable {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.dispatch.entity.enable";
     static constexpr const char* saveName = "dispatch.entity.enable"; // level file name, never change
     bool operator==(const PayloadDispatchEntityEnable&) const = default;
@@ -194,7 +203,7 @@ struct PayloadDispatchEntityEnable {
 
 // Supporting parameters would be too complicated (?)
 struct PayloadDispatchEntityCallFunction {
-    static constexpr EventOwnerKind owner = EventOwnerKind::ENTITY;
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr const char* translationKey = "event.dispatch.entity.call_function";
     static constexpr const char* saveName = "dispatch.entity.call_function"; // level file name, never change
     bool operator==(const PayloadDispatchEntityCallFunction&) const = default;
@@ -214,8 +223,13 @@ using DispatchPayload = std::variant<
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable, PayloadDispatchEntityTeleport>;
 
 template <typename Payload>
-[[nodiscard]] constexpr EventOwnerKind GetOwnerKind(const Payload& payload) noexcept {
-    return std::visit([](const auto& p) { return std::decay_t<decltype(p)>::owner; }, payload);
+[[nodiscard]] constexpr EventOwnerMask GetOwners(const Payload& payload) noexcept {
+    return std::visit([](const auto& p) { return std::decay_t<decltype(p)>::owners; }, payload);
+}
+
+template <typename Payload>
+[[nodiscard]] constexpr bool CanAttachTo(const Payload& payload, const EventOwnerKind kind) noexcept {
+    return (GetOwners(payload) & OwnerBit(kind)) != 0;
 }
 
 template <typename Payload>
@@ -238,9 +252,10 @@ struct Event {
                maxTriggers == other.maxTriggers && chance == other.chance;
     }
 
-    [[nodiscard]] constexpr bool IsLine() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::LINE; }
-    [[nodiscard]] constexpr bool IsSector() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::SECTOR; }
-    [[nodiscard]] constexpr bool IsEntity() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::ENTITY; }
+    [[nodiscard]] constexpr bool IsLine() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINE); }
+    [[nodiscard]] constexpr bool IsSector() const noexcept { return CanAttachTo(payload, EventOwnerKind::SECTOR); }
+    [[nodiscard]] constexpr bool IsEntity() const noexcept { return CanAttachTo(payload, EventOwnerKind::ENTITY); }
+    [[nodiscard]] constexpr bool IsLinedef() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINEDEF); }
 };
 
 struct Dispatch {
@@ -250,9 +265,10 @@ struct Dispatch {
 
     bool operator==(const Dispatch&) const = default;
 
-    [[nodiscard]] constexpr bool IsLine() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::LINE; }
-    [[nodiscard]] constexpr bool IsSector() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::SECTOR; }
-    [[nodiscard]] constexpr bool IsEntity() const noexcept { return GetOwnerKind(payload) == EventOwnerKind::ENTITY; }
+    [[nodiscard]] constexpr bool IsLine() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINE); }
+    [[nodiscard]] constexpr bool IsSector() const noexcept { return CanAttachTo(payload, EventOwnerKind::SECTOR); }
+    [[nodiscard]] constexpr bool IsEntity() const noexcept { return CanAttachTo(payload, EventOwnerKind::ENTITY); }
+    [[nodiscard]] constexpr bool IsLinedef() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINEDEF); }
 };
 
 #endif //TILKY_ENGINE_EVENT_HPP

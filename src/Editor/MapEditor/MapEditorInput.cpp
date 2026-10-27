@@ -316,6 +316,14 @@ namespace MapEditorInternal {
                 selectedWallID = selectedWalls.empty() ? INVALID_ID : selectedWalls.front();
                 editingWall = selectedWallID != INVALID_ID;
             }
+
+            // Same for linedefs (an undo can drop them too).
+            std::erase_if(selectedLinedefs, [&level](const ID linedefID) { return level.GetLinedef(linedefID) == nullptr; });
+
+            if (selectedLinedefID != INVALID_ID && level.GetLinedef(selectedLinedefID) == nullptr) {
+                selectedLinedefID = selectedLinedefs.empty() ? INVALID_ID : selectedLinedefs.front();
+                editingLinedef = selectedLinedefID != INVALID_ID;
+            }
         }
 
         // "pressing F focuses/moves the editor camera to the
@@ -344,6 +352,13 @@ namespace MapEditorInternal {
                         cameraPos = {sum.x / n, sum.y / n};
                     }
                 }
+
+                return;
+            }
+
+            if (currentMode == MODE_GEOMETRY && linedefMode) {
+                if (const Linedef* linedef = level.GetLinedef(selectedLinedefID))
+                    cameraPos = (linedef->start + linedef->end) * 0.5f;
 
                 return;
             }
@@ -391,6 +406,11 @@ namespace MapEditorInternal {
             for (const Wall& wall : level.walls) {
                 Include(wall.start.x, wall.start.y);
                 Include(wall.end.x, wall.end.y);
+            }
+
+            for (const Linedef& linedef : level.linedefs) {
+                Include(linedef.start.x, linedef.start.y);
+                Include(linedef.end.x, linedef.end.y);
             }
 
             for (const ComponentTransform& transform : level.transforms.components)
@@ -543,6 +563,79 @@ namespace MapEditorInternal {
             RebuildGeometryAfterWallDrag(movedPoints, draggedWallIDs);
         }
 
+        // ---- Linedef drag -------------------------------------------------
+        // A body drag moves both ends of every selected linedef; an endpoint
+        // drag moves just that one end. Like the wall drag, each frame is
+        // rewritten from the linedefs as they were when the drag started.
+        struct LinedefDragPart {
+            Linedef original;
+            bool moveStart = false;
+            bool moveEnd = false;
+        };
+
+        std::vector<LinedefDragPart> linedefDragParts;
+        std::vector<ID> linedefDragIDs;  // the dragged linedefs, ignored by the snap
+
+        Vector2 linedefDragAnchorOrigin{};
+        Vector2 linedefDragGrabOffset{};
+
+        GeometrySnapshot linedefDragUndoSnapshot;
+        bool linedefDragMutated = false;
+
+        void BeginLinedefDrag(const Vector2& mouseWorld, std::vector<LinedefDragPart> parts,
+                              const Vector2& anchor, const bool keepGrabOffset) {
+            linedefDragParts = std::move(parts);
+
+            linedefDragIDs.clear();
+            for (const LinedefDragPart& part : linedefDragParts) linedefDragIDs.push_back(part.original.id);
+
+            linedefDragAnchorOrigin = anchor;
+            linedefDragGrabOffset = keepGrabOffset
+                                        ? Vector2{mouseWorld.x - anchor.x, mouseWorld.y - anchor.y}
+                                        : Vector2{0.0f, 0.0f};
+
+            linedefDragUndoSnapshot = CaptureGeometryUndoSnapshot();
+            linedefDragMutated = false;
+
+            draggingLinedefGeometry = true;
+        }
+
+        void UpdateLinedefDrag(const Vector2& mouseWorld) {
+            const Vector2 desired = {
+                mouseWorld.x - linedefDragGrabOffset.x,
+                mouseWorld.y - linedefDragGrabOffset.y
+            };
+
+            const Vector2 target = ResolveLinedefSnapPoint(desired, linedefDragIDs);
+            const Vector2 delta = {target.x - linedefDragAnchorOrigin.x, target.y - linedefDragAnchorOrigin.y};
+
+            // Pushed lazily, so a click that doesn't move anything leaves no step.
+            if (!linedefDragMutated && (delta.x != 0.0f || delta.y != 0.0f)) {
+                PushGeometryUndoSnapshot(linedefDragUndoSnapshot, "editor.history.move_linedef_points", static_cast<int>(linedefDragParts.size()));
+                linedefDragMutated = true;
+            }
+
+            Level& level = LevelManager::CurrentLevel();
+
+            for (const LinedefDragPart& part : linedefDragParts) {
+                Linedef* linedef = level.GetLinedef(part.original.id);
+                if (linedef == nullptr) continue;
+
+                linedef->start = part.moveStart ? part.original.start + delta : part.original.start;
+                linedef->end = part.moveEnd ? part.original.end + delta : part.original.end;
+                linedef->RefreshDerived();
+            }
+        }
+
+        void EndLinedefDrag() {
+            if (!draggingLinedefGeometry) return;
+
+            draggingLinedefGeometry = false;
+            linedefDragParts.clear();
+            linedefDragIDs.clear();
+            linedefDragMutated = false;
+        }
+
         // The distinct endpoint positions of the current selection. A
         // corner shared by two selected walls must appear once, or it gets
         // offset twice and the walls tear apart.
@@ -661,7 +754,8 @@ namespace MapEditorInternal {
         }
 
         void ClearSelectionForMode(const Mode mode) {
-            if (mode == MODE_GEOMETRY) ClearWallSelection();
+            if (mode == MODE_GEOMETRY && linedefMode) ClearLinedefSelection();
+            else if (mode == MODE_GEOMETRY) ClearWallSelection();
             else if (mode == MODE_ENTITY) ClearEntitySelection();
         }
 
@@ -669,6 +763,19 @@ namespace MapEditorInternal {
             Level& level = LevelManager::CurrentLevel();
 
             if (!additive) ClearSelectionForMode(boxSelectMode);
+
+            if (boxSelectMode == MODE_GEOMETRY && linedefMode) {
+                for (const Linedef& linedef : level.linedefs) {
+                    if (!SegmentTouchesBox(linedef.start, linedef.end, boxMin, boxMax)) continue;
+                    if (std::ranges::find(selectedLinedefs, linedef.id) != selectedLinedefs.end()) continue;
+
+                    selectedLinedefs.push_back(linedef.id);
+                    selectedLinedefID = linedef.id;
+                }
+
+                editingLinedef = false;
+                return;
+            }
 
             if (boxSelectMode == MODE_GEOMETRY) {
                 for (const Wall& wall : level.walls) {
@@ -734,6 +841,14 @@ namespace MapEditorInternal {
 
             if (!boxSelectDragged) {
                 ClearSelectionForMode(boxSelectMode);
+
+                // In Linedef Mode a click on empty canvas places the start
+                // of a new linedef; the next click places its end.
+                if (boxSelectMode == MODE_GEOMETRY && linedefMode) {
+                    linedefDrawStart = ResolveLinedefSnapPoint(boxSelectStartWorld, {});
+                    drawingLinedef = true;
+                }
+
                 return;
             }
 
@@ -743,11 +858,129 @@ namespace MapEditorInternal {
             ApplyBoxSelection(boxMin, boxMax, MultiSelectModifierHeld());
         }
 
+        // Linedef Mode's pointer story: the wall one below, for linedefs,
+        // plus drawing. Only linedefs can be picked here.
+        void HandleLinedefModeMouse(const Vector2 &mouseWorld) {
+            const Level &level = LevelManager::CurrentLevel();
+
+            ID endpointLinedefID = INVALID_ID;
+            bool endpointIsStart = false;
+            const bool overEndpoint = !drawingLinedef &&
+                                      PickSelectedLinedefEndpointAt(mouseWorld, &endpointLinedefID, &endpointIsStart);
+
+            const ID linedefUnderCursor = PickLinedefAt(mouseWorld);
+
+            if (!draggingLinedefGeometry) hoveredLinedefID = drawingLinedef ? INVALID_ID : linedefUnderCursor;
+
+            if (!draggingLinedefGeometry && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+                // Right click drops a half-drawn linedef.
+                if (drawingLinedef) {
+                    drawingLinedef = false;
+                    return;
+                }
+
+                if (linedefUnderCursor == INVALID_ID) {
+                    editingLinedef = false;
+                    return;
+                }
+
+                if (MultiSelectModifierHeld()) {
+                    ToggleLinedefSelection(linedefUnderCursor);
+                    return;
+                }
+
+                if (std::ranges::find(selectedLinedefs, linedefUnderCursor) == selectedLinedefs.end())
+                    SelectLinedef(linedefUnderCursor);
+
+                selectedLinedefID = linedefUnderCursor;
+                editingLinedef = true;
+                return;
+            }
+
+            if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+                // While a linedef is half drawn every click places its end.
+                // A click on its own start does nothing.
+                if (drawingLinedef) {
+                    if (AddLinedef(linedefDrawStart, ResolveLinedefSnapPoint(mouseWorld, {}))) drawingLinedef = false;
+                    return;
+                }
+
+                if (SplitModifierHeld()) {
+                    const Linedef* linedef = level.GetLinedef(linedefUnderCursor);
+                    if (linedef == nullptr) return;
+
+                    Vector2 point = MapTopology::ClosestPointOnSegment(mouseWorld, linedef->start, linedef->end);
+
+                    if (gridSnapEnabled && !GetKeyBind(KEYBIND_DISABLE_SNAP))
+                        point = MapTopology::ClosestPointOnSegment(SnapToGrid(point), linedef->start, linedef->end);
+
+                    if (!SplitLinedefAt(linedefUnderCursor, point)) lastGeometryError = Localisation::Get("editor.geometry.split_too_close");
+                    return;
+                }
+
+                // Endpoint handles win over the line body, as with walls.
+                if (overEndpoint) {
+                    if (const Linedef* linedef = level.GetLinedef(endpointLinedefID)) {
+                        const Vector2 endpoint = endpointIsStart ? linedef->start : linedef->end;
+
+                        BeginLinedefDrag(mouseWorld, {{*linedef, endpointIsStart, !endpointIsStart}}, endpoint, false);
+                        return;
+                    }
+                }
+
+                // Empty space: a drag box-selects, a click starts a linedef
+                // (see UpdateBoxSelect).
+                if (linedefUnderCursor == INVALID_ID) {
+                    BeginBoxSelect(mouseWorld);
+                    return;
+                }
+
+                if (MultiSelectModifierHeld()) {
+                    ToggleLinedefSelection(linedefUnderCursor);
+                    return;
+                }
+
+                if (RangeSelectModifierHeld()) {
+                    ExtendLinedefSelectionTo(linedefUnderCursor);
+                    return;
+                }
+
+                const bool alreadyInSelection =
+                        std::ranges::find(selectedLinedefs, linedefUnderCursor) != selectedLinedefs.end();
+
+                if (!alreadyInSelection || selectedLinedefs.size() <= 1) SelectLinedef(linedefUnderCursor);
+                else selectedLinedefID = linedefUnderCursor;
+
+                // Left click is move-only: the inspector opens on right click.
+                editingLinedef = false;
+
+                const Linedef* grabbed = level.GetLinedef(linedefUnderCursor);
+                if (grabbed == nullptr) return;
+
+                std::vector<LinedefDragPart> parts;
+                for (const ID linedefID : selectedLinedefs)
+                    if (const Linedef* linedef = level.GetLinedef(linedefID)) parts.push_back({*linedef, true, true});
+
+                BeginLinedefDrag(mouseWorld, std::move(parts), grabbed->start, true);
+                return;
+            }
+
+            if (!draggingLinedefGeometry) return;
+
+            if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) UpdateLinedefDrag(mouseWorld);
+            else EndLinedefDrag();
+        }
+
         // Geometry Mode's whole pointer story: hover, select, drag, release.
         // Sectors are never touched here - the moved walls are handed back
         // to the topology pass on release, and it re-derives whatever
         // sectors those walls bounded.
         void HandleGeometryModeMouse(const Vector2 &mouseWorld) {
+            if (linedefMode) {
+                HandleLinedefModeMouse(mouseWorld);
+                return;
+            }
+
             const Level &level = LevelManager::CurrentLevel();
 
             ID endpointWallID = INVALID_ID;
@@ -1129,7 +1362,8 @@ namespace MapEditorInternal {
         ID HoveredCanvasItem(const Level& level, const Vector2& mouseWorld) {
             switch (currentMode) {
                 case MODE_GEOMETRY:
-                    return PickWallAt(mouseWorld);
+                    // Linedefs have no textures, and walls can't be picked in Linedef Mode.
+                    return linedefMode ? INVALID_ID : PickWallAt(mouseWorld);
 
                 case MODE_SECTOR:
                     // Hole-aware, like the hover highlight.
@@ -1429,6 +1663,9 @@ namespace MapEditorInternal {
             selectedWallID = -1;
             selectedSectors = {};
             selectedSectorID = -1;
+
+            ClearLinedefSelection();
+            drawingLinedef = false;
         }
 
         ValidateSelections(level);
@@ -1453,8 +1690,13 @@ namespace MapEditorInternal {
         // already moved on screen by then.
         if (currentMode != MODE_GEOMETRY || mouseBlockedByImGui) {
             hoveredWallID = INVALID_ID;
+            hoveredLinedefID = INVALID_ID;
             EndWallDrag();
+            EndLinedefDrag();
         }
+
+        // A half-drawn linedef only lives in Linedef Mode.
+        if (currentMode != MODE_GEOMETRY || !linedefMode) drawingLinedef = false;
 
         if (!mouseBlockedByImGui) {
             if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) {
@@ -1660,7 +1902,11 @@ namespace MapEditorInternal {
             }
 
             if (GetKeyBindDown(KEYBIND_CYCLE_MODE)) ChangeMode();
-            if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) currentMode = MODE_GEOMETRY;
+            if (GetKeyBindDown(KEYBIND_GEOMETRY_MODE)) {
+                // Already in Geometry Mode: the same key toggles Linedef Mode.
+                if (currentMode == MODE_GEOMETRY) SetLinedefMode(!linedefMode);
+                else currentMode = MODE_GEOMETRY;
+            }
             if (GetKeyBindDown(KEYBIND_ENTITY_MODE)) currentMode = MODE_ENTITY;
             if (GetKeyBindDown(KEYBIND_SECTOR_MODE)) currentMode = MODE_SECTOR;
 
@@ -1738,6 +1984,7 @@ namespace MapEditorInternal {
             // One undoable operation with a single topology rebuild for
             // the whole wall selection, rather than one of each per wall.
             DeleteSelectedWalls();
+            DeleteSelectedLinedefs();
 
             editingEntity = false;
         }

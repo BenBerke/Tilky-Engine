@@ -161,14 +161,19 @@ namespace MapEditorInternal {
     struct GeometrySnapshot {
         std::vector<Wall> walls;
         std::vector<Sector> sectors;
+        std::vector<Linedef> linedefs;
         ID nextWallID = 0;
         ID nextSectorID = 0;
+        ID nextLinedefID = 0;
 
         ID selectedSectorID = INVALID_ID;
         ID selectedWallID = INVALID_ID;
         std::vector<ID> selectedWalls;
+        ID selectedLinedefID = INVALID_ID;
+        std::vector<ID> selectedLinedefs;
         bool editingSector = false;
         bool editingWall = false;
+        bool editingLinedef = false;
     };
 
     // One generated step of an in-progress or committed staircase. Corners
@@ -384,6 +389,29 @@ namespace MapEditorInternal {
     // until that drag is committed.
     extern bool draggingWallGeometry;
 
+    // Linedef Mode: a checkbox inside Geometry Mode. While it is on only
+    // linedefs can be drawn, picked and edited; walls can't be. Toggled
+    // with the Geometry Mode key while already in Geometry Mode.
+    extern bool linedefMode;
+
+    // Same invariants as the wall selection above, maintained by
+    // SelectLinedef/ToggleLinedefSelection/ExtendLinedefSelectionTo/
+    // ClearLinedefSelection.
+    extern std::vector<ID> selectedLinedefs;
+    extern ID selectedLinedefID;
+    extern bool editingLinedef;
+
+    // Linedef under the cursor in Linedef Mode, for the hover highlight.
+    extern ID hoveredLinedefID;
+
+    // True from the mouse-down that starts a linedef body/endpoint drag
+    // until that drag is committed.
+    extern bool draggingLinedefGeometry;
+
+    // A linedef whose start has been placed and whose end hasn't yet.
+    extern bool drawingLinedef;
+    extern Vector2 linedefDrawStart;
+
     // Shared Asset Browser instance, rooted at the project's Assets folder.
     // Defined in MapEditorUI.cpp so both it and ImGuiDrawFunctions.cpp (via
     // this header) can reach the one shared browser and its pending
@@ -427,6 +455,14 @@ namespace MapEditorInternal {
     constexpr float DEFAULT_EVENT_LINK_THICKNESS = 2.0f;
     constexpr float MIN_EVENT_LINK_THICKNESS = 1.0f;
     constexpr float MAX_EVENT_LINK_THICKNESS = 10.0f;
+
+    constexpr float DEFAULT_LINEDEF_THICKNESS = 2.0f;
+    constexpr float MIN_LINEDEF_THICKNESS = 1.0f;
+    constexpr float MAX_LINEDEF_THICKNESS = 10.0f;
+
+    constexpr int DEFAULT_LINEDEF_ENDPOINT_SIZE = 3;
+    constexpr int MIN_LINEDEF_ENDPOINT_SIZE = 1;
+    constexpr int MAX_LINEDEF_ENDPOINT_SIZE = 15;
     constexpr float MAX_TEXTURE_FIELD_SIZE = 512.0f;
 
     // Selection within the UI Editor. Independent of selectedEntity/editingEntity
@@ -556,6 +592,13 @@ namespace MapEditorInternal {
     extern Vector3 normalWallColor;
     extern Vector3 portalWallColor;
     extern Vector3 highlightedWallColor;
+
+    // Linedefs: the line in pixels, and the square at each end (size =
+    // its width and height in pixels).
+    extern Vector3 linedefColor;
+    extern float linedefThickness;
+    extern Vector3 linedefEndpointColor;
+    extern int linedefEndpointSize;
 
     extern Vector3 hoveredSectorColor;
     extern Vector3 highlightedSectorColor;
@@ -832,9 +875,13 @@ namespace MapEditorInternal {
     void DrawExistingSectors();
     void DrawWalls();
 
+    // Every linedef, with a square at each end. Faint outside Linedef Mode.
+    void DrawLinedefs();
+
     // Geometry Mode's canvas overlay: hover highlight, selection
     // highlight, and the draggable endpoint handles of the selected
-    // wall(s). Draws nothing in any other mode.
+    // wall(s) - or, in Linedef Mode, linedef(s) and the linedef being
+    // drawn. Draws nothing in any other mode.
     void DrawGeometryEditOverlay();
     void DrawEntities();
 
@@ -1124,6 +1171,46 @@ namespace MapEditorInternal {
     // the tallest visible piece of that slot exactly once, and its vertical
     // offset to 0. Returns how many walls were changed.
     int FitSelectedWallTexturesToHeight();
+
+    // ---- Linedef Mode (MapEditorGeometry.cpp) ---------------------------
+    // The linedef versions of the wall picking, selection and editing
+    // above. Linedefs never touch the wall graph or the sectors, so there
+    // is no shared-endpoint move and no topology rebuild: every edit just
+    // changes the linedef and pushes a geometry undo step.
+
+    // Turns Linedef Mode on or off. Cancels a half-drawn linedef and drops
+    // the selection of whichever kind stops being editable.
+    void SetLinedefMode(bool enabled);
+
+    // Same tolerances as the wall versions. The endpoint search only looks
+    // at selected linedefs, whose handles are the only ones drawn.
+    [[nodiscard]] ID PickLinedefAt(const Vector2& mouseWorld);
+    [[nodiscard]] bool PickSelectedLinedefEndpointAt(const Vector2& mouseWorld, ID* outLinedefID, bool* outIsStart);
+
+    // Like the wall ones, SelectLinedef opens the inspector.
+    void SelectLinedef(ID linedefID);
+    void ToggleLinedefSelection(ID linedefID);
+    void ExtendLinedefSelectionTo(ID linedefID);
+    void ClearLinedefSelection();
+
+    // ResolveSnapPoint, with the endpoints of every linedef (minus
+    // `ignoredLinedefIDs`) as extra point candidates.
+    [[nodiscard]] Vector2 ResolveLinedefSnapPoint(const Vector2& mouseWorld, const std::vector<ID>& ignoredLinedefIDs);
+
+    // Adds a linedef from `start` to `end` as one undo step and selects it.
+    // False (nothing added) when the two points are the same.
+    bool AddLinedef(const Vector2& start, const Vector2& end);
+
+    // Deletes every selected linedef as one undo step.
+    void DeleteSelectedLinedefs();
+
+    // Splits the linedef at `point` (projected onto it). The new half is a
+    // copy of the old one with a new ID. False when the point is too close
+    // to either end.
+    bool SplitLinedefAt(ID linedefID, const Vector2& point);
+
+    // Splits every selected linedef at its midpoint; returns how many split.
+    int SplitSelectedLinedefsAtMidpoint();
 
     // ---- Canvas filters (MapEditorGeometry.cpp) -------------------------
     // Filtered-out walls and entities are drawn dimmed and can't be picked.
@@ -1544,6 +1631,23 @@ namespace MapEditorInternal {
     // EndGeometryInspectorEdit, recorded in the map editor's history. True
     // when it changed something.
     bool RecordGeometryInspectorEdit(const Level& level, GeometryInspectorEditTracker& tracker, const char* labelKey);
+
+    // The same for the linedef inspector. Linedefs aren't saved yet, so the
+    // change check compares the linedef itself rather than its save format.
+    struct LinedefInspectorEditTracker {
+        ID id = INVALID_ID;
+        std::optional<Linedef> before;
+
+        // As InspectorEditTracker's.
+        bool stepOpen = false;
+        std::uint64_t historyVersion = 0;
+    };
+
+    void BeginLinedefInspectorEdit(LinedefInspectorEditTracker& tracker, const Linedef& linedef);
+
+    // Pushes (or extends the open) geometry undo step when the linedef
+    // changed since Begin. True when it changed something.
+    bool RecordLinedefInspectorEdit(const Level& level, LinedefInspectorEditTracker& tracker, const char* labelKey);
 
     struct UndoStep {
         UndoKind kind = UNDO_GEOMETRY;

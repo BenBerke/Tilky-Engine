@@ -31,6 +31,7 @@ namespace MapQueries {
 
     void RebuildSectorIDLookup(Level& level);
     void RebuildWallIDLookup(Level& level);
+    void RebuildLinedefIDLookup(Level& level);
     void RebuildLevelLookups(Level& level);
 
     Sector* GetSectorByID(Level& level, ID sectorID);

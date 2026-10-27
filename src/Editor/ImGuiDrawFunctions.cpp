@@ -205,6 +205,13 @@ namespace {
         return buf;
     }
 
+    std::string DescribeLinedef(const Linedef &linedef) {
+        char buf[160];
+        if (linedef.name.empty()) snprintf(buf, sizeof(buf), "Linedef #%u", linedef.id);
+        else snprintf(buf, sizeof(buf), "%s (#%u)", linedef.name.c_str(), linedef.id);
+        return buf;
+    }
+
     std::string DescribeSector(const Sector &sector) {
         char buf[160];
         if (sector.name.empty()) snprintf(buf, sizeof(buf), "Sector #%u", sector.id);
@@ -962,7 +969,7 @@ namespace ImGuiDrawFunctions {
         if (!ImGui::BeginCombo(Get("events.type").c_str(), Get(GetTranslationKey(payload)).c_str())) return;
 
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
-            if (Payload::owner != kind) return;
+            if ((Payload::owners & OwnerBit(kind)) == 0) return;
 
             const bool selected = std::holds_alternative<Payload>(payload);
             if (ImGui::Selectable(Get(Payload::translationKey).c_str(), selected) && !selected) {
@@ -989,7 +996,7 @@ namespace ImGuiDrawFunctions {
 
         using Variant = decltype(Entry::payload);
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
-            if (Payload::owner != kind) return;
+            if ((Payload::owners & OwnerBit(kind)) == 0) return;
             if (!ImGui::Selectable(Get(Payload::translationKey).c_str())) return;
 
             Entry entry;
@@ -1007,13 +1014,95 @@ namespace ImGuiDrawFunctions {
         ImGui::EndCombo();
     }
 
+    // The filter's tags as small removable chips, then a dropdown of the
+    // project tags it doesn't have yet.
     static void DrawTagFilterFields(TagFilter &filter) {
         DrawEnumCombo(Get("event.payload.tag_type").c_str(), filter.tagType, kTagTypeOptions);
         Tooltip(Get("editor.tooltip.events.filter").c_str());
 
         ImGui::BeginDisabled(filter.tagType == TagType::ALL);
-        DrawTagCombo(Get("events.filter_tag").c_str(), filter.tag);
+        ImGui::PushID("FilterTags");
+
+        int tagToRemove = -1;
+
+        for (size_t i = 0; i < filter.tags.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i));
+
+            const auto name = TagRegistry::GetName(filter.tags[i]);
+            const std::string chip = (name ? *name : Get("tags.missing")) + "  x";
+
+            // Wraps onto the next line when the row is full.
+            if (i > 0) {
+                const float chipWidth = ImGui::CalcTextSize(chip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                const float rowEnd = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + chipWidth;
+                if (rowEnd < ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) ImGui::SameLine();
+            }
+
+            if (ImGui::SmallButton(chip.c_str())) tagToRemove = static_cast<int>(i);
+            Tooltip(Get("editor.tooltip.events.filter_tag_remove").c_str());
+
+            ImGui::PopID();
+        }
+
+        if (tagToRemove >= 0) filter.tags.erase(filter.tags.begin() + tagToRemove);
+
+        std::vector<std::pair<std::string, TagId> > availableTags;
+        for (const auto &[name, id]: TagRegistry::GetAll())
+            if (std::ranges::find(filter.tags, id) == filter.tags.end()) availableTags.emplace_back(name, id);
+        std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
+
+        FieldWidth(200.0f);
+        const char *previewKey = availableTags.empty() ? "tags.none_available" : "events.filter_tag_add";
+        if (ImGui::BeginCombo(Get("events.filter_tags").c_str(), Get(previewKey).c_str())) {
+            for (const auto &[name, id]: availableTags)
+                if (ImGui::Selectable(name.c_str())) filter.tags.push_back(id);
+
+            if (availableTags.empty()) ImGui::TextDisabled("%s", Get("tags.none_available").c_str());
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.events.filter_tags").c_str());
+
+        ImGui::PopID();
         ImGui::EndDisabled();
+    }
+
+    // The gap between the fields every entry has and its type's own fields.
+    static void EntrySettingsGap() {
+        ImGui::Dummy(ImVec2(0.0f, 4.0f));
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::GetStyleColorVec4(ImGuiCol_Border));
+        ImGui::Separator();
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
+    }
+
+    // A card's Delete, small and on the right, after a little space.
+    static bool EntryDeleteButton() {
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
+
+        const std::string label = Get("common.delete");
+        const float width = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - width));
+
+        return DangerButton(label.c_str());
+    }
+
+    // Starts an entry's card: a framed child that grows to fit its contents.
+    static bool BeginEntryCard(const char *id) {
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+
+        const bool visible = ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
+                                               ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+        return visible;
+    }
+
+    static void EndEntryCard() {
+        ImGui::EndChild();
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
     }
 
     static std::string EntryHeader(const char *translationKey, const TagId tag, const char *idSuffix) {
@@ -1031,7 +1120,9 @@ namespace ImGuiDrawFunctions {
             // "###event" keeps the header's open state while its text changes.
             const std::string header = EntryHeader(GetTranslationKey(event.payload), event.tagId, "###event");
 
-            if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (BeginEntryCard("##EventCard") &&
+                ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                // What every event has...
                 DrawPayloadTypeCombo(event.payload, kind);
 
                 DrawTagCombo(Get("events.link_tag").c_str(), event.tagId);
@@ -1048,18 +1139,29 @@ namespace ImGuiDrawFunctions {
                                    ImGuiSliderFlags_AlwaysClamp);
                 Tooltip(Get("editor.tooltip.events.chance").c_str());
 
+                // ...then what only this type has.
+                EntrySettingsGap();
+
                 std::visit([&]<typename Payload>(Payload &payload) {
-                    if constexpr (requires { payload.filter; }) DrawTagFilterFields(payload.filter);
+                    bool anySettings = false;
+
+                    if constexpr (requires { payload.filter; }) {
+                        DrawTagFilterFields(payload.filter);
+                        anySettings = true;
+                    }
 
                     if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>) {
                         DrawEnumCombo(Get("events.direction").c_str(), payload.direction, kCrossDirectionOptions);
                         Tooltip(Get("editor.tooltip.events.direction").c_str());
+                        anySettings = true;
                     }
+
+                    if (!anySettings) ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
                 }, event.payload);
 
-                ImGui::Spacing();
-                if (DangerButton(Get("common.delete").c_str())) eventToRemove = static_cast<int>(i);
+                if (EntryDeleteButton()) eventToRemove = static_cast<int>(i);
             }
+            EndEntryCard();
 
             ImGui::PopID();
         }
@@ -1080,11 +1182,16 @@ namespace ImGuiDrawFunctions {
 
             const std::string header = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.tagId, "###dispatch");
 
-            if (ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (BeginEntryCard("##DispatchCard") &&
+                ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+                // What every dispatch has...
                 DrawPayloadTypeCombo(dispatch.payload, kind);
 
                 DrawTagCombo(Get("events.link_tag").c_str(), dispatch.tagId);
                 Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+
+                // ...then what only this type has.
+                EntrySettingsGap();
 
                 std::visit([&]<typename Payload>(Payload &payload) {
                     if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetColor>) {
@@ -1164,9 +1271,9 @@ namespace ImGuiDrawFunctions {
                     else ImGui::TextDisabled("%s", Get("events.no_settings").c_str());
                 }, dispatch.payload);
 
-                ImGui::Spacing();
-                if (DangerButton(Get("common.delete").c_str())) dispatchToRemove = static_cast<int>(i);
+                if (EntryDeleteButton()) dispatchToRemove = static_cast<int>(i);
             }
+            EndEntryCard();
 
             ImGui::PopID();
         }
@@ -1957,6 +2064,74 @@ namespace ImGuiDrawFunctions {
             if (open) *open = false;
         }
         Tooltip(Get("editor.tooltip.wall.delete").c_str());
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(Get("common.close").c_str()))
+            if (open) *open = false;
+
+        ImGui::End();
+        return deleteRequested;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Linedef Editor
+    // ─────────────────────────────────────────────────────────────────────────
+    bool DrawLinedefEditor(Linedef &linedef, bool *open, const bool draggable) {
+        bool deleteRequested = false;
+
+        ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
+        if (!ImGui::Begin(Get("linedef.title").c_str(), open, kInspectorFlags)) {
+            ImGui::End();
+            return false;
+        }
+
+        // ── Summary header ───────────────────────────────────────────────────
+        DrawInspectorHeader("Linedef", DescribeLinedef(linedef).c_str());
+
+        BeginSection("Identity");
+        SmallMetaText("ID: %u", linedef.id);
+
+        ImGui::SameLine(60);
+
+        SmallMetaText("%s: %f", Get("editor.wall.length").c_str(), linedef.length);
+
+        ImGui::SameLine();
+
+        SmallMetaText("%s: %f", Get("editor.wall.angle").c_str(), linedef.angle);
+
+        FieldWidth(220.0f);
+        ImGui::InputText(Get("linedef.name").c_str(), &linedef.name);
+
+        // Nothing shares a linedef's ends, so they are edited directly.
+        bool pointsChanged = false;
+
+        FieldWidth(220.0f);
+        pointsChanged |= InputOrDrag2(Get("linedef.start").c_str(), &linedef.start.x, draggable);
+
+        FieldWidth(220.0f);
+        pointsChanged |= InputOrDrag2(Get("linedef.end").c_str(), &linedef.end.x, draggable);
+
+        if (pointsChanged) linedef.RefreshDerived();
+        EndSection();
+
+        // No dispatch can be attached to a linedef yet, so only events.
+        BeginSection(Get("events.title").c_str());
+        ImGui::PushID("Events");
+        DrawEventsEditor(linedef.events, EventOwnerKind::LINEDEF);
+        ImGui::PopID();
+        EndSection();
+
+        // ── Actions ──────────────────────────────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        if (DangerButton(Get("common.delete").c_str())) {
+            deleteRequested = true;
+            if (open) *open = false;
+        }
+        Tooltip(Get("editor.tooltip.linedef.delete").c_str());
 
         ImGui::SameLine();
 

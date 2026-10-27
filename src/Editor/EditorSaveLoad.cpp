@@ -165,6 +165,8 @@ namespace MapEditorInternal {
             LoadColor3("normalWallColor", normalWallColor);
             LoadColor3("portalWallColor", portalWallColor);
             LoadColor3("highlightedWallColor", highlightedWallColor);
+            LoadColor3("linedefColor", linedefColor);
+            LoadColor3("linedefEndpointColor", linedefEndpointColor);
             LoadColor3("hoveredSectorColor", hoveredSectorColor);
             LoadColor3("highlightedSectorColor", highlightedSectorColor);
             LoadColor3("snapIndicatorColor", snapIndicatorColor);
@@ -237,6 +239,16 @@ namespace MapEditorInternal {
                 settings.value("eventLinkThickness", DEFAULT_EVENT_LINK_THICKNESS),
                 MIN_EVENT_LINK_THICKNESS,
                 MAX_EVENT_LINK_THICKNESS
+            );
+            linedefThickness = std::clamp(
+                settings.value("linedefThickness", DEFAULT_LINEDEF_THICKNESS),
+                MIN_LINEDEF_THICKNESS,
+                MAX_LINEDEF_THICKNESS
+            );
+            linedefEndpointSize = std::clamp(
+                settings.value("linedefEndpointSize", DEFAULT_LINEDEF_ENDPOINT_SIZE),
+                MIN_LINEDEF_ENDPOINT_SIZE,
+                MAX_LINEDEF_ENDPOINT_SIZE
             );
 
 #ifndef TILKY_STANDALONE
@@ -396,6 +408,12 @@ namespace MapEditorInternal {
                     {"highlightedWallColor",
                      SerializeColor(highlightedWallColor)},
 
+                    {"linedefColor",
+                     SerializeColor(linedefColor)},
+
+                    {"linedefEndpointColor",
+                     SerializeColor(linedefEndpointColor)},
+
                     {"hoveredSectorColor",
                      SerializeColor(hoveredSectorColor)},
 
@@ -470,7 +488,9 @@ namespace MapEditorInternal {
                 {"runtimeEyeHeight", runtimeEyeHeight},
                 {"autoSaveInSeconds", autoSaveInSeconds},
                 {"filteredAlpha", filteredAlpha},
-                {"eventLinkThickness", eventLinkThickness}
+                {"eventLinkThickness", eventLinkThickness},
+                {"linedefThickness", linedefThickness},
+                {"linedefEndpointSize", linedefEndpointSize}
             };
 
 #ifndef TILKY_STANDALONE

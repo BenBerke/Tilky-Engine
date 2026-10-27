@@ -137,6 +137,16 @@ namespace MapEditorInternal {
     ID hoveredWallID = INVALID_ID;
     bool draggingWallGeometry = false;
 
+    // Linedef Mode — selection, hover, drag and drawing state
+    bool linedefMode = false;
+    std::vector<ID> selectedLinedefs = {};
+    ID selectedLinedefID = INVALID_ID;
+    bool editingLinedef = false;
+    ID hoveredLinedefID = INVALID_ID;
+    bool draggingLinedefGeometry = false;
+    bool drawingLinedef = false;
+    Vector2 linedefDrawStart = {0.0f, 0.0f};
+
     // =========================================================================
     //  UI Editor — shared state (see EditorInternal.hpp for the rationale)
     // =========================================================================
@@ -172,6 +182,11 @@ namespace MapEditorInternal {
     Vector3 normalWallColor = {205, 205, 205};
     Vector3 portalWallColor = {150, 150, 150};
     Vector3 highlightedWallColor = {80, 220, 255};
+
+    Vector3 linedefColor = {135, 206, 250};
+    float linedefThickness = DEFAULT_LINEDEF_THICKNESS;
+    Vector3 linedefEndpointColor = {135, 206, 250};
+    int linedefEndpointSize = DEFAULT_LINEDEF_ENDPOINT_SIZE;
 
     Vector3 hoveredSectorColor = {250, 250, 100};
     Vector3 highlightedSectorColor = {40, 40, 220};

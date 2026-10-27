@@ -70,6 +70,7 @@ namespace ImGuiDrawFunctions {
     // true on the frame the button is pressed.
     bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr);
     bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
+    bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable);
     bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void SmallMetaText(const char* fmt, ...);

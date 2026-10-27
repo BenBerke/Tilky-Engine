@@ -197,9 +197,17 @@ namespace MapQueries {
             level.wallIDToIndex[level.walls[i].id] = i;
     }
 
+    void RebuildLinedefIDLookup(Level &level) {
+        level.linedefIDToIndex.clear();
+
+        for (int i = 0; i < static_cast<int>(level.linedefs.size()); ++i)
+            level.linedefIDToIndex[level.linedefs[i].id] = i;
+    }
+
     void RebuildLevelLookups(Level &level) {
         RebuildSectorIDLookup(level);
         RebuildWallIDLookup(level);
+        RebuildLinedefIDLookup(level);
     }
 
     Sector* GetSectorByID(Level &level, const ID sectorID) {

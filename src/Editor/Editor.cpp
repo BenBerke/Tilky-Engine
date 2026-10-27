@@ -112,6 +112,11 @@ namespace Editor {
         hoveredWallID = INVALID_ID;
         draggingWallGeometry = false;
 
+        ClearLinedefSelection();
+        hoveredLinedefID = INVALID_ID;
+        draggingLinedefGeometry = false;
+        drawingLinedef = false;
+
         ImGui::SetCurrentContext(imguiContext);
 
         UpdateLevels();
@@ -316,6 +321,7 @@ namespace Editor {
             DrawExistingSectors();
             DrawGridDots();
             DrawWalls();
+            DrawLinedefs();
 
             // Geometry Mode's hover/selection highlights and endpoint
             // handles. This took the place of DrawDots(), but has to be

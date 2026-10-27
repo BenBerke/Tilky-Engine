@@ -565,12 +565,12 @@ namespace {
     }
 
     json TagFilterToJson(const TagFilter& filter) {
-        return {{"type", EnumName(kTagTypeNames, filter.tagType)}, {"tag", filter.tag}};
+        return {{"type", EnumName(kTagTypeNames, filter.tagType)}, {"tags", filter.tags}};
     }
 
     void TagFilterFromJson(const json& j, TagFilter& filter) {
         ReadOptionalEnum(j, "type", kTagTypeNames, filter.tagType);
-        ReadOptional(j, "tag", filter.tag);
+        ReadOptional(j, "tags", filter.tags);
     }
 
     // Per payload type: its fields (without "type").

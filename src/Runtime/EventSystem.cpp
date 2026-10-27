@@ -98,6 +98,9 @@ namespace {
             case EventOwnerKind::ENTITY:
                 if (const Entity* entity = level.GetEntity(handle.ownerID)) dispatches = &entity->dispatches;
                 break;
+            case EventOwnerKind::LINEDEF:
+                if (const Linedef* linedef = level.GetLinedef(handle.ownerID)) dispatches = &linedef->dispatches;
+                break;
         }
 
         if (!dispatches || handle.index >= dispatches->size()) return nullptr;
@@ -118,6 +121,10 @@ namespace {
                 Entity* entity = level.GetEntity(ownerID);
                 return entity ? &entity->events : nullptr;
             }
+            case EventOwnerKind::LINEDEF: {
+                Linedef* linedef = level.GetLinedef(ownerID);
+                return linedef ? &linedef->events : nullptr;
+            }
         }
         return nullptr;
     }
@@ -131,8 +138,10 @@ namespace {
     bool PassesTagFilter(const TagFilter& filter, const std::vector<TagId>& tags) {
         if (filter.tagType == TagType::ALL) return true;
 
-        const bool hasTag = std::ranges::find(tags, filter.tag) != tags.end();
-        return filter.tagType == TagType::INCLUDE ? hasTag : !hasTag;
+        const bool hasAnyTag = std::ranges::any_of(filter.tags, [&](const TagId tag) {
+            return std::ranges::find(tags, tag) != tags.end();
+        });
+        return filter.tagType == TagType::INCLUDE ? hasAnyTag : !hasAnyTag;
     }
 
     bool IsEnabledEntity(const Level& level, const ID entityID) {
@@ -461,7 +470,7 @@ namespace EventSystem {
                          const ID instigatorID) {
         // A dispatch for another kind of owner (a sector move on an entity)
         // would use the owner's ID as the wrong kind of thing.
-        if (GetOwnerKind(dispatch.payload) != ownerKind) {
+        if (!CanAttachTo(dispatch.payload, ownerKind)) {
             spdlog::warn("Dispatch '{}' is attached to the wrong kind of object (owner {}), skipped",
                          GetTranslationKey(dispatch.payload), ownerID);
             return;

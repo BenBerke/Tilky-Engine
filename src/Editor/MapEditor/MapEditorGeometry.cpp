@@ -1558,13 +1558,18 @@ namespace MapEditorInternal {
             GeometrySnapshot snapshot;
             snapshot.walls = level.walls;
             snapshot.sectors = level.sectors;
+            snapshot.linedefs = level.linedefs;
             snapshot.nextWallID = level.nextWallID;
             snapshot.nextSectorID = level.nextSectorID;
+            snapshot.nextLinedefID = level.nextLinedefID;
             snapshot.selectedSectorID = selectedSectorID;
             snapshot.selectedWallID = selectedWallID;
             snapshot.selectedWalls = selectedWalls;
+            snapshot.selectedLinedefID = selectedLinedefID;
+            snapshot.selectedLinedefs = selectedLinedefs;
             snapshot.editingSector = editingSector;
             snapshot.editingWall = editingWall;
+            snapshot.editingLinedef = editingLinedef;
             return snapshot;
         }
     }
@@ -1722,14 +1727,22 @@ namespace MapEditorInternal {
 
         level.walls = snapshot.walls;
         level.sectors = snapshot.sectors;
+        level.linedefs = snapshot.linedefs;
         level.nextWallID = snapshot.nextWallID;
         level.nextSectorID = snapshot.nextSectorID;
+        level.nextLinedefID = snapshot.nextLinedefID;
 
         selectedSectorID = snapshot.selectedSectorID;
         selectedWallID = snapshot.selectedWallID;
         selectedWalls = snapshot.selectedWalls;
+        selectedLinedefID = snapshot.selectedLinedefID;
+        selectedLinedefs = snapshot.selectedLinedefs;
         editingSector = snapshot.editingSector;
         editingWall = snapshot.editingWall;
+        editingLinedef = snapshot.editingLinedef;
+
+        // A half-drawn linedef was started against the level as it was.
+        drawingLinedef = false;
 
         // GeometrySnapshot predates the plural sector selection and never
         // captured it, so rather than leaving behind a selection that can
@@ -2159,6 +2172,189 @@ namespace MapEditorInternal {
 
         selectedWallID = wallID;
         editingWall = true;
+    }
+
+    // =========================================================================
+    //  Linedef Mode — picking, selection, snapping
+    // =========================================================================
+
+    void SetLinedefMode(const bool enabled) {
+        if (linedefMode == enabled) return;
+
+        linedefMode = enabled;
+        drawingLinedef = false;
+        hoveredWallID = INVALID_ID;
+        hoveredLinedefID = INVALID_ID;
+
+        // Only one kind is editable at a time, so the other one's selection
+        // (and inspector) would be left with nothing to act on.
+        if (enabled) ClearWallSelection();
+        else ClearLinedefSelection();
+    }
+
+    ID PickLinedefAt(const Vector2& mouseWorld) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float clickRadiusWorld = WALL_PICK_RADIUS_PIXELS / safeZoom;
+
+        ID closestID = INVALID_ID;
+        float closestDistanceSq = clickRadiusWorld * clickRadiusWorld;
+
+        for (const Linedef& linedef : level.linedefs) {
+            const float distanceSq = DistancePointToSegmentSq(mouseWorld, linedef.start, linedef.end);
+
+            if (distanceSq <= closestDistanceSq) {
+                closestDistanceSq = distanceSq;
+                closestID = linedef.id;
+            }
+        }
+
+        return closestID;
+    }
+
+    bool PickSelectedLinedefEndpointAt(const Vector2& mouseWorld, ID* outLinedefID, bool* outIsStart) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float pickRadiusWorld = WALL_ENDPOINT_PICK_RADIUS_PIXELS / safeZoom;
+
+        float bestDistSq = pickRadiusWorld * pickRadiusWorld;
+        bool found = false;
+
+        for (const ID linedefID : selectedLinedefs) {
+            const Linedef* linedef = level.GetLinedef(linedefID);
+            if (linedef == nullptr) continue;
+
+            const float startDistSq = Vector2Math::DistanceSquared(mouseWorld, linedef->start);
+
+            if (startDistSq <= bestDistSq) {
+                bestDistSq = startDistSq;
+                if (outLinedefID != nullptr) *outLinedefID = linedef->id;
+                if (outIsStart != nullptr) *outIsStart = true;
+                found = true;
+            }
+
+            const float endDistSq = Vector2Math::DistanceSquared(mouseWorld, linedef->end);
+
+            if (endDistSq <= bestDistSq) {
+                bestDistSq = endDistSq;
+                if (outLinedefID != nullptr) *outLinedefID = linedef->id;
+                if (outIsStart != nullptr) *outIsStart = false;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    void ClearLinedefSelection() {
+        selectedLinedefs.clear();
+        selectedLinedefID = INVALID_ID;
+        editingLinedef = false;
+    }
+
+    void SelectLinedef(const ID linedefID) {
+        if (linedefID == INVALID_ID) {
+            ClearLinedefSelection();
+            return;
+        }
+
+        selectedLinedefs.clear();
+        selectedLinedefs.push_back(linedefID);
+
+        selectedLinedefID = linedefID;
+        editingLinedef = true;
+    }
+
+    void ToggleLinedefSelection(const ID linedefID) {
+        if (linedefID == INVALID_ID) return;
+
+        const auto it = std::find(selectedLinedefs.begin(), selectedLinedefs.end(), linedefID);
+
+        if (it != selectedLinedefs.end()) {
+            selectedLinedefs.erase(it);
+
+            if (selectedLinedefID == linedefID) {
+                selectedLinedefID = selectedLinedefs.empty() ? INVALID_ID : selectedLinedefs.back();
+                editingLinedef = selectedLinedefID != INVALID_ID;
+            }
+
+            return;
+        }
+
+        selectedLinedefs.push_back(linedefID);
+
+        selectedLinedefID = linedefID;
+        editingLinedef = true;
+    }
+
+    void ExtendLinedefSelectionTo(const ID linedefID) {
+        if (linedefID == INVALID_ID) return;
+
+        if (selectedLinedefID == INVALID_ID) {
+            SelectLinedef(linedefID);
+            return;
+        }
+
+        const Level& level = LevelManager::CurrentLevel();
+
+        const ID firstID = std::min(linedefID, selectedLinedefID);
+        const ID lastID = std::max(linedefID, selectedLinedefID);
+
+        selectedLinedefs.clear();
+
+        for (const Linedef& linedef : level.linedefs)
+            if (linedef.id >= firstID && linedef.id <= lastID) selectedLinedefs.push_back(linedef.id);
+
+        selectedLinedefID = linedefID;
+        editingLinedef = true;
+    }
+
+    Vector2 ResolveLinedefSnapPoint(const Vector2& mouseWorld, const std::vector<ID>& ignoredLinedefIDs) {
+        // Walls and dots are never moved by a linedef edit, so the usual
+        // snap needs nothing ignored.
+        const Vector2 usual = ResolveSnapPoint(mouseWorld);
+        if (!vertexSnapEnabled) return usual;
+
+        constexpr float snapRadiusPixels = 12.0f;
+        const float safeZoom = std::max(editorZoom, 0.0001f);
+        const float snapRadiusWorld = snapRadiusPixels / safeZoom;
+
+        Vector2 best{};
+        float bestDistSq = snapRadiusWorld * snapRadiusWorld;
+        bool found = false;
+
+        for (const Linedef& linedef : LevelManager::CurrentLevel().linedefs) {
+            if (std::ranges::find(ignoredLinedefIDs, linedef.id) != ignoredLinedefIDs.end()) continue;
+
+            for (const Vector2& candidate : {linedef.start, linedef.end}) {
+                const float distSq = Vector2Math::DistanceSquared(mouseWorld, candidate);
+                if (distSq > bestDistSq) continue;
+
+                bestDistSq = distSq;
+                best = candidate;
+                found = true;
+            }
+        }
+
+        if (!found) return usual;
+
+        // A wall corner or dot nearer than the nearest linedef end still
+        // wins; a grid point or a point along a wall doesn't.
+        const auto isCorner = [&](const Vector2& point) {
+            for (const Wall& wall : LevelManager::CurrentLevel().walls)
+                if (SamePoint(wall.start, point) || SamePoint(wall.end, point)) return true;
+
+            for (const Dot& dot : dots)
+                if (SamePoint(dot.position, point)) return true;
+
+            return false;
+        };
+
+        if (isCorner(usual) && Vector2Math::DistanceSquared(mouseWorld, usual) < bestDistSq) return usual;
+
+        return best;
     }
 
     void MoveSharedEndpoint(const Vector2& from, const Vector2& to) {
@@ -2719,6 +2915,111 @@ namespace MapEditorInternal {
             PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_walls", split);
             MarkUnsavedChanges();
         }
+
+        return split;
+    }
+
+    // =========================================================================
+    //  Linedef Mode — adding, deleting, splitting
+    // =========================================================================
+
+    bool AddLinedef(const Vector2& start, const Vector2& end) {
+        if (SamePoint(start, end)) return false;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+
+        Linedef linedef(start, end);
+        linedef.id = level.nextLinedefID++;
+
+        level.linedefs.push_back(std::move(linedef));
+        level.linedefIDToIndex[level.linedefs.back().id] = static_cast<int>(level.linedefs.size()) - 1;
+
+        // Selected so it can be dragged straight away; the inspector stays
+        // closed until it is right clicked, like a left-clicked wall.
+        SelectLinedef(level.linedefs.back().id);
+        editingLinedef = false;
+
+        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.draw_linedef");
+        return true;
+    }
+
+    void DeleteSelectedLinedefs() {
+        if (selectedLinedefs.empty()) return;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        const std::vector<ID> linedefsToDelete = selectedLinedefs;
+
+        PushGeometryUndoSnapshot(CaptureGeometryUndoSnapshot(), "editor.history.delete_linedefs", static_cast<int>(linedefsToDelete.size()));
+
+        ClearLinedefSelection();
+
+        std::erase_if(level.linedefs, [&](const Linedef& linedef) {
+            return std::ranges::find(linedefsToDelete, linedef.id) != linedefsToDelete.end();
+        });
+
+        MapQueries::RebuildLinedefIDLookup(level);
+    }
+
+    namespace {
+        ID SplitLinedefNoUndo(Level& level, const ID linedefID, const Vector2& point) {
+            Linedef* linedef = level.GetLinedef(linedefID);
+            if (linedef == nullptr) return INVALID_ID;
+
+            const Vector2 splitPoint = MapTopology::ClosestPointOnSegment(point, linedef->start, linedef->end);
+            const float startDistance = std::sqrt(Vector2Math::DistanceSquared(linedef->start, splitPoint));
+            const float endDistance = std::sqrt(Vector2Math::DistanceSquared(splitPoint, linedef->end));
+
+            if (startDistance < MIN_SPLIT_LENGTH || endDistance < MIN_SPLIT_LENGTH) return INVALID_ID;
+
+            // The second half is a copy - name, events and all.
+            Linedef second = *linedef;
+            second.id = level.nextLinedefID++;
+            second.start = splitPoint;
+            second.RefreshDerived();
+
+            linedef->end = splitPoint;
+            linedef->RefreshDerived();
+
+            // `linedef` is not used after this, push_back may move it.
+            level.linedefs.push_back(std::move(second));
+            level.linedefIDToIndex[level.linedefs.back().id] = static_cast<int>(level.linedefs.size()) - 1;
+
+            if (std::ranges::find(selectedLinedefs, linedefID) != selectedLinedefs.end())
+                selectedLinedefs.push_back(level.linedefs.back().id);
+
+            return level.linedefs.back().id;
+        }
+    }
+
+    bool SplitLinedefAt(const ID linedefID, const Vector2& point) {
+        Level& level = LevelManager::CurrentLevel();
+
+        GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+        if (SplitLinedefNoUndo(level, linedefID, point) == INVALID_ID) return false;
+
+        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_linedef");
+        return true;
+    }
+
+    int SplitSelectedLinedefsAtMidpoint() {
+        Level& level = LevelManager::CurrentLevel();
+
+        GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+        int split = 0;
+
+        // Copied: each split adds its new half to the selection.
+        for (const ID linedefID : std::vector<ID>(selectedLinedefs)) {
+            const Linedef* linedef = level.GetLinedef(linedefID);
+            if (linedef == nullptr) continue;
+
+            const Vector2 midpoint = (linedef->start + linedef->end) * 0.5f;
+            if (SplitLinedefNoUndo(level, linedefID, midpoint) != INVALID_ID) ++split;
+        }
+
+        if (split > 0) PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.split_linedefs", split);
 
         return split;
     }
@@ -3316,6 +3617,32 @@ namespace MapEditorInternal {
         return true;
     }
 
+    void BeginLinedefInspectorEdit(LinedefInspectorEditTracker& tracker, const Linedef& linedef) {
+        if (tracker.id != linedef.id || !ImGui::IsAnyItemActive()) tracker.stepOpen = false;
+
+        tracker.id = linedef.id;
+        tracker.before = linedef;
+    }
+
+    bool RecordLinedefInspectorEdit(const Level& level, LinedefInspectorEditTracker& tracker, const char* labelKey) {
+        const Linedef* linedef = level.GetLinedef(tracker.id);
+        if (linedef == nullptr || !tracker.before.has_value() || *linedef == *tracker.before) return false;
+
+        // A step already open holds the state from before the whole drag.
+        if (!tracker.stepOpen || tracker.historyVersion != undoHistoryVersion ||
+            undoSteps.empty() || undoSteps.back().kind != UNDO_GEOMETRY) {
+            GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+            *std::ranges::find(snapshot.linedefs, tracker.id, &Linedef::id) = *tracker.before;
+
+            PushGeometryUndoSnapshot(std::move(snapshot), labelKey);
+        }
+
+        tracker.stepOpen = true;
+        tracker.historyVersion = undoHistoryVersion;
+        MarkUnsavedChanges();
+        return true;
+    }
+
     EntitiesSnapshot CaptureEntitiesSnapshot() {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -3444,7 +3771,15 @@ namespace MapEditorInternal {
     void SelectAllInMode() {
         Level& level = LevelManager::CurrentLevel();
 
-        if (currentMode == MODE_GEOMETRY) {
+        if (currentMode == MODE_GEOMETRY && linedefMode) {
+            ClearLinedefSelection();
+
+            for (const Linedef& linedef : level.linedefs) {
+                selectedLinedefs.push_back(linedef.id);
+                selectedLinedefID = linedef.id;
+            }
+        }
+        else if (currentMode == MODE_GEOMETRY) {
             ClearWallSelection();
 
             for (const Wall& wall : level.walls) {

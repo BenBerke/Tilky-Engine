@@ -21,10 +21,12 @@ namespace {
 
     std::vector<Owner> AllOwners(const Level& level) {
         std::vector<Owner> owners;
-        owners.reserve(level.walls.size() + level.sectors.size() + level.entities.size());
+        owners.reserve(level.walls.size() + level.linedefs.size() + level.sectors.size() + level.entities.size());
 
         for (const Wall& wall : level.walls)
             owners.push_back({EventOwnerKind::LINE, wall.id, &wall.events, &wall.dispatches});
+        for (const Linedef& linedef : level.linedefs)
+            owners.push_back({EventOwnerKind::LINEDEF, linedef.id, &linedef.events, &linedef.dispatches});
         for (const Sector& sector : level.sectors)
             owners.push_back({EventOwnerKind::SECTOR, sector.id, &sector.events, &sector.dispatches});
         for (const Entity& entity : level.entities)
@@ -57,6 +59,28 @@ namespace EventLinks {
                     const float floor = MapQueries::SurfaceHeightAt(*sector, sector->floors[0].floor, middle);
                     const float ceiling = MapQueries::SurfaceHeightAt(*sector, sector->floors[0].ceiling, middle);
                     height = (floor + ceiling) * 0.5f;
+                }
+
+                point = {middle.x, height, middle.y};
+                return true;
+            }
+            case EventOwnerKind::LINEDEF: {
+                const Linedef* linedef = level.GetLinedef(ownerID);
+                if (linedef == nullptr) return false;
+
+                // Halfway up the sector the middle of the line is in, like a wall.
+                const Vector2 middle = (linedef->start + linedef->end) * 0.5f;
+                float height = 0.0f;
+
+                const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, middle);
+                if (sectorIndex >= 0 && sectorIndex < static_cast<int>(level.sectors.size())) {
+                    const Sector& sector = level.sectors[sectorIndex];
+
+                    if (!sector.floors.empty()) {
+                        const float floor = MapQueries::SurfaceHeightAt(sector, sector.floors[0].floor, middle);
+                        const float ceiling = MapQueries::SurfaceHeightAt(sector, sector.floors[0].ceiling, middle);
+                        height = (floor + ceiling) * 0.5f;
+                    }
                 }
 
                 point = {middle.x, height, middle.y};

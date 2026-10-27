@@ -14,6 +14,7 @@
 #include "Loadables.hpp"
 #include "Sky.hpp"
 #include "VectorIndexCache.hpp"
+#include "Linedef.hpp"
 
 struct ListenerSettings {
     float masterGain = 1.0f;
@@ -69,13 +70,16 @@ struct Level {
 
     std::vector<Wall> walls;
     std::vector<Sector> sectors;
+    std::vector<Linedef> linedefs;
 
     // These are needed so that walls/sectors dont get their IDs mixed up from deletion
     std::unordered_map<ID, int> sectorIDToIndex;
     std::unordered_map<ID, int> wallIDToIndex;
+    std::unordered_map<ID, int> linedefIDToIndex;
 
     ID nextSectorID = 0;
     ID nextWallID = 0;
+    ID nextLinedefID = 0;
 
     std::vector<Texture> textures;
     std::vector<Sound> sounds;
@@ -125,6 +129,9 @@ struct Level {
 
     Sector* GetSector(ID sectorID);
     const Sector* GetSector(ID sectorID) const;
+
+    Linedef* GetLinedef(ID linedefID);
+    const Linedef* GetLinedef(ID linedefID) const;
 
     // True if `ancestor` is `sectorID` itself or anywhere up its parent chain.
     bool IsSectorAncestor(ID ancestor, ID sectorID) const;

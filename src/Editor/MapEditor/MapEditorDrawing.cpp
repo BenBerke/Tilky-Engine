@@ -108,7 +108,9 @@ namespace MapEditorInternal {
 
         const bool freehandDrawing = currentMode == MODE_SECTOR && currentDrawTool == DRAWTOOL_FREEHAND && !manualSectorMode;
 
-        const Vector2 snapped = freehandDrawing ? ResolveFreehandPoint(mouseWorld) : ResolveSnapPoint(mouseWorld);
+        const Vector2 snapped = freehandDrawing ? ResolveFreehandPoint(mouseWorld)
+                              : currentMode == MODE_GEOMETRY && linedefMode ? ResolveLinedefSnapPoint(mouseWorld, {})
+                              : ResolveSnapPoint(mouseWorld);
         const Vector2 screenPos = WorldToScreen(snapped, cameraPos);
 
         SDL_SetRenderDrawColor(renderer, 80, snapIndicatorColor.r, snapIndicatorColor.g, snapIndicatorColor.b);
@@ -744,9 +746,9 @@ namespace MapEditorInternal {
             SDL_RenderRect(renderer, &handle);
         }
 
-        // Small light text on a translucent dark pill at each selected
-        // wall's midpoint.
-        void DrawWallLengthLabels(const Level& level, const std::function<bool(ID)>& isSelected) {
+        // Small light text on a translucent dark pill at the midpoint of
+        // the line from `start` to `end` (world space).
+        void DrawLengthLabel(const Vector2& start, const Vector2& end, const float length) {
             if (labelFont == nullptr || textEngine == nullptr) return;
 
             constexpr float PAD_X = 5.0f;
@@ -760,19 +762,23 @@ namespace MapEditorInternal {
 
             char buffer[32];
 
-            for (const Wall& wall : level.walls) {
-                if (!isSelected(wall.id)) continue;
-
-                const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
-                const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
+            {
+                const Vector2 startScreen = WorldToScreen(start, cameraPos);
+                const Vector2 endScreen = WorldToScreen(end, cameraPos);
                 const Vector2 mid = {(startScreen.x + endScreen.x) * 0.5f, (startScreen.y + endScreen.y) * 0.5f};
 
-                if (mid.x < 0.0f || mid.y < 0.0f || mid.x > static_cast<float>(screenWidth) || mid.y > static_cast<float>(screenHeight)) continue;
+                if (mid.x < 0.0f || mid.y < 0.0f || mid.x > static_cast<float>(screenWidth) || mid.y > static_cast<float>(screenHeight)) {
+                    SDL_SetRenderDrawBlendMode(renderer, previousBlend);
+                    return;
+                }
 
-                std::snprintf(buffer, sizeof(buffer), "%.1f", wall.length);
+                std::snprintf(buffer, sizeof(buffer), "%.1f", length);
 
                 TTF_Text* text = TTF_CreateText(textEngine, labelFont, buffer, 0);
-                if (text == nullptr) continue;
+                if (text == nullptr) {
+                    SDL_SetRenderDrawBlendMode(renderer, previousBlend);
+                    return;
+                }
 
                 int textWidth = 0;
                 int textHeight = 0;
@@ -801,10 +807,79 @@ namespace MapEditorInternal {
 
             SDL_SetRenderDrawBlendMode(renderer, previousBlend);
         }
+
+        // A label at each selected wall's midpoint.
+        void DrawWallLengthLabels(const Level& level, const std::function<bool(ID)>& isSelected) {
+            for (const Wall& wall : level.walls)
+                if (isSelected(wall.id)) DrawLengthLabel(wall.start, wall.end, wall.length);
+        }
+
+        // Linedef Mode's version of the overlay below.
+        void DrawLinedefEditOverlay() {
+            const Level& level = LevelManager::CurrentLevel();
+
+            const auto isSelected = [](const ID linedefID) {
+                return std::ranges::find(selectedLinedefs, linedefID) != selectedLinedefs.end();
+            };
+
+            // Hover highlight, amber, as for walls.
+            if (hoveredLinedefID != INVALID_ID && !isSelected(hoveredLinedefID)) {
+                if (const Linedef* linedef = level.GetLinedef(hoveredLinedefID)) {
+                    SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+                    DrawColoredThickLine(WorldToScreen(linedef->start, cameraPos), WorldToScreen(linedef->end, cameraPos), 7.0f);
+                }
+            }
+
+            for (const ID linedefID : selectedLinedefs) {
+                const Linedef* linedef = level.GetLinedef(linedefID);
+                if (linedef == nullptr) continue;
+
+                SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, 255);
+                DrawColoredThickLine(WorldToScreen(linedef->start, cameraPos), WorldToScreen(linedef->end, cameraPos), 7.0f);
+            }
+
+            for (const ID linedefID : selectedLinedefs)
+                if (const Linedef* linedef = level.GetLinedef(linedefID))
+                    DrawLengthLabel(linedef->start, linedef->end, linedef->length);
+
+            // Handles last, on top of every selected line.
+            ID hoveredHandleLinedefID = INVALID_ID;
+            bool hoveredHandleIsStart = false;
+
+            const bool handleHovered = !drawingLinedef && PickSelectedLinedefEndpointAt(
+                ScreenToWorld(InputManager::GetMousePosition(), cameraPos),
+                &hoveredHandleLinedefID,
+                &hoveredHandleIsStart
+            );
+
+            for (const ID linedefID : selectedLinedefs) {
+                const Linedef* linedef = level.GetLinedef(linedefID);
+                if (linedef == nullptr) continue;
+
+                const bool hoveredHandleIsOnThis = handleHovered && hoveredHandleLinedefID == linedefID;
+
+                DrawEndpointHandle(linedef->start, hoveredHandleIsOnThis && hoveredHandleIsStart);
+                DrawEndpointHandle(linedef->end, hoveredHandleIsOnThis && !hoveredHandleIsStart);
+            }
+
+            // The linedef being drawn, from its start to where a click would end it.
+            if (drawingLinedef) {
+                const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), {});
+
+                // The line itself is drawn by DrawLinedefs.
+                DrawEndpointHandle(linedefDrawStart, false);
+                DrawLengthLabel(linedefDrawStart, end, std::sqrt(Vector2Math::DistanceSquared(linedefDrawStart, end)));
+            }
+        }
     }
 
     void DrawGeometryEditOverlay() {
         if (currentMode != MODE_GEOMETRY) return;
+
+        if (linedefMode) {
+            DrawLinedefEditOverlay();
+            return;
+        }
 
         const Level& level = LevelManager::CurrentLevel();
 
@@ -928,8 +1003,9 @@ namespace MapEditorInternal {
             const Vector2 startScreen = WorldToScreen(wall.start, cameraPos);
             const Vector2 endScreen = WorldToScreen(wall.end, cameraPos);
 
-            // Filtered out in the Geometry Mode panel: still there, but faint.
-            const Uint8 alpha = (currentMode == MODE_GEOMETRY && !WallPassesFilter(wall)) || currentMode != MODE_GEOMETRY ? filteredAlpha : 255;
+            // Filtered out in the Geometry Mode panel, or not editable in
+            // Linedef Mode: still there, but faint.
+            const Uint8 alpha = (currentMode == MODE_GEOMETRY && (linedefMode || !WallPassesFilter(wall))) || currentMode != MODE_GEOMETRY ? filteredAlpha : 255;
 
             // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
@@ -939,6 +1015,47 @@ namespace MapEditorInternal {
                 DrawWallLine(startScreen, endScreen, 5.0f, normalWallColor, alpha);
             else
                 DrawWallLine(startScreen, endScreen, 2.0f, portalWallColor, alpha);
+        }
+    }
+
+    void DrawLinedefs() {
+        const Level& level = LevelManager::CurrentLevel();
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+        // Faint wherever they can't be edited, like walls outside Geometry Mode.
+        const Uint8 alpha = currentMode == MODE_GEOMETRY && linedefMode ? 255 : static_cast<Uint8>(filteredAlpha);
+
+        const float squareSize = static_cast<float>(linedefEndpointSize);
+
+        std::vector<std::pair<Vector2, Vector2>> lines;
+        lines.reserve(level.linedefs.size() + 1);
+
+        for (const Linedef& linedef : level.linedefs) lines.emplace_back(linedef.start, linedef.end);
+
+        // The one being drawn, from its start to where a click would end it.
+        if (drawingLinedef && currentMode == MODE_GEOMETRY && linedefMode)
+            lines.emplace_back(linedefDrawStart, ResolveLinedefSnapPoint(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), {}));
+
+        for (const auto& [start, end] : lines) {
+            const Vector2 startScreen = WorldToScreen(start, cameraPos);
+            const Vector2 endScreen = WorldToScreen(end, cameraPos);
+
+            DrawWallLine(startScreen, endScreen, linedefThickness, linedefColor, alpha);
+
+            // A square at each end tells a linedef apart from a portal wall.
+            SDL_SetRenderDrawColor(renderer, linedefEndpointColor.r, linedefEndpointColor.g, linedefEndpointColor.b, alpha);
+
+            for (const Vector2& point : {startScreen, endScreen}) {
+                const SDL_FRect square = {
+                    std::round(point.x - squareSize * 0.5f),
+                    std::round(point.y - squareSize * 0.5f),
+                    squareSize,
+                    squareSize
+                };
+
+                SDL_RenderFillRect(renderer, &square);
+            }
         }
     }
 
@@ -952,6 +1069,7 @@ namespace MapEditorInternal {
         };
 
         if (editingWall && selectedWallID != INVALID_ID) add(EventOwnerKind::LINE, selectedWallID);
+        if (editingLinedef && selectedLinedefID != INVALID_ID) add(EventOwnerKind::LINEDEF, selectedLinedefID);
         if (editingSector && selectedSectorID != INVALID_ID) add(EventOwnerKind::SECTOR, selectedSectorID);
         if (editingEntity && selectedEntity.id != INVALID_ID) add(EventOwnerKind::ENTITY, selectedEntity.id);
 

@@ -154,6 +154,9 @@ namespace {
     constexpr Vector3 defaultPortalWallColor = {150, 150, 150};
     constexpr Vector3 defaultHighlightedWallColor = {80, 220, 255};
 
+    constexpr Vector3 defaultLinedefColor = {135, 206, 250};
+    constexpr Vector3 defaultLinedefEndpointColor = {135, 206, 250};
+
     constexpr Vector3 defaultHoveredSectorColor = {250, 250, 100};
     constexpr Vector3 defaultHighlightedSectorColor = {40, 40, 220};
 
@@ -376,6 +379,11 @@ namespace MapEditorInternal {
         return sector.name + "  (#" + std::to_string(sector.id) + ")";
     }
 
+    std::string LinedefHierarchyLabel(const Linedef &linedef) {
+        if (linedef.name.empty()) return "Linedef #" + std::to_string(linedef.id);
+        return linedef.name + " (#" + std::to_string(linedef.id) + ")";
+    }
+
     std::string WallHierarchyLabel(const Wall &wall) {
         if (wall.name.empty()) return "Wall #" + std::to_string(wall.id);
         return wall.name + "  (#" + std::to_string(wall.id) + ")";
@@ -396,6 +404,7 @@ namespace {
     InspectorEditTracker entityInspectorEdit;
     GeometryInspectorEditTracker sectorInspectorEdit;
     GeometryInspectorEditTracker wallInspectorEdit;
+    LinedefInspectorEditTracker linedefInspectorEdit;
 
     std::optional<std::string> pendingLevelToLoad;
 
@@ -463,6 +472,7 @@ namespace {
         nextDotID = 0;
 
         ClearWallSelection();
+        ClearLinedefSelection();
         ClearSectorSelection();
         ClearEntitySelection();
 
@@ -1523,6 +1533,24 @@ namespace {
             );
 
             DrawGroup(
+                "editor.user_settings.group.linedefs",
+                "##LinedefColorSettings",
+                [&] {
+                    DrawColor3Setting(
+                        "editor.user_settings.linedef_color",
+                        linedefColor,
+                        defaultLinedefColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.linedef_endpoint_color",
+                        linedefEndpointColor,
+                        defaultLinedefEndpointColor
+                    );
+                }
+            );
+
+            DrawGroup(
                 "editor.user_settings.group.events",
                 "##EventColorSettings",
                 [&] {
@@ -1643,6 +1671,14 @@ namespace {
             ImGui::SliderFloat(Get("editor.user_settings.event_link_thickness").c_str(), &eventLinkThickness,
                                MIN_EVENT_LINK_THICKNESS, MAX_EVENT_LINK_THICKNESS, "%.1f");
             HoverTooltip(Get("editor.tooltip.user_settings.event_link_thickness").c_str());
+
+            ImGui::SliderFloat(Get("editor.user_settings.linedef_thickness").c_str(), &linedefThickness,
+                               MIN_LINEDEF_THICKNESS, MAX_LINEDEF_THICKNESS, "%.1f");
+            HoverTooltip(Get("editor.tooltip.user_settings.linedef_thickness").c_str());
+
+            ImGui::SliderInt(Get("editor.user_settings.linedef_endpoint_size").c_str(), &linedefEndpointSize,
+                             MIN_LINEDEF_ENDPOINT_SIZE, MAX_LINEDEF_ENDPOINT_SIZE);
+            HoverTooltip(Get("editor.tooltip.user_settings.linedef_endpoint_size").c_str());
 
             ImGui::Separator();
             ImGui::Spacing();
@@ -2265,6 +2301,9 @@ namespace {
             if (currentMode == MODE_SECTOR && sectorCount > 1) {
                 plural = "sectors";
                 count = sectorCount;
+            } else if (currentMode == MODE_GEOMETRY && linedefMode && selectedLinedefs.size() > 1) {
+                plural = "linedefs";
+                count = selectedLinedefs.size();
             } else if (currentMode == MODE_GEOMETRY && wallCount > 1) {
                 plural = "walls";
                 count = wallCount;
@@ -2427,6 +2466,75 @@ namespace {
                 if (wallPendingDelete != INVALID_ID) {
                     DeleteWall(wallPendingDelete);
                     hasUnsavedChanges = true;
+                }
+            }
+        }
+
+        // ---- Linedefs -----------------------------------------------------
+        {
+            const bool open = ImGui::CollapsingHeader(
+                "Linedefs",
+                ImGuiTreeNodeFlags_DefaultOpen
+            );
+            DrawCountBadge(static_cast<int>(level.linedefs.size()));
+
+            if (open) {
+                ImGui::Indent();
+
+                ID linedefPendingDelete = INVALID_ID;
+
+                for (const Linedef &linedef: level.linedefs) {
+                    const std::string label = LinedefHierarchyLabel(linedef);
+                    if (!matches(label)) continue;
+
+                    ImGui::PushID(static_cast<int>(linedef.id));
+
+                    DrawHierarchyTypeIcon(ICON_FA_GRIP_LINES_VERTICAL, "[L]", ImVec4(0.53f, 0.81f, 0.98f, 1.00f));
+
+                    ImGui::SameLine(0.0f, 6.0f);
+
+                    const bool selected = std::ranges::find(selectedLinedefs, linedef.id) != selectedLinedefs.end();
+                    if (ImGui::Selectable(label.c_str(), selected)) {
+                        // Like a wall row: into Geometry Mode (and Linedef
+                        // Mode), then the same selection helpers the canvas uses.
+                        if (currentMode != MODE_GEOMETRY) {
+                            const Mode previousMode = currentMode;
+                            currentMode = MODE_GEOMETRY;
+
+                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
+                        }
+
+                        SetLinedefMode(true);
+
+                        if (GetKeyBind(KEYBIND_RANGE_SELECT))
+                            ExtendLinedefSelectionTo(linedef.id);
+                        else if (GetKeyBind(KEYBIND_MULTI_SELECT))
+                            ToggleLinedefSelection(linedef.id);
+                        else SelectLinedef(linedef.id);
+                    }
+
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem(Get("editor.delete").c_str()))
+                            linedefPendingDelete = linedef.id;
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Unindent();
+
+                if (linedefPendingDelete != INVALID_ID) {
+                    // Through the selection, so it is one undo step like Delete.
+                    const std::vector<ID> keptSelection = selectedLinedefs;
+
+                    selectedLinedefs = {linedefPendingDelete};
+                    DeleteSelectedLinedefs();
+
+                    for (const ID linedefID : keptSelection)
+                        if (linedefID != linedefPendingDelete) selectedLinedefs.push_back(linedefID);
+
+                    selectedLinedefID = selectedLinedefs.empty() ? INVALID_ID : selectedLinedefs.front();
                 }
             }
         }
@@ -3294,10 +3402,37 @@ namespace {
         }
     }
 
+    void DrawSelectedLinedefInspector(Level &level) {
+        if (!editingLinedef || currentMode != MODE_GEOMETRY || !linedefMode) return;
+
+        Linedef *linedef = level.GetLinedef(selectedLinedefID);
+        if (linedef == nullptr) {
+            selectedLinedefID = INVALID_ID;
+            editingLinedef = false;
+            return;
+        }
+
+        BeginLinedefInspectorEdit(linedefInspectorEdit, *linedef);
+
+        const Vector2 startBeforeEdit = linedef->start;
+        const Vector2 endBeforeEdit = linedef->end;
+
+        if (ImGuiDrawFunctions::DrawLinedefEditor(*linedef, &editingLinedef, DRAGGABLE)) {
+            DeleteSelectedLinedefs();
+            return;
+        }
+
+        const bool pointsMoved = !SamePoint(startBeforeEdit, linedef->start) || !SamePoint(endBeforeEdit, linedef->end);
+
+        RecordLinedefInspectorEdit(level, linedefInspectorEdit,
+                                   pointsMoved ? "editor.history.edit_linedef_points" : "editor.history.edit_linedefs");
+    }
+
     void DrawSelectionInspectors(Level &level) {
         DrawSelectedSectorInspector(level);
         DrawSelectedEntityInspector(level);
         DrawSelectedWallInspector(level);
+        DrawSelectedLinedefInspector(level);
     }
 
     // =========================================================================
@@ -3610,6 +3745,7 @@ namespace MapEditorInternal {
         nextDotID = 0;
 
         ClearWallSelection();
+        ClearLinedefSelection();
         ClearSectorSelection();
         ClearEntitySelection();
 
@@ -3701,8 +3837,74 @@ namespace MapEditorInternal {
     // Geometry / Wall Edit Mode's panel: the selection's facts, actions on
     // it, filters and the shortcuts. The wall's own properties stay in the
     // wall inspector, which a right click opens.
+    // Geometry Mode's panel while Linedef Mode is on.
+    void DrawLinedefModePanel(Level& level) {
+        ModePanelSection(Get("editor.linedef.title").c_str());
+
+        const int selectedCount = static_cast<int>(selectedLinedefs.size());
+
+        if (selectedCount > 0) {
+            const std::string selectedText = (selectedCount == 1)
+                                                 ? Get("editor.linedef.selected_singular")
+                                                 : Get("editor.linedef.selected_plural");
+
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
+            ImGui::Text(selectedText.c_str(), selectedCount);
+            ImGui::PopStyleColor();
+        }
+        else HintText(Get("editor.linedef.none_selected").c_str());
+
+        // ---- Info -----------------------------------------------------------
+        if (selectedCount > 0) {
+            float totalLength = 0.0f;
+            const Linedef* only = nullptr;
+
+            for (const ID linedefID : selectedLinedefs) {
+                const Linedef* linedef = level.GetLinedef(linedefID);
+                if (linedef == nullptr) continue;
+
+                totalLength += linedef->length;
+                only = linedef;
+            }
+
+            if (selectedCount == 1 && only != nullptr)
+                ImGui::Text("%s %.2f", Get("editor.geometry.info.length").c_str(), only->length);
+            else ImGui::Text("%s %.2f", Get("editor.geometry.info.total_length").c_str(), totalLength);
+        }
+
+        // ---- Edit -----------------------------------------------------------
+        ModePanelSection(Get("editor.geometry.edit").c_str());
+        ImGui::BeginDisabled(selectedCount == 0);
+
+        if (FullWidthButton(Get("editor.geometry.split").c_str()))
+            NotifyActionResult(SplitSelectedLinedefsAtMidpoint(), "editor.linedef.split_done", "editor.linedef.split_nothing");
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.linedef.split")).c_str());
+
+        ImGui::EndDisabled();
+
+        // ---- Shortcuts --------------------------------------------------------
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(Get("editor.shortcuts").c_str())) {
+            HintText(Get("editor.linedef.hint.draw").c_str());
+            HintText(Get("editor.linedef.hint.select").c_str());
+            HintText(Get("editor.linedef.hint.drag").c_str());
+            HintText(FormatKeyBinds(Get("editor.linedef.hint.split")).c_str());
+            HintText(FormatKeyBinds(Get("editor.linedef.hint.delete")).c_str());
+        }
+    }
+
     void DrawGeometryModePanel() {
         Level& level = LevelManager::CurrentLevel();
+
+        bool linedefModeValue = linedefMode;
+        if (ImGui::Checkbox(Get("editor.linedef.mode").c_str(), &linedefModeValue)) SetLinedefMode(linedefModeValue);
+        HoverTooltip(FormatKeyBinds(Get("editor.tooltip.linedef.mode")).c_str());
+
+        if (linedefMode) {
+            DrawLinedefModePanel(level);
+            return;
+        }
 
         ModePanelSection(Get("editor.geometry.title").c_str());
 

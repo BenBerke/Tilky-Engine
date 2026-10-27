@@ -274,6 +274,18 @@ const Sector* Level::GetSector(const ID sectorID) const {
     return &sectors[it->second];
 }
 
+Linedef* Level::GetLinedef(const ID linedefID) {
+    const auto it = linedefIDToIndex.find(linedefID);
+    if (it == linedefIDToIndex.end() || it->second < 0 || it->second >= static_cast<int>(linedefs.size())) return nullptr;
+    return &linedefs[it->second];
+}
+
+const Linedef* Level::GetLinedef(const ID linedefID) const {
+    const auto it = linedefIDToIndex.find(linedefID);
+    if (it == linedefIDToIndex.end() || it->second < 0 || it->second >= static_cast<int>(linedefs.size())) return nullptr;
+    return &linedefs[it->second];
+}
+
 bool Level::IsSectorAncestor(const ID ancestor, ID sectorID) const {
     // Bounded by the sector count so a corrupted parent loop can't hang us.
     for (size_t steps = 0; sectorID != INVALID_ID && steps <= sectors.size(); ++steps) {
