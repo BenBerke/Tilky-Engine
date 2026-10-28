@@ -236,6 +236,20 @@ namespace {
         return assetId + ".lua";
     }
 
+    // `expose` fields belong to their own script; reaching one through a
+    // Behaviour reference is a Lua error.
+    void ThrowIfExposedField(const ScriptInstance& instance, const std::string& key) {
+        const auto assetIt = scriptAssets.find(instance.scriptId);
+        if (assetIt == scriptAssets.end()) return;
+
+        const bool exposed = std::ranges::any_of(assetIt->second.publicFields, [&key](const ScriptPublicField& field) {
+            return field.isPrivate && field.name == key;
+        });
+        if (exposed)
+            throw sol::error(fmt::format("'{}' is an exposed field of script '{}' - other scripts can't read or write it (declare it public instead)",
+                                         key, ScriptChunkName(instance.scriptId)));
+    }
+
     ScriptInstance* FindInstanceById(const ScriptInstanceID instanceId) {
         const auto it = instanceIndexById.find(instanceId);
         if (it == instanceIndexById.end()) return nullptr;
@@ -511,6 +525,8 @@ namespace {
             // Only non-texture kinds, so existing scripts keep their hash.
             if (field.assetKind != ScriptAssetKind::Texture)
                 HashCombine(hash, static_cast<std::uint64_t>(field.assetKind) + 1);
+            // Same for `expose` fields.
+            if (field.isPrivate) HashCombine(hash, 0x9E3779B97F4A7C15ULL);
             HashScriptValue(hash, field.defaultValue);
 
             for (const ScriptEnumOption& option : field.enumOptions) {
@@ -1175,6 +1191,7 @@ namespace LuaScriptRuntime {
         if (instance == nullptr || instance->ownerID != entityId || instance->destroyed || !instance->environment.valid())
             return sol::make_object(luaView, sol::nil);
 
+        ThrowIfExposedField(*instance, key);
         return instance->environment.get<sol::object>(key);
     }
 
@@ -1184,6 +1201,7 @@ namespace LuaScriptRuntime {
         if (instance == nullptr || instance->ownerID != entityId || instance->destroyed || !instance->environment.valid())
             return;
 
+        ThrowIfExposedField(*instance, key);
         instance->environment[key] = std::move(value);
     }
 

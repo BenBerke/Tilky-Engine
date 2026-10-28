@@ -263,13 +263,13 @@ namespace {
         int line = 0;
     };
 
-    // `public` - an Inspector-editable field, or with `hidden` one that is only
-    // reachable from scripts. Returns the Lua the declaration compiles to.
-    std::string CompilePublic(const Declaration& declaration, CompileContext& context) {
+    // Shared by `public` and `expose`. `isPrivate` marks an `expose` field.
+    std::string CompileField(const Declaration& declaration, const bool isPrivate, CompileContext& context) {
         Result& result = context.result;
+        const std::string_view kind = isPrivate ? "exposed" : "public";
 
         if (IsReservedFieldName(declaration.name)) {
-            context.Error(declaration.line, fmt::format("'{}' is a reserved name and can't be a public field", declaration.name));
+            context.Error(declaration.line, fmt::format("'{}' is a reserved name and can't be a {} field", declaration.name, kind));
             return {};
         }
 
@@ -278,7 +278,7 @@ namespace {
             return info.name == declaration.name;
         });
         if (duplicate) {
-            context.Error(declaration.line, fmt::format("public field '{}' is declared twice", declaration.name));
+            context.Error(declaration.line, fmt::format("{} field '{}' is declared twice", kind, declaration.name));
             return {};
         }
         if (std::ranges::find(result.publicFunctions, declaration.name) != result.publicFunctions.end()) {
@@ -293,6 +293,7 @@ namespace {
         field.type = declaration.type->type;
         field.componentType = declaration.type->componentType;
         field.assetKind = declaration.type->assetKind;
+        field.isPrivate = isPrivate;
         field.enumOptions = declaration.enumOptions;
         field.defaultValue = declaration.defaultValue;
         field.displayName = LuaScriptCompiler::DisplayNameFromIdentifier(declaration.name);
@@ -303,6 +304,18 @@ namespace {
         result.publicFields.push_back(std::move(field));
 
         return declaration.name + " = " + declaration.luaValue;
+    }
+
+    // `public` - an Inspector-editable field other scripts can reach, or with
+    // `hidden` one that is only reachable from scripts. Returns the Lua the
+    // declaration compiles to.
+    std::string CompilePublic(const Declaration& declaration, CompileContext& context) {
+        return CompileField(declaration, false, context);
+    }
+
+    // `expose` - an Inspector-editable field other scripts can't reach.
+    std::string CompileExpose(const Declaration& declaration, CompileContext& context) {
+        return CompileField(declaration, true, context);
     }
 
     // `public function` - callable from other scripts as `ref:Name(...)`.
@@ -343,6 +356,7 @@ namespace {
     const std::vector<DeclarationKeyword>& DeclarationKeywords() {
         static const std::vector<DeclarationKeyword> keywords = {
             {"public", CompilePublic, true, CompilePublicFunction},
+            {"expose", CompileExpose, true},
         };
         return keywords;
     }

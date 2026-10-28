@@ -18,10 +18,11 @@
 //     public range(0, 100) number health = 100      -- attributes go before the type
 //     public enum(Idle, Patrol, Chase) mode = Patrol
 //     hidden public number ammo = 5                -- other scripts can use it, the Inspector doesn't show it
+//     expose number spread = 2                     -- the Inspector shows it, other scripts can't use it
 //
 // Grammar: <keyword> {<attribute>[(<args>)]} <Type>[(<args>)] <name> [= <literal>]
 // The declaration is replaced by `name = <value>`, so the engine runs plain
-// Lua. `public` is the only keyword and there are no attributes yet; both are
+// Lua. The keywords are `public` and `expose`, and there are no attributes yet; both are
 // registries in LuaScriptCompiler.cpp (DeclarationKeywords, FieldAttributes),
 // so adding one is one handler plus one table entry. `hidden` may only appear
 // right before `public` on a variable; anything else is a compile error.
@@ -61,7 +62,7 @@ namespace LuaScriptCompiler {
 
     // One declaration as written, for editor tooling.
     struct DeclarationInfo {
-        std::string keyword;  // "public"
+        std::string keyword;  // "public" or "expose"
         std::string typeName; // as written: "number", "Entity", "enum", ...
         std::string luaType;  // the Lua usertype the value has at runtime ("Entity", "Vector3", ...), or empty
         std::string name;

@@ -157,6 +157,10 @@ struct ScriptPublicField {
     // Only meaningful when type == Asset.
     ScriptAssetKind assetKind = ScriptAssetKind::Texture;
 
+    // Declared `expose` instead of `public`: shown in the Inspector, but other
+    // scripts can't read or write it through a Behaviour reference.
+    bool isPrivate = false;
+
     // Reserved for future list/array field support (see the scripting
     // redesign notes). Always false today - the schema parser recognizes and
     // rejects `Type[]` declarations with an error instead of misinterpreting

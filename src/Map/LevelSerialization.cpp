@@ -2817,6 +2817,7 @@ namespace LevelSerialization {
                 {"enumOptions", options},
                 {"componentType", field.componentType},
                 {"assetKind", static_cast<int>(field.assetKind)},
+                {"private", field.isPrivate},
             });
         }
 
@@ -2835,6 +2836,7 @@ namespace LevelSerialization {
                 field.displayName = fieldJson.value("displayName", field.name);
                 field.componentType = fieldJson.value("componentType", -1);
                 field.assetKind = static_cast<ScriptAssetKind>(fieldJson.value("assetKind", 0));
+                field.isPrivate = fieldJson.value("private", false);
 
                 for (const json& option : fieldJson.value("enumOptions", json::array()))
                     field.enumOptions.push_back({option.at("name").get<std::string>(), option.at("value").get<int>()});
