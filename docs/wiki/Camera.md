@@ -139,7 +139,7 @@ The methods below don't have that delay: they read `yaw` and `pitch` when you ca
 
 | Method | Returns | Description |
 |---|---|---|
-| `Raycast([length], [requireCollider])` | table or `nil` | Shoots a ray from the eye through the middle of the screen (the crosshair), ignoring the camera's own entity. `length` defaults to `farPlane` and `requireCollider` to `false`. Returns the same hit table as [`Game.Raycast`](Game.md#raycast), or `nil` on a miss. |
+| `Raycast([length], [requireCollider], [rayType])` | table or `nil` | Shoots a ray from the eye through the middle of the screen (the crosshair), ignoring the camera's own entity. `length` defaults to `farPlane`, `requireCollider` to `false` and `rayType` to `RayType.General` (see [Ray types](Game.md#ray-types)). Returns the same hit table as [`Game.Raycast`](Game.md#raycast), or `nil` on a miss. |
 | `GetEyePosition()` | Vector3 | Where the camera sees from: the Transform position, raised by **Eye Height** when the entity has an active Player Controller. See [Where the camera is](#where-the-camera-is). |
 | `WorldToScreen(point)` | Vector2 or `nil` | Where a world `point` shows up on screen, from `(0, 0)` top-left to `(1, 1)` bottom-right, the same space as UI anchors. Values outside `0`–`1` are off screen. `nil` when the point is behind the camera. |
 | `ScreenToRay(x, y)` | Vector3, Vector3 | The ray through a screen point (same `0`–`1` space): returns `origin, direction`, ready for `Game.Raycast`. `ScreenToRay(0.5, 0.5)` is the ray `Raycast` uses. |

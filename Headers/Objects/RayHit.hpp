@@ -5,7 +5,22 @@
 #ifndef TILKY_ENGINE_RAYHIT_HPP
 #define TILKY_ENGINE_RAYHIT_HPP
 
+#include <cstdint>
+
 #include "../Math/Vector/Vector3.hpp"
+
+// What a ray is for (Lua: RayType). A typed ray fires the Receive Ray events
+// of whatever it hits; a GENERAL one (every engine query, and scripts unless
+// they pass a type) never fires anything.
+enum class RayType : uint8_t {
+    GENERAL = 0,
+    INTERACT = 1,
+    LINE_OF_SIGHT = 2,
+    BULLET = 3,
+    CUSTOM = 4,
+
+    COUNT
+};
 
 struct Wall;
 struct Entity;

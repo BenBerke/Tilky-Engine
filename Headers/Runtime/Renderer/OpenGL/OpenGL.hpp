@@ -312,6 +312,8 @@ public:
         Vector3 color
     ) override;
 
+    [[nodiscard]] float MeasureTextRaw(const std::string &text, Vector2 scale) override;
+
     void DrawUIRectangle(
         const Vector2 &position,
         const Vector2 &size,

@@ -128,9 +128,11 @@ namespace {
             Prop("forward", "Vector3", true, "Updated when a frame is drawn. Camera:Raycast uses yaw/pitch directly instead."),
             Prop("target", "Vector3", true),
         }, {
-            Method("Raycast", {Param("length", "number?"), Param("requireCollider", "boolean?")}, "table",
+            Method("Raycast", {Param("length", "number?"), Param("requireCollider", "boolean?"), Param("rayType", "RayType?")}, "table",
                    "Shoots a ray from GetEyePosition() through the middle of the screen, ignoring this camera's own entity. "
-                   "length defaults to farPlane, requireCollider to false. Returns nil on a miss, else the same table as Game.Raycast."),
+                   "length defaults to farPlane, requireCollider to false. A rayType other than RayType.General (the default) "
+                   "fires the Receive Ray events of what it hits, with this camera's entity as the instigator. "
+                   "Returns nil on a miss, else the same table as Game.Raycast."),
             Method("GetEyePosition", {}, "Vector3",
                    "Where the camera sees from: the Transform position, raised by eyeHeight when the entity has an active PlayerController."),
             Method("WorldToScreen", {Param("point", "Vector3")}, "Vector2?",
@@ -530,8 +532,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             "forward", sol::property(&ScriptCamera::GetForward),
             "target", sol::property(&ScriptCamera::GetTarget),
 
-            "Raycast", [](sol::this_state state, const ScriptCamera& self,
-                          const sol::optional<float> length, const sol::optional<bool> requireCollider) -> sol::object {
+            "Raycast", [](sol::this_state state, const ScriptCamera& self, const sol::optional<float> length,
+                          const sol::optional<bool> requireCollider, const sol::optional<int> rayType) -> sol::object {
                 const ComponentCamera* camera = self.GetComponent();
                 if (camera == nullptr) return sol::make_object(state, sol::nil);
 
@@ -541,7 +543,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
                     self.GetViewForward(),
                     length.value_or(camera->farPlane),
                     self.ownerID,
-                    requireCollider.value_or(false)
+                    requireCollider.value_or(false),
+                    LuaRayHit::ToRayType(rayType, "Camera:Raycast")
                 ));
             },
 

@@ -40,6 +40,10 @@ struct WorldSettings {
     std::unordered_map<EventVariableID, std::string> eventVariableNames;
     std::unordered_map<std::string, EventVariableID> eventVariableIdsByName;
     EventVariableID nextEventVariableID = 1; // 0 stays unused, deleted IDs aren't reused
+
+    // The level's own events and dispatches (EventOwnerKind::LEVEL).
+    std::vector<Event> events;
+    std::vector<Dispatch> dispatches;
 };
 
 // See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp
@@ -183,6 +187,14 @@ struct Level {
     // the change on to the sector's children, same as a value written from
     // Lua.
     void UpdateSectorMovement(float deltaTime);
+
+    // Every floor/ceiling move that ended since EventSystem last took them
+    // (Sector Move Finished). Runtime only.
+    std::vector<SectorMoveEnd> sectorMoveEnds;
+
+    // Stops the floor and/or ceiling move of one of the sector's floors where
+    // it is, recording each running one as a STOPPED end.
+    void StopSectorMoves(ID sectorID, int floorIndex, bool floor, bool ceiling);
 
     struct SectorValuesSnapshot {
         ID id = INVALID_ID;

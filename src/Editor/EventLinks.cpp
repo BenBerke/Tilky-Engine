@@ -112,6 +112,9 @@ namespace EventLinks {
                 point = transform->position;
                 return true;
             }
+            // The level isn't anywhere, so it has no link lines.
+            case EventOwnerKind::LEVEL:
+                return false;
         }
         return false;
     }

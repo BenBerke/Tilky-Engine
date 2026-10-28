@@ -909,6 +909,18 @@ namespace {
         ImGui::Separator();
         ImGui::Spacing();
 
+        // ---- The level's own events and dispatches --------------------------
+        SectionHeader(Get("settings.level_events.title").c_str());
+        HoverTooltip(Get("settings.level_events.tooltip").c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGuiDrawFunctions::DrawLevelEventSections(level, DRAGGABLE);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
         // ---- Rendering ----------------------------------------------------
         SectionHeader(Get("settings.rendering.title").c_str());
         ImGui::Separator();

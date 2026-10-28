@@ -543,19 +543,43 @@ void Level::UpdateSectorMovement(const float deltaTime) {
             const float ceilingBefore = floor.ceiling.height;
             const bool checkFloor = ChecksEntities(floor.floorMove);
             const bool checkCeiling = ChecksEntities(floor.ceilingMove);
+            const SurfaceMove floorMoveBefore = floor.floorMove;
+            const SurfaceMove ceilingMoveBefore = floor.ceilingMove;
 
             floor.UpdateMovement(deltaTime, lowest, highest);
 
             // Each surface is judged on its own step, the other held still.
             // Only a rising floor or a lowering ceiling can hit a body.
             const int floorIndex = static_cast<int>(i);
+            bool floorBlocked = false;
+            bool ceilingBlocked = false;
+
             if (checkFloor && floor.floor.height > floorBefore &&
-                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floor.floor.height, ceilingBefore))
+                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floor.floor.height, ceilingBefore)) {
                 BlockMove(floor.floorMove, floor.floor.height, floorBefore);
+                floorBlocked = true;
+            }
 
             if (checkCeiling && floor.ceiling.height < ceilingBefore &&
-                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floorBefore, floor.ceiling.height))
+                MoveHitsBody(sector, floor, floorIndex, bodies, floorBefore, ceilingBefore, floorBefore, floor.ceiling.height)) {
                 BlockMove(floor.ceilingMove, floor.ceiling.height, ceilingBefore);
+                ceilingBlocked = true;
+            }
+
+            // A move that was running and isn't any more ended this frame.
+            // Only SECTOR_STOP ends a move when blocked.
+            const auto recordEnd = [&](const SurfaceMove& before, const SurfaceMove& after, const bool blocked, const bool ceiling) {
+                if (!before.active || after.active) return;
+
+                SectorMoveEndReason reason = SectorMoveEndReason::REACHED;
+                if (blocked) reason = SectorMoveEndReason::STOPPED;
+                else if (before.retracting) reason = SectorMoveEndReason::RETRACTED;
+
+                sectorMoveEnds.push_back({sector.id, floorIndex, ceiling, reason});
+            };
+
+            recordEnd(floorMoveBefore, floor.floorMove, floorBlocked, false);
+            recordEnd(ceilingMoveBefore, floor.ceilingMove, ceilingBlocked, true);
 
             changed |= floor.floor.height != floorBefore || floor.ceiling.height != ceilingBefore;
         }
@@ -566,6 +590,22 @@ void Level::UpdateSectorMovement(const float deltaTime) {
 
     for (Sector& sector : sectors)
         for (SectorFloor& floor : sector.floors) floor.floorDelta = floor.floor.height - floor.floorDelta;
+}
+
+void Level::StopSectorMoves(const ID sectorID, const int floorIndex, const bool floor, const bool ceiling) {
+    Sector* sector = GetSector(sectorID);
+    if (!sector || floorIndex < 0 || floorIndex >= static_cast<int>(sector->floors.size())) return;
+
+    SectorFloor& sectorFloor = sector->floors[floorIndex];
+
+    const auto stop = [&](SurfaceMove& move, const bool isCeiling) {
+        if (!move.active) return;
+        move.active = false;
+        sectorMoveEnds.push_back({sectorID, floorIndex, isCeiling, SectorMoveEndReason::STOPPED});
+    };
+
+    if (floor) stop(sectorFloor.floorMove, false);
+    if (ceiling) stop(sectorFloor.ceilingMove, true);
 }
 
 std::vector<Level::SectorValuesSnapshot> Level::SnapshotParentSectorValues() const {

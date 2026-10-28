@@ -1115,6 +1115,109 @@ namespace ImGuiDrawFunctions {
         {PayloadDispatchChangeVariable::SUBTRACT, "events.operation.subtract"}
     };
 
+    constexpr std::pair<LineSide, const char *> kLineSideOptions[] = {
+        {LineSide::EITHER, "events.side.either"},
+        {LineSide::FRONT, "events.side.front"},
+        {LineSide::BACK, "events.side.back"}
+    };
+
+    constexpr std::pair<RayType, const char *> kRayTypeOptions[] = {
+        {RayType::INTERACT, "events.ray_type.interact"},
+        {RayType::LINE_OF_SIGHT, "events.ray_type.line_of_sight"},
+        {RayType::BULLET, "events.ray_type.bullet"},
+        {RayType::CUSTOM, "events.ray_type.custom"}
+    };
+
+    // The PlayerController can also cast General rays (which fire nothing).
+    constexpr std::pair<RayType, const char *> kRayTypeOptionsWithGeneral[] = {
+        {RayType::GENERAL, "events.ray_type.general"},
+        {RayType::INTERACT, "events.ray_type.interact"},
+        {RayType::LINE_OF_SIGHT, "events.ray_type.line_of_sight"},
+        {RayType::BULLET, "events.ray_type.bullet"},
+        {RayType::CUSTOM, "events.ray_type.custom"}
+    };
+
+    constexpr std::pair<SectorSurfacePick, const char *> kSurfaceOptions[] = {
+        {SectorSurfacePick::FLOOR, "events.surface.floor"},
+        {SectorSurfacePick::CEILING, "events.surface.ceiling"},
+        {SectorSurfacePick::BOTH, "events.surface.both"}
+    };
+
+    // Sector Move Finished: BOTH means either surface.
+    constexpr std::pair<SectorSurfacePick, const char *> kSurfaceFilterOptions[] = {
+        {SectorSurfacePick::BOTH, "events.surface.either"},
+        {SectorSurfacePick::FLOOR, "events.surface.floor"},
+        {SectorSurfacePick::CEILING, "events.surface.ceiling"}
+    };
+
+    constexpr std::pair<PayloadSectorMoveFinished::Reason, const char *> kMoveEndReasonOptions[] = {
+        {PayloadSectorMoveFinished::ANY, "events.move_end.any"},
+        {PayloadSectorMoveFinished::REACHED, "events.move_end.reached"},
+        {PayloadSectorMoveFinished::STOPPED, "events.move_end.stopped"},
+        {PayloadSectorMoveFinished::RETRACTED, "events.move_end.retracted"}
+    };
+
+    constexpr std::pair<ToggleMode, const char *> kToggleModeOptions[] = {
+        {ToggleMode::ON, "events.toggle.on"},
+        {ToggleMode::OFF, "events.toggle.off"},
+        {ToggleMode::TOGGLE, "events.toggle.toggle"}
+    };
+
+    constexpr std::pair<WallPiece, const char *> kWallPieceOptions[] = {
+        {WallPiece::TOP, "events.wall_piece.top"},
+        {WallPiece::MIDDLE, "events.wall_piece.middle"},
+        {WallPiece::BOTTOM, "events.wall_piece.bottom"}
+    };
+
+    constexpr std::pair<SectorHeightMode, const char *> kHeightModeOptions[] = {
+        {SectorHeightMode::ABSOLUTE_HEIGHT, "events.height_mode.absolute"},
+        {SectorHeightMode::RELATIVE_OFFSET, "events.height_mode.relative"},
+        {SectorHeightMode::LOWEST_NEIGHBOR_FLOOR, "events.height_mode.lowest_neighbor_floor"},
+        {SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR, "events.height_mode.highest_neighbor_floor"},
+        {SectorHeightMode::LOWEST_NEIGHBOR_CEILING, "events.height_mode.lowest_neighbor_ceiling"},
+        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "events.height_mode.highest_neighbor_ceiling"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::OpenMode, const char *> kDoorOpenModeOptions[] = {
+        {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_CEILING, "events.door.open_mode.lowest_neighbor_ceiling"},
+        {PayloadDispatchSectorDoor::FIXED_HEIGHT, "events.door.open_mode.fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char *> kDoorRetriggerOptions[] = {
+        {PayloadDispatchSectorDoor::RESTART, "events.door.retrigger.restart"},
+        {PayloadDispatchSectorDoor::TOGGLE, "events.door.retrigger.toggle"},
+        {PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN, "events.door.retrigger.ignore"}
+    };
+
+    constexpr std::pair<ToggleableComponent, const char *> kToggleableComponentOptions[] = {
+        {ToggleableComponent::COLLIDER, "component.collider"},
+        {ToggleableComponent::SPRITE, "component.sprite"},
+        {ToggleableComponent::SCRIPT, "component.script"},
+        {ToggleableComponent::CAMERA, "component.camera"},
+        {ToggleableComponent::PLAYER_CONTROLLER, "component.player_controller"},
+        {ToggleableComponent::UI_SPRITE, "component.ui_sprite"}
+    };
+
+    constexpr std::pair<bool, const char *> kTagOperationOptions[] = {
+        {false, "events.tag_operation.add"},
+        {true, "events.tag_operation.remove"}
+    };
+
+    constexpr std::pair<bool, const char *> kVelocityModeOptions[] = {
+        {false, "events.velocity_mode.add"},
+        {true, "events.velocity_mode.set"}
+    };
+
+    constexpr std::pair<bool, const char *> kMoveTimingOptions[] = {
+        {false, "events.move_timing.speed"},
+        {true, "events.move_timing.duration"}
+    };
+
+    constexpr std::pair<bool, const char *> kSurfaceSingleOptions[] = {
+        {false, "events.surface.floor"},
+        {true, "events.surface.ceiling"}
+    };
+
     // What a variable reference shows: its name (global ones marked), or
     // none / missing.
     static std::string EventVariableLabel(const Level &level, const EventVariableID id) {
@@ -1372,7 +1475,57 @@ namespace ImGuiDrawFunctions {
         return Get(translationKey) + "  ->  " + (tagName ? *tagName : Get("tags.missing")) + idSuffix;
     }
 
-    static void DrawEventsEditor(std::vector<Event> &events, const EventOwnerKind kind) {
+    // Property row: which of the sector's floors, numbered from 1 as in the
+    // sector inspector. `allowAny` adds "Any floor" for -1.
+    static void DrawFloorIndexRow(int &floorIndex, const ID sectorID, const bool allowAny) {
+        const Sector *sector = LevelManager::CurrentLevel().GetSector(sectorID);
+        const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
+
+        const auto floorLabel = [](const int index) {
+            return index < 0 ? Get("events.floor_any") : Get("events.floor") + " " + std::to_string(index + 1);
+        };
+
+        Property(Get("events.floor").c_str());
+        if (ImGui::BeginCombo("##Floor", floorLabel(floorIndex).c_str())) {
+            if (allowAny && ImGui::Selectable(floorLabel(-1).c_str(), floorIndex < 0)) floorIndex = -1;
+
+            for (int floor = 0; floor < floorCount; ++floor)
+                if (ImGui::Selectable(floorLabel(floor).c_str(), floor == floorIndex)) floorIndex = floor;
+            ImGui::EndCombo();
+        }
+    }
+
+    // Property row: an asset reference picked or dropped from the asset browser.
+    static void DrawAssetRow(const char *labelKey, std::string &value, const AssetKind kind, const char *tooltipKey) {
+        Property(Get(labelKey).c_str());
+        ImGui::PushID(labelKey);
+        MapEditorInternal::DrawAssetField("", value, kind);
+        ImGui::PopID();
+        Tooltip(Get(tooltipKey).c_str());
+    }
+
+    // Property row: one of the project's levels, by name.
+    static void DrawLevelNameRow(std::string &levelName) {
+        Property(Get("events.level").c_str());
+
+        const std::string preview = levelName.empty() ? Get("events.level_none") : levelName;
+        if (ImGui::BeginCombo("##Level", preview.c_str())) {
+            std::vector<std::string> names;
+            for (const std::filesystem::path &file: LevelSerialization::ListLevelFiles())
+                names.push_back(file.stem().string());
+            std::ranges::sort(names);
+            names.erase(std::unique(names.begin(), names.end()), names.end());
+
+            for (const std::string &name: names)
+                if (ImGui::Selectable(name.c_str(), name == levelName)) levelName = name;
+
+            if (names.empty()) ImGui::TextDisabled("%s", Get("events.level_none_available").c_str());
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.dispatches.level").c_str());
+    }
+
+    static void DrawEventsEditor(std::vector<Event> &events, const EventOwnerKind kind, const ID ownerID) {
         int eventToRemove = -1;
 
         for (size_t i = 0; i < events.size(); ++i) {
@@ -1409,8 +1562,12 @@ namespace ImGuiDrawFunctions {
                 }
 
                 // ...then what only this type has.
-                const bool hasSettings = std::visit([]<typename Payload>(const Payload &payload) {
-                    return requires { payload.filter; } || std::is_same_v<Payload, PayloadLineEntityCross>;
+                const bool hasSettings = std::visit([]<typename Payload>(const Payload &) {
+                    return !std::is_same_v<Payload, PayloadEntityEnable> &&
+                           !std::is_same_v<Payload, PayloadEntityDisable> &&
+                           !std::is_same_v<Payload, PayloadEntityDestroyed> &&
+                           !std::is_same_v<Payload, PayloadConditionMet> &&
+                           !std::is_same_v<Payload, PayloadLevelStart>;
                 }, event.payload);
 
                 if (hasSettings) {
@@ -1424,6 +1581,58 @@ namespace ImGuiDrawFunctions {
                                 Property(Get("events.direction").c_str());
                                 DrawEnumCombo("##Direction", payload.direction, kCrossDirectionOptions);
                                 Tooltip(Get("editor.tooltip.events.direction").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadLineEntityCollide>) {
+                                Property(Get("events.side").c_str());
+                                DrawEnumCombo("##Side", payload.side, kLineSideOptions);
+                                Tooltip(Get("editor.tooltip.events.collide_side").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadSectorEntityStay>) {
+                                Property(Get("events.interval").c_str());
+                                if (ImGui::InputFloat("##Interval", &payload.interval, 0.0f, 0.0f, "%.2f s"))
+                                    payload.interval = std::max(0.01f, payload.interval);
+                                Tooltip(Get("editor.tooltip.events.stay_interval").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadSectorMoveFinished>) {
+                                Property(Get("events.surface").c_str());
+                                DrawEnumCombo("##Surface", payload.surface, kSurfaceFilterOptions);
+
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, true);
+
+                                Property(Get("events.move_end").c_str());
+                                DrawEnumCombo("##Reason", payload.reason, kMoveEndReasonOptions);
+                                Tooltip(Get("editor.tooltip.events.move_end").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadReceiveRay>) {
+                                Property(Get("events.ray_type").c_str());
+                                DrawEnumCombo("##RayType", payload.rayType, kRayTypeOptions);
+                                Tooltip(Get("editor.tooltip.events.ray_type").c_str());
+
+                                Property(Get("events.first_hit_only").c_str());
+                                ImGui::Checkbox("##FirstHitOnly", &payload.firstHitOnly);
+                                Tooltip(Get("editor.tooltip.events.first_hit_only").c_str());
+
+                                if (kind == EventOwnerKind::LINE || kind == EventOwnerKind::LINEDEF) {
+                                    Property(Get("events.side").c_str());
+                                    DrawEnumCombo("##Side", payload.side, kLineSideOptions);
+                                    Tooltip(Get("editor.tooltip.events.ray_side").c_str());
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadTimer>) {
+                                Property(Get("events.interval").c_str());
+                                if (ImGui::InputFloat("##Interval", &payload.interval, 0.0f, 0.0f, "%.2f s"))
+                                    payload.interval = std::max(0.01f, payload.interval);
+                                Tooltip(Get("editor.tooltip.events.timer_interval").c_str());
+
+                                Property(Get("events.first_delay").c_str());
+                                if (ImGui::InputFloat("##FirstDelay", &payload.firstDelay, 0.0f, 0.0f, "%.2f s"))
+                                    payload.firstDelay = std::max(0.0f, payload.firstDelay);
+                                Tooltip(Get("editor.tooltip.events.first_delay").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadLuaSignal>) {
+                                Property(Get("events.signal_name").c_str());
+                                ImGui::InputText("##SignalName", &payload.name);
+                                Tooltip(Get("editor.tooltip.events.signal_name").c_str());
                             }
                         }, event.payload);
 
@@ -1465,6 +1674,11 @@ namespace ImGuiDrawFunctions {
                     DrawTagCombo("##LinkTag", dispatch.tagId);
                     Tooltip(Get("editor.tooltip.events.link_tag").c_str());
 
+                    Property(Get("events.delay").c_str());
+                    if (ImGui::InputFloat("##Delay", &dispatch.delay, 0.0f, 0.0f, "%.2f s"))
+                        dispatch.delay = std::max(0.0f, dispatch.delay);
+                    Tooltip(Get("editor.tooltip.dispatches.delay").c_str());
+
                     EndProperties();
                 }
 
@@ -1492,19 +1706,7 @@ namespace ImGuiDrawFunctions {
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveFloorToCeiling> ||
                                                std::is_same_v<Payload, PayloadDispatchSectorMoveCeilingToFloor>) {
-                                const Sector *sector = level.GetSector(ownerID);
-                                const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
-
-                                // Floors are numbered from 1, as in the sector inspector.
-                                const auto floorLabel = [](const int index) { return Get("events.floor") + " " + std::to_string(index + 1); };
-
-                                Property(Get("events.floor").c_str());
-                                if (ImGui::BeginCombo("##Floor", floorLabel(payload.floorIndex).c_str())) {
-                                    for (int floor = 0; floor < floorCount; ++floor)
-                                        if (ImGui::Selectable(floorLabel(floor).c_str(), floor == payload.floorIndex))
-                                            payload.floorIndex = floor;
-                                    ImGui::EndCombo();
-                                }
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
 
                                 Property(Get("events.gap").c_str());
                                 if (InputOrDrag("##Gap", &payload.gap, draggable, 0.1f))
@@ -1570,6 +1772,219 @@ namespace ImGuiDrawFunctions {
                                 Property(Get("events.value").c_str());
                                 InputOrDrag("##Value", &payload.value, draggable, 0.1f);
                             }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetTexture>) {
+                                Property(Get("events.wall_piece").c_str());
+                                DrawEnumCombo("##Piece", payload.piece, kWallPieceOptions);
+
+                                DrawAssetRow("events.texture", payload.texture, AssetKind::Texture, "editor.tooltip.dispatches.line_texture");
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetCollision>) {
+                                Property(Get("events.toggle").c_str());
+                                DrawEnumCombo("##Mode", payload.mode, kToggleModeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.line_collision").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchLinedefSetEnabled>) {
+                                Property(Get("events.toggle").c_str());
+                                DrawEnumCombo("##Mode", payload.mode, kToggleModeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.linedef_enabled").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveToHeight>) {
+                                Property(Get("events.surface").c_str());
+                                DrawEnumCombo("##Surface", payload.ceiling, kSurfaceSingleOptions);
+
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+
+                                Property(Get("events.height_mode").c_str());
+                                DrawEnumCombo("##Mode", payload.mode, kHeightModeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.height_mode").c_str());
+
+                                Property(Get(payload.mode == SectorHeightMode::ABSOLUTE_HEIGHT ? "events.height" : "events.offset").c_str());
+                                InputOrDrag("##Height", &payload.height, draggable, 0.1f);
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 0.1f))
+                                    payload.speed = std::max(0.01f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                                Property(Get("events.collision").c_str());
+                                DrawEnumCombo("##Collision", payload.collisionType, kSectorCollisionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+
+                                Property(Get("events.door.open_mode").c_str());
+                                DrawEnumCombo("##OpenMode", payload.openMode, kDoorOpenModeOptions);
+
+                                if (payload.openMode == PayloadDispatchSectorDoor::FIXED_HEIGHT) {
+                                    Property(Get("events.door.open_height").c_str());
+                                    InputOrDrag("##OpenHeight", &payload.openHeight, draggable, 0.1f);
+                                }
+                                else {
+                                    Property(Get("events.door.lip").c_str());
+                                    InputOrDrag("##Lip", &payload.lip, draggable, 0.1f);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_lip").c_str());
+                                }
+
+                                Property(Get("events.door.open_speed").c_str());
+                                if (InputOrDrag("##OpenSpeed", &payload.openSpeed, draggable, 0.1f))
+                                    payload.openSpeed = std::max(0.01f, payload.openSpeed);
+
+                                Property(Get("events.door.close_speed").c_str());
+                                if (InputOrDrag("##CloseSpeed", &payload.closeSpeed, draggable, 0.1f))
+                                    payload.closeSpeed = std::max(0.01f, payload.closeSpeed);
+
+                                Property(Get("events.door.wait").c_str());
+                                if (InputOrDrag("##Wait", &payload.wait, draggable, 0.1f))
+                                    payload.wait = std::max(0.0f, payload.wait);
+                                Tooltip(Get("editor.tooltip.dispatches.door_wait").c_str());
+
+                                Property(Get("events.door.close_collision").c_str());
+                                DrawEnumCombo("##Collision", payload.closeCollision, kSectorCollisionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.door_collision").c_str());
+
+                                Property(Get("events.door.retrigger").c_str());
+                                DrawEnumCombo("##Retrigger", payload.retrigger, kDoorRetriggerOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.door_retrigger").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
+                                Property(Get("events.surface").c_str());
+                                DrawEnumCombo("##Surface", payload.surface, kSurfaceOptions);
+
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetLight>) {
+                                // 0-255 like the sector inspector's light.
+                                float color[3] = {payload.light.x / 255.0f, payload.light.y / 255.0f, payload.light.z / 255.0f};
+                                Property(Get("events.light").c_str());
+                                if (ImGui::ColorEdit3("##Light", color, CompactColorFlags(ImGui::GetContentRegionAvail().x, 3)))
+                                    payload.light = {color[0] * 255.0f, color[1] * 255.0f, color[2] * 255.0f};
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 1.0f))
+                                    payload.speed = std::max(0.0f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.light_speed").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetTexture>) {
+                                Property(Get("events.surface").c_str());
+                                DrawEnumCombo("##Surface", payload.surface, kSurfaceOptions);
+
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+
+                                DrawAssetRow("events.texture", payload.texture, AssetKind::Texture, "editor.tooltip.dispatches.sector_texture");
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchChangeTag>) {
+                                Property(Get("events.operation").c_str());
+                                DrawEnumCombo("##Operation", payload.remove, kTagOperationOptions);
+
+                                Property(Get("events.tag").c_str());
+                                DrawTagCombo("##Tag", payload.tag);
+                                Tooltip(Get("editor.tooltip.dispatches.change_tag").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityChangeVelocity>) {
+                                Property(Get("events.velocity_mode").c_str());
+                                DrawEnumCombo("##Mode", payload.set, kVelocityModeOptions);
+
+                                Property(Get("events.velocity").c_str());
+                                InputOrDrag3("##Velocity", &payload.velocity.x, draggable);
+                                Tooltip(Get("editor.tooltip.dispatches.velocity").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMoveTo>) {
+                                Property(Get("events.position").c_str());
+                                InputOrDrag3("##Position", &payload.position.x, draggable);
+
+                                Property(Get("events.relative").c_str());
+                                ImGui::Checkbox("##Relative", &payload.relative);
+                                Tooltip(Get("editor.tooltip.dispatches.move_relative").c_str());
+
+                                Property(Get("events.move_timing").c_str());
+                                DrawEnumCombo("##Timing", payload.useDuration, kMoveTimingOptions);
+
+                                if (payload.useDuration) {
+                                    Property(Get("events.duration").c_str());
+                                    if (InputOrDrag("##Duration", &payload.duration, draggable, 0.05f))
+                                        payload.duration = std::max(0.0f, payload.duration);
+                                }
+                                else {
+                                    Property(Get("events.speed").c_str());
+                                    if (InputOrDrag("##Speed", &payload.speed, draggable, 0.1f))
+                                        payload.speed = std::max(0.01f, payload.speed);
+                                }
+
+                                Property(Get("events.rotate").c_str());
+                                ImGui::Checkbox("##Rotate", &payload.rotate);
+
+                                if (payload.rotate) {
+                                    Property(Get("events.rotation").c_str());
+                                    InputOrDrag3("##Rotation", &payload.rotation.x, draggable);
+                                }
+
+                                const ComponentTransform *transform = level.transforms.Get(ownerID);
+                                Property("");
+                                ImGui::BeginDisabled(transform == nullptr);
+                                if (ImGui::Button(Get("events.use_entity").c_str(), ImVec2(-FLT_MIN, 0.0f)) && transform != nullptr) {
+                                    payload.position = transform->position;
+                                    payload.relative = false;
+                                    payload.rotation = transform->rotation.Normalized().ToEulerDegrees();
+                                }
+                                ImGui::EndDisabled();
+                                Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetComponent>) {
+                                Property(Get("events.component").c_str());
+                                DrawEnumCombo("##Component", payload.component, kToggleableComponentOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.component").c_str());
+
+                                Property(Get("events.toggle").c_str());
+                                DrawEnumCombo("##Mode", payload.mode, kToggleModeOptions);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
+                                DrawAssetRow("events.prefab", payload.prefab, AssetKind::Prefab, "editor.tooltip.dispatches.prefab");
+
+                                Property(Get("events.world_position").c_str());
+                                ImGui::Checkbox("##WorldPosition", &payload.worldPosition);
+                                Tooltip(Get("editor.tooltip.dispatches.world_position").c_str());
+
+                                Property(Get(payload.worldPosition ? "events.position" : "events.offset").c_str());
+                                InputOrDrag3("##Offset", &payload.offset.x, draggable);
+
+                                Property(Get("events.rotation").c_str());
+                                InputOrDrag3("##Rotation", &payload.rotation.x, draggable);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchPlaySound>) {
+                                DrawAssetRow("events.sound", payload.sound, AssetKind::Sound, "editor.tooltip.dispatches.sound");
+
+                                Property(Get("events.gain").c_str());
+                                if (InputOrDrag("##Gain", &payload.gain, draggable, 0.01f))
+                                    payload.gain = std::max(0.0f, payload.gain);
+
+                                Property(Get("events.pitch").c_str());
+                                if (InputOrDrag("##Pitch", &payload.pitch, draggable, 0.01f))
+                                    payload.pitch = std::max(0.01f, payload.pitch);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchShowMessage>) {
+                                Property(Get("events.text").c_str());
+                                ImGui::InputText("##Text", &payload.text);
+
+                                Property(Get("events.duration").c_str());
+                                if (InputOrDrag("##Duration", &payload.duration, draggable, 0.05f))
+                                    payload.duration = std::max(0.0f, payload.duration);
+
+                                Property(Get("events.color").c_str());
+                                ImGui::ColorEdit3("##Color", &payload.color.x,
+                                                  CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> ||
+                                               std::is_same_v<Payload, PayloadDispatchResetEvent>) {
+                                Property(Get("events.target_tag").c_str());
+                                DrawTagCombo("##Target", payload.target);
+                                Tooltip(Get(std::is_same_v<Payload, PayloadDispatchRelay>
+                                                ? "editor.tooltip.dispatches.relay"
+                                                : "editor.tooltip.dispatches.reset_event").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
+                                DrawLevelNameRow(payload.levelName);
+                            }
                         }, dispatch.payload);
 
                         EndProperties();
@@ -1594,7 +2009,7 @@ namespace ImGuiDrawFunctions {
                                   const EventOwnerKind kind, const ID ownerID, const bool draggable) {
         if (InspectorSection(Get("events.title"), "Events", static_cast<int>(events.size()), false)) {
             ImGui::PushID("Events");
-            DrawEventsEditor(events, kind);
+            DrawEventsEditor(events, kind, ownerID);
             ImGui::PopID();
         }
 
@@ -2185,6 +2600,12 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Linedef Editor
     // ─────────────────────────────────────────────────────────────────────────
+    void DrawLevelEventSections(Level &level, const bool draggable) {
+        ImGui::PushID("LevelEvents");
+        DrawEventSections(level.worldSettings.events, level.worldSettings.dispatches, EventOwnerKind::LEVEL, ID{0}, draggable);
+        ImGui::PopID();
+    }
+
     bool DrawLinedefEditor(Linedef &linedef, bool *open, const bool draggable) {
         bool deleteRequested = false;
 
@@ -2221,14 +2642,12 @@ namespace ImGuiDrawFunctions {
         pointsChanged |= InputOrDrag2(Get("linedef.end").c_str(), &linedef.end.x, draggable);
 
         if (pointsChanged) linedef.RefreshDerived();
+
+        ImGui::Checkbox(Get("linedef.enabled").c_str(), &linedef.enabled);
+        Tooltip(Get("editor.tooltip.linedef.enabled").c_str());
         EndSection();
 
-        // No dispatch can be attached to a linedef yet, so only events.
-        BeginSection(Get("events.title").c_str());
-        ImGui::PushID("Events");
-        DrawEventsEditor(linedef.events, EventOwnerKind::LINEDEF);
-        ImGui::PopID();
-        EndSection();
+        DrawEventSections(linedef.events, linedef.dispatches, EventOwnerKind::LINEDEF, linedef.id, draggable);
 
         // ── Actions ──────────────────────────────────────────────────────────
         ImGui::Spacing();
@@ -2749,7 +3168,7 @@ namespace ImGuiDrawFunctions {
             ImGui::PushID("Events");
             {
                 PrefabField prefabField("events");
-                DrawEventsEditor(entity.events, EventOwnerKind::ENTITY);
+                DrawEventsEditor(entity.events, EventOwnerKind::ENTITY, entity.id);
             }
             ImGui::PopID();
         }
@@ -3212,6 +3631,57 @@ namespace ImGuiDrawFunctions {
                 }
                 if (c->minYaw < .0f) c->minYaw = 0.0f;
 
+                EndSection();
+
+                BeginSection("Use");
+                {
+                    PrefabField prefabField("useKey");
+
+                    // Click, then press a key; Escape or a second click cancels,
+                    // right click clears it (no Use key).
+                    SDL_Scancode *key = &c->useKey;
+                    const bool listening = MapEditorInternal::keyBindBeingListened == key;
+
+                    if (listening) {
+                        const SDL_Scancode pressed = InputManager::GetAnyKeyDown();
+
+                        if (pressed == SDL_SCANCODE_ESCAPE) MapEditorInternal::keyBindBeingListened = nullptr;
+                        else if (pressed != SDL_SCANCODE_UNKNOWN) {
+                            *key = pressed;
+                            MapEditorInternal::keyBindBeingListened = nullptr;
+                        }
+                    }
+
+                    const std::string keyLabel = (listening
+                        ? Get("editor.user_settings.key_listening")
+                        : *key == SDL_SCANCODE_UNKNOWN
+                            ? Get("editor.user_settings.key_none")
+                            : InputManager::ScancodeToString(*key)) + "##UseKey";
+
+                    if (ImGui::Button(keyLabel.c_str(), ImVec2(160.0f, 0.0f)))
+                        MapEditorInternal::keyBindBeingListened = listening ? nullptr : key;
+                    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+                        *key = SDL_SCANCODE_UNKNOWN;
+                        if (listening) MapEditorInternal::keyBindBeingListened = nullptr;
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::TextUnformatted(Get("component.player_controller.use_key").c_str());
+                    Tooltip(Get("editor.tooltip.component.player_controller.use_key").c_str());
+                }
+                FieldWidth(160.0f);
+                {
+                    PrefabField prefabField("useReach");
+                    if (InputOrDrag(Get("component.player_controller.use_reach").c_str(), &c->useReach, draggable))
+                        c->useReach = std::max(0.0f, c->useReach);
+                    Tooltip(Get("editor.tooltip.component.player_controller.use_reach").c_str());
+                }
+                FieldWidth(160.0f);
+                {
+                    PrefabField prefabField("useRayType");
+                    DrawEnumCombo(Get("component.player_controller.use_ray_type").c_str(), c->useRayType, kRayTypeOptionsWithGeneral);
+                    Tooltip(Get("editor.tooltip.component.player_controller.use_ray_type").c_str());
+                }
                 EndSection();
 
                 BeginSection("State");

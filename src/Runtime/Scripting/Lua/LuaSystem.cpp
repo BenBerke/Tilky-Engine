@@ -17,6 +17,7 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
@@ -892,7 +893,13 @@ namespace {
     // ComponentScript had been removed directly, outside Entity:Destroy)
     // from the registry. Always safe to call even with nothing queued.
     void ProcessPendingDestroys(Level& level) {
-        for (const ID entityId : pendingDestroys) {
+        // By index: an Entity Destroyed event's dispatches can queue more.
+        for (size_t i = 0; i < pendingDestroys.size(); ++i) {
+            const ID entityId = pendingDestroys[i];
+
+            // Before anything is torn down, so its own dispatches still run.
+            EventSystem::FireEntityDestroyed(level, entityId);
+
             for (ScriptInstance& instance : scriptInstances) {
                 // ownerID is a sector ID for sector scripts - it must never
                 // be mistaken for an entity ID here.

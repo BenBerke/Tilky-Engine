@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
@@ -26,6 +27,19 @@
 namespace {
     using namespace LuaBindingMetadata;
 
+    struct RayTypeInfo {
+        const char* name;
+        RayType type;
+    };
+
+    constexpr RayTypeInfo RAY_TYPES[] = {
+        {"General", RayType::GENERAL},
+        {"Interact", RayType::INTERACT},
+        {"LineOfSight", RayType::LINE_OF_SIGHT},
+        {"Bullet", RayType::BULLET},
+        {"Custom", RayType::CUSTOM},
+    };
+
     void RegisterGameMetadata() {
         RegisterType(GlobalTable("Game", "Global game/level table.", {
             Prop("levelName", "string", true, "The current level's name, as passed to LoadLevel."),
@@ -38,12 +52,17 @@ namespace {
                 "Raycast",
                 {
                     Param("origin", "Vector3"), Param("direction", "Vector3"), Param("length", "number"),
-                    Param("ignoredEntityID", "integer"), Param("requireCollider", "boolean"),
+                    Param("ignoredEntityID", "integer"), Param("requireCollider", "boolean"), Param("rayType", "RayType?"),
                 },
                 "table",
                 "Returns nil on miss, else a table with type/typeID/position/distance/"
-                "entityID/wallID/sectorID and (whichever applies) entity/wall/sector."
+                "entityID/wallID/sectorID and (whichever applies) entity/wall/sector. "
+                "A rayType other than RayType.General (the default) fires the Receive Ray events of what it hits and of "
+                "every linedef it passes, with the ignored entity as the instigator."
             ),
+            Method("Signal", {Param("name", "string"), Param("instigator", "Entity?")}, {},
+                   "Fires every Lua Signal event named `name`, on any wall, sector, entity, linedef or the level. "
+                   "`instigator` is what their tag filters check and what their dispatches get."),
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
@@ -89,6 +108,12 @@ namespace {
         std::vector<EnumValueDoc> modes;
         for (const SkyModeInfo& mode : SKY_MODES) modes.push_back({mode.name, static_cast<int>(mode.mode), {}});
         RegisterType(Enum("SkyMode", "Sky projection modes for Game.SetSkyMode.", std::move(modes)));
+
+        std::vector<EnumValueDoc> rayTypes;
+        for (const RayTypeInfo& rayType : RAY_TYPES) rayTypes.push_back({rayType.name, static_cast<int>(rayType.type), {}});
+        RegisterType(Enum("RayType",
+                          "What a ray is for, for Game.Raycast and Camera:Raycast. Any but General fires Receive Ray events.",
+                          std::move(rayTypes)));
 
         std::vector<EnumValueDoc> faces;
         for (const SkyFaceInfo& face : SKY_FACES) faces.push_back({face.name, static_cast<int>(face.face), {}});
@@ -321,13 +346,17 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     game.set_function("SetSkyFallbackColor", [](const Vector3& color) { CurrentSky().fallbackColor = color; });
     game.set_function("GetSkyFallbackColor", [] { return CurrentSky().fallbackColor; });
 
+    sol::table rayType = lua.create_named_table("RayType");
+    for (const RayTypeInfo& info : RAY_TYPES) rayType[info.name] = static_cast<int>(info.type);
+
     game.set_function("Raycast",
                       [](sol::this_state state,
                          const Vector3 &pos,
                          const Vector3 &dir,
                          const float length,
                          const ID ignoredID,
-                         const bool requireCollider) -> sol::object {
+                         const bool requireCollider,
+                         const sol::optional<int> type) -> sol::object {
                           Level &level = LevelManager::CurrentLevel();
 
                           return LuaRayHit::ToLua(state, level, GameFunctions::Raycast(
@@ -336,14 +365,29 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
                               dir,
                               length,
                               ignoredID,
-                              requireCollider
+                              requireCollider,
+                              LuaRayHit::ToRayType(type, "Game.Raycast")
                           ));
                       }
     );
 
+    game.set_function("Signal", [](const std::string& name, const sol::optional<ScriptEntity> instigator) {
+        Level& level = LevelManager::CurrentLevel();
+        EventSystem::Signal(level, name, instigator ? instigator->ownerID : INVALID_ID);
+    });
+
     game.set_function("LineOfSight", [](const Vector3& from, const Vector3& to) {
         return GameFunctions::LineOfSight(LevelManager::CurrentLevel(), from, to);
     });
+}
+
+RayType LuaRayHit::ToRayType(const sol::optional<int>& value, const char* function) {
+    if (!value) return RayType::GENERAL;
+
+    if (*value < 0 || *value >= static_cast<int>(RayType::COUNT))
+        throw sol::error(std::string(function) + " expects a RayType value, e.g. RayType.Interact");
+
+    return static_cast<RayType>(*value);
 }
 
 sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optional<RayHit> &hit) {

@@ -27,6 +27,7 @@
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/GlobalEventVariables.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
@@ -246,6 +247,22 @@ namespace {
         spdlog::info("Runtime started using {} renderer", renderer->GetName());
     }
 
+    // A Show Message dispatch's text, centred near the top of the screen.
+    void RenderEventMessage() {
+        const EventSystem::Message* message = EventSystem::CurrentMessage();
+        if (message == nullptr || message->text.empty()) return;
+
+        const Vector2 scale = {0.75f, 0.75f};
+        const float width = renderer->MeasureTextRaw(message->text, scale);
+
+        renderer->RenderTextRaw(
+            message->text,
+            {(static_cast<float>(renderer->screenWidth) - width) * 0.5f, static_cast<float>(renderer->screenHeight) * 0.12f},
+            scale,
+            message->color
+        );
+    }
+
 #ifdef TILKY_STANDALONE
 
     bool StartStandalone(Level& level, const std::string& windowName) {
@@ -277,6 +294,7 @@ namespace {
             constexpr bool RENDER_DEBUG = false;
             constexpr bool RENDER_UI = true;
             renderer->Update(RENDER_DEBUG, RENDER_UI);
+            RenderEventMessage();
 
             renderer->EndFrame();
         }
@@ -458,6 +476,7 @@ namespace {
             renderer->BeginImGuiFrame();
             renderer->EndImGuiFrame();
 
+            RenderEventMessage();
             RenderDebugText();
             EditorFunctions::RenderConsole(renderer.get());
 

@@ -8,13 +8,17 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Engine/GameTime.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace {
     template <class... Ts>
@@ -26,6 +30,15 @@ namespace {
         EventOwnerKind ownerKind;
         ID ownerID;
         size_t index;
+    };
+
+    // Where an event lives (Timer and Condition Met are checked every frame).
+    struct EventHandle {
+        EventOwnerKind ownerKind;
+        ID ownerID;
+        size_t index;
+
+        bool operator==(const EventHandle&) const = default;
     };
 
     // A wall with at least one ENTITY_CROSS event. `frontIsNormalSide` says
@@ -50,11 +63,91 @@ namespace {
         bool operator==(const LinedefContact&) const = default;
     };
 
+    // A dispatch waiting out its delay.
+    struct PendingDispatch {
+        DispatchHandle handle;
+        ID instigatorID;
+        float remaining; // seconds
+    };
+
+    struct TimerState {
+        EventHandle event;
+        float elapsed = 0.0f;
+        bool firedOnce = false; // the first wait is firstDelay, the rest interval
+    };
+
+    struct ConditionWatch {
+        EventHandle event;
+        bool wasMet = false;
+    };
+
+    // How long an entity has been in the sector it is in (Stay in Sector).
+    struct StayClock {
+        ID sectorID;
+        float elapsed;
+    };
+
+    // What a typed ray hit, waiting for the next Update.
+    struct RayReport {
+        RayType type;
+        ID casterID;
+        EventOwnerKind ownerKind;
+        ID ownerID;
+        bool fromFront; // lines only: the ray came from the front side
+    };
+
+    // One caster's ray of one type on one owner, for First Hit Only.
+    using RayKey = std::tuple<ID, uint8_t, uint8_t, ID>;
+
+    // A running Door dispatch on one of a sector's floors.
+    struct DoorState {
+        enum Phase { OPENING, WAITING, CLOSING };
+
+        ID sectorID;
+        int floorIndex;
+        PayloadDispatchSectorDoor settings;
+        float closedHeight;
+        float openHeight;
+        Phase phase = OPENING;
+        float waitLeft = 0.0f;
+    };
+
+    // A Move To dispatch gliding an entity.
+    struct EntityMove {
+        ID entityID;
+        Vector3 from, to;
+        bool rotate;
+        Quaternion rotationFrom, rotationTo;
+        float elapsed;
+        float duration;
+    };
+
+    struct ShownMessage {
+        EventSystem::Message message;
+        float remaining;
+    };
+
+    constexpr int MAX_RELAY_DEPTH = 32;
+
     EventSystem::Hooks hooks;
+    bool running = false;
 
     std::unordered_multimap<TagId, DispatchHandle> dispatchRegistry;
     std::vector<CrossWall> crossWalls;
     std::vector<ColorFade> colorFades;
+    std::vector<PendingDispatch> pendingDispatches;
+    std::vector<TimerState> timers;
+    std::vector<ConditionWatch> conditionWatches;
+    std::unordered_set<ID> staySectors; // sectors with a Stay in Sector event
+    std::unordered_map<ID, StayClock> stayClocks; // entity -> clock
+    std::vector<RayReport> rayReports;
+    std::vector<RayKey> lastRayKeys; // sorted, unique
+    std::vector<DoorState> doors;
+    std::vector<EntityMove> entityMoves;
+    std::vector<std::string> soundSources; // temporary sources of Play Sound
+    uint64_t nextSoundSource = 0;
+    std::optional<ShownMessage> shownMessage;
+    int relayDepth = 0;
 
     // Last frame's state, diffed against this frame's to find what changed.
     std::unordered_map<ID, Vector2> lastPositions; // entity -> transform (feet) x/z
@@ -98,24 +191,32 @@ namespace {
         std::erase_if(map, [&](const auto& entry) { return level.GetEntity(entry.first) == nullptr; });
     }
 
-    const Dispatch* ResolveDispatch(const Level& level, const DispatchHandle& handle) {
-        const std::vector<Dispatch>* dispatches = nullptr;
-
-        switch (handle.ownerKind) {
-            case EventOwnerKind::LINE:
-                if (const Wall* wall = MapQueries::GetWallByID(level, handle.ownerID)) dispatches = &wall->dispatches;
-                break;
-            case EventOwnerKind::SECTOR:
-                if (const Sector* sector = level.GetSector(handle.ownerID)) dispatches = &sector->dispatches;
-                break;
-            case EventOwnerKind::ENTITY:
-                if (const Entity* entity = level.GetEntity(handle.ownerID)) dispatches = &entity->dispatches;
-                break;
-            case EventOwnerKind::LINEDEF:
-                if (const Linedef* linedef = level.GetLinedef(handle.ownerID)) dispatches = &linedef->dispatches;
-                break;
+    const std::vector<Dispatch>* ResolveDispatches(const Level& level, const EventOwnerKind kind, const ID ownerID) {
+        switch (kind) {
+            case EventOwnerKind::LINE: {
+                const Wall* wall = MapQueries::GetWallByID(level, ownerID);
+                return wall ? &wall->dispatches : nullptr;
+            }
+            case EventOwnerKind::SECTOR: {
+                const Sector* sector = level.GetSector(ownerID);
+                return sector ? &sector->dispatches : nullptr;
+            }
+            case EventOwnerKind::ENTITY: {
+                const Entity* entity = level.GetEntity(ownerID);
+                return entity ? &entity->dispatches : nullptr;
+            }
+            case EventOwnerKind::LINEDEF: {
+                const Linedef* linedef = level.GetLinedef(ownerID);
+                return linedef ? &linedef->dispatches : nullptr;
+            }
+            case EventOwnerKind::LEVEL:
+                return &level.worldSettings.dispatches;
         }
+        return nullptr;
+    }
 
+    const Dispatch* ResolveDispatch(const Level& level, const DispatchHandle& handle) {
+        const std::vector<Dispatch>* dispatches = ResolveDispatches(level, handle.ownerKind, handle.ownerID);
         if (!dispatches || handle.index >= dispatches->size()) return nullptr;
         return &(*dispatches)[handle.index];
     }
@@ -138,8 +239,26 @@ namespace {
                 Linedef* linedef = level.GetLinedef(ownerID);
                 return linedef ? &linedef->events : nullptr;
             }
+            case EventOwnerKind::LEVEL:
+                return &level.worldSettings.events;
         }
         return nullptr;
+    }
+
+    Event* ResolveEvent(Level& level, const EventHandle& handle) {
+        std::vector<Event>* events = ResolveEvents(level, handle.ownerKind, handle.ownerID);
+        if (!events || handle.index >= events->size()) return nullptr;
+        return &(*events)[handle.index];
+    }
+
+    // Calls f(kind, ownerID, events) for every owner in the level.
+    template <typename F>
+    void ForEachEventOwner(const Level& level, F&& f) {
+        for (const Wall& wall : level.walls) f(EventOwnerKind::LINE, wall.id, wall.events);
+        for (const Linedef& linedef : level.linedefs) f(EventOwnerKind::LINEDEF, linedef.id, linedef.events);
+        for (const Sector& sector : level.sectors) f(EventOwnerKind::SECTOR, sector.id, sector.events);
+        for (const Entity& entity : level.entities) f(EventOwnerKind::ENTITY, entity.id, entity.events);
+        f(EventOwnerKind::LEVEL, ID{0}, level.worldSettings.events);
     }
 
     template <typename Payload>
@@ -162,6 +281,18 @@ namespace {
         return entity && entity->enabled;
     }
 
+    // Disabled entities and linedefs are inert: their events don't fire.
+    bool IsOwnerActive(const Level& level, const EventOwnerKind kind, const ID ownerID) {
+        if (kind == EventOwnerKind::ENTITY) return IsEnabledEntity(level, ownerID);
+
+        if (kind == EventOwnerKind::LINEDEF) {
+            const Linedef* linedef = level.GetLinedef(ownerID);
+            return linedef && linedef->enabled;
+        }
+
+        return true;
+    }
+
     std::vector<TagId> EntityTags(const Level& level, const ID entityID) {
         const Entity* entity = level.GetEntity(entityID);
         return entity ? entity->tagIds : std::vector<TagId>{};
@@ -170,6 +301,77 @@ namespace {
     ID SectorIDAt(const Level& level, const int sectorIndex) {
         if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) return INVALID_ID;
         return level.sectors[sectorIndex].id;
+    }
+
+    bool SideMatches(const LineSide side, const bool front) {
+        switch (side) {
+            case LineSide::FRONT: return front;
+            case LineSide::BACK: return !front;
+            case LineSide::EITHER: return true;
+        }
+        return true;
+    }
+
+    // Which side of the wall its front sector is on: whichever sector is
+    // just off the middle of the wall on its normal side. Normal side if
+    // neither matches.
+    bool WallFrontIsNormalSide(const Level& level, const Wall& wall) {
+        const Vector2 middle = (wall.start + wall.end) * 0.5f;
+        const Vector2 probe = middle + wall.normal * 0.01f;
+        const ID probeSector = SectorIDAt(level, MapQueries::FindSectorContainingPoint(level.sectors, probe));
+
+        return probeSector != wall.backSector || wall.backSector == INVALID_ID;
+    }
+
+    bool OnNormalSide(const Vector2& start, const Vector2& vector, const Vector2& point) {
+        return Vector2Math::Cross(vector, point - start) >= 0.0f;
+    }
+
+    // Whether `point` is on the wall's front (its front sector's side).
+    bool OnWallFront(const Level& level, const Wall& wall, const Vector2& point) {
+        return OnNormalSide(wall.start, wall.vector, point) == WallFrontIsNormalSide(level, wall);
+    }
+
+    // A linedef's front is its normal side (the editor's tick).
+    bool OnLinedefFront(const Linedef& linedef, const Vector2& point) {
+        return OnNormalSide(linedef.start, linedef.vector, point);
+    }
+
+    std::optional<Vector2> EntityPosition2D(const Level& level, const ID entityID) {
+        const ComponentTransform* transform = level.transforms.Get(entityID);
+        if (!transform) return std::nullopt;
+        return Vector2{transform->position.x, transform->position.z};
+    }
+
+    // Runs every dispatch linked to `tag`, now or after its delay.
+    void RunDispatches(Level& level, const TagId tag, const ID instigatorID) {
+        if (relayDepth >= MAX_RELAY_DEPTH) {
+            spdlog::warn("Dispatches for tag {} skipped: relays went {} deep, they probably loop", tag, MAX_RELAY_DEPTH);
+            return;
+        }
+
+        // Dispatches can add/destroy things, which may move the dispatch
+        // being run - copy what's needed instead of holding references.
+        const auto [begin, end] = dispatchRegistry.equal_range(tag);
+        std::vector<DispatchHandle> handles;
+        for (auto it = begin; it != end; ++it) handles.push_back(it->second);
+
+        ++relayDepth;
+
+        for (const DispatchHandle& handle : handles) {
+            const Dispatch* dispatch = ResolveDispatch(level, handle);
+            if (!dispatch) continue;
+
+            if (dispatch->delay > 0.0f) {
+                pendingDispatches.push_back({handle, instigatorID, dispatch->delay});
+                continue;
+            }
+
+            const Dispatch copy = *dispatch;
+            EventSystem::ExecuteDispatch(level, copy, handle.ownerKind, handle.ownerID, instigatorID);
+        }
+
+        --relayDepth;
     }
 
     // `filterTags` is what the event's TagFilter is checked against.
@@ -186,19 +388,8 @@ namespace {
 
         ++event.triggerCount;
 
-        // Dispatches can add/destroy things, which may move `event` or the
-        // dispatch being run - copy what's needed instead of holding references.
-        const auto [begin, end] = dispatchRegistry.equal_range(event.tagId);
-        std::vector<DispatchHandle> handles;
-        for (auto it = begin; it != end; ++it) handles.push_back(it->second);
-
-        for (const DispatchHandle& handle : handles) {
-            const Dispatch* dispatch = ResolveDispatch(level, handle);
-            if (!dispatch) continue;
-
-            const Dispatch copy = *dispatch;
-            EventSystem::ExecuteDispatch(level, copy, handle.ownerKind, handle.ownerID, instigatorID);
-        }
+        // `event` may move once dispatches run.
+        RunDispatches(level, event.tagId, instigatorID);
     }
 
     // Fires every `Payload` event of the owner that `accept` lets through. By
@@ -263,7 +454,7 @@ namespace {
 
     template <typename Payload>
     bool HasEvent(const Linedef& linedef) {
-        return std::ranges::any_of(linedef.events, [](const Event& event) {
+        return linedef.enabled && std::ranges::any_of(linedef.events, [](const Event& event) {
             return std::holds_alternative<Payload>(event.payload);
         });
     }
@@ -397,6 +588,50 @@ namespace {
         }
     }
 
+    // Each entity in a sector with Stay in Sector events has a clock started
+    // when it entered; an event of interval I fires each time it passes a
+    // multiple of I.
+    void FireStayEvents(Level& level, const float deltaTime) {
+        if (staySectors.empty()) {
+            stayClocks.clear();
+            return;
+        }
+
+        struct Tick {
+            ID entityID;
+            ID sectorID;
+            float before;
+            float after;
+        };
+        std::vector<Tick> ticks;
+
+        for (const auto& [entityID, sectorID] : lastSectors) {
+            if (sectorID == INVALID_ID || !staySectors.contains(sectorID) || !IsEnabledEntity(level, entityID)) {
+                stayClocks.erase(entityID);
+                continue;
+            }
+
+            const auto [it, entered] = stayClocks.try_emplace(entityID, StayClock{sectorID, 0.0f});
+            StayClock& clock = it->second;
+
+            if (!entered && clock.sectorID != sectorID) clock = {sectorID, 0.0f};
+            else if (!entered) {
+                const float before = clock.elapsed;
+                clock.elapsed += deltaTime;
+                ticks.push_back({entityID, sectorID, before, clock.elapsed});
+            }
+        }
+
+        for (const Tick& tick : ticks) {
+            FireEvents<PayloadSectorEntityStay>(
+                level, EventOwnerKind::SECTOR, tick.sectorID, tick.entityID, EntityTags(level, tick.entityID),
+                [&](const PayloadSectorEntityStay& stay) {
+                    if (stay.interval <= 0.0f) return false;
+                    return std::floor(tick.after / stay.interval) > std::floor(tick.before / stay.interval);
+                });
+        }
+    }
+
     // Moves `value` toward `target` by at most `step`. True once it's there.
     bool StepToward(float& value, const float target, const float step) {
         value += std::clamp(target - value, -step, step);
@@ -445,7 +680,13 @@ namespace {
         for (const auto& [entityID, wallID] : startedWall) {
             if (!IsEnabledEntity(level, entityID)) continue;
 
-            FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINE, wallID, entityID, EntityTags(level, entityID));
+            // Which side the entity's centre is on as it touches.
+            const Wall* wall = MapQueries::GetWallByID(level, wallID);
+            const std::optional<Vector2> position = EntityPosition2D(level, entityID);
+            const bool front = wall && position ? OnWallFront(level, *wall, *position) : true;
+
+            FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINE, wallID, entityID, EntityTags(level, entityID),
+                [&](const PayloadLineEntityCollide& collide) { return SideMatches(collide.side, front); });
         }
     }
 
@@ -532,8 +773,490 @@ namespace {
         for (const auto& [entityID, linedefID] : started) {
             if (!IsEnabledEntity(level, entityID)) continue;
 
-            FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINEDEF, linedefID, entityID, EntityTags(level, entityID));
+            const Linedef* linedef = level.GetLinedef(linedefID);
+            const std::optional<Vector2> position = EntityPosition2D(level, entityID);
+            const bool front = linedef && position ? OnLinedefFront(*linedef, *position) : true;
+
+            FireEvents<PayloadLineEntityCollide>(level, EventOwnerKind::LINEDEF, linedefID, entityID, EntityTags(level, entityID),
+                [&](const PayloadLineEntityCollide& collide) { return SideMatches(collide.side, front); });
         }
+    }
+
+    void FireRayEvents(Level& level) {
+        std::vector<RayReport> reports = std::move(rayReports);
+        rayReports.clear();
+
+        std::vector<RayKey> keys;
+
+        for (const RayReport& report : reports) {
+            const RayKey key = {report.casterID, static_cast<uint8_t>(report.type), static_cast<uint8_t>(report.ownerKind), report.ownerID};
+
+            // A disabled caster can't instigate.
+            if (report.casterID != INVALID_ID && level.GetEntity(report.casterID) && !IsEnabledEntity(level, report.casterID)) continue;
+            if (!IsOwnerActive(level, report.ownerKind, report.ownerID)) continue;
+
+            // First of a run: not hit last frame, nor already this frame.
+            const bool firstHit = !std::ranges::binary_search(lastRayKeys, key) && std::ranges::find(keys, key) == keys.end();
+            keys.push_back(key);
+
+            const bool isLine = report.ownerKind == EventOwnerKind::LINE || report.ownerKind == EventOwnerKind::LINEDEF;
+
+            FireEvents<PayloadReceiveRay>(
+                level, report.ownerKind, report.ownerID, report.casterID, EntityTags(level, report.casterID),
+                [&](const PayloadReceiveRay& receive) {
+                    if (receive.rayType != report.type) return false;
+                    if (receive.firstHitOnly && !firstHit) return false;
+                    return !isLine || SideMatches(receive.side, report.fromFront);
+                });
+        }
+
+        SortUnique(keys);
+        lastRayKeys = std::move(keys);
+    }
+
+    void FireMoveFinishedEvents(Level& level) {
+        const std::vector<SectorMoveEnd> ends = std::move(level.sectorMoveEnds);
+        level.sectorMoveEnds.clear();
+
+        for (const SectorMoveEnd& end : ends) {
+            FireEvents<PayloadSectorMoveFinished>(
+                level, EventOwnerKind::SECTOR, end.sectorID, INVALID_ID, {},
+                [&](const PayloadSectorMoveFinished& finished) {
+                    if (finished.surface == SectorSurfacePick::FLOOR && end.ceiling) return false;
+                    if (finished.surface == SectorSurfacePick::CEILING && !end.ceiling) return false;
+                    if (finished.floorIndex >= 0 && finished.floorIndex != end.floorIndex) return false;
+
+                    switch (finished.reason) {
+                        case PayloadSectorMoveFinished::ANY: return true;
+                        case PayloadSectorMoveFinished::REACHED: return end.reason == SectorMoveEndReason::REACHED;
+                        case PayloadSectorMoveFinished::STOPPED: return end.reason == SectorMoveEndReason::STOPPED;
+                        case PayloadSectorMoveFinished::RETRACTED: return end.reason == SectorMoveEndReason::RETRACTED;
+                    }
+                    return true;
+                });
+        }
+    }
+
+    void UpdateTimers(Level& level, const float deltaTime) {
+        for (size_t i = 0; i < timers.size(); ++i) {
+            // Copied: a dispatch can rebuild the registry (Spawn Prefab).
+            const EventHandle handle = timers[i].event;
+            if (!IsOwnerActive(level, handle.ownerKind, handle.ownerID)) continue; // paused
+
+            Event* event = ResolveEvent(level, handle);
+            const PayloadTimer* timer = event ? std::get_if<PayloadTimer>(&event->payload) : nullptr;
+            if (!timer) continue;
+
+            TimerState& state = timers[i];
+            state.elapsed += deltaTime;
+
+            const float wait = state.firedOnce ? timer->interval : timer->firstDelay;
+            if (state.elapsed < wait) continue;
+
+            // At most once a frame, however short the interval.
+            state.elapsed = std::min(state.elapsed - wait, std::max(timer->interval, 0.0f));
+            state.firedOnce = true;
+
+            Trigger(level, *event, INVALID_ID, {});
+        }
+    }
+
+    void UpdateConditionWatches(Level& level) {
+        for (size_t i = 0; i < conditionWatches.size(); ++i) {
+            const EventHandle handle = conditionWatches[i].event;
+
+            Event* event = ResolveEvent(level, handle);
+            if (!event || !std::holds_alternative<PayloadConditionMet>(event->payload)) continue;
+
+            const bool met = level.CheckCondition(event->condition);
+            const bool wasMet = std::exchange(conditionWatches[i].wasMet, met);
+
+            if (met && !wasMet && IsOwnerActive(level, handle.ownerKind, handle.ownerID))
+                Trigger(level, *event, INVALID_ID, {});
+        }
+    }
+
+    void RunPendingDispatches(Level& level, const float deltaTime) {
+        std::vector<PendingDispatch> due;
+
+        std::erase_if(pendingDispatches, [&](PendingDispatch& pending) {
+            pending.remaining -= deltaTime;
+            if (pending.remaining > 0.0f) return false;
+
+            due.push_back(pending);
+            return true;
+        });
+
+        for (const PendingDispatch& pending : due) {
+            const Dispatch* dispatch = ResolveDispatch(level, pending.handle);
+            if (!dispatch) continue;
+
+            const Dispatch copy = *dispatch;
+            EventSystem::ExecuteDispatch(level, copy, pending.handle.ownerKind, pending.handle.ownerID, pending.instigatorID);
+        }
+    }
+
+    // ── Sectors ─────────────────────────────────────────────────────────────
+
+    // The sectors across this one's two-sided walls.
+    std::vector<const Sector*> NeighborSectors(const Level& level, const ID sectorID) {
+        std::vector<const Sector*> neighbors;
+
+        for (const Wall& wall : level.walls) {
+            ID other = INVALID_ID;
+            if (wall.frontSector == sectorID) other = wall.backSector;
+            else if (wall.backSector == sectorID) other = wall.frontSector;
+
+            if (other == INVALID_ID || other == sectorID) continue;
+
+            const Sector* sector = level.GetSector(other);
+            if (sector && !sector->floors.empty() && std::ranges::find(neighbors, sector) == neighbors.end())
+                neighbors.push_back(sector);
+        }
+
+        return neighbors;
+    }
+
+    // A neighbour's floor is its lowest floor, its ceiling its highest ceiling.
+    std::optional<float> NeighborHeight(const Level& level, const ID sectorID, const bool ceiling, const bool highest) {
+        std::optional<float> result;
+
+        for (const Sector* neighbor : NeighborSectors(level, sectorID)) {
+            const float height = ceiling ? neighbor->floors.back().ceiling.height : neighbor->floors.front().floor.height;
+            if (!result || (highest ? height > *result : height < *result)) result = height;
+        }
+
+        return result;
+    }
+
+    // Where a Move to Height heads, nullopt (with a warning) if it can't tell.
+    std::optional<float> MoveTargetHeight(const Level& level, const ID sectorID, const float current,
+                                          const SectorHeightMode mode, const float height) {
+        std::optional<float> base;
+
+        switch (mode) {
+            case SectorHeightMode::ABSOLUTE_HEIGHT: return height;
+            case SectorHeightMode::RELATIVE_OFFSET: return current + height;
+            case SectorHeightMode::LOWEST_NEIGHBOR_FLOOR: base = NeighborHeight(level, sectorID, false, false); break;
+            case SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR: base = NeighborHeight(level, sectorID, false, true); break;
+            case SectorHeightMode::LOWEST_NEIGHBOR_CEILING: base = NeighborHeight(level, sectorID, true, false); break;
+            case SectorHeightMode::HIGHEST_NEIGHBOR_CEILING: base = NeighborHeight(level, sectorID, true, true); break;
+        }
+
+        if (!base) {
+            spdlog::warn("Sector {} has no neighbouring sectors to move to", sectorID);
+            return std::nullopt;
+        }
+
+        return *base + height;
+    }
+
+    SectorFloor* GetSectorFloor(Level& level, const ID sectorID, const int floorIndex) {
+        Sector* sector = level.GetSector(sectorID);
+        if (!sector || floorIndex < 0 || floorIndex >= static_cast<int>(sector->floors.size())) return nullptr;
+        return &sector->floors[floorIndex];
+    }
+
+    std::optional<float> DoorOpenHeight(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& door) {
+        if (door.openMode == PayloadDispatchSectorDoor::FIXED_HEIGHT) return door.openHeight;
+
+        const std::optional<float> lowest = NeighborHeight(level, sectorID, true, false);
+        if (!lowest) {
+            spdlog::warn("Door on sector {} has no neighbouring sectors to open to", sectorID);
+            return std::nullopt;
+        }
+
+        return *lowest - door.lip;
+    }
+
+    void OpenDoor(SectorFloor& floor, DoorState& door) {
+        floor.MoveCeilingTo(door.openHeight, door.settings.openSpeed, SECTOR_FORCE_MOVE);
+        door.phase = DoorState::OPENING;
+    }
+
+    void CloseDoor(SectorFloor& floor, DoorState& door) {
+        floor.MoveCeilingTo(door.closedHeight, door.settings.closeSpeed, door.settings.closeCollision);
+        door.phase = DoorState::CLOSING;
+    }
+
+    void TriggerDoor(Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings) {
+        SectorFloor* floor = GetSectorFloor(level, sectorID, settings.floorIndex);
+        if (!floor) return;
+
+        if (settings.openSpeed <= 0.0f || settings.closeSpeed <= 0.0f) {
+            spdlog::warn("Door dispatch on sector {} needs open and close speeds above 0", sectorID);
+            return;
+        }
+
+        const auto existing = std::ranges::find_if(doors, [&](const DoorState& door) {
+            return door.sectorID == sectorID && door.floorIndex == settings.floorIndex;
+        });
+
+        if (existing == doors.end()) {
+            const std::optional<float> openHeight = DoorOpenHeight(level, sectorID, settings);
+            if (!openHeight) return;
+
+            DoorState door{sectorID, settings.floorIndex, settings, floor->ceiling.height, *openHeight};
+            OpenDoor(*floor, door);
+            doors.push_back(door);
+            return;
+        }
+
+        DoorState& door = *existing;
+
+        switch (settings.retrigger) {
+            case PayloadDispatchSectorDoor::RESTART:
+                if (door.phase == DoorState::CLOSING) OpenDoor(*floor, door);
+                else if (door.phase == DoorState::WAITING) door.waitLeft = door.settings.wait;
+                break;
+            case PayloadDispatchSectorDoor::TOGGLE:
+                if (door.phase == DoorState::CLOSING) OpenDoor(*floor, door);
+                else CloseDoor(*floor, door);
+                break;
+            case PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN:
+                break;
+        }
+    }
+
+    void UpdateDoors(Level& level, const float deltaTime) {
+        std::erase_if(doors, [&](DoorState& door) {
+            SectorFloor* floor = GetSectorFloor(level, door.sectorID, door.floorIndex);
+            if (!floor) return true;
+
+            switch (door.phase) {
+                case DoorState::OPENING:
+                    if (!floor->ceilingMove.active) {
+                        door.phase = DoorState::WAITING;
+                        door.waitLeft = door.settings.wait;
+                    }
+                    return false;
+
+                case DoorState::WAITING:
+                    door.waitLeft -= deltaTime;
+                    if (door.waitLeft <= 0.0f) CloseDoor(*floor, door);
+                    return false;
+
+                case DoorState::CLOSING:
+                    if (floor->ceilingMove.active) return false;
+
+                    // Shut: done. Blocked short of it (retracted or stopped):
+                    // wait open and try again.
+                    if (std::abs(floor->ceiling.height - door.closedHeight) <= 0.001f) return true;
+
+                    door.phase = DoorState::WAITING;
+                    door.waitLeft = door.settings.wait;
+                    return false;
+            }
+
+            return false;
+        });
+    }
+
+    // Runs `edit` on the sector, then passes the change on to its children,
+    // same as a value written from Lua.
+    template <typename Edit>
+    void EditSector(Level& level, Sector& sector, Edit&& edit) {
+        const std::vector<SectorFloor> floorsBefore = sector.children.empty() ? std::vector<SectorFloor>{} : sector.floors;
+        const Vector3 lightBefore = sector.light;
+
+        edit();
+
+        if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, floorsBefore, lightBefore);
+    }
+
+    // ── Entities ────────────────────────────────────────────────────────────
+
+    Quaternion Nlerp(const Quaternion& a, Quaternion b, const float t) {
+        // Take the short way round.
+        if (a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w < 0.0f) b = {-b.x, -b.y, -b.z, -b.w};
+
+        return Quaternion{
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            a.z + (b.z - a.z) * t,
+            a.w + (b.w - a.w) * t
+        }.Normalized();
+    }
+
+    void PlaceTransform(Level& level, ComponentTransform& transform, const Vector3& position) {
+        transform.SetPosition(position);
+        transform.isDirty = true;
+
+        // The frame's sector update has already run.
+        transform.UpdateObjectSectorAndFloor(level.sectors);
+    }
+
+    void UpdateEntityMoves(Level& level, const float deltaTime) {
+        std::erase_if(entityMoves, [&](EntityMove& move) {
+            ComponentTransform* transform = level.transforms.Get(move.entityID);
+            if (!transform) return true;
+
+            move.elapsed += deltaTime;
+            const float t = move.duration > 0.0f ? std::min(move.elapsed / move.duration, 1.0f) : 1.0f;
+
+            PlaceTransform(level, *transform, move.from + (move.to - move.from) * t);
+            if (move.rotate) transform->rotation = Nlerp(move.rotationFrom, move.rotationTo, t);
+
+            return t >= 1.0f;
+        });
+    }
+
+    void SetComponents(Level& level, const ID entityID, const ToggleableComponent component, const ToggleMode mode) {
+        const auto setFlags = [&](auto pointers, auto&& flag) {
+            for (auto* c : pointers) flag(*c) = ApplyToggle(mode, flag(*c));
+        };
+
+        switch (component) {
+            case ToggleableComponent::SPRITE:
+                setFlags(level.sprites.GetAll(entityID), [](ComponentSprite& c) -> bool& { return c.isActive; });
+                break;
+            case ToggleableComponent::UI_SPRITE:
+                setFlags(level.ui_sprites.GetAll(entityID), [](ComponentUISprite& c) -> bool& { return c.isActive; });
+                break;
+            case ToggleableComponent::SCRIPT:
+                setFlags(level.scripts.GetAll(entityID), [](ComponentScript& c) -> bool& { return c.enabled; });
+                break;
+            case ToggleableComponent::COLLIDER: {
+                // SetActive moves colliders around, so go by instance.
+                std::vector<std::pair<ComponentInstanceID, bool>> colliders;
+                for (const ComponentCollider* c : level.colliders.GetAll(entityID)) colliders.emplace_back(c->instanceID, c->isActive);
+
+                for (const auto& [instanceID, active] : colliders) level.colliders.SetActive(instanceID, ApplyToggle(mode, active));
+                break;
+            }
+            // Only one camera and one player controller are active in the
+            // level: turning on activates the entity's first, which turns
+            // every other off.
+            case ToggleableComponent::CAMERA: {
+                const std::vector<ComponentCamera*> cameras = level.cameras.GetAll(entityID);
+                if (cameras.empty()) break;
+
+                const bool anyActive = std::ranges::any_of(cameras, [](const ComponentCamera* c) { return c->isActive; });
+                if (ApplyToggle(mode, anyActive)) level.ActivateCamera(*cameras.front());
+                else for (ComponentCamera* c : cameras) c->isActive = false;
+                break;
+            }
+            case ToggleableComponent::PLAYER_CONTROLLER: {
+                const std::vector<ComponentPlayerController*> controllers = level.playerControllers.GetAll(entityID);
+                if (controllers.empty()) break;
+
+                const bool anyActive = std::ranges::any_of(controllers, [](const ComponentPlayerController* c) { return c->isActive; });
+                if (ApplyToggle(mode, anyActive)) level.ActivatePlayerController(*controllers.front());
+                else for (ComponentPlayerController* c : controllers) c->isActive = false;
+                break;
+            }
+        }
+    }
+
+    // ── Owners ──────────────────────────────────────────────────────────────
+
+    // Height of the floor under `point`, or 0 outside every sector.
+    float FloorHeightAt(const Level& level, const Vector2& point) {
+        const int index = MapQueries::FindSectorContainingPoint(level.sectors, point);
+        if (index < 0 || level.sectors[index].floors.empty()) return 0.0f;
+
+        const Sector& sector = level.sectors[index];
+        return MapQueries::SurfaceHeightAt(sector, sector.floors.front().floor, point);
+    }
+
+    // Where a Spawn Prefab or Play Sound on this owner happens: an entity's
+    // transform, a line's middle on the floor, a sector's bounds centre on its
+    // floor. nullopt for the level (and anything gone): the origin, or
+    // unpositioned for a sound.
+    std::optional<Vector3> OwnerPosition(const Level& level, const EventOwnerKind kind, const ID ownerID) {
+        switch (kind) {
+            case EventOwnerKind::ENTITY: {
+                const ComponentTransform* transform = level.transforms.Get(ownerID);
+                if (!transform) return std::nullopt;
+                return transform->position;
+            }
+            case EventOwnerKind::LINE: {
+                const Wall* wall = MapQueries::GetWallByID(level, ownerID);
+                if (!wall) return std::nullopt;
+
+                const Vector2 middle = (wall->start + wall->end) * 0.5f;
+                // Nudged into the front sector, so it isn't on the edge.
+                const Vector2 inside = middle + wall->normal * (WallFrontIsNormalSide(level, *wall) ? 0.01f : -0.01f);
+                return Vector3{middle.x, FloorHeightAt(level, inside), middle.y};
+            }
+            case EventOwnerKind::LINEDEF: {
+                const Linedef* linedef = level.GetLinedef(ownerID);
+                if (!linedef) return std::nullopt;
+
+                const Vector2 middle = (linedef->start + linedef->end) * 0.5f;
+                return Vector3{middle.x, FloorHeightAt(level, middle), middle.y};
+            }
+            case EventOwnerKind::SECTOR: {
+                const Sector* sector = level.GetSector(ownerID);
+                if (!sector || sector->vertices.empty() || sector->floors.empty()) return std::nullopt;
+
+                Vector2 min = sector->vertices.front();
+                Vector2 max = min;
+                for (const Vector2& vertex : sector->vertices) {
+                    min = {std::min(min.x, vertex.x), std::min(min.y, vertex.y)};
+                    max = {std::max(max.x, vertex.x), std::max(max.y, vertex.y)};
+                }
+
+                const Vector2 centre = (min + max) * 0.5f;
+                return Vector3{centre.x, MapQueries::SurfaceHeightAt(*sector, sector->floors.front().floor, centre), centre.y};
+            }
+            case EventOwnerKind::LEVEL:
+                return std::nullopt;
+        }
+        return std::nullopt;
+    }
+
+    std::vector<TagId>* OwnerTags(Level& level, const EventOwnerKind kind, const ID ownerID) {
+        switch (kind) {
+            case EventOwnerKind::LINE: {
+                Wall* wall = MapQueries::GetWallByID(level, ownerID);
+                return wall ? &wall->tagIds : nullptr;
+            }
+            case EventOwnerKind::SECTOR: {
+                Sector* sector = level.GetSector(ownerID);
+                return sector ? &sector->tagIds : nullptr;
+            }
+            case EventOwnerKind::ENTITY: {
+                Entity* entity = level.GetEntity(ownerID);
+                return entity ? &entity->tagIds : nullptr;
+            }
+            default:
+                return nullptr;
+        }
+    }
+
+    // ── Sounds and messages ─────────────────────────────────────────────────
+
+    void PlaySound(const PayloadDispatchPlaySound& play, const std::optional<Vector3>& position) {
+        if (play.sound.empty()) return;
+
+        const std::string name = "event_sound_" + std::to_string(nextSoundSource++);
+        if (!SoundManager::CreateSource(name)) return;
+
+        if (position) SoundManager::SetSourcePosition(name, *position);
+        else SoundManager::SetSourceRelative(name, true);
+
+        SoundManager::SetSourceGain(name, play.gain);
+        SoundManager::SetSourcePitch(name, play.pitch);
+        SoundManager::PlaySoundOnSource(name, play.sound);
+
+        soundSources.push_back(name);
+    }
+
+    // Deletes the sources of sounds that have finished.
+    void UpdateSounds() {
+        std::erase_if(soundSources, [](const std::string& name) {
+            if (SoundManager::IsSourcePlaying(name)) return false;
+            SoundManager::DestroySource(name);
+            return true;
+        });
+    }
+
+    void UpdateMessage(const float deltaTime) {
+        if (!shownMessage) return;
+
+        shownMessage->remaining -= deltaTime;
+        if (shownMessage->remaining <= 0.0f) shownMessage.reset();
     }
 }
 
@@ -541,6 +1264,7 @@ namespace EventSystem {
     void CreateRegistry(const Level& level) {
         dispatchRegistry.clear();
         crossWalls.clear();
+        staySectors.clear();
 
         const auto add = [](const EventOwnerKind kind, const ID ownerID, const std::vector<Dispatch>& dispatches) {
             for (size_t i = 0; i < dispatches.size(); ++i)
@@ -551,6 +1275,7 @@ namespace EventSystem {
         for (const Linedef& linedef : level.linedefs) add(EventOwnerKind::LINEDEF, linedef.id, linedef.dispatches);
         for (const Sector& sector : level.sectors) add(EventOwnerKind::SECTOR, sector.id, sector.dispatches);
         for (const Entity& entity : level.entities) add(EventOwnerKind::ENTITY, entity.id, entity.dispatches);
+        add(EventOwnerKind::LEVEL, ID{0}, level.worldSettings.dispatches);
 
         for (const Wall& wall : level.walls) {
             const bool hasCross = std::ranges::any_of(wall.events, [](const Event& event) {
@@ -558,30 +1283,54 @@ namespace EventSystem {
             });
             if (!hasCross) continue;
 
-            // Which side is front: whichever sector is just off the middle of
-            // the wall on its normal side. Normal side if neither matches.
-            const Vector2 middle = (wall.start + wall.end) * 0.5f;
-            const Vector2 probe = middle + wall.normal * 0.01f;
-            const ID probeSector = SectorIDAt(level, MapQueries::FindSectorContainingPoint(level.sectors, probe));
-
-            crossWalls.push_back({wall.id, probeSector != wall.backSector || wall.backSector == INVALID_ID});
+            crossWalls.push_back({wall.id, WallFrontIsNormalSide(level, wall)});
         }
+
+        for (const Sector& sector : level.sectors) {
+            const bool hasStay = std::ranges::any_of(sector.events, [](const Event& event) {
+                return std::holds_alternative<PayloadSectorEntityStay>(event.payload);
+            });
+            if (hasStay) staySectors.insert(sector.id);
+        }
+
+        // Timers and condition watches keep their state across a rebuild; a
+        // new condition watch starts from the condition's current value.
+        std::vector<TimerState> newTimers;
+        std::vector<ConditionWatch> newWatches;
+
+        ForEachEventOwner(level, [&](const EventOwnerKind kind, const ID ownerID, const std::vector<Event>& events) {
+            for (size_t i = 0; i < events.size(); ++i) {
+                const EventHandle handle{kind, ownerID, i};
+
+                if (std::holds_alternative<PayloadTimer>(events[i].payload)) {
+                    const auto old = std::ranges::find(timers, handle, &TimerState::event);
+                    newTimers.push_back(old != timers.end() ? *old : TimerState{handle});
+                }
+                else if (std::holds_alternative<PayloadConditionMet>(events[i].payload)) {
+                    const auto old = std::ranges::find(conditionWatches, handle, &ConditionWatch::event);
+                    newWatches.push_back(old != conditionWatches.end()
+                        ? *old
+                        : ConditionWatch{handle, level.CheckCondition(events[i].condition)});
+                }
+            }
+        });
+
+        timers = std::move(newTimers);
+        conditionWatches = std::move(newWatches);
     }
 
     void Start(Level& level, Hooks newHooks) {
         Stop();
         hooks = std::move(newHooks);
+        running = true;
         MapQueries::AssignLinedefsToSectors(level);
         CreateRegistry(level);
 
         // Counts are runtime only: every play session starts from 0.
-        const auto resetCounts = [](std::vector<Event>& events) {
-            for (Event& event : events) event.triggerCount = 0;
-        };
-        for (Wall& wall : level.walls) resetCounts(wall.events);
-        for (Linedef& linedef : level.linedefs) resetCounts(linedef.events);
-        for (Sector& sector : level.sectors) resetCounts(sector.events);
-        for (Entity& entity : level.entities) resetCounts(entity.events);
+        ForEachEventOwner(level, [&](const EventOwnerKind kind, const ID ownerID, const std::vector<Event>&) {
+            if (std::vector<Event>* events = ResolveEvents(level, kind, ownerID))
+                for (Event& event : *events) event.triggerCount = 0;
+        });
 
         for (const Entity& entity : level.entities) lastEnabled[entity.id] = entity.enabled;
 
@@ -591,22 +1340,60 @@ namespace EventSystem {
             lastPositions[transform.ownerID] = {transform.position.x, transform.position.z};
             lastSectors[transform.ownerID] = SectorIDAt(level, transform.sectorIndex);
         }
+
+        // Moves that ended before play don't count.
+        level.sectorMoveEnds.clear();
+    }
+
+    void FireLevelStart(Level& level) {
+        if (!running) return;
+        FireEvents<PayloadLevelStart>(level, EventOwnerKind::LEVEL, ID{0}, INVALID_ID, {});
     }
 
     void Update(Level& level, const PhysicsSystem::Contacts& contacts) {
-        UpdateColorFades(level, GameTime::deltaTime);
+        const float deltaTime = GameTime::deltaTime;
+
+        RunPendingDispatches(level, deltaTime);
+
+        UpdateColorFades(level, deltaTime);
+        UpdateDoors(level, deltaTime);
+        UpdateEntityMoves(level, deltaTime);
+        UpdateSounds();
+        UpdateMessage(deltaTime);
 
         FireEnableEvents(level);
         FireMovementEvents(level);
+        FireStayEvents(level, deltaTime);
         FireContactEvents(level, contacts);
         FireLinedefContactEvents(level);
+        FireRayEvents(level);
+        FireMoveFinishedEvents(level);
+        UpdateTimers(level, deltaTime);
+
+        // Last, so a variable changed by anything above counts this frame.
+        UpdateConditionWatches(level);
     }
 
     void Stop() {
+        for (const std::string& name : soundSources) SoundManager::DestroySource(name);
+
         hooks = {};
+        running = false;
         dispatchRegistry.clear();
         crossWalls.clear();
         colorFades.clear();
+        pendingDispatches.clear();
+        timers.clear();
+        conditionWatches.clear();
+        staySectors.clear();
+        stayClocks.clear();
+        rayReports.clear();
+        lastRayKeys.clear();
+        doors.clear();
+        entityMoves.clear();
+        soundSources.clear();
+        shownMessage.reset();
+        relayDepth = 0;
         lastPositions.clear();
         lastSectors.clear();
         lastEnabled.clear();
@@ -652,6 +1439,24 @@ namespace EventSystem {
                 }
                 else colorFades.push_back({ownerID, setColor.color, setColor.speed});
             },
+            [&](const PayloadDispatchLineSetTexture& setTexture) {
+                Wall* wall = MapQueries::GetWallByID(level, ownerID);
+                if (!wall) return;
+
+                switch (setTexture.piece) {
+                    case WallPiece::TOP: wall->top.texture = setTexture.texture; break;
+                    case WallPiece::MIDDLE: wall->middle.texture = setTexture.texture; break;
+                    case WallPiece::BOTTOM: wall->bottom.texture = setTexture.texture; break;
+                }
+            },
+            [&](const PayloadDispatchLineSetCollision& setCollision) {
+                if (Wall* wall = MapQueries::GetWallByID(level, ownerID))
+                    wall->middleHasCollision = ApplyToggle(setCollision.mode, wall->middleHasCollision);
+            },
+            [&](const PayloadDispatchLinedefSetEnabled& setEnabled) {
+                if (Linedef* linedef = level.GetLinedef(ownerID))
+                    linedef->enabled = ApplyToggle(setEnabled.mode, linedef->enabled);
+            },
             [&](const PayloadDispatchSectorMoveFloorToCeiling& move) {
                 moveSector(move.floorIndex, move.speed, [&](SectorFloor& floor) {
                     floor.MoveFloorToCeiling(move.speed, move.gap, move.collisionType);
@@ -662,6 +1467,62 @@ namespace EventSystem {
                     floor.MoveCeilingToFloor(move.speed, move.gap, move.collisionType);
                 });
             },
+            [&](const PayloadDispatchSectorMoveToHeight& move) {
+                moveSector(move.floorIndex, move.speed, [&](SectorFloor& floor) {
+                    const float current = move.ceiling ? floor.ceiling.height : floor.floor.height;
+                    const std::optional<float> target = MoveTargetHeight(level, ownerID, current, move.mode, move.height);
+                    if (!target) return;
+
+                    if (move.ceiling) floor.MoveCeilingTo(*target, move.speed, move.collisionType);
+                    else floor.MoveFloorTo(*target, move.speed, move.collisionType);
+                });
+            },
+            [&](const PayloadDispatchSectorDoor& door) {
+                TriggerDoor(level, ownerID, door);
+            },
+            [&](const PayloadDispatchSectorStopMovement& stop) {
+                const bool floor = stop.surface != SectorSurfacePick::CEILING;
+                const bool ceiling = stop.surface != SectorSurfacePick::FLOOR;
+
+                level.StopSectorMoves(ownerID, stop.floorIndex, floor, ceiling);
+
+                // A door's cycle is its ceiling moving.
+                if (ceiling)
+                    std::erase_if(doors, [&](const DoorState& door) {
+                        return door.sectorID == ownerID && door.floorIndex == stop.floorIndex;
+                    });
+            },
+            [&](const PayloadDispatchSectorSetLight& setLight) {
+                Sector* sector = level.GetSector(ownerID);
+                if (!sector) return;
+
+                // A fade long enough for the channel that has furthest to go
+                // to get there at `speed`; advanced (and passed on to child
+                // sectors) by Level::UpdateSectorMovement.
+                const Vector3 difference = setLight.light - sector->light;
+                const float furthest = std::max({std::abs(difference.x), std::abs(difference.y), std::abs(difference.z)});
+                const float duration = setLight.speed > 0.0f ? furthest / setLight.speed : 0.0f;
+
+                sector->lightFade = {true, sector->light, setLight.light, 0.0f, duration};
+            },
+            [&](const PayloadDispatchSectorSetTexture& setTexture) {
+                Sector* sector = level.GetSector(ownerID);
+                if (!sector || setTexture.floorIndex < 0 || setTexture.floorIndex >= static_cast<int>(sector->floors.size())) return;
+
+                EditSector(level, *sector, [&] {
+                    SectorFloor& floor = sector->floors[setTexture.floorIndex];
+                    if (setTexture.surface != SectorSurfacePick::CEILING) floor.floor.texture = setTexture.texture;
+                    if (setTexture.surface != SectorSurfacePick::FLOOR) floor.ceiling.texture = setTexture.texture;
+                });
+            },
+            [&](const PayloadDispatchChangeTag& change) {
+                std::vector<TagId>* tags = OwnerTags(level, ownerKind, ownerID);
+                if (!tags) return;
+
+                const auto it = std::ranges::find(*tags, change.tag);
+                if (change.remove && it != tags->end()) tags->erase(it);
+                else if (!change.remove && it == tags->end()) tags->push_back(change.tag);
+            },
             [&](const PayloadDispatchEntityDestroy&) {
                 if (hooks.destroyEntity) hooks.destroyEntity(ownerID);
             },
@@ -670,12 +1531,8 @@ namespace EventSystem {
                 if (!transform) return;
 
                 // Velocity is kept, as with a script's SetPosition.
-                transform->SetPosition(teleport.position);
+                PlaceTransform(level, *transform, teleport.position);
                 transform->rotation = teleport.rotation.Normalized();
-                transform->isDirty = true;
-
-                // The frame's sector update has already run.
-                transform->UpdateObjectSectorAndFloor(level.sectors);
             },
             [&](const PayloadDispatchEntityDisable&) {
                 if (Entity* entity = level.GetEntity(ownerID)) entity->enabled = false;
@@ -686,6 +1543,87 @@ namespace EventSystem {
             [&](const PayloadDispatchEntityCallFunction& call) {
                 if (hooks.callFunction && !call.functionName.empty())
                     hooks.callFunction(level, ownerID, call.functionName, instigatorID);
+            },
+            [&](const PayloadDispatchEntityChangeVelocity& change) {
+                ComponentRigidbody* rigidbody = level.rigidbodies.Get(ownerID);
+                if (!rigidbody) {
+                    spdlog::warn("Change Velocity dispatch on entity {} skipped: it has no Rigidbody", ownerID);
+                    return;
+                }
+
+                rigidbody->velocity = change.set ? change.velocity : rigidbody->velocity + change.velocity;
+
+                // Pushed upward: off the ground, as a jump does.
+                if (rigidbody->velocity.y > 0.0f) {
+                    rigidbody->isGrounded = false;
+                    rigidbody->groundNormal = {};
+                }
+            },
+            [&](const PayloadDispatchEntityMoveTo& moveTo) {
+                const ComponentTransform* transform = level.transforms.Get(ownerID);
+                if (!transform) return;
+
+                const Vector3 from = transform->position;
+                const Vector3 to = moveTo.relative ? from + moveTo.position : moveTo.position;
+                const Vector3 path = to - from;
+                const float distance = std::sqrt(path.x * path.x + path.y * path.y + path.z * path.z);
+
+                float duration = 0.0f;
+                if (moveTo.useDuration) duration = std::max(moveTo.duration, 0.0f);
+                else if (moveTo.speed > 0.0f) duration = distance / moveTo.speed;
+
+                // A new move replaces one still running.
+                std::erase_if(entityMoves, [&](const EntityMove& move) { return move.entityID == ownerID; });
+
+                entityMoves.push_back({
+                    ownerID, from, to, moveTo.rotate,
+                    transform->rotation.Normalized(),
+                    Quaternion::FromEulerDegrees(moveTo.rotation.x, moveTo.rotation.y, moveTo.rotation.z),
+                    0.0f, duration
+                });
+            },
+            [&](const PayloadDispatchEntitySetComponent& set) {
+                SetComponents(level, ownerID, set.component, set.mode);
+            },
+            [&](const PayloadDispatchSpawnPrefab& spawn) {
+                if (spawn.prefab.empty() || !hooks.spawnPrefab) return;
+
+                const Vector3 base = spawn.worldPosition ? Vector3{0.0f, 0.0f, 0.0f}
+                                                         : OwnerPosition(level, ownerKind, ownerID).value_or(Vector3{0.0f, 0.0f, 0.0f});
+
+                const ID spawned = hooks.spawnPrefab(level, spawn.prefab);
+                if (spawned == INVALID_ID) {
+                    spdlog::warn("Spawn Prefab dispatch: couldn't load prefab '{}'", spawn.prefab);
+                    return;
+                }
+
+                if (ComponentTransform* transform = level.transforms.Get(spawned)) {
+                    PlaceTransform(level, *transform, base + spawn.offset);
+                    transform->rotation = Quaternion::FromEulerDegrees(spawn.rotation.x, spawn.rotation.y, spawn.rotation.z);
+                }
+
+                // So its own dispatches can be reached.
+                CreateRegistry(level);
+            },
+            [&](const PayloadDispatchPlaySound& play) {
+                PlaySound(play, OwnerPosition(level, ownerKind, ownerID));
+            },
+            [&](const PayloadDispatchShowMessage& show) {
+                if (show.duration <= 0.0f) return;
+                shownMessage = ShownMessage{{show.text, show.color * 255.0f}, show.duration};
+            },
+            [&](const PayloadDispatchRelay& relay) {
+                RunDispatches(level, relay.target, instigatorID);
+            },
+            [&](const PayloadDispatchResetEvent& reset) {
+                ForEachEventOwner(level, [&](const EventOwnerKind kind, const ID id, const std::vector<Event>&) {
+                    if (std::vector<Event>* events = ResolveEvents(level, kind, id))
+                        for (Event& event : *events)
+                            if (event.tagId == reset.target) event.triggerCount = 0;
+                });
+            },
+            [&](const PayloadDispatchLoadLevel& load) {
+                if (!load.levelName.empty() && hooks.loadLevel) hooks.loadLevel(load.levelName);
             },
             [&](const PayloadDispatchChangeVariable& change) {
                 if (change.variable == 0) return;
@@ -707,5 +1645,92 @@ namespace EventSystem {
 
     void TriggerEvent(Level& level, Event& event, const ID instigatorID) {
         Trigger(level, event, instigatorID, EntityTags(level, instigatorID));
+    }
+
+    void ReportRay(Level& level, const RayType type, const ID casterID, const Vector3& origin, const Vector3& direction,
+                   const float length, const std::optional<RayHit>& hit) {
+        if (!running || type == RayType::GENERAL) return;
+
+        const Vector2 origin2D = {origin.x, origin.z};
+
+        if (hit) {
+            if (hit->HitEntity()) rayReports.push_back({type, casterID, EventOwnerKind::ENTITY, hit->entity->id, true});
+            else if (hit->HitWall())
+                rayReports.push_back({type, casterID, EventOwnerKind::LINE, hit->wall->id, OnWallFront(level, *hit->wall, origin2D)});
+            else if (hit->HitSectorFloor() || hit->HitSectorCeiling())
+                rayReports.push_back({type, casterID, EventOwnerKind::SECTOR, hit->sector->id, true});
+        }
+
+        // Linedefs are see-through walls from the floor to the ceiling of
+        // the sector the ray meets them in: every one passed before the ray
+        // stops is hit.
+        const float directionLength = std::sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+        if (directionLength <= 0.0f) return;
+
+        const Vector3 unit = direction / directionLength;
+        const float reach = hit ? hit->distance : length;
+        const Vector2 path = Vector2{unit.x, unit.z} * reach;
+
+        for (const Linedef& linedef : level.linedefs) {
+            if (!HasEvent<PayloadReceiveRay>(linedef)) continue;
+
+            // Ray: origin + path * t, linedef: start + vector * u.
+            const float denominator = Vector2Math::Cross(path, linedef.vector);
+            if (std::abs(denominator) <= std::numeric_limits<float>::epsilon()) continue;
+
+            const Vector2 toStart = linedef.start - origin2D;
+            const float t = Vector2Math::Cross(toStart, linedef.vector) / denominator;
+            const float u = Vector2Math::Cross(toStart, path) / denominator;
+            if (t < 0.0f || t > 1.0f || u < 0.0f || u > 1.0f) continue;
+
+            const Vector2 point = origin2D + path * t;
+            const float height = origin.y + unit.y * reach * t;
+
+            const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, point);
+            if (sectorIndex < 0) continue;
+
+            const Sector& sector = level.sectors[sectorIndex];
+            const int floorIndex = MapQueries::FindFloorAtHeight(sector, point, height);
+            if (floorIndex < 0) continue;
+
+            const SectorFloor& floor = sector.floors[floorIndex];
+            if (height < MapQueries::SurfaceHeightAt(sector, floor.floor, point) ||
+                height > MapQueries::SurfaceHeightAt(sector, floor.ceiling, point)) continue;
+
+            rayReports.push_back({type, casterID, EventOwnerKind::LINEDEF, linedef.id, OnLinedefFront(linedef, origin2D)});
+        }
+    }
+
+    void Signal(Level& level, const std::string& name, const ID instigatorID) {
+        if (!running) return;
+
+        // Owners first: a dispatch can add entities while this runs.
+        std::vector<std::pair<EventOwnerKind, ID>> owners;
+        ForEachEventOwner(level, [&](const EventOwnerKind kind, const ID ownerID, const std::vector<Event>& events) {
+            const bool listens = std::ranges::any_of(events, [&](const Event& event) {
+                const PayloadLuaSignal* signal = std::get_if<PayloadLuaSignal>(&event.payload);
+                return signal && signal->name == name;
+            });
+            if (listens) owners.emplace_back(kind, ownerID);
+        });
+
+        const std::vector<TagId> tags = EntityTags(level, instigatorID);
+
+        for (const auto& [kind, ownerID] : owners) {
+            if (!IsOwnerActive(level, kind, ownerID)) continue;
+
+            FireEvents<PayloadLuaSignal>(level, kind, ownerID, instigatorID, tags,
+                [&](const PayloadLuaSignal& signal) { return signal.name == name; });
+        }
+    }
+
+    void FireEntityDestroyed(Level& level, const ID entityID) {
+        if (!running || !IsEnabledEntity(level, entityID)) return;
+
+        FireEvents<PayloadEntityDestroyed>(level, EventOwnerKind::ENTITY, entityID, entityID, EntityTags(level, entityID));
+    }
+
+    const Message* CurrentMessage() {
+        return shownMessage ? &shownMessage->message : nullptr;
     }
 }

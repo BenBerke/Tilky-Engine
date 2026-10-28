@@ -17,6 +17,10 @@ namespace LuaRayHit {
     // distance/entityID/wallID/sectorID and entity/wall/sector, or nil on a miss.
     // Defined in LuaGameBindings.cpp.
     sol::object ToLua(sol::state_view lua, Level& level, const std::optional<RayHit>& hit);
+
+    // A RayType value passed from Lua (nil = General); raises a Lua error
+    // naming `function` on anything else. Defined in LuaGameBindings.cpp.
+    RayType ToRayType(const sol::optional<int>& value, const char* function);
 }
 
 #endif //TILKY_ENGINE_LUARAYHIT_HPP

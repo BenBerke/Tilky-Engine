@@ -13,6 +13,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/WallPieces.hpp"
 #include "Headers/Math/Constants.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 
 namespace {
     std::optional<float> RayTriangleIntersection(
@@ -612,9 +613,14 @@ namespace GameFunctions {
         const Vector3& dir,
         const float length,
         const ID ignoredEntity,
-        const bool requireCollider
+        const bool requireCollider,
+        const RayType type
     ) {
-        return CastRay(level, pos, dir, length, ignoredEntity, requireCollider, true);
+        std::optional<RayHit> hit = CastRay(level, pos, dir, length, ignoredEntity, requireCollider, true);
+
+        // The ignored entity is the one casting it.
+        EventSystem::ReportRay(level, type, ignoredEntity, pos, dir, length, hit);
+        return hit;
     }
 
     std::optional<RayHit> RaycastGeometry(Level& level, const Vector3 pos, const Vector3& dir, const float length) {

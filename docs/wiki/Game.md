@@ -20,8 +20,9 @@ end
 | [`GetEntity(id)`](#finding-entities) | `Entity` or `nil` | The entity with this ID. |
 | [`GetEntities()`](#finding-entities) | list of `Entity` | Every entity in the level. |
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
-| [`Raycast(origin, direction, length, ignoredEntityID, requireCollider)`](#raycast) | table or `nil` | What a line hits first. |
+| [`Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])`](#raycast) | table or `nil` | What a line hits first. |
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
+| [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
 | [`SetSkyMode(mode)`, `GetSkyMode()`](#sky) | `SkyMode` | How the sky image wraps around the camera. |
 | [`SetSkyTexture(path)`, `GetSkyTexture()`](#sky) | string | The image for Equirectangular and Cylinder skies. |
@@ -169,7 +170,7 @@ if where ~= nil then pickup.transform.position = Vector3(spot.x, where.floorHeig
 ## Raycast
 
 ```lua
-Game.Raycast(origin, direction, length, ignoredEntityID, requireCollider)   -- table or nil
+Game.Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])   -- table or nil
 ```
 
 | Parameter | Type | |
@@ -179,8 +180,9 @@ Game.Raycast(origin, direction, length, ignoredEntityID, requireCollider)   -- t
 | `length` | number | How far it reaches. |
 | `ignoredEntityID` | integer | An entity the ray passes through, usually the caster's own `entity.id`. Pass `0` to ignore nothing. |
 | `requireCollider` | boolean | See below. |
+| `rayType` | `RayType` | Optional, `RayType.General` by default. See [Ray types](#ray-types). |
 
-All five arguments are required.
+The first five arguments are required.
 
 The ray stops at the **first** thing it hits: a wall, an entity, a floor or a ceiling. If it hits
 nothing within `length`, the result is `nil`. Otherwise it is a table:
@@ -230,6 +232,49 @@ function Update()
         if health.isValid then health:TakeDamage(damage) end
     elseif hit.wall ~= nil then
         Debug.Print("Hit a wall at", hit.position)
+    end
+end
+```
+
+### Ray types
+
+A ray other than `RayType.General` fires the **Receive Ray** events of what it hits (set up in the
+editor's Events section of a wall, linedef, sector or entity), with the ignored entity as the
+instigator. It also fires them on every enabled linedef it passes on the way, since linedefs
+don't stop rays.
+
+| `RayType` | |
+|---|---|
+| `General` | The default. Fires nothing. |
+| `Interact` | What the Player Controller's Use key casts. |
+| `LineOfSight` | |
+| `Bullet` | |
+| `Custom` | |
+
+```lua
+-- Shoot a switch: its Receive Ray (Bullet) event opens the door.
+entity.camera:Raycast(2000, true, RayType.Bullet)
+```
+
+---
+
+## Signal
+
+```lua
+Game.Signal(name, [instigator])
+```
+
+Fires every **Lua Signal** event named `name`, on any wall, linedef, sector, entity or the level
+itself. `instigator` (an `Entity`, optional) is what the events' tag filters check and what their
+dispatches receive. The level decides what a signal does, so a script can announce something
+without knowing what reacts to it.
+
+```lua
+-- Scripts/Boss.lua
+function TakeDamage(amount)
+    health = health - amount
+    if health <= 0 then
+        Game.Signal("boss_dead", entity)
     end
 end
 ```

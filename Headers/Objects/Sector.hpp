@@ -73,6 +73,8 @@ struct SurfaceMove {
 
     SectorCollision collision = SECTOR_FORCE_MOVE;
     float startHeight = 0.0f; // where SECTOR_RETRACT goes back to
+
+    bool retracting = false; // heading back after being blocked (SECTOR_RETRACT)
 };
 
 // A light colour change spread over time (Sector:FadeLight), advanced once
@@ -159,7 +161,7 @@ struct SectorFloor {
     // started at the same speed. Going back moves away from whatever blocked
     // it, so the way back doesn't check for entities.
     static void Retract(SurfaceMove& move) {
-        move = {true, move.speed, MIN_MOVE_GAP, true, move.startHeight, SECTOR_FORCE_MOVE, move.startHeight};
+        move = {true, move.speed, MIN_MOVE_GAP, true, move.startHeight, SECTOR_FORCE_MOVE, move.startHeight, true};
     }
 
     [[nodiscard]] bool IsMoving() const {

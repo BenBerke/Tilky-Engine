@@ -23,7 +23,12 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
+#include "Headers/Objects/Prefab.hpp"
+#include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Runtime/Gameplay/PlayerControllerSystem.hpp"
+#include "Headers/Runtime/Gameplay/CameraSystem.hpp"
+#include "Headers/Runtime/Gameplay/GameFunctions.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
@@ -208,7 +213,25 @@ namespace LevelSystem {
                 scriptingSystem.DispatchEntityEvent(lvl, entityID, functionName, instigatorID);
             },
             .destroyEntity = [](const ID entityID) { LuaScriptRuntime::QueueEntityDestroy(entityID); },
+            .spawnPrefab = [](Level& lvl, const std::string& prefab) {
+                const ID id = Prefab::Instantiate(lvl, prefab);
+                if (id != INVALID_ID) LuaScriptRuntime::QueueEntityScriptsStart(id);
+                return id;
+            },
+            .loadLevel = [](const std::string& levelName) {
+                // Checked like Game.LoadLevel, so a wrong name says so here.
+                std::string errorMessage;
+                if (LevelSerialization::FindLevelPath(levelName, &errorMessage).empty()) {
+                    spdlog::warn("Load Level dispatch: {}", errorMessage);
+                    return;
+                }
+
+                RequestLevelLoad(levelName);
+            },
         });
+
+        // After the scripts' start callbacks.
+        EventSystem::FireLevelStart(level);
         // Future level start systems will run here.
     }
 
@@ -282,6 +305,17 @@ namespace LevelSystem {
                     *playerRigidbody,
                     level.sectors
                 );
+
+                // Use: a typed ray from the eye along the view.
+                const ComponentCamera* viewCamera = ownCamera != nullptr && ownCamera->isActive ? ownCamera : activeCamera;
+                if (viewCamera != nullptr && activeController->useKey != SDL_SCANCODE_UNKNOWN &&
+                    InputManager::GetKeyDown(activeController->useKey)) {
+                    Vector3 eye = playerTransform->position;
+                    eye.y += activeController->eyeHeight;
+
+                    GameFunctions::Raycast(level, eye, CameraSystem::GetCameraForwardEngineSpace(viewCamera->yaw, viewCamera->pitch),
+                                           activeController->useReach, ownerID, false, activeController->useRayType);
+                }
             }
         }
 

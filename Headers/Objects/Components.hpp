@@ -16,6 +16,7 @@
 #include "VectorIndexCache.hpp"
 #include "Headers/Math/Matrix/Matrix4.hpp"
 #include <span>
+#include <SDL3/SDL_scancode.h>
 
 #include "Headers/Math/Quaternion/Quaternion.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
@@ -222,6 +223,12 @@ struct ComponentPlayerController {
     float acceleration = 480.f;
     float deceleration = 570.0f;
     float airControl = .3f;
+
+    // Pressing useKey casts a ray of useRayType from the eye along the view,
+    // up to useReach, firing the Receive Ray events of what it hits.
+    SDL_Scancode useKey = SDL_SCANCODE_E;
+    float useReach = 16.0f;
+    RayType useRayType = RayType::INTERACT;
 
     // Read only, do not change
     Vector3 velocity = {0.0f, 0.0f, 0.0f};

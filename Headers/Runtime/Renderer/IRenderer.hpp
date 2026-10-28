@@ -77,6 +77,9 @@ public:
 
     virtual void RenderTextRaw(const std::string& text, Vector2 position, Vector2 scale, Vector3 color) = 0;
 
+    // How wide RenderTextRaw would draw `text` (its widest line), in pixels.
+    [[nodiscard]] virtual float MeasureTextRaw(const std::string& text, Vector2 scale) = 0;
+
     virtual bool CreateMap() = 0;
 
     // Rebuilds the map's GPU data and textures for a level that replaced

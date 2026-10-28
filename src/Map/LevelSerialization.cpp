@@ -462,6 +462,11 @@ namespace {
         };
     }
 
+    // Defined with the rest of the event code below.
+    void LoadEventsAndDispatches(const json& objectJson, const char* ownerKind, ID ownerID,
+                                 std::vector<Event>& events, std::vector<Dispatch>& dispatches);
+    void SaveEventsAndDispatches(json& objectJson, const std::vector<Event>& events, const std::vector<Dispatch>& dispatches);
+
     void LoadLevelStats(const json &levelData, Level &level) {
         if (!levelData.contains("levelStats") ||
             !levelData["levelStats"].is_object()) {
@@ -497,6 +502,7 @@ namespace {
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
 
             LoadEventVariables(worldSettingsJson, worldSettings);
+            LoadEventsAndDispatches(worldSettingsJson, "Level", 0, worldSettings.events, worldSettings.dispatches);
         }
 
         if (levelStatsJson.contains("rendererSettings") && levelStatsJson["rendererSettings"].is_object()) {
@@ -544,6 +550,8 @@ namespace {
             },
             {"sky", SaveSky(level.sky)}
         };
+
+        SaveEventsAndDispatches(levelData["levelStats"]["worldSettings"], worldSettings.events, worldSettings.dispatches);
     }
 
     // An instance's link to its .prefab, saved on the entity as "prefab".
@@ -628,6 +636,66 @@ namespace {
         {PayloadDispatchChangeVariable::SET, "set"},
         {PayloadDispatchChangeVariable::ADD, "add"},
         {PayloadDispatchChangeVariable::SUBTRACT, "subtract"}
+    };
+
+    constexpr std::pair<LineSide, const char*> kLineSideNames[] = {
+        {LineSide::FRONT, "front"}, {LineSide::BACK, "back"}, {LineSide::EITHER, "either"}
+    };
+
+    constexpr std::pair<SectorSurfacePick, const char*> kSurfacePickNames[] = {
+        {SectorSurfacePick::FLOOR, "floor"}, {SectorSurfacePick::CEILING, "ceiling"}, {SectorSurfacePick::BOTH, "both"}
+    };
+
+    constexpr std::pair<ToggleMode, const char*> kToggleModeNames[] = {
+        {ToggleMode::ON, "on"}, {ToggleMode::OFF, "off"}, {ToggleMode::TOGGLE, "toggle"}
+    };
+
+    constexpr std::pair<RayType, const char*> kRayTypeNames[] = {
+        {RayType::GENERAL, "general"},
+        {RayType::INTERACT, "interact"},
+        {RayType::LINE_OF_SIGHT, "line_of_sight"},
+        {RayType::BULLET, "bullet"},
+        {RayType::CUSTOM, "custom"}
+    };
+
+    constexpr std::pair<PayloadSectorMoveFinished::Reason, const char*> kMoveEndReasonNames[] = {
+        {PayloadSectorMoveFinished::ANY, "any"},
+        {PayloadSectorMoveFinished::REACHED, "reached"},
+        {PayloadSectorMoveFinished::STOPPED, "stopped"},
+        {PayloadSectorMoveFinished::RETRACTED, "retracted"}
+    };
+
+    constexpr std::pair<WallPiece, const char*> kWallPieceNames[] = {
+        {WallPiece::TOP, "top"}, {WallPiece::MIDDLE, "middle"}, {WallPiece::BOTTOM, "bottom"}
+    };
+
+    constexpr std::pair<SectorHeightMode, const char*> kHeightModeNames[] = {
+        {SectorHeightMode::ABSOLUTE_HEIGHT, "absolute"},
+        {SectorHeightMode::RELATIVE_OFFSET, "relative"},
+        {SectorHeightMode::LOWEST_NEIGHBOR_FLOOR, "lowest_neighbor_floor"},
+        {SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR, "highest_neighbor_floor"},
+        {SectorHeightMode::LOWEST_NEIGHBOR_CEILING, "lowest_neighbor_ceiling"},
+        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "highest_neighbor_ceiling"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::OpenMode, const char*> kDoorOpenModeNames[] = {
+        {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_CEILING, "lowest_neighbor_ceiling"},
+        {PayloadDispatchSectorDoor::FIXED_HEIGHT, "fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char*> kDoorRetriggerNames[] = {
+        {PayloadDispatchSectorDoor::RESTART, "restart"},
+        {PayloadDispatchSectorDoor::TOGGLE, "toggle"},
+        {PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN, "ignore"}
+    };
+
+    constexpr std::pair<ToggleableComponent, const char*> kToggleableComponentNames[] = {
+        {ToggleableComponent::SPRITE, "sprite"},
+        {ToggleableComponent::SCRIPT, "script"},
+        {ToggleableComponent::PLAYER_CONTROLLER, "player_controller"},
+        {ToggleableComponent::CAMERA, "camera"},
+        {ToggleableComponent::COLLIDER, "collider"},
+        {ToggleableComponent::UI_SPRITE, "ui_sprite"}
     };
 
     // Reads `key` into `out` if present; throws on a value of the wrong type.
@@ -721,6 +789,128 @@ namespace {
             j["value"] = payload.value;
         }
 
+        if constexpr (std::is_same_v<Payload, PayloadLineEntityCollide>)
+            j["side"] = EnumName(kLineSideNames, payload.side);
+
+        if constexpr (std::is_same_v<Payload, PayloadSectorEntityStay>)
+            j["interval"] = payload.interval;
+
+        if constexpr (std::is_same_v<Payload, PayloadSectorMoveFinished>) {
+            j["surface"] = EnumName(kSurfacePickNames, payload.surface);
+            j["floorIndex"] = payload.floorIndex;
+            j["reason"] = EnumName(kMoveEndReasonNames, payload.reason);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadReceiveRay>) {
+            j["rayType"] = EnumName(kRayTypeNames, payload.rayType);
+            j["firstHitOnly"] = payload.firstHitOnly;
+            j["side"] = EnumName(kLineSideNames, payload.side);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadTimer>) {
+            j["interval"] = payload.interval;
+            j["firstDelay"] = payload.firstDelay;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadLuaSignal>)
+            j["name"] = payload.name;
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetTexture>) {
+            j["piece"] = EnumName(kWallPieceNames, payload.piece);
+            j["texture"] = payload.texture;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetCollision> ||
+                      std::is_same_v<Payload, PayloadDispatchLinedefSetEnabled>)
+            j["mode"] = EnumName(kToggleModeNames, payload.mode);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveToHeight>) {
+            j["ceiling"] = payload.ceiling;
+            j["mode"] = EnumName(kHeightModeNames, payload.mode);
+            j["height"] = payload.height;
+            j["speed"] = payload.speed;
+            j["floorIndex"] = payload.floorIndex;
+            j["collision"] = EnumName(kSectorCollisionNames, payload.collisionType);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+            j["openMode"] = EnumName(kDoorOpenModeNames, payload.openMode);
+            j["lip"] = payload.lip;
+            j["openHeight"] = payload.openHeight;
+            j["openSpeed"] = payload.openSpeed;
+            j["closeSpeed"] = payload.closeSpeed;
+            j["wait"] = payload.wait;
+            j["floorIndex"] = payload.floorIndex;
+            j["closeCollision"] = EnumName(kSectorCollisionNames, payload.closeCollision);
+            j["retrigger"] = EnumName(kDoorRetriggerNames, payload.retrigger);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
+            j["surface"] = EnumName(kSurfacePickNames, payload.surface);
+            j["floorIndex"] = payload.floorIndex;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetLight>) {
+            j["light"] = {payload.light.x, payload.light.y, payload.light.z};
+            j["speed"] = payload.speed;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetTexture>) {
+            j["surface"] = EnumName(kSurfacePickNames, payload.surface);
+            j["floorIndex"] = payload.floorIndex;
+            j["texture"] = payload.texture;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchChangeTag>) {
+            j["remove"] = payload.remove;
+            j["tag"] = payload.tag;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityChangeVelocity>) {
+            j["set"] = payload.set;
+            j["velocity"] = {payload.velocity.x, payload.velocity.y, payload.velocity.z};
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMoveTo>) {
+            j["position"] = {payload.position.x, payload.position.y, payload.position.z};
+            j["relative"] = payload.relative;
+            j["useDuration"] = payload.useDuration;
+            j["speed"] = payload.speed;
+            j["duration"] = payload.duration;
+            j["rotate"] = payload.rotate;
+            j["rotation"] = {payload.rotation.x, payload.rotation.y, payload.rotation.z};
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetComponent>) {
+            j["component"] = EnumName(kToggleableComponentNames, payload.component);
+            j["mode"] = EnumName(kToggleModeNames, payload.mode);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
+            j["prefab"] = payload.prefab;
+            j["offset"] = {payload.offset.x, payload.offset.y, payload.offset.z};
+            j["rotation"] = {payload.rotation.x, payload.rotation.y, payload.rotation.z};
+            j["worldPosition"] = payload.worldPosition;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchPlaySound>) {
+            j["sound"] = payload.sound;
+            j["gain"] = payload.gain;
+            j["pitch"] = payload.pitch;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchShowMessage>) {
+            j["text"] = payload.text;
+            j["duration"] = payload.duration;
+            j["color"] = {payload.color.x, payload.color.y, payload.color.z};
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> || std::is_same_v<Payload, PayloadDispatchResetEvent>)
+            j["target"] = payload.target;
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
+            j["levelName"] = payload.levelName;
+
         return j;
     }
 
@@ -763,6 +953,128 @@ namespace {
             ReadOptionalEnum(j, "operation", kVariableOperationNames, payload.operation);
             ReadOptional(j, "value", payload.value);
         }
+
+        if constexpr (std::is_same_v<Payload, PayloadLineEntityCollide>)
+            ReadOptionalEnum(j, "side", kLineSideNames, payload.side);
+
+        if constexpr (std::is_same_v<Payload, PayloadSectorEntityStay>)
+            ReadOptional(j, "interval", payload.interval);
+
+        if constexpr (std::is_same_v<Payload, PayloadSectorMoveFinished>) {
+            ReadOptionalEnum(j, "surface", kSurfacePickNames, payload.surface);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptionalEnum(j, "reason", kMoveEndReasonNames, payload.reason);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadReceiveRay>) {
+            ReadOptionalEnum(j, "rayType", kRayTypeNames, payload.rayType);
+            ReadOptional(j, "firstHitOnly", payload.firstHitOnly);
+            ReadOptionalEnum(j, "side", kLineSideNames, payload.side);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadTimer>) {
+            ReadOptional(j, "interval", payload.interval);
+            ReadOptional(j, "firstDelay", payload.firstDelay);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadLuaSignal>)
+            ReadOptional(j, "name", payload.name);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetTexture>) {
+            ReadOptionalEnum(j, "piece", kWallPieceNames, payload.piece);
+            ReadOptional(j, "texture", payload.texture);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetCollision> ||
+                      std::is_same_v<Payload, PayloadDispatchLinedefSetEnabled>)
+            ReadOptionalEnum(j, "mode", kToggleModeNames, payload.mode);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorMoveToHeight>) {
+            ReadOptional(j, "ceiling", payload.ceiling);
+            ReadOptionalEnum(j, "mode", kHeightModeNames, payload.mode);
+            ReadOptional(j, "height", payload.height);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptionalEnum(j, "collision", kSectorCollisionNames, payload.collisionType);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+            ReadOptionalEnum(j, "openMode", kDoorOpenModeNames, payload.openMode);
+            ReadOptional(j, "lip", payload.lip);
+            ReadOptional(j, "openHeight", payload.openHeight);
+            ReadOptional(j, "openSpeed", payload.openSpeed);
+            ReadOptional(j, "closeSpeed", payload.closeSpeed);
+            ReadOptional(j, "wait", payload.wait);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptionalEnum(j, "closeCollision", kSectorCollisionNames, payload.closeCollision);
+            ReadOptionalEnum(j, "retrigger", kDoorRetriggerNames, payload.retrigger);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
+            ReadOptionalEnum(j, "surface", kSurfacePickNames, payload.surface);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetLight>) {
+            ReadOptionalVector3(j, "light", payload.light);
+            ReadOptional(j, "speed", payload.speed);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetTexture>) {
+            ReadOptionalEnum(j, "surface", kSurfacePickNames, payload.surface);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptional(j, "texture", payload.texture);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchChangeTag>) {
+            ReadOptional(j, "remove", payload.remove);
+            ReadOptional(j, "tag", payload.tag);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityChangeVelocity>) {
+            ReadOptional(j, "set", payload.set);
+            ReadOptionalVector3(j, "velocity", payload.velocity);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMoveTo>) {
+            ReadOptionalVector3(j, "position", payload.position);
+            ReadOptional(j, "relative", payload.relative);
+            ReadOptional(j, "useDuration", payload.useDuration);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "duration", payload.duration);
+            ReadOptional(j, "rotate", payload.rotate);
+            ReadOptionalVector3(j, "rotation", payload.rotation);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetComponent>) {
+            ReadOptionalEnum(j, "component", kToggleableComponentNames, payload.component);
+            ReadOptionalEnum(j, "mode", kToggleModeNames, payload.mode);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
+            ReadOptional(j, "prefab", payload.prefab);
+            ReadOptionalVector3(j, "offset", payload.offset);
+            ReadOptionalVector3(j, "rotation", payload.rotation);
+            ReadOptional(j, "worldPosition", payload.worldPosition);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchPlaySound>) {
+            ReadOptional(j, "sound", payload.sound);
+            ReadOptional(j, "gain", payload.gain);
+            ReadOptional(j, "pitch", payload.pitch);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchShowMessage>) {
+            ReadOptional(j, "text", payload.text);
+            ReadOptional(j, "duration", payload.duration);
+            ReadOptionalVector3(j, "color", payload.color);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> || std::is_same_v<Payload, PayloadDispatchResetEvent>)
+            ReadOptional(j, "target", payload.target);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
+            ReadOptional(j, "levelName", payload.levelName);
     }
 
     template <typename Variant>
@@ -820,13 +1132,19 @@ namespace {
     }
 
     json DispatchToJson(const Dispatch& dispatch) {
-        return {{"payload", PayloadToJson(dispatch.payload)}, {"tag", dispatch.tagId}};
+        json j = {{"payload", PayloadToJson(dispatch.payload)}, {"tag", dispatch.tagId}};
+
+        // Only written when there is one, so dispatches without a delay save as before.
+        if (dispatch.delay > 0.0f) j["delay"] = dispatch.delay;
+
+        return j;
     }
 
     Dispatch DispatchFromJson(const json& j) {
         Dispatch dispatch;
         dispatch.payload = PayloadFromJson<DispatchPayload>(j.at("payload"));
         ReadOptional(j, "tag", dispatch.tagId);
+        ReadOptional(j, "delay", dispatch.delay);
         return dispatch;
     }
 
@@ -1189,6 +1507,7 @@ namespace {
             highestLinedefID = std::max(highestLinedefID, linedef.id);
 
             linedef.name = linedefJson.value("name", std::string{});
+            linedef.enabled = linedefJson.value("enabled", true);
             LoadEventsAndDispatches(linedefJson, "Linedef", linedef.id, linedef.events, linedef.dispatches);
 
             level.linedefs.push_back(std::move(linedef));
@@ -1205,7 +1524,8 @@ namespace {
                 {"id", linedef.id},
                 {"name", linedef.name},
                 {"start", {linedef.start.x, linedef.start.y}},
-                {"end", {linedef.end.x, linedef.end.y}}
+                {"end", {linedef.end.x, linedef.end.y}},
+                {"enabled", linedef.enabled}
             };
 
             SaveEventsAndDispatches(linedefJson, linedef.events, linedef.dispatches);
@@ -1867,7 +2187,10 @@ namespace LevelSerialization {
             {"jumpBufferMs", c.jumpBufferMs},
             {"acceleration", c.acceleration},
             {"deceleration", c.deceleration},
-            {"airControl", c.airControl}
+            {"airControl", c.airControl},
+            {"useKey", static_cast<int>(c.useKey)},
+            {"useReach", c.useReach},
+            {"useRayType", static_cast<int>(c.useRayType)}
         };
     }
 
@@ -1887,6 +2210,10 @@ namespace LevelSerialization {
         c.acceleration = j.value("acceleration", 80.0f);
         c.deceleration = j.value("deceleration", 60.0f);
         c.airControl = j.value("airControl", .3f);
+        c.useKey = static_cast<SDL_Scancode>(j.value("useKey", static_cast<int>(SDL_SCANCODE_E)));
+        c.useReach = j.value("useReach", 16.0f);
+        c.useRayType = static_cast<RayType>(std::clamp(j.value("useRayType", static_cast<int>(RayType::INTERACT)),
+                                                       0, static_cast<int>(RayType::COUNT) - 1));
         if (j.contains("velocity")) c.velocity = Vec3FromJson(j["velocity"]);
         return true;
     }

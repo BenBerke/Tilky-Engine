@@ -518,6 +518,19 @@ namespace SoundManager {
         CheckALErrors("Failed to set source looping");
     }
 
+    void SetSourceRelative(const std::string& sourceName, const bool relative) {
+        const auto iterator = sources.find(sourceName);
+
+        if (iterator == sources.end()) {
+            spdlog::error("Source not found: '{}'", sourceName);
+            return;
+        }
+
+        alSourcei(iterator->second, AL_SOURCE_RELATIVE, relative ? AL_TRUE : AL_FALSE);
+        if (relative) alSource3f(iterator->second, AL_POSITION, 0.0f, 0.0f, 0.0f);
+        CheckALErrors("Failed to set source relative");
+    }
+
     void SetSourceReferenceDistance(const std::string& sourceName, const float distance) {
         const auto iterator = sources.find(sourceName);
 

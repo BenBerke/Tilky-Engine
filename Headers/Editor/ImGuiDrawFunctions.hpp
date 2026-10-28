@@ -71,6 +71,8 @@ namespace ImGuiDrawFunctions {
     bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr);
     bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable);
+    // The level's own Events and Dispatches sections (World Settings).
+    void DrawLevelEventSections(Level &level, bool draggable);
     bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
     void SmallMetaText(const char* fmt, ...);

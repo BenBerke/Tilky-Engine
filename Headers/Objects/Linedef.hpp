@@ -24,6 +24,9 @@ struct Linedef {
 
     Vector2 start, end;
 
+    // A disabled linedef fires no events and typed rays pass it by.
+    bool enabled = true;
+
     std::vector<Event> events;
     std::vector<Dispatch> dispatches;
 

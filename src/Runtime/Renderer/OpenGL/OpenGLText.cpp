@@ -508,6 +508,41 @@ void OpenGL::RenderTextRaw(
     RenderText(*textShader, text, position.x, position.y, scale, color);
 }
 
+// Same glyphs and advances as RenderTextString with the default font.
+float OpenGL::MeasureTextRaw(const std::string& text, const Vector2 scale) {
+    if (scale.y <= 0.0f || defaultFontFace == nullptr) return 0.0f;
+
+    const unsigned pixelSize = PixelSizeFor(OpenGLRendererInternal::UI_FONT_SIZE * scale.y);
+    if (pixelSize == 0) return 0.0f;
+
+    const float xStretch = scale.x / scale.y;
+    float widest = 0.0f;
+    float line = 0.0f;
+
+    size_t i = 0;
+    while (i < text.size()) {
+        const char32_t codepoint = NextCodepoint(text, i);
+
+        if (codepoint == U'\r') continue;
+        if (codepoint == U'\n') {
+            widest = std::max(widest, line);
+            line = 0.0f;
+            continue;
+        }
+
+        const bool isTab = codepoint == U'\t';
+        const unsigned glyphIndex = FT_Get_Char_Index(defaultFontFace, isTab ? U' ' : codepoint);
+
+        // Nothing is waiting to be drawn, so the atlas can reset freely.
+        const Glyph* glyph = GetGlyph(defaultFontFace, pixelSize, glyphIndex, [] {});
+        if (glyph == nullptr) continue;
+
+        line += glyph->advance * (isTab ? 4.0f : 1.0f) * xStretch;
+    }
+
+    return std::max(widest, line);
+}
+
 // Font Size (and the inset from the rectangle) are pixels at the project's
 // UI Reference Height, scaled by the window's actual height.
 void OpenGL::RenderUIText(

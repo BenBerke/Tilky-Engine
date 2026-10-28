@@ -9,7 +9,10 @@
 #include "../../Objects/RayHit.hpp"
 
 namespace GameFunctions {
-    std::optional<RayHit> Raycast(Level &level, Vector3 pos, const Vector3 &dir, float length, ID ignoredEntity, bool requireCollider);
+    // `ignoredEntity` is also who cast it. A ray of any `type` but GENERAL
+    // fires the Receive Ray events of what it hits (EventSystem::ReportRay).
+    std::optional<RayHit> Raycast(Level &level, Vector3 pos, const Vector3 &dir, float length, ID ignoredEntity, bool requireCollider,
+                                  RayType type = RayType::GENERAL);
 
     // True when nothing solid is between `from` and `to`: walls, floors and
     // ceilings block it, entities don't. One ray, however many entities are

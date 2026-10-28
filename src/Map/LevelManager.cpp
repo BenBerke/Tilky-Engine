@@ -108,6 +108,17 @@ namespace LevelManager {
         }
     }
 
+    // Calls f(dispatch) for every dispatch in the level: walls, linedefs,
+    // sectors, entities and the level's own.
+    template <typename F>
+    void ForEachDispatch(Level& level, F&& f) {
+        for (Wall& wall : level.walls) for (Dispatch& dispatch : wall.dispatches) f(dispatch);
+        for (Linedef& linedef : level.linedefs) for (Dispatch& dispatch : linedef.dispatches) f(dispatch);
+        for (Sector& sector : level.sectors) for (Dispatch& dispatch : sector.dispatches) f(dispatch);
+        for (Entity& entity : level.entities) for (Dispatch& dispatch : entity.dispatches) f(dispatch);
+        for (Dispatch& dispatch : level.worldSettings.dispatches) f(dispatch);
+    }
+
     void RenameTextureReference(const std::string& oldReference, const std::string& newReference) {
         if (!HasCurrentLevel()) return;
 
@@ -131,6 +142,13 @@ namespace LevelManager {
 
         for (ComponentUISprite& uiSprite : level.ui_sprites.components)
             if (uiSprite.texture == oldReference) uiSprite.texture = newReference;
+
+        ForEachDispatch(level, [&](Dispatch& dispatch) {
+            if (auto* line = std::get_if<PayloadDispatchLineSetTexture>(&dispatch.payload); line && line->texture == oldReference)
+                line->texture = newReference;
+            if (auto* sector = std::get_if<PayloadDispatchSectorSetTexture>(&dispatch.payload); sector && sector->texture == oldReference)
+                sector->texture = newReference;
+        });
     }
 
     void RenameSoundReference(const std::string& oldReference, const std::string& newReference) {
@@ -140,6 +158,11 @@ namespace LevelManager {
 
         for (ComponentAudioSource& audioSource : level.audioSources.components)
             if (audioSource.soundFileName == oldReference) audioSource.soundFileName = newReference;
+
+        ForEachDispatch(level, [&](Dispatch& dispatch) {
+            if (auto* play = std::get_if<PayloadDispatchPlaySound>(&dispatch.payload); play && play->sound == oldReference)
+                play->sound = newReference;
+        });
     }
 
     void RenameScriptReference(const std::string& oldReference, const std::string& newReference) {
@@ -192,6 +215,11 @@ namespace LevelManager {
 
         for (Sector& sector : level.sectors)
             for (SectorScript& script : sector.scripts) renameInScript(script);
+
+        ForEachDispatch(level, [&](Dispatch& dispatch) {
+            if (auto* spawn = std::get_if<PayloadDispatchSpawnPrefab>(&dispatch.payload); spawn && spawn->prefab == oldReference)
+                spawn->prefab = newReference;
+        });
     }
 
     void RenameFlipbookReference(const std::string& oldReference, const std::string& newReference) {

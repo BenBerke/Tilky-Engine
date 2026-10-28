@@ -2460,7 +2460,8 @@ struct ScriptSector {
     }
 
     void StopMoving(const int luaIndex) const {
-        GetMovableFloor(luaIndex).StopMoving();
+        (void)GetMovableFloor(luaIndex); // checks the index
+        level->StopSectorMoves(sectorID, luaIndex - 1, true, true);
     }
 
     [[nodiscard]] int GetVertexCount() const {

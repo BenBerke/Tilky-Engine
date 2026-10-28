@@ -53,6 +53,9 @@ namespace SoundManager {
     // Set to true to make the sound repeat automatically when it reaches the end.
     void SetSourceLooping(const std::string& sourceName, bool looping);
 
+    // A relative source sits at the listener and plays unpositioned (2D).
+    void SetSourceRelative(const std::string& sourceName, bool relative);
+
     // The distance at which the listener experiences the source's full gain.
     void SetSourceReferenceDistance(const std::string& sourceName, float distance);
 
