@@ -228,6 +228,17 @@ struct PayloadSectorEntityStay {
     float interval = 1.0f; // seconds
 };
 
+// Fires every frame for each entity whose Rigidbody is grounded while it is
+// in the sector. The filter checks the entity's tags.
+struct PayloadSectorEntityGrounded {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
+    transKey translationKey = "event.sector.entity_grounded";
+    transKey saveName = "sector.entity_grounded"; // level file name, never change
+    bool operator==(const PayloadSectorEntityGrounded&) const = default;
+
+    TagFilter filter;
+};
+
 // Any end of a floor or ceiling move of the sector. No instigator.
 struct PayloadSectorMoveFinished {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
@@ -261,6 +272,17 @@ struct PayloadEntityChangeSector {
     transKey translationKey = "event.entity.change_sector";
     transKey saveName = "entity.change_sector"; // level file name, never change
     bool operator==(const PayloadEntityChangeSector&) const = default;
+
+    TagFilter filter;
+};
+
+// Fires every frame the entity's Rigidbody is grounded, while it is in a
+// sector. The filter checks that sector's tags.
+struct PayloadEntityGroundedInSector {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.entity.grounded_in_sector";
+    transKey saveName = "entity.grounded_in_sector"; // level file name, never change
+    bool operator==(const PayloadEntityGroundedInSector&) const = default;
 
     TagFilter filter;
 };
@@ -708,8 +730,8 @@ struct PayloadDispatchChangeVariable {
 
 using EventPayload = std::variant<
     PayloadLineEntityCollide, PayloadLineEntityCross,
-    PayloadSectorEntityEnter, PayloadSectorEntityExit, PayloadSectorEntityStay, PayloadSectorMoveFinished,
-    PayloadEntityChangeSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
+    PayloadSectorEntityEnter, PayloadSectorEntityExit, PayloadSectorEntityStay, PayloadSectorEntityGrounded, PayloadSectorMoveFinished,
+    PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
     PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadLevelStart>;
 
 using DispatchPayload = std::variant<

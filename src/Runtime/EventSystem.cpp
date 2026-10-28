@@ -667,6 +667,38 @@ namespace {
         }
     }
 
+    // Every frame, for each enabled entity with a grounded Rigidbody that is in
+    // a sector: the sector's Entity Grounded and the entity's Grounded In Sector.
+    void FireGroundedEvents(Level& level) {
+        struct Grounded {
+            ID entityID;
+            ID sectorID;
+        };
+        std::vector<Grounded> grounded;
+
+        for (const ComponentRigidbody& rigidbody : level.rigidbodies.components) {
+            if (!rigidbody.isGrounded || !IsEnabledEntity(level, rigidbody.ownerID)) continue;
+
+            const auto sector = lastSectors.find(rigidbody.ownerID);
+            if (sector == lastSectors.end() || sector->second == INVALID_ID) continue;
+
+            // Once per entity, however many grounded Rigidbodies it has.
+            if (std::ranges::any_of(grounded, [&](const Grounded& g) { return g.entityID == rigidbody.ownerID; }))
+                continue;
+            grounded.push_back({rigidbody.ownerID, sector->second});
+        }
+
+        for (const Grounded& g : grounded) {
+            FireEvents<PayloadSectorEntityGrounded>(level, EventOwnerKind::SECTOR, g.sectorID, g.entityID,
+                                                    EntityTags(level, g.entityID));
+
+            const Sector* sector = level.GetSector(g.sectorID);
+            const std::vector<TagId> sectorTags = sector ? sector->tagIds : std::vector<TagId>{};
+            if (IsEnabledEntity(level, g.entityID))
+                FireEvents<PayloadEntityGroundedInSector>(level, EventOwnerKind::ENTITY, g.entityID, g.entityID, sectorTags);
+        }
+    }
+
     // Moves `value` toward `target` by at most `step`. True once it's there.
     bool StepToward(float& value, const float target, const float step) {
         value += std::clamp(target - value, -step, step);
@@ -1400,6 +1432,7 @@ namespace EventSystem {
         FireEnableEvents(level);
         FireMovementEvents(level);
         FireStayEvents(level, deltaTime);
+        FireGroundedEvents(level);
         FireContactEvents(level, contacts);
         FireLinedefContactEvents(level);
         FireRayEvents(level);
