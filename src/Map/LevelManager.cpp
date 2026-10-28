@@ -151,6 +151,9 @@ namespace LevelManager {
                 line->texture = newReference;
             if (auto* sector = std::get_if<PayloadDispatchSectorSetTexture>(&dispatch.payload); sector && sector->texture == oldReference)
                 sector->texture = newReference;
+            if (auto* sprite = std::get_if<PayloadDispatchEntitySetSprite>(&dispatch.payload))
+                for (std::string& texture : sprite->textures)
+                    if (texture == oldReference) texture = newReference;
         });
     }
 

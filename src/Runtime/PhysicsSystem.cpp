@@ -1376,9 +1376,7 @@ namespace PhysicsSystem {
 
                     if (groundSeparatingSpeed < 0.0f) selfRigidbody->velocity.y = 0.0f;
                 }
-                else if (!floorIsWalkable && groundDistance <= GROUND_CONTACT_SLOP) {
-                    selfRigidbody->slideNormal = floorNormal;
-                }
+                else if (!floorIsWalkable && groundDistance <= GROUND_CONTACT_SLOP) selfRigidbody->slideNormal = floorNormal;
 
                 if (isBase) selfTransform->relativeHeight = groundDistance;
             }

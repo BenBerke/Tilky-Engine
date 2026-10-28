@@ -980,6 +980,10 @@ namespace {
             j["mode"] = EnumName(kToggleModeNames, payload.mode);
         }
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetSprite>) {
+            j["textures"] = payload.textures;
+        }
+
         if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
             j["prefab"] = payload.prefab;
             j["offset"] = {payload.offset.x, payload.offset.y, payload.offset.z};
@@ -1143,6 +1147,10 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetComponent>) {
             ReadOptionalEnum(j, "component", kToggleableComponentNames, payload.component);
             ReadOptionalEnum(j, "mode", kToggleModeNames, payload.mode);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetSprite>) {
+            ReadOptional(j, "textures", payload.textures);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {

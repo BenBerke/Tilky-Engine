@@ -2001,6 +2001,13 @@ namespace ImGuiDrawFunctions {
 
                         EndProperties();
                     }
+
+                    // Too wide for the value column, so under the table.
+                    if (auto *setSprite = std::get_if<PayloadDispatchEntitySetSprite>(&dispatch.payload)) {
+                        ImGui::TextUnformatted(Get("events.sprite_textures").c_str());
+                        Tooltip(Get("editor.tooltip.dispatches.sprite_textures").c_str());
+                        DrawDirectionalTextureSlots(setSprite->textures, SIDECOUNT_45);
+                    }
                 }
             }
             EndEntryCard();

@@ -787,175 +787,292 @@ namespace {
         });
     }
 
+    // ── World Settings layout ───────────────────────────────────────────────
+    // Each group is a collapsible header, and its fields sit in a two-column
+    // table like the inspectors': labels on the left, fields filling the rest.
+
+    bool SettingsSection(const char *titleKey, const char *id, const bool defaultOpen = true,
+                         const char *tooltipKey = nullptr) {
+        ImGui::Spacing();
+        const std::string label = Get(titleKey) + "###" + id;
+        const bool open = ImGui::CollapsingHeader(label.c_str(), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+        if (tooltipKey != nullptr) HoverTooltip(Get(tooltipKey).c_str());
+        if (open) ImGui::Spacing();
+        return open;
+    }
+
+    // Call EndSettingsTable only when this returns true.
+    bool BeginSettingsTable(const char *id) {
+        if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings)) return false;
+
+        const float labelWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.4f, 90.0f, 170.0f);
+        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+        return true;
+    }
+
+    void EndSettingsTable() { ImGui::EndTable(); }
+
+    // A new row: the label (`tooltip` on hover, or the full label if the
+    // column clips it), then the value column with the next item filling it.
+    // `nested` indents the label under the row above (a setting it enables).
+    void SettingRow(const std::string &label, const char *tooltip = nullptr, const bool nested = false) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        if (nested) ImGui::Indent(12.0f);
+        ImGui::TextUnformatted(label.c_str());
+        if (nested) ImGui::Unindent(12.0f);
+
+        if (tooltip != nullptr) HoverTooltip(tooltip);
+        else if (ImGui::CalcTextSize(label.c_str()).x > ImGui::GetColumnWidth()) HoverTooltip(label.c_str());
+
+        ImGui::TableNextColumn();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+    }
+
+    // A small grey heading between two tables of one section.
+    void SettingsSubheading(const char *text) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::SeparatorText(text);
+        ImGui::PopStyleColor();
+    }
+
+    // Stored 0..255, edited as 0..1 like sector light.
+    bool ColorField255(const char *id, Vector3 &color) {
+        float normalized[3] = {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f};
+
+        if (!ImGui::ColorEdit3(id, normalized,
+                               ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_DisplayRGB |
+                               ImGuiColorEditFlags_PickerHueWheel))
+            return false;
+
+        color = {normalized[0] * 255.0f, normalized[1] * 255.0f, normalized[2] * 255.0f};
+        return true;
+    }
+
+    // A combo over `keys` (localisation keys), `current` indexing them.
+    template <size_t N>
+    bool KeyCombo(const char *id, int &current, const char *const (&keys)[N]) {
+        bool changed = false;
+        if (ImGui::BeginCombo(id, Get(keys[current]).c_str())) {
+            for (int i = 0; i < static_cast<int>(N); ++i) {
+                if (ImGui::Selectable(Get(keys[i]).c_str(), i == current)) {
+                    current = i;
+                    changed = true;
+                }
+                if (i == current) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    }
+
+    // ── Message Box ──
+
     // The Show Message box: font, place, background, text effects, fades, stacking.
     void DrawMessageStyleSettings(MessageStyle &style) {
-        const auto label = [](const char *key, const char *id) { return Get(key) + id; };
+        const auto row = [](const char *labelKey, const char *tooltipKey = nullptr, const bool nested = false) {
+            const std::string tooltip = tooltipKey != nullptr ? Get(tooltipKey) : std::string{};
+            SettingRow(Get(labelKey), tooltipKey != nullptr ? tooltip.c_str() : nullptr, nested);
+        };
+        const auto tooltip = [](const char *key) { HoverTooltip(Get(key).c_str()); };
 
-        DrawAssetField(Get("settings.message.font").c_str(), style.font, AssetKind::Font);
-        HoverTooltip(Get("settings.message.tooltip.font").c_str());
+        // ---- Text ----
+        if (BeginSettingsTable("##MessageText")) {
+            row("settings.message.font", "settings.message.tooltip.font");
+            ImGui::PushID("Font");
+            DrawAssetField("", style.font, AssetKind::Font);
+            ImGui::PopID();
+            tooltip("settings.message.tooltip.font");
 
-        if (ImGui::InputFloat(Get("settings.message.font_size").c_str(), &style.fontSize, 1.0f, 4.0f, "%.0f"))
-            style.fontSize = std::max(1.0f, style.fontSize);
-        HoverTooltip(Get("settings.message.tooltip.font_size").c_str());
+            row("settings.message.font_size", "settings.message.tooltip.font_size");
+            if (ImGui::InputFloat("##FontSize", &style.fontSize, 1.0f, 4.0f, "%.0f"))
+                style.fontSize = std::max(1.0f, style.fontSize);
+            tooltip("settings.message.tooltip.font_size");
 
-        {
+            static constexpr const char *alignKeys[] = {
+                "settings.message.align.left", "settings.message.align.center", "settings.message.align.right"
+            };
+            row("settings.message.align", "settings.message.tooltip.align");
+            int align = static_cast<int>(style.align);
+            if (KeyCombo("##Align", align, alignKeys)) style.align = static_cast<MessageTextAlign>(align);
+            tooltip("settings.message.tooltip.align");
+
+            row("settings.message.wrap_width", "settings.message.tooltip.wrap_width");
+            if (ImGui::InputFloat("##WrapWidth", &style.wrapWidth, 10.0f, 50.0f, "%.0f"))
+                style.wrapWidth = std::max(0.0f, style.wrapWidth);
+            tooltip("settings.message.tooltip.wrap_width");
+
+            EndSettingsTable();
+        }
+
+        // ---- Position ----
+        SettingsSubheading(Get("settings.message.group.position").c_str());
+        if (BeginSettingsTable("##MessagePosition")) {
             static constexpr const char *anchorKeys[] = {
                 "settings.message.anchor.top_left", "settings.message.anchor.top_center", "settings.message.anchor.top_right",
                 "settings.message.anchor.middle_left", "settings.message.anchor.center", "settings.message.anchor.middle_right",
                 "settings.message.anchor.bottom_left", "settings.message.anchor.bottom_center", "settings.message.anchor.bottom_right"
             };
-            const int current = static_cast<int>(style.anchor);
-            if (ImGui::BeginCombo(Get("settings.message.anchor").c_str(), Get(anchorKeys[current]).c_str())) {
-                for (int i = 0; i < static_cast<int>(std::size(anchorKeys)); ++i) {
-                    if (ImGui::Selectable(Get(anchorKeys[i]).c_str(), i == current)) style.anchor = static_cast<MessageAnchor>(i);
-                    if (i == current) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
-            HoverTooltip(Get("settings.message.tooltip.anchor").c_str());
+            row("settings.message.anchor", "settings.message.tooltip.anchor");
+            int anchor = static_cast<int>(style.anchor);
+            if (KeyCombo("##Anchor", anchor, anchorKeys)) style.anchor = static_cast<MessageAnchor>(anchor);
+            tooltip("settings.message.tooltip.anchor");
+
+            row("settings.message.offset", "settings.message.tooltip.offset");
+            ImGui::DragFloat2("##Offset", &style.offset.x, 1.0f, 0.0f, 0.0f, "%.0f");
+            tooltip("settings.message.tooltip.offset");
+
+            EndSettingsTable();
         }
 
-        ImGui::DragFloat2(Get("settings.message.offset").c_str(), &style.offset.x, 1.0f, 0.0f, 0.0f, "%.0f");
-        HoverTooltip(Get("settings.message.tooltip.offset").c_str());
+        // ---- Background, shadow, outline ----
+        SettingsSubheading(Get("settings.message.group.look").c_str());
+        if (BeginSettingsTable("##MessageLook")) {
+            row("settings.message.background", "settings.message.tooltip.background");
+            ImGui::Checkbox("##Background", &style.background);
+            tooltip("settings.message.tooltip.background");
 
-        {
-            static constexpr const char *alignKeys[] = {
-                "settings.message.align.left", "settings.message.align.center", "settings.message.align.right"
-            };
-            const int current = static_cast<int>(style.align);
-            if (ImGui::BeginCombo(Get("settings.message.align").c_str(), Get(alignKeys[current]).c_str())) {
-                for (int i = 0; i < static_cast<int>(std::size(alignKeys)); ++i) {
-                    if (ImGui::Selectable(Get(alignKeys[i]).c_str(), i == current)) style.align = static_cast<MessageTextAlign>(i);
-                    if (i == current) ImGui::SetItemDefaultFocus();
-                }
-                ImGui::EndCombo();
-            }
-            HoverTooltip(Get("settings.message.tooltip.align").c_str());
+            ImGui::BeginDisabled(!style.background);
+            row("settings.message.color", "settings.message.tooltip.background_color", true);
+            ImGui::ColorEdit4("##BackgroundColor", &style.backgroundColor.x);
+            tooltip("settings.message.tooltip.background_color");
+
+            row("settings.message.background_texture", "settings.message.tooltip.background_texture", true);
+            ImGui::PushID("BackgroundTexture");
+            DrawAssetField("", style.backgroundTexture, AssetKind::Texture, 32.0f);
+            ImGui::PopID();
+            tooltip("settings.message.tooltip.background_texture");
+
+            row("settings.message.padding", "settings.message.tooltip.padding", true);
+            ImGui::DragFloat2("##Padding", &style.padding.x, 0.5f, 0.0f, 1000.0f, "%.0f");
+            tooltip("settings.message.tooltip.padding");
+            ImGui::EndDisabled();
+
+            row("settings.message.shadow", "settings.message.tooltip.shadow");
+            ImGui::Checkbox("##Shadow", &style.shadow);
+            tooltip("settings.message.tooltip.shadow");
+
+            ImGui::BeginDisabled(!style.shadow);
+            row("settings.message.color", nullptr, true);
+            ImGui::ColorEdit4("##ShadowColor", &style.shadowColor.x);
+
+            row("settings.message.offset", "settings.message.tooltip.shadow_offset", true);
+            ImGui::DragFloat2("##ShadowOffset", &style.shadowOffset.x, 0.25f, 0.0f, 0.0f, "%.1f");
+            tooltip("settings.message.tooltip.shadow_offset");
+            ImGui::EndDisabled();
+
+            row("settings.message.outline", "settings.message.tooltip.outline");
+            ImGui::Checkbox("##Outline", &style.outline);
+            tooltip("settings.message.tooltip.outline");
+
+            ImGui::BeginDisabled(!style.outline);
+            row("settings.message.color", nullptr, true);
+            ImGui::ColorEdit4("##OutlineColor", &style.outlineColor.x);
+
+            row("settings.message.outline_thickness", nullptr, true);
+            if (ImGui::InputFloat("##OutlineThickness", &style.outlineThickness, 0.5f, 1.0f, "%.1f"))
+                style.outlineThickness = std::max(0.0f, style.outlineThickness);
+            ImGui::EndDisabled();
+
+            EndSettingsTable();
         }
-
-        if (ImGui::InputFloat(Get("settings.message.wrap_width").c_str(), &style.wrapWidth, 10.0f, 50.0f, "%.0f"))
-            style.wrapWidth = std::max(0.0f, style.wrapWidth);
-        HoverTooltip(Get("settings.message.tooltip.wrap_width").c_str());
-
-        // ---- Background ----
-        ImGui::Spacing();
-        ImGui::Checkbox(Get("settings.message.background").c_str(), &style.background);
-        HoverTooltip(Get("settings.message.tooltip.background").c_str());
-
-        ImGui::BeginDisabled(!style.background);
-        ImGui::ColorEdit4(label("settings.message.color", "##Background").c_str(), &style.backgroundColor.x);
-        HoverTooltip(Get("settings.message.tooltip.background_color").c_str());
-        DrawAssetField(Get("settings.message.background_texture").c_str(), style.backgroundTexture, AssetKind::Texture, 32.0f);
-        HoverTooltip(Get("settings.message.tooltip.background_texture").c_str());
-        ImGui::DragFloat2(Get("settings.message.padding").c_str(), &style.padding.x, 0.5f, 0.0f, 1000.0f, "%.0f");
-        HoverTooltip(Get("settings.message.tooltip.padding").c_str());
-        ImGui::EndDisabled();
-
-        // ---- Shadow ----
-        ImGui::Spacing();
-        ImGui::Checkbox(Get("settings.message.shadow").c_str(), &style.shadow);
-        HoverTooltip(Get("settings.message.tooltip.shadow").c_str());
-
-        ImGui::BeginDisabled(!style.shadow);
-        ImGui::ColorEdit4(label("settings.message.color", "##Shadow").c_str(), &style.shadowColor.x);
-        ImGui::DragFloat2(label("settings.message.offset", "##Shadow").c_str(), &style.shadowOffset.x, 0.25f, 0.0f, 0.0f, "%.1f");
-        HoverTooltip(Get("settings.message.tooltip.shadow_offset").c_str());
-        ImGui::EndDisabled();
-
-        // ---- Outline ----
-        ImGui::Spacing();
-        ImGui::Checkbox(Get("settings.message.outline").c_str(), &style.outline);
-        HoverTooltip(Get("settings.message.tooltip.outline").c_str());
-
-        ImGui::BeginDisabled(!style.outline);
-        ImGui::ColorEdit4(label("settings.message.color", "##Outline").c_str(), &style.outlineColor.x);
-        if (ImGui::InputFloat(Get("settings.message.outline_thickness").c_str(), &style.outlineThickness, 0.5f, 1.0f, "%.1f"))
-            style.outlineThickness = std::max(0.0f, style.outlineThickness);
-        ImGui::EndDisabled();
 
         // ---- Fades ----
-        ImGui::Spacing();
-        if (ImGui::InputFloat(Get("settings.message.fade_in").c_str(), &style.fadeIn, 0.05f, 0.25f, "%.2f s"))
-            style.fadeIn = std::max(0.0f, style.fadeIn);
-        HoverTooltip(Get("settings.message.tooltip.fade").c_str());
-        if (ImGui::InputFloat(Get("settings.message.fade_out").c_str(), &style.fadeOut, 0.05f, 0.25f, "%.2f s"))
-            style.fadeOut = std::max(0.0f, style.fadeOut);
-        HoverTooltip(Get("settings.message.tooltip.fade").c_str());
+        SettingsSubheading(Get("settings.message.group.timing").c_str());
+        if (BeginSettingsTable("##MessageTiming")) {
+            row("settings.message.fade_in", "settings.message.tooltip.fade");
+            if (ImGui::InputFloat("##FadeIn", &style.fadeIn, 0.05f, 0.25f, "%.2f s"))
+                style.fadeIn = std::max(0.0f, style.fadeIn);
+            tooltip("settings.message.tooltip.fade");
+
+            row("settings.message.fade_out", "settings.message.tooltip.fade");
+            if (ImGui::InputFloat("##FadeOut", &style.fadeOut, 0.05f, 0.25f, "%.2f s"))
+                style.fadeOut = std::max(0.0f, style.fadeOut);
+            tooltip("settings.message.tooltip.fade");
+
+            EndSettingsTable();
+        }
 
         // ---- Stacking ----
-        ImGui::Spacing();
-        ImGui::Checkbox(Get("settings.message.stack").c_str(), &style.stack);
-        HoverTooltip(Get("settings.message.tooltip.stack").c_str());
+        SettingsSubheading(Get("settings.message.group.stacking").c_str());
+        if (BeginSettingsTable("##MessageStacking")) {
+            row("settings.message.stack", "settings.message.tooltip.stack");
+            ImGui::Checkbox("##Stack", &style.stack);
+            tooltip("settings.message.tooltip.stack");
 
-        ImGui::BeginDisabled(!style.stack);
-        if (ImGui::InputInt(Get("settings.message.max_messages").c_str(), &style.maxMessages))
-            style.maxMessages = std::max(1, style.maxMessages);
-        HoverTooltip(Get("settings.message.tooltip.max_messages").c_str());
-        ImGui::InputFloat(Get("settings.message.spacing").c_str(), &style.spacing, 1.0f, 4.0f, "%.0f");
-        HoverTooltip(Get("settings.message.tooltip.spacing").c_str());
-        ImGui::EndDisabled();
+            ImGui::BeginDisabled(!style.stack);
+            row("settings.message.max_messages", "settings.message.tooltip.max_messages", true);
+            if (ImGui::InputInt("##MaxMessages", &style.maxMessages))
+                style.maxMessages = std::max(1, style.maxMessages);
+            tooltip("settings.message.tooltip.max_messages");
+
+            row("settings.message.spacing", "settings.message.tooltip.spacing", true);
+            ImGui::InputFloat("##Spacing", &style.spacing, 1.0f, 4.0f, "%.0f");
+            tooltip("settings.message.tooltip.spacing");
+            ImGui::EndDisabled();
+
+            EndSettingsTable();
+        }
     }
 
-    void DrawWorldSettings() {
-        Level &level = LevelManager::CurrentLevel();
+    // ── Sections ──
+
+    void DrawPhysicsSettings(Level &level) {
+        if (!BeginSettingsTable("##Physics")) return;
+
+        const std::string tooltip = Get("settings.physics.tooltip.gravity");
+        SettingRow(Get("settings.physics.gravity"), tooltip.c_str());
+        ImGui::InputFloat("##Gravity", &level.worldSettings.gravity, 0.1f, 1.0f, "%.2f");
+        HoverTooltip(tooltip.c_str());
+
+        EndSettingsTable();
+    }
+
+    void DrawAudioSettings(Level &level) {
         ListenerSettings &settings = level.listenerSettings;
 
-        ImGui::Begin(Get("editor.world_settings").c_str());
+        if (BeginSettingsTable("##Audio")) {
+            const std::string tooltip = Get("settings.audio.tooltip.master_gain");
+            SettingRow(Get("settings.audio.master_gain"), tooltip.c_str());
+            ImGui::SliderFloat("##MasterGain", &settings.masterGain, 0.0f, 2.0f, "%.2f");
+            HoverTooltip(tooltip.c_str());
 
-        // ---- Audio --------------------------------------------------------
-        SectionHeader(Get("settings.audio.title").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::SliderFloat(
-            Get("settings.audio.master_gain").c_str(),
-            &settings.masterGain, 0.0f, 2.0f, "%.2f"
-        );
-        HoverTooltip(Get("settings.audio.tooltip.master_gain").c_str());
-
-        ImGui::Spacing();
-        ImGui::TextDisabled("%s", Get("settings.audio.global_physics_header").c_str());
-        ImGui::Spacing();
-
-        if (ImGui::DragFloat(
-            Get("settings.audio.doppler_factor").c_str(),
-            &settings.dopplerFactor, 0.01f, 0.0f, 10.0f, "%.2f"
-        )) {
-            // SoundManager::SetListenerDopplerFactor(settings.dopplerFactor);
+            EndSettingsTable();
         }
-        HoverTooltip(Get("settings.audio.tooltip.doppler_factor").c_str());
 
-        if (ImGui::InputFloat(
-            Get("settings.audio.speed_of_sound").c_str(),
-            &settings.speedOfSound, 1.0f, 50.0f, "%.1f"
-        )) {
-            if (settings.speedOfSound < 1.0f) {
+        SettingsSubheading(Get("settings.audio.global_physics_header").c_str());
+        if (!BeginSettingsTable("##AudioPhysics")) return;
+
+        {
+            const std::string tooltip = Get("settings.audio.tooltip.doppler_factor");
+            SettingRow(Get("settings.audio.doppler_factor"), tooltip.c_str());
+            ImGui::DragFloat("##DopplerFactor", &settings.dopplerFactor, 0.01f, 0.0f, 10.0f, "%.2f");
+            HoverTooltip(tooltip.c_str());
+        }
+
+        {
+            const std::string tooltip = Get("settings.audio.tooltip.speed_of_sound");
+            SettingRow(Get("settings.audio.speed_of_sound"), tooltip.c_str());
+            if (ImGui::InputFloat("##SpeedOfSound", &settings.speedOfSound, 1.0f, 50.0f, "%.1f") &&
+                settings.speedOfSound < 1.0f) {
                 settings.speedOfSound = 1.0f;
                 ShowNotification(Get("settings.audio.notification.speed_of_sound_clamped").c_str(), /*isError=*/true);
             }
-            // SoundManager::SetListenerSpeedOfSound(settings.speedOfSound);
+            HoverTooltip(tooltip.c_str());
         }
-        HoverTooltip(Get("settings.audio.tooltip.speed_of_sound").c_str());
 
-        ImGui::Spacing();
-
-        // Distance model combo
         {
-            const std::array<std::string, 5> modelLabels = {
-                Get("settings.audio.distance_model.inverse"),
-                Get("settings.audio.distance_model.inverse_clamped"),
-                Get("settings.audio.distance_model.linear"),
-                Get("settings.audio.distance_model.linear_clamped"),
-                Get("settings.audio.distance_model.none")
+            static constexpr const char *modelKeys[] = {
+                "settings.audio.distance_model.inverse",
+                "settings.audio.distance_model.inverse_clamped",
+                "settings.audio.distance_model.linear",
+                "settings.audio.distance_model.linear_clamped",
+                "settings.audio.distance_model.none"
             };
-
-            const char *models[] = {
-                modelLabels[0].c_str(), modelLabels[1].c_str(),
-                modelLabels[2].c_str(), modelLabels[3].c_str(),
-                modelLabels[4].c_str()
-            };
-
-            const ALenum alModels[] = {
+            static constexpr ALenum alModels[] = {
                 AL_INVERSE_DISTANCE,
                 AL_INVERSE_DISTANCE_CLAMPED,
                 AL_LINEAR_DISTANCE,
@@ -963,154 +1080,23 @@ namespace {
                 AL_NONE
             };
 
-            auto DistanceModelToIndex = [](ALenum model) -> int {
-                switch (model) {
-                    case AL_INVERSE_DISTANCE: return 0;
-                    case AL_INVERSE_DISTANCE_CLAMPED: return 1;
-                    case AL_LINEAR_DISTANCE: return 2;
-                    case AL_LINEAR_DISTANCE_CLAMPED: return 3;
-                    case AL_NONE: return 4;
-                    default: return 1;
-                }
-            };
+            // An unknown model shows as Inverse Clamped, the default.
+            int current = 1;
+            for (int i = 0; i < static_cast<int>(std::size(alModels)); ++i)
+                if (alModels[i] == settings.distanceModel) current = i;
 
-            int currentModel = DistanceModelToIndex(settings.distanceModel);
-
-            if (ImGui::Combo(
-                Get("settings.audio.distance_model").c_str(),
-                &currentModel, models, IM_ARRAYSIZE(models)
-            )) {
-                settings.distanceModel = alModels[currentModel];
-                // SoundManager::SetListenerDistanceModel(settings.distanceModel);
-            }
-
-            HoverTooltip(Get("settings.audio.tooltip.distance_model").c_str());
+            const std::string tooltip = Get("settings.audio.tooltip.distance_model");
+            SettingRow(Get("settings.audio.distance_model"), tooltip.c_str());
+            if (KeyCombo("##DistanceModel", current, modelKeys)) settings.distanceModel = alModels[current];
+            HoverTooltip(tooltip.c_str());
         }
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        EndSettingsTable();
+    }
 
-        // ---- Physics ------------------------------------------------------
-        SectionHeader(Get("settings.physics.title").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
+    void DrawRenderingSettings(Level &level) {
+        if (!BeginSettingsTable("##Rendering")) return;
 
-        ImGui::InputFloat(
-            Get("settings.physics.gravity").c_str(),
-            &level.worldSettings.gravity, 0.1f, 1.0f, "%.2f"
-        );
-        HoverTooltip(Get("settings.physics.tooltip.gravity").c_str());
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // ---- Event variables ------------------------------------------------
-        SectionHeader(Get("settings.variables.title").c_str());
-        HoverTooltip(Get("settings.variables.tooltip").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        DrawLevelEventVariables(level);
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // ---- The level's own events and dispatches --------------------------
-        SectionHeader(Get("settings.level_events.title").c_str());
-        HoverTooltip(Get("settings.level_events.tooltip").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGuiDrawFunctions::DrawLevelEventSections(level, DRAGGABLE);
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // ---- How Show Message dispatches look -------------------------------
-        const bool messageBoxOpen = ImGui::CollapsingHeader(Get("settings.message.title").c_str());
-        HoverTooltip(Get("settings.message.tooltip").c_str());
-
-        if (messageBoxOpen) {
-            ImGui::Spacing();
-            DrawMessageStyleSettings(level.worldSettings.messageStyle);
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // ---- Rendering ----------------------------------------------------
-        SectionHeader(Get("settings.rendering.title").c_str());
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // ---- Sky ----
-        {
-            SkySettings &sky = level.sky;
-
-            ImGui::TextUnformatted(Get("settings.rendering.sky.title").c_str());
-
-            const SkyModeInfo *selectedMode = FindSkyMode(sky.mode);
-            if (selectedMode == nullptr) selectedMode = &SKY_MODES[0];
-
-            if (ImGui::BeginCombo(Get("settings.rendering.sky.mode").c_str(), Get(selectedMode->labelKey).c_str())) {
-                for (const SkyModeInfo &mode : SKY_MODES) {
-                    const bool selected = mode.mode == sky.mode;
-
-                    if (ImGui::Selectable(Get(mode.labelKey).c_str(), selected)) sky.mode = mode.mode;
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(mode.tooltipKey).c_str());
-                    if (selected) ImGui::SetItemDefaultFocus();
-                }
-
-                ImGui::EndCombo();
-            }
-            HoverTooltip(Get(selectedMode->tooltipKey).c_str());
-
-            if (sky.mode == SkyMode::Cubemap) {
-                for (const SkyFaceInfo &face : SKY_FACES) {
-                    ImGui::PushID(face.name);
-                    DrawAssetField(Get(face.labelKey).c_str(), sky.Face(face.face), AssetKind::Texture, 32.0f);
-                    ImGui::PopID();
-                }
-                HoverTooltip(Get("settings.rendering.tooltip.sky.faces").c_str());
-            }
-            else {
-                DrawAssetField(Get("settings.rendering.sky.texture").c_str(), sky.texture, AssetKind::Texture, 32.0f);
-                HoverTooltip(Get("settings.rendering.tooltip.sky.texture").c_str());
-            }
-
-            ImGui::InputFloat(Get("settings.rendering.sky.rotation").c_str(), &sky.rotation, 1.0f, 15.0f, "%.1f");
-            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation").c_str());
-
-            ImGui::InputFloat(Get("settings.rendering.sky.rotation_speed").c_str(), &sky.rotationSpeed, 0.5f, 5.0f, "%.2f");
-            HoverTooltip(Get("settings.rendering.tooltip.sky.rotation_speed").c_str());
-
-            ImGui::InputFloat(Get("settings.rendering.sky.horizon_offset").c_str(), &sky.horizonOffset, 1.0f, 5.0f, "%.1f");
-            HoverTooltip(Get("settings.rendering.tooltip.sky.horizon_offset").c_str());
-
-            // Stored 0..255, edited as 0..1 like sector light.
-            const auto colorField = [](const char *label, Vector3 &color) {
-                float normalized[3] = {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f};
-
-                if (ImGui::ColorEdit3(label, normalized,
-                                      ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_DisplayRGB |
-                                      ImGuiColorEditFlags_PickerHueWheel)) {
-                    color = {normalized[0] * 255.0f, normalized[1] * 255.0f, normalized[2] * 255.0f};
-                }
-            };
-
-            colorField(Get("settings.rendering.sky.tint").c_str(), sky.tint);
-            HoverTooltip(Get("settings.rendering.tooltip.sky.tint").c_str());
-
-            colorField(Get("settings.rendering.sky.fallback_color").c_str(), sky.fallbackColor);
-            HoverTooltip(Get("settings.rendering.tooltip.sky.fallback_color").c_str());
-        }
-
-        ImGui::Spacing();
         {
             RendererTextureSettings &textureSetting = level.rendererSettings.textureSetting;
 
@@ -1120,85 +1106,149 @@ namespace {
                 const char *tooltipKey;
             };
 
-            const std::array<TexturePresetOption, 6> presets = {
-                {
-                    {
-                        PIXEL_ART_SHIMMERY, "settings.rendering.texture_preset.pixel_art_shimmery",
-                        "settings.rendering.tooltip.texture_preset.pixel_art_shimmery"
-                    },
-                    {
-                        PIXEL_ART_LESS_MOIRE, "settings.rendering.texture_preset.pixel_art_less_moire",
-                        "settings.rendering.tooltip.texture_preset.pixel_art_less_moire"
-                    },
-                    {
-                        PIXEL_ART_SMOOTH_DISTANCE, "settings.rendering.texture_preset.pixel_art_smooth_distance",
-                        "settings.rendering.tooltip.texture_preset.pixel_art_smooth_distance"
-                    },
-                    {
-                        REALISTIC_NORMAL, "settings.rendering.texture_preset.realistic_normal",
-                        "settings.rendering.tooltip.texture_preset.realistic_normal"
-                    },
-                    {
-                        RETRO, "settings.rendering.texture_preset.retro",
-                        "settings.rendering.tooltip.texture_preset.retro"
-                    },
-                    {
-                        LOW_RES, "settings.rendering.texture_preset.low_res",
-                        "settings.rendering.tooltip.texture_preset.low_res"
-                    }
-                }
+            static constexpr TexturePresetOption presets[] = {
+                {PIXEL_ART_SHIMMERY, "settings.rendering.texture_preset.pixel_art_shimmery",
+                 "settings.rendering.tooltip.texture_preset.pixel_art_shimmery"},
+                {PIXEL_ART_LESS_MOIRE, "settings.rendering.texture_preset.pixel_art_less_moire",
+                 "settings.rendering.tooltip.texture_preset.pixel_art_less_moire"},
+                {PIXEL_ART_SMOOTH_DISTANCE, "settings.rendering.texture_preset.pixel_art_smooth_distance",
+                 "settings.rendering.tooltip.texture_preset.pixel_art_smooth_distance"},
+                {REALISTIC_NORMAL, "settings.rendering.texture_preset.realistic_normal",
+                 "settings.rendering.tooltip.texture_preset.realistic_normal"},
+                {RETRO, "settings.rendering.texture_preset.retro", "settings.rendering.tooltip.texture_preset.retro"},
+                {LOW_RES, "settings.rendering.texture_preset.low_res", "settings.rendering.tooltip.texture_preset.low_res"},
             };
 
             const TexturePresetOption *selectedPreset = &presets[0];
+            for (const TexturePresetOption &preset: presets)
+                if (preset.value == textureSetting) selectedPreset = &preset;
 
-            for (const TexturePresetOption &preset: presets) {
-                if (preset.value == textureSetting) {
-                    selectedPreset = &preset;
-                    break;
-                }
-            }
+            const std::string tooltip = Get("settings.rendering.tooltip.texture_preset");
+            SettingRow(Get("settings.rendering.texture_preset"), tooltip.c_str());
 
-            const std::string label = Get("settings.rendering.texture_preset");
-            const std::string preview = Get(selectedPreset->labelKey);
-
-            if (ImGui::BeginCombo(label.c_str(), preview.c_str())) {
+            if (ImGui::BeginCombo("##TexturePreset", Get(selectedPreset->labelKey).c_str())) {
                 for (const TexturePresetOption &preset: presets) {
                     const bool selected = preset.value == textureSetting;
-                    const std::string presetLabel = Get(preset.labelKey);
 
-                    if (ImGui::Selectable(presetLabel.c_str(), selected)) {
+                    if (ImGui::Selectable(Get(preset.labelKey).c_str(), selected)) {
                         textureSetting = preset.value;
                         selectedPreset = &preset;
-
-                        // Rebuild or update existing OpenGL textures here.
                     }
-
-                    if (ImGui::IsItemHovered()) {
-                        const std::string tooltip = Get(preset.tooltipKey);
-                        ImGui::SetTooltip("%s", tooltip.c_str());
-                    }
-
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(preset.tooltipKey).c_str());
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
 
                 ImGui::EndCombo();
             }
+            HoverTooltip(tooltip.c_str());
 
-            HoverTooltip(Get("settings.rendering.tooltip.texture_preset").c_str());
+            // What the picked preset does, under its combo.
             HintText(Get(selectedPreset->tooltipKey).c_str());
         }
 
-        ImGui::Spacing();
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.wall_contrast");
+            SettingRow(Get("settings.rendering.wall_contrast"), tooltip.c_str());
+            if (ImGui::SliderFloat("##WallContrast", &level.rendererSettings.wallContrast, 0.0f, MAX_WALL_CONTRAST, "%.0f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
 
-        if (ImGui::SliderFloat(
-            Get("settings.rendering.wall_contrast").c_str(),
-            &level.rendererSettings.wallContrast,
-            0.0f,
-            MAX_WALL_CONTRAST,
-            "%.0f"
-        )) hasUnsavedChanges = true;
+        EndSettingsTable();
+    }
 
-        HoverTooltip(Get("settings.rendering.tooltip.wall_contrast").c_str());
+    void DrawSkySettings(Level &level) {
+        if (!BeginSettingsTable("##Sky")) return;
+
+        SkySettings &sky = level.sky;
+
+        const SkyModeInfo *selectedMode = FindSkyMode(sky.mode);
+        if (selectedMode == nullptr) selectedMode = &SKY_MODES[0];
+
+        SettingRow(Get("settings.rendering.sky.mode"), Get(selectedMode->tooltipKey).c_str());
+        if (ImGui::BeginCombo("##SkyMode", Get(selectedMode->labelKey).c_str())) {
+            for (const SkyModeInfo &mode : SKY_MODES) {
+                const bool selected = mode.mode == sky.mode;
+
+                if (ImGui::Selectable(Get(mode.labelKey).c_str(), selected)) sky.mode = mode.mode;
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(mode.tooltipKey).c_str());
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+        HoverTooltip(Get(selectedMode->tooltipKey).c_str());
+
+        if (sky.mode == SkyMode::Cubemap) {
+            const std::string tooltip = Get("settings.rendering.tooltip.sky.faces");
+            for (const SkyFaceInfo &face : SKY_FACES) {
+                SettingRow(Get(face.labelKey), tooltip.c_str());
+                ImGui::PushID(face.name);
+                DrawAssetField("", sky.Face(face.face), AssetKind::Texture, 32.0f);
+                ImGui::PopID();
+                HoverTooltip(tooltip.c_str());
+            }
+        }
+        else {
+            const std::string tooltip = Get("settings.rendering.tooltip.sky.texture");
+            SettingRow(Get("settings.rendering.sky.texture"), tooltip.c_str());
+            ImGui::PushID("SkyTexture");
+            DrawAssetField("", sky.texture, AssetKind::Texture, 32.0f);
+            ImGui::PopID();
+            HoverTooltip(tooltip.c_str());
+        }
+
+        const auto numberRow = [](const char *labelKey, const char *tooltipKey, const char *id, float &value,
+                                  const float step, const float fastStep, const char *format) {
+            const std::string tooltip = Get(tooltipKey);
+            SettingRow(Get(labelKey), tooltip.c_str());
+            ImGui::InputFloat(id, &value, step, fastStep, format);
+            HoverTooltip(tooltip.c_str());
+        };
+
+        numberRow("settings.rendering.sky.rotation", "settings.rendering.tooltip.sky.rotation", "##SkyRotation",
+                  sky.rotation, 1.0f, 15.0f, "%.1f");
+        numberRow("settings.rendering.sky.rotation_speed", "settings.rendering.tooltip.sky.rotation_speed",
+                  "##SkyRotationSpeed", sky.rotationSpeed, 0.5f, 5.0f, "%.2f");
+        numberRow("settings.rendering.sky.horizon_offset", "settings.rendering.tooltip.sky.horizon_offset",
+                  "##SkyHorizonOffset", sky.horizonOffset, 1.0f, 5.0f, "%.1f");
+
+        const auto colorRow = [](const char *labelKey, const char *tooltipKey, const char *id, Vector3 &color) {
+            const std::string tooltip = Get(tooltipKey);
+            SettingRow(Get(labelKey), tooltip.c_str());
+            ColorField255(id, color);
+            HoverTooltip(tooltip.c_str());
+        };
+
+        colorRow("settings.rendering.sky.tint", "settings.rendering.tooltip.sky.tint", "##SkyTint", sky.tint);
+        colorRow("settings.rendering.sky.fallback_color", "settings.rendering.tooltip.sky.fallback_color",
+                 "##SkyFallbackColor", sky.fallbackColor);
+
+        EndSettingsTable();
+    }
+
+    void DrawWorldSettings() {
+        Level &level = LevelManager::CurrentLevel();
+
+        ImGui::Begin(Get("editor.world_settings").c_str());
+
+        if (SettingsSection("settings.physics.title", "Physics")) DrawPhysicsSettings(level);
+        if (SettingsSection("settings.audio.title", "Audio")) DrawAudioSettings(level);
+        if (SettingsSection("settings.rendering.title", "Rendering")) DrawRenderingSettings(level);
+        if (SettingsSection("settings.rendering.sky.title", "Sky")) DrawSkySettings(level);
+
+        if (SettingsSection("settings.message.title", "MessageBox", false, "settings.message.tooltip"))
+            DrawMessageStyleSettings(level.worldSettings.messageStyle);
+
+        if (SettingsSection("settings.variables.title", "Variables", true, "settings.variables.tooltip"))
+            DrawLevelEventVariables(level);
+
+        // Its Events and Dispatches are collapsible too: indented under it.
+        if (SettingsSection("settings.level_events.title", "LevelEvents", true, "settings.level_events.tooltip")) {
+            ImGui::Indent(8.0f);
+            ImGuiDrawFunctions::DrawLevelEventSections(level, DRAGGABLE);
+            ImGui::Unindent(8.0f);
+        }
 
         ImGui::End();
     }

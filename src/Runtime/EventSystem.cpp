@@ -1696,6 +1696,9 @@ namespace EventSystem {
             [&](const PayloadDispatchEntitySetComponent& set) {
                 SetComponents(level, ownerID, set.component, set.mode);
             },
+            [&](const PayloadDispatchEntitySetSprite& setSprite) {
+                if (ComponentSprite* sprite = level.sprites.Get(ownerID)) sprite->textureFileNames = setSprite.textures;
+            },
             [&](const PayloadDispatchSpawnPrefab& spawn) {
                 if (spawn.prefab.empty() || !hooks.spawnPrefab) return;
 

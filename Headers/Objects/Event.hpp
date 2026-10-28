@@ -5,6 +5,7 @@
 #ifndef TILKY_ENGINE_EVENT_HPP
 #define TILKY_ENGINE_EVENT_HPP
 
+#include <array>
 #include <cstdint>
 #include <variant>
 #include <string>
@@ -639,6 +640,17 @@ struct PayloadDispatchEntitySetComponent {
     ToggleMode mode = ToggleMode::TOGGLE;
 };
 
+// Replaces the owner's first Sprite's 8 directional textures (slots as in
+// the Sprite inspector). Does nothing without a Sprite.
+struct PayloadDispatchEntitySetSprite {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.dispatch.entity.set_sprite";
+    transKey saveName = "dispatch.entity.set_sprite"; // level file name, never change
+    bool operator==(const PayloadDispatchEntitySetSprite&) const = default;
+
+    std::array<std::string, 8> textures;
+};
+
 // Spawns at the owner: an entity's transform, a wall or linedef's middle on
 // the floor, a sector's bounds centre on the floor, the level's origin.
 struct PayloadDispatchSpawnPrefab {
@@ -741,6 +753,7 @@ using DispatchPayload = std::variant<
     PayloadDispatchSectorDoor, PayloadDispatchSectorStopMovement, PayloadDispatchSectorSetLight, PayloadDispatchSectorSetTexture,
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable,
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
+    PayloadDispatchEntitySetSprite,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable>;
 
