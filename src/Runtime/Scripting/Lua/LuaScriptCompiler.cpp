@@ -209,8 +209,13 @@ namespace {
         std::string name;
         ScriptValue defaultValue;
         std::string luaValue; // what `name` is assigned in the compiled Lua
+        bool hidden = false;  // written `hidden public ...`
         int line = 0;
     };
+
+    // Written before `public` on a variable: `hidden public number ammo = 5`.
+    // The variable stays reachable from other scripts but gets no Inspector field.
+    constexpr std::string_view kHiddenKeyword = "hidden";
 
     // What handlers can do besides returning their Lua: report errors and
     // add to the compile result.
@@ -258,7 +263,8 @@ namespace {
         int line = 0;
     };
 
-    // `public` - an Inspector-editable field. Returns the Lua the declaration compiles to.
+    // `public` - an Inspector-editable field, or with `hidden` one that is only
+    // reachable from scripts. Returns the Lua the declaration compiles to.
     std::string CompilePublic(const Declaration& declaration, CompileContext& context) {
         Result& result = context.result;
 
@@ -267,8 +273,9 @@ namespace {
             return {};
         }
 
-        const bool duplicate = std::ranges::any_of(result.publicFields, [&](const ScriptPublicField& field) {
-            return field.name == declaration.name;
+        // Hidden fields aren't in publicFields, but every declaration is.
+        const bool duplicate = std::ranges::any_of(result.declarations, [&](const LuaScriptCompiler::DeclarationInfo& info) {
+            return info.name == declaration.name;
         });
         if (duplicate) {
             context.Error(declaration.line, fmt::format("public field '{}' is declared twice", declaration.name));
@@ -278,6 +285,8 @@ namespace {
             context.Error(declaration.line, fmt::format("'{}' is already a public function", declaration.name));
             return {};
         }
+
+        if (declaration.hidden) return declaration.name + " = " + declaration.luaValue;
 
         ScriptPublicField field;
         field.name = declaration.name;
@@ -412,6 +421,10 @@ namespace {
             for (const bool functions : {true, false}) {
                 for (std::size_t i = 0; i < tokens.size(); ++i) {
                     if (tokens[i].kind != TokenKind::Name) continue;
+                    if (Text(i) == kHiddenKeyword) {
+                        if (!functions) CheckHidden(i, context);
+                        continue;
+                    }
                     const DeclarationKeyword* keyword = FindDeclarationKeyword(Text(i));
                     if (keyword == nullptr) continue;
                     if (i > 0 && (IsSymbol(i - 1, ".") || IsSymbol(i - 1, ":"))) continue; // `obj.public` is a field access
@@ -584,14 +597,35 @@ namespace {
             return true;
         }
 
+        // `hidden` must read `hidden public <variable declaration>`; the
+        // `public` after it is compiled on its own and sees the `hidden`.
+        void CheckHidden(const std::size_t hiddenIndex, CompileContext& context) const {
+            if (hiddenIndex > 0 && (IsSymbol(hiddenIndex - 1, ".") || IsSymbol(hiddenIndex - 1, ":"))) return; // `obj.hidden`
+
+            const bool function = IsWord(hiddenIndex + 2, "function") || (IsWord(hiddenIndex + 2, "local") && IsWord(hiddenIndex + 3, "function"));
+            if (IsWord(hiddenIndex + 1, "public") && !function) return;
+
+            context.Error(LineOf(hiddenIndex), function
+                ? "'hidden' can't be used on functions - only on public variables"
+                : "'hidden' must be followed by 'public' and a variable: hidden public <Type> <name>");
+        }
+
+        [[nodiscard]] bool IsHidden(const std::size_t keywordIndex) const {
+            return keywordIndex > 0 && IsWord(keywordIndex - 1, kHiddenKeyword)
+                && !(keywordIndex > 1 && (IsSymbol(keywordIndex - 2, ".") || IsSymbol(keywordIndex - 2, ":")));
+        }
+
         void CompileDeclaration(const std::size_t keywordIndex, const DeclarationKeyword& keyword, CompileContext& context) {
             const int line = LineOf(keywordIndex);
             const std::string keywordName(keyword.name);
+            const bool hidden = keywordName == "public" && IsHidden(keywordIndex);
+            const std::size_t startIndex = hidden ? keywordIndex - 1 : keywordIndex;
 
-            if (!CheckDeclarationPosition(keywordIndex, keywordName, "variables", context)) return;
+            if (!CheckDeclarationPosition(startIndex, keywordName, "variables", context)) return;
 
             Declaration declaration;
             declaration.keyword = keywordName;
+            declaration.hidden = hidden;
             declaration.line = line;
 
             std::size_t i = keywordIndex + 1;
@@ -650,9 +684,9 @@ namespace {
             if (lua.empty()) return;
 
             context.result.declarations.push_back({
-                keywordName, declaration.typeName, std::string(declaration.type->luaType), declaration.name, line
+                keywordName, declaration.typeName, std::string(declaration.type->luaType), declaration.name, line, hidden
             });
-            Replace(tokens[keywordIndex].begin, tokens[last].end, std::move(lua));
+            Replace(tokens[startIndex].begin, tokens[last].end, std::move(lua));
         }
 
         // `<keyword> function name(params)`: drops the keyword and inserts
@@ -1081,6 +1115,7 @@ namespace LuaScriptCompiler {
     std::vector<std::string> DeclarationKeywordNames() {
         std::vector<std::string> names;
         for (const DeclarationKeyword& keyword : DeclarationKeywords()) names.emplace_back(keyword.name);
+        names.emplace_back(kHiddenKeyword);
         return names;
     }
 

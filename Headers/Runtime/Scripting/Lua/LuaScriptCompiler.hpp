@@ -17,12 +17,14 @@
 //     public Entity player = nil
 //     public range(0, 100) number health = 100      -- attributes go before the type
 //     public enum(Idle, Patrol, Chase) mode = Patrol
+//     hidden public number ammo = 5                -- other scripts can use it, the Inspector doesn't show it
 //
 // Grammar: <keyword> {<attribute>[(<args>)]} <Type>[(<args>)] <name> [= <literal>]
 // The declaration is replaced by `name = <value>`, so the engine runs plain
 // Lua. `public` is the only keyword and there are no attributes yet; both are
 // registries in LuaScriptCompiler.cpp (DeclarationKeywords, FieldAttributes),
-// so adding one is one handler plus one table entry.
+// so adding one is one handler plus one table entry. `hidden` may only appear
+// right before `public` on a variable; anything else is a compile error.
 //
 // Public functions. `ref:Fn(a)` passes the Behaviour handle as the first
 // argument, so a function other scripts call needs a parameter for it.
@@ -64,6 +66,7 @@ namespace LuaScriptCompiler {
         std::string luaType;  // the Lua usertype the value has at runtime ("Entity", "Vector3", ...), or empty
         std::string name;
         int line = 0;
+        bool hidden = false;  // `hidden public`: reachable from scripts, not shown in the Inspector
     };
 
     struct Result {
