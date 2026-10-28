@@ -1679,6 +1679,18 @@ namespace ImGuiDrawFunctions {
                         dispatch.delay = std::max(0.0f, dispatch.delay);
                     Tooltip(Get("editor.tooltip.dispatches.delay").c_str());
 
+                    Property(Get("events.cooldown").c_str());
+                    if (ImGui::InputFloat("##Cooldown", &dispatch.cooldown, 0.0f, 0.0f, "%.2f s"))
+                        dispatch.cooldown = std::max(0.0f, dispatch.cooldown);
+                    Tooltip(Get("editor.tooltip.dispatches.cooldown").c_str());
+
+                    Property(Get("events.cooldown_triggers").c_str());
+                    ImGui::BeginDisabled(dispatch.cooldown <= 0.0f);
+                    if (ImGui::InputInt("##CooldownTriggers", &dispatch.cooldownTriggers))
+                        dispatch.cooldownTriggers = std::max(1, dispatch.cooldownTriggers);
+                    ImGui::EndDisabled();
+                    Tooltip(Get("editor.tooltip.dispatches.cooldown_triggers").c_str());
+
                     EndProperties();
                 }
 

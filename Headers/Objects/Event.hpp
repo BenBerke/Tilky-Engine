@@ -770,6 +770,11 @@ struct Dispatch {
     // queues its own run, so quick triggers give one run each.
     float delay = 0.0f;
 
+    // Seconds after a call during which calls do nothing (0 = none). The
+    // cooldown starts once every `cooldownTriggers` calls (at least 1).
+    float cooldown = 0.0f;
+    int cooldownTriggers = 1;
+
     bool operator==(const Dispatch&) const = default;
 
     [[nodiscard]] constexpr bool IsLine() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINE); }

@@ -1136,6 +1136,8 @@ namespace {
 
         // Only written when there is one, so dispatches without a delay save as before.
         if (dispatch.delay > 0.0f) j["delay"] = dispatch.delay;
+        if (dispatch.cooldown > 0.0f) j["cooldown"] = dispatch.cooldown;
+        if (dispatch.cooldownTriggers != 1) j["cooldownTriggers"] = dispatch.cooldownTriggers;
 
         return j;
     }
@@ -1145,6 +1147,9 @@ namespace {
         dispatch.payload = PayloadFromJson<DispatchPayload>(j.at("payload"));
         ReadOptional(j, "tag", dispatch.tagId);
         ReadOptional(j, "delay", dispatch.delay);
+        ReadOptional(j, "cooldown", dispatch.cooldown);
+        ReadOptional(j, "cooldownTriggers", dispatch.cooldownTriggers);
+        dispatch.cooldownTriggers = std::max(1, dispatch.cooldownTriggers);
         return dispatch;
     }
 

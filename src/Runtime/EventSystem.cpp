@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -69,6 +70,16 @@ namespace {
         ID instigatorID;
         float remaining; // seconds
     };
+
+    // A dispatch's cooldown: calls since the last one started, and how long
+    // the running one has left.
+    struct CooldownState {
+        int calls = 0;
+        float remaining = 0.0f; // seconds
+    };
+
+    // DispatchHandle as a map key.
+    using DispatchKey = std::tuple<uint8_t, ID, size_t>;
 
     struct TimerState {
         EventHandle event;
@@ -136,6 +147,7 @@ namespace {
     std::vector<CrossWall> crossWalls;
     std::vector<ColorFade> colorFades;
     std::vector<PendingDispatch> pendingDispatches;
+    std::map<DispatchKey, CooldownState> cooldowns;
     std::vector<TimerState> timers;
     std::vector<ConditionWatch> conditionWatches;
     std::unordered_set<ID> staySectors; // sectors with a Stay in Sector event
@@ -343,7 +355,30 @@ namespace {
         return Vector2{transform->position.x, transform->position.z};
     }
 
-    // Runs every dispatch linked to `tag`, now or after its delay.
+    // Whether a call to the dispatch goes through: not while its cooldown runs.
+    // Counts the call and starts the cooldown on every cooldownTriggers-th one.
+    bool PassesCooldown(const Dispatch& dispatch, const DispatchHandle& handle) {
+        if (dispatch.cooldown <= 0.0f) return true;
+
+        CooldownState& state = cooldowns[{static_cast<uint8_t>(handle.ownerKind), handle.ownerID, handle.index}];
+        if (state.remaining > 0.0f) return false;
+
+        if (++state.calls >= std::max(1, dispatch.cooldownTriggers)) {
+            state.calls = 0;
+            state.remaining = dispatch.cooldown;
+        }
+        return true;
+    }
+
+    void TickCooldowns(const float deltaTime) {
+        std::erase_if(cooldowns, [&](auto& entry) {
+            CooldownState& state = entry.second;
+            state.remaining = std::max(0.0f, state.remaining - deltaTime);
+            return state.remaining <= 0.0f && state.calls == 0;
+        });
+    }
+
+    // Runs every dispatch linked to `tag` that isn't cooling down, now or after its delay.
     void RunDispatches(Level& level, const TagId tag, const ID instigatorID) {
         if (relayDepth >= MAX_RELAY_DEPTH) {
             spdlog::warn("Dispatches for tag {} skipped: relays went {} deep, they probably loop", tag, MAX_RELAY_DEPTH);
@@ -360,7 +395,7 @@ namespace {
 
         for (const DispatchHandle& handle : handles) {
             const Dispatch* dispatch = ResolveDispatch(level, handle);
-            if (!dispatch) continue;
+            if (!dispatch || !PassesCooldown(*dispatch, handle)) continue;
 
             if (dispatch->delay > 0.0f) {
                 pendingDispatches.push_back({handle, instigatorID, dispatch->delay});
@@ -1353,6 +1388,7 @@ namespace EventSystem {
     void Update(Level& level, const PhysicsSystem::Contacts& contacts) {
         const float deltaTime = GameTime::deltaTime;
 
+        TickCooldowns(deltaTime);
         RunPendingDispatches(level, deltaTime);
 
         UpdateColorFades(level, deltaTime);
@@ -1383,6 +1419,7 @@ namespace EventSystem {
         crossWalls.clear();
         colorFades.clear();
         pendingDispatches.clear();
+        cooldowns.clear();
         timers.clear();
         conditionWatches.clear();
         staySectors.clear();
