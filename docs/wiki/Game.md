@@ -23,6 +23,7 @@ end
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])`](#raycast) | table or `nil` | What a line hits first. |
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
+| [`SetMessage(text, [color], [duration])`](#setmessage) | | Shows text in the level's message box. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
 | [`SetSkyMode(mode)`, `GetSkyMode()`](#sky) | `SkyMode` | How the sky image wraps around the camera. |
 | [`SetSkyTexture(path)`, `GetSkyTexture()`](#sky) | string | The image for Equirectangular and Cylinder skies. |
@@ -277,6 +278,35 @@ function TakeDamage(amount)
         Game.Signal("boss_dead", entity)
     end
 end
+```
+
+---
+
+## SetMessage
+
+```lua
+Game.SetMessage(text, [color], [duration])
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `text` | string | What to show. `\n` starts a new line. |
+| `color` | `Vector3` | Optional. The text colour, 0..255 per channel. White by default. |
+| `duration` | number | Optional. Seconds on screen, 3 by default. Must be above 0. |
+
+Shows `text` the same way a **Show Message** dispatch does. How it looks is set per level in the
+editor under **World Settings > Message Box**: font, size, where it sits on screen, wrapping, the
+background box, shadow, outline, fades and stacking. With **Stack Messages** off, a new message
+(from a script or a dispatch) replaces the one shown; with it on, they stack, newest at the top.
+
+```lua
+-- Scripts/Pickup.lua
+function OnTriggerEnter(other)
+    Game.SetMessage("Picked up the red key", Vector3(255, 60, 60))
+end
+
+Game.SetMessage("Checkpoint reached")               -- white, 3 seconds
+Game.SetMessage("Hold on...", Vector3(255, 255, 255), 10)
 ```
 
 ---

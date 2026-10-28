@@ -72,6 +72,10 @@ namespace EventSystem {
     void ReportRay(Level& level, RayType type, ID casterID, const Vector3& origin, const Vector3& direction,
                    float length, const std::optional<RayHit>& hit);
 
+    // Game.SetMessage: shows `text` like a Show Message dispatch, styled by
+    // the level's message box. `color` is 0-255.
+    void SetMessage(const Level& level, const std::string& text, const Vector3& color, float duration);
+
     // Game.Signal: fires every Lua Signal event named `name`, now.
     void Signal(Level& level, const std::string& name, ID instigatorID);
 

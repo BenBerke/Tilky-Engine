@@ -1338,12 +1338,13 @@ namespace {
         return std::clamp(alpha, 0.0f, 1.0f);
     }
 
-    void ShowMessage(const MessageStyle& style, const PayloadDispatchShowMessage& show) {
-        if (show.duration <= 0.0f) return;
+    // `color` is 0-255.
+    void ShowMessage(const MessageStyle& style, const std::string& text, const Vector3& color, const float duration) {
+        if (duration <= 0.0f) return;
 
         if (!style.stack) shownMessages.clear();
 
-        ShownMessage shown{{nextMessageID++, show.text, show.color * 255.0f, 0.0f}, 0.0f, show.duration};
+        ShownMessage shown{{nextMessageID++, text, color, 0.0f}, 0.0f, duration};
         shown.message.alpha = MessageAlpha(style, shown);
         shownMessages.push_back(std::move(shown));
 
@@ -1715,7 +1716,7 @@ namespace EventSystem {
                 PlaySound(play, OwnerPosition(level, ownerKind, ownerID));
             },
             [&](const PayloadDispatchShowMessage& show) {
-                ShowMessage(level.worldSettings.messageStyle, show);
+                ShowMessage(level.worldSettings.messageStyle, show.text, show.color * 255.0f, show.duration);
             },
             [&](const PayloadDispatchRelay& relay) {
                 RunDispatches(level, relay.target, instigatorID);
@@ -1804,6 +1805,10 @@ namespace EventSystem {
 
             rayReports.push_back({type, casterID, EventOwnerKind::LINEDEF, linedef.id, OnLinedefFront(linedef, origin2D)});
         }
+    }
+
+    void SetMessage(const Level& level, const std::string& text, const Vector3& color, const float duration) {
+        ShowMessage(level.worldSettings.messageStyle, text, color, duration);
     }
 
     void Signal(Level& level, const std::string& name, const ID instigatorID) {

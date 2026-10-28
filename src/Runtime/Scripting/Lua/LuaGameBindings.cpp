@@ -63,6 +63,9 @@ namespace {
             Method("Signal", {Param("name", "string"), Param("instigator", "Entity?")}, {},
                    "Fires every Lua Signal event named `name`, on any wall, sector, entity, linedef or the level. "
                    "`instigator` is what their tag filters check and what their dispatches get."),
+            Method("SetMessage", {Param("text", "string"), Param("color", "Vector3?"), Param("duration", "number?")}, {},
+                   "Shows `text` in the level's message box (World Settings > Message Box), like a Show Message "
+                   "dispatch. `color` is 0..255 per channel, white by default; `duration` is in seconds, 3 by default."),
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
@@ -374,6 +377,14 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     game.set_function("Signal", [](const std::string& name, const sol::optional<ScriptEntity> instigator) {
         Level& level = LevelManager::CurrentLevel();
         EventSystem::Signal(level, name, instigator ? instigator->ownerID : INVALID_ID);
+    });
+
+    game.set_function("SetMessage", [](const std::string& text, const sol::optional<Vector3> color,
+                                        const sol::optional<float> duration) {
+        const float seconds = duration.value_or(3.0f);
+        if (!(seconds > 0.0f)) throw sol::error("Game.SetMessage expects a duration above 0, got " + std::to_string(seconds));
+
+        EventSystem::SetMessage(LevelManager::CurrentLevel(), text, color.value_or(Vector3{255.0f, 255.0f, 255.0f}), seconds);
     });
 
     game.set_function("LineOfSight", [](const Vector3& from, const Vector3& to) {
