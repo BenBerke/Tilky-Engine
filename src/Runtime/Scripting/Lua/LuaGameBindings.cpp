@@ -17,8 +17,12 @@
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaRayHit.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -40,9 +44,295 @@ namespace {
         {"Custom", RayType::CUSTOM},
     };
 
+    // ── Property tables (Game.MessageBox, Game.Sky) ─────────────────────────
+
+    struct NamedValue {
+        const char* name;
+        int value;
+    };
+
+    // The Lua name of the table whose properties edit a `Settings`, for errors.
+    template <typename Settings> constexpr const char* PROPERTY_TABLE = nullptr;
+    template <> constexpr const char* PROPERTY_TABLE<MessageStyle> = "Game.MessageBox";
+    template <> constexpr const char* PROPERTY_TABLE<SkySettings> = "Game.Sky";
+
+    // One property of such a table: reads a field of the current level's
+    // `Settings` into a Lua value, or checks and writes one.
+    template <typename Settings>
+    struct LuaProperty {
+        const char* name;
+        const char* luaType;
+        const char* doc;
+        std::function<sol::object(sol::state_view, const Settings&)> get;
+        std::function<void(Settings&, const sol::object&)> set;
+    };
+
+    template <typename Settings>
+    [[noreturn]] void ThrowPropertyType(const char* property, const std::string& expected) {
+        throw sol::error(std::string(PROPERTY_TABLE<Settings>) + "." + property + " expects " + expected);
+    }
+
+    template <typename Settings, typename T>
+    T PropertyValue(const sol::object& value, const char* property, const char* expected) {
+        if (!value.is<T>()) ThrowPropertyType<Settings>(property, expected);
+        return value.as<T>();
+    }
+
+    template <typename Settings>
+    LuaProperty<Settings> NumberProperty(const char* name, const char* doc, float Settings::* field,
+                                         const float minimum = -std::numeric_limits<float>::max()) {
+        return {
+            name, "number", doc,
+            [field](sol::state_view lua, const Settings& settings) { return sol::make_object(lua, settings.*field); },
+            [name, field, minimum](Settings& settings, const sol::object& value) {
+                settings.*field = std::max(minimum, PropertyValue<Settings, float>(value, name, "a number"));
+            },
+        };
+    }
+
+    template <typename Settings, typename T>
+    LuaProperty<Settings> ValueProperty(const char* name, const char* luaType, const char* expected, const char* doc,
+                                        T Settings::* field) {
+        return {
+            name, luaType, doc,
+            [field](sol::state_view lua, const Settings& settings) { return sol::make_object(lua, settings.*field); },
+            [name, expected, field](Settings& settings, const sol::object& value) {
+                settings.*field = PropertyValue<Settings, T>(value, name, expected);
+            },
+        };
+    }
+
+    template <typename Settings>
+    LuaProperty<Settings> BoolProperty(const char* name, const char* doc, bool Settings::* field) {
+        return ValueProperty(name, "boolean", "a boolean", doc, field);
+    }
+
+    template <typename Settings>
+    LuaProperty<Settings> StringProperty(const char* name, const char* doc, std::string Settings::* field) {
+        return ValueProperty(name, "string", "a string", doc, field);
+    }
+
+    template <typename Settings>
+    LuaProperty<Settings> Vector2Property(const char* name, const char* doc, Vector2 Settings::* field) {
+        return ValueProperty(name, "Vector2", "a Vector2", doc, field);
+    }
+
+    template <typename Settings>
+    LuaProperty<Settings> Vector3Property(const char* name, const char* doc, Vector3 Settings::* field) {
+        return ValueProperty(name, "Vector3", "a Vector3", doc, field);
+    }
+
+    // Stored 0..1, seen from Lua as 0..255 like Game.MessageBox.SetMessage's colour.
+    template <typename Settings>
+    LuaProperty<Settings> ColorProperty(const char* name, const char* doc, Vector4 Settings::* field) {
+        return {
+            name, "Vector4", doc,
+            [field](sol::state_view lua, const Settings& settings) { return sol::make_object(lua, (settings.*field) * 255.0f); },
+            [name, field](Settings& settings, const sol::object& value) {
+                const Vector4 color = PropertyValue<Settings, Vector4>(value, name, "a Vector4 (0..255 per channel)");
+                settings.*field = {
+                    std::clamp(color.x / 255.0f, 0.0f, 1.0f), std::clamp(color.y / 255.0f, 0.0f, 1.0f),
+                    std::clamp(color.z / 255.0f, 0.0f, 1.0f), std::clamp(color.w / 255.0f, 0.0f, 1.0f)
+                };
+            },
+        };
+    }
+
+    // `values` is the Lua enum table `luaType`'s names and values.
+    template <typename Settings, typename Enum>
+    LuaProperty<Settings> EnumProperty(const char* name, const char* luaType, const char* doc, Enum Settings::* field,
+                                       const std::span<const NamedValue> values) {
+        return {
+            name, luaType, doc,
+            [field](sol::state_view lua, const Settings& settings) { return sol::make_object(lua, static_cast<int>(settings.*field)); },
+            [name, luaType, field, values](Settings& settings, const sol::object& value) {
+                const std::string expected = std::string("a ") + luaType + " value, e.g. " + luaType + "." + values[0].name;
+                if (!value.is<int>()) ThrowPropertyType<Settings>(name, expected);
+
+                const int number = value.as<int>();
+                if (std::ranges::none_of(values, [&](const NamedValue& v) { return v.value == number; }))
+                    ThrowPropertyType<Settings>(name, expected);
+                settings.*field = static_cast<Enum>(number);
+            },
+        };
+    }
+
+    template <typename Settings>
+    const LuaProperty<Settings>& FindProperty(const std::vector<LuaProperty<Settings>>& properties, const std::string& name) {
+        for (const LuaProperty<Settings>& property : properties)
+            if (name == property.name) return property;
+        throw sol::error(std::string(PROPERTY_TABLE<Settings>) + " has no property or function \"" + name + "\"");
+    }
+
+    template <typename Settings>
+    std::vector<PropertyDoc> PropertyDocs(const std::vector<LuaProperty<Settings>>& properties) {
+        std::vector<PropertyDoc> docs;
+        for (const LuaProperty<Settings>& property : properties)
+            docs.push_back(Prop(property.name, property.luaType, false, property.doc));
+        return docs;
+    }
+
+    // Reading or writing a name `table` doesn't have goes to `properties`,
+    // on whatever `current()` returns then (the current level's settings).
+    template <typename Settings>
+    void InstallProperties(sol::state& lua, sol::table& table, const std::vector<LuaProperty<Settings>>& (*properties)(),
+                           Settings& (*current)()) {
+        sol::table meta = lua.create_table();
+        meta[sol::meta_function::index] = [properties, current](const sol::this_state state, const sol::table&,
+                                                                 const std::string& key) {
+            return FindProperty(properties(), key).get(sol::state_view(state), current());
+        };
+        meta[sol::meta_function::new_index] = [properties, current](const sol::table&, const std::string& key,
+                                                                     const sol::object& value) {
+            FindProperty(properties(), key).set(current(), value);
+        };
+        table[sol::metatable_key] = meta;
+    }
+
+    // ── Game.MessageBox ─────────────────────────────────────────────────────
+
+    constexpr NamedValue MESSAGE_ANCHORS[] = {
+        {"TopLeft", static_cast<int>(MessageAnchor::TOP_LEFT)},
+        {"TopCenter", static_cast<int>(MessageAnchor::TOP_CENTER)},
+        {"TopRight", static_cast<int>(MessageAnchor::TOP_RIGHT)},
+        {"MiddleLeft", static_cast<int>(MessageAnchor::MIDDLE_LEFT)},
+        {"Center", static_cast<int>(MessageAnchor::CENTER)},
+        {"MiddleRight", static_cast<int>(MessageAnchor::MIDDLE_RIGHT)},
+        {"BottomLeft", static_cast<int>(MessageAnchor::BOTTOM_LEFT)},
+        {"BottomCenter", static_cast<int>(MessageAnchor::BOTTOM_CENTER)},
+        {"BottomRight", static_cast<int>(MessageAnchor::BOTTOM_RIGHT)},
+    };
+
+    constexpr NamedValue TEXT_ALIGNS[] = {
+        {"Left", static_cast<int>(MessageTextAlign::LEFT)},
+        {"Center", static_cast<int>(MessageTextAlign::CENTER)},
+        {"Right", static_cast<int>(MessageTextAlign::RIGHT)},
+    };
+
+    MessageStyle& CurrentMessageStyle() {
+        return LevelManager::CurrentLevel().worldSettings.messageStyle;
+    }
+
+    const std::vector<LuaProperty<MessageStyle>>& MessageBoxProperties() {
+        static const std::vector<LuaProperty<MessageStyle>> properties = {
+            StringProperty("font", "Font file relative to Assets (.ttf/.otf). \"\" = the engine's font.", &MessageStyle::font),
+            NumberProperty("fontSize", "Pixels at the UI Reference Height. At least 1.", &MessageStyle::fontSize, 1.0f),
+            EnumProperty("anchor", "MessageAnchor", "Where on screen the messages sit, e.g. MessageAnchor.BottomLeft.",
+                         &MessageStyle::anchor, MESSAGE_ANCHORS),
+            Vector2Property("offset", "Moves the messages from the anchor. +x right, +y down.", &MessageStyle::offset),
+            EnumProperty("align", "TextAlign", "How lines of different widths line up, e.g. TextAlign.Left.",
+                         &MessageStyle::align, TEXT_ALIGNS),
+            NumberProperty("wrapWidth", "Lines longer than this wrap between words. 0 = no wrapping.", &MessageStyle::wrapWidth, 0.0f),
+            BoolProperty("background", "Draws a box behind each message.", &MessageStyle::background),
+            ColorProperty("backgroundColor", "The box colour, 0..255 per channel, alpha included. Tints the texture.",
+                          &MessageStyle::backgroundColor),
+            StringProperty("backgroundTexture", "Image stretched over the box, relative to Assets. \"\" = a solid box.",
+                           &MessageStyle::backgroundTexture),
+            Vector2Property("padding", "Space between the text and the box's edges (x left/right, y top/bottom).",
+                            &MessageStyle::padding),
+            BoolProperty("shadow", "Draws a copy of the text behind it, moved by shadowOffset.", &MessageStyle::shadow),
+            ColorProperty("shadowColor", "0..255 per channel, alpha included.", &MessageStyle::shadowColor),
+            Vector2Property("shadowOffset", "+x right, +y down.", &MessageStyle::shadowOffset),
+            BoolProperty("outline", "Draws a border around the letters.", &MessageStyle::outline),
+            ColorProperty("outlineColor", "0..255 per channel, alpha included.", &MessageStyle::outlineColor),
+            NumberProperty("outlineThickness", "At least 0.", &MessageStyle::outlineThickness, 0.0f),
+            NumberProperty("fadeIn", "Seconds to fade in, inside each message's duration.", &MessageStyle::fadeIn, 0.0f),
+            NumberProperty("fadeOut", "Seconds to fade out, inside each message's duration.", &MessageStyle::fadeOut, 0.0f),
+            BoolProperty("stack", "Off: a new message replaces the shown one. On: they stack, newest at the top.",
+                         &MessageStyle::stack),
+            {
+                "maxMessages", "integer", "With stacking, the oldest goes once there are more than this. At least 1.",
+                [](sol::state_view lua, const MessageStyle& style) { return sol::make_object(lua, style.maxMessages); },
+                [](MessageStyle& style, const sol::object& value) {
+                    style.maxMessages = std::max(1, PropertyValue<MessageStyle, int>(value, "maxMessages", "an integer"));
+                },
+            },
+            NumberProperty("spacing", "Space between stacked messages.", &MessageStyle::spacing),
+        };
+        return properties;
+    }
+
+    void RegisterMessageBoxMetadata() {
+        RegisterType(GlobalTable("Game.MessageBox",
+            "The level's message box (World Settings > Message Box): show text in it and change how it looks. "
+            "Style changes last until the level loads again.",
+            PropertyDocs(MessageBoxProperties()), {
+                Method("SetMessage", {Param("text", "string"), Param("color", "Vector3?"), Param("duration", "number?")}, {},
+                       "Shows `text`, like a Show Message dispatch. `color` is 0..255 per channel, white by default; "
+                       "`duration` is in seconds, 3 by default."),
+                Method("Clear", {}, {}, "Removes every message on screen now."),
+                Method("Reset", {}, {}, "Puts the style back to how the level was saved."),
+                Method("GetMessages", {}, "string[]", "The texts on screen, top to bottom (newest first when stacking)."),
+            }));
+
+        std::vector<EnumValueDoc> anchors;
+        for (const NamedValue& anchor : MESSAGE_ANCHORS) anchors.push_back({anchor.name, anchor.value, {}});
+        RegisterType(Enum("MessageAnchor", "Where Game.MessageBox messages sit on screen.", std::move(anchors)));
+
+        std::vector<EnumValueDoc> aligns;
+        for (const NamedValue& align : TEXT_ALIGNS) aligns.push_back({align.name, align.value, {}});
+        RegisterType(Enum("TextAlign", "How the lines of a Game.MessageBox message line up.", std::move(aligns)));
+    }
+
+    // ── Game.Sky ────────────────────────────────────────────────────────────
+
+    constexpr auto SKY_MODE_VALUES = [] {
+        std::array<NamedValue, SKY_MODES.size()> values{};
+        for (size_t i = 0; i < SKY_MODES.size(); ++i) values[i] = {SKY_MODES[i].name, static_cast<int>(SKY_MODES[i].mode)};
+        return values;
+    }();
+
+    SkySettings& CurrentSky() {
+        return LevelManager::CurrentLevel().sky;
+    }
+
+    const std::vector<LuaProperty<SkySettings>>& SkyProperties() {
+        static const std::vector<LuaProperty<SkySettings>> properties = {
+            EnumProperty("mode", "SkyMode", "How the sky image wraps around the camera, e.g. SkyMode.Cylinder.",
+                         &SkySettings::mode, SKY_MODE_VALUES),
+            StringProperty("texture", "The image for Equirectangular and Cylinder, relative to Assets. \"\" clears it.",
+                           &SkySettings::texture),
+            NumberProperty("rotation", "Degrees, in the same direction as camera yaw.", &SkySettings::rotation),
+            NumberProperty("rotationSpeed", "Degrees per second the sky keeps turning while the game runs.",
+                           &SkySettings::rotationSpeed),
+            Vector3Property("tint", "Multiplies the sky image. 0..255 per channel.", &SkySettings::tint),
+            NumberProperty("horizonOffset", "Degrees; positive raises the horizon.", &SkySettings::horizonOffset),
+            Vector3Property("fallbackColor", "Shown when the sky has no usable image. 0..255 per channel.",
+                            &SkySettings::fallbackColor),
+        };
+        return properties;
+    }
+
+    void RegisterSkyMetadata() {
+        RegisterType(GlobalTable("Game.Sky",
+            "The level's sky (World Settings > Rendering > Sky). Changes last until the level loads again.",
+            PropertyDocs(SkyProperties()), {
+                Method("SetCubemapFace", {Param("face", "SkyFace"), Param("path", "string")}, {},
+                       "One Cubemap face image, relative to Assets, e.g. SkyFace.Up. \"\" clears it."),
+                Method("GetCubemapFace", {Param("face", "SkyFace")}, "string"),
+                Method("Reset", {}, {}, "Puts the sky back to how the level was saved. Keeps how far rotationSpeed has turned it."),
+            }));
+
+        std::vector<EnumValueDoc> modes;
+        for (const SkyModeInfo& mode : SKY_MODES) modes.push_back({mode.name, static_cast<int>(mode.mode), {}});
+        RegisterType(Enum("SkyMode", "Sky projection modes for Game.Sky.mode.", std::move(modes)));
+
+        std::vector<EnumValueDoc> faces;
+        for (const SkyFaceInfo& face : SKY_FACES) faces.push_back({face.name, static_cast<int>(face.face), {}});
+        RegisterType(Enum("SkyFace", "Cubemap faces for Game.Sky.SetCubemapFace. Front is +Z, Right is -X, Up is +Y.",
+                          std::move(faces)));
+    }
+
+    SkyFace ToSkyFace(const int value, const char *function) {
+        if (!IsValidSkyFace(value)) throw sol::error(std::string(function) + " expects a SkyFace value, e.g. SkyFace.Up");
+        return static_cast<SkyFace>(value);
+    }
+
     void RegisterGameMetadata() {
         RegisterType(GlobalTable("Game", "Global game/level table.", {
             Prop("levelName", "string", true, "The current level's name, as passed to LoadLevel."),
+            Prop("MessageBox", "Game.MessageBox", true, "The level's message box: show text in it and change how it looks."),
+            Prop("Sky", "Game.Sky", true, "The level's sky: its image, rotation and colours."),
         }, {
             Method("LoadLevel", {Param("levelName", "string")}, {},
                    "Switches to the level `levelName` at the end of this frame. The level file can be in any "
@@ -63,9 +353,6 @@ namespace {
             Method("Signal", {Param("name", "string"), Param("instigator", "Entity?")}, {},
                    "Fires every Lua Signal event named `name`, on any wall, sector, entity, linedef or the level. "
                    "`instigator` is what their tag filters check and what their dispatches get."),
-            Method("SetMessage", {Param("text", "string"), Param("color", "Vector3?"), Param("duration", "number?")}, {},
-                   "Shows `text` in the level's message box (World Settings > Message Box), like a Show Message "
-                   "dispatch. `color` is 0..255 per channel, white by default; `duration` is in seconds, 3 by default."),
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
@@ -86,31 +373,7 @@ namespace {
             Method("SetVariable", {Param("name", "string"), Param("value", "number")}, {},
                    "Sets an event variable, as a Change Variable dispatch would. Level variables reset when a level loads; "
                    "global ones keep their value until play stops. Raises an error if there is no variable with that name."),
-
-            Method("SetSkyMode", {Param("mode", "SkyMode")}, {}, "How the sky image wraps around the camera, e.g. SkyMode.Cylinder."),
-            Method("GetSkyMode", {}, "SkyMode"),
-            Method("SetSkyTexture", {Param("path", "string")}, {},
-                   "The sky image for Equirectangular and Cylinder, relative to Assets. \"\" clears it."),
-            Method("GetSkyTexture", {}, "string"),
-            Method("SetSkyCubemapFace", {Param("face", "SkyFace"), Param("path", "string")}, {},
-                   "One Cubemap face image, relative to Assets, e.g. SkyFace.Up. \"\" clears it."),
-            Method("GetSkyCubemapFace", {Param("face", "SkyFace")}, "string"),
-            Method("SetSkyRotation", {Param("degrees", "number")}, {}, "Turns the sky, in the same direction as camera yaw."),
-            Method("GetSkyRotation", {}, "number"),
-            Method("SetSkyRotationSpeed", {Param("degreesPerSecond", "number")}, {}, "Keeps turning the sky while the game runs."),
-            Method("GetSkyRotationSpeed", {}, "number"),
-            Method("SetSkyTint", {Param("color", "Vector3")}, {}, "Multiplies the sky image. 0..255 per channel."),
-            Method("GetSkyTint", {}, "Vector3"),
-            Method("SetSkyHorizonOffset", {Param("degrees", "number")}, {}, "Moves the horizon up (positive) or down."),
-            Method("GetSkyHorizonOffset", {}, "number"),
-            Method("SetSkyFallbackColor", {Param("color", "Vector3")}, {},
-                   "Shown when the sky has no usable image. 0..255 per channel."),
-            Method("GetSkyFallbackColor", {}, "Vector3"),
         }));
-
-        std::vector<EnumValueDoc> modes;
-        for (const SkyModeInfo& mode : SKY_MODES) modes.push_back({mode.name, static_cast<int>(mode.mode), {}});
-        RegisterType(Enum("SkyMode", "Sky projection modes for Game.SetSkyMode.", std::move(modes)));
 
         std::vector<EnumValueDoc> rayTypes;
         for (const RayTypeInfo& rayType : RAY_TYPES) rayTypes.push_back({rayType.name, static_cast<int>(rayType.type), {}});
@@ -118,26 +381,10 @@ namespace {
                           "What a ray is for, for Game.Raycast and Camera:Raycast. Any but General fires Receive Ray events.",
                           std::move(rayTypes)));
 
-        std::vector<EnumValueDoc> faces;
-        for (const SkyFaceInfo& face : SKY_FACES) faces.push_back({face.name, static_cast<int>(face.face), {}});
-        RegisterType(Enum("SkyFace", "Cubemap faces for Game.SetSkyCubemapFace. Front is +Z, Right is -X, Up is +Y.",
-                          std::move(faces)));
+        RegisterMessageBoxMetadata();
+        RegisterSkyMetadata();
     }
 
-    SkyMode ToSkyMode(const int value) {
-        const std::optional<SkyMode> mode = SkyModeFromInt(value);
-        if (!mode) throw sol::error("Game.SetSkyMode expects a SkyMode value, e.g. SkyMode.Cylinder");
-        return *mode;
-    }
-
-    SkyFace ToSkyFace(const int value, const char *function) {
-        if (!IsValidSkyFace(value)) throw sol::error(std::string(function) + " expects a SkyFace value, e.g. SkyFace.Up");
-        return static_cast<SkyFace>(value);
-    }
-
-    SkySettings &CurrentSky() {
-        return LevelManager::CurrentLevel().sky;
-    }
 }
 
 static const char *RayHitTypeToString(const RayHitType type) {
@@ -321,33 +568,25 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     sol::table skyFace = lua.create_named_table("SkyFace");
     for (const SkyFaceInfo& face : SKY_FACES) skyFace[face.name] = static_cast<int>(face.face);
 
-    game.set_function("SetSkyMode", [](const int mode) { CurrentSky().mode = ToSkyMode(mode); });
-    game.set_function("GetSkyMode", [] { return static_cast<int>(CurrentSky().mode); });
+    // Functions are plain fields (called with `.`); the settings go through
+    // the metatable to the current level's SkySettings.
+    sol::table sky = lua.create_table();
 
-    game.set_function("SetSkyTexture", [](const std::string& path) { CurrentSky().texture = path; });
-    game.set_function("GetSkyTexture", [] { return CurrentSky().texture; });
-
-    game.set_function("SetSkyCubemapFace", [](const int face, const std::string& path) {
-        CurrentSky().Face(ToSkyFace(face, "Game.SetSkyCubemapFace")) = path;
+    sky.set_function("SetCubemapFace", [](const int face, const std::string& path) {
+        CurrentSky().Face(ToSkyFace(face, "Game.Sky.SetCubemapFace")) = path;
     });
-    game.set_function("GetSkyCubemapFace", [](const int face) {
-        return CurrentSky().Face(ToSkyFace(face, "Game.GetSkyCubemapFace"));
+    sky.set_function("GetCubemapFace", [](const int face) {
+        return CurrentSky().Face(ToSkyFace(face, "Game.Sky.GetCubemapFace"));
+    });
+    sky.set_function("Reset", [] {
+        SkySettings& current = CurrentSky();
+        const float spin = current.spin;
+        current = LevelSystem::StartingSky();
+        current.spin = spin;
     });
 
-    game.set_function("SetSkyRotation", [](const float degrees) { CurrentSky().rotation = degrees; });
-    game.set_function("GetSkyRotation", [] { return CurrentSky().rotation; });
-
-    game.set_function("SetSkyRotationSpeed", [](const float degreesPerSecond) { CurrentSky().rotationSpeed = degreesPerSecond; });
-    game.set_function("GetSkyRotationSpeed", [] { return CurrentSky().rotationSpeed; });
-
-    game.set_function("SetSkyTint", [](const Vector3& color) { CurrentSky().tint = color; });
-    game.set_function("GetSkyTint", [] { return CurrentSky().tint; });
-
-    game.set_function("SetSkyHorizonOffset", [](const float degrees) { CurrentSky().horizonOffset = degrees; });
-    game.set_function("GetSkyHorizonOffset", [] { return CurrentSky().horizonOffset; });
-
-    game.set_function("SetSkyFallbackColor", [](const Vector3& color) { CurrentSky().fallbackColor = color; });
-    game.set_function("GetSkyFallbackColor", [] { return CurrentSky().fallbackColor; });
+    InstallProperties(lua, sky, &SkyProperties, &CurrentSky);
+    game["Sky"] = sky;
 
     sol::table rayType = lua.create_named_table("RayType");
     for (const RayTypeInfo& info : RAY_TYPES) rayType[info.name] = static_cast<int>(info.type);
@@ -379,13 +618,42 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         EventSystem::Signal(level, name, instigator ? instigator->ownerID : INVALID_ID);
     });
 
-    game.set_function("SetMessage", [](const std::string& text, const sol::optional<Vector3> color,
-                                        const sol::optional<float> duration) {
+    sol::table messageAnchor = lua.create_named_table("MessageAnchor");
+    for (const NamedValue& anchor : MESSAGE_ANCHORS) messageAnchor[anchor.name] = anchor.value;
+
+    sol::table textAlign = lua.create_named_table("TextAlign");
+    for (const NamedValue& align : TEXT_ALIGNS) textAlign[align.name] = align.value;
+
+    // Functions are plain fields (called with `.`); the style properties go
+    // through the metatable to the current level's MessageStyle.
+    sol::table messageBox = lua.create_table();
+
+    messageBox.set_function("SetMessage", [](const std::string& text, const sol::optional<Vector3> color,
+                                             const sol::optional<float> duration) {
         const float seconds = duration.value_or(3.0f);
-        if (!(seconds > 0.0f)) throw sol::error("Game.SetMessage expects a duration above 0, got " + std::to_string(seconds));
+        if (!(seconds > 0.0f))
+            throw sol::error("Game.MessageBox.SetMessage expects a duration above 0, got " + std::to_string(seconds));
 
         EventSystem::SetMessage(LevelManager::CurrentLevel(), text, color.value_or(Vector3{255.0f, 255.0f, 255.0f}), seconds);
     });
+
+    messageBox.set_function("Clear", [] { EventSystem::ClearMessages(); });
+    messageBox.set_function("Reset", [] { EventSystem::ResetMessageStyle(LevelManager::CurrentLevel()); });
+
+    messageBox.set_function("GetMessages", [](const sol::this_state state) {
+        sol::state_view view(state);
+        sol::table texts = view.create_table();
+
+        // Top to bottom: CurrentMessages is oldest first and the newest is drawn at the top.
+        const std::vector<EventSystem::Message> messages = EventSystem::CurrentMessages();
+        int index = 1;
+        for (auto it = messages.rbegin(); it != messages.rend(); ++it) texts[index++] = it->text;
+        return texts;
+    });
+
+    InstallProperties(lua, messageBox, &MessageBoxProperties, &CurrentMessageStyle);
+
+    game["MessageBox"] = messageBox;
 
     game.set_function("LineOfSight", [](const Vector3& from, const Vector3& to) {
         return GameFunctions::LineOfSight(LevelManager::CurrentLevel(), from, to);

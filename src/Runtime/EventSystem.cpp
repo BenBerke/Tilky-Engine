@@ -160,6 +160,7 @@ namespace {
     std::vector<std::string> soundSources; // temporary sources of Play Sound
     uint64_t nextSoundSource = 0;
     std::vector<ShownMessage> shownMessages; // oldest first
+    MessageStyle savedMessageStyle; // the level's, as it started (Game.MessageBox.Reset)
     uint64_t nextMessageID = 1;
     int relayDepth = 0;
 
@@ -1424,7 +1425,10 @@ namespace EventSystem {
     }
 
     void Start(Level& level, Hooks newHooks) {
+        // Messages the level's scripts showed while starting stay.
+        std::vector<ShownMessage> messages = std::move(shownMessages);
         Stop();
+        shownMessages = std::move(messages);
         hooks = std::move(newHooks);
         running = true;
         MapQueries::AssignLinedefsToSectors(level);
@@ -1809,6 +1813,19 @@ namespace EventSystem {
 
     void SetMessage(const Level& level, const std::string& text, const Vector3& color, const float duration) {
         ShowMessage(level.worldSettings.messageStyle, text, color, duration);
+    }
+
+    void BeginLevelMessages(const Level& level) {
+        shownMessages.clear();
+        savedMessageStyle = level.worldSettings.messageStyle;
+    }
+
+    void ClearMessages() {
+        shownMessages.clear();
+    }
+
+    void ResetMessageStyle(Level& level) {
+        level.worldSettings.messageStyle = savedMessageStyle;
     }
 
     void Signal(Level& level, const std::string& name, const ID instigatorID) {

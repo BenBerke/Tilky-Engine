@@ -15,6 +15,13 @@
 
 namespace LevelSystem {
     void Start(Level& level);
+
+    // Remembers what Game.Sky.Reset and Game.MessageBox.Reset go back to, and
+    // clears the messages on screen. Start runs it first, before the scripts.
+    void CaptureStartingSettings(const Level& level);
+
+    // The level's sky as CaptureStartingSettings found it.
+    const SkySettings& StartingSky();
     void Update(Level& level);
     void Shutdown(Level& level);
 

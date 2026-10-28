@@ -23,20 +23,13 @@ end
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])`](#raycast) | table or `nil` | What a line hits first. |
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
-| [`SetMessage(text, [color], [duration])`](#setmessage) | | Shows text in the level's message box. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
-| [`SetSkyMode(mode)`, `GetSkyMode()`](#sky) | `SkyMode` | How the sky image wraps around the camera. |
-| [`SetSkyTexture(path)`, `GetSkyTexture()`](#sky) | string | The image for Equirectangular and Cylinder skies. |
-| [`SetSkyCubemapFace(face, path)`, `GetSkyCubemapFace(face)`](#sky) | string | One image of a Cubemap sky. |
-| [`SetSkyRotation(degrees)`, `GetSkyRotation()`](#sky) | number | Turns the sky. |
-| [`SetSkyRotationSpeed(degreesPerSecond)`, `GetSkyRotationSpeed()`](#sky) | number | Keeps the sky turning. |
-| [`SetSkyTint(color)`, `GetSkyTint()`](#sky) | `Vector3` | Colors the sky image. |
-| [`SetSkyHorizonOffset(degrees)`, `GetSkyHorizonOffset()`](#sky) | number | Moves the horizon up or down. |
-| [`SetSkyFallbackColor(color)`, `GetSkyFallbackColor()`](#sky) | `Vector3` | Shown when there is no usable image. |
 
 | Property | Type | | |
 |---|---|---|---|
 | [`levelName`](#levelname) | string | read-only | The current level's name. |
+| [`MessageBox`](#messagebox) | table | read-only | The level's message box: show text in it, change how it looks. |
+| [`Sky`](#sky) | table | read-only | The level's sky: its image, rotation and colours. |
 
 ---
 
@@ -282,10 +275,23 @@ end
 
 ---
 
-## SetMessage
+## MessageBox
+
+`Game.MessageBox` is the level's message box: the text **Show Message** dispatches put on screen.
+Scripts can show text in it and change how it looks. Its functions are called with a `.`, and its
+style is a set of properties.
+
+| Function | Returns | |
+|---|---|---|
+| `SetMessage(text, [color], [duration])` | | Shows `text`, like a Show Message dispatch. |
+| `Clear()` | | Removes every message on screen now. |
+| `Reset()` | | Puts the style back to how the level was saved. |
+| `GetMessages()` | list of strings | The texts on screen, top to bottom (newest first when stacking). |
+
+### SetMessage
 
 ```lua
-Game.SetMessage(text, [color], [duration])
+Game.MessageBox.SetMessage(text, [color], [duration])
 ```
 
 | Parameter | Type | |
@@ -294,19 +300,74 @@ Game.SetMessage(text, [color], [duration])
 | `color` | `Vector3` | Optional. The text colour, 0..255 per channel. White by default. |
 | `duration` | number | Optional. Seconds on screen, 3 by default. Must be above 0. |
 
-Shows `text` the same way a **Show Message** dispatch does. How it looks is set per level in the
-editor under **World Settings > Message Box**: font, size, where it sits on screen, wrapping, the
-background box, shadow, outline, fades and stacking. With **Stack Messages** off, a new message
-(from a script or a dispatch) replaces the one shown; with it on, they stack, newest at the top.
+With `stack` off, a new message (from a script or a dispatch) replaces the one shown; with it on,
+they stack, newest at the top. A message shown from a `Start` callback stays on screen.
 
 ```lua
 -- Scripts/Pickup.lua
 function OnTriggerEnter(other)
-    Game.SetMessage("Picked up the red key", Vector3(255, 60, 60))
+    Game.MessageBox.SetMessage("Picked up the red key", Vector3(255, 60, 60))
 end
 
-Game.SetMessage("Checkpoint reached")               -- white, 3 seconds
-Game.SetMessage("Hold on...", Vector3(255, 255, 255), 10)
+Game.MessageBox.SetMessage("Checkpoint reached")               -- white, 3 seconds
+Game.MessageBox.SetMessage("Hold on...", Vector3(255, 255, 255), 10)
+```
+
+### Style
+
+The same settings as the editor's **World Settings > Message Box**, read/write. A change applies to
+every message on screen at once, and lasts until the level loads again (or `Reset()`). Sizes are
+pixels at the project's UI Reference Height, so they scale with the window like UI Text.
+
+| Property | Type | Default | |
+|---|---|---|---|
+| `font` | string | `""` | Font file relative to Assets (`.ttf`/`.otf`). `""` is the engine's font. |
+| `fontSize` | number | `36` | At least 1. |
+| `anchor` | `MessageAnchor` | `TopCenter` | Where on screen the messages sit. |
+| `offset` | `Vector2` | `(0, 100)` | Moves the messages from the anchor. +x right, +y down. |
+| `align` | `TextAlign` | `Center` | How lines of different widths line up: `Left`, `Center`, `Right`. |
+| `wrapWidth` | number | `0` | Lines longer than this wrap between words. 0 never wraps. |
+| `background` | boolean | `false` | Draws a box behind each message. |
+| `backgroundColor` | `Vector4` | `(0, 0, 0, 153)` | The box colour, 0..255 per channel, alpha included. Tints the texture. |
+| `backgroundTexture` | string | `""` | Image stretched over the box, relative to Assets. `""` is a solid box. |
+| `padding` | `Vector2` | `(16, 8)` | Space between the text and the box's edges (x left/right, y top/bottom). Only with `background`. |
+| `shadow` | boolean | `false` | Draws a copy of the text behind it. |
+| `shadowColor` | `Vector4` | `(0, 0, 0, 191)` | 0..255 per channel, alpha included. |
+| `shadowOffset` | `Vector2` | `(2, 2)` | How far the shadow is moved. +x right, +y down. |
+| `outline` | boolean | `false` | Draws a border around the letters. Can be on with `shadow`. |
+| `outlineColor` | `Vector4` | `(0, 0, 0, 255)` | 0..255 per channel, alpha included. |
+| `outlineThickness` | number | `2` | At least 0. |
+| `fadeIn` | number | `0` | Seconds to fade in, inside each message's duration. |
+| `fadeOut` | number | `0` | Seconds to fade out, inside each message's duration. |
+| `stack` | boolean | `false` | Off: a new message replaces the shown one. On: they stack, newest at the top. |
+| `maxMessages` | integer | `5` | With `stack`, the oldest goes once there are more. At least 1. |
+| `spacing` | number | `8` | Space between stacked messages. |
+
+Numbers below a property's minimum are raised to it, and colour channels are kept in 0..255. A value
+of the wrong type, an `anchor`/`align` that isn't one of the enum's values, or a name that isn't a
+property raises an error.
+
+`MessageAnchor` values: `TopLeft`, `TopCenter`, `TopRight`, `MiddleLeft`, `Center`, `MiddleRight`,
+`BottomLeft`, `BottomCenter`, `BottomRight`. `TextAlign` values: `Left`, `Center`, `Right`.
+
+```lua
+-- Scripts/Cutscene.lua: subtitles at the bottom, then back to the level's own style.
+function Start()
+    local box = Game.MessageBox
+    box.anchor = MessageAnchor.BottomCenter
+    box.offset = Vector2(0, -60)
+    box.wrapWidth = 900
+    box.background = true
+    box.backgroundColor = Vector4(0, 0, 0, 180)
+    box.fadeIn = 0.2
+    box.fadeOut = 0.4
+    box.SetMessage("Where did everyone go?", Vector3(255, 255, 255), 4)
+end
+
+function EndCutscene()
+    Game.MessageBox.Clear()
+    Game.MessageBox.Reset()
+end
 ```
 
 ---
@@ -422,23 +483,40 @@ the new level starts, not when `LoadLevel` is called. Assigning to it raises an 
 
 ```lua
 function Start()
-    Game.SetSkyMode(SkyMode.Equirectangular)
-    Game.SetSkyTexture("Skies/sunset.png")
-    Game.SetSkyRotationSpeed(2)
+    Game.Sky.mode = SkyMode.Equirectangular
+    Game.Sky.texture = "Skies/sunset.png"
+    Game.Sky.rotationSpeed = 2
 end
 ```
 
 Every level has one sky, drawn behind everything: wherever no wall, floor, ceiling or sprite
 covers the screen, you see the sky. To open a ceiling to it, make the ceiling see-through (alpha 0
 in its color). The sky is set in the editor under **World Settings > Rendering > Sky** and saved
-with the level. Changes made from a script last until the level is loaded again, and are undone
-when you stop playing in the editor.
+with the level. `Game.Sky` changes it from a script: its settings are read/write properties, and
+its functions are called with a `.`. Changes last until the level is loaded again (or
+`Game.Sky.Reset()`), and are undone when you stop playing in the editor.
+
+| Property | Type | |
+|---|---|---|
+| `mode` | `SkyMode` | How the image wraps around the camera (below). |
+| `texture` | string | The image for Equirectangular and Cylinder skies. |
+| `rotation` | number | See the settings below. |
+| `rotationSpeed` | number | |
+| `horizonOffset` | number | |
+| `tint` | `Vector3` | |
+| `fallbackColor` | `Vector3` | |
+
+| Function | Returns | |
+|---|---|---|
+| `SetCubemapFace(face, path)` | | One image of a Cubemap sky. |
+| `GetCubemapFace(face)` | string | |
+| `Reset()` | | Puts every setting back to how the level was saved. How far `rotationSpeed` has turned the sky is kept, so it doesn't jump. |
 
 | Mode | Images | |
 |---|---|---|
-| `SkyMode.Cubemap` | six, set with `SetSkyCubemapFace` | A cube around the camera. |
-| `SkyMode.Equirectangular` | one 2:1 panorama, set with `SetSkyTexture` | A sphere around the camera. The middle of the image is Front. |
-| `SkyMode.Cylinder` | one strip, set with `SetSkyTexture` | DOOM's sky. The image repeats every 90 degrees (a 256 pixel wide image), and its rows are tied to the screen: row 0 at the top, row 100 in the middle, 200 rows top to bottom. Looking up and down doesn't move it, just like in DOOM. |
+| `SkyMode.Cubemap` | six, set with `Game.Sky.SetCubemapFace` | A cube around the camera. |
+| `SkyMode.Equirectangular` | one 2:1 panorama, in `Game.Sky.texture` | A sphere around the camera. The middle of the image is Front. |
+| `SkyMode.Cylinder` | one strip, in `Game.Sky.texture` | DOOM's sky. The image repeats every 90 degrees (a 256 pixel wide image), and its rows are tied to the screen: row 0 at the top, row 100 in the middle, 200 rows top to bottom. Looking up and down doesn't move it, just like in DOOM. |
 
 **Directions.** Front is +Z (where a camera with yaw 0 looks), Right is -X, Left is +X, Up is +Y.
 `SkyFace` has `Right`, `Left`, `Up`, `Down`, `Front` and `Back`. Every face is drawn as if you were
@@ -453,20 +531,20 @@ local faces = {
 }
 
 function Start()
-    Game.SetSkyMode(SkyMode.Cubemap)
+    Game.Sky.mode = SkyMode.Cubemap
     for face, name in pairs(faces) do
-        Game.SetSkyCubemapFace(face, "Skies/Space/" .. name .. ".png")
+        Game.Sky.SetCubemapFace(face, "Skies/Space/" .. name .. ".png")
     end
 end
 ```
 
 | Setting | Unit | |
 |---|---|---|
-| Rotation | degrees | Turns the sky the same way camera yaw turns. |
-| Rotation speed | degrees per second | Added to the rotation every frame while the game runs. The editor view never spins. |
-| Horizon offset | degrees | Positive raises the horizon. On Cubemap and Equirectangular skies it moves every point of the sky up by that angle; on a Cylinder sky it is the angle at the middle of the screen. |
-| Tint | `Vector3`, 0..255 | Multiplies the image. White (255, 255, 255) leaves it unchanged. |
-| Fallback color | `Vector3`, 0..255 | Fills the screen when the sky has no usable image: no texture, a Cubemap with a face missing, or an image that fails to load. It also shows through transparent pixels. |
+| `rotation` | degrees | Turns the sky the same way camera yaw turns. |
+| `rotationSpeed` | degrees per second | Added to the rotation every frame while the game runs. The editor view never spins. |
+| `horizonOffset` | degrees | Positive raises the horizon. On Cubemap and Equirectangular skies it moves every point of the sky up by that angle; on a Cylinder sky it is the angle at the middle of the screen. |
+| `tint` | `Vector3`, 0..255 | Multiplies the image. White (255, 255, 255) leaves it unchanged. |
+| `fallbackColor` | `Vector3`, 0..255 | Fills the screen when the sky has no usable image: no texture, a Cubemap with a face missing, or an image that fails to load. It also shows through transparent pixels. |
 
 ```lua
 -- Dusk: slowly turn the sky red.
@@ -474,10 +552,10 @@ local t = 0
 
 function Update()
     t = math.min(t + GameTime.deltaTime / 10, 1)
-    Game.SetSkyTint(Vector3(255, 255 - 135 * t, 255 - 135 * t))
+    Game.Sky.tint = Vector3(255, 255 - 135 * t, 255 - 135 * t)
 end
 ```
 
-`SetSkyMode` raises an error for a value that isn't in `SkyMode`, and the cube face functions do
-the same for a value that isn't in `SkyFace`. Paths are relative to `Assets`; an empty string
-clears the image.
+Setting `mode` to a value that isn't in `SkyMode` raises an error, and the cube face functions do
+the same for a value that isn't in `SkyFace`. So do a value of the wrong type and a name that isn't
+one of the properties. Paths are relative to `Assets`; an empty string clears the image.

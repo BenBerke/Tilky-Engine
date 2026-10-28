@@ -98,6 +98,20 @@ namespace {
 }
 
 namespace LevelSystem {
+    namespace {
+        SkySettings startingSky;
+    }
+
+    void CaptureStartingSettings(const Level& level) {
+        startingSky = level.sky;
+        startingSky.spin = 0.0f;
+        EventSystem::BeginLevelMessages(level);
+    }
+
+    const SkySettings& StartingSky() {
+        return startingSky;
+    }
+
     void RefreshScriptAssets(Level& level) {
         if (!EnsureScriptingInitialized()) return;
 
@@ -151,6 +165,9 @@ namespace LevelSystem {
     void Start(Level &level) {
         ZoneScopedN("LevelSystemStart");
         if (!EnsureScriptingInitialized()) return;
+
+        // Before the scripts start, so their Start callbacks change and show from here.
+        CaptureStartingSettings(level);
 
         SoundManager::SetListenerGain(level.listenerSettings.masterGain);
         SoundManager::SetListenerDopplerFactor(level.listenerSettings.dopplerFactor);
