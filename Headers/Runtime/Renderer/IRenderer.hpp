@@ -77,8 +77,25 @@ public:
 
     virtual void RenderTextRaw(const std::string& text, Vector2 position, Vector2 scale, Vector3 color) = 0;
 
-    // How wide RenderTextRaw would draw `text` (its widest line), in pixels.
-    [[nodiscard]] virtual float MeasureTextRaw(const std::string& text, Vector2 scale) = 0;
+    // Text in a project font (relative to Assets, empty = the default font)
+    // at `pixelSize` screen pixels. Characters the font lacks come from the
+    // default font.
+    struct FontMetrics {
+        float ascender = 0.0f;   // baseline below the top of a line
+        float lineHeight = 0.0f; // baseline to baseline
+    };
+    [[nodiscard]] virtual FontMetrics GetFontMetrics(const std::string& font, float pixelSize) = 0;
+
+    // Width of one line of text (no line breaks), in pixels.
+    [[nodiscard]] virtual float MeasureTextLine(const std::string& font, float pixelSize, const std::string& text) = 0;
+
+    // One line of text with its baseline starting at `baseline`. RGBA 0..1.
+    virtual void DrawTextLine(const std::string& font, float pixelSize, const std::string& text,
+                              Vector2 baseline, Vector4 color) = 0;
+
+    // A screen rectangle from its top-left `position`, in pixels: `color`
+    // (RGBA 0..1) times `texture`, or solid with an empty texture.
+    virtual void DrawScreenRectangle(Vector2 position, Vector2 size, Vector4 color, const std::string& texture) = 0;
 
     virtual bool CreateMap() = 0;
 

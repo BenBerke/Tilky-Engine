@@ -1,6 +1,26 @@
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include <spdlog/spdlog.h>
 
+void OpenGL::DrawScreenRectangle(const Vector2 position, const Vector2 size, const Vector4 color, const std::string& texture) {
+    if (size.x <= 0.0f || size.y <= 0.0f || color.w <= 0.0f || uiShader == nullptr || uiVAO == 0) return;
+
+    const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    uiShader->use();
+    DrawUIRectangle(position, size, {color.x * 255.0f, color.y * 255.0f, color.z * 255.0f, color.w * 255.0f}, 0.0f, texture);
+
+    if (!blendWasEnabled) glDisable(GL_BLEND);
+    if (cullWasEnabled) glEnable(GL_CULL_FACE);
+    if (depthWasEnabled) glEnable(GL_DEPTH_TEST);
+}
+
 void OpenGL::DrawUIRectangle(
     const Vector2& position,
     const Vector2& size,

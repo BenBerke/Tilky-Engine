@@ -375,6 +375,7 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         for (const std::string& fileName : CollectReferencedTextureFileNames(level)) addIfMissing(fileName);
         for (const ComponentUISprite& uiSprite : level.ui_sprites.components) addIfMissing(uiSprite.texture);
+        addIfMissing(level.worldSettings.messageStyle.backgroundTexture);
     }
 
     // The engine keeps the atlas between Play sessions; it only has to be

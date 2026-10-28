@@ -27,6 +27,55 @@ struct ListenerSettings {
     ALenum distanceModel = AL_INVERSE_DISTANCE_CLAMPED;
 };
 
+// Where Show Message text sits on screen.
+enum class MessageAnchor : uint8_t {
+    TOP_LEFT, TOP_CENTER, TOP_RIGHT,
+    MIDDLE_LEFT, CENTER, MIDDLE_RIGHT,
+    BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT
+};
+
+enum class MessageTextAlign : uint8_t { LEFT, CENTER, RIGHT };
+
+// How the level's Show Message dispatches look (their text colour is the
+// dispatch's own). Sizes are pixels at the project's UI Reference Height,
+// scaled with the window like UI Text's Font Size.
+struct MessageStyle {
+    std::string font; // relative to Assets, with its extension; empty = the default font
+    float fontSize = 36.0f;
+
+    MessageAnchor anchor = MessageAnchor::TOP_CENTER;
+    Vector2 offset = {0.0f, 100.0f}; // from the anchor, +x right, +y down
+    MessageTextAlign align = MessageTextAlign::CENTER; // the lines inside the box
+    float wrapWidth = 0.0f; // lines longer than this wrap between words; 0 = no wrapping
+
+    bool background = false;
+    Vector4 backgroundColor = {0.0f, 0.0f, 0.0f, 0.6f}; // RGBA 0..1, tints the texture
+    std::string backgroundTexture; // stretched over the box; empty = a solid box
+    Vector2 padding = {16.0f, 8.0f}; // between the text and the box's edges
+
+    bool shadow = false;
+    Vector4 shadowColor = {0.0f, 0.0f, 0.0f, 0.75f};
+    Vector2 shadowOffset = {2.0f, 2.0f};
+
+    bool outline = false;
+    Vector4 outlineColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    float outlineThickness = 2.0f;
+
+    // Seconds, inside the message's duration (shortened together if they
+    // don't fit in it).
+    float fadeIn = 0.0f;
+    float fadeOut = 0.0f;
+
+    // Off: a new message replaces the shown one. On: messages stack, newest
+    // at the top, `spacing` apart, the oldest going once there are more
+    // than `maxMessages`.
+    bool stack = false;
+    int maxMessages = 5;
+    float spacing = 8.0f;
+
+    bool operator==(const MessageStyle&) const = default;
+};
+
 struct WorldSettings {
     float gravity = 9.8f;
 
@@ -44,6 +93,8 @@ struct WorldSettings {
     // The level's own events and dispatches (EventOwnerKind::LEVEL).
     std::vector<Event> events;
     std::vector<Dispatch> dispatches;
+
+    MessageStyle messageStyle;
 };
 
 // See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp

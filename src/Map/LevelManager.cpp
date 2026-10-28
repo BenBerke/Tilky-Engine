@@ -143,6 +143,9 @@ namespace LevelManager {
         for (ComponentUISprite& uiSprite : level.ui_sprites.components)
             if (uiSprite.texture == oldReference) uiSprite.texture = newReference;
 
+        if (level.worldSettings.messageStyle.backgroundTexture == oldReference)
+            level.worldSettings.messageStyle.backgroundTexture = newReference;
+
         ForEachDispatch(level, [&](Dispatch& dispatch) {
             if (auto* line = std::get_if<PayloadDispatchLineSetTexture>(&dispatch.payload); line && line->texture == oldReference)
                 line->texture = newReference;
@@ -194,6 +197,8 @@ namespace LevelManager {
 
         for (ComponentUIText& text : level.ui_texts.components)
             if (text.font == oldReference) text.font = newReference;
+
+        if (level.worldSettings.messageStyle.font == oldReference) level.worldSettings.messageStyle.font = newReference;
     }
 
     void RenamePrefabReference(const std::string& oldReference, const std::string& newReference) {

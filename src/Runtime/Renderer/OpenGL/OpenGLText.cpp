@@ -508,39 +508,57 @@ void OpenGL::RenderTextRaw(
     RenderText(*textShader, text, position.x, position.y, scale, color);
 }
 
-// Same glyphs and advances as RenderTextString with the default font.
-float OpenGL::MeasureTextRaw(const std::string& text, const Vector2 scale) {
-    if (scale.y <= 0.0f || defaultFontFace == nullptr) return 0.0f;
+IRenderer::FontMetrics OpenGL::GetFontMetrics(const std::string& font, const float pixelSize) {
+    const unsigned size = PixelSizeFor(pixelSize);
+    const FT_Face face = GetFontFace(font);
+    if (size == 0 || face == nullptr) return {};
 
-    const unsigned pixelSize = PixelSizeFor(OpenGLRendererInternal::UI_FONT_SIZE * scale.y);
-    if (pixelSize == 0) return 0.0f;
+    SetFontPixelSize(face, size);
+    return {
+        static_cast<float>(face->size->metrics.ascender) / 64.0f,
+        static_cast<float>(face->size->metrics.height) / 64.0f
+    };
+}
 
-    const float xStretch = scale.x / scale.y;
-    float widest = 0.0f;
-    float line = 0.0f;
+// Same glyphs, fallback and advances as RenderTextString.
+float OpenGL::MeasureTextLine(const std::string& font, const float pixelSize, const std::string& text) {
+    const unsigned size = PixelSizeFor(pixelSize);
+    const FT_Face face = GetFontFace(font);
+    if (size == 0 || face == nullptr) return 0.0f;
+
+    float width = 0.0f;
 
     size_t i = 0;
     while (i < text.size()) {
         const char32_t codepoint = NextCodepoint(text, i);
-
-        if (codepoint == U'\r') continue;
-        if (codepoint == U'\n') {
-            widest = std::max(widest, line);
-            line = 0.0f;
-            continue;
-        }
+        if (codepoint == U'\r' || codepoint == U'\n') continue;
 
         const bool isTab = codepoint == U'\t';
-        const unsigned glyphIndex = FT_Get_Char_Index(defaultFontFace, isTab ? U' ' : codepoint);
+        const char32_t lookup = isTab ? U' ' : codepoint;
+
+        FT_Face glyphFace = face;
+        unsigned glyphIndex = FT_Get_Char_Index(face, lookup);
+        if (glyphIndex == 0 && face != defaultFontFace && defaultFontFace != nullptr) {
+            if (const unsigned fallback = FT_Get_Char_Index(defaultFontFace, lookup); fallback != 0) {
+                glyphFace = defaultFontFace;
+                glyphIndex = fallback;
+            }
+        }
 
         // Nothing is waiting to be drawn, so the atlas can reset freely.
-        const Glyph* glyph = GetGlyph(defaultFontFace, pixelSize, glyphIndex, [] {});
+        const Glyph* glyph = GetGlyph(glyphFace, size, glyphIndex, [] {});
         if (glyph == nullptr) continue;
 
-        line += glyph->advance * (isTab ? 4.0f : 1.0f) * xStretch;
+        width += glyph->advance * (isTab ? 4.0f : 1.0f);
     }
 
-    return std::max(widest, line);
+    return width;
+}
+
+void OpenGL::DrawTextLine(const std::string& font, const float pixelSize, const std::string& text,
+                          const Vector2 baseline, const Vector4 color) {
+    if (color.w <= 0.0f) return;
+    RenderTextString(*textShader, GetFontFace(font), PixelSizeFor(pixelSize), text, baseline.x, baseline.y, 1.0f, color);
 }
 
 // Font Size (and the inset from the rectangle) are pixels at the project's

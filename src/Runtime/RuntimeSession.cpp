@@ -8,6 +8,9 @@
 #include "Headers/Runtime/RuntimeSession.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <unordered_map>
+#include <vector>
 #include <memory>
 #include <string>
 
@@ -26,6 +29,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
 
@@ -247,20 +251,161 @@ namespace {
         spdlog::info("Runtime started using {} renderer", renderer->GetName());
     }
 
-    // A Show Message dispatch's text, centred near the top of the screen.
-    void RenderEventMessage() {
-        const EventSystem::Message* message = EventSystem::CurrentMessage();
-        if (message == nullptr || message->text.empty()) return;
+    // Where each shown message's box is drawn (its top), easing toward its
+    // place in the stack so the others slide when one goes. By Message::id.
+    std::unordered_map<uint64_t, float> messageBoxTops;
 
-        const Vector2 scale = {0.75f, 0.75f};
-        const float width = renderer->MeasureTextRaw(message->text, scale);
+    // `text` split into the lines it's drawn as: at its '\n's, and between
+    // words wherever a line would get wider than `wrapWidth` (0 = never).
+    std::vector<std::string> WrapMessageLines(const std::string& text, const std::string& font, const float pixelSize,
+                                              const float wrapWidth) {
+        std::vector<std::string> lines;
 
-        renderer->RenderTextRaw(
-            message->text,
-            {(static_cast<float>(renderer->screenWidth) - width) * 0.5f, static_cast<float>(renderer->screenHeight) * 0.12f},
-            scale,
-            message->color
-        );
+        size_t start = 0;
+        while (true) {
+            const size_t end = text.find('\n', start);
+            const std::string paragraph = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+
+            if (wrapWidth <= 0.0f) lines.push_back(paragraph);
+            else {
+                std::string line;
+                size_t wordStart = 0;
+                while (wordStart <= paragraph.size()) {
+                    const size_t wordEnd = std::min(paragraph.find(' ', wordStart), paragraph.size());
+                    const std::string word = paragraph.substr(wordStart, wordEnd - wordStart);
+                    wordStart = wordEnd + 1;
+
+                    // A single word wider than the wrap width keeps a line to itself.
+                    const std::string longer = line.empty() ? word : line + " " + word;
+                    if (line.empty() || renderer->MeasureTextLine(font, pixelSize, longer) <= wrapWidth) line = longer;
+                    else {
+                        lines.push_back(line);
+                        line = word;
+                    }
+                }
+                lines.push_back(line);
+            }
+
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+
+        return lines;
+    }
+
+    // The Show Message dispatches' text, styled by the level's MessageStyle.
+    void RenderEventMessages(const Level& level) {
+        const std::vector<EventSystem::Message> messages = EventSystem::CurrentMessages();
+        if (messages.empty() || renderer->screenHeight <= 0) {
+            messageBoxTops.clear();
+            return;
+        }
+
+        const MessageStyle& style = level.worldSettings.messageStyle;
+
+        // Style sizes are pixels at the UI Reference Height, like UI Text.
+        const float scale = static_cast<float>(renderer->screenHeight) / std::max(1.0f, ProjectManager::GetUIReferenceHeight());
+        const float pixelSize = style.fontSize * scale;
+        if (pixelSize <= 0.0f) return;
+
+        const IRenderer::FontMetrics metrics = renderer->GetFontMetrics(style.font, pixelSize);
+        const Vector2 padding = style.background ? style.padding * scale : Vector2{0.0f, 0.0f};
+
+        struct Laid {
+            const EventSystem::Message* message;
+            std::vector<std::string> lines;
+            std::vector<float> lineWidths;
+            float textWidth = 0.0f;
+            Vector2 boxSize;
+        };
+
+        // Newest first: the newest is at the top of the stack.
+        std::vector<Laid> laid;
+        float stackHeight = 0.0f;
+        for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
+            Laid entry{&*it, WrapMessageLines(it->text, style.font, pixelSize, style.wrapWidth * scale)};
+            for (const std::string& line : entry.lines) {
+                entry.lineWidths.push_back(renderer->MeasureTextLine(style.font, pixelSize, line));
+                entry.textWidth = std::max(entry.textWidth, entry.lineWidths.back());
+            }
+            entry.boxSize = {
+                entry.textWidth + padding.x * 2.0f,
+                static_cast<float>(entry.lines.size()) * metrics.lineHeight + padding.y * 2.0f
+            };
+
+            if (!laid.empty()) stackHeight += style.spacing * scale;
+            stackHeight += entry.boxSize.y;
+            laid.push_back(std::move(entry));
+        }
+
+        const int anchor = static_cast<int>(style.anchor);
+        const int column = anchor % 3; // left, centre, right
+        const int row = anchor / 3;    // top, middle, bottom
+
+        const float screenWidth = static_cast<float>(renderer->screenWidth);
+        const float screenHeight = static_cast<float>(renderer->screenHeight);
+        const Vector2 anchorPoint = Vector2{screenWidth * 0.5f * column, screenHeight * 0.5f * row} + style.offset * scale;
+        const float stackTop = anchorPoint.y - stackHeight * 0.5f * row;
+
+        // Exponential ease: about 95% of the way in a quarter second.
+        const float ease = 1.0f - std::exp(-12.0f * GameTime::deltaTime);
+
+        std::unordered_map<uint64_t, float> boxTops;
+        float targetTop = stackTop;
+
+        for (const Laid& entry : laid) {
+            const EventSystem::Message& message = *entry.message;
+
+            float top = targetTop;
+            if (const auto previous = messageBoxTops.find(message.id); previous != messageBoxTops.end())
+                top = previous->second + (targetTop - previous->second) * ease;
+            boxTops[message.id] = top;
+            targetTop += entry.boxSize.y + style.spacing * scale;
+
+            const float left = anchorPoint.x - entry.boxSize.x * 0.5f * column;
+            const float alpha = message.alpha;
+
+            if (style.background) {
+                const Vector4& color = style.backgroundColor;
+                renderer->DrawScreenRectangle({left, top}, entry.boxSize, {color.x, color.y, color.z, color.w * alpha},
+                                              style.backgroundTexture);
+            }
+
+            const Vector4 textColor = {message.color.x / 255.0f, message.color.y / 255.0f, message.color.z / 255.0f, alpha};
+            const Vector4 shadowColor = {style.shadowColor.x, style.shadowColor.y, style.shadowColor.z, style.shadowColor.w * alpha};
+            const Vector4 outlineColor = {style.outlineColor.x, style.outlineColor.y, style.outlineColor.z, style.outlineColor.w * alpha};
+            const float outline = style.outlineThickness * scale;
+
+            for (size_t i = 0; i < entry.lines.size(); ++i) {
+                const float slack = entry.textWidth - entry.lineWidths[i];
+                const float alignShift = style.align == MessageTextAlign::LEFT ? 0.0f
+                                       : style.align == MessageTextAlign::CENTER ? slack * 0.5f
+                                       : slack;
+                const Vector2 baseline = {
+                    left + padding.x + alignShift,
+                    top + padding.y + metrics.ascender + metrics.lineHeight * static_cast<float>(i)
+                };
+                const std::string& line = entry.lines[i];
+
+                if (style.shadow)
+                    renderer->DrawTextLine(style.font, pixelSize, line, baseline + style.shadowOffset * scale, shadowColor);
+
+                // The text drawn around a circle of the thickness, with
+                // enough copies that thick outlines stay round.
+                if (style.outline && outline > 0.0f) {
+                    const int copies = std::clamp(static_cast<int>(std::ceil(outline * 3.0f)), 8, 32);
+                    for (int k = 0; k < copies; ++k) {
+                        const float angle = 6.2831853f * static_cast<float>(k) / static_cast<float>(copies);
+                        renderer->DrawTextLine(style.font, pixelSize, line,
+                                               baseline + Vector2{std::cos(angle), std::sin(angle)} * outline, outlineColor);
+                    }
+                }
+
+                renderer->DrawTextLine(style.font, pixelSize, line, baseline, textColor);
+            }
+        }
+
+        messageBoxTops = std::move(boxTops);
     }
 
 #ifdef TILKY_STANDALONE
@@ -294,7 +439,7 @@ namespace {
             constexpr bool RENDER_DEBUG = false;
             constexpr bool RENDER_UI = true;
             renderer->Update(RENDER_DEBUG, RENDER_UI);
-            RenderEventMessage();
+            RenderEventMessages(level);
 
             renderer->EndFrame();
         }
@@ -476,7 +621,7 @@ namespace {
             renderer->BeginImGuiFrame();
             renderer->EndImGuiFrame();
 
-            RenderEventMessage();
+            RenderEventMessages(level);
             RenderDebugText();
             EditorFunctions::RenderConsole(renderer.get());
 

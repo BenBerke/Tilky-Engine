@@ -135,7 +135,8 @@ namespace {
 
     struct ShownMessage {
         EventSystem::Message message;
-        float remaining;
+        float age; // seconds on screen so far
+        float duration;
     };
 
     constexpr int MAX_RELAY_DEPTH = 32;
@@ -158,7 +159,8 @@ namespace {
     std::vector<EntityMove> entityMoves;
     std::vector<std::string> soundSources; // temporary sources of Play Sound
     uint64_t nextSoundSource = 0;
-    std::optional<ShownMessage> shownMessage;
+    std::vector<ShownMessage> shownMessages; // oldest first
+    uint64_t nextMessageID = 1;
     int relayDepth = 0;
 
     // Last frame's state, diffed against this frame's to find what changed.
@@ -1319,11 +1321,45 @@ namespace {
         });
     }
 
-    void UpdateMessage(const float deltaTime) {
-        if (!shownMessage) return;
+    // 0..1: rising over fadeIn at the start, falling over fadeOut at the end.
+    // Fades longer than the message together are shortened to fit it.
+    float MessageAlpha(const MessageStyle& style, const ShownMessage& shown) {
+        float fadeIn = std::max(0.0f, style.fadeIn);
+        float fadeOut = std::max(0.0f, style.fadeOut);
+        if (fadeIn + fadeOut > shown.duration) {
+            const float shrink = shown.duration / (fadeIn + fadeOut);
+            fadeIn *= shrink;
+            fadeOut *= shrink;
+        }
 
-        shownMessage->remaining -= deltaTime;
-        if (shownMessage->remaining <= 0.0f) shownMessage.reset();
+        float alpha = 1.0f;
+        if (fadeIn > 0.0f) alpha = std::min(alpha, shown.age / fadeIn);
+        if (fadeOut > 0.0f) alpha = std::min(alpha, (shown.duration - shown.age) / fadeOut);
+        return std::clamp(alpha, 0.0f, 1.0f);
+    }
+
+    void ShowMessage(const MessageStyle& style, const PayloadDispatchShowMessage& show) {
+        if (show.duration <= 0.0f) return;
+
+        if (!style.stack) shownMessages.clear();
+
+        ShownMessage shown{{nextMessageID++, show.text, show.color * 255.0f, 0.0f}, 0.0f, show.duration};
+        shown.message.alpha = MessageAlpha(style, shown);
+        shownMessages.push_back(std::move(shown));
+
+        const size_t limit = style.stack ? static_cast<size_t>(std::max(1, style.maxMessages)) : 1;
+        if (shownMessages.size() > limit)
+            shownMessages.erase(shownMessages.begin(), shownMessages.end() - static_cast<std::ptrdiff_t>(limit));
+    }
+
+    void UpdateMessages(const MessageStyle& style, const float deltaTime) {
+        std::erase_if(shownMessages, [&](ShownMessage& shown) {
+            shown.age += deltaTime;
+            if (shown.age >= shown.duration) return true;
+
+            shown.message.alpha = MessageAlpha(style, shown);
+            return false;
+        });
     }
 }
 
@@ -1427,7 +1463,7 @@ namespace EventSystem {
         UpdateDoors(level, deltaTime);
         UpdateEntityMoves(level, deltaTime);
         UpdateSounds();
-        UpdateMessage(deltaTime);
+        UpdateMessages(level.worldSettings.messageStyle, deltaTime);
 
         FireEnableEvents(level);
         FireMovementEvents(level);
@@ -1462,7 +1498,7 @@ namespace EventSystem {
         doors.clear();
         entityMoves.clear();
         soundSources.clear();
-        shownMessage.reset();
+        shownMessages.clear();
         relayDepth = 0;
         lastPositions.clear();
         lastSectors.clear();
@@ -1679,8 +1715,7 @@ namespace EventSystem {
                 PlaySound(play, OwnerPosition(level, ownerKind, ownerID));
             },
             [&](const PayloadDispatchShowMessage& show) {
-                if (show.duration <= 0.0f) return;
-                shownMessage = ShownMessage{{show.text, show.color * 255.0f}, show.duration};
+                ShowMessage(level.worldSettings.messageStyle, show);
             },
             [&](const PayloadDispatchRelay& relay) {
                 RunDispatches(level, relay.target, instigatorID);
@@ -1800,7 +1835,10 @@ namespace EventSystem {
         FireEvents<PayloadEntityDestroyed>(level, EventOwnerKind::ENTITY, entityID, entityID, EntityTags(level, entityID));
     }
 
-    const Message* CurrentMessage() {
-        return shownMessage ? &shownMessage->message : nullptr;
+    std::vector<Message> CurrentMessages() {
+        std::vector<Message> messages;
+        messages.reserve(shownMessages.size());
+        for (const ShownMessage& shown : shownMessages) messages.push_back(shown.message);
+        return messages;
     }
 }

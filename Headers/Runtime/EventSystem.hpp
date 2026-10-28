@@ -31,8 +31,10 @@ namespace EventSystem {
 
     // The text a Show Message dispatch put on screen.
     struct Message {
+        uint64_t id; // unique for the session, to follow a message across frames
         std::string text;
         Vector3 color; // 0-255
+        float alpha;   // 0..1, from the level's fade in/out
     };
 
     // Rebuild after anything that adds/removes walls, sectors, entities or
@@ -76,8 +78,9 @@ namespace EventSystem {
     // Fires the entity's Entity Destroyed events. Call before it is removed.
     void FireEntityDestroyed(Level& level, ID entityID);
 
-    // The Show Message text to draw this frame, nullptr if none.
-    [[nodiscard]] const Message* CurrentMessage();
+    // The Show Message texts to draw this frame, oldest first. Styled by the
+    // level's WorldSettings::messageStyle.
+    [[nodiscard]] std::vector<Message> CurrentMessages();
 }
 
 #endif //TILKY_ENGINE_EVENTSYSTEM_HPP

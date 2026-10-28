@@ -286,6 +286,96 @@ namespace {
 
     // A level's own event variables: [{id, name, value}]. Broken entries,
     // global-scope IDs and duplicates are skipped with a warning.
+    // MessageStyle enums by name, in enum order, so files never depend on enum values.
+    constexpr const char* kMessageAnchorNames[] = {
+        "top_left", "top_center", "top_right",
+        "middle_left", "center", "middle_right",
+        "bottom_left", "bottom_center", "bottom_right"
+    };
+    constexpr const char* kMessageTextAlignNames[] = {"left", "center", "right"};
+
+    template <typename Enum, size_t N>
+    void ReadEnumByName(const json& j, const char* key, const char* const (&names)[N], Enum& out) {
+        if (!j.contains(key)) return;
+        const std::string name = j.at(key).get<std::string>();
+        for (size_t i = 0; i < N; ++i)
+            if (name == names[i]) {
+                out = static_cast<Enum>(i);
+                return;
+            }
+        spdlog::warn("worldSettings: unknown {} \"{}\", ignored", key, name);
+    }
+
+    json MessageStyleToJson(const MessageStyle& style) {
+        const auto vec2 = [](const Vector2& v) { return json::array({v.x, v.y}); };
+        const auto vec4 = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
+
+        return {
+            {"font", style.font},
+            {"fontSize", style.fontSize},
+            {"anchor", kMessageAnchorNames[static_cast<size_t>(style.anchor)]},
+            {"offset", vec2(style.offset)},
+            {"align", kMessageTextAlignNames[static_cast<size_t>(style.align)]},
+            {"wrapWidth", style.wrapWidth},
+            {"background", style.background},
+            {"backgroundColor", vec4(style.backgroundColor)},
+            {"backgroundTexture", style.backgroundTexture},
+            {"padding", vec2(style.padding)},
+            {"shadow", style.shadow},
+            {"shadowColor", vec4(style.shadowColor)},
+            {"shadowOffset", vec2(style.shadowOffset)},
+            {"outline", style.outline},
+            {"outlineColor", vec4(style.outlineColor)},
+            {"outlineThickness", style.outlineThickness},
+            {"fadeIn", style.fadeIn},
+            {"fadeOut", style.fadeOut},
+            {"stack", style.stack},
+            {"maxMessages", style.maxMessages},
+            {"spacing", style.spacing}
+        };
+    }
+
+    // Missing fields keep their defaults; a bad one is skipped with a warning.
+    MessageStyle MessageStyleFromJson(const json& j) {
+        MessageStyle style;
+
+        const auto read = [&](const char* key, auto&& apply) {
+            if (!j.contains(key)) return;
+            try { apply(j.at(key)); }
+            catch (const std::exception& exception) {
+                spdlog::warn("worldSettings: message style \"{}\" skipped: {}", key, exception.what());
+            }
+        };
+        const auto vec2 = [](const json& v) { return Vector2{v.at(0).get<float>(), v.at(1).get<float>()}; };
+        const auto vec4 = [](const json& v) {
+            return Vector4{v.at(0).get<float>(), v.at(1).get<float>(), v.at(2).get<float>(), v.at(3).get<float>()};
+        };
+
+        read("font", [&](const json& v) { style.font = v.get<std::string>(); });
+        read("fontSize", [&](const json& v) { style.fontSize = std::max(1.0f, v.get<float>()); });
+        read("anchor", [&](const json&) { ReadEnumByName(j, "anchor", kMessageAnchorNames, style.anchor); });
+        read("offset", [&](const json& v) { style.offset = vec2(v); });
+        read("align", [&](const json&) { ReadEnumByName(j, "align", kMessageTextAlignNames, style.align); });
+        read("wrapWidth", [&](const json& v) { style.wrapWidth = std::max(0.0f, v.get<float>()); });
+        read("background", [&](const json& v) { style.background = v.get<bool>(); });
+        read("backgroundColor", [&](const json& v) { style.backgroundColor = vec4(v); });
+        read("backgroundTexture", [&](const json& v) { style.backgroundTexture = v.get<std::string>(); });
+        read("padding", [&](const json& v) { style.padding = vec2(v); });
+        read("shadow", [&](const json& v) { style.shadow = v.get<bool>(); });
+        read("shadowColor", [&](const json& v) { style.shadowColor = vec4(v); });
+        read("shadowOffset", [&](const json& v) { style.shadowOffset = vec2(v); });
+        read("outline", [&](const json& v) { style.outline = v.get<bool>(); });
+        read("outlineColor", [&](const json& v) { style.outlineColor = vec4(v); });
+        read("outlineThickness", [&](const json& v) { style.outlineThickness = std::max(0.0f, v.get<float>()); });
+        read("fadeIn", [&](const json& v) { style.fadeIn = std::max(0.0f, v.get<float>()); });
+        read("fadeOut", [&](const json& v) { style.fadeOut = std::max(0.0f, v.get<float>()); });
+        read("stack", [&](const json& v) { style.stack = v.get<bool>(); });
+        read("maxMessages", [&](const json& v) { style.maxMessages = std::max(1, v.get<int>()); });
+        read("spacing", [&](const json& v) { style.spacing = v.get<float>(); });
+
+        return style;
+    }
+
     void LoadEventVariables(const json& worldSettingsJson, WorldSettings& worldSettings) {
         worldSettings.eventVariables.clear();
         worldSettings.eventVariableNames.clear();
@@ -502,6 +592,9 @@ namespace {
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
 
             LoadEventVariables(worldSettingsJson, worldSettings);
+            worldSettings.messageStyle = worldSettingsJson.contains("messageStyle")
+                ? MessageStyleFromJson(worldSettingsJson.at("messageStyle"))
+                : MessageStyle{};
             LoadEventsAndDispatches(worldSettingsJson, "Level", 0, worldSettings.events, worldSettings.dispatches);
         }
 
@@ -539,7 +632,8 @@ namespace {
                 "worldSettings", {
                     {"gravity", worldSettings.gravity},
                     {"eventVariables", SaveEventVariables(worldSettings)},
-                    {"nextEventVariableId", worldSettings.nextEventVariableID}
+                    {"nextEventVariableId", worldSettings.nextEventVariableID},
+                    {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)}
                 }
             },
             {

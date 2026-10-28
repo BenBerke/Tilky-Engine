@@ -787,6 +787,115 @@ namespace {
         });
     }
 
+    // The Show Message box: font, place, background, text effects, fades, stacking.
+    void DrawMessageStyleSettings(MessageStyle &style) {
+        const auto label = [](const char *key, const char *id) { return Get(key) + id; };
+
+        DrawAssetField(Get("settings.message.font").c_str(), style.font, AssetKind::Font);
+        HoverTooltip(Get("settings.message.tooltip.font").c_str());
+
+        if (ImGui::InputFloat(Get("settings.message.font_size").c_str(), &style.fontSize, 1.0f, 4.0f, "%.0f"))
+            style.fontSize = std::max(1.0f, style.fontSize);
+        HoverTooltip(Get("settings.message.tooltip.font_size").c_str());
+
+        {
+            static constexpr const char *anchorKeys[] = {
+                "settings.message.anchor.top_left", "settings.message.anchor.top_center", "settings.message.anchor.top_right",
+                "settings.message.anchor.middle_left", "settings.message.anchor.center", "settings.message.anchor.middle_right",
+                "settings.message.anchor.bottom_left", "settings.message.anchor.bottom_center", "settings.message.anchor.bottom_right"
+            };
+            const int current = static_cast<int>(style.anchor);
+            if (ImGui::BeginCombo(Get("settings.message.anchor").c_str(), Get(anchorKeys[current]).c_str())) {
+                for (int i = 0; i < static_cast<int>(std::size(anchorKeys)); ++i) {
+                    if (ImGui::Selectable(Get(anchorKeys[i]).c_str(), i == current)) style.anchor = static_cast<MessageAnchor>(i);
+                    if (i == current) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get("settings.message.tooltip.anchor").c_str());
+        }
+
+        ImGui::DragFloat2(Get("settings.message.offset").c_str(), &style.offset.x, 1.0f, 0.0f, 0.0f, "%.0f");
+        HoverTooltip(Get("settings.message.tooltip.offset").c_str());
+
+        {
+            static constexpr const char *alignKeys[] = {
+                "settings.message.align.left", "settings.message.align.center", "settings.message.align.right"
+            };
+            const int current = static_cast<int>(style.align);
+            if (ImGui::BeginCombo(Get("settings.message.align").c_str(), Get(alignKeys[current]).c_str())) {
+                for (int i = 0; i < static_cast<int>(std::size(alignKeys)); ++i) {
+                    if (ImGui::Selectable(Get(alignKeys[i]).c_str(), i == current)) style.align = static_cast<MessageTextAlign>(i);
+                    if (i == current) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get("settings.message.tooltip.align").c_str());
+        }
+
+        if (ImGui::InputFloat(Get("settings.message.wrap_width").c_str(), &style.wrapWidth, 10.0f, 50.0f, "%.0f"))
+            style.wrapWidth = std::max(0.0f, style.wrapWidth);
+        HoverTooltip(Get("settings.message.tooltip.wrap_width").c_str());
+
+        // ---- Background ----
+        ImGui::Spacing();
+        ImGui::Checkbox(Get("settings.message.background").c_str(), &style.background);
+        HoverTooltip(Get("settings.message.tooltip.background").c_str());
+
+        ImGui::BeginDisabled(!style.background);
+        ImGui::ColorEdit4(label("settings.message.color", "##Background").c_str(), &style.backgroundColor.x);
+        HoverTooltip(Get("settings.message.tooltip.background_color").c_str());
+        DrawAssetField(Get("settings.message.background_texture").c_str(), style.backgroundTexture, AssetKind::Texture, 32.0f);
+        HoverTooltip(Get("settings.message.tooltip.background_texture").c_str());
+        ImGui::DragFloat2(Get("settings.message.padding").c_str(), &style.padding.x, 0.5f, 0.0f, 1000.0f, "%.0f");
+        HoverTooltip(Get("settings.message.tooltip.padding").c_str());
+        ImGui::EndDisabled();
+
+        // ---- Shadow ----
+        ImGui::Spacing();
+        ImGui::Checkbox(Get("settings.message.shadow").c_str(), &style.shadow);
+        HoverTooltip(Get("settings.message.tooltip.shadow").c_str());
+
+        ImGui::BeginDisabled(!style.shadow);
+        ImGui::ColorEdit4(label("settings.message.color", "##Shadow").c_str(), &style.shadowColor.x);
+        ImGui::DragFloat2(label("settings.message.offset", "##Shadow").c_str(), &style.shadowOffset.x, 0.25f, 0.0f, 0.0f, "%.1f");
+        HoverTooltip(Get("settings.message.tooltip.shadow_offset").c_str());
+        ImGui::EndDisabled();
+
+        // ---- Outline ----
+        ImGui::Spacing();
+        ImGui::Checkbox(Get("settings.message.outline").c_str(), &style.outline);
+        HoverTooltip(Get("settings.message.tooltip.outline").c_str());
+
+        ImGui::BeginDisabled(!style.outline);
+        ImGui::ColorEdit4(label("settings.message.color", "##Outline").c_str(), &style.outlineColor.x);
+        if (ImGui::InputFloat(Get("settings.message.outline_thickness").c_str(), &style.outlineThickness, 0.5f, 1.0f, "%.1f"))
+            style.outlineThickness = std::max(0.0f, style.outlineThickness);
+        ImGui::EndDisabled();
+
+        // ---- Fades ----
+        ImGui::Spacing();
+        if (ImGui::InputFloat(Get("settings.message.fade_in").c_str(), &style.fadeIn, 0.05f, 0.25f, "%.2f s"))
+            style.fadeIn = std::max(0.0f, style.fadeIn);
+        HoverTooltip(Get("settings.message.tooltip.fade").c_str());
+        if (ImGui::InputFloat(Get("settings.message.fade_out").c_str(), &style.fadeOut, 0.05f, 0.25f, "%.2f s"))
+            style.fadeOut = std::max(0.0f, style.fadeOut);
+        HoverTooltip(Get("settings.message.tooltip.fade").c_str());
+
+        // ---- Stacking ----
+        ImGui::Spacing();
+        ImGui::Checkbox(Get("settings.message.stack").c_str(), &style.stack);
+        HoverTooltip(Get("settings.message.tooltip.stack").c_str());
+
+        ImGui::BeginDisabled(!style.stack);
+        if (ImGui::InputInt(Get("settings.message.max_messages").c_str(), &style.maxMessages))
+            style.maxMessages = std::max(1, style.maxMessages);
+        HoverTooltip(Get("settings.message.tooltip.max_messages").c_str());
+        ImGui::InputFloat(Get("settings.message.spacing").c_str(), &style.spacing, 1.0f, 4.0f, "%.0f");
+        HoverTooltip(Get("settings.message.tooltip.spacing").c_str());
+        ImGui::EndDisabled();
+    }
+
     void DrawWorldSettings() {
         Level &level = LevelManager::CurrentLevel();
         ListenerSettings &settings = level.listenerSettings;
@@ -916,6 +1025,19 @@ namespace {
         ImGui::Spacing();
 
         ImGuiDrawFunctions::DrawLevelEventSections(level, DRAGGABLE);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // ---- How Show Message dispatches look -------------------------------
+        const bool messageBoxOpen = ImGui::CollapsingHeader(Get("settings.message.title").c_str());
+        HoverTooltip(Get("settings.message.tooltip").c_str());
+
+        if (messageBoxOpen) {
+            ImGui::Spacing();
+            DrawMessageStyleSettings(level.worldSettings.messageStyle);
+        }
 
         ImGui::Spacing();
         ImGui::Separator();

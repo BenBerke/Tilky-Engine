@@ -312,7 +312,11 @@ public:
         Vector3 color
     ) override;
 
-    [[nodiscard]] float MeasureTextRaw(const std::string &text, Vector2 scale) override;
+    [[nodiscard]] FontMetrics GetFontMetrics(const std::string& font, float pixelSize) override;
+    [[nodiscard]] float MeasureTextLine(const std::string& font, float pixelSize, const std::string& text) override;
+    void DrawTextLine(const std::string& font, float pixelSize, const std::string& text,
+                      Vector2 baseline, Vector4 color) override;
+    void DrawScreenRectangle(Vector2 position, Vector2 size, Vector4 color, const std::string& texture) override;
 
     void DrawUIRectangle(
         const Vector2 &position,
