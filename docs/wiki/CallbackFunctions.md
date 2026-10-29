@@ -185,8 +185,7 @@ are pushed apart by physics.
 
 What counts as a collision:
 
-- Both colliders are **Sphere** colliders, active, and **not** triggers. Box colliders don't
-  collide yet.
+- Both colliders are active and **not** triggers. Any shapes work: sphere, capsule or box.
 - At least one of the two has a non-static [Rigidbody](Rigidbody.md). Two static things never
   collide with each other.
 - Walls, floors and ceilings are not entities, so they never cause these callbacks.

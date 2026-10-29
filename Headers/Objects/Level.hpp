@@ -80,6 +80,11 @@ struct MessageStyle {
 struct WorldSettings {
     float gravity = 9.8f;
 
+    // Most physics sub-steps per frame. A frame where something moves fast
+    // for its size is split into up to this many, so it can't skip through
+    // a wall; 1 turns sub-stepping off.
+    int maxPhysicsSubsteps = 8;
+
     // This level's own event variables (IDs without GLOBAL_EVENT_VARIABLE_BIT;
     // project-wide ones are in GlobalEventVariables). The value is the
     // starting value in the editor and the live one during play. Play restores

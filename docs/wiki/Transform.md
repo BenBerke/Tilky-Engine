@@ -30,7 +30,7 @@ the `OnSectorChange` / `OnEntityEnter` / `OnEntityExit` callbacks. It doesn't ma
 entity: physics, the player controller or a script.
 
 `relativeHeight` is the height of the entity's base collider's bottom above the current floor (the
-base collider is its lowest active sphere or capsule). Physics keeps it up to date for entities with
+base collider is its lowest active, non-trigger collider). Physics keeps it up to date for entities with
 a Rigidbody and a Collider.
 
 ### Scale
@@ -41,6 +41,7 @@ a Rigidbody and a Collider.
 |---|---|
 | [Sprite](Sprite.md) | `scale.x` is the sprite's **width**, `scale.z` its **height**. `scale.y` is not used. |
 | [Model](Model.md) | Multiplies the model on each axis. |
+| [Collider](Collider.md) | Multiplies its size and offset: a radius by `scale.x`, a capsule's height by `scale.y`, a box on each axis. See [Size and scale](Collider.md#size-and-scale). |
 
 New entities start at `32, 32, 32`.
 

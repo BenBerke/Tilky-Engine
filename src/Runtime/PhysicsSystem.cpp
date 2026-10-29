@@ -16,40 +16,75 @@
 #include <tracy/Tracy.hpp>
 
 #include "Headers/Map/MapQueries.hpp"
-#include "Headers/Engine/GameTime.hpp"
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/SIMD/SSECompat.hpp"
+#include "Headers/Math/Vector/Vector3Math.hpp"
 #include "Headers/Objects/Level.hpp"
 
-static inline __m128 rcp_nr_ss(const __m128 x) {
-    __m128 r = _mm_rcp_ss(x);
-    r = _mm_mul_ss(r, _mm_sub_ss(_mm_set_ss(2.0f), _mm_mul_ss(x, r)));
-    return r;
-}
+// Every SIMD use in physics goes through these, and each has a plain twin
+// for NOSIMD builds, like the math headers.
+namespace {
+#ifndef NOSIMD
+    // 1 / x: the estimate refined by one Newton-Raphson step.
+    inline float FastReciprocal(const float x) {
+        const __m128 value = _mm_set_ss(x);
+        __m128 r = _mm_rcp_ss(value);
+        r = _mm_mul_ss(r, _mm_sub_ss(_mm_set_ss(2.0f), _mm_mul_ss(value, r)));
+        return _mm_cvtss_f32(r);
+    }
 
-static inline __m128 rsqrt_nr_ss(const __m128 x) {
-    __m128 r = _mm_rsqrt_ss(x);
-    const __m128 half = _mm_set_ss(0.5f);
-    const __m128 threeHalves = _mm_set_ss(1.5f);
-    r = _mm_mul_ss(r, _mm_sub_ss(threeHalves, _mm_mul_ss(half, _mm_mul_ss(x, _mm_mul_ss(r, r)))));
-    return r;
-}
+    // 1 / sqrt(x): the estimate refined by one Newton-Raphson step.
+    inline float FastInverseSqrt(const float x) {
+        const __m128 value = _mm_set_ss(x);
+        __m128 r = _mm_rsqrt_ss(value);
+        const __m128 half = _mm_set_ss(0.5f);
+        const __m128 threeHalves = _mm_set_ss(1.5f);
+        r = _mm_mul_ss(r, _mm_sub_ss(threeHalves, _mm_mul_ss(half, _mm_mul_ss(value, _mm_mul_ss(r, r)))));
+        return _mm_cvtss_f32(r);
+    }
 
-static inline __m128 dot3_ss(const __m128 a, const __m128 b) {
-    const __m128 mul = _mm_mul_ps(a, b);
-    const __m128 y = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(1, 1, 1, 1));
-    const __m128 z = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-    return _mm_add_ss(_mm_add_ss(mul, y), z);
-}
+    // The dot product of the X and Z parts only.
+    inline float DotXZ(const Vector3& a, const Vector3& b) {
+        const __m128 mul = _mm_mul_ps(a.reg, b.reg);
+        const __m128 z = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
+        return _mm_cvtss_f32(_mm_add_ss(mul, z));
+    }
 
-static inline __m128 dot_xz_ss(const __m128 a, const __m128 b) {
-    const __m128 mul = _mm_mul_ps(a, b);
-    const __m128 z = TILKY_MM_SHUFFLE_PS(mul, mul, _MM_SHUFFLE(2, 2, 2, 2));
-    return _mm_add_ss(mul, z);
-}
+    // v with its Y zeroed.
+    inline Vector3 FlattenXZ(const Vector3& v) {
+        const __m128 mask = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
+        return {_mm_and_ps(v.reg, mask)};
+    }
 
-static inline __m128 blend_ps(const __m128 a, const __m128 b, const __m128 mask) {
-    return _mm_or_ps(_mm_and_ps(mask, b), _mm_andnot_ps(mask, a));
+    // Whether the point is outside the box in X or Z; Y is ignored.
+    inline bool OutsideXZ(const Vector3& point, const Vector3& minimum, const Vector3& maximum) {
+        const __m128 outside = _mm_or_ps(_mm_cmplt_ps(point.reg, minimum.reg), _mm_cmpgt_ps(point.reg, maximum.reg));
+        return (_mm_movemask_ps(outside) & 0x5) != 0;
+    }
+
+    inline Vector2 MinVector2(const Vector2& a, const Vector2& b) { return {_mm_min_ps(a.reg, b.reg)}; }
+    inline Vector2 MaxVector2(const Vector2& a, const Vector2& b) { return {_mm_max_ps(a.reg, b.reg)}; }
+    inline Vector3 MinVector3(const Vector3& a, const Vector3& b) { return {_mm_min_ps(a.reg, b.reg)}; }
+#else
+    inline float FastReciprocal(const float x) { return 1.0f / x; }
+
+    inline float FastInverseSqrt(const float x) { return 1.0f / std::sqrt(x); }
+
+    inline float DotXZ(const Vector3& a, const Vector3& b) { return a.x * b.x + a.z * b.z; }
+
+    inline Vector3 FlattenXZ(const Vector3& v) { return {v.x, 0.0f, v.z}; }
+
+    inline bool OutsideXZ(const Vector3& point, const Vector3& minimum, const Vector3& maximum) {
+        return point.x < minimum.x || point.x > maximum.x || point.z < minimum.z || point.z > maximum.z;
+    }
+
+    inline Vector2 MinVector2(const Vector2& a, const Vector2& b) { return {std::min(a.x, b.x), std::min(a.y, b.y)}; }
+    inline Vector2 MaxVector2(const Vector2& a, const Vector2& b) { return {std::max(a.x, b.x), std::max(a.y, b.y)}; }
+
+    inline Vector3 MinVector3(const Vector3& a, const Vector3& b) {
+        return {std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)};
+    }
+#endif
 }
 
 namespace {
@@ -63,7 +98,16 @@ namespace {
     // huge distance.
     constexpr float MAX_SNAP_SLOPE = 60.0f;
 
-    const __m128 XZ_MASK = _mm_castsi128_ps(_mm_setr_epi32(-1, 0, -1, 0));
+    // A push out of one wall can put the body into another (a corner), so
+    // walls are gone through again until nothing moves it, this many times
+    // at most.
+    constexpr int MAX_WALL_PASSES = 8;
+
+    // A sub-step moves a body at most this much of its half width (or half
+    // height, going up or down). Its centre then can't get past a wall's
+    // line before the wall pushes it back: a body that did was pushed out
+    // on the far side and went through.
+    constexpr float MAX_SUBSTEP_TRAVEL = 0.5f;
 
     // Slope strength is the slope's angle in degrees. BuildGpuSectors()
     // uploads the same rise-per-unit gradient the shader draws with.
@@ -83,36 +127,28 @@ namespace {
     SectorBounds ComputeSectorBounds(const Sector& sector) {
         SectorBounds bounds;
 
-        __m128 minimumReg;
-        __m128 maximumReg;
-
         if (!sector.triangles.empty()) {
-            minimumReg = sector.triangles.front().a.reg;
-            maximumReg = minimumReg;
+            bounds.minimum = sector.triangles.front().a;
+            bounds.maximum = bounds.minimum;
 
             for (const Triangle& triangle : sector.triangles) {
-                minimumReg = _mm_min_ps(minimumReg, triangle.a.reg);
-                minimumReg = _mm_min_ps(minimumReg, triangle.b.reg);
-                minimumReg = _mm_min_ps(minimumReg, triangle.c.reg);
-
-                maximumReg = _mm_max_ps(maximumReg, triangle.a.reg);
-                maximumReg = _mm_max_ps(maximumReg, triangle.b.reg);
-                maximumReg = _mm_max_ps(maximumReg, triangle.c.reg);
+                for (const Vector2* corner : {&triangle.a, &triangle.b, &triangle.c}) {
+                    bounds.minimum = MinVector2(bounds.minimum, *corner);
+                    bounds.maximum = MaxVector2(bounds.maximum, *corner);
+                }
             }
         }
         else if (!sector.vertices.empty()) {
-            minimumReg = sector.vertices.front().reg;
-            maximumReg = minimumReg;
+            bounds.minimum = sector.vertices.front();
+            bounds.maximum = bounds.minimum;
 
             for (const Vector2& vertex : sector.vertices) {
-                minimumReg = _mm_min_ps(minimumReg, vertex.reg);
-                maximumReg = _mm_max_ps(maximumReg, vertex.reg);
+                bounds.minimum = MinVector2(bounds.minimum, vertex);
+                bounds.maximum = MaxVector2(bounds.maximum, vertex);
             }
         }
         else return bounds;
 
-        bounds.minimum.reg = minimumReg;
-        bounds.maximum.reg = maximumReg;
         bounds.valid = true;
 
         return bounds;
@@ -510,32 +546,103 @@ namespace {
         return rebuilt;
     }
 
-    // How far straight up from a sloped plane a round body's bottom sits
-    // while touching it - zero on a flat one. Its rounded end meets the slope
-    // off centre, a little above the plane's height under the centre.
-    float RoundSlopeLift(const SectorSurface& surface, const float radius) {
-        const float gradient = SlopeGradient(surface.slopeStrength);
-        return radius * (std::sqrt(1.0f + gradient * gradient) - 1.0f);
+    // A solid shape as physics sees it, standing on `base` (the collider's
+    // bottom). Round: an upright capsule - every point within `radius` of
+    // the vertical segment between its two cap centres (a sphere's meet).
+    // Box: an AABB centred on the base in X and Z, `height` tall.
+    struct Body {
+        Vector3 base;
+        float height = 0.0f;
+        float radius = 0.0f; // round only
+        float halfX = 0.0f;  // box only: half its size along X and Z
+        float halfZ = 0.0f;
+        bool isBox = false;
+
+        [[nodiscard]] float Bottom() const { return base.y; }
+        [[nodiscard]] float Top() const { return base.y + height; }
+        [[nodiscard]] float LowCentre() const { return base.y + radius; }
+        [[nodiscard]] float HighCentre() const { return base.y + height - radius; }
+
+        [[nodiscard]] Vector3 Min() const { return {base.x - halfX, base.y, base.z - halfZ}; }
+        [[nodiscard]] Vector3 Max() const { return {base.x + halfX, base.y + height, base.z + halfZ}; }
+
+        // The shortest way from its centre to its side, seen from above.
+        [[nodiscard]] float HalfWidth() const { return isBox ? std::min(halfX, halfZ) : radius; }
+    };
+
+    Body MakeBody(const ComponentTransform& transform, const ComponentCollider& collider) {
+        Body body;
+        body.base = collider.Base(transform);
+        body.height = collider.Height(transform);
+
+        if (collider.type == COLLIDERTYPE_BOX) {
+            const Vector3 size = collider.WorldSize(transform);
+            body.halfX = size.x * 0.5f;
+            body.halfZ = size.z * 0.5f;
+            body.isBox = true;
+        }
+        else body.radius = collider.Radius(transform);
+
+        return body;
     }
 
-    // The lowest a round body's bottom can go over this floor.
+    // Half a box's footprint along the slope's axis.
+    float HalfAlongSlope(const Body& body, const SlopeDirection direction) {
+        return direction == PLUS_X || direction == MINUS_X ? body.halfX : body.halfZ;
+    }
+
+    // How far straight up from a sloped plane the body's bottom sits while
+    // touching it - zero on a flat one. A round body's end meets the slope
+    // off centre, a little above the plane's height under the centre. A
+    // box's flat bottom rests on the highest point of the plane under it,
+    // at its uphill edge.
+    float SlopeLift(const SectorSurface& surface, const Body& body) {
+        const float gradient = SlopeGradient(surface.slopeStrength);
+
+        if (body.isBox) return HalfAlongSlope(body, surface.slopeDirection) * std::abs(gradient);
+
+        return body.radius * (std::sqrt(1.0f + gradient * gradient) - 1.0f);
+    }
+
+    // How far from its centre along the slope's axis the body touches the
+    // slope - signed like the gradient, so it points uphill.
+    float SlopeContactReach(const SectorSurface& surface, const Body& body) {
+        const float gradient = SlopeGradient(surface.slopeStrength);
+
+        if (body.isBox) {
+            const float half = HalfAlongSlope(body, surface.slopeDirection);
+            return gradient > 0.0f ? half : gradient < 0.0f ? -half : 0.0f;
+        }
+
+        return body.radius * gradient / std::sqrt(1.0f + gradient * gradient);
+    }
+
+    // The most SlopeLift can be on a slope of `angle` radians, whichever way
+    // it runs.
+    float MaxSlopeLift(const Body& body, const float angle) {
+        if (body.isBox) return std::max(body.halfX, body.halfZ) * std::tan(angle);
+
+        return body.radius * (1.0f / std::cos(angle) - 1.0f);
+    }
+
+    // The lowest the body's bottom can go over this floor.
     float RestingFloorHeight(
         const SectorSurface& floor,
         const SectorBounds& bounds,
         const Vector2& point,
-        const float radius
+        const Body& body
     ) {
-        return GetSurfaceHeight(floor, bounds, point) + RoundSlopeLift(floor, radius);
+        return GetSurfaceHeight(floor, bounds, point) + SlopeLift(floor, body);
     }
 
-    // The highest a round body's top can go under this ceiling.
+    // The highest the body's top can go under this ceiling.
     float RestingCeilingHeight(
         const SectorSurface& ceiling,
         const SectorBounds& bounds,
         const Vector2& point,
-        const float radius
+        const Body& body
     ) {
-        return GetSurfaceHeight(ceiling, bounds, point) - RoundSlopeLift(ceiling, radius);
+        return GetSurfaceHeight(ceiling, bounds, point) - SlopeLift(ceiling, body);
     }
 
     int FindBestSectorFloor(
@@ -544,7 +651,7 @@ namespace {
         const Vector2& point,
         const float bottomHeight,
         const float topHeight,
-        const float radius
+        const Body& body
     ) {
         const float bodyHeight = topHeight - bottomHeight;
         const float centreHeight = (bottomHeight + topHeight) * 0.5f;
@@ -561,8 +668,8 @@ namespace {
             for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
                 const SectorFloor& floor = sector.floors[floorIndex];
 
-                const float floorHeight = RestingFloorHeight(floor.floor, bounds, point, radius);
-                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, bounds, point, radius);
+                const float floorHeight = RestingFloorHeight(floor.floor, bounds, point, body);
+                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, bounds, point, body);
 
                 if (requireFit && ceilingHeight - floorHeight + Constants::Epsilon < bodyHeight) continue;
 
@@ -595,23 +702,6 @@ namespace {
         return bestFloorIndex;
     }
 
-    // An upright capsule: every point within `radius` of the vertical segment
-    // between its two cap centres. A sphere is one whose cap centres meet.
-    struct RoundBody {
-        Vector3 base; // the collider's bottom
-        float radius = 0.0f;
-        float height = 0.0f;
-
-        [[nodiscard]] float Bottom() const { return base.y; }
-        [[nodiscard]] float Top() const { return base.y + height; }
-        [[nodiscard]] float LowCentre() const { return base.y + radius; }
-        [[nodiscard]] float HighCentre() const { return base.y + height - radius; }
-    };
-
-    RoundBody MakeRoundBody(const ComponentTransform& transform, const ComponentCollider& collider) {
-        return {collider.Base(transform), collider.Radius(transform), collider.Height(transform)};
-    }
-
     // Where two vertical ranges come closest: one height on each. Inside an
     // overlap both are the overlap's middle.
     void ClosestHeights(
@@ -633,23 +723,128 @@ namespace {
         else a = b = (std::max(aLow, bLow) + std::min(aHigh, bHigh)) * 0.5f;
     }
 
-    // From the closest point of `b` to the closest point of `a`. They overlap
-    // when its length is under the two radii summed.
-    __m128 RoundBodyDelta(const RoundBody& a, const RoundBody& b) {
+    // Which way, and how far, `a` has to move to stop overlapping `b`. False
+    // when they don't overlap. The direction is a unit vector.
+    bool FindRoundRoundOverlap(const Body& a, const Body& b, Vector3& direction, float& depth) {
         float aHeight, bHeight;
         ClosestHeights(a.LowCentre(), a.HighCentre(), b.LowCentre(), b.HighCentre(), aHeight, bHeight);
 
-        return _mm_set_ps(0.0f, a.base.z - b.base.z, aHeight - bHeight, a.base.x - b.base.x);
+        // From the closest point of `b` to the closest point of `a`.
+        const Vector3 delta = {a.base.x - b.base.x, aHeight - bHeight, a.base.z - b.base.z};
+        const float radiusSum = a.radius + b.radius;
+        const float distanceSq = Vector3Math::LengthSquared(delta);
+
+        if (distanceSq >= radiusSum * radiusSum) return false;
+
+        const float inverseDistance = FastInverseSqrt(std::max(distanceSq, Constants::Epsilon));
+        depth = radiusSum - distanceSq * inverseDistance;
+
+        if (depth <= Constants::Epsilon) return false;
+
+        direction = distanceSq > Constants::Epsilon ? delta * inverseDistance : Vector3{1.0f, 0.0f, 0.0f};
+
+        return true;
     }
 
-    bool RoundBodyIntersectsWallSpan(
-        const Wall &wall,
-        const WallSpan &span,
-        const float stepSize,
-        RoundBody &body,
-        ComponentTransform &transform,
-        ComponentRigidbody &rigidbody
-    ) {
+    // The smallest of `count` pushes, as a direction and depth.
+    void PickShallowestPush(const Vector3* directions, const float* depths, const int count, Vector3& direction, float& depth) {
+        int best = 0;
+
+        for (int i = 1; i < count; ++i)
+            if (depths[i] < depths[best]) best = i;
+
+        direction = directions[best];
+        depth = depths[best];
+    }
+
+    bool FindRoundBoxOverlap(const Body& round, const Body& box, Vector3& direction, float& depth) {
+        const Vector3 boxMin = box.Min();
+        const Vector3 boxMax = box.Max();
+
+        float roundHeight, boxHeight;
+        ClosestHeights(round.LowCentre(), round.HighCentre(), boxMin.y, boxMax.y, roundHeight, boxHeight);
+
+        // From the box's closest point to the round body's axis.
+        const Vector3 delta = {
+            round.base.x - std::clamp(round.base.x, boxMin.x, boxMax.x),
+            roundHeight - boxHeight,
+            round.base.z - std::clamp(round.base.z, boxMin.z, boxMax.z)
+        };
+        const float distanceSq = Vector3Math::LengthSquared(delta);
+        const float radius = round.radius;
+
+        if (distanceSq >= radius * radius) return false;
+
+        if (distanceSq > Constants::Epsilon) {
+            const float inverseDistance = FastInverseSqrt(distanceSq);
+            depth = radius - distanceSq * inverseDistance;
+
+            if (depth <= Constants::Epsilon) return false;
+
+            direction = delta * inverseDistance;
+
+            return true;
+        }
+
+        // Its axis is inside the box: out through the nearest face, far
+        // enough for the whole round shape to clear it.
+        const Vector3 directions[6] = {
+            {1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
+            {0.0f, 1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f}
+        };
+        const float depths[6] = {
+            boxMax.x - (round.base.x - radius), round.base.x + radius - boxMin.x,
+            boxMax.y - round.Bottom(), round.Top() - boxMin.y,
+            boxMax.z - (round.base.z - radius), round.base.z + radius - boxMin.z
+        };
+
+        PickShallowestPush(directions, depths, 6, direction, depth);
+
+        return depth > Constants::Epsilon;
+    }
+
+    bool FindBoxBoxOverlap(const Body& a, const Body& b, Vector3& direction, float& depth) {
+        // How deep they overlap along each axis.
+        const Vector3 overlap = MinVector3(a.Max() - b.Min(), b.Max() - a.Min());
+
+        if (overlap.x <= Constants::Epsilon || overlap.y <= Constants::Epsilon || overlap.z <= Constants::Epsilon) return false;
+
+        // Away from b's centre, along the axis they overlap least on.
+        const Vector3 directions[3] = {
+            {a.base.x >= b.base.x ? 1.0f : -1.0f, 0.0f, 0.0f},
+            {0.0f, a.Bottom() + a.Top() >= b.Bottom() + b.Top() ? 1.0f : -1.0f, 0.0f},
+            {0.0f, 0.0f, a.base.z >= b.base.z ? 1.0f : -1.0f}
+        };
+        const float depths[3] = {overlap.x, overlap.y, overlap.z};
+
+        PickShallowestPush(directions, depths, 3, direction, depth);
+
+        return true;
+    }
+
+    bool FindBodyOverlap(const Body& a, const Body& b, Vector3& direction, float& depth) {
+        if (!a.isBox && !b.isBox) return FindRoundRoundOverlap(a, b, direction, depth);
+        if (a.isBox && b.isBox) return FindBoxBoxOverlap(a, b, direction, depth);
+        if (b.isBox) return FindRoundBoxOverlap(a, b, direction, depth);
+
+        if (!FindRoundBoxOverlap(b, a, direction, depth)) return false;
+
+        direction = -direction;
+
+        return true;
+    }
+
+    // A body overlapping a wall span: the way out (horizontal, unit length),
+    // how far, and how tall the span is where the body touches it.
+    struct WallHit {
+        Vector3 normal;
+        float penetration = 0.0f;
+        float spanBottom = 0.0f;
+        float spanTop = 0.0f;
+    };
+
+    bool FindRoundWallHit(const Wall& wall, const WallSpan& span, const Body& body, WallHit& hit) {
         const float radius = body.radius;
 
         // Conservative vertical extent: the span is a trapezoid now, so the
@@ -662,18 +857,10 @@ namespace {
         const Vector2 segmentEnd = PointAlong(wall.start, wall.end, span.endT);
         const Vector2 segment = {segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y};
 
-        const float minX = std::min(segmentStart.x, segmentEnd.x) - radius;
-        const float maxX = std::max(segmentStart.x, segmentEnd.x) + radius;
-        const float minZ = std::min(segmentStart.y, segmentEnd.y) - radius;
-        const float maxZ = std::max(segmentStart.y, segmentEnd.y) + radius;
+        const Vector3 broadMin = {std::min(segmentStart.x, segmentEnd.x) - radius, 0.0f, std::min(segmentStart.y, segmentEnd.y) - radius};
+        const Vector3 broadMax = {std::max(segmentStart.x, segmentEnd.x) + radius, 0.0f, std::max(segmentStart.y, segmentEnd.y) + radius};
 
-        const __m128 bodyXZ = _mm_set_ps(0.0f, body.base.z, 0.0f, body.base.x);
-        const __m128 aabbMin = _mm_set_ps(0.0f, minZ, 0.0f, minX);
-        const __m128 aabbMax = _mm_set_ps(0.0f, maxZ, 0.0f, maxX);
-        const __m128 belowMin = _mm_cmplt_ps(bodyXZ, aabbMin);
-        const __m128 aboveMax = _mm_cmpgt_ps(bodyXZ, aabbMax);
-
-        if ((_mm_movemask_ps(_mm_or_ps(belowMin, aboveMax)) & 0x5) != 0) return false;
+        if (OutsideXZ(body.base, broadMin, broadMax)) return false;
         if (body.Top() < spanMinHeight || body.Bottom() > spanMaxHeight) return false;
 
         const float segmentLengthSq = segment.x * segment.x + segment.y * segment.y;
@@ -682,8 +869,7 @@ namespace {
         const float toBodyX = body.base.x - segmentStart.x;
         const float toBodyZ = body.base.z - segmentStart.y;
         const float t = std::clamp(
-            (toBodyX * segment.x + toBodyZ * segment.y) *
-                _mm_cvtss_f32(rcp_nr_ss(_mm_set_ss(segmentLengthSq))),
+            (toBodyX * segment.x + toBodyZ * segment.y) * FastReciprocal(segmentLengthSq),
             0.0f,
             1.0f
         );
@@ -697,72 +883,201 @@ namespace {
         float bodyY, wallY;
         ClosestHeights(body.LowCentre(), body.HighCentre(), spanBottom, spanTop, bodyY, wallY);
 
-        const float closestX = segmentStart.x + segment.x * t;
-        const float closestZ = segmentStart.y + segment.y * t;
+        const Vector3 delta = {
+            body.base.x - (segmentStart.x + segment.x * t),
+            bodyY - wallY,
+            body.base.z - (segmentStart.y + segment.y * t)
+        };
+        const float distanceSq = Vector3Math::LengthSquared(delta);
 
-        const __m128 delta = _mm_set_ps(0.0f, body.base.z - closestZ, bodyY - wallY, body.base.x - closestX);
-        const __m128 distanceSqReg = dot3_ss(delta, delta);
-        const float distanceSq = _mm_cvtss_f32(distanceSqReg);
-        const float radiusSq = radius * radius;
+        if (distanceSq >= radius * radius) return false;
 
-        if (distanceSq >= radiusSq) return false;
-
-        const __m128 safeDistanceSq = _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
-        __m128 inverseDistance = rsqrt_nr_ss(safeDistanceSq);
-        inverseDistance = TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
-
-        const float distance = distanceSq * _mm_cvtss_f32(inverseDistance);
-        const float penetration = radius - distance;
+        const float inverseDistance = FastInverseSqrt(std::max(distanceSq, Constants::Epsilon));
+        const float penetration = radius - distanceSq * inverseDistance;
 
         if (penetration <= Constants::Epsilon) return false;
 
-        const __m128 calculatedNormal = _mm_and_ps(_mm_mul_ps(delta, inverseDistance), XZ_MASK);
+        Vector3 normal = FlattenXZ(delta * inverseDistance);
+
+        // Right on the wall's line: out on the side the centre is on.
+        if (DotXZ(normal, normal) <= Constants::Epsilon) {
+            const float planeDistance =
+                (body.base.x - wall.start.x) * wall.normal.x + (body.base.z - wall.start.y) * wall.normal.y;
+            const float side = planeDistance < 0.0f ? -1.0f : 1.0f;
+
+            normal = {wall.normal.x * side, 0.0f, wall.normal.y * side};
+        }
+
+        const float normalLengthSq = DotXZ(normal, normal);
+        if (normalLengthSq <= Constants::Epsilon) return false;
+
+        hit.normal = normal * FastInverseSqrt(normalLengthSq);
+        hit.penetration = penetration;
+        hit.spanBottom = spanBottom;
+        hit.spanTop = spanTop;
+
+        return true;
+    }
+
+    // Seen from above: the box's footprint against the wall's segment,
+    // separated along X, Z or the wall's normal, whichever is shallowest.
+    bool FindBoxWallHit(const Wall& wall, const WallSpan& span, const Body& body, WallHit& hit) {
+        const Vector2 segmentStart = PointAlong(wall.start, wall.end, span.startT);
+        const Vector2 segmentEnd = PointAlong(wall.start, wall.end, span.endT);
+        const Vector2 segment = {segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y};
+
+        if (segment.x * segment.x + segment.y * segment.y <= Constants::Epsilon) return false;
+
+        const Vector3 boxMin = body.Min();
+        const Vector3 boxMax = body.Max();
+
+        // The part of the segment over the footprint, as fractions along it
+        // (Liang-Barsky). None means they don't touch.
+        float enterT = 0.0f;
+        float exitT = 1.0f;
+
+        const auto clip = [&](const float p, const float q) {
+            if (std::abs(p) <= Constants::Epsilon) return q >= 0.0f;
+
+            const float r = q / p;
+
+            if (p < 0.0f) {
+                if (r > exitT) return false;
+                enterT = std::max(enterT, r);
+            }
+            else {
+                if (r < enterT) return false;
+                exitT = std::min(exitT, r);
+            }
+
+            return true;
+        };
+
+        if (!clip(-segment.x, segmentStart.x - boxMin.x) ||
+            !clip(segment.x, boxMax.x - segmentStart.x) ||
+            !clip(-segment.y, segmentStart.y - boxMin.z) ||
+            !clip(segment.y, boxMax.z - segmentStart.y)) return false;
+
+        // The span's extent over that part: lowest bottom, highest top.
+        const auto bottomAt = [&](const float t) { return span.bottomStart + (span.bottomEnd - span.bottomStart) * t; };
+        const auto topAt = [&](const float t) {
+            return std::max(span.topStart + (span.topEnd - span.topStart) * t, bottomAt(t));
+        };
+
+        const float spanBottom = std::min(bottomAt(enterT), bottomAt(exitT));
+        const float spanTop = std::max(topAt(enterT), topAt(exitT));
+
+        if (body.Top() <= spanBottom || body.Bottom() >= spanTop) return false;
+
+        const float segmentMinX = std::min(segmentStart.x, segmentEnd.x);
+        const float segmentMaxX = std::max(segmentStart.x, segmentEnd.x);
+        const float segmentMinZ = std::min(segmentStart.y, segmentEnd.y);
+        const float segmentMaxZ = std::max(segmentStart.y, segmentEnd.y);
 
         const float planeDistance =
-            (body.base.x - wall.start.x) * wall.normal.x + (body.base.z - wall.start.y) * wall.normal.y;
+            (body.base.x - segmentStart.x) * wall.normal.x + (body.base.z - segmentStart.y) * wall.normal.y;
+        const float side = planeDistance < 0.0f ? -1.0f : 1.0f;
+        const float extentAlongNormal = body.halfX * std::abs(wall.normal.x) + body.halfZ * std::abs(wall.normal.y);
 
-        const float normalDirection = planeDistance < 0.0f ? -1.0f : 1.0f;
+        const Vector3 directions[5] = {
+            {1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f},
+            {wall.normal.x * side, 0.0f, wall.normal.y * side}
+        };
+        const float depths[5] = {
+            segmentMaxX - boxMin.x, boxMax.x - segmentMinX,
+            segmentMaxZ - boxMin.z, boxMax.z - segmentMinZ,
+            extentAlongNormal - std::abs(planeDistance)
+        };
 
-        const __m128 fallbackNormal = _mm_set_ps(
-            0.0f,
-            wall.normal.y * normalDirection,
-            0.0f,
-            wall.normal.x * normalDirection
-        );
+        Vector3 normal;
+        float penetration;
+        PickShallowestPush(directions, depths, 5, normal, penetration);
 
-        const __m128 horizontalLengthSqReg = dot_xz_ss(calculatedNormal, calculatedNormal);
+        if (penetration <= Constants::Epsilon) return false;
 
-        const __m128 hasCalculatedNormal = _mm_cmpgt_ss(horizontalLengthSqReg, _mm_set_ss(Constants::Epsilon));
+        hit.normal = normal;
+        hit.penetration = penetration;
+        hit.spanBottom = spanBottom;
+        hit.spanTop = spanTop;
 
-        const __m128 hasCalculatedNormalBroad =
-                TILKY_MM_SHUFFLE_PS(
-                    hasCalculatedNormal,
-                    hasCalculatedNormal,
-                    _MM_SHUFFLE(0, 0, 0, 0)
-                );
+        return true;
+    }
 
-        __m128 collisionNormal = blend_ps(fallbackNormal, calculatedNormal, hasCalculatedNormalBroad);
+    // The body's centre went through the span's line during this step,
+    // `from` being where it started: it moved further than its own size.
+    // Pushed out the normal way it would leave on the far side, so it goes
+    // back to the side it came from.
+    bool FindCrossedWallHit(const Wall& wall, const WallSpan& span, const Body& body, const Vector3& from, WallHit& hit) {
+        const Vector2 segmentStart = PointAlong(wall.start, wall.end, span.startT);
+        const Vector2 segmentEnd = PointAlong(wall.start, wall.end, span.endT);
+        const Vector2 segment = {segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y};
 
-        const __m128 normalLengthSqReg = dot_xz_ss(collisionNormal, collisionNormal);
+        const float segmentLengthSq = segment.x * segment.x + segment.y * segment.y;
+        if (segmentLengthSq <= Constants::Epsilon) return false;
 
-        if (_mm_cvtss_f32(normalLengthSqReg) <= Constants::Epsilon)
-            return false;
+        const float startDistance =
+            (from.x - segmentStart.x) * wall.normal.x + (from.z - segmentStart.y) * wall.normal.y;
+        const float endDistance =
+            (body.base.x - segmentStart.x) * wall.normal.x + (body.base.z - segmentStart.y) * wall.normal.y;
 
-        __m128 inverseNormalLength = rsqrt_nr_ss(normalLengthSqReg);
-        inverseNormalLength = TILKY_MM_SHUFFLE_PS(
-            inverseNormalLength,
-            inverseNormalLength,
-            _MM_SHUFFLE(0, 0, 0, 0)
-        );
+        if ((startDistance >= 0.0f) == (endDistance >= 0.0f)) return false;
 
-        collisionNormal = _mm_mul_ps(collisionNormal, inverseNormalLength);
+        // Where the move crossed the line, and whether the wall is there.
+        const float moveT = startDistance / (startDistance - endDistance);
+        const Vector3 crossing = from + (body.base - from) * moveT;
 
-        const float velocityIntoWall = _mm_cvtss_f32(dot3_ss(rigidbody.velocity.reg, collisionNormal));
+        const float t = ((crossing.x - segmentStart.x) * segment.x + (crossing.z - segmentStart.y) * segment.y) *
+                        FastReciprocal(segmentLengthSq);
+        if (t < 0.0f || t > 1.0f) return false;
+
+        const float spanBottom = span.bottomStart + (span.bottomEnd - span.bottomStart) * t;
+        const float spanTop = std::max(span.topStart + (span.topEnd - span.topStart) * t, spanBottom);
+
+        // Over or under the span as it crossed, it got past legitimately.
+        if (crossing.y + body.height <= spanBottom || crossing.y >= spanTop) return false;
+
+        const float side = startDistance >= 0.0f ? 1.0f : -1.0f;
+        const float extentAlongNormal = body.isBox
+            ? body.halfX * std::abs(wall.normal.x) + body.halfZ * std::abs(wall.normal.y)
+            : body.radius;
+
+        hit.normal = {wall.normal.x * side, 0.0f, wall.normal.y * side};
+        hit.penetration = std::abs(endDistance) + extentAlongNormal;
+        hit.spanBottom = spanBottom;
+        hit.spanTop = spanTop;
+
+        return true;
+    }
+
+    enum class WallResult {
+        NONE,     // not touching
+        TOUCHING, // resting against it, nothing to push
+        PUSHED    // moved out of it or up onto it
+    };
+
+    // `from` is where the body's bottom was before this step's move.
+    WallResult ResolveWallSpan(
+        const Wall &wall,
+        const WallSpan &span,
+        const float stepSize,
+        const Vector3 &from,
+        Body &body,
+        ComponentTransform &transform,
+        ComponentRigidbody &rigidbody
+    ) {
+        WallHit hit;
+
+        if (!FindCrossedWallHit(wall, span, body, from, hit) &&
+            !(body.isBox ? FindBoxWallHit(wall, span, body, hit) : FindRoundWallHit(wall, span, body, hit)))
+            return WallResult::NONE;
+
+        const float velocityIntoWall = Vector3Math::Dot(rigidbody.velocity, hit.normal);
 
         const float bodyBottom = body.Bottom();
-        const float stepHeight = spanTop - bodyBottom;
+        const float stepHeight = hit.spanTop - bodyBottom;
 
-        const bool wallStartsAtBottom = spanBottom <= bodyBottom + GROUND_CONTACT_SLOP;
+        const bool wallStartsAtBottom = hit.spanBottom <= bodyBottom + GROUND_CONTACT_SLOP;
 
         const bool isClimbableStep =
                 stepSize > 0.0f &&
@@ -776,7 +1091,7 @@ namespace {
         // edge), the body still overhangs the step it left; pushing it out
         // of that riser shoved the body - and the camera - forward by up to
         // a full radius in one frame.
-        if (isClimbableStep && velocityIntoWall >= -Constants::Epsilon) return false;
+        if (isClimbableStep && velocityIntoWall >= -Constants::Epsilon) return WallResult::NONE;
 
         if (isClimbableStep) {
             const float verticalCorrection = stepHeight + PENETRATION_SLOP;
@@ -790,21 +1105,22 @@ namespace {
             rigidbody.isGrounded = true;
             rigidbody.groundNormal = {0.0f, 1.0f, 0.0f};
 
-            return true;
+            return WallResult::PUSHED;
         }
 
-        const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
-
-        const __m128 correction = _mm_mul_ps(collisionNormal, _mm_set1_ps(correctedPenetration));
-
-        transform.AddPosition(Vector3(correction));
-        body.base.reg = _mm_add_ps(body.base.reg, correction);
+        const float correctedPenetration = std::max(0.0f, hit.penetration - PENETRATION_SLOP);
 
         if (velocityIntoWall < 0.0f)
-            rigidbody.velocity.reg = _mm_sub_ps(rigidbody.velocity.reg, _mm_mul_ps(collisionNormal,_mm_set1_ps(velocityIntoWall))
-            );
+            rigidbody.velocity = rigidbody.velocity - hit.normal * velocityIntoWall;
 
-        return true;
+        if (correctedPenetration <= Constants::Epsilon) return WallResult::TOUCHING;
+
+        const Vector3 correction = hit.normal * correctedPenetration;
+
+        transform.AddPosition(correction);
+        body.base = body.base + correction;
+
+        return WallResult::PUSHED;
     }
 }
 
@@ -819,7 +1135,7 @@ namespace PhysicsSystem {
         for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(ownerID)) {
             const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
 
-            if (!collider->isActive || collider->isTrigger || !collider->IsRound()) continue;
+            if (!collider->isActive || collider->isTrigger) continue;
 
             const float bottom = collider->Base(*transform).y;
 
@@ -832,7 +1148,43 @@ namespace PhysicsSystem {
         return base;
     }
 
-    void Run(Level& level, Contacts& contacts) {
+    int SubstepCount(const Level& level, const float deltaTime, const int maxSubsteps) {
+        if (maxSubsteps <= 1 || deltaTime <= 0.0f) return 1;
+
+        float steps = 1.0f;
+
+        for (const ComponentRigidbody& rigidbody : level.rigidbodies.components) {
+            // Only an entity's first rigidbody simulates; the others are inert.
+            if (rigidbody.isStatic || level.rigidbodies.Get(rigidbody.ownerID) != &rigidbody) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(rigidbody.ownerID);
+            if (transform == nullptr) [[unlikely]] continue;
+
+            const float horizontalTravel =
+                std::sqrt(rigidbody.velocity.x * rigidbody.velocity.x + rigidbody.velocity.z * rigidbody.velocity.z) * deltaTime;
+            const float verticalTravel = std::abs(rigidbody.velocity.y) * deltaTime;
+
+            if (horizontalTravel <= Constants::Epsilon && verticalTravel <= Constants::Epsilon) continue;
+
+            // Its smallest solid collider decides.
+            for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(rigidbody.ownerID)) {
+                const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
+
+                if (!collider->isActive || collider->isTrigger) continue;
+
+                const Body body = MakeBody(*transform, *collider);
+                const float halfWidth = body.HalfWidth() * MAX_SUBSTEP_TRAVEL;
+                const float halfHeight = body.height * 0.5f * MAX_SUBSTEP_TRAVEL;
+
+                if (halfWidth > Constants::Epsilon) steps = std::max(steps, horizontalTravel / halfWidth);
+                if (halfHeight > Constants::Epsilon) steps = std::max(steps, verticalTravel / halfHeight);
+            }
+        }
+
+        return std::clamp(static_cast<int>(std::ceil(steps)), 1, maxSubsteps);
+    }
+
+    void Run(Level& level, Contacts& contacts, const float deltaTime) {
         ZoneScopedN("PhysicsSystem::Run");
 
         groundedBeforeRun.resize(level.rigidbodies.components.size());
@@ -858,76 +1210,80 @@ namespace PhysicsSystem {
 
         const std::vector<std::vector<WallSpan>>& wallSpans = wallSpanCache.spans;
 
-        std::vector<ID> allEntities;
-        std::vector<const Wall*> allWalls;
-        allEntities.reserve(64);
-        allWalls.reserve(64);
+        std::vector<ID> nearbyEntities;
+        std::vector<const Wall*> nearbyWalls;
+        nearbyEntities.reserve(64);
+        nearbyWalls.reserve(64);
 
-        // Spheres and capsules. Each collider of an entity is pushed out on
-        // its own and moves the whole entity (a compound shape).
-        for (ComponentCollider& selfCollider : colliders.ActiveRound()) {
-            ZoneScopedN("Round collider iteration");
+        // Entities (and walls) in the sector the entity was in and the one
+        // the body is over now, and their neighbours. sectorIndex is only
+        // updated after physics, so once the body crossed an edge this frame
+        // (or an earlier sub-step) it is stale, and the walls of the sector
+        // it moved into went untested - and a fast body can land in a sector
+        // that isn't even a neighbour of the old one. False when the body's
+        // entity isn't in a sector.
+        const auto gatherNearby = [&](const ComponentTransform& transform, const Body& body, const bool withWalls) {
+            ZoneScopedN("Candidate gather");
 
-            if (selfCollider.isTrigger) continue;
+            const int sectorIndex = transform.sectorIndex;
+            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) return false;
 
-            ComponentTransform* selfTransform = level.transforms.Get(selfCollider.ownerID);
-            if (selfTransform == nullptr) [[unlikely]] continue;
+            const int bodySectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, {body.base.x, body.base.z}, sectorIndex);
 
-            ComponentRigidbody* selfRigidbody = level.rigidbodies.Get(selfCollider.ownerID);
-            if (selfRigidbody == nullptr || selfRigidbody->isStatic) continue;
+            nearbyEntities.clear();
+            nearbyWalls.clear();
 
-            const int sectorIndex = selfTransform->sectorIndex;
-            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+            const auto addSector = [&](const Sector& sector) {
+                nearbyEntities.insert(nearbyEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
+                if (withWalls) nearbyWalls.insert(nearbyWalls.end(), sector.walls.begin(), sector.walls.end());
+            };
 
-            Sector& sector = level.sectors[sectorIndex];
+            const auto addWithNeighbours = [&](const Sector& sector) {
+                addSector(sector);
 
-            {
-                ZoneScopedN("Candidate gather");
+                for (const Sector* neighbour : sector.neighbors)
+                    if (neighbour != nullptr) [[likely]] addSector(*neighbour);
+            };
 
-                allEntities.clear();
-                allWalls.clear();
+            addWithNeighbours(level.sectors[sectorIndex]);
+            if (bodySectorIndex >= 0 && bodySectorIndex != sectorIndex) addWithNeighbours(level.sectors[bodySectorIndex]);
 
-                allEntities.insert(
-                    allEntities.end(),
-                    sector.entitiesInside.begin(),
-                    sector.entitiesInside.end()
-                );
+            std::ranges::sort(nearbyEntities);
+            nearbyEntities.erase(std::unique(nearbyEntities.begin(), nearbyEntities.end()), nearbyEntities.end());
 
-                allWalls.insert(
-                    allWalls.end(),
-                    sector.walls.begin(),
-                    sector.walls.end()
-                );
+            std::ranges::sort(nearbyWalls, std::less<const Wall*>{});
+            nearbyWalls.erase(std::unique(nearbyWalls.begin(), nearbyWalls.end()), nearbyWalls.end());
 
-                for (const Sector* neighbour : sector.neighbors) {
-                    if (neighbour == nullptr) [[unlikely]] continue;
+            return true;
+        };
 
-                    allEntities.insert(
-                        allEntities.end(),
-                        neighbour->entitiesInside.begin(),
-                        neighbour->entitiesInside.end()
-                    );
+        // A solid collider on an entity with a non-static Rigidbody: the
+        // ones physics moves.
+        const auto getMovingBody = [&](const ComponentCollider& collider, ComponentTransform*& transform, ComponentRigidbody*& rigidbody) {
+            if (collider.isTrigger) return false;
 
-                    allWalls.insert(
-                        allWalls.end(),
-                        neighbour->walls.begin(),
-                        neighbour->walls.end()
-                    );
-                }
+            transform = level.transforms.Get(collider.ownerID);
+            if (transform == nullptr) [[unlikely]] return false;
 
-                std::ranges::sort(allEntities);
-                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
+            rigidbody = level.rigidbodies.Get(collider.ownerID);
+            return rigidbody != nullptr && !rigidbody->isStatic;
+        };
 
-                std::ranges::sort(allWalls, std::less<const Wall*>{});
-                allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
-            }
+        // Bodies push each other first, then walls, floors and ceilings get
+        // the last word. Done per collider, a body shoved by one processed
+        // later was left inside the wall it was shoved into.
+        {
+            ZoneScopedN("Entity narrowphase");
 
-            RoundBody selfBody = MakeRoundBody(*selfTransform, selfCollider);
+            for (ComponentCollider& selfCollider : colliders.ActiveColliders()) {
+                ComponentTransform* selfTransform;
+                ComponentRigidbody* selfRigidbody;
+                if (!getMovingBody(selfCollider, selfTransform, selfRigidbody)) continue;
 
-            {
-                ZoneScopedN("Entity narrowphase");
+                Body selfBody = MakeBody(*selfTransform, selfCollider);
+                if (!gatherNearby(*selfTransform, selfBody, false)) continue;
 
-                for (const ID otherID : allEntities) {
+                for (const ID otherID : nearbyEntities) {
                     if (otherID == selfCollider.ownerID) continue;
 
                     ComponentTransform* otherTransform = level.transforms.Get(otherID);
@@ -941,74 +1297,86 @@ namespace PhysicsSystem {
                     for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
                         const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
-                        if (!otherCollider->isActive ||
-                            otherCollider->isTrigger ||
-                            !otherCollider->IsRound()) continue;
+                        if (!otherCollider->isActive || otherCollider->isTrigger) continue;
 
-                        const RoundBody otherBody = MakeRoundBody(*otherTransform, *otherCollider);
-                        const float radiusSum = selfBody.radius + otherBody.radius;
+                        Vector3 pushDirection;
+                        float penetration;
 
-                        const __m128 delta = RoundBodyDelta(selfBody, otherBody);
-                        const __m128 distanceSqReg = dot3_ss(delta, delta);
-                        const float distanceSq = _mm_cvtss_f32(distanceSqReg);
-
-                        if (distanceSq >= radiusSum * radiusSum) continue;
-
-                        const __m128 safeDistanceSq = _mm_max_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
-
-                        __m128 inverseDistance = rsqrt_nr_ss(safeDistanceSq);
-                        inverseDistance = TILKY_MM_SHUFFLE_PS(inverseDistance, inverseDistance, _MM_SHUFFLE(0, 0, 0, 0));
-
-                        const float distance = distanceSq * _mm_cvtss_f32(inverseDistance);
-                        const float penetration = radiusSum - distance;
-
-                        if (penetration <= Constants::Epsilon) continue;
+                        if (!FindBodyOverlap(selfBody, MakeBody(*otherTransform, *otherCollider), pushDirection, penetration)) continue;
 
                         contacts.collisions.push_back({
                             std::min(selfCollider.ownerID, otherID),
                             std::max(selfCollider.ownerID, otherID)
                         });
 
-                        const __m128 calculatedDirection = _mm_mul_ps(delta, inverseDistance);
-                        const __m128 fallbackDirection = _mm_set_ps(0.0f, 0.0f, 0.0f, 1.0f);
-                        const __m128 hasDirection = _mm_cmpgt_ss(distanceSqReg, _mm_set_ss(Constants::Epsilon));
-                        const __m128 hasDirectionBroad = TILKY_MM_SHUFFLE_PS(hasDirection, hasDirection, _MM_SHUFFLE(0, 0, 0, 0));
-                        const __m128 pushDirection = blend_ps(fallbackDirection, calculatedDirection, hasDirectionBroad);
+                        const Vector3 correction = pushDirection * std::max(0.0f, penetration - PENETRATION_SLOP);
 
-                        const float correctedPenetration = std::max(0.0f, penetration - PENETRATION_SLOP);
-                        const __m128 correction = _mm_mul_ps(pushDirection, _mm_set1_ps(correctedPenetration));
+                        selfTransform->AddPosition(correction * (otherIsStatic ? 1.0f : 0.5f));
 
-                        const float selfPush = otherIsStatic ? 1.0f : 0.5f;
+                        if (!otherIsStatic) otherTransform->AddPosition(correction * -0.5f);
 
-                        selfTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(selfPush))));
-
-                        if (!otherIsStatic)
-                            otherTransform->AddPosition(Vector3(_mm_mul_ps(correction, _mm_set1_ps(-0.5f))));
-
-
-                        selfBody = MakeRoundBody(*selfTransform, selfCollider);
+                        selfBody = MakeBody(*selfTransform, selfCollider);
                     }
                 }
             }
+        }
+
+        for (ComponentCollider& selfCollider : colliders.ActiveColliders()) {
+            ZoneScopedN("Collider world iteration");
+
+            ComponentTransform* selfTransform;
+            ComponentRigidbody* selfRigidbody;
+            if (!getMovingBody(selfCollider, selfTransform, selfRigidbody)) continue;
+
+            const int sectorIndex = selfTransform->sectorIndex;
+
+            Body selfBody = MakeBody(*selfTransform, selfCollider);
+            if (!gatherNearby(*selfTransform, selfBody, true)) continue;
+
+            // Where it was before this step's move: LevelSystem moved it by
+            // velocity * deltaTime right before this run. Moves that don't
+            // come from velocity (a script setting the position) aren't
+            // swept, so teleporting past a wall still works.
+            const Vector3 sweptFrom = selfBody.base - selfRigidbody->velocity * deltaTime;
 
             const auto resolveWalls = [&] {
-                for (const Wall* wall : allWalls) {
-                    if (wall == nullptr || level.walls.empty()) continue;
+                bool pushed = true;
 
-                    const std::ptrdiff_t wallIndex = wall - level.walls.data();
+                for (int pass = 0; pass < MAX_WALL_PASSES && pushed; ++pass) {
+                    pushed = false;
 
-                    if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
+                    for (const Wall* wall : nearbyWalls) {
+                        if (wall == nullptr || level.walls.empty()) continue;
 
-                    for (const WallSpan &span: wallSpans[wallIndex])
-                        if (RoundBodyIntersectsWallSpan(
-                                *wall,
-                                span,
-                                selfCollider.stepSize,
-                                selfBody,
-                                *selfTransform,
-                                *selfRigidbody
-                            ))
-                            contacts.walls.push_back({selfCollider.ownerID, wall->id});
+                        const std::ptrdiff_t wallIndex = wall - level.walls.data();
+
+                        if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
+
+                        for (const WallSpan &span : wallSpans[wallIndex]) {
+                            const WallResult result =
+                                ResolveWallSpan(*wall, span, selfCollider.stepSize, sweptFrom, selfBody, *selfTransform, *selfRigidbody);
+
+                            if (result == WallResult::NONE) continue;
+
+                            // Later passes only report walls that moved it,
+                            // not the ones it still rests against.
+                            if (pass == 0 || result == WallResult::PUSHED)
+                                contacts.walls.push_back({selfCollider.ownerID, wall->id});
+
+                            pushed = pushed || result == WallResult::PUSHED;
+                        }
+                    }
+                }
+
+                // Still being pushed: wedged in a corner narrower than
+                // itself, where each wall shoves it into the other. Left
+                // where the last push sent it, it squeezed out through one
+                // of them. Back where it started this step, it was clear.
+                if (pushed) {
+                    const Vector3 back = FlattenXZ(sweptFrom - selfBody.base);
+
+                    selfTransform->AddPosition(back);
+                    selfBody.base = selfBody.base + back;
                 }
             };
 
@@ -1071,7 +1439,6 @@ namespace PhysicsSystem {
                     });
                 };
 
-                const float radius = selfBody.radius;
                 const float bottomHeight = selfBody.Bottom();
                 const float topHeight = selfBody.Top();
 
@@ -1081,7 +1448,7 @@ namespace PhysicsSystem {
                     basePoint,
                     bottomHeight,
                     topHeight,
-                    radius
+                    selfBody
                 );
 
                 if (floorIndex < 0) {
@@ -1091,7 +1458,7 @@ namespace PhysicsSystem {
 
                 const SectorFloor &floor = baseSector.floors[floorIndex];
 
-                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, sectorBounds, basePoint, radius);
+                const float ceilingHeight = RestingCeilingHeight(floor.ceiling, sectorBounds, basePoint, selfBody);
                 const Vector3 ceilingBottomNormal = getCeilingNormal(floor.ceiling);
 
                 const float horizontalSpeed = std::sqrt(
@@ -1100,19 +1467,20 @@ namespace PhysicsSystem {
                 );
 
                 // The floor the body rests on: its own slab's, unless a sloped
-                // floor next door rises under its rounded edge.
+                // floor next door rises under its edge.
                 const SectorSurface* ground = &floor.floor;
                 const SectorBounds* groundBounds = &sectorBounds;
                 float groundDrop = std::max(0.0f, -floor.floorDelta);
-                float floorHeight = RestingFloorHeight(floor.floor, sectorBounds, basePoint, radius);
+                float floorHeight = RestingFloorHeight(floor.floor, sectorBounds, basePoint, selfBody);
 
-                // A round body touches a sloped plane uphill of its centre, by
-                // radius * sin(angle). At the foot of a ramp in the next sector
-                // that point is across the edge before the centre is, and only
-                // testing the floor under the centre let the body sink into the
-                // ramp, then threw it up or back once the centre crossed. A
-                // ramp whose foot is a ledge too high to climb is left to the
-                // wall between the sectors.
+                // The body touches a sloped plane uphill of its centre (a
+                // round one by radius * sin(angle), a box at its edge). At the
+                // foot of a ramp in the next sector that point is across the
+                // edge before the centre is, and only testing the floor under
+                // the centre let the body sink into the ramp, then threw it up
+                // or back once the centre crossed. A ramp whose foot is a
+                // ledge too high to climb is left to the wall between the
+                // sectors.
                 for (const Sector* neighbour : baseSector.neighbors) {
                     if (neighbour == nullptr || neighbour == &baseSector) continue;
 
@@ -1124,7 +1492,7 @@ namespace PhysicsSystem {
                         basePoint,
                         bottomHeight,
                         topHeight,
-                        radius
+                        selfBody
                     );
                     if (neighbourFloorIndex < 0) continue;
 
@@ -1133,14 +1501,14 @@ namespace PhysicsSystem {
 
                     const float gradient = SlopeGradient(candidate.slopeStrength);
                     const Vector2 axis = getSlopeAxis(candidate.slopeDirection);
-                    const float reach = radius * gradient / std::sqrt(1.0f + gradient * gradient);
+                    const float reach = SlopeContactReach(candidate, selfBody);
                     const Vector2 contact = {basePoint.x + axis.x * reach, basePoint.y + axis.y * reach};
 
                     const int neighbourIndex = static_cast<int>(neighbour - level.sectors.data());
                     if (MapQueries::FindSectorContainingPoint(level.sectors, contact, neighbourIndex) != neighbourIndex) continue;
 
-                    const float candidateHeight = RestingFloorHeight(candidate, neighbourBounds, basePoint, radius);
-                    const float reachable = std::max(selfCollider.stepSize, horizontalSpeed * GameTime::deltaTime * std::abs(gradient));
+                    const float candidateHeight = RestingFloorHeight(candidate, neighbourBounds, basePoint, selfBody);
+                    const float reachable = std::max(selfCollider.stepSize, horizontalSpeed * deltaTime * std::abs(gradient));
 
                     if (candidateHeight > floorHeight && candidateHeight <= bottomHeight + reachable + GROUND_CONTACT_SLOP) {
                         ground = &candidate;
@@ -1189,7 +1557,7 @@ namespace PhysicsSystem {
                         // movement, and holding forward walked right up.
                         const float steepness = std::abs(floorGradient);
                         const float wallCorrection =
-                            std::clamp(uphillSpeed * GameTime::deltaTime * steepness, 0.0f, correction);
+                            std::clamp(uphillSpeed * deltaTime * steepness, 0.0f, correction);
                         const float wallDistance = wallCorrection / steepness;
 
                         // The rest (falling onto it) goes out along the normal:
@@ -1212,12 +1580,12 @@ namespace PhysicsSystem {
                         // onto whatever holds it where it ended up: the slope,
                         // or its own floor when it was pushed back off a ramp
                         // next door.
-                        selfBody = MakeRoundBody(*selfTransform, selfCollider);
+                        selfBody = MakeBody(*selfTransform, selfCollider);
                         resolveWalls();
 
                         const Vector2 pushedPoint = {selfBody.base.x, selfBody.base.z};
-                        const float slopeHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, radius);
-                        const float ownHeight = RestingFloorHeight(floor.floor, sectorBounds, pushedPoint, radius);
+                        const float slopeHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, selfBody);
+                        const float ownHeight = RestingFloorHeight(floor.floor, sectorBounds, pushedPoint, selfBody);
 
                         // At the crease both hold it; the own floor counts, so
                         // a body pressing into a ramp's foot stays on the ground.
@@ -1306,7 +1674,7 @@ namespace PhysicsSystem {
                             basePoint.x + pushDirection.x * pushDistance,
                             basePoint.y + pushDirection.z * pushDistance
                         };
-                        const float pushedFloorHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, radius);
+                        const float pushedFloorHeight = RestingFloorHeight(*ground, *groundBounds, pushedPoint, selfBody);
 
                         // A body resting on a sloped floor follows it down, so
                         // it stays grounded instead of hovering after the push.
@@ -1316,14 +1684,19 @@ namespace PhysicsSystem {
 
                         selfTransform->AddPosition({pushDirection.x * pushDistance, bottomDrop, pushDirection.z * pushDistance});
 
-                        correctedBottomHeight += bottomDrop;
-                        correctedTopHeight += bottomDrop;
                         floorHeight = pushedFloorHeight;
 
                         const float velocityIntoPinch = Vector3Math::Dot(selfRigidbody->velocity, pushDirection);
 
                         if (velocityIntoPinch < 0.0f)
                             selfRigidbody->velocity = selfRigidbody->velocity - pushDirection * velocityIntoPinch;
+
+                        // The push is sideways, so it can go into a wall.
+                        selfBody = MakeBody(*selfTransform, selfCollider);
+                        resolveWalls();
+
+                        correctedBottomHeight = selfBody.Bottom();
+                        correctedTopHeight = selfBody.Top();
                     }
                 }
 
@@ -1338,8 +1711,8 @@ namespace PhysicsSystem {
                 // grounded and isn't moving up follows the floor down by as
                 // much as a walkable floor can drop in this step - its
                 // horizontal move times the steepest walkable gradient, plus
-                // how much higher a round body rests on such a slope than on
-                // a flat floor. Going faster than that, or off a ledge, it
+                // how much higher the body rests on such a slope than on a
+                // flat floor. Going faster than that, or off a ledge, it
                 // still falls. A floor lowering under it (a lift going down)
                 // carries it down by however far the floor dropped this frame.
                 const size_t rigidbodyIndex = static_cast<size_t>(selfRigidbody - level.rigidbodies.components.data());
@@ -1353,8 +1726,8 @@ namespace PhysicsSystem {
                     const float maxGradient = std::tan(maxAngle);
 
                     const float snapDistance =
-                        horizontalSpeed * GameTime::deltaTime * maxGradient +
-                        radius * (1.0f / std::cos(maxAngle) - 1.0f) +
+                        horizontalSpeed * deltaTime * maxGradient +
+                        MaxSlopeLift(selfBody, maxAngle) +
                         groundDrop +
                         GROUND_CONTACT_SLOP;
 
@@ -1382,107 +1755,22 @@ namespace PhysicsSystem {
             }
         }
 
-        for (ComponentCollider& selfCollider : colliders.ActiveBoxes()) {
-            ZoneScopedN("AABB");
-            // TODO TILKY_TODO AABB Collision
-            /* use boxCollider.WorldSize(transform) for the AABB size
-               boxCollider.Base(transform) for the position
-                Make sure to follow the SIMD style as sphere
-                You can look at the sphere collision to see how things are done
-
-                Required features:
-                AABB-AABB
-                AABB-Sphere
-                AABB-Wall
-                AABB-Ceiling/Floor (with slopes)
-            */
-
-            if (selfCollider.isTrigger) continue;
-
-            ComponentTransform* selfTransform = level.transforms.Get(selfCollider.ownerID);
-            if (selfTransform == nullptr) [[unlikely]] continue;
-
-            ComponentRigidbody* selfRigidbody = level.rigidbodies.Get(selfCollider.ownerID);
-            if (selfRigidbody == nullptr || selfRigidbody->isStatic) continue;
-
-            const int sectorIndex = selfTransform->sectorIndex;
-            if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
-
-            Sector& sector = level.sectors[sectorIndex];
-
-            {
-                ZoneScopedN("Candidate gather");
-
-                allEntities.clear();
-                allWalls.clear();
-
-                allEntities.insert(
-                    allEntities.end(),
-                    sector.entitiesInside.begin(),
-                    sector.entitiesInside.end()
-                );
-
-                allWalls.insert(
-                    allWalls.end(),
-                    sector.walls.begin(),
-                    sector.walls.end()
-                );
-
-                for (const Sector* neighbour : sector.neighbors) {
-                    if (neighbour == nullptr) [[unlikely]] continue;
-
-                    allEntities.insert(
-                        allEntities.end(),
-                        neighbour->entitiesInside.begin(),
-                        neighbour->entitiesInside.end()
-                    );
-
-                    allWalls.insert(
-                        allWalls.end(),
-                        neighbour->walls.begin(),
-                        neighbour->walls.end()
-                    );
-                }
-
-                std::ranges::sort(allEntities);
-                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
-
-                std::ranges::sort(allWalls, std::less<const Wall*>{});
-                allWalls.erase(std::unique(allWalls.begin(), allWalls.end()), allWalls.end());
-            }
-        }
-
         {
             ZoneScopedN("Trigger overlaps");
 
             // After every push-out above, so overlaps are tested at the
             // frame's final positions. Triggers don't need a rigidbody -
             // a static trigger volume is the common case.
-            for (const ComponentCollider& trigger : colliders.ActiveRound()) {
+            for (const ComponentCollider& trigger : colliders.ActiveColliders()) {
                 if (!trigger.isTrigger) continue;
 
                 const ComponentTransform* triggerTransform = level.transforms.Get(trigger.ownerID);
                 if (triggerTransform == nullptr) [[unlikely]] continue;
 
-                const int sectorIndex = triggerTransform->sectorIndex;
-                if (sectorIndex < 0 || sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+                const Body triggerBody = MakeBody(*triggerTransform, trigger);
+                if (!gatherNearby(*triggerTransform, triggerBody, false)) continue;
 
-                const Sector& sector = level.sectors[sectorIndex];
-
-                allEntities.clear();
-                allEntities.insert(allEntities.end(), sector.entitiesInside.begin(), sector.entitiesInside.end());
-
-                for (const Sector* neighbour : sector.neighbors) {
-                    if (neighbour == nullptr) [[unlikely]] continue;
-                    allEntities.insert(allEntities.end(), neighbour->entitiesInside.begin(), neighbour->entitiesInside.end());
-                }
-
-                std::ranges::sort(allEntities);
-                allEntities.erase(std::unique(allEntities.begin(), allEntities.end()), allEntities.end());
-
-                const RoundBody triggerBody = MakeRoundBody(*triggerTransform, trigger);
-
-                for (const ID otherID : allEntities) {
+                for (const ID otherID : nearbyEntities) {
                     if (otherID == trigger.ownerID) continue;
 
                     const ComponentTransform* otherTransform = level.transforms.Get(otherID);
@@ -1495,16 +1783,12 @@ namespace PhysicsSystem {
                     for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
                         const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
-                        if (!otherCollider->isActive ||
-                            !otherCollider->IsRound()) continue;
+                        if (!otherCollider->isActive) continue;
 
-                        const RoundBody otherBody = MakeRoundBody(*otherTransform, *otherCollider);
-                        const float radiusSum = triggerBody.radius + otherBody.radius;
+                        Vector3 direction;
+                        float depth;
 
-                        const __m128 delta = RoundBodyDelta(triggerBody, otherBody);
-                        const float distanceSq = _mm_cvtss_f32(dot3_ss(delta, delta));
-
-                        if (distanceSq >= radiusSum * radiusSum) continue;
+                        if (!FindBodyOverlap(triggerBody, MakeBody(*otherTransform, *otherCollider), direction, depth)) continue;
 
                         contacts.triggers.push_back({
                             std::min(trigger.ownerID, otherID),

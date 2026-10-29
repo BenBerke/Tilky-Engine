@@ -18,9 +18,12 @@ Every frame, for every Rigidbody:
 2. **Friction.** The horizontal velocity (`x` and `z`) is slowed toward zero by `friction` units per
    second, every second. Vertical velocity isn't affected.
 3. **Move.** The entity's [Transform](Transform.md) moves by `velocity × deltaTime`.
-4. **Collide.** If the entity has an active sphere or capsule [Collider](Collider.md), physics pushes it out of
-   walls, other entities, the floor and the ceiling, removes the velocity going into them, and
-   updates `isGrounded`.
+4. **Collide.** If the entity has an active [Collider](Collider.md) (any shape), physics pushes it
+   out of walls, other entities, the floor and the ceiling, removes the velocity going into walls,
+   floors and ceilings, and updates `isGrounded`.
+
+On a frame where something moves fast for its size, steps 1 to 4 run several times in smaller
+steps (see [Fast bodies](Collider.md#fast-bodies)).
 
 An entity can have several Rigidbodies, but only the **first** one simulates. The others are kept
 with their settings and do nothing, and the inspector says so. To switch, drag another one to the

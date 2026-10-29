@@ -46,14 +46,20 @@ namespace PhysicsSystem {
         }
     };
 
-    // Appends every entity-entity contact found during this run to
-    // `contacts`. Not deduplicated - the caller may run physics several
-    // times per frame.
-    void Run(Level& level, Contacts& contacts);
+    // Resolves every moving body after it moved by `deltaTime` worth of
+    // velocity. Appends every contact found during this run to `contacts`.
+    // Not deduplicated - the caller may run physics several times per frame.
+    void Run(Level& level, Contacts& contacts, float deltaTime);
+
+    // How many sub-steps (at most `maxSubsteps`) this frame needs so that
+    // no body moves more than a fraction of its own size per step. Faster
+    // than that, a body could get past a wall's line in one step and be
+    // pushed out on the far side.
+    [[nodiscard]] int SubstepCount(const Level& level, float deltaTime, int maxSubsteps);
 
     // The collider that stands for the entity's bottom: its active, solid
-    // sphere or capsule with the lowest bottom. It owns relativeHeight and
-    // the step down between sectors. Null when the entity has none.
+    // collider with the lowest bottom. It owns relativeHeight and the step
+    // down between sectors. Null when the entity has none.
     const ComponentCollider* FindBaseCollider(const Level& level, ID ownerID);
 }
 

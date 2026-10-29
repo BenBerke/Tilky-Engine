@@ -6,6 +6,17 @@ Inspired by classic 90s engines such as *Doom* and *Build Engine*, Tilky Engine 
 
 Tilky Engine is designed as a complete development environment rather than only a   rendering library. It includes a project launcher, visual level editor, asset browser, embedded Lua editor, OpenGL runtime, custom physics, OpenAL audio, engine version management, automated releases, localization tooling, profiling, and standalone project exporting.
 
+## 🤝 Help the Engine Grow
+If you want to help the engine grow without writing code, you can make one-time donations or even do a monthly subscription! Either from Github Sponsors or Ko-Fi, the choice is yours!
+
+* [Github Sponsors](https://github.com/sponsors/BenBerke) 
+* [Ko-Fi](https://ko-fi.com/benberke)
+
+If you can not make a donation, that is completely fine! The easiest and the best way to support the engine it to use it! Join our Discord and share your opinions with the developers!
+
+[Our Discord](https://discord.gg/NQa8uFPWaz)
+
+
 ## 🚀 Download Tilky Engine
 
 The recommended way to install and use Tilky Engine is through **Tilky Engine** on Steam. The launcher handles project creation, engine installation, version switching, and opening projects with the correct engine version. No manual compilation is required! Alternatively, you can install from our GitHub repository.

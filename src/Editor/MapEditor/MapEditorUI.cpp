@@ -1033,6 +1033,12 @@ namespace {
         ImGui::InputFloat("##Gravity", &level.worldSettings.gravity, 0.1f, 1.0f, "%.2f");
         HoverTooltip(tooltip.c_str());
 
+        const std::string substepsTooltip = Get("settings.physics.tooltip.max_substeps");
+        SettingRow(Get("settings.physics.max_substeps"), substepsTooltip.c_str());
+        if (ImGui::InputInt("##MaxPhysicsSubsteps", &level.worldSettings.maxPhysicsSubsteps))
+            level.worldSettings.maxPhysicsSubsteps = std::clamp(level.worldSettings.maxPhysicsSubsteps, 1, 64);
+        HoverTooltip(substepsTooltip.c_str());
+
         EndSettingsTable();
     }
 

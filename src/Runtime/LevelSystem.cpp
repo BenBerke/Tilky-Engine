@@ -340,12 +340,14 @@ namespace LevelSystem {
             //todo TILKY_TODO
             // sort entities where sphere colliders are in the beggining of the vector to optimize for branch prediction
             ZoneScopedN("Physics");
-            constexpr int COLLISION_ITERATIONS = 1;
-            const float subDeltaTime = GameTime::deltaTime / static_cast<float>(COLLISION_ITERATIONS);
+            // More steps only on frames where something moves fast for
+            // its size; one is enough otherwise.
+            const int substeps = PhysicsSystem::SubstepCount(level, GameTime::deltaTime, level.worldSettings.maxPhysicsSubsteps);
+            const float subDeltaTime = GameTime::deltaTime / static_cast<float>(substeps);
 
             frameContacts.Clear();
 
-            for (int i = 0; i < COLLISION_ITERATIONS; i++) {
+            for (int i = 0; i < substeps; i++) {
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
                     // Only an entity's first rigidbody simulates; the others are inert.
                     if (level.rigidbodies.Get(r.ownerID) != &r) continue;
@@ -369,7 +371,7 @@ namespace LevelSystem {
 
                     if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
                 }
-                PhysicsSystem::Run(level, frameContacts);
+                PhysicsSystem::Run(level, frameContacts, subDeltaTime);
             }
 
         } // Zone Physics

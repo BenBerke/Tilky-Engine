@@ -590,6 +590,7 @@ namespace {
             WorldSettings &worldSettings = level.worldSettings;
 
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
+            worldSettings.maxPhysicsSubsteps = std::clamp(worldSettingsJson.value("maxPhysicsSubsteps", 8), 1, 64);
 
             LoadEventVariables(worldSettingsJson, worldSettings);
             worldSettings.messageStyle = worldSettingsJson.contains("messageStyle")
@@ -631,6 +632,7 @@ namespace {
             {
                 "worldSettings", {
                     {"gravity", worldSettings.gravity},
+                    {"maxPhysicsSubsteps", worldSettings.maxPhysicsSubsteps},
                     {"eventVariables", SaveEventVariables(worldSettings)},
                     {"nextEventVariableId", worldSettings.nextEventVariableID},
                     {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)}
