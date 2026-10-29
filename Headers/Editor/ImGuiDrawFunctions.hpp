@@ -21,20 +21,9 @@
 namespace ImGuiDrawFunctions {
 
     struct EntityInspectorState {
-        bool addingComponent = false;
-        bool editingComponent = false;
-
-        int selectedComponent = -1;
-        int componentToAdd = CMP_SPRITE;
-        // Which instance of selectedComponent is being edited: a ScriptInstanceID
-        // for scripts, a ComponentInstanceID for everything else.
-        std::uint64_t selectedInstanceID = INVALID_COMPONENT_INSTANCE_ID;
-
         // For inspectors that aren't the level's (the prefab editor): the
-        // entity window's title (with its own "###id"), a suffix that keeps
-        // the component window apart from the level's, and no Delete.
+        // entity window's title (with its own "###id") and no Delete.
         std::string windowTitle;
-        std::string windowIdSuffix;
         bool allowDelete = true;
         // A Snap to Floor button, for inspectors of a level's entities. It
         // only sets snapToFloorRequested; the caller does the snapping and
@@ -73,8 +62,41 @@ namespace ImGuiDrawFunctions {
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable);
     // The level's own Events and Dispatches sections (World Settings).
     void DrawLevelEventSections(Level &level, bool draggable);
-    bool DrawEntityEditor   (Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
-    void DrawComponentEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
+    // The entity window: every component is a foldout section in it.
+    bool DrawEntityEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
+
+    // The fields of one component (`instanceID` is a ScriptInstanceID for
+    // scripts), without a header - what a foldout shows when open. Call
+    // between BeginPrefabFields/EndPrefabFields for that component.
+    void DrawComponentFields(Entity &entity, int componentType, std::uint64_t instanceID, bool draggable);
+
+    // One component's foldout header, Unity style: the arrow, an Enabled
+    // checkbox when `enabled` is set, the label, and a menu button (also on
+    // right-click) with Move Up / Move Down, the prefab Revert / Apply items
+    // and Remove. Open or closed is remembered per component type in the
+    // user settings. The caller acts on what the result asks for.
+    struct ComponentHeader {
+        std::string label;
+        int componentType = -1;        // CMP_*
+        std::uint64_t instanceID = 0;
+        bool *enabled = nullptr;
+        const char *enabledTooltip = nullptr;
+        bool canMoveUp = false;
+        bool canMoveDown = false;
+        bool canRemove = true;
+        // Runs right after the header item, for drag and drop onto it.
+        std::function<void()> onHeaderItem;
+    };
+
+    struct ComponentHeaderResult {
+        bool open = false;
+        bool enabledChanged = false;
+        bool removeRequested = false;
+        bool moveUpRequested = false;
+        bool moveDownRequested = false;
+    };
+
+    ComponentHeaderResult DrawComponentHeader(const Entity &entity, const ComponentHeader &header);
     void SmallMetaText(const char* fmt, ...);
     void Tooltip(const char *text);
     void BeginSection(const char *label);
@@ -114,9 +136,10 @@ namespace ImGuiDrawFunctions {
     // and the removed components, at the top of an instance's entity window.
     void DrawPrefabInstanceBar(Entity &entity);
 
-    // Component cards on an instance: "+ " before added components' labels,
-    // a margin bar on cards with overrides and a Revert / Apply right-click
-    // menu (DrawPrefabCardMarks goes right after the card's Selectable).
+    // Component headers on an instance: "+ " before added components'
+    // labels and a margin bar on headers with overrides (DrawPrefabCardMarks
+    // goes right after the header item). Their Revert / Apply items are in
+    // the header's menu.
     std::string PrefabCardLabel(const Entity &entity, int componentType, std::uint64_t instanceID, const std::string &label);
     void DrawPrefabCardMarks(const Entity &entity, int componentType, std::uint64_t instanceID);
 

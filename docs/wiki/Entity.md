@@ -28,7 +28,7 @@ deselects. Right click opens an entity's settings.
 |---|---|
 | **Name** | Display name. `Game.FindEntity("Name")` looks entities up by it. Names don't have to be unique. |
 | **Tags** | Labels from the project's tag list (Project Settings). Scripts can test them with `HasTag`, and `Game.FindEntitiesWithTag` finds every entity with one. Scripts can read tags but not change them. |
-| **Components** | The components on this entity. **Add Component** adds one, clicking one opens its settings, and **Remove** deletes it. |
+| **Components** | The components on this entity, each a section you can fold and unfold by clicking its header (the editor remembers this per component type). Components that can be switched off have a checkbox on the header. The **⋮** button (or right-click on the header) has **Move Up**, **Move Down**, the prefab **Revert** / **Apply to Prefab** and **Remove Component**. **Add component...** at the bottom adds one. |
 
 An entity can hold **one** of each component, except scripts: it can have any number of
 **Custom Script** components, even several copies of the same script.
@@ -221,8 +221,9 @@ shape.
 
 - **Order.** An entity's components of one type have an order. `entity.audioSource` and the other
   component properties return the **first** one; `entity:GetComponents(Component.AudioSource)`
-  returns all of them in order. In the inspector each one has its own card. Drag a card onto
-  another of the same type to reorder them. The order is saved with the level.
+  returns all of them in order. In the inspector each one has its own section. Drag a section's
+  header onto another of the same type, or use **Move Up** / **Move Down** in its **⋮** menu, to
+  reorder them. The order is saved with the level.
 - **Offsets.** Sprite, Model, Collider and Audio Source have an `offset`: a position relative to the
   [Transform](Transform.md), turned with the entity's rotation. Use it to place several of them
   at different spots on one entity.

@@ -1919,7 +1919,6 @@ namespace MapEditorInternal {
         if (!holdingEntity) inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
-            editingComponent = false;
             editingEntity = false;
             editingSector = false;
             editingWall = false;

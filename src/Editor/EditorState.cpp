@@ -39,7 +39,6 @@ namespace MapEditorInternal {
     bool editingSector = false;
     ID selectedSectorID = INVALID_ID;
 
-    bool editingComponent = false;
     bool editingEntity = false;
     Entity selectedEntity;
 
@@ -238,6 +237,7 @@ namespace MapEditorInternal {
     bool commentsVisible = false;
     bool runtimeCommentsVisible = false;
     EntityMarkerMode entityMarkerMode = EntityMarkerMode::Always;
+    std::set<std::string> collapsedComponentTypes;
 
     // In EditorKeyBind order.
     const EditorKeyBindInfo KEY_BIND_INFO[KEYBIND_COUNT] = {

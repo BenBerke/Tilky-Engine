@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -246,7 +247,6 @@ namespace MapEditorInternal {
     extern bool editingSector;
     extern ID selectedSectorID; // stable ID, NOT a vector index
 
-    extern bool editingComponent;
     extern bool editingEntity;
     extern Entity selectedEntity;
 
@@ -685,6 +685,10 @@ namespace MapEditorInternal {
     };
 
     extern EntityMarkerMode entityMarkerMode;
+
+    // Component foldouts the user collapsed in the entity / UI inspectors,
+    // by Prefab::ComponentKey. Every other type starts open.
+    extern std::set<std::string> collapsedComponentTypes;
 
     // How opaque a wall or entity hidden by a panel filter is drawn.
     extern int filteredAlpha;

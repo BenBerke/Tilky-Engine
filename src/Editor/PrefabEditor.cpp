@@ -131,7 +131,6 @@ void PrefabEditor::DrawDocument(Document& document) {
         else {
             ImGuiDrawFunctions::EntityInspectorState& inspector = document.inspector;
             inspector.windowTitle = title;
-            inspector.windowIdSuffix = idSuffix;
             inspector.allowDelete = false;
             inspector.allowSnapToFloor = false;
             inspector.allowSnapToWall = false;
@@ -139,9 +138,6 @@ void PrefabEditor::DrawDocument(Document& document) {
 
             constexpr bool draggable = true;
             ImGuiDrawFunctions::DrawEntityEditor(root, inspector, &windowOpen, draggable);
-
-            if (windowOpen && inspector.editingComponent && inspector.selectedComponent != -1)
-                ImGuiDrawFunctions::DrawComponentEditor(root, inspector, &inspector.editingComponent, draggable);
         }
     }
 

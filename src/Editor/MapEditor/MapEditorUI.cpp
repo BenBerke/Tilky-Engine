@@ -452,7 +452,6 @@ namespace {
 
     void ResetInspectorState() {
         entityInspectorState = {};
-        editingComponent = false;
     }
 
     // =========================================================================
@@ -3855,8 +3854,6 @@ namespace {
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
 
-        editingComponent = entityInspectorState.editingComponent;
-
         if (deleteRequested) {
             const std::vector<ID> entitiesToDelete =
                     selectedEntities.empty() ? std::vector<ID>{entity.id} : selectedEntities;
@@ -3876,15 +3873,6 @@ namespace {
             RecordInspectorEdit(level, entityInspectorEdit);
             ResetInspectorState();
             return;
-        }
-
-        if (entityInspectorState.editingComponent &&
-            entityInspectorState.selectedComponent != -1) {
-            ImGuiDrawFunctions::DrawComponentEditor(
-                entity, entityInspectorState,
-                &entityInspectorState.editingComponent, DRAGGABLE
-            );
-            editingComponent = entityInspectorState.editingComponent;
         }
 
         // Before the propagation below, so the step also holds the rest of

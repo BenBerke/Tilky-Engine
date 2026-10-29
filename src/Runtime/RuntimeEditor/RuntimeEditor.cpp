@@ -2506,14 +2506,6 @@ namespace RuntimeEditorUi {
                 return;
             }
 
-            if (entityInspectorState.editingComponent && entityInspectorState.selectedComponent != -1) {
-                ImGuiDrawFunctions::DrawComponentEditor(
-                    *entityToEdit,
-                    entityInspectorState,
-                    &entityInspectorState.editingComponent, DRAGGABLE
-                );
-            }
-
             // Before the mirroring below, so the step also holds the rest of
             // the selection as it was.
             MapEditorInternal::RecordInspectorEdit(level, entityInspectorEdit, mirrors ? selectedEntityIds : std::vector<ID>{});
@@ -3818,7 +3810,6 @@ namespace RuntimeEditor {
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
 
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
-            MapEditorInternal::editingComponent = false;
             editingEntity = false;
             editingSector = false;
             editingWall = false;

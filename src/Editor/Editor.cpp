@@ -97,7 +97,6 @@ namespace Editor {
         selectedSectorID = INVALID_ID;
 
         editingEntity = false;
-        editingComponent = false;
 
         sectorBeingCreated.clear();
         pendingSectorParams = {};

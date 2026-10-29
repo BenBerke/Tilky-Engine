@@ -254,6 +254,11 @@ namespace MapEditorInternal {
                 static_cast<int>(EntityMarkerMode::Count) - 1
             ));
 
+            collapsedComponentTypes.clear();
+            if (settings.contains("collapsedComponents") && settings["collapsedComponents"].is_array())
+                for (const nlohmann::json &key : settings["collapsedComponents"])
+                    if (key.is_string()) collapsedComponentTypes.insert(key.get<std::string>());
+
             autoSaveInSeconds = std::max(0.0, settings.value("autoSaveInSeconds", autoSaveInSeconds));
             filteredAlpha = settings.value("filteredAlpha", 60);
             eventLinkThickness = std::clamp(
@@ -509,6 +514,7 @@ namespace MapEditorInternal {
                 {"showCommentIcons", Comments::showIcons},
 #endif
                 {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
+                {"collapsedComponents", collapsedComponentTypes},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
                 {"runtimeSteps", SerializeRuntimeSteps()},
