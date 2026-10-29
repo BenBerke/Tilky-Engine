@@ -4,6 +4,7 @@
 #include <limits>
 #include <tuple>
 
+#include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Level.hpp"
 
@@ -117,6 +118,37 @@ namespace EventLinks {
                 return false;
         }
         return false;
+    }
+
+    std::string OwnerLabel(const Level& level, const EventOwnerKind kind, const ID ownerID) {
+        const auto named = [ownerID](const char* prefixKey, const std::string& name) {
+            return name.empty()
+                ? Localisation::Get(prefixKey) + " #" + std::to_string(ownerID)
+                : name + "  (#" + std::to_string(ownerID) + ")";
+        };
+
+        switch (kind) {
+            case EventOwnerKind::LINE: {
+                const auto it = level.wallIDToIndex.find(ownerID);
+                return named("tag_explorer.kind.wall", it != level.wallIDToIndex.end() ? level.walls[it->second].name : std::string());
+            }
+            case EventOwnerKind::SECTOR: {
+                const Sector* sector = level.GetSector(ownerID);
+                return named("tag_explorer.kind.sector", sector != nullptr ? sector->name : std::string());
+            }
+            case EventOwnerKind::LINEDEF: {
+                const Linedef* linedef = level.GetLinedef(ownerID);
+                return named("tag_explorer.kind.linedef", linedef != nullptr ? linedef->name : std::string());
+            }
+            case EventOwnerKind::ENTITY: {
+                const Entity* entity = level.GetEntity(ownerID);
+                return named("tag_explorer.kind.entity", entity != nullptr ? entity->name : std::string());
+            }
+            case EventOwnerKind::LEVEL:
+                break;
+        }
+
+        return Localisation::Get("tag_explorer.kind.level");
     }
 
     std::vector<Link> Collect(const Level& level, const EventOwnerKind kind, const ID ownerID) {

@@ -171,10 +171,6 @@ namespace ProjectManager {
     // Returns Launcher.tilky inside Documents\TilkyEngine which stores metadata about the launcher, such as the language
     fs::path GetLauncherVariables();
 
-    // Returns the default export folder for the currently loaded project.
-    // Example:
-    // C:\Users\x\Documents\Tilky Engine\Exports\TestProject
-    fs::path GetDefaultExportFolder();
 
     // ============================================================================
     // Engine version management (EngineVersionManager support)

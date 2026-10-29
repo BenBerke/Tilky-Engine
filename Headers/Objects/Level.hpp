@@ -6,6 +6,7 @@
 #define TILKY_ENGINE_LEVEL_H
 
 #include <AL/al.h>
+#include <array>
 #include <vector>
 #include <string>
 #include <optional>
@@ -130,6 +131,61 @@ struct WallSnapData {
     float gap = DEFAULT_GAP;
 };
 
+// How many selection groups the editors have. Outside the editor-only
+// block below because the editor's shortcut table, built into the game
+// too, has a row per group.
+constexpr int EDITOR_SELECTION_GROUP_COUNT = 10;
+
+#ifndef TILKY_STANDALONE
+// Editor-only, like WallSnapData: saved in the level file's
+// metadata, never compiled into the game.
+
+// Ctrl+Alt+digit stores the selection here, Alt+digit brings it back.
+// Shared by the 2D and runtime editors.
+struct EditorSelectionGroup {
+    std::vector<ID> walls;
+    std::vector<ID> sectors;
+    std::vector<ID> linedefs;
+    std::vector<ID> entities;
+
+    [[nodiscard]] bool Empty() const {
+        return walls.empty() && sectors.empty() && linedefs.empty() && entities.empty();
+    }
+};
+
+
+// A note left in the level: on a wall, sector, linedef or entity, or a pin
+// standing on its own at `position`.
+enum class EditorCommentTarget : uint8_t { PIN, WALL, SECTOR, LINEDEF, ENTITY };
+
+struct EditorComment {
+    ID id = INVALID_ID;
+    EditorCommentTarget target = EditorCommentTarget::PIN;
+    ID targetID = INVALID_ID; // unused for pins
+    Vector2 position = {0.0f, 0.0f}; // pins only: map X and Z
+    std::string text;
+};
+
+// The 2D editor's grid: rotated by `angle` degrees about `origin`. Snapping
+// and the grid dots both follow it.
+struct EditorGridTransform {
+    Vector2 origin = {0.0f, 0.0f};
+    float angle = 0.0f;
+
+    [[nodiscard]] bool IsDefault() const { return origin.x == 0.0f && origin.y == 0.0f && angle == 0.0f; }
+};
+
+// An image drawn under the 2D map to trace over. `position` is where its
+// top-left corner sits, `scale` the map units one image pixel covers.
+struct EditorBackgroundImage {
+    std::string texture;
+    Vector2 position = {0.0f, 0.0f};
+    float scale = 1.0f;
+    float opacity = 0.5f;
+    bool visible = true;
+};
+#endif
+
 struct Level {
     LevelID id = 0;
     std::string name;
@@ -181,6 +237,14 @@ struct Level {
 
     // Snapped entities, by entity ID.
     std::unordered_map<ID, WallSnapData> wallSnaps;
+
+    std::array<EditorSelectionGroup, EDITOR_SELECTION_GROUP_COUNT> selectionGroups;
+
+    std::vector<EditorComment> comments;
+    ID nextCommentID = 1;
+
+    EditorGridTransform gridTransform;
+    EditorBackgroundImage backgroundImage;
 #endif
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;

@@ -19,6 +19,9 @@
 #include "../../Editor/EditorInternal.hpp"
 #include "../../Editor/WallSnap.hpp"
 #include "../../Editor/EventLinks.hpp"
+#include "../../Editor/TagExplorer.hpp"
+#include "../../Editor/Comments.hpp"
+#include "../../Editor/CommandPalette.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -32,6 +35,7 @@
 #include <string_view>
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <cmath>
 #include <cctype>
@@ -1172,6 +1176,507 @@ namespace {
         return true;
     }
 
+    // The selected floors and ceilings, or with none selected and
+    // hoverAllowed, the one under the cursor. Stale indices are left out.
+    std::vector<SelectedFlat> TargetFlats(const Level& level, const bool hoverAllowed) {
+        std::vector<SelectedFlat> flats;
+
+        const auto valid = [&level](const SelectedFlat& flat) {
+            return flat.sectorIndex >= 0 && flat.sectorIndex < static_cast<int>(level.sectors.size()) &&
+                   flat.floorIndex >= 0 && flat.floorIndex < static_cast<int>(level.sectors[flat.sectorIndex].floors.size());
+        };
+
+        if (!selectedFlats.empty()) {
+            for (const SelectedFlat& flat : selectedFlats)
+                if (valid(flat)) flats.push_back(flat);
+            return flats;
+        }
+
+        if (hoverAllowed && (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling)) {
+            const SelectedFlat hovered = {hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type};
+            if (valid(hovered)) flats.push_back(hovered);
+        }
+
+        return flats;
+    }
+
+    // Sector indices across the two-sided walls of sector `sectorIndex`.
+    std::vector<int> NeighbourSectorIndices(Level& level, const int sectorIndex) {
+        std::vector<int> neighbours;
+        const ID sectorID = level.sectors[sectorIndex].id;
+
+        for (const Wall& wall : level.walls) {
+            if (wall.frontSector == INVALID_ID || wall.backSector == INVALID_ID) continue;
+
+            const ID other = wall.frontSector == sectorID ? wall.backSector : wall.backSector == sectorID ? wall.frontSector : INVALID_ID;
+            if (other == INVALID_ID || other == sectorID) continue;
+
+            const int index = FindSectorIndex(level, level.GetSector(other));
+            if (index >= 0 && std::ranges::find(neighbours, index) == neighbours.end()) neighbours.push_back(index);
+        }
+
+        return neighbours;
+    }
+
+    // `start` and every floor (or ceiling, the same kind as `start`) reached
+    // from it through neighbouring sectors that `matches` accepts.
+    template<typename Matches>
+    std::vector<SelectedFlat> ConnectedFlats(Level& level, const SelectedFlat& start, Matches&& matches) {
+        std::vector<SelectedFlat> found = {start};
+        std::vector<int> frontier = {start.sectorIndex};
+
+        while (!frontier.empty()) {
+            const int sectorIndex = frontier.back();
+            frontier.pop_back();
+
+            for (const int neighbour : NeighbourSectorIndices(level, sectorIndex)) {
+                const Sector& sector = level.sectors[neighbour];
+
+                for (int floorIndex = 0; floorIndex < static_cast<int>(sector.floors.size()); ++floorIndex) {
+                    const SelectedFlat flat = {neighbour, floorIndex, start.surface};
+                    if (std::ranges::find(found, flat) != found.end()) continue;
+
+                    const SectorFloor& interval = sector.floors[floorIndex];
+                    if (!matches(start.surface == RayHitType::SectorFloor ? interval.floor : interval.ceiling)) continue;
+
+                    found.push_back(flat);
+                    frontier.push_back(neighbour);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    // The lowest floor and highest ceiling of a wall's lowest floor
+    // intervals on either side: what "the same height" means for walls.
+    std::pair<float, float> WallHeightKey(const Level& level, const Wall& wall) {
+        float bottom = std::numeric_limits<float>::max();
+        float top = std::numeric_limits<float>::lowest();
+
+        for (const ID sectorID : {wall.frontSector, wall.backSector}) {
+            const Sector* sector = sectorID == INVALID_ID ? nullptr : level.GetSector(sectorID);
+            if (sector == nullptr || sector->floors.empty()) continue;
+
+            bottom = std::min(bottom, sector->floors.front().floor.height);
+            top = std::max(top, sector->floors.front().ceiling.height);
+        }
+
+        return {bottom, top};
+    }
+
+    // Shift+right click: the hovered wall, floor or ceiling and everything
+    // connected to it with the same texture - or, with `byHeight`, at the
+    // same height. Walls connect through shared corners, floors and
+    // ceilings through two-sided walls. False if the cursor isn't on one.
+    bool SelectConnected(Level& level, const bool byHeight) {
+        constexpr float HEIGHT_EPSILON = 0.001f;
+
+        if (hoveredSurface.type == RayHitType::Wall) {
+            if (hoveredSurface.wallIndex < 0 || hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
+
+            const Wall& start = level.walls[hoveredSurface.wallIndex];
+            std::vector<ID> connected;
+
+            if (byHeight) {
+                const std::pair<float, float> key = WallHeightKey(level, start);
+                connected = {start.id};
+                std::vector<int> frontier = {hoveredSurface.wallIndex};
+
+                while (!frontier.empty()) {
+                    const Wall& wall = level.walls[frontier.back()];
+                    frontier.pop_back();
+
+                    for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
+                        const Wall& other = level.walls[i];
+                        if (std::ranges::find(connected, other.id) != connected.end()) continue;
+
+                        const bool touches = other.start == wall.start || other.start == wall.end || other.end == wall.start || other.end == wall.end;
+                        if (!touches) continue;
+
+                        const std::pair<float, float> otherKey = WallHeightKey(level, other);
+                        if (std::abs(otherKey.first - key.first) > HEIGHT_EPSILON || std::abs(otherKey.second - key.second) > HEIGHT_EPSILON) continue;
+
+                        connected.push_back(other.id);
+                        frontier.push_back(i);
+                    }
+                }
+            }
+            else connected = MapEditorInternal::ConnectedWallsWithTexture(level, start.id, hoveredSurface.wallSlot);
+
+            if (connected.empty()) return false;
+
+            SelectOnlyWall(hoveredSurface.wallIndex);
+
+            for (const ID wallID : connected) {
+                const auto it = level.wallIDToIndex.find(wallID);
+                if (it != level.wallIDToIndex.end() && it->second != hoveredSurface.wallIndex) selectedWalls.push_back(it->second);
+            }
+
+            return true;
+        }
+
+        if (hoveredSurface.type != RayHitType::SectorFloor && hoveredSurface.type != RayHitType::SectorCeiling) return false;
+        if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return false;
+
+        const Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+        if (hoveredSurface.floorIndex < 0 || hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) return false;
+
+        const SelectedFlat start = {hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type};
+        const SectorFloor& interval = sector.floors[start.floorIndex];
+        const SectorSurface& surface = start.surface == RayHitType::SectorFloor ? interval.floor : interval.ceiling;
+
+        const std::vector<SelectedFlat> flats = byHeight
+            ? ConnectedFlats(level, start, [&](const SectorSurface& other) { return std::abs(other.height - surface.height) <= HEIGHT_EPSILON; })
+            : ConnectedFlats(level, start, [&](const SectorSurface& other) { return !surface.texture.empty() && other.texture == surface.texture; });
+
+        SelectOnlyFlat(start);
+        for (const SelectedFlat& flat : flats)
+            if (!(flat == start)) selectedFlats.push_back(flat);
+
+        return true;
+    }
+
+    // Shift+V: the copied texture onto the hovered surface and every
+    // connected one of the same kind showing the same texture - walls
+    // through shared corners (the same piece: top, middle or bottom),
+    // floors and ceilings through neighbouring sectors. Returns how many
+    // surfaces changed.
+    int FloodFillTexture(Level& level) {
+        if (!surfaceClipboard.hasTexture) return 0;
+
+        const std::string& texture = surfaceClipboard.texture;
+        int changed = 0;
+
+        if (hoveredSurface.type == RayHitType::Wall) {
+            if (hoveredSurface.wallIndex < 0 || hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return 0;
+
+            const WallSurfaceSlot slot = hoveredSurface.wallSlot;
+            if (level.walls[hoveredSurface.wallIndex].Surface(slot).texture == texture) return 0;
+
+            for (const ID wallID : MapEditorInternal::ConnectedWallsWithTexture(level, level.walls[hoveredSurface.wallIndex].id, slot)) {
+                const auto it = level.wallIDToIndex.find(wallID);
+                if (it == level.wallIDToIndex.end()) continue;
+
+                level.walls[it->second].Surface(slot).texture = texture;
+                ++changed;
+            }
+
+            return changed;
+        }
+
+        if (hoveredSurface.type != RayHitType::SectorFloor && hoveredSurface.type != RayHitType::SectorCeiling) return 0;
+        if (hoveredSurface.sectorIndex < 0 || hoveredSurface.sectorIndex >= static_cast<int>(level.sectors.size())) return 0;
+
+        const Sector& sector = level.sectors[hoveredSurface.sectorIndex];
+        if (hoveredSurface.floorIndex < 0 || hoveredSurface.floorIndex >= static_cast<int>(sector.floors.size())) return 0;
+
+        const SelectedFlat start = {hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type};
+        const SectorFloor& interval = sector.floors[start.floorIndex];
+        const std::string original = (start.surface == RayHitType::SectorFloor ? interval.floor : interval.ceiling).texture;
+        if (original == texture) return 0;
+
+        for (const SelectedFlat& flat : ConnectedFlats(level, start, [&](const SectorSurface& other) { return other.texture == original; })) {
+            SectorFloor& target = level.sectors[flat.sectorIndex].floors[flat.floorIndex];
+            (flat.surface == RayHitType::SectorFloor ? target.floor : target.ceiling).texture = texture;
+            ++changed;
+        }
+
+        return changed;
+    }
+
+    // Ctrl+G and its X / Y variants: along the selected walls, or with none
+    // selected, spreading from the hovered wall across the connected walls
+    // with its texture.
+    int AlignTextures(Level& level, const bool alignX, const bool alignY, const bool hoverAllowed) {
+        if (!selectedWalls.empty()) {
+            if (alignX && alignY) return RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures);
+            return RunMapEditorWallTool(level, alignX ? &MapEditorInternal::AlignSelectedWallTexturesX : &MapEditorInternal::AlignSelectedWallTexturesY);
+        }
+
+        if (!hoverAllowed || hoveredSurface.type != RayHitType::Wall ||
+            hoveredSurface.wallIndex < 0 || hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return 0;
+
+        return MapEditorInternal::AutoAlignWallTextures(level.walls[hoveredSurface.wallIndex].id, hoveredSurface.wallSlot, alignX, alignY);
+    }
+
+    // Ctrl+Alt+digit: this editor's selection into a selection group,
+    // shared with the 2D editor. Floors and ceilings stand for their sectors.
+    void AssignSelectionGroup(Level& level, const int index) {
+        EditorSelectionGroup group;
+        group.entities = selectedEntityIds;
+
+        for (const int wallIndex : selectedWalls)
+            if (wallIndex >= 0 && wallIndex < static_cast<int>(level.walls.size())) group.walls.push_back(level.walls[wallIndex].id);
+
+        for (const SelectedFlat& flat : selectedFlats) {
+            if (flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size())) continue;
+
+            const ID sectorID = level.sectors[flat.sectorIndex].id;
+            if (std::ranges::find(group.sectors, sectorID) == group.sectors.end()) group.sectors.push_back(sectorID);
+        }
+
+        level.selectionGroups[index] = std::move(group);
+        MapEditorInternal::MarkUnsavedChanges();
+    }
+
+    // Alt+digit. This editor selects one kind at a time: the group's
+    // entities, else its walls, else its sectors' floors. Returns how many.
+    int SelectSelectionGroup(Level& level, const int index) {
+        const EditorSelectionGroup& group = level.selectionGroups[index];
+
+        std::vector<ID> entities;
+        for (const ID id : group.entities)
+            if (level.GetEntity(id) != nullptr) entities.push_back(id);
+
+        if (!entities.empty()) {
+            SelectOnlyEntity(entities.front());
+            selectedEntityIds = entities;
+            return static_cast<int>(entities.size());
+        }
+
+        std::vector<int> walls;
+        for (const ID id : group.walls)
+            if (const auto it = level.wallIDToIndex.find(id); it != level.wallIDToIndex.end()) walls.push_back(it->second);
+
+        if (!walls.empty()) {
+            SelectOnlyWall(walls.front());
+            selectedWalls = walls;
+            return static_cast<int>(walls.size());
+        }
+
+        std::vector<SelectedFlat> flats;
+        for (const ID id : group.sectors) {
+            const int sectorIndex = FindSectorIndex(level, level.GetSector(id));
+            if (sectorIndex < 0) continue;
+
+            for (int floorIndex = 0; floorIndex < static_cast<int>(level.sectors[sectorIndex].floors.size()); ++floorIndex)
+                flats.push_back({sectorIndex, floorIndex, RayHitType::SectorFloor});
+        }
+
+        if (!flats.empty()) {
+            SelectOnlyFlat(flats.front());
+            selectedFlats = flats;
+            return static_cast<int>(flats.size());
+        }
+
+        ClearEntitySelection();
+        ClearWallSelection();
+        ClearFlatSelection();
+        return 0;
+    }
+
+    // ---- Slope handles --------------------------------------------------------
+    // The selected floor or ceiling shows a handle in the middle of each edge
+    // of its sector's bounding box. Dragging one up or down slopes the surface
+    // toward that edge, turning about the opposite edge, which keeps its
+    // height.
+    struct SlopeHandle {
+        SlopeDirection direction = PLUS_X;
+        Vector2 point;  // map X, Z
+        Vector2 pivot;  // the opposite edge's middle
+        float run = 0.0f; // pivot to handle
+    };
+
+    struct SlopeDrag {
+        bool active = false;
+        int handle = -1;
+        float pivotHeight = 0.0f;
+        float startHeight = 0.0f; // the handle's height when the drag began
+        float mouseDeltaY = 0.0f;
+        bool changed = false;
+        UndoStep undo;
+    };
+
+    SlopeDrag slopeDrag;
+    int hoveredSlopeHandle = -1;
+
+    // The primary selected floor or ceiling, when one is selected.
+    SectorSurface* PrimaryFlatSurface(Level& level, Sector** sectorOut) {
+        if (!editingSector || selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) return nullptr;
+
+        Sector& sector = level.sectors[selectedSector];
+        if (selectedSectorFloor < 0 || selectedSectorFloor >= static_cast<int>(sector.floors.size())) return nullptr;
+
+        if (sectorOut != nullptr) *sectorOut = &sector;
+
+        SectorFloor& interval = sector.floors[selectedSectorFloor];
+        return selectedSectorSurface == RayHitType::SectorCeiling ? &interval.ceiling : &interval.floor;
+    }
+
+    std::array<SlopeHandle, 4> SlopeHandles(const Sector& sector) {
+        const WallPieces::SectorBounds bounds = WallPieces::ComputeSectorBounds(sector);
+        const float midX = (bounds.minX + bounds.maxX) * 0.5f;
+        const float midZ = (bounds.minY + bounds.maxY) * 0.5f;
+        const float width = bounds.maxX - bounds.minX;
+        const float depth = bounds.maxY - bounds.minY;
+
+        // The same edges the slope is measured from (MapQueries::SurfaceHeightAt).
+        return {{
+            {PLUS_X, {bounds.maxX, midZ}, {bounds.minX, midZ}, width},
+            {MINUS_X, {bounds.minX, midZ}, {bounds.maxX, midZ}, width},
+            {PLUS_Z, {midX, bounds.maxY}, {midX, bounds.minY}, depth},
+            {MINUS_Z, {midX, bounds.minY}, {midX, bounds.maxY}, depth},
+        }};
+    }
+
+    // The handle under `mouse`, or -1.
+    int PickSlopeHandle(Level& level, const TransformGizmo::View& view, const Vector2 mouse) {
+        constexpr float PICK_RADIUS = 9.0f;
+
+        Sector* sector = nullptr;
+        const SectorSurface* surface = PrimaryFlatSurface(level, &sector);
+        if (surface == nullptr) return -1;
+
+        const std::array<SlopeHandle, 4> handles = SlopeHandles(*sector);
+
+        for (int i = 0; i < static_cast<int>(handles.size()); ++i) {
+            if (handles[i].run <= 0.0f) continue;
+
+            const Vector3 point = {handles[i].point.x, MapQueries::SurfaceHeightAt(*sector, *surface, handles[i].point), handles[i].point.y};
+            Vector2 screen;
+            if (!TransformGizmo::ProjectPoint(view, point, screen)) continue;
+
+            const float dx = screen.x - mouse.x;
+            const float dy = screen.y - mouse.y;
+            if (dx * dx + dy * dy <= PICK_RADIUS * PICK_RADIUS) return i;
+        }
+
+        return -1;
+    }
+
+    // Starts, runs and ends a handle drag. True while the mouse belongs to it,
+    // so nothing else takes the click.
+    bool UpdateSlopeDrag(Level& level, const TransformGizmo::View& view, const bool pressed, const bool held, const bool snap) {
+        Sector* sector = nullptr;
+        SectorSurface* surface = PrimaryFlatSurface(level, &sector);
+
+        if (slopeDrag.active && (!held || surface == nullptr)) {
+            if (slopeDrag.changed) {
+                CommitUndo(std::move(slopeDrag.undo));
+                MapEditorInternal::MarkUnsavedChanges();
+            }
+
+            slopeDrag = {};
+            return false;
+        }
+
+        if (!slopeDrag.active) {
+            if (!pressed || hoveredSlopeHandle < 0 || surface == nullptr) return false;
+
+            const SlopeHandle handle = SlopeHandles(*sector)[hoveredSlopeHandle];
+
+            slopeDrag.active = true;
+            slopeDrag.handle = hoveredSlopeHandle;
+            slopeDrag.pivotHeight = MapQueries::SurfaceHeightAt(*sector, *surface, handle.pivot);
+            slopeDrag.startHeight = MapQueries::SurfaceHeightAt(*sector, *surface, handle.point);
+            slopeDrag.mouseDeltaY = 0.0f;
+            slopeDrag.changed = false;
+            slopeDrag.undo = CaptureGeometry(level, "runtime_editor.history.drag_slope");
+            return true;
+        }
+
+        const SlopeHandle handle = SlopeHandles(*sector)[slopeDrag.handle];
+        slopeDrag.mouseDeltaY += InputManager::GetMouseDelta().y;
+
+        // Screen pixels one world unit up covers at the handle, so the
+        // handle follows the cursor.
+        const Vector3 handlePoint = {handle.point.x, slopeDrag.startHeight, handle.point.y};
+        Vector2 screen;
+        Vector2 screenAbove;
+        float pixelsPerUnit = 1.0f;
+
+        if (TransformGizmo::ProjectPoint(view, handlePoint, screen) &&
+            TransformGizmo::ProjectPoint(view, handlePoint + Vector3{0.0f, 1.0f, 0.0f}, screenAbove))
+            pixelsPerUnit = std::max(std::abs(screen.y - screenAbove.y), 0.01f);
+
+        const float handleHeight = slopeDrag.startHeight - slopeDrag.mouseDeltaY / pixelsPerUnit;
+        float degrees = std::atan2(handleHeight - slopeDrag.pivotHeight, handle.run) * 180.0f / std::numbers::pi_v<float>;
+
+        if (snap) degrees = std::round(degrees);
+
+        if (surface->slopeDirection == handle.direction && surface->height == slopeDrag.pivotHeight && surface->slopeStrength == degrees)
+            return true;
+
+        const std::vector<SectorFloor> floorsBefore = sector->floors;
+
+        surface->slopeDirection = handle.direction;
+        surface->height = slopeDrag.pivotHeight;
+        surface->slopeStrength = degrees;
+
+        if (!sector->children.empty()) level.PropagateSectorChanges(sector->id, floorsBefore, sector->light);
+
+        slopeDrag.changed = true;
+        return true;
+    }
+
+    void DrawSlopeHandles(Level& level, const TransformGizmo::View& view) {
+        Sector* sector = nullptr;
+        const SectorSurface* surface = PrimaryFlatSurface(level, &sector);
+        if (surface == nullptr) return;
+
+        constexpr float RADIUS = 6.0f;
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+        const std::array<SlopeHandle, 4> handles = SlopeHandles(*sector);
+
+        for (int i = 0; i < static_cast<int>(handles.size()); ++i) {
+            const SlopeHandle& handle = handles[i];
+            if (handle.run <= 0.0f) continue;
+
+            const Vector3 point = {handle.point.x, MapQueries::SurfaceHeightAt(*sector, *surface, handle.point), handle.point.y};
+            Vector2 screen;
+            if (!TransformGizmo::ProjectPoint(view, point, screen)) continue;
+
+            const bool lit = slopeDrag.active ? slopeDrag.handle == i : hoveredSlopeHandle == i;
+            const Vector3& color = lit ? MapEditorInternal::highlightedHandleColor : MapEditorInternal::normalHandleColor;
+
+            // The edge it turns about, while dragging.
+            if (slopeDrag.active && slopeDrag.handle == i) {
+                const Vector3 pivot = {handle.pivot.x, MapQueries::SurfaceHeightAt(*sector, *surface, handle.pivot), handle.pivot.y};
+                Vector2 pivotScreen;
+
+                if (TransformGizmo::ProjectPoint(view, pivot, pivotScreen))
+                    drawList->AddLine({pivotScreen.x, pivotScreen.y}, {screen.x, screen.y}, IM_COL32(color.x, color.y, color.z, 160), 2.0f);
+            }
+
+            drawList->AddCircleFilled({screen.x, screen.y}, RADIUS, IM_COL32(color.x, color.y, color.z, 255));
+            drawList->AddCircle({screen.x, screen.y}, RADIUS, IM_COL32(0, 0, 0, 255), 0, 1.5f);
+        }
+
+        if (slopeDrag.active) {
+            char text[64];
+            std::snprintf(text, sizeof(text), "%.1f\xC2\xB0", surface->slopeStrength);
+            const Vector2 mouse = InputManager::GetMousePosition();
+            drawList->AddText({mouse.x + 14.0f, mouse.y + 10.0f}, IM_COL32(255, 255, 255, 255), text);
+        }
+    }
+
+    // Selects the wall, the sector's lowest floor or the entity and moves
+    // the camera to it. Linedefs and the level itself can only be selected
+    // in the 2D editor.
+    void FocusSelection(Level& level);
+
+    void SelectAndShowOwner(Level& level, const EventOwnerKind kind, const ID id) {
+        if (kind == EventOwnerKind::LINE) {
+            const auto it = level.wallIDToIndex.find(id);
+            if (it == level.wallIDToIndex.end()) return;
+            SelectOnlyWall(it->second);
+        }
+        else if (kind == EventOwnerKind::SECTOR) {
+            const int sectorIndex = FindSectorIndex(level, level.GetSector(id));
+            if (sectorIndex < 0 || level.sectors[sectorIndex].floors.empty()) return;
+            SelectOnlyFlat({sectorIndex, 0, RayHitType::SectorFloor});
+        }
+        else if (kind == EventOwnerKind::ENTITY) {
+            if (level.GetEntity(id) == nullptr) return;
+            SelectOnlyEntity(id);
+        }
+        else return;
+
+        FocusSelection(level);
+    }
+
     std::size_t SelectionCount() {
         return selectedEntityIds.size() + selectedWalls.size() + selectedFlats.size();
     }
@@ -1833,6 +2338,22 @@ namespace RuntimeEditorUi {
 
         ImGui::SameLine();
 
+        // ---- Tag Explorer
+        if (ToolbarButton("tag_explorer", ICON_FA_TAGS, "T",
+                          Localisation::Get("tag_explorer.title") + "\n" + Localisation::Get("tag_explorer.tooltip"),
+                          MapEditorInternal::runtimeTagExplorerVisible))
+            MapEditorInternal::runtimeTagExplorerVisible = !MapEditorInternal::runtimeTagExplorerVisible;
+
+        ImGui::SameLine();
+
+        // ---- Comments
+        if (ToolbarButton("comments", ICON_FA_NOTE_STICKY, "C",
+                          Localisation::Get("comments.title") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("comments.tooltip")),
+                          MapEditorInternal::runtimeCommentsVisible))
+            MapEditorInternal::runtimeCommentsVisible = !MapEditorInternal::runtimeCommentsVisible;
+
+        ImGui::SameLine();
+
         // ---- Statistics
         if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
                           Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
@@ -1892,7 +2413,15 @@ namespace RuntimeEditorUi {
 
         {
             TransformGizmo::View view;
-            if (BuildGizmoView(view)) DrawEventLinks(level, view);
+
+            if (BuildGizmoView(view)) {
+                DrawEventLinks(level, view);
+                DrawSlopeHandles(level, view);
+
+                Comments::DrawIcons(level, [&view](const Vector3& world, Vector2& screen) {
+                    return TransformGizmo::ProjectPoint(view, world, screen);
+                }, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow));
+            }
         }
 
         if (const ComponentTransform* gizmoTarget = GizmoTarget(level)) {
@@ -2138,6 +2667,46 @@ namespace RuntimeEditorUi {
             ImGui::End();
 
             if (MapEditorInternal::runtimeHistoryVisible) DrawHistoryWindow(level);
+
+            // This editor's actions that have no key of their own.
+            static const bool paletteCommandsRegistered = [] {
+                CommandPalette::Register("command_palette.command.rt_toggle_tag_explorer", MapEditorInternal::KEYSCOPE_RUNTIME,
+                    [] { MapEditorInternal::runtimeTagExplorerVisible = !MapEditorInternal::runtimeTagExplorerVisible; });
+                CommandPalette::Register("command_palette.command.rt_toggle_comments", MapEditorInternal::KEYSCOPE_RUNTIME,
+                    [] { MapEditorInternal::runtimeCommentsVisible = !MapEditorInternal::runtimeCommentsVisible; });
+                CommandPalette::Register("command_palette.command.rt_toggle_history", MapEditorInternal::KEYSCOPE_RUNTIME,
+                    [] { MapEditorInternal::runtimeHistoryVisible = !MapEditorInternal::runtimeHistoryVisible; });
+                return true;
+            }();
+            (void)paletteCommandsRegistered;
+
+            // The UI editor is reached through the 2D editor.
+            CommandPalette::Draw(MapEditorInternal::KEYSCOPE_RUNTIME, [](const MapEditorInternal::KeyBindScope scope) {
+                backToEditorRequested = true;
+                if (scope == MapEditorInternal::KEYSCOPE_UI) MapEditorInternal::currentState = MapEditorInternal::STATE_UI;
+            });
+
+            if (MapEditorInternal::runtimeTagExplorerVisible) {
+                TagExplorer::Draw(level, (Localisation::Get("tag_explorer.title") + "###RuntimeTagExplorer").c_str(),
+                    &MapEditorInternal::runtimeTagExplorerVisible,
+                    [&level](const EventOwnerKind kind, const ID id) { SelectAndShowOwner(level, kind, id); });
+            }
+
+            // A pin moves the camera to look at it; anything else is selected.
+            if (MapEditorInternal::runtimeCommentsVisible) {
+                Comments::DrawPanel(level, (Localisation::Get("comments.title") + "###RuntimeComments").c_str(),
+                    &MapEditorInternal::runtimeCommentsVisible, [&level](const EditorComment& comment) {
+                        if (comment.target != EditorCommentTarget::PIN) {
+                            SelectAndShowOwner(level, Comments::OwnerKindFor(comment.target), comment.targetID);
+                            return;
+                        }
+
+                        constexpr float PIN_VIEW_DISTANCE = 48.0f;
+                        Vector3 anchor;
+                        if (transform != nullptr && camera != nullptr && Comments::Anchor(level, comment, anchor))
+                            transform->SetPosition(anchor - camera->forward * PIN_VIEW_DISTANCE);
+                    });
+            }
 
             DrawToolbar();
         }
@@ -2626,11 +3195,23 @@ namespace RuntimeEditor {
 
         //endregion
 
+        // Slope handles of the selected floor or ceiling, before the texture
+        // drag, so a press on a handle doesn't slide the texture under it.
+        hoveredSlopeHandle = haveGizmoView && windowFocused && !mouseBlockedByImGui && !cameraLooking && !draggingUv
+            ? PickSlopeHandle(level, gizmoView, InputManager::GetMousePosition())
+            : -1;
+
+        const bool slopeDragTakesMouse = haveGizmoView && UpdateSlopeDrag(level, gizmoView,
+            InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && windowFocused && !mouseBlockedByImGui && !dragDropActive && !cameraLooking,
+            InputManager::GetMouseButton(SDL_BUTTON_LEFT) && windowFocused,
+            MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_DISABLE_SNAP));
+
         if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) &&
             windowFocused &&
             !mouseBlockedByImGui &&
             !dragDropActive &&
             !cameraLooking &&
+            !slopeDragTakesMouse &&
             !TransformGizmo::IsDragging() &&
             IsUvEditableSurface(hoveredSurface.type)) {
             uvDragUndo = CaptureGeometry(level, "runtime_editor.history.drag_texture");
@@ -2758,6 +3339,7 @@ namespace RuntimeEditor {
             using MapEditorInternal::GetComboDown;
 
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_BACK_TO_EDITOR)) backToEditorRequested = true;
+            if (GetComboDown(MapEditorInternal::COMBO_COMMAND_PALETTE)) CommandPalette::Open();
 
             // Same as the map editor's Save & Play; play returns here.
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_SAVE_AND_PLAY) &&
@@ -2814,8 +3396,44 @@ namespace RuntimeEditor {
                 ShowToastf("editor.geometry.align.fit_done", changed);
             }
             else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES)) {
-                const int changed = RunMapEditorWallTool(level, &MapEditorInternal::AlignSelectedWallTextures);
-                ShowToastf("editor.geometry.align.chain_done", changed);
+                ShowToastf("editor.geometry.align.chain_done", AlignTextures(level, true, true, !mouseBlockedByImGui));
+            }
+            else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES_X)) {
+                ShowToastf("editor.geometry.align.chain_done", AlignTextures(level, true, false, !mouseBlockedByImGui));
+            }
+            else if (GetComboDown(MapEditorInternal::COMBO_RT_ALIGN_TEXTURES_Y)) {
+                ShowToastf("editor.geometry.align.chain_done", AlignTextures(level, false, true, !mouseBlockedByImGui));
+            }
+
+            if (GetComboDown(MapEditorInternal::COMBO_RT_FLOOD_FILL_TEXTURE) && !mouseBlockedByImGui) {
+                UndoStep before = CaptureGeometry(level, "runtime_editor.history.flood_fill_texture");
+                const int filled = FloodFillTexture(level);
+                CommitUndoIf(std::move(before), filled);
+
+                if (filled > 0) {
+                    MapEditorInternal::MarkUnsavedChanges();
+                    runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+                    ShowToastf("runtime_editor.toast.flood_filled", filled);
+                }
+                else if (!surfaceClipboard.hasTexture)
+                    ImGuiDrawFunctions::ShowNotification(Localisation::Get("runtime_editor.toast.flood_fill_no_texture").c_str(), true, 2.0f);
+            }
+
+            for (int group = 0; group < EDITOR_SELECTION_GROUP_COUNT; ++group) {
+                if (!GetComboDown(static_cast<MapEditorInternal::EditorCombo>(MapEditorInternal::COMBO_SELECT_GROUP_1 + group))) continue;
+
+                char message[128];
+
+                if (MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_ASSIGN_GROUP_MODIFIER)) {
+                    AssignSelectionGroup(level, group);
+                    std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.group_assigned").c_str(), (group + 1) % 10);
+                    ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
+                }
+                else {
+                    const int count = SelectSelectionGroup(level, group);
+                    std::snprintf(message, sizeof(message), Localisation::Get(count > 0 ? "editor.toast.group_selected" : "editor.toast.group_empty").c_str(), (group + 1) % 10, count);
+                    ImGuiDrawFunctions::ShowNotification(message, count == 0, 1.5f);
+                }
             }
 
             if (GetComboDown(MapEditorInternal::COMBO_RT_REDO)) Redo(level);
@@ -2841,6 +3459,73 @@ namespace RuntimeEditor {
             if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_TOGGLE_ENTITY_MARKERS)) CycleEntityMarkerMode(true);
 
             if (!mouseBlockedByImGui && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_PLACE_ENTITY)) PlacePaletteEntityAtHover(level);
+
+            // Faces the selected entities toward the point under the cursor,
+            // or away from it with Ctrl.
+            if (!mouseBlockedByImGui && hit.has_value() && !selectedEntityIds.empty() &&
+                MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_POINT_AT_CURSOR)) {
+                const bool away = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+                const int turned = MapEditorInternal::PointEntitiesAt(level, selectedEntityIds, {hit->position.x, hit->position.z}, away);
+                if (turned > 0) ShowToastf("editor.toast.entities_pointed", turned);
+            }
+
+            // A comment on the hovered wall, floor or ceiling (its sector) or
+            // entity, or a pin where the cursor points at nothing else.
+            if (!mouseBlockedByImGui && hit.has_value() && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_ADD_COMMENT)) {
+                EditorCommentTarget target = EditorCommentTarget::PIN;
+                ID targetID = INVALID_ID;
+
+                if (hoveredSurface.type == RayHitType::Wall && hoveredSurface.wallIndex >= 0 && hoveredSurface.wallIndex < static_cast<int>(level.walls.size())) {
+                    target = EditorCommentTarget::WALL;
+                    targetID = level.walls[hoveredSurface.wallIndex].id;
+                }
+                else if ((hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling) &&
+                         hoveredSurface.sectorIndex >= 0 && hoveredSurface.sectorIndex < static_cast<int>(level.sectors.size())) {
+                    target = EditorCommentTarget::SECTOR;
+                    targetID = level.sectors[hoveredSurface.sectorIndex].id;
+                }
+                else if (hoveredSurface.type == RayHitType::Entity && hoveredSurface.entityID != INVALID_ID) {
+                    target = EditorCommentTarget::ENTITY;
+                    targetID = hoveredSurface.entityID;
+                }
+
+                Comments::Add(level, target, targetID, {hit->position.x, hit->position.z});
+                MapEditorInternal::runtimeCommentsVisible = true;
+            }
+
+            // Selected floors and ceilings, else the hovered one, to the next
+            // neighbouring height (Ctrl: the highest or lowest).
+            const bool raiseToNeighbour = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_RAISE_TO_NEIGHBOUR);
+            const bool lowerToNeighbour = MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_LOWER_TO_NEIGHBOUR);
+
+            if (raiseToNeighbour != lowerToNeighbour) {
+                std::vector<MapEditorInternal::FlatTarget> targets;
+
+                for (const SelectedFlat& flat : TargetFlats(level, !mouseBlockedByImGui))
+                    targets.push_back({level.sectors[flat.sectorIndex].id, flat.floorIndex, flat.surface == RayHitType::SectorCeiling});
+
+                const bool extreme = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+                const int moved = MapEditorInternal::MoveFlatsToNeighbourHeight(level, targets, raiseToNeighbour, extreme);
+
+                if (moved > 0) ShowToastf("editor.toast.moved_to_neighbour", moved);
+                else ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.no_neighbour_height").c_str(), true, 1.5f);
+            }
+
+            // The selected floors' and ceilings' sectors take the light of
+            // the hovered one's.
+            if (!mouseBlockedByImGui && !selectedFlats.empty() &&
+                MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_MATCH_BRIGHTNESS) &&
+                (hoveredSurface.type == RayHitType::SectorFloor || hoveredSurface.type == RayHitType::SectorCeiling) &&
+                hoveredSurface.sectorIndex >= 0 && hoveredSurface.sectorIndex < static_cast<int>(level.sectors.size())) {
+                std::vector<ID> sectorIDs;
+
+                for (const SelectedFlat& flat : selectedFlats)
+                    if (flat.sectorIndex >= 0 && flat.sectorIndex < static_cast<int>(level.sectors.size()))
+                        sectorIDs.push_back(level.sectors[flat.sectorIndex].id);
+
+                ShowToastf("editor.toast.brightness_matched",
+                    MapEditorInternal::MatchSectorBrightness(level, sectorIDs, level.sectors[hoveredSurface.sectorIndex].id));
+            }
 
         }
 
@@ -2879,6 +3564,22 @@ namespace RuntimeEditor {
                     MapEditorInternal::MarkUnsavedChanges();
                 }
             }
+        }
+
+        // Select connected: its key held while right clicking, with the
+        // same texture, or at the same height with the second key held too.
+        // Takes the click before select by texture, which shares a key with
+        // the by-height one.
+        const bool selectConnectedHeld = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_SELECT_CONNECTED);
+
+        if (!rightClickTaken && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && !mouseBlockedByImGui && selectConnectedHeld) {
+            rightClickTaken = true;
+
+            const bool byHeight = MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_CONNECTED_BY_HEIGHT);
+
+            if (SelectConnected(level, byHeight))
+                ShowToastf(byHeight ? "runtime_editor.toast.selected_connected_height" : "runtime_editor.toast.selected_connected_texture",
+                           static_cast<int>(SelectionCount()));
         }
 
         // Select by texture: its key held while right clicking.

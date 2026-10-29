@@ -1,6 +1,10 @@
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "EditorInternal.hpp"
 
+#ifndef TILKY_STANDALONE
+#include "Comments.hpp"
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -237,6 +241,13 @@ namespace MapEditorInternal {
             assetBrowserVisible = settings.value("assetBrowserVisible", true);
             historyVisible = settings.value("historyVisible", false);
             runtimeHistoryVisible = settings.value("runtimeHistoryVisible", false);
+            tagExplorerVisible = settings.value("tagExplorerVisible", false);
+            runtimeTagExplorerVisible = settings.value("runtimeTagExplorerVisible", false);
+#ifndef TILKY_STANDALONE
+            commentsVisible = settings.value("commentsVisible", false);
+            runtimeCommentsVisible = settings.value("runtimeCommentsVisible", false);
+            Comments::showIcons = settings.value("showCommentIcons", true);
+#endif
             entityMarkerMode = static_cast<EntityMarkerMode>(std::clamp(
                 settings.value("entityMarkerMode", static_cast<int>(EntityMarkerMode::Always)),
                 0,
@@ -490,6 +501,13 @@ namespace MapEditorInternal {
                 {"assetBrowserVisible", assetBrowserVisible},
                 {"historyVisible", historyVisible},
                 {"runtimeHistoryVisible", runtimeHistoryVisible},
+                {"tagExplorerVisible", tagExplorerVisible},
+                {"runtimeTagExplorerVisible", runtimeTagExplorerVisible},
+#ifndef TILKY_STANDALONE
+                {"commentsVisible", commentsVisible},
+                {"runtimeCommentsVisible", runtimeCommentsVisible},
+                {"showCommentIcons", Comments::showIcons},
+#endif
                 {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},

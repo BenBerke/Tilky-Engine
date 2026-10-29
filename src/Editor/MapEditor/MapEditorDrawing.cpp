@@ -6,6 +6,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp" // This includes "SSECompat.hpp"
+#include "Headers/Math/Constants.hpp"
 
 #include "imgui.h"
 
@@ -13,12 +14,15 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <limits>
+#include <optional>
 #include <string>
 
 #include <spdlog/spdlog.h>
 
 #include "Headers/Math/Geometry/Geometry.hpp"
 #include "../EventLinks.hpp"
+#include "../Comments.hpp"
 
 namespace {
     // UTILITY
@@ -575,8 +579,169 @@ namespace MapEditorInternal {
         DrawSnapIndicator();
     }
 
+    // ---- View modes ----------------------------------------------------------
+    namespace {
+        constexpr float VIEW_MODE_FILL_ALPHA = 0.75f;
+
+        // The lowest and highest value the current height view shows, over
+        // every sector, so the colours spread across what the level uses.
+        struct ViewRange {
+            float low = 0.0f;
+            float high = 0.0f;
+        };
+
+        // How tall the level's player is: the collider of its first Player
+        // Controller entity. 0 when there is none.
+        float PlayerHeight(const Level& level) {
+            for (const ComponentPlayerController& controller : level.playerControllers.components) {
+                const ComponentTransform* transform = level.transforms.Get(controller.ownerID);
+                const ComponentCollider* collider = level.colliders.Get(controller.ownerID);
+
+                if (transform != nullptr && collider != nullptr) return collider->Height(*transform);
+            }
+
+            return 0.0f;
+        }
+
+        // The value a height view shows for `sector`, from its lowest floor.
+        std::optional<float> ViewModeValue(const Sector& sector) {
+            if (sector.floors.empty()) return std::nullopt;
+
+            const SectorFloor& floor = sector.floors.front();
+
+            switch (textureViewMode) {
+                case TextureViewMode::FloorHeight: return floor.floor.height;
+                case TextureViewMode::CeilingHeight: return floor.ceiling.height;
+                case TextureViewMode::RoomHeight: return floor.ceiling.height - floor.floor.height;
+                default: return std::nullopt;
+            }
+        }
+
+        ViewRange ComputeViewRange(const Level& level) {
+            ViewRange range;
+            bool any = false;
+
+            for (const Sector& sector : level.sectors) {
+                const std::optional<float> value = ViewModeValue(sector);
+                if (!value.has_value()) continue;
+
+                range.low = any ? std::min(range.low, *value) : *value;
+                range.high = any ? std::max(range.high, *value) : *value;
+                any = true;
+            }
+
+            return range;
+        }
+
+        // Blue at 0 through cyan, green and yellow to red at 1.
+        SDL_FColor HeatColor(const float t, const float alpha) {
+            constexpr SDL_FColor STOPS[] = {
+                {0.15f, 0.30f, 1.00f, 1.0f},
+                {0.10f, 0.85f, 0.95f, 1.0f},
+                {0.20f, 0.85f, 0.25f, 1.0f},
+                {0.95f, 0.90f, 0.15f, 1.0f},
+                {1.00f, 0.35f, 0.10f, 1.0f},
+            };
+            constexpr int LAST = static_cast<int>(std::size(STOPS)) - 1;
+
+            const float scaled = std::clamp(t, 0.0f, 1.0f) * LAST;
+            const int index = std::min(static_cast<int>(scaled), LAST - 1);
+            const float fraction = scaled - static_cast<float>(index);
+
+            const SDL_FColor& a = STOPS[index];
+            const SDL_FColor& b = STOPS[index + 1];
+
+            return {a.r + (b.r - a.r) * fraction, a.g + (b.g - a.g) * fraction, a.b + (b.b - a.b) * fraction, alpha};
+        }
+
+        constexpr SDL_FColor TOO_LOW_COLOR = {0.85f, 0.05f, 0.05f, VIEW_MODE_FILL_ALPHA};
+
+        // The fill the current view mode gives `sector`, or nothing for the
+        // modes that keep the usual colours.
+        std::optional<SDL_FColor> ViewModeSectorColor(const Level& level, const Sector& sector, const ViewRange& range) {
+            if (textureViewMode == TextureViewMode::Brightness) {
+                return SDL_FColor{
+                    std::clamp(sector.light.x / 255.0f, 0.0f, 1.0f),
+                    std::clamp(sector.light.y / 255.0f, 0.0f, 1.0f),
+                    std::clamp(sector.light.z / 255.0f, 0.0f, 1.0f),
+                    VIEW_MODE_FILL_ALPHA
+                };
+            }
+
+            const std::optional<float> value = ViewModeValue(sector);
+            if (!value.has_value()) return std::nullopt;
+
+            if (textureViewMode == TextureViewMode::RoomHeight) {
+                const float playerHeight = PlayerHeight(level);
+                if (playerHeight > 0.0f && *value < playerHeight) return TOO_LOW_COLOR;
+            }
+
+            const float span = range.high - range.low;
+            const float t = span > 0.0f ? (*value - range.low) / span : 0.5f;
+
+            // Room heights run green to blue, so red is left for the rooms
+            // that are too low.
+            if (textureViewMode == TextureViewMode::RoomHeight) return HeatColor(0.5f - t * 0.5f, VIEW_MODE_FILL_ALPHA);
+
+            return HeatColor(t, VIEW_MODE_FILL_ALPHA);
+        }
+    }
+
+    void DrawViewModeLegend() {
+        if (textureViewMode != TextureViewMode::FloorHeight &&
+            textureViewMode != TextureViewMode::CeilingHeight &&
+            textureViewMode != TextureViewMode::RoomHeight) return;
+
+        const Level& level = LevelManager::CurrentLevel();
+        const ViewRange range = ComputeViewRange(level);
+
+        constexpr float BAR_WIDTH = 180.0f;
+        constexpr float BAR_HEIGHT = 12.0f;
+        constexpr float MARGIN = 16.0f;
+        constexpr int SEGMENTS = 32;
+
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        const float lineHeight = ImGui::GetTextLineHeight();
+        const ImVec2 barMin = {MARGIN, static_cast<float>(screenHeight) - MARGIN - BAR_HEIGHT - lineHeight - 4.0f};
+
+        const bool roomHeight = textureViewMode == TextureViewMode::RoomHeight;
+
+        for (int i = 0; i < SEGMENTS; ++i) {
+            const float t = static_cast<float>(i) / (SEGMENTS - 1);
+            const SDL_FColor color = HeatColor(roomHeight ? 0.5f - t * 0.5f : t, 1.0f);
+
+            drawList->AddRectFilled(
+                {barMin.x + BAR_WIDTH * i / SEGMENTS, barMin.y},
+                {barMin.x + BAR_WIDTH * (i + 1) / SEGMENTS, barMin.y + BAR_HEIGHT},
+                ImGui::ColorConvertFloat4ToU32({color.r, color.g, color.b, 1.0f}));
+        }
+
+        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        char text[64];
+
+        std::snprintf(text, sizeof(text), "%g", range.low);
+        drawList->AddText({barMin.x, barMin.y + BAR_HEIGHT + 2.0f}, textColor, text);
+
+        std::snprintf(text, sizeof(text), "%g", range.high);
+        drawList->AddText({barMin.x + BAR_WIDTH - ImGui::CalcTextSize(text).x, barMin.y + BAR_HEIGHT + 2.0f}, textColor, text);
+
+        if (roomHeight) {
+            const float playerHeight = PlayerHeight(level);
+
+            if (playerHeight > 0.0f) {
+                const ImVec2 swatchMin = {barMin.x + BAR_WIDTH + 12.0f, barMin.y};
+                drawList->AddRectFilled(swatchMin, {swatchMin.x + BAR_HEIGHT, swatchMin.y + BAR_HEIGHT},
+                    ImGui::ColorConvertFloat4ToU32({TOO_LOW_COLOR.r, TOO_LOW_COLOR.g, TOO_LOW_COLOR.b, 1.0f}));
+
+                std::snprintf(text, sizeof(text), Localisation::Get("editor.view_mode_legend.too_low").c_str(), playerHeight);
+                drawList->AddText({swatchMin.x + BAR_HEIGHT + 6.0f, swatchMin.y - 1.0f}, textColor, text);
+            }
+        }
+    }
+
     void DrawExistingSectors() {
         const Level &level = LevelManager::CurrentLevel();
+        const ViewRange viewRange = ComputeViewRange(level);
 
         const Vector2 mouseScreen = InputManager::GetMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
@@ -660,9 +825,14 @@ namespace MapEditorInternal {
             if (selected) sectorColor = ToFColor(highlightedSectorColor, 0.75f);
             else if (hovered) sectorColor = ToFColor(hoveredSectorColor, 0.65f);
 
+            if (!selected && !hovered && !sector.floors.empty()) {
+                if (const std::optional<SDL_FColor> viewColor = ViewModeSectorColor(level, sector, viewRange))
+                    sectorColor = *viewColor;
+            }
+
             SDL_Texture *floorTexture = nullptr;
 
-            if (textureViewMode != TextureViewMode::Off && !sector.floors.empty()) {
+            if (IsTextureViewShowingTextures(textureViewMode) && !sector.floors.empty()) {
                 const SectorFloor& shownFloor = sector.floors.front();
                 const std::string &textureFileName = textureViewMode == TextureViewMode::Ceiling
                     ? shownFloor.ceiling.texture
@@ -1265,6 +1435,56 @@ namespace MapEditorInternal {
         }
     }
 
+    void DrawCommentIcons() {
+        Comments::DrawIcons(LevelManager::CurrentLevel(), [](const Vector3& world, Vector2& screen) {
+            screen = WorldToScreen({world.x, world.z}, cameraPos);
+            return true;
+        }, !ImGui::GetIO().WantCaptureMouse);
+    }
+
+    void DrawPaintSelectBrush() {
+        if (!IsPaintSelectActive(ImGui::GetIO().WantCaptureMouse)) return;
+
+        constexpr int SEGMENTS = 32;
+        const Vector2 center = InputManager::GetMousePosition();
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, highlightedHandleColor.r, highlightedHandleColor.g, highlightedHandleColor.b, 220);
+
+        for (int i = 0; i < SEGMENTS; ++i) {
+            const float a0 = 2.0f * Constants::Pi * i / SEGMENTS;
+            const float a1 = 2.0f * Constants::Pi * (i + 1) / SEGMENTS;
+
+            SDL_RenderLine(renderer,
+                center.x + std::cos(a0) * paintSelectRadius, center.y + std::sin(a0) * paintSelectRadius,
+                center.x + std::cos(a1) * paintSelectRadius, center.y + std::sin(a1) * paintSelectRadius);
+        }
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    }
+
+    void DrawBackgroundImage() {
+        const EditorBackgroundImage& image = LevelManager::CurrentLevel().backgroundImage;
+        if (!image.visible || image.texture.empty() || image.opacity <= 0.0f) return;
+
+        SDL_Texture* texture = GetEditorTexture(image.texture);
+        if (texture == nullptr) return;
+
+        float width = 0.0f;
+        float height = 0.0f;
+        if (!SDL_GetTextureSize(texture, &width, &height)) return;
+
+        const Vector2 topLeft = WorldToScreen(image.position, cameraPos);
+        const SDL_FRect destination = {topLeft.x, topLeft.y, width * image.scale * editorZoom, height * image.scale * editorZoom};
+
+        // The cache shares the texture with the inspector thumbnails, so its
+        // alpha goes back afterwards.
+        SDL_SetTextureAlphaModFloat(texture, std::clamp(image.opacity, 0.0f, 1.0f));
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+        SDL_RenderTexture(renderer, texture, nullptr, &destination);
+        SDL_SetTextureAlphaModFloat(texture, 1.0f);
+    }
+
     void DrawGridDots() {
         constexpr float minorDotSize = 3.0f;
         constexpr float majorDotSize = 5.0f;
@@ -1284,21 +1504,35 @@ namespace MapEditorInternal {
         const float visibleHalfWidthWorld = (screenWidth * 0.5f) / editorZoom;
         const float visibleHalfHeightWorld = (screenHeight * 0.5f) / editorZoom;
 
-        const float leftWorld = cameraPos.x - visibleHalfWidthWorld;
-        const float rightWorld = cameraPos.x + visibleHalfWidthWorld;
-        const float bottomWorld = cameraPos.y - visibleHalfHeightWorld;
-        const float topWorld = cameraPos.y + visibleHalfHeightWorld;
+        // The grid can be moved and turned (Grid Tools), so the dots are
+        // walked in grid space, over the box that holds the screen's four
+        // corners there.
+        float leftGrid = std::numeric_limits<float>::max();
+        float rightGrid = std::numeric_limits<float>::lowest();
+        float bottomGrid = std::numeric_limits<float>::max();
+        float topGrid = std::numeric_limits<float>::lowest();
 
-        const float startX = std::floor(leftWorld / activeGridSize) * activeGridSize;
-        const float startY = std::floor(bottomWorld / activeGridSize) * activeGridSize;
+        for (const float cornerX : {-visibleHalfWidthWorld, visibleHalfWidthWorld}) {
+            for (const float cornerY : {-visibleHalfHeightWorld, visibleHalfHeightWorld}) {
+                const Vector2 corner = WorldToGrid({cameraPos.x + cornerX, cameraPos.y + cornerY});
+
+                leftGrid = std::min(leftGrid, corner.x);
+                rightGrid = std::max(rightGrid, corner.x);
+                bottomGrid = std::min(bottomGrid, corner.y);
+                topGrid = std::max(topGrid, corner.y);
+            }
+        }
+
+        const float startX = std::floor(leftGrid / activeGridSize) * activeGridSize;
+        const float startY = std::floor(bottomGrid / activeGridSize) * activeGridSize;
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        for (float worldX = startX; worldX <= rightWorld; worldX += activeGridSize) {
-            const bool majorX = IsOnMajorGridLine(worldX);
+        for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize) {
+            const bool majorX = IsOnMajorGridLine(gridX);
 
-            for (float worldY = startY; worldY <= topWorld; worldY += activeGridSize) {
-                const bool major = majorX && IsOnMajorGridLine(worldY);
+            for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize) {
+                const bool major = majorX && IsOnMajorGridLine(gridY);
                 const float dotSize = major ? majorDotSize : minorDotSize;
                 const Uint8 alpha = major ? 255 : minorAlpha;
 
@@ -1308,7 +1542,7 @@ namespace MapEditorInternal {
                     static_cast<Uint8>(gridColor.b * 255.0f),
                     static_cast<Uint8>(gridColor.a * 255.0f));
 
-                const Vector2 screenPos = WorldToScreen({worldX, worldY}, cameraPos);
+                const Vector2 screenPos = WorldToScreen(GridToWorld({gridX, gridY}), cameraPos);
 
                 SDL_FRect dotRect = {
                     screenPos.x - dotSize * 0.5f,
@@ -1320,6 +1554,19 @@ namespace MapEditorInternal {
                 SDL_RenderFillRect(renderer, &dotRect);
             }
         }
+
+        // A small cross on the map's origin, which stays put when the grid
+        // moves.
+        constexpr float ORIGIN_CROSS_HALF_SIZE = 8.0f;
+        const Vector2 origin = WorldToScreen({0.0f, 0.0f}, cameraPos);
+
+        SDL_SetRenderDrawColor(renderer,
+            static_cast<Uint8>(themeTextColor.r),
+            static_cast<Uint8>(themeTextColor.g),
+            static_cast<Uint8>(themeTextColor.b),
+            200);
+        SDL_RenderLine(renderer, origin.x - ORIGIN_CROSS_HALF_SIZE, origin.y, origin.x + ORIGIN_CROSS_HALF_SIZE, origin.y);
+        SDL_RenderLine(renderer, origin.x, origin.y - ORIGIN_CROSS_HALF_SIZE, origin.x, origin.y + ORIGIN_CROSS_HALF_SIZE);
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }

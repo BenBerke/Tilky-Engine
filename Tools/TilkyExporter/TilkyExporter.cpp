@@ -343,6 +343,30 @@ static bool PrecompileScripts(const fs::path& assetsDest, std::vector<std::strin
     return problems.size() == problemsBefore;
 }
 
+// Takes the editor-only data (comments, selection groups, grid, wall snaps,
+// editor cameras) out of every level in the export; the game never reads it.
+// Returns false if a level couldn't be rewritten.
+static bool StripEditorDataFromLevels(const fs::path& assetsDest, std::vector<std::string>& problems) {
+    std::error_code ec;
+    const std::size_t problemsBefore = problems.size();
+
+    for (fs::recursive_directory_iterator it(assetsDest, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file() || it->path().extension() != ".bson") continue;
+
+        bool removed = false;
+        std::string errorMessage;
+
+        if (!LevelSerialization::StripEditorData(it->path(), &removed, &errorMessage))
+            problems.push_back("Failed to strip editor data from " + it->path().string() + ": " + errorMessage);
+        else if (removed)
+            std::cout << "Stripped editor data from " << it->path().lexically_relative(assetsDest).generic_string() << "\n";
+    }
+
+    if (ec) problems.push_back("Failed to scan " + assetsDest.string() + " for levels: " + ec.message());
+
+    return problems.size() == problemsBefore;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -382,6 +406,13 @@ int main(int argc, char** argv) {
     if (!CopyDirRecursive(assetsSrc, assetsDest)) return 1;
     std::cout << "Copied assets from " << assetsSrc
               << " to " << assetsDest << "\n";
+
+    std::vector<std::string> levelProblems;
+    if (!StripEditorDataFromLevels(assetsDest, levelProblems)) {
+        std::cerr << "\nExport failed: " << levelProblems.size() << " level problem(s):\n";
+        for (const std::string& problem : levelProblems) std::cerr << "  - " << problem << "\n";
+        return 1;
+    }
 
     std::vector<std::string> modelProblems;
     if (!ExportModelDependencies(assetsSrc, assetsDest, modelProblems)) return 1;

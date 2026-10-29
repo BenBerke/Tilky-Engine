@@ -11,6 +11,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include "src/Editor/EditorInternal.hpp"
+#include "src/Editor/CommandPalette.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
@@ -1701,6 +1702,7 @@ namespace MapEditorInternal {
 
         if (GetComboDown(COMBO_SAVE)) SaveFromUIEditor();
         if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_MAP;
+        if (GetComboDown(COMBO_COMMAND_PALETTE)) CommandPalette::Open();
     }
 
     void DrawUIEntityInspectorFor(Entity& entity, const std::string& windowTitle, const std::string& idSuffix, bool* open,
@@ -1756,6 +1758,11 @@ namespace MapEditorInternal {
     void DrawUIEditorUI() {
         DrawUIEditorDockSpace();
         DrawUICanvasContextMenu();
+
+        CommandPalette::Draw(KEYSCOPE_UI, [](const KeyBindScope scope) {
+            currentState = STATE_MAP;
+            if (scope == KEYSCOPE_RUNTIME) OpenRuntimeEditor();
+        });
 
         Level& level = LevelManager::CurrentLevel();
 

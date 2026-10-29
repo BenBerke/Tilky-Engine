@@ -318,6 +318,7 @@ namespace Editor {
             // drawn back on its wall.
             if (WallSnap::Enforce(LevelManager::CurrentLevel())) MarkUnsavedChanges();
 
+            DrawBackgroundImage();
             DrawExistingSectors();
             DrawGridDots();
             DrawWalls();
@@ -341,6 +342,10 @@ namespace Editor {
             // sector drawing, so it needs the same preview of where a
             // point will actually land.
             if (currentMode == MODE_SECTOR || currentMode == MODE_GEOMETRY) DrawSectorPreview();
+
+            DrawViewModeLegend();
+            DrawCommentIcons();
+            DrawPaintSelectBrush();
 
             DrawEditorUI();
         }

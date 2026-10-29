@@ -233,6 +233,10 @@ namespace MapEditorInternal {
     bool assetBrowserVisible = true;
     bool historyVisible = false;
     bool runtimeHistoryVisible = false;
+    bool tagExplorerVisible = false;
+    bool runtimeTagExplorerVisible = false;
+    bool commentsVisible = false;
+    bool runtimeCommentsVisible = false;
     EntityMarkerMode entityMarkerMode = EntityMarkerMode::Always;
 
     // In EditorKeyBind order.
@@ -262,6 +266,13 @@ namespace MapEditorInternal {
         {"place_entity",     "editor.key.place_entity",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_E}},
         {"delete",           "editor.key.delete",           "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_DELETE}},
         {"flip_linedef",     "editor.key.flip_linedef",     "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_H}},
+        {"point_at_cursor",  "editor.key.point_at_cursor",  "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_I}},
+        {"raise_floor_to_neighbour",   "editor.key.raise_floor_to_neighbour",   "editor.key_group.editing", KEYSCOPE_MAP, {SDL_SCANCODE_PAGEUP}},
+        {"lower_floor_to_neighbour",   "editor.key.lower_floor_to_neighbour",   "editor.key_group.editing", KEYSCOPE_MAP, {SDL_SCANCODE_PAGEDOWN}},
+        {"raise_ceiling_to_neighbour", "editor.key.raise_ceiling_to_neighbour", "editor.key_group.editing", KEYSCOPE_MAP, {SDL_SCANCODE_HOME}},
+        {"lower_ceiling_to_neighbour", "editor.key.lower_ceiling_to_neighbour", "editor.key_group.editing", KEYSCOPE_MAP, {SDL_SCANCODE_END}},
+        {"match_brightness", "editor.key.match_brightness", "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_Y}},
+        {"add_comment",      "editor.key.add_comment",      "editor.key_group.editing",    KEYSCOPE_MAP, {SDL_SCANCODE_C}},
 
         {"finish_shape",     "editor.key.finish_shape",     "editor.key_group.drawing",    KEYSCOPE_MAP, {SDL_SCANCODE_RETURN, SDL_SCANCODE_SPACE}},
         {"undo_point",       "editor.key.undo_point",       "editor.key_group.drawing",    KEYSCOPE_MAP, {SDL_SCANCODE_BACKSPACE}},
@@ -280,10 +291,16 @@ namespace MapEditorInternal {
         {"range_select",     "editor.key.range_select",     "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
         {"constrain_angle",  "editor.key.constrain_angle",  "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
         {"split_wall",       "editor.key.split_wall",       "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
+        {"paint_select",     "editor.key.paint_select",     "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_B}},
+
+        {"assign_group_modifier", "editor.key.assign_group_modifier", "editor.key_group.modifiers", KEYSCOPE_MAP, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
 
         {"toggle_grid_snap", "editor.key.toggle_grid_snap", "editor.key_group.grid",       KEYSCOPE_MAP, {SDL_SCANCODE_N}},
         {"grid_smaller",     "editor.key.grid_smaller",     "editor.key_group.grid",       KEYSCOPE_MAP, {SDL_SCANCODE_COMMA}},
         {"grid_larger",      "editor.key.grid_larger",      "editor.key_group.grid",       KEYSCOPE_MAP, {SDL_SCANCODE_PERIOD}},
+        {"grid_origin_here", "editor.key.grid_origin_here", "editor.key_group.grid",       KEYSCOPE_MAP, {SDL_SCANCODE_O}},
+        {"align_grid_to_wall", "editor.key.align_grid_to_wall", "editor.key_group.grid",   KEYSCOPE_MAP, {SDL_SCANCODE_K}},
+        {"reset_grid",       "editor.key.reset_grid",       "editor.key_group.grid",       KEYSCOPE_MAP, {SDL_SCANCODE_UNKNOWN}},
 
         {"rt_fly_forward",      "editor.key.rt_fly_forward",      "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_W}},
         {"rt_fly_back",         "editor.key.rt_fly_back",         "editor.key_group.runtime_camera",   KEYSCOPE_RUNTIME, {SDL_SCANCODE_S}},
@@ -310,7 +327,14 @@ namespace MapEditorInternal {
         {"rt_focus_selection",  "editor.key.rt_focus_selection",  "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_F}},
         {"rt_toggle_entity_markers", "editor.key.rt_toggle_entity_markers", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_M}},
         {"rt_place_entity",     "editor.key.rt_place_entity",     "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_E}},
+        {"rt_point_at_cursor",  "editor.key.rt_point_at_cursor",  "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_I}},
+        {"rt_raise_to_neighbour", "editor.key.rt_raise_to_neighbour", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_PAGEUP}},
+        {"rt_lower_to_neighbour", "editor.key.rt_lower_to_neighbour", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_PAGEDOWN}},
+        {"rt_match_brightness", "editor.key.rt_match_brightness", "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_J}},
+        {"rt_add_comment",      "editor.key.rt_add_comment",      "editor.key_group.runtime_editing",  KEYSCOPE_RUNTIME, {SDL_SCANCODE_C}},
         {"rt_select_by_texture", "editor.key.rt_select_by_texture", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
+        {"rt_select_connected", "editor.key.rt_select_connected", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
+        {"rt_connected_by_height", "editor.key.rt_connected_by_height", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_fine_scroll",      "editor.key.rt_fine_scroll",      "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
         {"rt_back_to_editor",   "editor.key.rt_back_to_editor",   "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_V}},
@@ -355,6 +379,22 @@ namespace MapEditorInternal {
         {"rt_reset_placement", "editor.combo.rt_reset_placement", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_R, SDL_SCANCODE_RALT, SDL_SCANCODE_R}},
         {"rt_align_textures", "editor.combo.rt_align_textures", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_G, SDL_SCANCODE_RCTRL, SDL_SCANCODE_G}},
         {"rt_fit_textures",  "editor.combo.rt_fit_textures",  "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LALT, SDL_SCANCODE_G, SDL_SCANCODE_RALT, SDL_SCANCODE_G}},
+        {"rt_align_textures_x", "editor.combo.rt_align_textures_x", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_X, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_X}},
+        {"rt_align_textures_y", "editor.combo.rt_align_textures_y", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_Y, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_Y}},
+        {"rt_flood_fill_texture", "editor.combo.rt_flood_fill_texture", "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_V, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_V}},
+
+        {"select_group_1", "editor.combo.select_group_1", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_1, SDL_SCANCODE_RALT, SDL_SCANCODE_1}},
+        {"select_group_2", "editor.combo.select_group_2", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_2, SDL_SCANCODE_RALT, SDL_SCANCODE_2}},
+        {"select_group_3", "editor.combo.select_group_3", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_3, SDL_SCANCODE_RALT, SDL_SCANCODE_3}},
+        {"select_group_4", "editor.combo.select_group_4", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_4, SDL_SCANCODE_RALT, SDL_SCANCODE_4}},
+        {"select_group_5", "editor.combo.select_group_5", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_5, SDL_SCANCODE_RALT, SDL_SCANCODE_5}},
+        {"select_group_6", "editor.combo.select_group_6", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_6, SDL_SCANCODE_RALT, SDL_SCANCODE_6}},
+        {"select_group_7", "editor.combo.select_group_7", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_7, SDL_SCANCODE_RALT, SDL_SCANCODE_7}},
+        {"select_group_8", "editor.combo.select_group_8", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_8, SDL_SCANCODE_RALT, SDL_SCANCODE_8}},
+        {"select_group_9", "editor.combo.select_group_9", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_9, SDL_SCANCODE_RALT, SDL_SCANCODE_9}},
+        {"select_group_10", "editor.combo.select_group_10", "editor.key_group.selection_groups", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_0, SDL_SCANCODE_RALT, SDL_SCANCODE_0}},
+
+        {"command_palette",  "editor.combo.command_palette",  "editor.key_group.all_editors",        KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_P, SDL_SCANCODE_RCTRL, SDL_SCANCODE_P}, true},
 
         {"ui_undo",          "editor.combo.ui_undo",          "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Z}},
         {"ui_redo",          "editor.combo.ui_redo",          "editor.key_group.ui_shortcuts",      KEYSCOPE_UI,      {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Y}},
@@ -397,9 +437,12 @@ namespace MapEditorInternal {
 
         // The 2D editor also uses the runtime editor's texture copy/paste
         // combos, so their keys are taken there too: Alt+V mustn't also
-        // press V (open the runtime editor).
+        // press V (open the runtime editor). The selection group combos are
+        // the runtime editor's too: Alt+1 mustn't also pick the Move tool.
         bool ComboUsedInScope(const int combo, const KeyBindScope scope) {
             if (COMBO_INFO[combo].scope == scope) return true;
+            if (combo >= COMBO_SELECT_GROUP_1 && combo <= COMBO_SELECT_GROUP_LAST) return scope == KEYSCOPE_RUNTIME;
+            if (combo == COMBO_COMMAND_PALETTE) return true;
             if (scope != KEYSCOPE_MAP) return false;
 
             switch (combo) {
@@ -415,9 +458,14 @@ namespace MapEditorInternal {
 
         // `key` is the second key of a combo used in `scope` whose first key
         // is held right now.
+        bool ShiftHeld() {
+            return InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+        }
+
         bool IsKeyTakenByCombo(const SDL_Scancode key, const KeyBindScope scope) {
             for (int combo = 0; combo < COMBO_COUNT; ++combo) {
                 if (!ComboUsedInScope(combo, scope)) continue;
+                if (COMBO_INFO[combo].needsShift && !ShiftHeld()) continue;
 
                 for (int set = 0; set < COMBO_SLOTS; set += 2) {
                     const SDL_Scancode first = comboBindings[combo][set];
@@ -431,7 +479,39 @@ namespace MapEditorInternal {
         }
     }
 
+    namespace {
+        // What the command palette pressed, and until when it waits to be
+        // asked for (SDL ticks).
+        constexpr Uint64 PALETTE_PRESS_TIMEOUT_MS = 2000;
+
+        int pressedKeyBind = KEYBIND_COUNT;
+        int pressedCombo = COMBO_COUNT;
+        Uint64 pressExpiresAt = 0;
+
+        // True once for a pending press of `index` in `pressed`.
+        bool TakePress(int& pressed, const int index, const int none) {
+            if (pressed != index) return false;
+
+            pressed = none;
+            return SDL_GetTicks() <= pressExpiresAt;
+        }
+    }
+
+    void PressKeyBind(const EditorKeyBind bind) {
+        pressedKeyBind = bind;
+        pressedCombo = COMBO_COUNT;
+        pressExpiresAt = SDL_GetTicks() + PALETTE_PRESS_TIMEOUT_MS;
+    }
+
+    void PressCombo(const EditorCombo combo) {
+        pressedCombo = combo;
+        pressedKeyBind = KEYBIND_COUNT;
+        pressExpiresAt = SDL_GetTicks() + PALETTE_PRESS_TIMEOUT_MS;
+    }
+
     bool GetKeyBindDown(const EditorKeyBind bind) {
+        if (TakePress(pressedKeyBind, bind, KEYBIND_COUNT)) return true;
+
         for (const SDL_Scancode key : keyBindings[bind])
             if (key != SDL_SCANCODE_UNKNOWN && InputManager::GetKeyDown(key) && !IsKeyTakenByCombo(key, KEY_BIND_INFO[bind].scope)) return true;
         return false;
@@ -444,6 +524,9 @@ namespace MapEditorInternal {
     }
 
     bool GetComboDown(const EditorCombo combo) {
+        if (TakePress(pressedCombo, combo, COMBO_COUNT)) return true;
+        if (COMBO_INFO[combo].needsShift && !ShiftHeld()) return false;
+
         for (int set = 0; set < COMBO_SLOTS; set += 2) {
             const SDL_Scancode first = comboBindings[combo][set];
             const SDL_Scancode second = comboBindings[combo][set + 1];
@@ -469,8 +552,10 @@ namespace MapEditorInternal {
 
             if (second == SDL_SCANCODE_UNKNOWN) continue;
 
-            if (first == SDL_SCANCODE_UNKNOWN) return InputManager::ScancodeToString(second);
-            return InputManager::ScancodeToString(first) + "+" + InputManager::ScancodeToString(second);
+            const std::string shift = COMBO_INFO[combo].needsShift ? Localisation::Get("editor.user_settings.key_shift") + "+" : std::string();
+
+            if (first == SDL_SCANCODE_UNKNOWN) return shift + InputManager::ScancodeToString(second);
+            return InputManager::ScancodeToString(first) + "+" + shift + InputManager::ScancodeToString(second);
         }
 
         return Localisation::Get("editor.user_settings.key_none");

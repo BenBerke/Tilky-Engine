@@ -7,14 +7,17 @@
 #include <vector>
 
 #include "../EditorInternal.hpp"
+#include "../Comments.hpp"
 
 #include "imgui.h"
 #include "imgui_internal.h"
 
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/MapTopology.hpp"
 #include "Headers/Math/Geometry/Geometry.hpp"
+#include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 
@@ -181,6 +184,198 @@ namespace MapEditorInternal {
     // list holds IDs, like the sector and wall ones.
 
     ID wallSnapHoveredWallID = INVALID_ID;
+
+    bool IsPaintSelectActive(const bool mouseBlockedByImGui) {
+        return !mouseBlockedByImGui && currentState == STATE_MAP && (paintSelectTool || GetKeyBind(KEYBIND_PAINT_SELECT));
+    }
+
+    namespace {
+        // Adds `id` to `selection` (making it the primary when the selection
+        // was empty) or takes it out, keeping `primary` on something still
+        // selected.
+        void PaintInto(std::vector<ID>& selection, ID& primary, const ID id, const bool remove) {
+            const auto it = std::ranges::find(selection, id);
+
+            if (remove) {
+                if (it == selection.end()) return;
+
+                selection.erase(it);
+                if (primary == id) primary = selection.empty() ? INVALID_ID : selection.back();
+                return;
+            }
+
+            if (it != selection.end()) return;
+
+            selection.push_back(id);
+            if (primary == INVALID_ID) primary = id;
+        }
+
+        // One frame of a paint-select drag at `mouseWorld`.
+        void PaintSelectAt(Level& level, const Vector2& mouseWorld, const bool remove) {
+            const float radius = paintSelectRadius / std::max(editorZoom, 0.0001f);
+            const float radiusSq = radius * radius;
+
+            switch (currentMode) {
+                case MODE_GEOMETRY:
+                    if (linedefMode) {
+                        for (const Linedef& linedef : level.linedefs)
+                            if (DistancePointToSegmentSq(mouseWorld, linedef.start, linedef.end) <= radiusSq)
+                                PaintInto(selectedLinedefs, selectedLinedefID, linedef.id, remove);
+
+                        editingLinedef = selectedLinedefID != INVALID_ID;
+                    }
+                    else {
+                        for (const Wall& wall : level.walls)
+                            if (WallPassesFilter(wall) && DistancePointToSegmentSq(mouseWorld, wall.start, wall.end) <= radiusSq)
+                                PaintInto(selectedWalls, selectedWallID, wall.id, remove);
+
+                        editingWall = selectedWallID != INVALID_ID;
+                    }
+                    break;
+
+                case MODE_SECTOR: {
+                    // The sector under the brush's centre, holes respected,
+                    // so a sector nested in another is reachable.
+                    for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
+                        const Sector& sector = level.sectors[i];
+                        if (!Geometry::IsPointInPolygon(sector.vertices, sector.innerLoops, mouseWorld)) continue;
+
+                        PaintInto(selectedSectors, selectedSectorID, sector.id, remove);
+                        break;
+                    }
+
+                    editingSector = selectedSectorID != INVALID_ID;
+                    break;
+                }
+
+                case MODE_ENTITY: {
+                    const float entityRadius = radius + ENTITY_SIZE * 0.5f;
+                    ID primary = selectedEntities.empty() ? INVALID_ID : selectedEntity.id;
+
+                    for (const ComponentTransform& transform : level.transforms.components) {
+                        const Entity* entity = level.GetEntity(transform.ownerID);
+                        if (entity == nullptr || level.ui_transforms.Has(entity->id) || !EntityPassesFilter(*entity)) continue;
+
+                        const Vector2 position = {transform.position.x, transform.position.z};
+                        if (Vector2Math::DistanceSquared(position, mouseWorld) > entityRadius * entityRadius) continue;
+
+                        PaintInto(selectedEntities, primary, entity->id, remove);
+                    }
+
+                    if (const Entity* entity = primary == INVALID_ID ? nullptr : level.GetEntity(primary)) selectedEntity = *entity;
+                    else editingEntity = false;
+                    break;
+                }
+
+                default: break;
+            }
+        }
+    }
+
+    namespace {
+        void FocusCameraOnSelection();
+    }
+
+    void SelectAndShowObject(const EventOwnerKind kind, const ID id) {
+        switch (kind) {
+            case EventOwnerKind::LINE:
+                currentMode = MODE_GEOMETRY;
+                SetLinedefMode(false);
+                SelectWall(id);
+                break;
+
+            case EventOwnerKind::SECTOR:
+                currentMode = MODE_SECTOR;
+                SelectSector(id);
+                editingSector = selectedSectorID != INVALID_ID;
+                break;
+
+            case EventOwnerKind::LINEDEF:
+                currentMode = MODE_GEOMETRY;
+                SetLinedefMode(true);
+                SelectLinedef(id);
+                break;
+
+            case EventOwnerKind::ENTITY:
+                currentMode = MODE_ENTITY;
+                SelectEntity(id);
+                editingEntity = !selectedEntities.empty();
+                break;
+
+            case EventOwnerKind::LEVEL:
+                worldSettingsVisible = true;
+                return;
+        }
+
+        FocusCameraOnSelection();
+    }
+
+    void AssignSelectionGroup(const int index) {
+        if (index < 0 || index >= EDITOR_SELECTION_GROUP_COUNT) return;
+
+        Level& level = LevelManager::CurrentLevel();
+        level.selectionGroups[index] = {selectedWalls, selectedSectors, selectedLinedefs, selectedEntities};
+        MarkUnsavedChanges();
+    }
+
+    int SelectSelectionGroup(const int index) {
+        if (index < 0 || index >= EDITOR_SELECTION_GROUP_COUNT) return 0;
+
+        Level& level = LevelManager::CurrentLevel();
+        const EditorSelectionGroup& group = level.selectionGroups[index];
+
+        ClearWallSelection();
+        ClearSectorSelection();
+        ClearLinedefSelection();
+        ClearEntitySelection();
+
+        for (const ID id : group.walls)
+            if (level.wallIDToIndex.contains(id)) {
+                if (selectedWalls.empty()) SelectWall(id);
+                else selectedWalls.push_back(id);
+            }
+
+        for (const ID id : group.sectors)
+            if (level.GetSector(id) != nullptr) {
+                if (selectedSectors.empty()) SelectSector(id);
+                else selectedSectors.push_back(id);
+            }
+
+        for (const ID id : group.linedefs)
+            if (level.GetLinedef(id) != nullptr) {
+                if (selectedLinedefs.empty()) SelectLinedef(id);
+                else selectedLinedefs.push_back(id);
+            }
+
+        for (const ID id : group.entities)
+            if (level.GetEntity(id) != nullptr) {
+                if (selectedEntities.empty()) SelectEntity(id);
+                else selectedEntities.push_back(id);
+            }
+
+        // Stay in the current mode when it shows part of the group.
+        const bool currentShowsSome =
+            (currentMode == MODE_GEOMETRY && (linedefMode ? !selectedLinedefs.empty() : !selectedWalls.empty())) ||
+            (currentMode == MODE_SECTOR && !selectedSectors.empty()) ||
+            (currentMode == MODE_ENTITY && !selectedEntities.empty());
+
+        if (!currentShowsSome) {
+            if (!selectedEntities.empty()) currentMode = MODE_ENTITY;
+            else if (!selectedWalls.empty()) {
+                currentMode = MODE_GEOMETRY;
+                SetLinedefMode(false);
+            }
+            else if (!selectedLinedefs.empty()) {
+                currentMode = MODE_GEOMETRY;
+                SetLinedefMode(true);
+            }
+            else if (!selectedSectors.empty()) currentMode = MODE_SECTOR;
+        }
+
+        if (currentMode == MODE_SECTOR && !selectedSectors.empty()) editingSector = true;
+
+        return static_cast<int>(selectedWalls.size() + selectedSectors.size() + selectedLinedefs.size() + selectedEntities.size());
+    }
 
     namespace {
         // Right-click while Snap to Wall waits for a wall: a wall finishes
@@ -461,6 +656,48 @@ namespace MapEditorInternal {
         GeometrySnapshot dragUndoSnapshot;
         bool dragMutatedGeometry = false;
 
+        // Entities inside the sectors the drag moves whole, with where they
+        // were when it started (Sector Drag Carries Entities).
+        EntityTransformUndo dragCarriedEntities;
+
+        // Every entity standing in a sector all of whose corners are moving,
+        // so the drag picks the whole sector up. Snapped entities stay on
+        // their wall.
+        EntityTransformUndo FindCarriedEntities(const Level& level, const std::vector<Vector2>& movingPoints) {
+            EntityTransformUndo carried;
+            if (!dragCarriesEntities) return carried;
+
+            const auto isMoving = [&movingPoints](const Vector2& point) {
+                return std::ranges::any_of(movingPoints, [&point](const Vector2& moving) { return SamePoint(moving, point); });
+            };
+
+            std::vector<int> movedSectors;
+
+            for (int i = 0; i < static_cast<int>(level.sectors.size()); ++i) {
+                const Sector& sector = level.sectors[i];
+                if (sector.vertices.empty() || !std::ranges::all_of(sector.vertices, isMoving)) continue;
+
+                const bool innerLoopsMove = std::ranges::all_of(sector.innerLoops, [&isMoving](const std::vector<Vector2>& loop) {
+                    return std::ranges::all_of(loop, isMoving);
+                });
+
+                if (innerLoopsMove) movedSectors.push_back(i);
+            }
+
+            if (movedSectors.empty()) return carried;
+
+            for (const ComponentTransform& transform : level.transforms.components) {
+                if (level.wallSnaps.contains(transform.ownerID)) continue;
+
+                const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, {transform.position.x, transform.position.z});
+
+                if (std::ranges::find(movedSectors, sectorIndex) != movedSectors.end())
+                    carried.positions.emplace_back(transform.ownerID, transform.position);
+            }
+
+            return carried;
+        }
+
         void BeginWallDrag(const Vector2& mouseWorld,
                            const std::vector<Vector2>& movingPoints,
                            const Vector2& anchor,
@@ -499,6 +736,8 @@ namespace MapEditorInternal {
             dragUndoSnapshot = CaptureGeometryUndoSnapshot();
             dragMutatedGeometry = false;
 
+            dragCarriedEntities = FindCarriedEntities(level, movingPoints);
+
             draggingWallGeometry = true;
         }
 
@@ -523,11 +762,22 @@ namespace MapEditorInternal {
             // land on a wall doesn't litter the undo stack.
             if (!dragMutatedGeometry && (delta.x != 0.0f || delta.y != 0.0f)) {
                 PushGeometryUndoSnapshot(dragUndoSnapshot, "editor.history.move_points", static_cast<int>(dragMovingPoints.size()));
+                if (!dragCarriedEntities.positions.empty()) undoSteps.back().carriedEntities = dragCarriedEntities;
                 dragMutatedGeometry = true;
             }
 
             ApplyGeometryDragOffset(dragOriginalWalls, dragOriginalSectors, dragMovingPoints, delta);
             dragDelta = delta;
+
+            Level& level = LevelManager::CurrentLevel();
+
+            for (const auto& [entityID, start] : dragCarriedEntities.positions) {
+                ComponentTransform* transform = level.transforms.Get(entityID);
+                if (transform == nullptr) continue;
+
+                transform->SetPosition({start.x + delta.x, start.y, start.z + delta.y});
+                transform->isDirty = true;
+            }
         }
 
         // Commits whatever the drag ended up doing. Called on mouse-up, and
@@ -551,6 +801,7 @@ namespace MapEditorInternal {
             dragOriginalSectors.clear();
             dragMovingPoints.clear();
             dragSnapIgnoredWalls.clear();
+            dragCarriedEntities = {};
 
             if (!dragMutatedGeometry) return;
 
@@ -1721,6 +1972,14 @@ namespace MapEditorInternal {
                 cameraPos.x -= mouseDelta.x / editorZoom;
                 cameraPos.y -= mouseDelta.y / editorZoom;
             }
+            // Paint selection takes both buttons over while it's active:
+            // nothing else gets the click.
+            else if (IsPaintSelectActive(mouseBlockedByImGui)) {
+                const bool ctrlHeld = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+
+                if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) PaintSelectAt(level, mouseWorld, ctrlHeld);
+                else if (paintSelectTool && InputManager::GetMouseButton(SDL_BUTTON_RIGHT)) PaintSelectAt(level, mouseWorld, true);
+            }
             else if (currentMode == MODE_GEOMETRY) HandleGeometryModeMouse(mouseWorld);
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 if (currentMode == MODE_SECTOR) {
@@ -1790,7 +2049,8 @@ namespace MapEditorInternal {
             }
 
             //right click cancels/stops sector chain creation.
-            if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+            if (IsPaintSelectActive(mouseBlockedByImGui)) {}
+            else if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
                 const bool freehandHasPlacedPoints =
                     currentDrawTool == DRAWTOOL_FREEHAND &&
                     (manualSectorMode ? !manualSectorDots.empty() : !sectorBeingCreated.empty());
@@ -1943,10 +2203,130 @@ namespace MapEditorInternal {
                 ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
             }
 
+            // Grid tools. The origin needs the cursor on the canvas; aligning
+            // takes the wall under the cursor, else the selected one.
+            if (GetKeyBindDown(KEYBIND_GRID_ORIGIN_HERE) && !mouseBlockedByImGui && SetGridOriginAtCursor(mouseWorld))
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.grid_origin_moved").c_str(), false, 1.5f);
+
+            if (GetKeyBindDown(KEYBIND_ALIGN_GRID_TO_WALL)) {
+                const ID hovered = mouseBlockedByImGui ? INVALID_ID : PickWallAt(mouseWorld);
+
+                if (AlignGridToWall(hovered != INVALID_ID ? hovered : selectedWallID))
+                    ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.grid_aligned").c_str(), false, 1.5f);
+                else
+                    ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.grid_align_no_wall").c_str(), true, 2.0f);
+            }
+
+            if (GetKeyBindDown(KEYBIND_RESET_GRID)) {
+                ResetGridTransform();
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.grid_reset").c_str(), false, 1.5f);
+            }
+
+            // Ctrl turns them away from the cursor instead.
+            if (GetKeyBindDown(KEYBIND_POINT_AT_CURSOR) && !mouseBlockedByImGui && !selectedEntities.empty()) {
+                const bool away = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+                const int turned = PointEntitiesAt(level, selectedEntities, mouseWorld, away);
+
+                if (turned > 0) {
+                    char message[128];
+                    std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.entities_pointed").c_str(), turned);
+                    ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
+                }
+            }
+
+            // Floors and ceilings of the selected sectors, else of the one
+            // under the cursor, to the next neighbouring height (Ctrl: the
+            // highest or lowest). The lowest floor interval, the one the
+            // canvas shows.
+            {
+                const bool raiseFloor = GetKeyBindDown(KEYBIND_RAISE_FLOOR_TO_NEIGHBOUR);
+                const bool lowerFloor = GetKeyBindDown(KEYBIND_LOWER_FLOOR_TO_NEIGHBOUR);
+                const bool raiseCeiling = GetKeyBindDown(KEYBIND_RAISE_CEILING_TO_NEIGHBOUR);
+                const bool lowerCeiling = GetKeyBindDown(KEYBIND_LOWER_CEILING_TO_NEIGHBOUR);
+
+                if (raiseFloor || lowerFloor || raiseCeiling || lowerCeiling) {
+                    std::vector<ID> sectorIDs = selectedSectors;
+
+                    if (sectorIDs.empty() && !mouseBlockedByImGui) {
+                        const int hovered = MapQueries::FindSectorContainingPoint(level.sectors, mouseWorld);
+                        if (hovered >= 0) sectorIDs.push_back(level.sectors[hovered].id);
+                    }
+
+                    std::vector<FlatTarget> targets;
+                    for (const ID sectorID : sectorIDs) targets.push_back({sectorID, 0, raiseCeiling || lowerCeiling});
+
+                    const bool extreme = InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL);
+                    const int moved = MoveFlatsToNeighbourHeight(level, targets, raiseFloor || raiseCeiling, extreme);
+
+                    char message[128];
+                    std::snprintf(message, sizeof(message), Localisation::Get(moved > 0
+                        ? "editor.toast.moved_to_neighbour"
+                        : "editor.toast.no_neighbour_height").c_str(), moved);
+                    ImGuiDrawFunctions::ShowNotification(message, moved == 0, 1.5f);
+                }
+            }
+
+            // A comment on what's under the cursor in this mode, or a pin on
+            // its own where nothing is.
+            if (GetKeyBindDown(KEYBIND_ADD_COMMENT) && !mouseBlockedByImGui) {
+                EditorCommentTarget target = EditorCommentTarget::PIN;
+                ID targetID = INVALID_ID;
+
+                if (currentMode == MODE_GEOMETRY) {
+                    targetID = linedefMode ? PickLinedefAt(mouseWorld) : PickWallAt(mouseWorld);
+                    if (targetID != INVALID_ID) target = linedefMode ? EditorCommentTarget::LINEDEF : EditorCommentTarget::WALL;
+                }
+                else if (currentMode == MODE_SECTOR) {
+                    for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i) {
+                        if (!Geometry::IsPointInPolygon(level.sectors[i].vertices, level.sectors[i].innerLoops, mouseWorld)) continue;
+
+                        target = EditorCommentTarget::SECTOR;
+                        targetID = level.sectors[i].id;
+                        break;
+                    }
+                }
+                else if (currentMode == MODE_ENTITY) {
+                    if (const Entity* entity = EntityAt(mouseWorld)) {
+                        target = EditorCommentTarget::ENTITY;
+                        targetID = entity->id;
+                    }
+                }
+
+                Comments::Add(level, target, targetID, mouseWorld);
+                commentsVisible = true;
+            }
+
+            // The selected sectors take the light of the one under the cursor.
+            if (GetKeyBindDown(KEYBIND_MATCH_BRIGHTNESS) && !mouseBlockedByImGui && !selectedSectors.empty()) {
+                const int hovered = MapQueries::FindSectorContainingPoint(level.sectors, mouseWorld);
+                const int changed = hovered >= 0 ? MatchSectorBrightness(level, selectedSectors, level.sectors[hovered].id) : 0;
+
+                char message[128];
+                std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.brightness_matched").c_str(), changed);
+                ImGuiDrawFunctions::ShowNotification(message, changed == 0, 1.5f);
+            }
+
             if (GetKeyBindDown(KEYBIND_FLIP_LINEDEF) && currentMode == MODE_GEOMETRY && linedefMode)
                 FlipSelectedLinedefs();
 
             if (GetComboDown(COMBO_SELECT_ALL)) SelectAllInMode();
+
+            for (int group = 0; group < EDITOR_SELECTION_GROUP_COUNT; ++group) {
+                if (!GetComboDown(static_cast<EditorCombo>(COMBO_SELECT_GROUP_1 + group))) continue;
+
+                char message[128];
+
+                if (GetKeyBind(KEYBIND_ASSIGN_GROUP_MODIFIER)) {
+                    AssignSelectionGroup(group);
+                    std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.group_assigned").c_str(), (group + 1) % 10);
+                    ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
+                }
+                else {
+                    const int count = SelectSelectionGroup(group);
+                    std::snprintf(message, sizeof(message), Localisation::Get(count > 0 ? "editor.toast.group_selected" : "editor.toast.group_empty").c_str(), (group + 1) % 10, count);
+                    ImGuiDrawFunctions::ShowNotification(message, count == 0, 1.5f);
+                }
+            }
             if (GetComboDown(COMBO_DUPLICATE) && currentMode == MODE_ENTITY) DuplicateSelectedEntities();
         }
 

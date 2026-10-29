@@ -4,6 +4,12 @@
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "../EditorInternal.hpp"
+#include "../TagExplorer.hpp"
+#include "../Comments.hpp"
+#include "../ObjExport.hpp"
+#include "../CommandPalette.hpp"
+
+#include <mutex>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -186,10 +192,10 @@ namespace {
 } // namespace
 
 // =============================================================================
-//  RunExporter — unchanged logic, adds toast feedback
+//  RunExporter - exports the game into `exportFolder`, with toast feedback
 // =============================================================================
 
-static bool RunExporter() {
+static bool RunExporter(const fs::path& exportFolder) {
     const fs::path engineBasePath = ProjectManager::GetEngineBasePath();
 
 #ifdef _WIN32
@@ -201,7 +207,6 @@ static bool RunExporter() {
 #endif
 
     const fs::path projectMetadata = ProjectManager::GetProjectFiles();
-    const fs::path exportFolder = ProjectManager::GetDefaultExportFolder();
 
     auto fail = [](const char *logMsg, const char *userMsg, const std::string &detail = "") -> bool {
         spdlog::error("{}{}", logMsg, detail.empty() ? "" : ": " + detail);
@@ -2210,6 +2215,8 @@ namespace {
             ImGui::Checkbox(Get("editor.layout_menu.editor_panel_visible").c_str(), &editorPanelVisible);
             ImGui::Checkbox(Get("editor.layout_menu.asset_browser_visible").c_str(), &assetBrowserVisible);
             ImGui::Checkbox(Get("editor.layout_menu.history_visible").c_str(), &historyVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.tag_explorer_visible").c_str(), &tagExplorerVisible);
+            ImGui::Checkbox(Get("editor.layout_menu.comments_visible").c_str(), &commentsVisible);
         }
 
         ImGui::End();
@@ -2512,12 +2519,115 @@ namespace {
         ImGui::End();
     }
 
+    // ---- Export Game: the folder comes from the system's folder picker, which
+    // answers on its own thread like the OBJ one below.
+    std::mutex gameExportMutex;
+    std::optional<fs::path> pendingGameExportFolder;
+
+    void SDLCALL GameExportFolderPicked(void*, const char* const* fileList, int) {
+        if (fileList == nullptr || fileList[0] == nullptr) return; // error or cancelled
+
+        std::lock_guard lock(gameExportMutex);
+        pendingGameExportFolder = fs::path(fileList[0]);
+    }
+
+    void ShowGameExportDialog() {
+        const std::string defaultPath = ProjectManager::GetProjectFolder().parent_path().string();
+        SDL_ShowOpenFolderDialog(&GameExportFolderPicked, nullptr, window, defaultPath.c_str(), false);
+    }
+
+    // A folder an earlier export made: the exporter clears it before writing,
+    // so only those (and empty folders) are safe to export into directly.
+    bool IsEmptyOrPreviousExport(const fs::path& folder) {
+        std::error_code ec;
+        if (!fs::exists(folder, ec)) return true;
+        if (fs::is_empty(folder, ec)) return true;
+
+        return fs::exists(folder / "project.tilky", ec) && fs::is_directory(folder / "Assets", ec);
+    }
+
+    // The exporter deletes whatever is in its folder, so a picked folder with
+    // other things in it gets a "<project name>" folder made inside instead.
+    // That one has to be empty or an earlier export too.
+    void ProcessPendingGameExport() {
+        std::optional<fs::path> picked;
+        {
+            std::lock_guard lock(gameExportMutex);
+            picked.swap(pendingGameExportFolder);
+        }
+
+        if (!picked.has_value()) return;
+
+        fs::path destination = *picked;
+
+        if (!IsEmptyOrPreviousExport(destination)) {
+            std::string projectName = ProjectManager::GetProjectName();
+            if (projectName.empty()) projectName = ProjectManager::GetProjectFolder().filename().string();
+            if (projectName.empty()) projectName = "Game";
+
+            destination /= projectName;
+
+            if (!IsEmptyOrPreviousExport(destination)) {
+                spdlog::error("Export failed: {} already exists and isn't an earlier export.", destination.string());
+                ShowNotification((Get("editor.notification.export_failed_folder_in_use") + "\n" + destination.string()).c_str(), true);
+                return;
+            }
+        }
+
+        RunExporter(destination);
+    }
+
+    // ---- Export to OBJ: SDL's save dialog answers on its own thread, so
+    // the picked path waits here for the next frame.
+    std::mutex objExportMutex;
+    std::optional<fs::path> pendingObjExportPath;
+
+    void SDLCALL ObjExportPathPicked(void*, const char* const* fileList, int) {
+        if (fileList == nullptr || fileList[0] == nullptr) return; // error or cancelled
+
+        std::lock_guard lock(objExportMutex);
+        pendingObjExportPath = fs::path(fileList[0]);
+    }
+
+    void ShowObjExportDialog() {
+        static constexpr SDL_DialogFileFilter FILTERS[] = {{"Wavefront OBJ", "obj"}};
+
+        const std::string defaultPath = (ProjectManager::GetProjectFolder() / (LevelManager::CurrentLevel().name + ".obj")).string();
+        SDL_ShowSaveFileDialog(&ObjExportPathPicked, nullptr, window, FILTERS, 1, defaultPath.c_str());
+    }
+
+    // The selected sectors (with the walls around them) when there are any,
+    // else the whole level.
+    void ProcessPendingObjExport() {
+        std::optional<fs::path> path;
+        {
+            std::lock_guard lock(objExportMutex);
+            path.swap(pendingObjExportPath);
+        }
+
+        if (!path.has_value()) return;
+
+        const ObjExport::Result result = ObjExport::Export(LevelManager::CurrentLevel(), selectedSectors, *path);
+
+        if (!result.ok) {
+            spdlog::error("OBJ export failed: {}", result.error);
+            ShowNotification((Get("editor.obj_export.failed") + "\n" + result.error).c_str(), true);
+            return;
+        }
+
+        char message[256];
+        std::snprintf(message, sizeof(message), Get("editor.obj_export.done").c_str(), result.faceCount, result.textureCount);
+        ShowNotification(message);
+    }
+
     void DrawMainMenuBar() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
                 if (ImGui::MenuItem(Get("editor.save").c_str())) SaveLevelFromEditor();
                 if (ImGui::MenuItem(Get("editor.save_and_quit").c_str())) SaveAndQuitFromEditor();
-                if (ImGui::MenuItem(Get("editor.export").c_str())) RunExporter();
+                if (ImGui::MenuItem(Get("editor.export").c_str())) ShowGameExportDialog();
+                if (ImGui::MenuItem(Get("editor.obj_export").c_str())) ShowObjExportDialog();
+                HoverTooltip(Get("editor.tooltip.obj_export").c_str());
 
                 ImGui::Separator();
 
@@ -2646,13 +2756,34 @@ namespace {
         if (ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.switch_to_ui"), Get("editor.tooltip.switch_to_ui")))
             currentState = STATE_UI;
 
+        ImGui::SameLine();
+
+        // The paint selection brush, lit while on; its radius beside it.
+        const bool paintWasOn = paintSelectTool;
+        if (paintWasOn) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ToolbarButton("paint_select", ICON_FA_PAINTBRUSH, "PS", Get("editor.paint_select"), FormatKeyBinds(Get("editor.tooltip.paint_select"))))
+            paintSelectTool = !paintSelectTool;
+        if (paintWasOn) ImGui::PopStyleColor();
+
+        if (paintSelectTool) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(110.0f);
+            ImGui::SliderFloat("##PaintSelectRadius", &paintSelectRadius, MIN_PAINT_SELECT_RADIUS, MAX_PAINT_SELECT_RADIUS, Get("editor.paint_select.radius").c_str());
+        }
+
         ImGui::End();
     }
 } // anonymous namespace
 
 namespace MapEditorInternal {
+    void OpenRuntimeEditor() {
+        OpenRuntimeEditorFromEditor();
+    }
+
     void HandleEditorShortcuts(const bool keyboardBlockedByImgui) {
         if (keyboardBlockedByImgui) return;
+
+        if (GetComboDown(COMBO_COMMAND_PALETTE)) CommandPalette::Open();
 
         if (GetComboDown(COMBO_SAVE)) SaveLevelFromEditor();
         if (GetKeyBindDown(KEYBIND_TOGGLE_TEXTURE_VIEW))
@@ -4217,6 +4348,65 @@ namespace MapEditorInternal {
 
         ImGui::Checkbox(Get("editor.grid.snap_to_points").c_str(), &vertexSnapEnabled);
         HoverTooltip(Get("editor.tooltip.grid.snap_to_points").c_str());
+
+        Level& level = LevelManager::CurrentLevel();
+
+        // ---- Grid transform: where the grid's origin is and how it's turned.
+        if (ImGui::TreeNode((Get("editor.grid.transform") + "##EditorGridTransform").c_str())) {
+            EditorGridTransform& grid = level.gridTransform;
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::DragFloat2((Get("editor.grid.origin") + "##EditorGridOrigin").c_str(), &grid.origin.x, 0.25f, 0.0f, 0.0f, "%.2f"))
+                MarkUnsavedChanges();
+            HoverTooltip(FormatKeyBinds(Get("editor.tooltip.grid.origin")).c_str());
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::DragFloat((Get("editor.grid.angle") + "##EditorGridAngle").c_str(), &grid.angle, 0.25f, -360.0f, 360.0f, "%.2f"))
+                MarkUnsavedChanges();
+            HoverTooltip(Get("editor.tooltip.grid.angle").c_str());
+
+            ImGui::BeginDisabled(selectedWallID == INVALID_ID);
+            if (ImGui::Button((Get("editor.grid.align_to_wall") + "##EditorGridAlign").c_str())) AlignGridToWall(selectedWallID);
+            ImGui::EndDisabled();
+            HoverTooltip(FormatKeyBinds(Get("editor.tooltip.grid.align_to_wall")).c_str());
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(grid.IsDefault());
+            if (ImGui::Button((Get("editor.grid.reset") + "##EditorGridReset").c_str())) ResetGridTransform();
+            ImGui::EndDisabled();
+            HoverTooltip(FormatKeyBinds(Get("editor.tooltip.grid.reset")).c_str());
+
+            ImGui::TreePop();
+        }
+
+        // ---- Background image to trace over.
+        if (ImGui::TreeNode((Get("editor.grid.background_image") + "##EditorBackgroundImage").c_str())) {
+            EditorBackgroundImage& image = level.backgroundImage;
+
+            if (DrawAssetField(Get("editor.grid.background_image.texture").c_str(), image.texture, AssetKind::Texture, 48.0f))
+                MarkUnsavedChanges();
+
+            if (ImGui::Checkbox((Get("editor.grid.background_image.visible") + "##EditorBackgroundVisible").c_str(), &image.visible))
+                MarkUnsavedChanges();
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::DragFloat2((Get("editor.grid.background_image.position") + "##EditorBackgroundPosition").c_str(), &image.position.x, 0.5f, 0.0f, 0.0f, "%.2f"))
+                MarkUnsavedChanges();
+            HoverTooltip(Get("editor.tooltip.grid.background_image.position").c_str());
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::DragFloat((Get("editor.grid.background_image.scale") + "##EditorBackgroundScale").c_str(), &image.scale, 0.005f, 0.001f, 1000.0f, "%.3f")) {
+                image.scale = std::max(image.scale, 0.001f);
+                MarkUnsavedChanges();
+            }
+            HoverTooltip(Get("editor.tooltip.grid.background_image.scale").c_str());
+
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::SliderFloat((Get("editor.grid.background_image.opacity") + "##EditorBackgroundOpacity").c_str(), &image.opacity, 0.0f, 1.0f, "%.2f"))
+                MarkUnsavedChanges();
+
+            ImGui::TreePop();
+        }
     }
 
     // A localised format string with one %d filled in.
@@ -4333,6 +4523,9 @@ namespace MapEditorInternal {
         }
 
         ModePanelSection(Get("editor.geometry.title").c_str());
+
+        ImGui::Checkbox(Get("editor.geometry.drag_carries_entities").c_str(), &dragCarriesEntities);
+        HoverTooltip(Get("editor.tooltip.geometry.drag_carries_entities").c_str());
 
         const int selectedCount = static_cast<int>(selectedWalls.size());
 
@@ -5140,6 +5333,10 @@ namespace MapEditorInternal {
                 "editor.texture_view_mode.off",
                 "editor.texture_view_mode.floor",
                 "editor.texture_view_mode.ceiling",
+                "editor.texture_view_mode.brightness",
+                "editor.texture_view_mode.floor_height",
+                "editor.texture_view_mode.ceiling_height",
+                "editor.texture_view_mode.room_height",
             };
             static_assert(std::size(labelKeys) == static_cast<size_t>(TextureViewMode::Count));
 
@@ -5362,6 +5559,8 @@ namespace MapEditorInternal {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
         DrawMainMenuBar();
+        ProcessPendingGameExport();
+        ProcessPendingObjExport();
         DrawStatusBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
@@ -5383,6 +5582,47 @@ namespace MapEditorInternal {
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         if (assetBrowserVisible) DrawAssetBrowserPanel();
         if (historyVisible) DrawHistoryPanel();
+
+        // The 2D editor's actions that have no key of their own.
+        static const bool paletteCommandsRegistered = [] {
+            CommandPalette::Register("command_palette.command.obj_export", KEYSCOPE_MAP, &ShowObjExportDialog);
+            CommandPalette::Register("command_palette.command.toggle_tag_explorer", KEYSCOPE_MAP, [] { tagExplorerVisible = !tagExplorerVisible; });
+            CommandPalette::Register("command_palette.command.toggle_comments", KEYSCOPE_MAP, [] { commentsVisible = !commentsVisible; });
+            CommandPalette::Register("command_palette.command.toggle_history", KEYSCOPE_MAP, [] { historyVisible = !historyVisible; });
+            CommandPalette::Register("command_palette.command.toggle_paint_select", KEYSCOPE_MAP, [] { paintSelectTool = !paintSelectTool; });
+
+            static constexpr const char* VIEW_MODE_COMMANDS[] = {
+                "command_palette.command.view_off",
+                "command_palette.command.view_floor",
+                "command_palette.command.view_ceiling",
+                "command_palette.command.view_brightness",
+                "command_palette.command.view_floor_height",
+                "command_palette.command.view_ceiling_height",
+                "command_palette.command.view_room_height",
+            };
+            static_assert(std::size(VIEW_MODE_COMMANDS) == static_cast<size_t>(TextureViewMode::Count));
+
+            for (int mode = 0; mode < static_cast<int>(TextureViewMode::Count); ++mode)
+                CommandPalette::Register(VIEW_MODE_COMMANDS[mode], KEYSCOPE_MAP, [mode] { textureViewMode = static_cast<TextureViewMode>(mode); });
+
+            return true;
+        }();
+        (void)paletteCommandsRegistered;
+
+        CommandPalette::Draw(KEYSCOPE_MAP, [](const KeyBindScope scope) {
+            if (scope == KEYSCOPE_RUNTIME) OpenRuntimeEditorFromEditor();
+            else if (scope == KEYSCOPE_UI) currentState = STATE_UI;
+        });
+
+        if (tagExplorerVisible)
+            TagExplorer::Draw(level, (Get("tag_explorer.title") + "###TagExplorer").c_str(), &tagExplorerVisible, &SelectAndShowObject);
+
+        // A pin centres the view on itself; anything else is selected.
+        if (commentsVisible)
+            Comments::DrawPanel(level, (Get("comments.title") + "###Comments").c_str(), &commentsVisible, [](const EditorComment& comment) {
+                if (comment.target == EditorCommentTarget::PIN) cameraPos = comment.position;
+                else SelectAndShowObject(Comments::OwnerKindFor(comment.target), comment.targetID);
+            });
 
         // ---- Sector-geometry rejection toast --------------------------------
         if (!lastGeometryError.empty()) {

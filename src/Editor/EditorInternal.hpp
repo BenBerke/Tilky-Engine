@@ -259,10 +259,21 @@ namespace MapEditorInternal {
     // order. Sprite textures show in every mode but Off.
     enum class TextureViewMode {
         Off,
-        Floor,   // the lowest floor's texture
-        Ceiling, // that floor's ceiling texture
+        Floor,         // the lowest floor's texture
+        Ceiling,       // that floor's ceiling texture
+        Brightness,    // the sector's light colour
+        FloorHeight,   // heat map of the lowest floor's height
+        CeilingHeight, // heat map of that floor's ceiling height
+        RoomHeight,    // heat map of ceiling minus floor; too low for the player is red
         Count
     };
+
+    [[nodiscard]] inline bool IsTextureViewShowingTextures(const TextureViewMode mode) {
+        return mode == TextureViewMode::Floor || mode == TextureViewMode::Ceiling;
+    }
+
+    // The legend of a height view mode, in the canvas's bottom-left corner.
+    void DrawViewModeLegend();
 
     extern TextureViewMode textureViewMode;
 
@@ -657,6 +668,10 @@ namespace MapEditorInternal {
 
     // The History windows of the map editor and the runtime editor.
     extern bool historyVisible;
+    extern bool tagExplorerVisible;
+    extern bool runtimeTagExplorerVisible;
+    extern bool commentsVisible;
+    extern bool runtimeCommentsVisible;
     extern bool runtimeHistoryVisible;
 
     // Which entity markers the runtime editor draws. Its toolbar button and
@@ -842,6 +857,22 @@ namespace MapEditorInternal {
     Vector2 WorldToScreen(const Vector2& worldPos, const Vector2& cameraPos);
     Vector2 SnapToGrid(const Vector2& worldPos);
 
+    // ---- Grid tools (MapEditorGeometry.cpp) -------------------------------
+    // The grid is turned by the level's gridTransform.angle about its
+    // origin. Grid space is the grid's own axes, in map units.
+    [[nodiscard]] Vector2 WorldToGrid(const Vector2& worldPos);
+    [[nodiscard]] Vector2 GridToWorld(const Vector2& gridPos);
+
+    // Moves the grid's origin to the wall corner near the cursor, or to the
+    // cursor itself when there is none. False when it was there already.
+    bool SetGridOriginAtCursor(const Vector2& mouseWorld);
+
+    // Turns the grid to run along the wall, with its origin on the wall's
+    // start. False for a missing or zero-length wall.
+    bool AlignGridToWall(ID wallID);
+
+    void ResetGridTransform();
+
     // Snapping nearest of {dots, wall starts, wall ends} within
     // radius, else grid snap.
     Vector2 ResolveSnapPoint(const Vector2& mouseWorld);
@@ -926,10 +957,17 @@ namespace MapEditorInternal {
     void DrawSelectionBox();
     void DrawGridDots();
 
+    // The level's background image, under everything else.
+    void DrawBackgroundImage();
+
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
     // Save and editor-switch shortcuts. Defined in MapEditorUI.cpp, next to
     // the toolbar buttons that do the same.
     void HandleEditorShortcuts(bool keyboardBlockedByImgui);
+
+    // Saves and switches to the runtime editor, like the toolbar button
+    // (MapEditorUI.cpp).
+    void OpenRuntimeEditor();
     void DrawEditorUI();
 
     void UIEditorDraw();
@@ -1164,6 +1202,21 @@ namespace MapEditorInternal {
     // bottom are aligned separately. Returns how many walls were changed.
     int AlignSelectedWallTextures();
 
+    // The same along one axis: X continues the texture across the corners,
+    // Y copies the primary's vertical offset.
+    int AlignSelectedWallTexturesX();
+    int AlignSelectedWallTexturesY();
+
+    // `startWallID` and every wall reached from it through shared corners
+    // whose `slot` texture is the same as its - a spread that stops where
+    // the texture changes. Empty when the start has no texture there.
+    [[nodiscard]] std::vector<ID> ConnectedWallsWithTexture(const Level& level, ID startWallID, WallSurfaceSlot slot);
+
+    // Aligns `slot`'s texture along ConnectedWallsWithTexture from the
+    // start wall, no selection needed. One undo step; returns how many walls
+    // took part.
+    int AutoAlignWallTextures(ID startWallID, WallSurfaceSlot slot, bool alignX, bool alignY);
+
     // Zeroes the top and bottom texture offsets of the selected walls.
     int ResetSelectedWallOffsets();
 
@@ -1238,6 +1291,30 @@ namespace MapEditorInternal {
     // asset reference ("Prefabs/Goblin.prefab").
     extern std::string entityPaletteSelection;
     extern bool placeOnFloor;
+
+    // Geometry Mode: dragging walls that move a whole sector also moves the
+    // entities standing in it.
+    extern bool dragCarriesEntities;
+
+    // Paint selection: while its key is held, or with the toolbar's brush
+    // on, dragging adds what the brush passes over to the selection (Ctrl,
+    // or the right button with the brush, takes it away instead). What it
+    // selects follows the mode: walls or linedefs, sectors, entities.
+    extern bool paintSelectTool;
+    extern float paintSelectRadius; // screen pixels
+    constexpr float MIN_PAINT_SELECT_RADIUS = 1.0f;
+    constexpr float MAX_PAINT_SELECT_RADIUS = 128.0f;
+
+    // The brush is in use this frame: its key held or the tool on, with the
+    // cursor on the canvas.
+    [[nodiscard]] bool IsPaintSelectActive(bool mouseBlockedByImGui);
+
+    // The brush circle at the cursor (MapEditorDrawing.cpp).
+    void DrawPaintSelectBrush();
+
+    // The comment icons on the canvas, with their text on hover
+    // (MapEditorDrawing.cpp).
+    void DrawCommentIcons();
     extern bool placeRandomYaw;
     extern std::string placeDefaultTag;
 
@@ -1279,6 +1356,13 @@ namespace MapEditorInternal {
         KEYBIND_PLACE_ENTITY,
         KEYBIND_DELETE,
         KEYBIND_FLIP_LINEDEF,
+        KEYBIND_POINT_AT_CURSOR,
+        KEYBIND_RAISE_FLOOR_TO_NEIGHBOUR,
+        KEYBIND_LOWER_FLOOR_TO_NEIGHBOUR,
+        KEYBIND_RAISE_CEILING_TO_NEIGHBOUR,
+        KEYBIND_LOWER_CEILING_TO_NEIGHBOUR,
+        KEYBIND_MATCH_BRIGHTNESS,
+        KEYBIND_ADD_COMMENT,
 
         // Drawing (Sector Mode)
         KEYBIND_FINISH_SHAPE,
@@ -1299,11 +1383,19 @@ namespace MapEditorInternal {
         KEYBIND_RANGE_SELECT,
         KEYBIND_CONSTRAIN_ANGLE,
         KEYBIND_SPLIT_WALL,
+        KEYBIND_PAINT_SELECT,     // held while dragging
+
+        // Held with a selection group shortcut: store the selection in it
+        // (both editors).
+        KEYBIND_ASSIGN_GROUP_MODIFIER,
 
         // Grid
         KEYBIND_TOGGLE_GRID_SNAP,
         KEYBIND_GRID_SMALLER,
         KEYBIND_GRID_LARGER,
+        KEYBIND_GRID_ORIGIN_HERE,
+        KEYBIND_ALIGN_GRID_TO_WALL,
+        KEYBIND_RESET_GRID,
 
         // Runtime editor: camera
         KEYBIND_RT_FLY_FORWARD,
@@ -1332,7 +1424,14 @@ namespace MapEditorInternal {
         KEYBIND_RT_FOCUS_SELECTION,
         KEYBIND_RT_TOGGLE_ENTITY_MARKERS,
         KEYBIND_RT_PLACE_ENTITY,
+        KEYBIND_RT_POINT_AT_CURSOR,
+        KEYBIND_RT_RAISE_TO_NEIGHBOUR,
+        KEYBIND_RT_LOWER_TO_NEIGHBOUR,
+        KEYBIND_RT_MATCH_BRIGHTNESS,
+        KEYBIND_RT_ADD_COMMENT,
         KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
+        KEYBIND_RT_SELECT_CONNECTED,  // held with right click: connected, same texture
+        KEYBIND_RT_CONNECTED_BY_HEIGHT, // held with the one above: same height instead
         KEYBIND_RT_FINE_SCROLL,       // held while scrolling
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
         KEYBIND_RT_BACK_TO_EDITOR,
@@ -1449,6 +1548,17 @@ namespace MapEditorInternal {
         COMBO_RT_RESET_PLACEMENT,
         COMBO_RT_ALIGN_TEXTURES,
         COMBO_RT_FIT_TEXTURES,
+        COMBO_RT_ALIGN_TEXTURES_X,
+        COMBO_RT_ALIGN_TEXTURES_Y,
+        COMBO_RT_FLOOD_FILL_TEXTURE,
+
+        // Selection groups, both the 2D and the runtime editor. Held with
+        // the assign key, they store the selection instead.
+        COMBO_SELECT_GROUP_1,
+        COMBO_SELECT_GROUP_LAST = COMBO_SELECT_GROUP_1 + EDITOR_SELECTION_GROUP_COUNT - 1,
+
+        // Every editor.
+        COMBO_COMMAND_PALETTE,
 
         // UI editor
         COMBO_UI_UNDO,
@@ -1467,6 +1577,10 @@ namespace MapEditorInternal {
         const char* groupKey;
         KeyBindScope scope;
         SDL_Scancode defaults[COMBO_SLOTS];
+
+        // Shift has to be held too: a third key, fixed, on top of the two
+        // rebindable ones (Ctrl+Shift+P).
+        bool needsShift = false;
     };
 
     extern const EditorComboInfo COMBO_INFO[COMBO_COUNT];
@@ -1474,6 +1588,14 @@ namespace MapEditorInternal {
 
     // A set's first key held and its second pressed this frame.
     [[nodiscard]] bool GetComboDown(EditorCombo combo);
+
+    // The command palette runs an action by pressing it: the next
+    // GetKeyBindDown / GetComboDown asking for it is true once, as if its
+    // keys had been pressed, whatever they are (none included). A press
+    // nothing asks for within a couple of seconds - it belongs to an editor
+    // that never opened - is dropped.
+    void PressKeyBind(EditorKeyBind bind);
+    void PressCombo(EditorCombo combo);
 
     // The name of the key a binding is on: its primary, else its alternate,
     // else "None".
@@ -1537,6 +1659,30 @@ namespace MapEditorInternal {
     int SnapSelectedEntitiesToGrid();
     int DropSelectedEntitiesToFloor();
 
+    // Turns each entity about world up to face map point `target` (X, Z),
+    // or away from it. Entities snapped to a wall keep facing away from it.
+    // One undo step; returns how many turned. Used by both editors.
+    int PointEntitiesAt(Level& level, const std::vector<ID>& entityIDs, const Vector2& target, bool away);
+
+    // ---- Sector height and light tools (MapEditorGeometry.cpp) ------------
+    // A floor or ceiling of one of a sector's floor intervals.
+    struct FlatTarget {
+        ID sectorID = INVALID_ID;
+        int floorIndex = 0;
+        bool ceiling = false;
+    };
+
+    // Moves each floor or ceiling to the next height up (or down) among the
+    // same surfaces of the sectors across its two-sided walls, or with
+    // `extreme` to the highest (lowest) of them, kept inside its interval.
+    // Entities standing on a moved floor ride along. One undo step; returns
+    // how many moved.
+    int MoveFlatsToNeighbourHeight(Level& level, const std::vector<FlatTarget>& targets, bool raise, bool extreme);
+
+    // Gives each sector the light (colour and level) of `sourceSectorID`.
+    // One undo step; returns how many changed.
+    int MatchSectorBrightness(Level& level, const std::vector<ID>& sectorIDs, ID sourceSectorID);
+
     // One .prefab per selected entity in Assets/Prefabs, named after the
     // entity; each entity becomes a linked instance of its new prefab.
     // Returns how many were made; `errorMessage` gets the last failure.
@@ -1555,7 +1701,15 @@ namespace MapEditorInternal {
         UNDO_ENTITY_POSITIONS,   // some entities' positions
         UNDO_ENTITIES,           // every entity and component - adds and deletes
         UNDO_ENTITY_COMPONENTS,  // some entities and their components - inspector edits
+        UNDO_COMMENTS,           // the level's comments
     };
+
+#ifndef TILKY_STANDALONE
+    struct CommentsSnapshot {
+        std::vector<EditorComment> comments;
+        ID nextCommentID = 1;
+    };
+#endif
 
     struct EntitiesSnapshot {
         std::vector<Entity> entities;
@@ -1668,10 +1822,18 @@ namespace MapEditorInternal {
         EntityTransformUndo positions;        // UNDO_ENTITY_POSITIONS
         EntitiesSnapshot entities;            // UNDO_ENTITIES
         EntityComponentsSnapshot components;  // UNDO_ENTITY_COMPONENTS
+#ifndef TILKY_STANDALONE
+        CommentsSnapshot comments;            // UNDO_COMMENTS
+#endif
 
         // Set on steps that change wall snaps (any kind): every snap, swapped
         // with WallSnap::All() along with the step's own state.
         std::optional<WallSnap::Snaps> wallSnaps;
+
+        // Set on geometry steps that also moved entities (sector drags carry
+        // the entities inside, floors carry what stands on them): their
+        // positions, swapped along with the step's own state.
+        std::optional<EntityTransformUndo> carriedEntities;
     };
 
     constexpr std::size_t MAX_MAP_UNDO_STEPS = 128;
@@ -1696,6 +1858,11 @@ namespace MapEditorInternal {
                           std::optional<WallSnap::Snaps> wallSnapsBefore = std::nullopt);
     void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, int count = 0);
 
+#ifndef TILKY_STANDALONE
+    [[nodiscard]] CommentsSnapshot CaptureCommentsSnapshot();
+    void PushCommentsUndo(CommentsSnapshot before, const char* labelKey);
+#endif
+
     // WallSnap::Disable and WallSnap::SetGap for either editor's inspector,
     // with an undo step. Gap changes close together - one drag - are one.
     void DisableWallSnapsWithUndo(const std::vector<ID>& entities);
@@ -1709,6 +1876,22 @@ namespace MapEditorInternal {
 
     // Undoes or redoes until `position` steps are done (0: all undone).
     void JumpToUndoPosition(std::size_t position);
+
+    // Selects the wall, sector, linedef or entity, switching to the mode
+    // that edits it, opens its inspector and centres the view on it. The
+    // level itself (EventOwnerKind::LEVEL) opens World Settings. Used by the
+    // Tag Explorer and the Comments panel (MapEditorInput.cpp).
+    void SelectAndShowObject(EventOwnerKind kind, ID id);
+
+    // ---- Selection groups (MapEditorInput.cpp) ----------------------------
+    // Stores the 2D editor's selection - walls, sectors, linedefs and
+    // entities - in group `index` of the level, replacing what it held.
+    void AssignSelectionGroup(int index);
+
+    // Selects what group `index` holds (what still exists), switching to the
+    // mode that shows it when the current one doesn't. Returns how many
+    // objects were selected.
+    int SelectSelectionGroup(int index);
 
     // Ctrl+A: every wall (Geometry Mode), entity (Entity Mode) or sector
     // (Sector Mode) that passes the canvas filter.

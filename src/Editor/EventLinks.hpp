@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "Headers/Math/Vector/Vector3.hpp"
@@ -27,4 +28,8 @@ namespace EventLinks {
     // reach, and from the events that reach its dispatches to it. Links from
     // an object to itself are left out.
     std::vector<Link> Collect(const Level& level, EventOwnerKind kind, ID ownerID);
+
+    // "Name  (#id)", or "Wall #id" and the like until the object is named.
+    // "Level" for the level itself.
+    [[nodiscard]] std::string OwnerLabel(const Level& level, EventOwnerKind kind, ID ownerID);
 }

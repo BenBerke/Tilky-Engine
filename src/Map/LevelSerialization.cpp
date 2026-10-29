@@ -2650,6 +2650,67 @@ namespace {
                     level.wallSnaps[snapJson["entity"].get<ID>()] = snap;
                 }
             }
+
+            const auto loadIDs = [](const json& groupJson, const char* key, std::vector<ID>& out) {
+                if (!groupJson.contains(key) || !groupJson[key].is_array()) return;
+
+                for (const json& id : groupJson[key])
+                    if (id.is_number_integer()) out.push_back(id.get<ID>());
+            };
+
+            if (metadatajson.contains("selectionGroups") && metadatajson["selectionGroups"].is_array()) {
+                const json& groupsJson = metadatajson["selectionGroups"];
+
+                for (std::size_t i = 0; i < groupsJson.size() && i < level.selectionGroups.size(); ++i) {
+                    if (!groupsJson[i].is_object()) continue;
+
+                    EditorSelectionGroup& group = level.selectionGroups[i];
+                    loadIDs(groupsJson[i], "walls", group.walls);
+                    loadIDs(groupsJson[i], "sectors", group.sectors);
+                    loadIDs(groupsJson[i], "linedefs", group.linedefs);
+                    loadIDs(groupsJson[i], "entities", group.entities);
+                }
+            }
+
+            if (metadatajson.contains("comments") && metadatajson["comments"].is_array()) {
+                for (const json& commentJson : metadatajson["comments"]) {
+                    if (!commentJson.is_object() || !commentJson.contains("id") || !commentJson["id"].is_number_integer()) continue;
+
+                    EditorComment comment;
+                    comment.id = commentJson["id"].get<ID>();
+                    comment.target = static_cast<EditorCommentTarget>(std::clamp(commentJson.value("target", 0), 0, static_cast<int>(EditorCommentTarget::ENTITY)));
+                    comment.targetID = commentJson.value("targetID", static_cast<int64_t>(INVALID_ID));
+                    comment.text = commentJson.value("text", std::string());
+
+                    if (commentJson.contains("position") && commentJson["position"].is_array() && commentJson["position"].size() == 2)
+                        comment.position = {commentJson["position"][0].get<float>(), commentJson["position"][1].get<float>()};
+
+                    level.nextCommentID = std::max(level.nextCommentID, comment.id + 1);
+                    level.comments.push_back(std::move(comment));
+                }
+            }
+
+            if (metadatajson.contains("grid") && metadatajson["grid"].is_object()) {
+                const json& gridJson = metadatajson["grid"];
+
+                if (gridJson.contains("origin") && gridJson["origin"].is_array() && gridJson["origin"].size() == 2)
+                    level.gridTransform.origin = {gridJson["origin"][0].get<float>(), gridJson["origin"][1].get<float>()};
+
+                level.gridTransform.angle = gridJson.value("angle", 0.0f);
+            }
+
+            if (metadatajson.contains("backgroundImage") && metadatajson["backgroundImage"].is_object()) {
+                const json& imageJson = metadatajson["backgroundImage"];
+                EditorBackgroundImage& image = level.backgroundImage;
+
+                image.texture = imageJson.value("texture", std::string());
+                image.scale = std::max(imageJson.value("scale", 1.0f), 0.0001f);
+                image.opacity = std::clamp(imageJson.value("opacity", 0.5f), 0.0f, 1.0f);
+                image.visible = imageJson.value("visible", true);
+
+                if (imageJson.contains("position") && imageJson["position"].is_array() && imageJson["position"].size() == 2)
+                    image.position = {imageJson["position"][0].get<float>(), imageJson["position"][1].get<float>()};
+            }
         }
     }
 
@@ -2687,6 +2748,58 @@ namespace {
         }
 
         metadatajson["wallSnaps"] = std::move(wallSnapsJson);
+
+        json groupsJson = json::array();
+
+        for (const EditorSelectionGroup& group : level.selectionGroups) {
+            groupsJson.push_back({
+                {"walls", group.walls},
+                {"sectors", group.sectors},
+                {"linedefs", group.linedefs},
+                {"entities", group.entities}
+            });
+        }
+
+        metadatajson["selectionGroups"] = std::move(groupsJson);
+
+        // Comments on objects deleted since are left out.
+        json commentsJson = json::array();
+
+        for (const EditorComment& comment : level.comments) {
+            const bool targetExists =
+                comment.target == EditorCommentTarget::PIN ||
+                (comment.target == EditorCommentTarget::WALL && level.wallIDToIndex.contains(comment.targetID)) ||
+                (comment.target == EditorCommentTarget::SECTOR && level.GetSector(comment.targetID) != nullptr) ||
+                (comment.target == EditorCommentTarget::LINEDEF && level.GetLinedef(comment.targetID) != nullptr) ||
+                (comment.target == EditorCommentTarget::ENTITY && level.GetEntity(comment.targetID) != nullptr);
+
+            if (!targetExists) continue;
+
+            commentsJson.push_back({
+                {"id", comment.id},
+                {"target", static_cast<int>(comment.target)},
+                {"targetID", comment.targetID},
+                {"position", {comment.position.x, comment.position.y}},
+                {"text", comment.text}
+            });
+        }
+
+        metadatajson["comments"] = std::move(commentsJson);
+
+        metadatajson["grid"] = {
+            {"origin", {level.gridTransform.origin.x, level.gridTransform.origin.y}},
+            {"angle", level.gridTransform.angle}
+        };
+
+        const EditorBackgroundImage& image = level.backgroundImage;
+
+        metadatajson["backgroundImage"] = {
+            {"texture", image.texture},
+            {"position", {image.position.x, image.position.y}},
+            {"scale", image.scale},
+            {"opacity", image.opacity},
+            {"visible", image.visible}
+        };
 
         levelData["metadata"] = metadatajson;
     }
@@ -2819,6 +2932,22 @@ namespace LevelSerialization {
 
         outLevel = std::move(loadedLevel);
 
+        return true;
+    }
+
+    bool StripEditorData(const fs::path& levelFile, bool* removed, std::string* errorMessage) {
+        if (removed != nullptr) *removed = false;
+
+        json levelData;
+        if (!ReadBsonFile(levelFile, "level", levelData, errorMessage)) return false;
+
+        // Everything SaveMetadata writes lives under this one key.
+        if (!levelData.is_object() || !levelData.contains("metadata")) return true;
+
+        levelData.erase("metadata");
+        if (!WriteBsonFile(levelFile, "level", levelData, errorMessage)) return false;
+
+        if (removed != nullptr) *removed = true;
         return true;
     }
 

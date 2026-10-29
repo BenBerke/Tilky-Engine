@@ -379,16 +379,6 @@ namespace ProjectManager {
         return tilkyEngineFolder;
     }
 
-    fs::path GetDefaultExportFolder() {
-        std::string projectName = GetProjectName();
-
-        if (projectName.empty()) { projectName = GetProjectFolder().filename().string(); }
-
-        if (projectName.empty()) {projectName = "Untitled";}
-
-        return GetEngineFolder() / "Exports" / projectName;
-    }
-
     fs::path GetEngineVersionsFolder() {
         return GetEngineFolder() / "EngineVersions";
     }

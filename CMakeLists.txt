@@ -536,6 +536,14 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/WallSnap.cpp
         src/Editor/EventLinks.cpp
         src/Editor/EventLinks.hpp
+        src/Editor/TagExplorer.cpp
+        src/Editor/TagExplorer.hpp
+        src/Editor/Comments.cpp
+        src/Editor/Comments.hpp
+        src/Editor/ObjExport.cpp
+        src/Editor/ObjExport.hpp
+        src/Editor/CommandPalette.cpp
+        src/Editor/CommandPalette.hpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp

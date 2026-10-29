@@ -49,6 +49,12 @@ namespace LevelSerialization {
         std::string* errorMessage = nullptr
     );
 
+    // Removes the editor-only data - camera positions, wall snaps, selection
+    // groups, comments, grid and background image - from a saved level file,
+    // leaving everything the game reads untouched. Used on exported copies.
+    // `removed` says whether there was any.
+    bool StripEditorData(const std::filesystem::path& levelFile, bool* removed = nullptr, std::string* errorMessage = nullptr);
+
     bool SaveLevelToFile(
         const std::filesystem::path& levelFile,
         const Level& level,

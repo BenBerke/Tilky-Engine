@@ -23,6 +23,7 @@
 #include "Headers/Map/TextureTiling.hpp"
 #include "Headers/Map/WallPieces.hpp"
 #include "Headers/Math/Constants.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/TagRegistry.hpp"
@@ -200,11 +201,88 @@ namespace MapEditorInternal {
     // fixed, user-set GRID_SIZE, independent of editorZoom.
     Vector2 SnapToGrid(const Vector2& worldPos) {
         const float gridSize = std::max(GRID_SIZE, MIN_GRID_SIZE);
+        const Vector2 gridPos = WorldToGrid(worldPos);
+
+        return GridToWorld({
+            std::round(gridPos.x / gridSize) * gridSize,
+            std::round(gridPos.y / gridSize) * gridSize
+        });
+    }
+
+    Vector2 WorldToGrid(const Vector2& worldPos) {
+        const EditorGridTransform& grid = LevelManager::CurrentLevel().gridTransform;
+        if (grid.IsDefault()) return worldPos;
+
+        const float radians = grid.angle * Constants::DegToRad;
+        const float cosine = std::cos(radians);
+        const float sine = std::sin(radians);
+        const Vector2 offset = {worldPos.x - grid.origin.x, worldPos.y - grid.origin.y};
+
+        return {offset.x * cosine + offset.y * sine, -offset.x * sine + offset.y * cosine};
+    }
+
+    Vector2 GridToWorld(const Vector2& gridPos) {
+        const EditorGridTransform& grid = LevelManager::CurrentLevel().gridTransform;
+        if (grid.IsDefault()) return gridPos;
+
+        const float radians = grid.angle * Constants::DegToRad;
+        const float cosine = std::cos(radians);
+        const float sine = std::sin(radians);
 
         return {
-            std::round(worldPos.x / gridSize) * gridSize,
-            std::round(worldPos.y / gridSize) * gridSize
+            grid.origin.x + gridPos.x * cosine - gridPos.y * sine,
+            grid.origin.y + gridPos.x * sine + gridPos.y * cosine
         };
+    }
+
+    bool SetGridOriginAtCursor(const Vector2& mouseWorld) {
+        Level& level = LevelManager::CurrentLevel();
+
+        // A wall corner near the cursor wins, so the grid can be lined up
+        // with geometry that sits off it.
+        const float radius = WALL_ENDPOINT_PICK_RADIUS_PIXELS / std::max(editorZoom, 0.0001f);
+        Vector2 origin = mouseWorld;
+        float bestDistanceSq = radius * radius;
+
+        for (const Wall& wall : level.walls) {
+            for (const Vector2& corner : {wall.start, wall.end}) {
+                const float distanceSq = Vector2Math::DistanceSquared(corner, mouseWorld);
+                if (distanceSq >= bestDistanceSq) continue;
+
+                bestDistanceSq = distanceSq;
+                origin = corner;
+            }
+        }
+
+        if (level.gridTransform.origin == origin) return false;
+
+        level.gridTransform.origin = origin;
+        MarkUnsavedChanges();
+        return true;
+    }
+
+    bool AlignGridToWall(const ID wallID) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const auto it = level.wallIDToIndex.find(wallID);
+        if (it == level.wallIDToIndex.end()) return false;
+
+        const Wall& wall = level.walls[it->second];
+        const Vector2 direction = {wall.end.x - wall.start.x, wall.end.y - wall.start.y};
+        if (direction.x == 0.0f && direction.y == 0.0f) return false;
+
+        level.gridTransform.origin = wall.start;
+        level.gridTransform.angle = std::atan2(direction.y, direction.x) * Constants::RadToDeg;
+        MarkUnsavedChanges();
+        return true;
+    }
+
+    void ResetGridTransform() {
+        Level& level = LevelManager::CurrentLevel();
+        if (level.gridTransform.IsDefault()) return;
+
+        level.gridTransform = {};
+        MarkUnsavedChanges();
     }
 
     // Snap priority is {dots, wall starts, wall ends} (nearest within
@@ -3128,59 +3206,150 @@ namespace MapEditorInternal {
         return changed;
     }
 
-    int AlignSelectedWallTextures() {
-        if (selectedWalls.empty()) return 0;
+    namespace {
+        // AlignSelectedWallTextures with a choice of axes: X continues the
+        // texture across each corner, Y copies the primary's vertical
+        // offset. `onlySlot` limits it to one of the three textures.
+        int AlignSelectedWallChain(const bool alignX, const bool alignY, const std::optional<WallSurfaceSlot> onlySlot, const char* labelKey) {
+            if (selectedWalls.empty() || (!alignX && !alignY)) return 0;
 
-        Level& level = LevelManager::CurrentLevel();
+            Level& level = LevelManager::CurrentLevel();
 
-        const ID primaryID = IsWallSelected(selectedWallID) ? selectedWallID : selectedWalls.front();
-        Wall* primary = FindWall(level, primaryID);
-        if (primary == nullptr) return 0;
+            const ID primaryID = IsWallSelected(selectedWallID) ? selectedWallID : selectedWalls.front();
+            Wall* primary = FindWall(level, primaryID);
+            if (primary == nullptr) return 0;
 
-        std::vector<ChainStep> forward;
-        std::vector<ChainStep> backward;
-        WalkSelectedChain(level, *primary, forward, backward);
+            std::vector<ChainStep> forward;
+            std::vector<ChainStep> backward;
+            WalkSelectedChain(level, *primary, forward, backward);
 
-        if (forward.empty() && backward.empty()) return 0;
+            if (forward.empty() && backward.empty()) return 0;
 
-        GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
+            GeometrySnapshot snapshot = CaptureGeometryUndoSnapshot();
 
-        for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
-            const WallSurface& first = primary->Surface(slot);
+            for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) {
+                if (onlySlot.has_value() && slot != *onlySlot) continue;
 
-            // The walk keeps the primary's U direction the whole way round.
-            const float chainSign = USign(first);
-            const float firstTile = SurfaceTile(first).x;
-            const float startU = first.textureOffset.x / firstTile;
-            const float endU = startU + chainSign * primary->length * first.textureScale.x / firstTile;
+                const WallSurface& first = primary->Surface(slot);
 
-            float u = endU;
-            for (const ChainStep& step : forward) {
-                Wall* wall = FindWall(level, step.wallID);
-                WallSurface& surface = wall->Surface(slot);
+                // The walk keeps the primary's U direction the whole way round.
+                const float chainSign = USign(first);
+                const float firstTile = SurfaceTile(first).x;
+                const float startU = first.textureOffset.x / firstTile;
+                const float endU = startU + chainSign * primary->length * first.textureScale.x / firstTile;
 
-                u = ContinueChain(surface, wall->length, step.direction, chainSign, u);
-                surface.textureOffset.y = first.textureOffset.y;
+                float u = endU;
+                for (const ChainStep& step : forward) {
+                    Wall* wall = FindWall(level, step.wallID);
+                    WallSurface& surface = wall->Surface(slot);
+
+                    if (alignX) u = ContinueChain(surface, wall->length, step.direction, chainSign, u);
+                    if (alignY) surface.textureOffset.y = first.textureOffset.y;
+                }
+
+                // Backwards each wall is left at the known U, so its entry U
+                // is that minus its own length.
+                u = startU;
+                for (const ChainStep& step : backward) {
+                    Wall* wall = FindWall(level, step.wallID);
+                    WallSurface& surface = wall->Surface(slot);
+
+                    const float entryU = u - chainSign * wall->length * surface.textureScale.x / SurfaceTile(surface).x;
+                    if (alignX) ContinueChain(surface, wall->length, step.direction, chainSign, entryU);
+                    if (alignY) surface.textureOffset.y = first.textureOffset.y;
+                    u = entryU;
+                }
             }
 
-            // Backwards each wall is left at the known U, so its entry U
-            // is that minus its own length.
-            u = startU;
-            for (const ChainStep& step : backward) {
-                Wall* wall = FindWall(level, step.wallID);
-                WallSurface& surface = wall->Surface(slot);
+            const int aligned = static_cast<int>(forward.size() + backward.size()) + 1;
 
-                const float entryU = u - chainSign * wall->length * surface.textureScale.x / SurfaceTile(surface).x;
-                ContinueChain(surface, wall->length, step.direction, chainSign, entryU);
-                surface.textureOffset.y = first.textureOffset.y;
-                u = entryU;
+            PushGeometryUndoSnapshot(std::move(snapshot), labelKey, aligned);
+            MarkUnsavedChanges();
+
+            return aligned;
+        }
+
+        const char* AlignLabel(const bool alignX, const bool alignY) {
+            if (alignX && !alignY) return "editor.history.align_wall_textures_x";
+            if (alignY && !alignX) return "editor.history.align_wall_textures_y";
+            return "editor.history.align_wall_textures";
+        }
+    }
+
+    int AlignSelectedWallTextures() {
+        return AlignSelectedWallChain(true, true, std::nullopt, "editor.history.align_wall_textures");
+    }
+
+    int AlignSelectedWallTexturesX() {
+        return AlignSelectedWallChain(true, false, std::nullopt, "editor.history.align_wall_textures_x");
+    }
+
+    int AlignSelectedWallTexturesY() {
+        return AlignSelectedWallChain(false, true, std::nullopt, "editor.history.align_wall_textures_y");
+    }
+
+    std::vector<ID> ConnectedWallsWithTexture(const Level& level, const ID startWallID, const WallSurfaceSlot slot) {
+        const auto startIt = level.wallIDToIndex.find(startWallID);
+        if (startIt == level.wallIDToIndex.end()) return {};
+
+        const std::string& texture = level.walls[startIt->second].Surface(slot).texture;
+        if (texture.empty()) return {};
+
+        std::vector<ID> found = {startWallID};
+        std::vector<int> frontier = {startIt->second};
+
+        while (!frontier.empty()) {
+            const Wall& wall = level.walls[frontier.back()];
+            frontier.pop_back();
+
+            for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
+                const Wall& other = level.walls[i];
+                if (other.Surface(slot).texture != texture) continue;
+                if (std::ranges::find(found, other.id) != found.end()) continue;
+
+                const bool touches = NearlySame(other.start, wall.start) || NearlySame(other.start, wall.end) ||
+                                     NearlySame(other.end, wall.start) || NearlySame(other.end, wall.end);
+                if (!touches) continue;
+
+                found.push_back(other.id);
+                frontier.push_back(i);
             }
         }
 
-        PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.align_wall_textures", static_cast<int>(forward.size() + backward.size()) + 1);
-        MarkUnsavedChanges();
+        return found;
+    }
 
-        return static_cast<int>(forward.size() + backward.size()) + 1;
+    int AutoAlignWallTextures(const ID startWallID, const WallSurfaceSlot slot, const bool alignX, const bool alignY) {
+        const Level& level = LevelManager::CurrentLevel();
+
+        const std::vector<ID> chain = ConnectedWallsWithTexture(level, startWallID, slot);
+        if (chain.size() < 2) return 0;
+
+        // The chain walk follows the selection, so the spread stands in for
+        // it while the walk runs.
+        const std::vector<ID> savedSelection = selectedWalls;
+        const ID savedPrimary = selectedWallID;
+        const bool savedEditing = editingWall;
+
+        selectedWalls = chain;
+        selectedWallID = startWallID;
+
+        const int aligned = AlignSelectedWallChain(alignX, alignY, slot, AlignLabel(alignX, alignY));
+
+        selectedWalls = savedSelection;
+        selectedWallID = savedPrimary;
+        editingWall = savedEditing;
+
+        // The step's snapshot was taken while the spread stood in for the
+        // selection; undoing it must bring back the real one.
+        if (aligned > 0 && !undoSteps.empty()) {
+            GeometrySnapshot& snapshot = undoSteps.back().geometry;
+            snapshot.selectedWalls = savedSelection;
+            snapshot.selectedWallID = savedPrimary;
+            snapshot.editingWall = savedEditing;
+        }
+
+        return aligned;
     }
 
     int ResetSelectedWallOffsets() {
@@ -3281,6 +3450,9 @@ namespace MapEditorInternal {
 
     std::string entityPaletteSelection;
     bool placeOnFloor = true;
+    bool dragCarriesEntities = true;
+    bool paintSelectTool = false;
+    float paintSelectRadius = 12.0f;
     bool placeRandomYaw = false;
     std::string placeDefaultTag;
 
@@ -3402,6 +3574,206 @@ namespace MapEditorInternal {
         });
     }
 
+    int PointEntitiesAt(Level& level, const std::vector<ID>& entityIDs, const Vector2& target, const bool away) {
+        constexpr float YAW_EPSILON = 1e-4f;
+
+        std::vector<ID> turnable;
+
+        // Snapped entities always face away from their wall.
+        for (const ID entityID : entityIDs)
+            if (level.transforms.Get(entityID) != nullptr && !level.wallSnaps.contains(entityID)) turnable.push_back(entityID);
+
+        UndoStep step;
+        step.kind = UNDO_ENTITY_COMPONENTS;
+        step.labelKey = "editor.history.point_entities";
+        step.components = CaptureEntityComponents(level, turnable);
+
+        int turned = 0;
+
+        for (const ID entityID : turnable) {
+            ComponentTransform* transform = level.transforms.Get(entityID);
+
+            const float dx = (target.x - transform->position.x) * (away ? -1.0f : 1.0f);
+            const float dz = (target.y - transform->position.z) * (away ? -1.0f : 1.0f);
+            if (dx * dx + dz * dz < YAW_EPSILON) continue;
+
+            // Local +Z is the facing. Only the heading turns, about world up,
+            // so any tilt or roll is kept; facing straight up or down has
+            // no heading to turn.
+            const Vector3 forward = QuaternionMath::Rotate(transform->rotation, {0.0f, 0.0f, 1.0f});
+            if (forward.x * forward.x + forward.z * forward.z < YAW_EPSILON) continue;
+
+            const float turn = std::remainder(std::atan2(dx, dz) - std::atan2(forward.x, forward.z), 2.0f * Constants::Pi);
+            if (std::abs(turn) < YAW_EPSILON) continue;
+
+            transform->rotation = (Quaternion::FromAxisAngle(0.0f, 1.0f, 0.0f, turn) * transform->rotation).Normalized();
+            transform->isDirty = true;
+            ++turned;
+        }
+
+        if (turned > 0) {
+            step.count = turned;
+            PushUndoStep(std::move(step));
+            MarkUnsavedChanges();
+
+            if (const Entity* primary = level.GetEntity(selectedEntity.id)) selectedEntity = *primary;
+        }
+
+        return turned;
+    }
+
+    namespace {
+        // Sectors across `sector`'s two-sided walls.
+        std::vector<const Sector*> NeighbourSectors(const Level& level, const Sector& sector) {
+            std::vector<const Sector*> neighbours;
+
+            for (const Wall& wall : level.walls) {
+                if (wall.frontSector == INVALID_ID || wall.backSector == INVALID_ID) continue;
+
+                ID other = INVALID_ID;
+                if (wall.frontSector == sector.id) other = wall.backSector;
+                else if (wall.backSector == sector.id) other = wall.frontSector;
+                if (other == INVALID_ID || other == sector.id) continue;
+
+                const Sector* neighbour = level.GetSector(other);
+                if (neighbour != nullptr && std::ranges::find(neighbours, neighbour) == neighbours.end()) neighbours.push_back(neighbour);
+            }
+
+            return neighbours;
+        }
+    }
+
+    int MoveFlatsToNeighbourHeight(Level& level, const std::vector<FlatTarget>& targets, const bool raise, const bool extreme) {
+        constexpr float HEIGHT_EPSILON = 0.001f;
+        constexpr float STANDING_EPSILON = 0.01f;
+
+        struct Move {
+            FlatTarget target;
+            float height = 0.0f;
+        };
+
+        // Every target is worked out before any of them moves, so selected
+        // neighbours don't push each other along.
+        std::vector<Move> moves;
+
+        for (const FlatTarget& target : targets) {
+            const auto duplicate = std::ranges::find_if(moves, [&target](const Move& move) {
+                return move.target.sectorID == target.sectorID && move.target.floorIndex == target.floorIndex && move.target.ceiling == target.ceiling;
+            });
+            if (duplicate != moves.end()) continue;
+
+            const Sector* sector = level.GetSector(target.sectorID);
+            if (sector == nullptr || target.floorIndex < 0 || target.floorIndex >= static_cast<int>(sector->floors.size())) continue;
+
+            const SectorFloor& interval = sector->floors[target.floorIndex];
+            const float current = target.ceiling ? interval.ceiling.height : interval.floor.height;
+
+            std::optional<float> best;
+
+            for (const Sector* neighbour : NeighbourSectors(level, *sector)) {
+                for (const SectorFloor& other : neighbour->floors) {
+                    const float height = target.ceiling ? other.ceiling.height : other.floor.height;
+
+                    if (raise ? height <= current + HEIGHT_EPSILON : height >= current - HEIGHT_EPSILON) continue;
+
+                    // The next step is the closest height past this one; the
+                    // extreme the furthest.
+                    const bool better = !best.has_value() || (raise == extreme ? height > *best : height < *best);
+                    if (better) best = height;
+                }
+            }
+
+            if (!best.has_value()) continue;
+
+            // Kept inside the interval: a floor below its ceiling and above
+            // the interval under it, a ceiling the other way round.
+            const int fi = target.floorIndex;
+            const float low = target.ceiling
+                ? interval.floor.height + MIN_ROOM_HEIGHT
+                : fi > 0 ? sector->floors[fi - 1].ceiling.height : std::numeric_limits<float>::lowest();
+            const float high = target.ceiling
+                ? fi + 1 < static_cast<int>(sector->floors.size()) ? sector->floors[fi + 1].floor.height : std::numeric_limits<float>::max()
+                : interval.ceiling.height - MIN_ROOM_HEIGHT;
+
+            if (low > high) continue;
+
+            const float height = std::clamp(*best, low, high);
+            if (std::abs(height - current) > HEIGHT_EPSILON) moves.push_back({target, height});
+        }
+
+        if (moves.empty()) return 0;
+
+        UndoStep step;
+        step.kind = UNDO_GEOMETRY;
+        step.labelKey = raise ? "editor.history.raise_to_neighbour" : "editor.history.lower_to_neighbour";
+        step.count = static_cast<int>(moves.size());
+        step.geometry = CaptureGeometryUndoSnapshot();
+
+        EntityTransformUndo riders;
+
+        for (const Move& move : moves) {
+            Sector* sector = level.GetSector(move.target.sectorID);
+            const std::vector<SectorFloor> floorsBefore = sector->floors;
+            SectorFloor& interval = sector->floors[move.target.floorIndex];
+
+            // Entities standing on a floor ride along with it.
+            if (!move.target.ceiling) {
+                const int sectorIndex = static_cast<int>(sector - level.sectors.data());
+                const float delta = move.height - interval.floor.height;
+
+                for (ComponentTransform& transform : level.transforms.components) {
+                    const Vector2 point = {transform.position.x, transform.position.z};
+                    if (MapQueries::FindSectorContainingPoint(level.sectors, point) != sectorIndex) continue;
+                    if (std::abs(transform.position.y - MapQueries::SurfaceHeightAt(*sector, interval.floor, point)) > STANDING_EPSILON) continue;
+
+                    riders.positions.emplace_back(transform.ownerID, transform.position);
+                    transform.SetPosition({transform.position.x, transform.position.y + delta, transform.position.z});
+                    transform.isDirty = true;
+                }
+            }
+
+            (move.target.ceiling ? interval.ceiling.height : interval.floor.height) = move.height;
+
+            if (!sector->children.empty()) level.PropagateSectorChanges(sector->id, floorsBefore, sector->light);
+        }
+
+        if (!riders.positions.empty()) step.carriedEntities = std::move(riders);
+
+        PushUndoStep(std::move(step));
+        MarkUnsavedChanges();
+
+        return static_cast<int>(moves.size());
+    }
+
+    int MatchSectorBrightness(Level& level, const std::vector<ID>& sectorIDs, const ID sourceSectorID) {
+        const Sector* source = level.GetSector(sourceSectorID);
+        if (source == nullptr) return 0;
+
+        const Vector3 light = source->light;
+
+        GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+        int changed = 0;
+
+        for (const ID sectorID : sectorIDs) {
+            Sector* sector = level.GetSector(sectorID);
+            if (sector == nullptr || sector->id == sourceSectorID) continue;
+            if (sector->light.x == light.x && sector->light.y == light.y && sector->light.z == light.z) continue;
+
+            const Vector3 lightBefore = sector->light;
+            sector->light = light;
+
+            if (!sector->children.empty()) level.PropagateSectorChanges(sector->id, sector->floors, lightBefore);
+            ++changed;
+        }
+
+        if (changed > 0) {
+            PushGeometryUndoSnapshot(std::move(before), "editor.history.match_brightness", changed);
+            MarkUnsavedChanges();
+        }
+
+        return changed;
+    }
+
     int DropSelectedEntitiesToFloor() {
         return MoveSelectedEntities("editor.history.drop_entities", [](ID, const Vector3 position) {
             return Vector3{position.x, FloorHeightAt({position.x, position.z}), position.z};
@@ -3418,6 +3790,22 @@ namespace MapEditorInternal {
                     current.positions.emplace_back(entityID, transform->position);
 
             return current;
+        }
+
+        // Moves the entities `undo` names back to its positions and leaves
+        // their current ones in it.
+        void SwapEntityPositions(Level& level, EntityTransformUndo& undo) {
+            EntityTransformUndo current = CurrentPositions(level, undo);
+
+            for (const auto& [entityID, position] : undo.positions) {
+                ComponentTransform* transform = level.transforms.Get(entityID);
+                if (transform == nullptr) continue;
+
+                transform->SetPosition(position);
+                transform->isDirty = true;
+            }
+
+            undo = std::move(current);
         }
 
         // Selected entities the restore removed are dropped, and the
@@ -3447,6 +3835,7 @@ namespace MapEditorInternal {
             Level& level = LevelManager::CurrentLevel();
 
             if (step.wallSnaps.has_value()) std::swap(*step.wallSnaps, WallSnap::All());
+            if (step.carriedEntities.has_value()) SwapEntityPositions(level, *step.carriedEntities);
 
             switch (step.kind) {
                 case UNDO_GEOMETRY: {
@@ -3456,17 +3845,7 @@ namespace MapEditorInternal {
                     break;
                 }
                 case UNDO_ENTITY_POSITIONS: {
-                    EntityTransformUndo current = CurrentPositions(level, step.positions);
-
-                    for (const auto& [entityID, position] : step.positions.positions) {
-                        ComponentTransform* transform = level.transforms.Get(entityID);
-                        if (transform == nullptr) continue;
-
-                        transform->SetPosition(position);
-                        transform->isDirty = true;
-                    }
-
-                    step.positions = std::move(current);
+                    SwapEntityPositions(level, step.positions);
                     MarkUnsavedChanges();
                     break;
                 }
@@ -3474,6 +3853,12 @@ namespace MapEditorInternal {
                     EntitiesSnapshot current = CaptureEntitiesSnapshot();
                     RestoreEntitiesSnapshot(level, step.entities);
                     step.entities = std::move(current);
+                    break;
+                }
+                case UNDO_COMMENTS: {
+                    std::swap(level.comments, step.comments.comments);
+                    std::swap(level.nextCommentID, step.comments.nextCommentID);
+                    MarkUnsavedChanges();
                     break;
                 }
                 case UNDO_ENTITY_COMPONENTS: {
@@ -3736,6 +4121,20 @@ namespace MapEditorInternal {
         step.labelKey = labelKey;
         step.count = count;
         step.positions = std::move(before);
+
+        PushUndoStep(std::move(step));
+    }
+
+    CommentsSnapshot CaptureCommentsSnapshot() {
+        const Level& level = LevelManager::CurrentLevel();
+        return {level.comments, level.nextCommentID};
+    }
+
+    void PushCommentsUndo(CommentsSnapshot before, const char* labelKey) {
+        UndoStep step;
+        step.kind = UNDO_COMMENTS;
+        step.labelKey = labelKey;
+        step.comments = std::move(before);
 
         PushUndoStep(std::move(step));
     }
