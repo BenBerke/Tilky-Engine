@@ -1039,14 +1039,19 @@ namespace {
         return *lowest - door.lip;
     }
 
-    void OpenDoor(SectorFloor& floor, DoorState& door) {
+    // Defined with the other sounds below.
+    void PlayDoorSound(const Level& level, const DoorState& door, const std::string& sound);
+
+    void OpenDoor(const Level& level, SectorFloor& floor, DoorState& door) {
         floor.MoveCeilingTo(door.openHeight, door.settings.openSpeed, SECTOR_FORCE_MOVE);
         door.phase = DoorState::OPENING;
+        PlayDoorSound(level, door, door.settings.openSound);
     }
 
-    void CloseDoor(SectorFloor& floor, DoorState& door) {
+    void CloseDoor(const Level& level, SectorFloor& floor, DoorState& door) {
         floor.MoveCeilingTo(door.closedHeight, door.settings.closeSpeed, door.settings.closeCollision);
         door.phase = DoorState::CLOSING;
+        PlayDoorSound(level, door, door.settings.closeSound);
     }
 
     void TriggerDoor(Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings) {
@@ -1067,7 +1072,7 @@ namespace {
             if (!openHeight) return;
 
             DoorState door{sectorID, settings.floorIndex, settings, floor->ceiling.height, *openHeight};
-            OpenDoor(*floor, door);
+            OpenDoor(level, *floor, door);
             doors.push_back(door);
             return;
         }
@@ -1076,12 +1081,12 @@ namespace {
 
         switch (settings.retrigger) {
             case PayloadDispatchSectorDoor::RESTART:
-                if (door.phase == DoorState::CLOSING) OpenDoor(*floor, door);
+                if (door.phase == DoorState::CLOSING) OpenDoor(level, *floor, door);
                 else if (door.phase == DoorState::WAITING) door.waitLeft = door.settings.wait;
                 break;
             case PayloadDispatchSectorDoor::TOGGLE:
-                if (door.phase == DoorState::CLOSING) OpenDoor(*floor, door);
-                else CloseDoor(*floor, door);
+                if (door.phase == DoorState::CLOSING) OpenDoor(level, *floor, door);
+                else CloseDoor(level, *floor, door);
                 break;
             case PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN:
                 break;
@@ -1103,15 +1108,20 @@ namespace {
 
                 case DoorState::WAITING:
                     door.waitLeft -= deltaTime;
-                    if (door.waitLeft <= 0.0f) CloseDoor(*floor, door);
+                    if (door.waitLeft <= 0.0f) CloseDoor(level, *floor, door);
                     return false;
 
                 case DoorState::CLOSING:
                     if (floor->ceilingMove.active) return false;
 
                     // Shut: done. Blocked short of it (retracted or stopped):
-                    // wait open and try again.
-                    if (std::abs(floor->ceiling.height - door.closedHeight) <= 0.001f) return true;
+                    // wait open and try again. A move never gets closer than
+                    // MIN_MOVE_GAP to the floor, so a door that started shut
+                    // flat on its floor ends that far above it - comparing
+                    // with where it started took that for blocked, and the
+                    // door waited and "closed" forever, never opening again.
+                    const float shutHeight = std::max(door.closedHeight, floor->floor.height + SectorFloor::MIN_MOVE_GAP);
+                    if (!floor->ceilingMove.retracting && floor->ceiling.height <= shutHeight + 0.001f) return true;
 
                     door.phase = DoorState::WAITING;
                     door.waitLeft = door.settings.wait;
@@ -1311,6 +1321,16 @@ namespace {
         SoundManager::PlaySoundOnSource(name, play.sound);
 
         soundSources.push_back(name);
+    }
+
+    void PlayDoorSound(const Level& level, const DoorState& door, const std::string& sound) {
+        if (sound.empty()) return;
+
+        PayloadDispatchPlaySound play;
+        play.sound = sound;
+        play.gain = door.settings.soundGain;
+        play.pitch = door.settings.soundPitch;
+        PlaySound(play, OwnerPosition(level, EventOwnerKind::SECTOR, door.sectorID));
     }
 
     // Deletes the sources of sounds that have finished.

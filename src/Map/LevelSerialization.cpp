@@ -939,6 +939,10 @@ namespace {
             j["floorIndex"] = payload.floorIndex;
             j["closeCollision"] = EnumName(kSectorCollisionNames, payload.closeCollision);
             j["retrigger"] = EnumName(kDoorRetriggerNames, payload.retrigger);
+            j["openSound"] = payload.openSound;
+            j["closeSound"] = payload.closeSound;
+            j["soundGain"] = payload.soundGain;
+            j["soundPitch"] = payload.soundPitch;
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
@@ -1108,6 +1112,10 @@ namespace {
             ReadOptional(j, "floorIndex", payload.floorIndex);
             ReadOptionalEnum(j, "closeCollision", kSectorCollisionNames, payload.closeCollision);
             ReadOptionalEnum(j, "retrigger", kDoorRetriggerNames, payload.retrigger);
+            ReadOptional(j, "openSound", payload.openSound);
+            ReadOptional(j, "closeSound", payload.closeSound);
+            ReadOptional(j, "soundGain", payload.soundGain);
+            ReadOptional(j, "soundPitch", payload.soundPitch);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {

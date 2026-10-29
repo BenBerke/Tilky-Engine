@@ -245,6 +245,23 @@ end
 
 ## Floors
 
+### Make Door
+
+In the editor, every floor of the sector inspector has a **Make Door...** button. It asks for a
+**Lip** and a **Wait** (seconds), then turns that floor into a door you open with Use:
+
+- A new event tag, `Door <sector name>` (`Door 2`, ... when taken; `Door #<id>` for an unnamed
+  sector), in Project Settings > **Event Tags**.
+- A **Receive Ray** event on **every** wall of the sector: Interact rays (the
+  [Player Controller](PlayerController.md)'s Use key) from entities tagged **Player**.
+- A **Door** dispatch on the sector for that floor: the ceiling opens to the lowest neighbouring
+  ceiling minus the lip, waits, then closes. Using it while it closes reopens it. The dispatch
+  has an **Open Sound** and a **Close Sound** (empty at first), played from the sector when the
+  door starts opening or closing, with their **Gain** and **Pitch**.
+
+Everything it adds is an ordinary event and dispatch, editable afterwards, and the whole thing is
+one undo step (the new tag stays in the project).
+
 ### GetFloor
 
 ```lua

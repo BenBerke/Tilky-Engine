@@ -1451,22 +1451,25 @@ namespace {
         }
     }
 
-    void DrawTagsSection() {
+    // One list per tag kind: the normal tags, then the event tags.
+    void DrawTagsSection(const TagRegistry::TagKind kind) {
+        const int kindIndex = kind == TagRegistry::TagKind::EVENT ? 1 : 0;
 
         // Per-tag rename buffers, persisted across frames (like
         // levelNameBuf below) so an in-progress edit survives frame
         // boundaries. Keyed by TagId rather than name since renaming must
-        // not change which row a buffer belongs to.
-        static std::unordered_map<TagId, std::array<char, 128> > tagNameBuffers;
-        static char newTagNameBuf[128] = "";
+        // not change which row a buffer belongs to. One set per list, or
+        // each list would drop the other's buffers every frame.
+        static std::unordered_map<TagId, std::array<char, 128> > tagNameBuffersByKind[2];
+        static char newTagNameBufByKind[2][128] = {"", ""};
+        auto &tagNameBuffers = tagNameBuffersByKind[kindIndex];
+        char (&newTagNameBuf)[128] = newTagNameBufByKind[kindIndex];
 
-        const TagRegistry::TagMap &tags = TagRegistry::GetAll();
+        ImGui::PushID(kindIndex);
 
-        // Stable, ID-ordered snapshot for this frame - GetAll() is an
-        // unordered_map, and iterating it directly would let rows jump
+        // Stable, ID-ordered snapshot for this frame, so rows don't jump
         // around as tags are added/removed.
-        std::vector<std::pair<std::string, TagId> > sortedTags(tags.begin(), tags.end());
-        std::ranges::sort(sortedTags, {}, [](const auto &entry) { return entry.second; });
+        const std::vector<std::pair<std::string, TagId> > sortedTags = TagRegistry::GetAllOfKind(kind);
 
         // Seed a buffer for any tag we haven't seen yet; never overwrite an
         // existing one, or an in-progress edit would be stomped every frame.
@@ -1559,14 +1562,15 @@ namespace {
 
         // Always-available empty row for creating another tag.
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        ImGui::InputTextWithHint("##NewTagName", Get("tags.new_placeholder").c_str(),
+        ImGui::InputTextWithHint("##NewTagName",
+                                 Get(kindIndex == 1 ? "tags.new_event_placeholder" : "tags.new_placeholder").c_str(),
                                  newTagNameBuf, sizeof(newTagNameBuf));
 
         if (ImGui::IsItemDeactivatedAfterEdit()) {
             const std::string enteredName = newTagNameBuf;
 
             if (!enteredName.empty()) {
-                if (TagRegistry::Create(enteredName)) {
+                if (TagRegistry::Create(enteredName, kind)) {
                     newTagNameBuf[0] = '\0';
                     hasUnsavedChanges = true;
                     if (!SaveProjectSettings())
@@ -1588,6 +1592,8 @@ namespace {
             if (!SaveProjectSettings())
                 ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
         }
+
+        ImGui::PopID();
     }
 
     // =========================================================================
@@ -2298,7 +2304,17 @@ namespace {
             ImGui::Separator();
             ImGui::Spacing();
 
-            DrawTagsSection();
+            DrawTagsSection(TagRegistry::TagKind::NORMAL);
+
+            ImGui::Spacing();
+            SectionHeader(Get("editor.project.event_tags").c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("%s", Get("editor.project.event_tags_hint").c_str());
+            ImGui::PopStyleColor();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            DrawTagsSection(TagRegistry::TagKind::EVENT);
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -3693,10 +3709,11 @@ namespace {
         const auto parentsBeforeEdit = level.SnapshotParentSectorValues();
 
         bool copyRequested = false;
+        ImGuiDrawFunctions::MakeDoorRequest makeDoorRequest;
 
         BeginSectorInspectorEdit(sectorInspectorEdit, sector);
 
-        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested)) {
+        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested, &makeDoorRequest)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
             const std::vector<ID> sectorsToDelete =
@@ -3722,6 +3739,13 @@ namespace {
         level.PropagateSnapshottedSectorChanges(parentsBeforeEdit);
 
         if (copyRequested) CopySectorToNewSectorProperties(level, sector);
+
+        // Its own undo step, after the inspector's edit is recorded and
+        // passed on, so neither the selection nor the children get the door.
+        if (makeDoorRequest.floorIndex >= 0) {
+            const std::string tagName = MakeDoor(level, sector.id, makeDoorRequest.floorIndex, makeDoorRequest.lip, makeDoorRequest.wait);
+            if (!tagName.empty()) ShowNotification((Get("sector.make_door_done") + " " + tagName).c_str(), false);
+        }
     }
 
     // Geometry Mode's inspector. This is the same
@@ -4862,7 +4886,8 @@ namespace MapEditorInternal {
             placeDefaultTag = defaultTagBuf;
         HoverTooltip(Get("editor.tooltip.entity_mode.placement.tag").c_str());
 
-        if (!placeDefaultTag.empty() && !TagRegistry::Exists(placeDefaultTag)) {
+        const auto placeTag = TagRegistry::Find(placeDefaultTag);
+        if (!placeDefaultTag.empty() && (!placeTag || TagRegistry::GetKind(*placeTag) != TagRegistry::TagKind::NORMAL)) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
             ImGui::TextWrapped("%s", Get("editor.entity_mode.placement.tag_unknown").c_str());
             ImGui::PopStyleColor();
@@ -4960,11 +4985,11 @@ namespace MapEditorInternal {
         TILKY_NORMAL_COMPONENTS(TILKY_ENTITY_FILTER_ROW)
 #undef TILKY_ENTITY_FILTER_ROW
 
-        if (!TagRegistry::GetAll().empty()) {
+        if (const auto normalTags = TagRegistry::GetAllOfKind(TagRegistry::TagKind::NORMAL); !normalTags.empty()) {
             ImGui::Spacing();
             ImGui::TextDisabled("%s", Get("editor.entity_mode.filter.tags").c_str());
 
-            for (const auto& [tagName, tagId] : TagRegistry::GetAll()) {
+            for (const auto& [tagName, tagId] : normalTags) {
                 const TagId tag = tagId;
                 const bool visible = std::ranges::find(hiddenEntityTags, tag) == hiddenEntityTags.end();
 

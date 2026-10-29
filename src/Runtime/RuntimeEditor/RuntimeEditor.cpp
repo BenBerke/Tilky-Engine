@@ -2634,13 +2634,16 @@ namespace RuntimeEditorUi {
                 const nlohmann::json before = mirrors ? MultiEdit::SectorState(level.sectors[selectedSector]) : nlohmann::json{};
 
                 bool open = true;
+                ImGuiDrawFunctions::MakeDoorRequest makeDoorRequest;
 
                 MapEditorInternal::BeginSectorInspectorEdit(sectorInspectorEdit, level.sectors[selectedSector]);
 
                 ImGuiDrawFunctions::DrawSectorEditor(
                     level.sectors[selectedSector],
                     &open,
-                    true
+                    true,
+                    nullptr,
+                    &makeDoorRequest
                 );
 
                 // Before the mirroring below, as for walls.
@@ -2654,6 +2657,15 @@ namespace RuntimeEditorUi {
 
                     if (after != before)
                         for (const int index : otherSectors) MultiEdit::MirrorSectorEdit(before, after, level.sectors[index]);
+                }
+
+                // Its own undo step, after the inspector's edit is recorded
+                // and mirrored, so the rest of the selection doesn't get it.
+                if (open && makeDoorRequest.floorIndex >= 0) {
+                    const std::string tagName = MapEditorInternal::MakeDoor(level, level.sectors[selectedSector].id,
+                        makeDoorRequest.floorIndex, makeDoorRequest.lip, makeDoorRequest.wait);
+                    if (!tagName.empty())
+                        ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_door_done") + " " + tagName).c_str(), false);
                 }
             }
         }

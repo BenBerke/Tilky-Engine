@@ -57,7 +57,16 @@ namespace ImGuiDrawFunctions {
 
     // A non-null copyRequested adds a Copy button to the header; it is set to
     // true on the frame the button is pressed.
-    bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr);
+    // Make Door, picked on one of the sector's floors with its settings.
+    // The caller makes the door (MapEditorInternal::MakeDoor).
+    struct MakeDoorRequest {
+        int floorIndex = -1; // -1: nothing picked
+        float lip = 4.0f;
+        float wait = 3.0f;
+    };
+
+    bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr,
+                             MakeDoorRequest *makeDoorRequest = nullptr);
     bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable);
     // The level's own Events and Dispatches sections (World Settings).

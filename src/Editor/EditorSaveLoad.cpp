@@ -49,7 +49,8 @@ namespace {
         nlohmann::json settings = {
             {"formatVersion", 1},
             {"tagToId", TagRegistry::GetAll()},
-            {"nextTagId", TagRegistry::GetNextId()}
+            {"nextTagId", TagRegistry::GetNextId()},
+            {"eventTags", TagRegistry::GetEventTagIds()}
         };
 
         GlobalEventVariables::WriteToProjectSettings(settings);
@@ -107,6 +108,10 @@ namespace MapEditorInternal {
 
         const bool tagsLoaded = TagRegistry::LoadFromProjectSettings(settingsPath);
         const bool variablesLoaded = GlobalEventVariables::LoadFromProjectSettings(settingsPath);
+
+        // Only onto settings that loaded: saving after a failed load would
+        // overwrite the file with an almost empty one.
+        if (tagsLoaded && variablesLoaded && TagRegistry::EnsureBuiltInTags()) SaveProjectSettings();
 
         return tagsLoaded && variablesLoaded;
     }

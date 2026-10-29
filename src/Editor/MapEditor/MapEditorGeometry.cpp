@@ -1656,6 +1656,46 @@ namespace MapEditorInternal {
         return CaptureGeometrySnapshot(LevelManager::CurrentLevel());
     }
 
+    std::string MakeDoor(Level& level, const ID sectorID, const int floorIndex, const float lip, const float wait) {
+        Sector* sector = level.GetSector(sectorID);
+        if (sector == nullptr) return {};
+
+        GeometrySnapshot before = CaptureGeometrySnapshot(level);
+
+        const std::string tagName =
+            TagRegistry::UniqueName("Door " + (sector->name.empty() ? "#" + std::to_string(sector->id) : sector->name));
+        const TagId link = TagRegistry::GetOrCreate(tagName, TagRegistry::TagKind::EVENT);
+        const TagId player = TagRegistry::GetOrCreate(TagRegistry::PLAYER_TAG);
+        if (!SaveProjectSettings()) spdlog::error("Make Door: couldn't save the new tag to the project settings");
+
+        PayloadReceiveRay ray;
+        ray.rayType = RayType::INTERACT;
+        ray.filter.tagType = TagType::INCLUDE;
+        ray.filter.tags = {player};
+
+        Event event;
+        event.payload = ray;
+        event.tagId = link;
+
+        for (Wall* wall : sector->walls)
+            if (wall != nullptr) wall->events.push_back(event);
+
+        PayloadDispatchSectorDoor door;
+        door.lip = lip;
+        door.wait = wait;
+        door.floorIndex = floorIndex;
+
+        Dispatch dispatch;
+        dispatch.payload = door;
+        dispatch.tagId = link;
+        sector->dispatches.push_back(dispatch);
+
+        PushGeometryUndoSnapshot(std::move(before), "editor.history.make_door");
+        hasUnsavedChanges = true;
+
+        return tagName;
+    }
+
     void PushGeometryUndoSnapshot(GeometrySnapshot snapshot, const char* labelKey, const int count) {
         UndoStep step;
         step.kind = UNDO_GEOMETRY;
@@ -3495,7 +3535,8 @@ namespace MapEditorInternal {
         if (Entity* entity = level.GetEntity(id); entity != nullptr && !placeDefaultTag.empty()) {
             const auto tagId = TagRegistry::Find(placeDefaultTag);
 
-            if (tagId && std::ranges::find(entity->tagIds, *tagId) == entity->tagIds.end())
+            if (tagId && TagRegistry::GetKind(*tagId) == TagRegistry::TagKind::NORMAL &&
+                std::ranges::find(entity->tagIds, *tagId) == entity->tagIds.end())
                 entity->tagIds.push_back(*tagId);
         }
 

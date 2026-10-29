@@ -1019,12 +1019,11 @@ namespace ImGuiDrawFunctions {
 
         if (tagIndexToRemove >= 0) tagIds.erase(tagIds.begin() + tagIndexToRemove);
 
-        // Project tags not assigned yet, in ID (creation) order like the
-        // Project Settings list.
+        // Normal project tags not assigned yet, in ID (creation) order like
+        // the Project Settings list. Event tags only link events.
         std::vector<std::pair<std::string, TagId> > availableTags;
-        for (const auto &[name, id]: TagRegistry::GetAll())
+        for (const auto &[name, id]: TagRegistry::GetAllOfKind(TagRegistry::TagKind::NORMAL))
             if (std::ranges::find(tagIds, id) == tagIds.end()) availableTags.emplace_back(name, id);
-        std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
 
         // Always-available dropdown for assigning another tag.
         FieldWidth(-FLT_MIN);
@@ -1045,17 +1044,17 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Events / Dispatches — shared by the Sector / Wall / Entity inspectors
     // ─────────────────────────────────────────────────────────────────────────
-    // An event reaches every dispatch with the same tag. Both tags and the
-    // payloads' tag filters are picked from the project tags.
+    // An event reaches every dispatch with the same tag. Those link tags are
+    // the project's event tags; the payloads' tag filters test normal tags.
 
-    // A dropdown of the project tags. A tag that no longer exists shows as
-    // deleted (or as "no tags" while the project has none).
-    static bool DrawTagCombo(const char *label, TagId &tag) {
-        std::vector<std::pair<std::string, TagId> > tags(TagRegistry::GetAll().begin(), TagRegistry::GetAll().end());
-        std::ranges::sort(tags, {}, [](const auto &entry) { return entry.second; });
+    // A dropdown of the project tags of one kind. A tag that no longer
+    // exists shows as deleted (or as "no tags" while there are none).
+    static bool DrawTagCombo(const char *label, TagId &tag, const TagRegistry::TagKind kind) {
+        const std::vector<std::pair<std::string, TagId> > tags = TagRegistry::GetAllOfKind(kind);
 
         const auto name = TagRegistry::GetName(tag);
-        const std::string preview = name ? *name : Get(tags.empty() ? "events.no_tags" : "tags.missing");
+        const char *noTagsKey = kind == TagRegistry::TagKind::EVENT ? "events.no_event_tags" : "events.no_tags";
+        const std::string preview = name ? *name : Get(tags.empty() ? noTagsKey : "tags.missing");
 
         bool changed = false;
         if (ImGui::BeginCombo(label, preview.c_str())) {
@@ -1384,11 +1383,9 @@ namespace ImGuiDrawFunctions {
             Entry entry;
             entry.payload = Payload{};
 
-            // The first project tag, so a new entry starts on a real tag.
-            std::optional<TagId> firstTag;
-            for (const auto &[name, id]: TagRegistry::GetAll())
-                if (!firstTag || id < *firstTag) firstTag = id;
-            if (firstTag) entry.tagId = *firstTag;
+            // The first event tag, so a new entry starts on a real link.
+            const auto eventTags = TagRegistry::GetAllOfKind(TagRegistry::TagKind::EVENT);
+            if (!eventTags.empty()) entry.tagId = eventTags.front().second;
 
             entries.push_back(std::move(entry));
         });
@@ -1423,9 +1420,8 @@ namespace ImGuiDrawFunctions {
         if (tagToRemove >= 0) filter.tags.erase(filter.tags.begin() + tagToRemove);
 
         std::vector<std::pair<std::string, TagId> > availableTags;
-        for (const auto &[name, id]: TagRegistry::GetAll())
+        for (const auto &[name, id]: TagRegistry::GetAllOfKind(TagRegistry::TagKind::NORMAL))
             if (std::ranges::find(filter.tags, id) == filter.tags.end()) availableTags.emplace_back(name, id);
-        std::ranges::sort(availableTags, {}, [](const auto &entry) { return entry.second; });
 
         FieldWidth(-FLT_MIN);
         const char *previewKey = availableTags.empty() ? "tags.none_available" : "events.filter_tag_add";
@@ -1560,7 +1556,7 @@ namespace ImGuiDrawFunctions {
                     DrawPayloadTypeCombo(event.payload, kind);
 
                     Property(Get("events.link_tag").c_str());
-                    DrawTagCombo("##LinkTag", event.tagId);
+                    DrawTagCombo("##LinkTag", event.tagId, TagRegistry::TagKind::EVENT);
                     Tooltip(Get("editor.tooltip.events.link_tag").c_str());
 
                     int maxTriggers = static_cast<int>(event.maxTriggers);
@@ -1688,7 +1684,7 @@ namespace ImGuiDrawFunctions {
                     DrawPayloadTypeCombo(dispatch.payload, kind);
 
                     Property(Get("events.link_tag").c_str());
-                    DrawTagCombo("##LinkTag", dispatch.tagId);
+                    DrawTagCombo("##LinkTag", dispatch.tagId, TagRegistry::TagKind::EVENT);
                     Tooltip(Get("editor.tooltip.events.link_tag").c_str());
 
                     Property(Get("events.delay").c_str());
@@ -1875,6 +1871,18 @@ namespace ImGuiDrawFunctions {
                                 Property(Get("events.door.retrigger").c_str());
                                 DrawEnumCombo("##Retrigger", payload.retrigger, kDoorRetriggerOptions);
                                 Tooltip(Get("editor.tooltip.dispatches.door_retrigger").c_str());
+
+                                DrawAssetRow("events.door.open_sound", payload.openSound, AssetKind::Sound, "editor.tooltip.dispatches.door_open_sound");
+
+                                DrawAssetRow("events.door.close_sound", payload.closeSound, AssetKind::Sound, "editor.tooltip.dispatches.door_close_sound");
+
+                                Property(Get("events.gain").c_str());
+                                if (InputOrDrag("##Gain", &payload.soundGain, draggable, 0.01f))
+                                    payload.soundGain = std::max(0.0f, payload.soundGain);
+
+                                Property(Get("events.pitch").c_str());
+                                if (InputOrDrag("##Pitch", &payload.soundPitch, draggable, 0.01f))
+                                    payload.soundPitch = std::max(0.01f, payload.soundPitch);
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
                                 Property(Get("events.surface").c_str());
@@ -1907,7 +1915,7 @@ namespace ImGuiDrawFunctions {
                                 DrawEnumCombo("##Operation", payload.remove, kTagOperationOptions);
 
                                 Property(Get("events.tag").c_str());
-                                DrawTagCombo("##Tag", payload.tag);
+                                DrawTagCombo("##Tag", payload.tag, TagRegistry::TagKind::NORMAL);
                                 Tooltip(Get("editor.tooltip.dispatches.change_tag").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityChangeVelocity>) {
@@ -2006,7 +2014,7 @@ namespace ImGuiDrawFunctions {
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> ||
                                                std::is_same_v<Payload, PayloadDispatchResetEvent>) {
                                 Property(Get("events.target_tag").c_str());
-                                DrawTagCombo("##Target", payload.target);
+                                DrawTagCombo("##Target", payload.target, TagRegistry::TagKind::EVENT);
                                 Tooltip(Get(std::is_same_v<Payload, PayloadDispatchRelay>
                                                 ? "editor.tooltip.dispatches.relay"
                                                 : "editor.tooltip.dispatches.reset_event").c_str());
@@ -2192,7 +2200,8 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable, bool *copyRequested) {
+    bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable, bool *copyRequested,
+                          MakeDoorRequest *makeDoorRequest) {
         bool deleteRequested = false;
         int floorToRemove = -1;
 
@@ -2295,6 +2304,38 @@ namespace ImGuiDrawFunctions {
                 Tooltip(Get("editor.tooltip.sector.ceil_height").c_str());
 
                 EndProperties();
+            }
+
+            // ── Make Door: its settings in a small popup first ───────────────
+            if (makeDoorRequest != nullptr) {
+                // Kept between doors, so a row of doors is quick to make.
+                static float doorLip = 4.0f;
+                static float doorWait = 3.0f;
+
+                if (ImGui::Button(Get("sector.make_door").c_str(), ImVec2(-FLT_MIN, 0.0f))) ImGui::OpenPopup("make_door");
+                Tooltip(Get("editor.tooltip.sector.make_door").c_str());
+
+                ImGui::SetNextWindowSize(ImVec2(240.0f, 0.0f));
+                if (ImGui::BeginPopup("make_door")) {
+                    if (BeginProperties("##MakeDoor")) {
+                        Property(Get("events.door.lip").c_str());
+                        if (ImGui::DragFloat("##Lip", &doorLip, 0.25f, 0.0f, 10000.0f, "%.2f")) doorLip = std::max(0.0f, doorLip);
+                        Tooltip(Get("editor.tooltip.dispatches.door_lip").c_str());
+
+                        Property(Get("events.door.wait").c_str());
+                        if (ImGui::DragFloat("##Wait", &doorWait, 0.05f, 0.0f, 10000.0f, "%.2f s")) doorWait = std::max(0.0f, doorWait);
+                        Tooltip(Get("editor.tooltip.dispatches.door_wait").c_str());
+
+                        EndProperties();
+                    }
+
+                    if (ImGui::Button(Get("sector.make_door_confirm").c_str(), ImVec2(-FLT_MIN, 0.0f))) {
+                        *makeDoorRequest = {static_cast<int>(floorIndex), doorLip, doorWait};
+                        ImGui::CloseCurrentPopup();
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             // ── Floor / Ceiling tabs, like a wall's Top / Bottom / Middle ────

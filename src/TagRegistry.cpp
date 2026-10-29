@@ -8,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -17,6 +18,7 @@ namespace
 {
     TagRegistry::TagMap tagToId;
     std::unordered_map<TagId, std::string> idToTag;
+    std::unordered_set<TagId> eventTagIds;
     uint32_t nextTagId = 0;
 }
 
@@ -36,7 +38,7 @@ std::optional<std::string> TagRegistry::GetName(const TagId id) {
     return iterator->second;
 }
 
-TagId TagRegistry::GetOrCreate(const std::string& name) {
+TagId TagRegistry::GetOrCreate(const std::string& name, const TagKind kind) {
     if (const auto id = Find(name)) return *id;
 
     if (nextTagId > std::numeric_limits<TagId>::max()) throw std::runtime_error("Maximum number of tags reached");
@@ -44,21 +46,46 @@ TagId TagRegistry::GetOrCreate(const std::string& name) {
     const auto id = static_cast<TagId>(nextTagId++);
     tagToId.emplace(name, id);
     idToTag[id] = name;
+    if (kind == TagKind::EVENT) eventTagIds.insert(id);
 
     return id;
 }
 
-std::optional<TagId> TagRegistry::Create(const std::string& name) {
+std::optional<TagId> TagRegistry::Create(const std::string& name, const TagKind kind) {
     if (name.empty()) return std::nullopt;
     if (Exists(name)) return std::nullopt;
 
-    if (nextTagId > std::numeric_limits<TagId>::max()) throw std::runtime_error("Maximum number of tags reached");
+    return GetOrCreate(name, kind);
+}
 
-    const auto id = static_cast<TagId>(nextTagId++);
-    tagToId.emplace(name, id);
-    idToTag[id] = name;
+TagRegistry::TagKind TagRegistry::GetKind(const TagId id) {
+    return eventTagIds.contains(id) ? TagKind::EVENT : TagKind::NORMAL;
+}
 
-    return id;
+std::vector<std::pair<std::string, TagId>> TagRegistry::GetAllOfKind(const TagKind kind) {
+    std::vector<std::pair<std::string, TagId>> tags;
+
+    for (const auto& [name, id] : tagToId)
+        if (GetKind(id) == kind) tags.emplace_back(name, id);
+
+    std::ranges::sort(tags, {}, [](const auto& entry) { return entry.second; });
+    return tags;
+}
+
+std::string TagRegistry::UniqueName(const std::string& base) {
+    if (!Exists(base)) return base;
+
+    for (int number = 2;; ++number) {
+        std::string name = base + " " + std::to_string(number);
+        if (!Exists(name)) return name;
+    }
+}
+
+bool TagRegistry::EnsureBuiltInTags() {
+    if (Exists(PLAYER_TAG)) return false;
+
+    GetOrCreate(PLAYER_TAG);
+    return true;
 }
 
 bool TagRegistry::Rename(const std::string& oldName, const std::string& newName) {
@@ -84,6 +111,7 @@ bool TagRegistry::Delete(const std::string& name) {
     if (iterator == tagToId.end()) return false;
 
     idToTag.erase(iterator->second);
+    eventTagIds.erase(iterator->second);
     tagToId.erase(iterator);
 
     return true;
@@ -101,12 +129,23 @@ uint32_t TagRegistry::GetNextId() {
     return nextTagId;
 }
 
-void TagRegistry::Load(TagMap tags, const uint32_t nextId) {
+std::vector<TagId> TagRegistry::GetEventTagIds() {
+    std::vector<TagId> ids(eventTagIds.begin(), eventTagIds.end());
+    std::ranges::sort(ids);
+    return ids;
+}
+
+void TagRegistry::Load(TagMap tags, const uint32_t nextId, const std::vector<TagId>& eventTags) {
     tagToId = std::move(tags);
     nextTagId = nextId;
 
     idToTag.clear();
     for (const auto& [name, id] : tagToId) idToTag[id] = name;
+
+    // Only IDs that are registered tags.
+    eventTagIds.clear();
+    for (const TagId id : eventTags)
+        if (idToTag.contains(id)) eventTagIds.insert(id);
 }
 
 bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsPath) {
@@ -144,7 +183,9 @@ bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsP
 
         const uint32_t savedNextId = settings.value("nextTagId", minimumNextId);
 
-        Load(std::move(tags), std::max(savedNextId, minimumNextId));
+        const auto eventTags = settings.value("eventTags", std::vector<TagId>{});
+
+        Load(std::move(tags), std::max(savedNextId, minimumNextId), eventTags);
 
         return true;
     }
@@ -157,5 +198,6 @@ bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsP
 void TagRegistry::Clear() {
     tagToId.clear();
     idToTag.clear();
+    eventTagIds.clear();
     nextTagId = 0;
 }

@@ -27,7 +27,7 @@ deselects. Right click opens an entity's settings.
 | Field | What it does |
 |---|---|
 | **Name** | Display name. `Game.FindEntity("Name")` looks entities up by it. Names don't have to be unique. |
-| **Tags** | Labels from the project's tag list (Project Settings). Scripts can test them with `HasTag`, and `Game.FindEntitiesWithTag` finds every entity with one. Scripts can read tags but not change them. |
+| **Tags** | Labels from the project's tag list (Project Settings > **Tags**). Every project has a **Player** tag, added automatically; give it to your player so things like [Make Door](Sector.md#make-door) react to it. Scripts can test tags with `HasTag`, and `Game.FindEntitiesWithTag` finds every entity with one. Scripts can read tags but not change them. **Event Tags** (their own list in Project Settings) aren't offered here: they only link events to dispatches. |
 | **Components** | The components on this entity, each a section you can fold and unfold by clicking its header (the editor remembers this per component type). Components that can be switched off have a checkbox on the header. The **⋮** button (or right-click on the header) has **Move Up**, **Move Down**, the prefab **Revert** / **Apply to Prefab** and **Remove Component**. **Add component...** at the bottom adds one. |
 
 An entity can hold **one** of each component, except scripts: it can have any number of

@@ -1163,6 +1163,13 @@ namespace MapEditorInternal {
     [[nodiscard]] GeometrySnapshot CaptureGeometryUndoSnapshot();
     void PushGeometryUndoSnapshot(GeometrySnapshot snapshot, const char* labelKey, int count = 0);
 
+    // The sector inspector's Make Door, as one undo step: a new event tag
+    // "Door <sector name>" (numbered when taken), a Receive Ray event
+    // (Interact rays from entities tagged Player) on every wall of the
+    // sector, and a Door dispatch on the sector for `floorIndex`, all linked
+    // by that tag. Returns the tag's name, empty when the sector is gone.
+    std::string MakeDoor(Level& level, ID sectorID, int floorIndex, float lip, float wait);
+
     // Deletes every wall in the current selection as one undoable
     // operation, with a single topology rebuild at the end.
     void DeleteSelectedWalls();

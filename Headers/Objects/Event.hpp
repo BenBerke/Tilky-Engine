@@ -504,6 +504,13 @@ struct PayloadDispatchSectorDoor {
     int floorIndex = 0;
     SectorCollision closeCollision = SECTOR_RETRACT; // while closing; opening never checks
     Retrigger retrigger = RESTART;
+
+    // Played from the sector's position when the door starts opening /
+    // closing (reopening while it closes counts as opening). Empty: none.
+    std::string openSound;
+    std::string closeSound;
+    float soundGain = 1.0f;
+    float soundPitch = 1.0f;
 };
 
 struct PayloadDispatchSectorStopMovement {

@@ -127,6 +127,14 @@ namespace TagExplorer {
         bool unusedOnly = false;
     }
 
+    // The first tag of `kind` in `tags`, for its list's heading. Null when there is none.
+    const std::pair<std::string, TagId>* FirstOfKind(const std::vector<std::pair<std::string, TagId>>& tags,
+                                                     const TagRegistry::TagKind kind) {
+        for (const auto& entry : tags)
+            if (TagRegistry::GetKind(entry.second) == kind) return &entry;
+        return nullptr;
+    }
+
     void Draw(const Level& level, const char* windowName, bool* open, const PickCallback& onPick) {
         ImGui::SetNextWindowSize(ImVec2(320.0f, 420.0f), ImGuiCond_FirstUseEver);
 
@@ -150,7 +158,14 @@ namespace TagExplorer {
         if (ImGui::BeginChild("##TagExplorerList")) {
             if (tags.empty()) ImGui::TextDisabled("%s", Localisation::Get("tag_explorer.no_tags").c_str());
 
+            // Normal tags, then event tags, as in Project Settings.
+            for (const TagRegistry::TagKind kind : {TagRegistry::TagKind::NORMAL, TagRegistry::TagKind::EVENT})
             for (const auto& [name, tag] : tags) {
+                if (TagRegistry::GetKind(tag) != kind) continue;
+
+                if (&tag == &FirstOfKind(tags, kind)->second)
+                    ImGui::SeparatorText(Localisation::Get(kind == TagRegistry::TagKind::EVENT ? "editor.project.event_tags" : "editor.project.tags").c_str());
+
                 if (!search.empty() && Lowercase(name).find(search) == std::string::npos) continue;
 
                 const auto it = index.find(tag);
