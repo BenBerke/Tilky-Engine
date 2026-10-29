@@ -574,6 +574,11 @@ private:
     // NotifyAssetReferenceRenamed().
     void HandleDroppedMove(AssetKind kind, const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory);
 
+    // Inside an open drag-drop target: accepts an entity dropped there as a
+    // pending prefab into `destinationDirectory`.
+    void AcceptEntityPrefabDrop(const std::filesystem::path& destinationDirectory);
+    void PerformPendingPrefab();
+
     // Performs a move queued by HandleDroppedMove(), if any is pending.
     // Called once per frame from Draw(), after DrawEntries() has fully
     // returned - see HandleDroppedMove()'s comment for why the move can't
@@ -625,6 +630,16 @@ private:
     // only after DrawEntries() has returned. See HandleDroppedMove()'s
     // comment for why this can't be performed immediately.
     std::optional<AssetBrowserPendingMove> pendingMove;
+
+    // An entity dragged from a hierarchy or the canvas and dropped on the
+    // browser: saved as a prefab into `destinationDirectory` by
+    // PerformPendingPrefab(), after DrawEntries() for the same reason as
+    // pendingMove.
+    struct PendingEntityPrefab {
+        ID entityID;
+        std::filesystem::path destinationDirectory;
+    };
+    std::optional<PendingEntityPrefab> pendingEntityPrefab;
 
     std::vector<std::unique_ptr<AssetEntry>> entries;
     bool scanFailed = false;

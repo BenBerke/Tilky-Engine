@@ -11,6 +11,7 @@
 #include "WallSnap.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
@@ -1719,6 +1720,14 @@ namespace MapEditorInternal {
     // entity; each entity becomes a linked instance of its new prefab.
     // Returns how many were made; `errorMessage` gets the last failure.
     int CreatePrefabsFromSelectedEntities(std::string* errorMessage);
+
+    // Saves one entity (world or UI) as a new .prefab in `folder` (an
+    // absolute path inside Assets), named after it like the above, and links
+    // the entity to it. Returns the new file's path, empty on failure.
+    std::filesystem::path CreatePrefabFromEntity(ID entityID, const std::filesystem::path& folder, std::string* errorMessage);
+
+    // Makes the entity palette rescan Assets for prefabs on its next draw.
+    void RescanEntityPalette();
 
     struct EntityTransformUndo {
         std::vector<std::pair<ID, Vector3>> positions;

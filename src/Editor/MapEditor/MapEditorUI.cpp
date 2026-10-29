@@ -4776,6 +4776,8 @@ namespace MapEditorInternal {
         bool paletteScanned = false;
     }
 
+    void RescanEntityPalette() { paletteScanned = false; }
+
     void DrawEntityPalette(const char* hintKey) {
         static std::vector<std::string> palettePrefabs;
         static char paletteSearch[64] = "";

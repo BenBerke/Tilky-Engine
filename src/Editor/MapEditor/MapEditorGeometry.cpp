@@ -4448,19 +4448,35 @@ namespace MapEditorInternal {
             const Entity* entity = level.GetEntity(entityID);
             if (entity == nullptr || level.ui_transforms.Has(entityID)) continue;
 
-            // Never overwrite: "Goblin.prefab", then "Goblin (2).prefab", ...
-            const std::string stem = PrefabFileStem(entity->name);
-            std::string fileName = stem + std::string(Prefab::kExtension);
-
-            for (int copy = 2; fs::exists(folder / fileName, ec); ++copy)
-                fileName = stem + " (" + std::to_string(copy) + ")" + std::string(Prefab::kExtension);
-
-            if (Prefab::CreateFromEntity(level, entityID, "Prefabs/" + fileName, errorMessage)) ++created;
+            if (!CreatePrefabFromEntity(entityID, folder, errorMessage).empty()) ++created;
         }
 
-        if (created > 0) MarkUnsavedChanges();
-
         return created;
+    }
+
+    fs::path CreatePrefabFromEntity(const ID entityID, const fs::path& folder, std::string* errorMessage) {
+        Level& level = LevelManager::CurrentLevel();
+
+        const Entity* entity = level.GetEntity(entityID);
+        if (entity == nullptr) {
+            if (errorMessage) *errorMessage = "the entity no longer exists";
+            return {};
+        }
+
+        // Never overwrite: "Goblin.prefab", then "Goblin (2).prefab", ...
+        const std::string stem = PrefabFileStem(entity->name);
+        std::string fileName = stem + std::string(Prefab::kExtension);
+
+        std::error_code ec;
+        for (int copy = 2; fs::exists(folder / fileName, ec); ++copy)
+            fileName = stem + " (" + std::to_string(copy) + ")" + std::string(Prefab::kExtension);
+
+        const std::string reference = (folder / fileName).lexically_relative(ProjectManager::GetAssetsPath()).generic_string();
+
+        if (!Prefab::CreateFromEntity(level, entityID, reference, errorMessage)) return {};
+
+        MarkUnsavedChanges();
+        return folder / fileName;
     }
 }
 

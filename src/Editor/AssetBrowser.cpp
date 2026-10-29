@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 
 #include "Headers/Editor/Editor.hpp"
@@ -2273,8 +2274,45 @@ bool AssetBrowser::DrawMoveDropTarget(const std::filesystem::path& destinationDi
         HandleDroppedMove(AssetKind::Other, *payload, destinationDirectory);
     }
 
+    AcceptEntityPrefabDrop(destinationDirectory);
+
     ImGui::EndDragDropTarget();
     return true;
+}
+
+void AssetBrowser::AcceptEntityPrefabDrop(const std::filesystem::path& destinationDirectory) {
+    const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(MapEditorInternal::ENTITY_REF_PAYLOAD);
+    if (payload == nullptr) return;
+
+    MapEditorInternal::LevelObjectDragPayload dragged;
+    std::memcpy(&dragged, payload->Data, sizeof(dragged));
+
+    // A canvas drag has been moving the entity along; dropping it here
+    // shouldn't move it.
+    if (dragged.fromCanvas) MapEditorInternal::RevertCanvasEntityDrag();
+
+    pendingEntityPrefab = PendingEntityPrefab{dragged.id, destinationDirectory};
+}
+
+void AssetBrowser::PerformPendingPrefab() {
+    if (!pendingEntityPrefab.has_value()) return;
+
+    const PendingEntityPrefab pending = *pendingEntityPrefab;
+    pendingEntityPrefab.reset();
+
+    std::string error;
+    const fs::path created = MapEditorInternal::CreatePrefabFromEntity(pending.entityID, pending.destinationDirectory, &error);
+
+    if (created.empty()) {
+        lastOperationError = "Could not create the prefab: " + error;
+        spdlog::error("Asset browser: {}", lastOperationError);
+        return;
+    }
+
+    lastOperationError.clear();
+    selectedFile = created;
+    Refresh();
+    MapEditorInternal::RescanEntityPalette();
 }
 
 void AssetBrowser::HandleDroppedMove(const AssetKind kind, const ImGuiPayload& payload, const std::filesystem::path& destinationDirectory) {
@@ -2927,9 +2965,19 @@ void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider, const Assign
 
     DrawEntries(thumbnailProvider);
 
+    // An entity dropped anywhere else in the panel becomes a prefab in the
+    // folder being shown. Folder tiles and breadcrumbs are smaller targets,
+    // so ImGui lets them win when the drop is over one.
+    if (const ImGuiWindow* window = ImGui::GetCurrentWindow();
+        ImGui::BeginDragDropTargetCustom(window->InnerRect, window->ID)) {
+        AcceptEntityPrefabDrop(currentDirectory);
+        ImGui::EndDragDropTarget();
+    }
+
     // Only safe once DrawEntries() has fully returned - see
     // HandleDroppedMove()'s comment for why.
     PerformPendingMove();
+    PerformPendingPrefab();
 
     DrawCreateFolderModal();
     DrawCreateLevelModal();
