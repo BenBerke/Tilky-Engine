@@ -248,7 +248,8 @@ end
 ### Make Door
 
 In the editor, every floor of the sector inspector has a **Make Door...** button. It asks for a
-**Lip** and a **Wait** (seconds), then turns that floor into a door you open with Use:
+**Lip** and a **Wait** (seconds), then turns that floor into a door you open with Use. It shuts
+the door (the floor's ceiling drops to its floor height) and adds:
 
 - A new event tag, `Door <sector name>` (`Door 2`, ... when taken; `Door #<id>` for an unnamed
   sector), in Project Settings > **Event Tags**.

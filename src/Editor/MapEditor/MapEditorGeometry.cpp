@@ -1680,6 +1680,12 @@ namespace MapEditorInternal {
         for (Wall* wall : sector->walls)
             if (wall != nullptr) wall->events.push_back(event);
 
+        // A door starts shut.
+        if (floorIndex >= 0 && floorIndex < static_cast<int>(sector->floors.size())) {
+            SectorFloor& floor = sector->floors[floorIndex];
+            floor.ceiling.height = floor.floor.height;
+        }
+
         PayloadDispatchSectorDoor door;
         door.lip = lip;
         door.wait = wait;
