@@ -2708,8 +2708,6 @@ namespace {
                 image.opacity = std::clamp(imageJson.value("opacity", 0.5f), 0.0f, 1.0f);
                 image.visible = imageJson.value("visible", true);
 
-                if (imageJson.contains("position") && imageJson["position"].is_array() && imageJson["position"].size() == 2)
-                    image.position = {imageJson["position"][0].get<float>(), imageJson["position"][1].get<float>()};
             }
         }
     }
@@ -2795,7 +2793,6 @@ namespace {
 
         metadatajson["backgroundImage"] = {
             {"texture", image.texture},
-            {"position", {image.position.x, image.position.y}},
             {"scale", image.scale},
             {"opacity", image.opacity},
             {"visible", image.visible}

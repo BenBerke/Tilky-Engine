@@ -1474,14 +1474,33 @@ namespace MapEditorInternal {
         float height = 0.0f;
         if (!SDL_GetTextureSize(texture, &width, &height)) return;
 
-        const Vector2 topLeft = WorldToScreen(image.position, cameraPos);
-        const SDL_FRect destination = {topLeft.x, topLeft.y, width * image.scale * editorZoom, height * image.scale * editorZoom};
+        // Tiles this small would be thousands of draws for what reads as a
+        // flat colour.
+        constexpr float MIN_TILE_PIXELS = 2.0f;
+
+        const float tileScale = image.scale * editorZoom;
+        if (width * tileScale < MIN_TILE_PIXELS || height * tileScale < MIN_TILE_PIXELS) return;
+
+        // From the tile corner at or left of / above the screen's corner, so
+        // the tiles stay put on the map as the view moves.
+        const Vector2 origin = WorldToScreen({0.0f, 0.0f}, cameraPos);
+        const float tileWidth = width * tileScale;
+        const float tileHeight = height * tileScale;
+        const float startX = origin.x - std::ceil(origin.x / tileWidth) * tileWidth;
+        const float startY = origin.y - std::ceil(origin.y / tileHeight) * tileHeight;
+
+        const SDL_FRect destination = {
+            startX,
+            startY,
+            static_cast<float>(screenWidth) - startX,
+            static_cast<float>(screenHeight) - startY
+        };
 
         // The cache shares the texture with the inspector thumbnails, so its
         // alpha goes back afterwards.
         SDL_SetTextureAlphaModFloat(texture, std::clamp(image.opacity, 0.0f, 1.0f));
         SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-        SDL_RenderTexture(renderer, texture, nullptr, &destination);
+        SDL_RenderTextureTiled(renderer, texture, nullptr, tileScale, &destination);
         SDL_SetTextureAlphaModFloat(texture, 1.0f);
     }
 

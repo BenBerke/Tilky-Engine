@@ -3745,6 +3745,130 @@ namespace MapEditorInternal {
         return static_cast<int>(moves.size());
     }
 
+    std::vector<EdgeNeighbourHeight> NeighbourEdgeHeights(const Level& level, const Sector& sector, const int floorIndex, const bool ceiling) {
+        std::vector<EdgeNeighbourHeight> heights;
+        if (floorIndex < 0 || floorIndex >= static_cast<int>(sector.floors.size())) return heights;
+
+        const WallPieces::SectorBounds bounds = WallPieces::ComputeSectorBounds(sector);
+        if (!bounds.valid) return heights;
+
+        // How far off the bounding box a wall may sit and still be on its edge.
+        const float tolerance = std::max(0.05f, 0.01f * std::max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY));
+        const SectorSurface& own = ceiling ? sector.floors[floorIndex].ceiling : sector.floors[floorIndex].floor;
+
+        for (const Wall& wall : level.walls) {
+            if (wall.frontSector == INVALID_ID || wall.backSector == INVALID_ID) continue;
+
+            const ID otherID = wall.frontSector == sector.id ? wall.backSector : wall.backSector == sector.id ? wall.frontSector : INVALID_ID;
+            const Sector* other = otherID == INVALID_ID || otherID == sector.id ? nullptr : level.GetSector(otherID);
+            if (other == nullptr || other->floors.empty()) continue;
+
+            const auto onLine = [tolerance](const float a, const float b, const float line) {
+                return std::abs(a - line) <= tolerance && std::abs(b - line) <= tolerance;
+            };
+
+            SlopeDirection edge;
+            if (onLine(wall.start.x, wall.end.x, bounds.maxX)) edge = PLUS_X;
+            else if (onLine(wall.start.x, wall.end.x, bounds.minX)) edge = MINUS_X;
+            else if (onLine(wall.start.y, wall.end.y, bounds.maxY)) edge = PLUS_Z;
+            else if (onLine(wall.start.y, wall.end.y, bounds.minY)) edge = MINUS_Z;
+            else continue;
+
+            const Vector2 middle = (wall.start + wall.end) * 0.5f;
+            const float ownHeight = MapQueries::SurfaceHeightAt(sector, own, middle);
+
+            std::optional<float> best;
+            for (const SectorFloor& interval : other->floors) {
+                const float height = MapQueries::SurfaceHeightAt(*other, ceiling ? interval.ceiling : interval.floor, middle);
+                if (!best.has_value() || std::abs(height - ownHeight) < std::abs(*best - ownHeight)) best = height;
+            }
+
+            heights.push_back({edge, *best});
+        }
+
+        return heights;
+    }
+
+    int SlopeBetweenNeighbours(Level& level, const std::vector<FlatTarget>& targets) {
+        constexpr float HEIGHT_EPSILON = 0.001f;
+
+        GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+        int changed = 0;
+
+        for (const FlatTarget& target : targets) {
+            Sector* sector = level.GetSector(target.sectorID);
+            if (sector == nullptr || target.floorIndex < 0 || target.floorIndex >= static_cast<int>(sector->floors.size())) continue;
+
+            const WallPieces::SectorBounds bounds = WallPieces::ComputeSectorBounds(*sector);
+            if (!bounds.valid) continue;
+
+            // Each edge's neighbours, averaged when several walls share it.
+            float sums[4] = {};
+            int counts[4] = {};
+
+            for (const EdgeNeighbourHeight& entry : NeighbourEdgeHeights(level, *sector, target.floorIndex, target.ceiling)) {
+                sums[entry.edge] += entry.height;
+                ++counts[entry.edge];
+            }
+
+            const auto average = [&](const SlopeDirection edge) { return sums[edge] / static_cast<float>(counts[edge]); };
+
+            struct Axis {
+                SlopeDirection rising, falling;
+                float run;
+            };
+
+            const Axis axes[2] = {
+                {PLUS_X, MINUS_X, bounds.maxX - bounds.minX},
+                {PLUS_Z, MINUS_Z, bounds.maxY - bounds.minY},
+            };
+
+            const Axis* chosen = nullptr;
+            float chosenRise = -1.0f;
+
+            for (const Axis& axis : axes) {
+                if (counts[axis.rising] == 0 || counts[axis.falling] == 0 || axis.run <= 0.0f) continue;
+
+                const float rise = std::abs(average(axis.rising) - average(axis.falling));
+                if (rise > chosenRise) {
+                    chosen = &axis;
+                    chosenRise = rise;
+                }
+            }
+
+            if (chosen == nullptr) continue;
+
+            // The slope's height is at the edge it starts from, the low one.
+            const float atMax = average(chosen->rising);
+            const float atMin = average(chosen->falling);
+            const bool risesTowardMax = atMax >= atMin;
+
+            const SlopeDirection direction = risesTowardMax ? chosen->rising : chosen->falling;
+            const float base = risesTowardMax ? atMin : atMax;
+            const float degrees = chosenRise <= HEIGHT_EPSILON ? 0.0f : std::atan2(chosenRise, chosen->run) * Constants::RadToDeg;
+
+            SectorSurface& surface = target.ceiling ? sector->floors[target.floorIndex].ceiling : sector->floors[target.floorIndex].floor;
+            if (surface.slopeDirection == direction && std::abs(surface.height - base) <= HEIGHT_EPSILON && std::abs(surface.slopeStrength - degrees) <= HEIGHT_EPSILON)
+                continue;
+
+            const std::vector<SectorFloor> floorsBefore = sector->floors;
+
+            surface.slopeDirection = direction;
+            surface.height = base;
+            surface.slopeStrength = degrees;
+
+            if (!sector->children.empty()) level.PropagateSectorChanges(sector->id, floorsBefore, sector->light);
+            ++changed;
+        }
+
+        if (changed > 0) {
+            PushGeometryUndoSnapshot(std::move(before), "editor.history.slope_between_neighbours", changed);
+            MarkUnsavedChanges();
+        }
+
+        return changed;
+    }
+
     int MatchSectorBrightness(Level& level, const std::vector<ID>& sectorIDs, const ID sourceSectorID) {
         const Sector* source = level.GetSector(sourceSectorID);
         if (source == nullptr) return 0;

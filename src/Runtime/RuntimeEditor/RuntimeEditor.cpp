@@ -1265,7 +1265,7 @@ namespace {
         return {bottom, top};
     }
 
-    // Shift+right click: the hovered wall, floor or ceiling and everything
+    // Z+right click: the hovered wall, floor or ceiling and everything
     // connected to it with the same texture - or, with `byHeight`, at the
     // same height. Walls connect through shared corners, floors and
     // ceilings through two-sided walls. False if the cursor isn't on one.
@@ -1337,7 +1337,7 @@ namespace {
         return true;
     }
 
-    // Shift+V: the copied texture onto the hovered surface and every
+    // Alt+F: the copied texture onto the hovered surface and every
     // connected one of the same kind showing the same texture - walls
     // through shared corners (the same piece: top, middle or bottom),
     // floors and ceilings through neighbouring sectors. Returns how many
@@ -1590,7 +1590,28 @@ namespace {
             TransformGizmo::ProjectPoint(view, handlePoint + Vector3{0.0f, 1.0f, 0.0f}, screenAbove))
             pixelsPerUnit = std::max(std::abs(screen.y - screenAbove.y), 0.01f);
 
-        const float handleHeight = slopeDrag.startHeight - slopeDrag.mouseDeltaY / pixelsPerUnit;
+        float handleHeight = slopeDrag.startHeight - slopeDrag.mouseDeltaY / pixelsPerUnit;
+
+        // The handle sticks to a neighbour's height on its edge when it comes
+        // within a few pixels of it, so the slope meets the next room flush.
+        // The snap key rounds to whole degrees instead.
+        constexpr float NEIGHBOUR_SNAP_PIXELS = 8.0f;
+
+        if (!snap) {
+            const bool ceiling = selectedSectorSurface == RayHitType::SectorCeiling;
+            float bestDistance = NEIGHBOUR_SNAP_PIXELS / pixelsPerUnit;
+
+            for (const MapEditorInternal::EdgeNeighbourHeight& neighbour : MapEditorInternal::NeighbourEdgeHeights(level, *sector, selectedSectorFloor, ceiling)) {
+                if (neighbour.edge != handle.direction) continue;
+
+                const float distance = std::abs(neighbour.height - handleHeight);
+                if (distance > bestDistance) continue;
+
+                bestDistance = distance;
+                handleHeight = neighbour.height;
+            }
+        }
+
         float degrees = std::atan2(handleHeight - slopeDrag.pivotHeight, handle.run) * 180.0f / std::numbers::pi_v<float>;
 
         if (snap) degrees = std::round(degrees);
@@ -2863,9 +2884,12 @@ namespace RuntimeEditor {
         IRenderer& renderer,
         const bool relativeMouseMod,
         const bool mouseBlockedByImGui,
-        const bool keyboardBlockedByImGui,
+        const bool textFieldHasKeyboard,
         const float screenWidth,
         const float screenHeight) {
+        // The command palette has the keyboard while it's open, typing or not.
+        const bool keyboardBlockedByImGui = textFieldHasKeyboard || CommandPalette::IsOpen();
+
         // Still in the signature so the call site does not have to change, but
         // the runtime editor owns its cursor state now.
         (void)relativeMouseMod;
@@ -3509,6 +3533,20 @@ namespace RuntimeEditor {
 
                 if (moved > 0) ShowToastf("editor.toast.moved_to_neighbour", moved);
                 else ImGuiDrawFunctions::ShowNotification(Localisation::Get("editor.toast.no_neighbour_height").c_str(), true, 1.5f);
+            }
+
+            // Selected floors and ceilings, else the hovered one, sloped from
+            // the neighbours on one side to those on the other.
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_SLOPE_BETWEEN_NEIGHBOURS)) {
+                std::vector<MapEditorInternal::FlatTarget> targets;
+
+                for (const SelectedFlat& flat : TargetFlats(level, !mouseBlockedByImGui))
+                    targets.push_back({level.sectors[flat.sectorIndex].id, flat.floorIndex, flat.surface == RayHitType::SectorCeiling});
+
+                const int sloped = MapEditorInternal::SlopeBetweenNeighbours(level, targets);
+
+                if (sloped > 0) ShowToastf("runtime_editor.toast.sloped_between_neighbours", sloped);
+                else ImGuiDrawFunctions::ShowNotification(Localisation::Get("runtime_editor.toast.no_opposite_neighbours").c_str(), true, 2.0f);
             }
 
             // The selected floors' and ceilings' sectors take the light of

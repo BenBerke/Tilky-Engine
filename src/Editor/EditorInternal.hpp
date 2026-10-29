@@ -1429,6 +1429,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_LOWER_TO_NEIGHBOUR,
         KEYBIND_RT_MATCH_BRIGHTNESS,
         KEYBIND_RT_ADD_COMMENT,
+        KEYBIND_RT_SLOPE_BETWEEN_NEIGHBOURS,
         KEYBIND_RT_SELECT_BY_TEXTURE, // held with right click
         KEYBIND_RT_SELECT_CONNECTED,  // held with right click: connected, same texture
         KEYBIND_RT_CONNECTED_BY_HEIGHT, // held with the one above: same height instead
@@ -1678,6 +1679,26 @@ namespace MapEditorInternal {
     // Entities standing on a moved floor ride along. One undo step; returns
     // how many moved.
     int MoveFlatsToNeighbourHeight(Level& level, const std::vector<FlatTarget>& targets, bool raise, bool extreme);
+
+    // A neighbour's height along one edge of a sector's bounding box: the
+    // same kind of surface (floor or ceiling) of the sector across a
+    // two-sided wall lying on that edge, at the wall's middle. `edge` names
+    // the edge the way slopes do: PLUS_X is the max X edge, MINUS_X the min
+    // X one, PLUS_Z / MINUS_Z the same along Z. Of a neighbour's floor
+    // intervals, the one nearest this surface's height counts.
+    struct EdgeNeighbourHeight {
+        SlopeDirection edge = PLUS_X;
+        float height = 0.0f;
+    };
+
+    [[nodiscard]] std::vector<EdgeNeighbourHeight> NeighbourEdgeHeights(const Level& level, const Sector& sector, int floorIndex, bool ceiling);
+
+    // Slopes each floor or ceiling so it runs from the neighbours' height on
+    // one side of it to the neighbours' height on the opposite side - a step
+    // becomes a ramp. Uses the axis with neighbours on both sides, the one
+    // with the bigger rise when both have them; surfaces without opposite
+    // neighbours are left alone. One undo step; returns how many changed.
+    int SlopeBetweenNeighbours(Level& level, const std::vector<FlatTarget>& targets);
 
     // Gives each sector the light (colour and level) of `sourceSectorID`.
     // One undo step; returns how many changed.

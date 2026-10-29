@@ -4390,11 +4390,6 @@ namespace MapEditorInternal {
                 MarkUnsavedChanges();
 
             ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::DragFloat2((Get("editor.grid.background_image.position") + "##EditorBackgroundPosition").c_str(), &image.position.x, 0.5f, 0.0f, 0.0f, "%.2f"))
-                MarkUnsavedChanges();
-            HoverTooltip(Get("editor.tooltip.grid.background_image.position").c_str());
-
-            ImGui::SetNextItemWidth(160.0f);
             if (ImGui::DragFloat((Get("editor.grid.background_image.scale") + "##EditorBackgroundScale").c_str(), &image.scale, 0.005f, 0.001f, 1000.0f, "%.3f")) {
                 image.scale = std::max(image.scale, 0.001f);
                 MarkUnsavedChanges();

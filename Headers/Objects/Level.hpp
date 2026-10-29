@@ -175,11 +175,11 @@ struct EditorGridTransform {
     [[nodiscard]] bool IsDefault() const { return origin.x == 0.0f && origin.y == 0.0f && angle == 0.0f; }
 };
 
-// An image drawn under the 2D map to trace over. `position` is where its
-// top-left corner sits, `scale` the map units one image pixel covers.
+// A texture repeated over the whole 2D canvas, under the map. Its tiles
+// start at the map's origin and move with the view; `scale` is the map units
+// one texture pixel covers.
 struct EditorBackgroundImage {
     std::string texture;
-    Vector2 position = {0.0f, 0.0f};
     float scale = 1.0f;
     float opacity = 0.5f;
     bool visible = true;

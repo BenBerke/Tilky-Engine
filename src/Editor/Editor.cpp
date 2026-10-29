@@ -1,4 +1,5 @@
 #include "EditorInternal.hpp"
+#include "CommandPalette.hpp"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -308,7 +309,8 @@ namespace Editor {
         // WantCaptureKeyboard is true whenever any ImGui window has focus
         // (keyboard nav is on), so clicking a panel used to lock every
         // shortcut until the canvas was clicked again.
-        const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr;
+        // The command palette has the keyboard while it's open, typing or not.
+        const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr || CommandPalette::IsOpen();
 
         if (currentState == STATE_MAP) {
             HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
