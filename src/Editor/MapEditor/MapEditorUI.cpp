@@ -2478,6 +2478,7 @@ namespace {
             hasUnsavedChanges = false;
             SDL_Log("%s", Editor::currentMap.c_str());
             CancelActiveDrawing();
+            shutdown = true;
             quit = true;
         }
     }
