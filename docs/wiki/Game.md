@@ -17,6 +17,8 @@ end
 | [`FindEntity(name)`](#finding-entities) | `Entity` or `nil` | The first entity with exactly this name. |
 | [`FindEntities(name)`](#finding-entities) | list of `Entity` | Every entity with exactly this name. |
 | [`FindEntitiesWithTag(tag)`](#finding-entities) | list of `Entity` | Every entity with this tag. |
+| [`FindNearestWithTag(tag, from, [maxDistance])`](#findnearestwithtag) | `Entity` or `nil` | The closest enabled entity with this tag. |
+| [`OverlapSphere(center, radius, [tag])`](#overlapsphere) | list of `Entity` | Every entity whose collider touches a sphere, nearest first. |
 | [`GetEntity(id)`](#finding-entities) | `Entity` or `nil` | The entity with this ID. |
 | [`GetEntities()`](#finding-entities) | list of `Entity` | Every entity in the level. |
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
@@ -145,6 +147,89 @@ end
 ```
 
 (For a real level, find the enemies once in `Start` instead of every frame.)
+
+---
+
+## FindNearestWithTag
+
+```lua
+Game.FindNearestWithTag(tag, from, [maxDistance])   -- Entity or nil
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `tag` | string | The tag to look for, exactly as in Project Settings. |
+| `from` | `Vector3` or `Entity` | Where to measure from. An entity measures from its position and is never the answer itself, so an enemy looking for the nearest other enemy doesn't find itself. |
+| `maxDistance` | number, optional | Only entities at most this far away. No limit when left out. |
+
+Returns the entity with `tag` whose [Transform](Transform.md) position is closest to `from`, or
+`nil` if there is none (within `maxDistance`).
+
+- Distance is straight-line, in 3D, between the positions (the feet). Colliders and walls don't
+  matter: the nearest one may be behind a wall. Check [`LineOfSight`](#lineofsight) if that matters.
+- [Disabled](Entity.md#enabled) entities and entities without a Transform (UI entities) are
+  skipped, like Unity's tag lookups skip inactive objects.
+- A tag nobody has, or that doesn't exist, gives `nil`.
+- It loops over the whole level, like `FindEntitiesWithTag`. Every frame is fine for a handful of
+  scripts; for many, call it a few times a second instead (see [`InvokeRepeating`](Invoke.md#invokerepeating)).
+
+```lua
+-- Scripts/Turret.lua: aim at the closest enemy in range.
+public number range = 400
+
+function Update()
+    local target = Game.FindNearestWithTag("Enemy", entity, range)
+    if target ~= nil then
+        entity.transform:LookAt(target.transform.position, true)
+    end
+end
+```
+
+---
+
+## OverlapSphere
+
+```lua
+Game.OverlapSphere(center, radius, [tag])   -- { Entity, ... }
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `center` | `Vector3` | The sphere's centre. |
+| `radius` | number | Its radius. Below 0 counts as 0, which finds whatever the point is inside. |
+| `tag` | string, optional | Only entities with this tag. |
+
+Every entity with a [Collider](Collider.md) touching or inside the sphere, like Unity's
+`Physics.OverlapSphere`. The list is ordinary and 1-based, empty (never `nil`) when nothing is
+there.
+
+- It tests the colliders' real shapes (capsule, sphere, box), the same shapes physics uses. An
+  entity without an active collider is never found.
+- **Trigger colliders count too.** Check `e.collider.isTrigger` to leave them out.
+- Each entity is listed **once**, even with several colliders, **nearest first** (by its position).
+- [Disabled](Entity.md#enabled) entities and colliders with `isActive` off are left out.
+- **Walls don't block it**: an explosion found this way reaches through walls. Use
+  [`LineOfSight`](#lineofsight) to keep only what it can see.
+
+```lua
+-- Scripts/Barrel.lua: blow up, hurting everything nearby that the blast can see.
+public number blastRadius = 96
+public number damage = 60
+
+public function Explode()
+    local center = entity.transform.position + Vector3(0, 8, 0)
+
+    for _, victim in ipairs(Game.OverlapSphere(center, blastRadius)) do
+        local health = victim:GetScript("Health")
+        local target = victim.transform.position + Vector3(0, 8, 0)
+        if victim.id ~= entity.id and health.isValid and Game.LineOfSight(center, target) then
+            health:TakeDamage(damage)
+        end
+    end
+
+    entity:Destroy()
+end
+```
 
 ---
 

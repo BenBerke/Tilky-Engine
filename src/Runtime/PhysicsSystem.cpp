@@ -1148,6 +1148,30 @@ namespace PhysicsSystem {
         return base;
     }
 
+    bool ColliderOverlapsSphere(const ComponentTransform& transform, const ComponentCollider& collider,
+                                const Vector3& center, const float radius) {
+        const Body body = MakeBody(transform, collider);
+
+        if (body.isBox) {
+            const Vector3 boxMin = body.Min();
+            const Vector3 boxMax = body.Max();
+            const Vector3 closest = {
+                std::clamp(center.x, boxMin.x, boxMax.x),
+                std::clamp(center.y, boxMin.y, boxMax.y),
+                std::clamp(center.z, boxMin.z, boxMax.z)
+            };
+            return Vector3Math::LengthSquared(center - closest) <= radius * radius;
+        }
+
+        // The nearest point on the capsule's axis, then its radius on top.
+        const float low = std::min(body.LowCentre(), body.HighCentre());
+        const float high = std::max(body.LowCentre(), body.HighCentre());
+        const Vector3 axisPoint = {body.base.x, std::clamp(center.y, low, high), body.base.z};
+        const float reach = radius + body.radius;
+
+        return Vector3Math::LengthSquared(center - axisPoint) <= reach * reach;
+    }
+
     int SubstepCount(const Level& level, const float deltaTime, const int maxSubsteps) {
         if (maxSubsteps <= 1 || deltaTime <= 0.0f) return 1;
 

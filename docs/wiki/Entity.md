@@ -46,7 +46,8 @@ other entities from:
 | A callback | `other` in `OnCollisionEnter(other)`, `entity` in a sector's `OnEntityEnter(entity)` |
 | A new one | `Game.CreateEntity()`, see [Creating entities](#creating-entities) |
 | By name | `Game.FindEntity("Player")` (first match or `nil`), `Game.FindEntities("Crate")` (list) |
-| By tag | `Game.FindEntitiesWithTag("enemy")` (list) |
+| By tag | `Game.FindEntitiesWithTag("enemy")` (list), `Game.FindNearestWithTag("enemy", entity)` (the closest) |
+| Around a point | `Game.OverlapSphere(center, radius)` (every entity whose collider touches the sphere) |
 | By ID | `Game.GetEntity(id)`, for example with a raycast hit's `entityID` |
 | All of them | `Game.GetEntities()` |
 | In a sector | `sector:GetEntities()`, `sector:GetEntitiesWithTag(tag)` |

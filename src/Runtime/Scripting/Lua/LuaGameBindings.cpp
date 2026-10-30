@@ -8,6 +8,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
+#include "Headers/Runtime/PhysicsSystem.hpp"
 #include <sol/state.hpp>
 
 #include "Headers/Map/LevelManager.hpp"
@@ -364,6 +365,12 @@ namespace {
             Method("FindEntity", {Param("name", "string")}, "Entity?", "First Entity with this exact name, or nil."),
             Method("FindEntities", {Param("name", "string")}, "Entity[]", "Every Entity with this exact name."),
             Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
+            Method("FindNearestWithTag", {Param("tag", "string"), Param("from", "Vector3|Entity"), Param("maxDistance", "number?")}, "Entity?",
+                   "The enabled Entity with this tag whose position is closest to `from`, or nil if none is within maxDistance "
+                   "(no limit when left out). Given an Entity, measures from its position and never returns it."),
+            Method("OverlapSphere", {Param("center", "Vector3"), Param("radius", "number"), Param("tag", "string?")}, "Entity[]",
+                   "Every Entity with an active collider (triggers too) touching the sphere, nearest first, each once. "
+                   "Only ones with `tag` when given. Walls don't block it - check Game.LineOfSight for that."),
             Method("GetEntity", {Param("id", "integer")}, "Entity?", "The Entity with this ID (e.g. a Raycast hit's entityID), or nil."),
             Method("GetEntities", {}, "Entity[]", "Every Entity in the level."),
             Method("GetSectorAt", {Param("position", "Vector2|Vector3")}, "Sector?",
@@ -533,6 +540,104 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
             const ScriptEntity entity{&level, candidate.id};
             if (entity.HasTag(tag)) result.push_back(entity);
         }
+
+        return sol::as_table(std::move(result));
+    });
+
+    // Game.FindNearestWithTag(tag, from, [maxDistance]). `from` is a point,
+    // or an Entity: measured from its position and never the answer itself.
+    // Like Unity's tag lookups, disabled entities are skipped.
+    game.set_function("FindNearestWithTag", [](sol::this_state state, const std::string& tag, const sol::object from,
+                                               const sol::object maxDistance) -> sol::object {
+        Level& level = LevelManager::CurrentLevel();
+
+        Vector3 origin;
+        ID self = INVALID_ENTITY_ID;
+
+        if (from.is<ScriptEntity>()) {
+            self = from.as<ScriptEntity>().ownerID;
+            const ComponentTransform* transform = level.transforms.Get(self);
+            if (transform == nullptr) return sol::make_object(state, sol::nil); // gone, or a UI entity
+            origin = transform->position;
+        }
+        else if (from.is<Vector3>()) origin = from.as<Vector3>();
+        else throw sol::error("Game.FindNearestWithTag: from must be a Vector3 or an Entity");
+
+        float limit = std::numeric_limits<float>::infinity();
+        if (maxDistance.get_type() != sol::type::lua_nil) {
+            if (maxDistance.get_type() != sol::type::number) throw sol::error("Game.FindNearestWithTag: maxDistance must be a number");
+            limit = maxDistance.as<float>();
+        }
+
+        const std::optional<TagId> tagId = TagRegistry::Find(tag);
+        if (!tagId.has_value()) return sol::make_object(state, sol::nil);
+
+        ID nearest = INVALID_ENTITY_ID;
+        float nearestSq = limit * limit;
+
+        for (const Entity& candidate : level.entities) {
+            if (candidate.id == self || !candidate.enabled) continue;
+            if (std::ranges::find(candidate.tagIds, *tagId) == candidate.tagIds.end()) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(candidate.id);
+            if (transform == nullptr) continue;
+
+            // <= so a maxDistance of exactly the distance still counts.
+            const float distanceSq = Vector3Math::LengthSquared(transform->position - origin);
+            if (distanceSq <= nearestSq && (nearest == INVALID_ENTITY_ID || distanceSq < nearestSq)) {
+                nearest = candidate.id;
+                nearestSq = distanceSq;
+            }
+        }
+
+        if (nearest == INVALID_ENTITY_ID) return sol::make_object(state, sol::nil);
+        return sol::make_object(state, ScriptEntity{&level, nearest});
+    });
+
+    // Game.OverlapSphere(center, radius, [tag]): like Unity's
+    // Physics.OverlapSphere, every entity with an active collider (triggers
+    // included) touching the sphere - once each, nearest first. Walls don't
+    // block it.
+    game.set_function("OverlapSphere", [](const sol::object center, const sol::object radius, const sol::object tag)
+                                          -> sol::as_table_t<std::vector<ScriptEntity>> {
+        if (!center.is<Vector3>()) throw sol::error("Game.OverlapSphere: center must be a Vector3");
+        if (radius.get_type() != sol::type::number) throw sol::error("Game.OverlapSphere: radius must be a number");
+        if (tag.get_type() != sol::type::lua_nil && tag.get_type() != sol::type::string)
+            throw sol::error("Game.OverlapSphere: tag must be a string");
+
+        Level& level = LevelManager::CurrentLevel();
+        const Vector3 point = center.as<Vector3>();
+        const float reach = std::max(radius.as<float>(), 0.0f);
+
+        std::optional<TagId> tagId;
+        if (tag.get_type() == sol::type::string) {
+            tagId = TagRegistry::Find(tag.as<std::string>());
+            if (!tagId.has_value()) return sol::as_table(std::vector<ScriptEntity>{});
+        }
+
+        // Entity -> its distance from the centre, for sorting.
+        std::vector<std::pair<float, ID>> found;
+
+        // Only enabled entities' active colliders are in this range.
+        for (const ComponentCollider& collider : level.colliders.ActiveColliders()) {
+            if (std::ranges::find(found, collider.ownerID, &std::pair<float, ID>::second) != found.end()) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
+            if (transform == nullptr || !PhysicsSystem::ColliderOverlapsSphere(*transform, collider, point, reach)) continue;
+
+            if (tagId.has_value()) {
+                const Entity* owner = level.GetEntity(collider.ownerID);
+                if (owner == nullptr || std::ranges::find(owner->tagIds, *tagId) == owner->tagIds.end()) continue;
+            }
+
+            found.emplace_back(Vector3Math::LengthSquared(transform->position - point), collider.ownerID);
+        }
+
+        std::ranges::sort(found);
+
+        std::vector<ScriptEntity> result;
+        result.reserve(found.size());
+        for (const auto& [distanceSq, id] : found) result.push_back(ScriptEntity{&level, id});
 
         return sol::as_table(std::move(result));
     });
