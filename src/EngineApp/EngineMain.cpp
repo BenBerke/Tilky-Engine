@@ -5,6 +5,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 
 #include "Headers/Editor/Editor.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
@@ -321,7 +322,10 @@ namespace {
 
         const bool backToEditor = currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::BackToEditorRequested();
 
-        if (!InputManager::QuitRequested() && !StopKeyPressed() && !backToEditor) return true;
+        // Game.Quit stops Play like the stop key.
+        const bool gameQuit = currentMode == EngineMode::PLAY && LevelSystem::QuitRequested();
+
+        if (!InputManager::QuitRequested() && !StopKeyPressed() && !backToEditor && !gameQuit) return true;
 
         if (currentMode == EngineMode::PLAY && playFromRuntimeEditor) {
             playFromRuntimeEditor = false;

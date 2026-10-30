@@ -152,7 +152,11 @@ Runs once when a script instance is torn down:
 
 - its entity was destroyed with `entity:Destroy()`;
 - the script was removed from its entity or sector, or the sector was deleted;
-- the level stops (leaving play mode).
+- the level is left for another one with [`Game.LoadLevel`](Game.md#loadlevel) or
+  [`Game.RestartLevel`](Game.md#restartlevel).
+
+It does **not** run when the game ends: pressing **Stop** in the editor, closing the exported game,
+or [`Game.Quit`](Game.md#quit). Don't rely on `OnDestroy` to save progress at the end of a session.
 
 `OnDestroy` only runs if `Start` ran first. A script that was never active has nothing to tear
 down, so it gets no `OnDestroy`.

@@ -26,6 +26,9 @@ end
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
+| [`RestartLevel()`](#restartlevel) | | Loads the current level again at the end of this frame. |
+| [`Pause()`](#pause) | | Stops game time and frees the cursor, for a pause menu. |
+| [`Quit()`](#quit) | | Ends the game at the end of this frame. |
 
 | Property | Type | | |
 |---|---|---|---|
@@ -559,6 +562,88 @@ end
 -- Restart the current level when the player falls out of the map.
 function Update()
     if entity:GetSector() == nil then Game.LoadLevel(Game.levelName) end
+end
+```
+
+---
+
+## RestartLevel
+
+```lua
+Game.RestartLevel()
+```
+
+Loads the current level again, from the start. It is exactly
+[`Game.LoadLevel(Game.levelName)`](#loadlevel): the switch happens at the end of the frame, the
+level comes from its **saved file**, and only [`Global`](Global.md) carries over. A level that has
+never been saved has no file to load, which raises an error.
+
+```lua
+-- Scripts/Health.lua (on the player): start the level over on death.
+public function TakeDamage(amount)
+    health = health - amount
+    if health <= 0 then Game.RestartLevel() end
+end
+```
+
+---
+
+## Pause
+
+```lua
+Game.Pause()
+```
+
+Pauses the game for a menu, in one call:
+
+- [`GameTime.timeScale`](GameTime.md#timescale) becomes `0`, so physics, movement, animations,
+  timers and [`Invoke`](Invoke.md) stop. `Update` still runs, so your menu can read input.
+- [`Cursor.lockState`](Input.md#cursor) becomes `CursorLockMode.None` and `Cursor.visible` becomes
+  `true`, so the player can point at the menu. Mouse look stops while the cursor is free.
+
+Nothing undoes it on its own. To resume, set them back yourself, usually to the level's start
+values:
+
+```lua
+-- Scripts/PauseMenu.lua: Escape pauses and resumes.
+local paused = false
+
+function Update()
+    if not Input.GetKeyDown(Key.Escape) then return end
+
+    paused = not paused
+    if paused then
+        Game.Pause()
+    else
+        GameTime.timeScale = 1
+        Cursor.lockState = CursorLockMode.Locked
+        Cursor.visible = false
+    end
+end
+```
+
+Sounds keep playing while paused (`timeScale` doesn't affect audio); pause your
+[Audio Sources](AudioSource.md) too if they should stop.
+
+---
+
+## Quit
+
+```lua
+Game.Quit()
+```
+
+Ends the game, like Unity's `Application.Quit`. The rest of the frame still runs; once it's over:
+
+- **The exported game** closes, the same as closing its window.
+- **In the editor**, Play stops, the same as pressing Stop, and you're back in the editor you
+  pressed Play from.
+
+```lua
+-- Scripts/MainMenu.lua
+function Update()
+    if Input.GetKeyDown(Key.Enter) then Game.LoadLevel("Level1") end
+    if Input.GetKeyDown(Key.Escape) then Game.Quit() end
 end
 ```
 

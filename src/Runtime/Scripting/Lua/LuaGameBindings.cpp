@@ -10,6 +10,8 @@
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
+#include "Headers/Engine/GameTime.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include <sol/state.hpp>
 
 #include "Headers/Map/LevelManager.hpp"
@@ -340,6 +342,13 @@ namespace {
                    "Switches to the level `levelName` at the end of this frame. The level file can be in any "
                    "folder under Assets; levelName is its file name without .bson. "
                    "Raises an error if there is no such level, or more than one."),
+            Method("RestartLevel", {}, {},
+                   "Loads the current level again from its saved file at the end of this frame, the same as Game.LoadLevel(Game.levelName)."),
+            Method("Pause", {}, {},
+                   "Pauses the game for a menu: GameTime.timeScale becomes 0 and the cursor is unlocked and shown. "
+                   "To resume, set GameTime.timeScale and Cursor back yourself."),
+            Method("Quit", {}, {},
+                   "Ends the game at the end of this frame: the exported game closes, and in the editor Play stops."),
             Method(
                 "Raycast",
                 {
@@ -461,6 +470,31 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
             throw sol::error("Game.LoadLevel: " + errorMessage);
 
         LevelSystem::RequestLevelLoad(levelName);
+    });
+
+    // Game.LoadLevel(Game.levelName), from its saved file.
+    game.set_function("RestartLevel", []() {
+        const std::string levelName = LevelManager::CurrentLevel().name;
+
+        std::string errorMessage;
+        if (LevelSerialization::FindLevelPath(levelName, &errorMessage).empty())
+            throw sol::error("Game.RestartLevel: " + errorMessage);
+
+        LevelSystem::RequestLevelLoad(levelName);
+    });
+
+    // Freezes game time and frees the cursor for a pause menu. Nothing undoes
+    // it on its own: set GameTime.timeScale and Cursor back to resume.
+    game.set_function("Pause", []() {
+        GameTime::SetTimeScale(0.0f);
+        InputManager::SetCursorLockMode(InputManager::CursorLockMode::None);
+        InputManager::SetCursorVisible(true);
+    });
+
+    // Like Unity's Application.Quit: at the end of this frame the exported
+    // game closes; in the editor, Play stops.
+    game.set_function("Quit", []() {
+        LevelSystem::RequestQuit();
     });
 
     // Game is a plain table, so levelName is served from its metatable: it

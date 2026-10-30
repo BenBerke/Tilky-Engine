@@ -6,6 +6,7 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/GlobalEventVariables.hpp"
@@ -57,7 +58,7 @@ int main(int argc, char* argv[]) {
 
     InputManager::Initialize(nullptr);
 
-    while (!InputManager::QuitRequested()) {
+    while (!InputManager::QuitRequested() && !LevelSystem::QuitRequested()) {
         InputManager::BeginFrame();
         RuntimeSession::Update();
     }

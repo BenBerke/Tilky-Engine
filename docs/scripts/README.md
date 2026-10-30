@@ -40,7 +40,7 @@ variables.
 | `Update()` | Every frame. Use `GameTime.deltaTime` (seconds) for anything time-based |
 | `FixedUpdate()` | On a fixed 60 Hz step. `GameTime.fixedDeltaTime` is the step length |
 | `OnDisable()` | When the script or its Entity is disabled |
-| `OnDestroy()` | When the script is torn down (level stop, `Destroy()`) |
+| `OnDestroy()` | When the script is torn down (`Destroy()`, a level change). Not when the game ends |
 
 Every function is optional. A runtime error inside any of them is printed in red to the in-game
 console and logged, and the script keeps running.

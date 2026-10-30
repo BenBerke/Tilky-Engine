@@ -35,6 +35,11 @@ namespace LevelSystem {
     void RequestLevelLoad(const std::string& levelName);
     std::optional<std::string> TakeRequestedLevel();
 
+    // Game.Quit. Once the current frame has finished, the exported game
+    // closes and the editor stops Play. Cleared by Shutdown.
+    void RequestQuit();
+    [[nodiscard]] bool QuitRequested();
+
     // Boots the Lua scripting subsystem (opens the sol::state, registers
     // every binding, populates LuaBindingMetadata) if it hasn't already run.
     // Safe to call outside Play mode - it does not load or run any script -

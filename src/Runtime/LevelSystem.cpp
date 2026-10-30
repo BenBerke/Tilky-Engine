@@ -74,6 +74,9 @@ namespace {
     // See RequestLevelLoad.
     std::optional<std::string> requestedLevel;
 
+    // See RequestQuit.
+    bool quitRequested = false;
+
     LuaScriptSystem scriptingSystem;
     bool scriptingInitialized = false;
 
@@ -517,6 +520,7 @@ namespace LevelSystem {
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;
         requestedLevel.reset();
+        quitRequested = false;
     }
 
     void StopLevel(Level &level) {
@@ -532,5 +536,13 @@ namespace LevelSystem {
 
     std::optional<std::string> TakeRequestedLevel() {
         return std::exchange(requestedLevel, std::nullopt);
+    }
+
+    void RequestQuit() {
+        quitRequested = true;
+    }
+
+    bool QuitRequested() {
+        return quitRequested;
     }
 }
