@@ -110,16 +110,19 @@ namespace {
     // One caster's ray of one type on one owner, for First Hit Only.
     using RayKey = std::tuple<ID, uint8_t, uint8_t, ID>;
 
-    // A running Door dispatch on one of a sector's floors.
+    // A Door dispatch on one of a sector's floors, from its first trigger
+    // until its cycle ends. Open/Close and Stay and Toggle doors stay STILL
+    // afterwards: they remember where they are.
     struct DoorState {
-        enum Phase { OPENING, WAITING, CLOSING };
+        enum Phase { OPENING, WAITING, CLOSING, STILL };
 
         ID sectorID;
         int floorIndex;
         PayloadDispatchSectorDoor settings;
-        float closedHeight;
-        float openHeight;
+        float closedCeiling, openCeiling;
+        float closedFloor, openFloor; // split doors only
         Phase phase = OPENING;
+        bool open = false; // WAITING / STILL: where it waits
         float waitLeft = 0.0f;
     };
 
@@ -1039,22 +1042,78 @@ namespace {
         return *lowest - door.lip;
     }
 
+    std::optional<float> DoorFloorOpenHeight(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& door) {
+        if (door.floorOpenMode == PayloadDispatchSectorDoor::FIXED_FLOOR_HEIGHT) return door.floorOpenHeight;
+
+        const std::optional<float> lowest = NeighborHeight(level, sectorID, false, false);
+        if (!lowest) {
+            spdlog::warn("Split door on sector {} has no neighbouring sectors to open its floor to", sectorID);
+            return std::nullopt;
+        }
+
+        return *lowest + door.floorLip;
+    }
+
+    // A move never gets closer than MIN_MOVE_GAP to the opposite surface.
+    bool IsDoorShut(const SectorFloor& floor) {
+        return floor.ceiling.height - floor.floor.height <= SectorFloor::MIN_MOVE_GAP + 0.001f;
+    }
+
     // Defined with the other sounds below.
     void PlayDoorSound(const Level& level, const DoorState& door, const std::string& sound);
 
-    void OpenDoor(const Level& level, SectorFloor& floor, DoorState& door) {
-        floor.MoveCeilingTo(door.openHeight, door.settings.openSpeed, SECTOR_FORCE_MOVE);
-        door.phase = DoorState::OPENING;
-        PlayDoorSound(level, door, door.settings.openSound);
+    void MoveDoor(const Level& level, SectorFloor& floor, DoorState& door, const bool open) {
+        const float speed = open ? door.settings.openSpeed : door.settings.closeSpeed;
+        const SectorCollision collision = open ? SECTOR_FORCE_MOVE : door.settings.closeCollision;
+
+        floor.MoveCeilingTo(open ? door.openCeiling : door.closedCeiling, speed, collision);
+        if (door.settings.split) floor.MoveFloorTo(open ? door.openFloor : door.closedFloor, speed, collision);
+
+        door.phase = open ? DoorState::OPENING : DoorState::CLOSING;
+        PlayDoorSound(level, door, open ? door.settings.openSound : door.settings.closeSound);
     }
 
-    void CloseDoor(const Level& level, SectorFloor& floor, DoorState& door) {
-        floor.MoveCeilingTo(door.closedHeight, door.settings.closeSpeed, door.settings.closeCollision);
-        door.phase = DoorState::CLOSING;
-        PlayDoorSound(level, door, door.settings.closeSound);
+    // A new door's heights, nullopt (with a warning) if it can't tell where
+    // it opens to. Open types and a shut Toggle door open from where they
+    // are; Close types and an open Toggle door close down to the floor
+    // (split: both meet halfway) and reopen to where they are.
+    std::optional<DoorState> NewDoor(const Level& level, const ID sectorID, const SectorFloor& floor,
+                                     const PayloadDispatchSectorDoor& settings) {
+        using Door = PayloadDispatchSectorDoor;
+
+        DoorState door{sectorID, settings.floorIndex, settings,
+                       floor.ceiling.height, floor.ceiling.height, floor.floor.height, floor.floor.height};
+
+        const bool opensFirst = settings.type == Door::OPEN_WAIT_CLOSE || settings.type == Door::OPEN_STAY ||
+                                (settings.type == Door::OPEN_CLOSE_TOGGLE && IsDoorShut(floor));
+
+        if (opensFirst) {
+            const std::optional<float> openCeiling = DoorOpenHeight(level, sectorID, settings);
+            if (!openCeiling) return std::nullopt;
+            door.openCeiling = *openCeiling;
+
+            if (settings.split) {
+                const std::optional<float> openFloor = DoorFloorOpenHeight(level, sectorID, settings);
+                if (!openFloor) return std::nullopt;
+                door.openFloor = *openFloor;
+            }
+        }
+        else {
+            const float shut = settings.split ? (floor.floor.height + floor.ceiling.height) * 0.5f : floor.floor.height;
+            door.closedCeiling = shut;
+            door.closedFloor = shut;
+        }
+
+        return door;
     }
 
-    void TriggerDoor(Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings) {
+    // Plays the locked sound / message and returns true when `instigatorID`
+    // may not move the door.
+    bool DoorLocked(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings, const ID instigatorID);
+
+    void TriggerDoor(Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings, const ID instigatorID) {
+        using Door = PayloadDispatchSectorDoor;
+
         SectorFloor* floor = GetSectorFloor(level, sectorID, settings.floorIndex);
         if (!floor) return;
 
@@ -1063,68 +1122,141 @@ namespace {
             return;
         }
 
+        if (DoorLocked(level, sectorID, settings, instigatorID)) return;
+
         const auto existing = std::ranges::find_if(doors, [&](const DoorState& door) {
             return door.sectorID == sectorID && door.floorIndex == settings.floorIndex;
         });
 
         if (existing == doors.end()) {
-            const std::optional<float> openHeight = DoorOpenHeight(level, sectorID, settings);
-            if (!openHeight) return;
+            const bool closeType = settings.type == Door::CLOSE_WAIT_OPEN || settings.type == Door::CLOSE_STAY;
+            if (closeType && IsDoorShut(*floor)) return; // nothing to close
 
-            DoorState door{sectorID, settings.floorIndex, settings, floor->ceiling.height, *openHeight};
-            OpenDoor(level, *floor, door);
-            doors.push_back(door);
+            std::optional<DoorState> door = NewDoor(level, sectorID, *floor, settings);
+            if (!door) return;
+
+            const bool open = settings.type == Door::OPEN_WAIT_CLOSE || settings.type == Door::OPEN_STAY ||
+                              (settings.type == Door::OPEN_CLOSE_TOGGLE && IsDoorShut(*floor));
+            MoveDoor(level, *floor, *door, open);
+            doors.push_back(*door);
             return;
         }
 
         DoorState& door = *existing;
 
+        switch (door.settings.type) {
+            case Door::OPEN_STAY:
+            case Door::CLOSE_STAY:
+                return;
+
+            case Door::OPEN_CLOSE_TOGGLE: {
+                // Reverses whatever it did last.
+                const bool opening = door.phase == DoorState::OPENING || (door.phase == DoorState::STILL && door.open);
+                MoveDoor(level, *floor, door, !opening);
+                return;
+            }
+
+            case Door::OPEN_WAIT_CLOSE:
+            case Door::CLOSE_WAIT_OPEN:
+                break;
+        }
+
+        // The cycle goes `away` first (open, or closed for Close, Wait,
+        // Open), waits, then heads back.
+        const bool away = door.settings.type == Door::OPEN_WAIT_CLOSE;
+        const bool headingBack = door.phase == (away ? DoorState::CLOSING : DoorState::OPENING);
+
         switch (settings.retrigger) {
-            case PayloadDispatchSectorDoor::RESTART:
-                if (door.phase == DoorState::CLOSING) OpenDoor(level, *floor, door);
+            case Door::RESTART:
+                if (headingBack) MoveDoor(level, *floor, door, away);
                 else if (door.phase == DoorState::WAITING) door.waitLeft = door.settings.wait;
                 break;
-            case PayloadDispatchSectorDoor::TOGGLE:
-                if (door.phase == DoorState::CLOSING) OpenDoor(level, *floor, door);
-                else CloseDoor(level, *floor, door);
+            case Door::TOGGLE:
+                MoveDoor(level, *floor, door, headingBack ? away : !away);
                 break;
-            case PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN:
+            case Door::IGNORE_WHILE_OPEN:
                 break;
         }
     }
 
     void UpdateDoors(Level& level, const float deltaTime) {
+        using Door = PayloadDispatchSectorDoor;
+
+        const auto wait = [](DoorState& door, const bool open) {
+            door.phase = DoorState::WAITING;
+            door.open = open;
+            door.waitLeft = door.settings.wait;
+        };
+
+        const auto still = [](DoorState& door, const bool open) {
+            door.phase = DoorState::STILL;
+            door.open = open;
+        };
+
         std::erase_if(doors, [&](DoorState& door) {
             SectorFloor* floor = GetSectorFloor(level, door.sectorID, door.floorIndex);
             if (!floor) return true;
 
+            const bool split = door.settings.split;
+            const bool moving = floor->ceilingMove.active || (split && floor->floorMove.active);
+
             switch (door.phase) {
                 case DoorState::OPENING:
-                    if (!floor->ceilingMove.active) {
-                        door.phase = DoorState::WAITING;
-                        door.waitLeft = door.settings.wait;
+                    if (moving) return false;
+
+                    switch (door.settings.type) {
+                        case Door::OPEN_WAIT_CLOSE: wait(door, true); return false;
+                        case Door::CLOSE_WAIT_OPEN: return true;
+                        default: still(door, true); return false;
                     }
-                    return false;
 
                 case DoorState::WAITING:
                     door.waitLeft -= deltaTime;
-                    if (door.waitLeft <= 0.0f) CloseDoor(level, *floor, door);
+                    if (door.waitLeft <= 0.0f) MoveDoor(level, *floor, door, !door.open);
                     return false;
 
-                case DoorState::CLOSING:
-                    if (floor->ceilingMove.active) return false;
+                case DoorState::CLOSING: {
+                    // A split door blocked on one side takes the other back too.
+                    if (split && floor->ceilingMove.retracting != floor->floorMove.retracting) {
+                        if (!floor->ceilingMove.retracting)
+                            floor->MoveCeilingTo(door.openCeiling, door.settings.closeSpeed, SECTOR_FORCE_MOVE);
+                        if (!floor->floorMove.retracting)
+                            floor->MoveFloorTo(door.openFloor, door.settings.closeSpeed, SECTOR_FORCE_MOVE);
+                        floor->ceilingMove.retracting = floor->floorMove.retracting = true;
+                    }
 
-                    // Shut: done. Blocked short of it (retracted or stopped):
-                    // wait open and try again. A move never gets closer than
-                    // MIN_MOVE_GAP to the floor, so a door that started shut
-                    // flat on its floor ends that far above it - comparing
-                    // with where it started took that for blocked, and the
-                    // door waited and "closed" forever, never opening again.
-                    const float shutHeight = std::max(door.closedHeight, floor->floor.height + SectorFloor::MIN_MOVE_GAP);
-                    if (!floor->ceilingMove.retracting && floor->ceiling.height <= shutHeight + 0.001f) return true;
+                    if (moving) return false;
 
-                    door.phase = DoorState::WAITING;
-                    door.waitLeft = door.settings.wait;
+                    // A move never gets closer than MIN_MOVE_GAP to the
+                    // opposite surface, so a door that started shut flat on
+                    // its floor ends that far above it - comparing with where
+                    // it started took that for blocked, and the door waited
+                    // and "closed" forever, never opening again.
+                    const float gap = SectorFloor::MIN_MOVE_GAP;
+                    const bool retracted = floor->ceilingMove.retracting || (split && floor->floorMove.retracting);
+                    const bool ceilingShut = floor->ceiling.height <= std::max(door.closedCeiling, floor->floor.height + gap) + 0.001f;
+                    const bool floorShut = !split || floor->floor.height >= std::min(door.closedFloor, floor->ceiling.height - gap) - 0.001f;
+
+                    if (!retracted && ceilingShut && floorShut) {
+                        switch (door.settings.type) {
+                            case Door::OPEN_WAIT_CLOSE: return true;
+                            case Door::CLOSE_WAIT_OPEN: wait(door, false); return false;
+                            default: still(door, false); return false;
+                        }
+                    }
+
+                    // Blocked short of shut (retracted or stopped): counts as
+                    // open. Cycles wait and try again; a Close and Stay door
+                    // can be triggered again.
+                    switch (door.settings.type) {
+                        case Door::OPEN_WAIT_CLOSE:
+                        case Door::CLOSE_WAIT_OPEN: wait(door, true); return false;
+                        case Door::CLOSE_STAY: return true;
+                        default: still(door, true); return false;
+                    }
+                }
+
+                case DoorState::STILL:
                     return false;
             }
 
@@ -1383,6 +1515,27 @@ namespace {
             return false;
         });
     }
+
+    bool DoorLocked(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings, const ID instigatorID) {
+        if (!settings.locked) return false;
+
+        const Entity* instigator = level.GetEntity(instigatorID);
+        if (!instigator || std::ranges::find(instigator->tagIds, settings.requiredTag) != instigator->tagIds.end()) return false;
+
+        if (!settings.lockedSound.empty()) {
+            PayloadDispatchPlaySound play;
+            play.sound = settings.lockedSound;
+            play.gain = settings.soundGain;
+            play.pitch = settings.soundPitch;
+            PlaySound(play, OwnerPosition(level, EventOwnerKind::SECTOR, sectorID));
+        }
+
+        if (!settings.lockedMessage.empty())
+            ShowMessage(level.worldSettings.messageStyle, settings.lockedMessage,
+                        settings.lockedMessageColor * 255.0f, settings.lockedMessageDuration);
+
+        return true;
+    }
 }
 
 namespace EventSystem {
@@ -1609,7 +1762,7 @@ namespace EventSystem {
                 });
             },
             [&](const PayloadDispatchSectorDoor& door) {
-                TriggerDoor(level, ownerID, door);
+                TriggerDoor(level, ownerID, door, instigatorID);
             },
             [&](const PayloadDispatchSectorStopMovement& stop) {
                 const bool floor = stop.surface != SectorSurfacePick::CEILING;
@@ -1617,11 +1770,11 @@ namespace EventSystem {
 
                 level.StopSectorMoves(ownerID, stop.floorIndex, floor, ceiling);
 
-                // A door's cycle is its ceiling moving.
-                if (ceiling)
-                    std::erase_if(doors, [&](const DoorState& door) {
-                        return door.sectorID == ownerID && door.floorIndex == stop.floorIndex;
-                    });
+                // A door's cycle is its ceiling (split: and floor) moving.
+                std::erase_if(doors, [&](const DoorState& door) {
+                    return door.sectorID == ownerID && door.floorIndex == stop.floorIndex &&
+                           (ceiling || (floor && door.settings.split));
+                });
             },
             [&](const PayloadDispatchSectorSetLight& setLight) {
                 Sector* sector = level.GetSector(ownerID);

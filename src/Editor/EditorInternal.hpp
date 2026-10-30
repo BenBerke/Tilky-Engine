@@ -8,7 +8,7 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
-#include "WallSnap.hpp"
+#include "Headers/Editor/WallSnap.hpp"
 
 #include <cstdint>
 #include <filesystem>

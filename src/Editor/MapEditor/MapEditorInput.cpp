@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "../EditorInternal.hpp"
-#include "../Comments.hpp"
+#include "Headers/Editor/Comments.hpp"
 
 #include "imgui.h"
 #include "imgui_internal.h"

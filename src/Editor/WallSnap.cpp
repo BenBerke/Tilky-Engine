@@ -1,4 +1,4 @@
-#include "WallSnap.hpp"
+#include "Headers/Editor/WallSnap.hpp"
 
 #include <algorithm>
 #include <cmath>

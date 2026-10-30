@@ -1,4 +1,4 @@
-#include "Comments.hpp"
+#include "Headers/Editor/Comments.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include "EditorInternal.hpp"
-#include "EventLinks.hpp"
+#include "Headers/Editor/EventLinks.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/MapQueries.hpp"

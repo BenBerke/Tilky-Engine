@@ -11,7 +11,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include "src/Editor/EditorInternal.hpp"
-#include "src/Editor/CommandPalette.hpp"
+#include "Headers/Editor/CommandPalette.hpp"
 #include "External/tracy/profiler/src/profiler/IconsFontAwesome6.h"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"

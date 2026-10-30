@@ -2,7 +2,7 @@
 #include "EditorInternal.hpp"
 
 #ifndef TILKY_STANDALONE
-#include "Comments.hpp"
+#include "Headers/Editor/Comments.hpp"
 #endif
 
 #include <algorithm>

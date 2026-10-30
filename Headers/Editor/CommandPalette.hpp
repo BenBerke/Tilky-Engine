@@ -2,7 +2,7 @@
 
 #include <functional>
 
-#include "EditorInternal.hpp"
+#include "src/Editor/EditorInternal.hpp"
 
 // Ctrl+Shift+P: a searchable list of every action of every editor - the 2D,
 // runtime and UI editors' shortcuts plus the commands they register - with

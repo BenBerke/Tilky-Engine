@@ -4,10 +4,10 @@
 
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "../EditorInternal.hpp"
-#include "../TagExplorer.hpp"
-#include "../Comments.hpp"
-#include "../ObjExport.hpp"
-#include "../CommandPalette.hpp"
+#include "Headers/Editor/TagExplorer.hpp"
+#include "Headers/Editor/Comments.hpp"
+#include "Headers/Editor/ObjExport.hpp"
+#include "Headers/Editor/CommandPalette.hpp"
 
 #include <mutex>
 

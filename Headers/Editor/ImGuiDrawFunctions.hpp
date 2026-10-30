@@ -31,7 +31,7 @@ namespace ImGuiDrawFunctions {
         bool allowSnapToFloor = true;
         bool snapToFloorRequested = false;
 
-        // Snap to Wall (src/Editor/WallSnap.hpp), shown with Snap to Floor.
+        // Snap to Wall (Headers/Editor/WallSnap.hpp), shown with Snap to Floor.
         // The caller fills in wallSnapStatus and wallSnapGap every frame
         // before drawing; the controls only set the requests below.
         enum class WallSnapStatus { Off, Picking, Snapped };

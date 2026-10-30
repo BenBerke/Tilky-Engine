@@ -774,9 +774,22 @@ namespace {
         {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "highest_neighbor_ceiling"}
     };
 
+    constexpr std::pair<PayloadDispatchSectorDoor::Type, const char*> kDoorTypeNames[] = {
+        {PayloadDispatchSectorDoor::OPEN_WAIT_CLOSE, "open_wait_close"},
+        {PayloadDispatchSectorDoor::OPEN_STAY, "open_stay"},
+        {PayloadDispatchSectorDoor::CLOSE_WAIT_OPEN, "close_wait_open"},
+        {PayloadDispatchSectorDoor::CLOSE_STAY, "close_stay"},
+        {PayloadDispatchSectorDoor::OPEN_CLOSE_TOGGLE, "toggle"}
+    };
+
     constexpr std::pair<PayloadDispatchSectorDoor::OpenMode, const char*> kDoorOpenModeNames[] = {
         {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_CEILING, "lowest_neighbor_ceiling"},
         {PayloadDispatchSectorDoor::FIXED_HEIGHT, "fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::FloorOpenMode, const char*> kDoorFloorOpenModeNames[] = {
+        {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_FLOOR, "lowest_neighbor_floor"},
+        {PayloadDispatchSectorDoor::FIXED_FLOOR_HEIGHT, "fixed_height"}
     };
 
     constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char*> kDoorRetriggerNames[] = {
@@ -930,9 +943,14 @@ namespace {
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+            j["doorType"] = EnumName(kDoorTypeNames, payload.type);
             j["openMode"] = EnumName(kDoorOpenModeNames, payload.openMode);
             j["lip"] = payload.lip;
             j["openHeight"] = payload.openHeight;
+            j["split"] = payload.split;
+            j["floorOpenMode"] = EnumName(kDoorFloorOpenModeNames, payload.floorOpenMode);
+            j["floorLip"] = payload.floorLip;
+            j["floorOpenHeight"] = payload.floorOpenHeight;
             j["openSpeed"] = payload.openSpeed;
             j["closeSpeed"] = payload.closeSpeed;
             j["wait"] = payload.wait;
@@ -943,6 +961,12 @@ namespace {
             j["closeSound"] = payload.closeSound;
             j["soundGain"] = payload.soundGain;
             j["soundPitch"] = payload.soundPitch;
+            j["locked"] = payload.locked;
+            j["requiredTag"] = payload.requiredTag;
+            j["lockedSound"] = payload.lockedSound;
+            j["lockedMessage"] = payload.lockedMessage;
+            j["lockedMessageDuration"] = payload.lockedMessageDuration;
+            j["lockedMessageColor"] = {payload.lockedMessageColor.x, payload.lockedMessageColor.y, payload.lockedMessageColor.z};
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
@@ -1103,9 +1127,14 @@ namespace {
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+            ReadOptionalEnum(j, "doorType", kDoorTypeNames, payload.type);
             ReadOptionalEnum(j, "openMode", kDoorOpenModeNames, payload.openMode);
             ReadOptional(j, "lip", payload.lip);
             ReadOptional(j, "openHeight", payload.openHeight);
+            ReadOptional(j, "split", payload.split);
+            ReadOptionalEnum(j, "floorOpenMode", kDoorFloorOpenModeNames, payload.floorOpenMode);
+            ReadOptional(j, "floorLip", payload.floorLip);
+            ReadOptional(j, "floorOpenHeight", payload.floorOpenHeight);
             ReadOptional(j, "openSpeed", payload.openSpeed);
             ReadOptional(j, "closeSpeed", payload.closeSpeed);
             ReadOptional(j, "wait", payload.wait);
@@ -1116,6 +1145,12 @@ namespace {
             ReadOptional(j, "closeSound", payload.closeSound);
             ReadOptional(j, "soundGain", payload.soundGain);
             ReadOptional(j, "soundPitch", payload.soundPitch);
+            ReadOptional(j, "locked", payload.locked);
+            ReadOptional(j, "requiredTag", payload.requiredTag);
+            ReadOptional(j, "lockedSound", payload.lockedSound);
+            ReadOptional(j, "lockedMessage", payload.lockedMessage);
+            ReadOptional(j, "lockedMessageDuration", payload.lockedMessageDuration);
+            ReadOptionalVector3(j, "lockedMessageColor", payload.lockedMessageColor);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {

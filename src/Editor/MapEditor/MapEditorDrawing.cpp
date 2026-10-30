@@ -21,8 +21,8 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Math/Geometry/Geometry.hpp"
-#include "../EventLinks.hpp"
-#include "../Comments.hpp"
+#include "Headers/Editor/EventLinks.hpp"
+#include "Headers/Editor/Comments.hpp"
 
 namespace {
     // UTILITY

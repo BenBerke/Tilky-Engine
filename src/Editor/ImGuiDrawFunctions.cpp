@@ -1203,13 +1203,33 @@ namespace ImGuiDrawFunctions {
         {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "events.height_mode.highest_neighbor_ceiling"}
     };
 
+    constexpr std::pair<PayloadDispatchSectorDoor::Type, const char *> kDoorTypeOptions[] = {
+        {PayloadDispatchSectorDoor::OPEN_WAIT_CLOSE, "events.door.type.open_wait_close"},
+        {PayloadDispatchSectorDoor::OPEN_STAY, "events.door.type.open_stay"},
+        {PayloadDispatchSectorDoor::CLOSE_WAIT_OPEN, "events.door.type.close_wait_open"},
+        {PayloadDispatchSectorDoor::CLOSE_STAY, "events.door.type.close_stay"},
+        {PayloadDispatchSectorDoor::OPEN_CLOSE_TOGGLE, "events.door.type.toggle"}
+    };
+
     constexpr std::pair<PayloadDispatchSectorDoor::OpenMode, const char *> kDoorOpenModeOptions[] = {
         {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_CEILING, "events.door.open_mode.lowest_neighbor_ceiling"},
         {PayloadDispatchSectorDoor::FIXED_HEIGHT, "events.door.open_mode.fixed_height"}
     };
 
+    constexpr std::pair<PayloadDispatchSectorDoor::FloorOpenMode, const char *> kDoorFloorOpenModeOptions[] = {
+        {PayloadDispatchSectorDoor::LOWEST_NEIGHBOR_FLOOR, "events.door.floor_open_mode.lowest_neighbor_floor"},
+        {PayloadDispatchSectorDoor::FIXED_FLOOR_HEIGHT, "events.door.open_mode.fixed_height"}
+    };
+
     constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char *> kDoorRetriggerOptions[] = {
         {PayloadDispatchSectorDoor::RESTART, "events.door.retrigger.restart"},
+        {PayloadDispatchSectorDoor::TOGGLE, "events.door.retrigger.toggle"},
+        {PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN, "events.door.retrigger.ignore"}
+    };
+
+    // The same for a Close, Wait, Open door, which closes first.
+    constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char *> kDoorCloseFirstRetriggerOptions[] = {
+        {PayloadDispatchSectorDoor::RESTART, "events.door.retrigger.restart_close"},
         {PayloadDispatchSectorDoor::TOGGLE, "events.door.retrigger.toggle"},
         {PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN, "events.door.retrigger.ignore"}
     };
@@ -1845,45 +1865,94 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorDoor>) {
+                                using Door = PayloadDispatchSectorDoor;
+
+                                // Close types reopen to where they started, so
+                                // only these use the open heights.
+                                const bool usesOpenHeights = payload.type != Door::CLOSE_WAIT_OPEN && payload.type != Door::CLOSE_STAY;
+                                const bool opens = payload.type != Door::CLOSE_STAY;
+                                const bool closes = payload.type != Door::OPEN_STAY;
+                                const bool cycles = payload.type == Door::OPEN_WAIT_CLOSE || payload.type == Door::CLOSE_WAIT_OPEN;
+
+                                Property(Get("events.door.type").c_str());
+                                DrawEnumCombo("##Type", payload.type, kDoorTypeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.door_type").c_str());
+
                                 DrawFloorIndexRow(payload.floorIndex, ownerID, false);
 
-                                Property(Get("events.door.open_mode").c_str());
-                                DrawEnumCombo("##OpenMode", payload.openMode, kDoorOpenModeOptions);
+                                if (usesOpenHeights) {
+                                    Property(Get("events.door.open_mode").c_str());
+                                    DrawEnumCombo("##OpenMode", payload.openMode, kDoorOpenModeOptions);
 
-                                if (payload.openMode == PayloadDispatchSectorDoor::FIXED_HEIGHT) {
-                                    Property(Get("events.door.open_height").c_str());
-                                    InputOrDrag("##OpenHeight", &payload.openHeight, draggable, 0.1f);
+                                    if (payload.openMode == Door::FIXED_HEIGHT) {
+                                        Property(Get("events.door.open_height").c_str());
+                                        InputOrDrag("##OpenHeight", &payload.openHeight, draggable, 0.1f);
+                                    }
+                                    else {
+                                        Property(Get("events.door.lip").c_str());
+                                        InputOrDrag("##Lip", &payload.lip, draggable, 0.1f);
+                                        Tooltip(Get("editor.tooltip.dispatches.door_lip").c_str());
+                                    }
                                 }
-                                else {
-                                    Property(Get("events.door.lip").c_str());
-                                    InputOrDrag("##Lip", &payload.lip, draggable, 0.1f);
-                                    Tooltip(Get("editor.tooltip.dispatches.door_lip").c_str());
+
+                                Property(Get("events.door.split").c_str());
+                                ImGui::Checkbox("##Split", &payload.split);
+                                Tooltip(Get("editor.tooltip.dispatches.door_split").c_str());
+
+                                if (payload.split && usesOpenHeights) {
+                                    Property(Get("events.door.floor_open_mode").c_str());
+                                    DrawEnumCombo("##FloorOpenMode", payload.floorOpenMode, kDoorFloorOpenModeOptions);
+
+                                    if (payload.floorOpenMode == Door::FIXED_FLOOR_HEIGHT) {
+                                        Property(Get("events.door.floor_open_height").c_str());
+                                        InputOrDrag("##FloorOpenHeight", &payload.floorOpenHeight, draggable, 0.1f);
+                                    }
+                                    else {
+                                        Property(Get("events.door.floor_lip").c_str());
+                                        InputOrDrag("##FloorLip", &payload.floorLip, draggable, 0.1f);
+                                        Tooltip(Get("editor.tooltip.dispatches.door_floor_lip").c_str());
+                                    }
                                 }
 
-                                Property(Get("events.door.open_speed").c_str());
-                                if (InputOrDrag("##OpenSpeed", &payload.openSpeed, draggable, 0.1f))
-                                    payload.openSpeed = std::max(0.01f, payload.openSpeed);
+                                if (opens) {
+                                    Property(Get("events.door.open_speed").c_str());
+                                    if (InputOrDrag("##OpenSpeed", &payload.openSpeed, draggable, 0.1f))
+                                        payload.openSpeed = std::max(0.01f, payload.openSpeed);
+                                }
 
-                                Property(Get("events.door.close_speed").c_str());
-                                if (InputOrDrag("##CloseSpeed", &payload.closeSpeed, draggable, 0.1f))
-                                    payload.closeSpeed = std::max(0.01f, payload.closeSpeed);
+                                if (closes) {
+                                    Property(Get("events.door.close_speed").c_str());
+                                    if (InputOrDrag("##CloseSpeed", &payload.closeSpeed, draggable, 0.1f))
+                                        payload.closeSpeed = std::max(0.01f, payload.closeSpeed);
+                                }
 
-                                Property(Get("events.door.wait").c_str());
-                                if (InputOrDrag("##Wait", &payload.wait, draggable, 0.1f))
-                                    payload.wait = std::max(0.0f, payload.wait);
-                                Tooltip(Get("editor.tooltip.dispatches.door_wait").c_str());
+                                if (cycles) {
+                                    Property(Get("events.door.wait").c_str());
+                                    if (InputOrDrag("##Wait", &payload.wait, draggable, 0.1f))
+                                        payload.wait = std::max(0.0f, payload.wait);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_wait").c_str());
+                                }
 
-                                Property(Get("events.door.close_collision").c_str());
-                                DrawEnumCombo("##Collision", payload.closeCollision, kSectorCollisionOptions);
-                                Tooltip(Get("editor.tooltip.dispatches.door_collision").c_str());
+                                if (closes) {
+                                    Property(Get("events.door.close_collision").c_str());
+                                    DrawEnumCombo("##Collision", payload.closeCollision, kSectorCollisionOptions);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_collision").c_str());
+                                }
 
-                                Property(Get("events.door.retrigger").c_str());
-                                DrawEnumCombo("##Retrigger", payload.retrigger, kDoorRetriggerOptions);
-                                Tooltip(Get("editor.tooltip.dispatches.door_retrigger").c_str());
+                                if (cycles) {
+                                    Property(Get("events.door.retrigger").c_str());
+                                    if (payload.type == Door::CLOSE_WAIT_OPEN)
+                                        DrawEnumCombo("##Retrigger", payload.retrigger, kDoorCloseFirstRetriggerOptions);
+                                    else
+                                        DrawEnumCombo("##Retrigger", payload.retrigger, kDoorRetriggerOptions);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_retrigger").c_str());
+                                }
 
-                                DrawAssetRow("events.door.open_sound", payload.openSound, AssetKind::Sound, "editor.tooltip.dispatches.door_open_sound");
+                                if (opens)
+                                    DrawAssetRow("events.door.open_sound", payload.openSound, AssetKind::Sound, "editor.tooltip.dispatches.door_open_sound");
 
-                                DrawAssetRow("events.door.close_sound", payload.closeSound, AssetKind::Sound, "editor.tooltip.dispatches.door_close_sound");
+                                if (closes)
+                                    DrawAssetRow("events.door.close_sound", payload.closeSound, AssetKind::Sound, "editor.tooltip.dispatches.door_close_sound");
 
                                 Property(Get("events.gain").c_str());
                                 if (InputOrDrag("##Gain", &payload.soundGain, draggable, 0.01f))
@@ -1892,6 +1961,30 @@ namespace ImGuiDrawFunctions {
                                 Property(Get("events.pitch").c_str());
                                 if (InputOrDrag("##Pitch", &payload.soundPitch, draggable, 0.01f))
                                     payload.soundPitch = std::max(0.01f, payload.soundPitch);
+
+                                Property(Get("events.door.locked").c_str());
+                                ImGui::Checkbox("##Locked", &payload.locked);
+                                Tooltip(Get("editor.tooltip.dispatches.door_locked").c_str());
+
+                                if (payload.locked) {
+                                    Property(Get("events.door.required_tag").c_str());
+                                    DrawTagCombo("##RequiredTag", payload.requiredTag, TagRegistry::TagKind::NORMAL);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_required_tag").c_str());
+
+                                    DrawAssetRow("events.door.locked_sound", payload.lockedSound, AssetKind::Sound, "editor.tooltip.dispatches.door_locked_sound");
+
+                                    Property(Get("events.door.locked_message").c_str());
+                                    ImGui::InputText("##LockedMessage", &payload.lockedMessage);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_locked_message").c_str());
+
+                                    Property(Get("events.duration").c_str());
+                                    if (InputOrDrag("##LockedDuration", &payload.lockedMessageDuration, draggable, 0.05f))
+                                        payload.lockedMessageDuration = std::max(0.0f, payload.lockedMessageDuration);
+
+                                    Property(Get("events.color").c_str());
+                                    ImGui::ColorEdit3("##LockedColor", &payload.lockedMessageColor.x,
+                                                      CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
+                                }
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
                                 Property(Get("events.surface").c_str());

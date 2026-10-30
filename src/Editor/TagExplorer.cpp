@@ -1,5 +1,5 @@
-#include "TagExplorer.hpp"
-#include "EventLinks.hpp"
+#include "Headers/Editor/TagExplorer.hpp"
+#include "Headers/Editor/EventLinks.hpp"
 
 #include <algorithm>
 #include <cctype>

@@ -474,32 +474,58 @@ struct PayloadDispatchSectorMoveToHeight {
     SectorCollision collisionType = SECTOR_RETRACT;
 };
 
-// The ceiling opens, waits, then closes back to where it was.
+// The ceiling (and with `split` the floor too) opens and closes, as `type`
+// says. A door is shut while its ceiling sits on its floor.
 struct PayloadDispatchSectorDoor {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
     transKey translationKey = "event.dispatch.sector.door";
     transKey saveName = "dispatch.sector.door"; // level file name, never change
     bool operator==(const PayloadDispatchSectorDoor&) const = default;
 
+    // Open types open from where the door is now. Close types close an open
+    // door down to its floor (split: both meet halfway) and reopen it to
+    // where it was; on a shut door they do nothing. Toggle opens a shut door
+    // and closes an open one, then every trigger reverses it.
+    enum Type : uint8_t {
+        OPEN_WAIT_CLOSE = 0,
+        OPEN_STAY = 1,
+        CLOSE_WAIT_OPEN = 2,
+        CLOSE_STAY = 3,
+        OPEN_CLOSE_TOGGLE = 4
+    };
+
     enum OpenMode : uint8_t {
         LOWEST_NEIGHBOR_CEILING = 0, // minus `lip`
         FIXED_HEIGHT = 1             // `openHeight`
     };
 
-    // Triggered again while the door is open or moving.
-    enum Retrigger : uint8_t {
-        RESTART = 0, // closing reopens, open restarts the wait
-        TOGGLE = 1,  // opening or open closes now, closing reopens
-        IGNORE_WHILE_OPEN = 2 // nothing until it has closed
+    enum FloorOpenMode : uint8_t {
+        LOWEST_NEIGHBOR_FLOOR = 0, // plus `floorLip`
+        FIXED_FLOOR_HEIGHT = 1     // `floorOpenHeight`
     };
+
+    // Triggered again during an Open, Wait, Close (Close, Wait, Open) cycle.
+    enum Retrigger : uint8_t {
+        RESTART = 0, // closing reopens (opening recloses), waiting restarts the wait
+        TOGGLE = 1,  // heading back now, or turning round if already heading back
+        IGNORE_WHILE_OPEN = 2 // nothing until the cycle has finished
+    };
+
+    Type type = OPEN_WAIT_CLOSE;
 
     OpenMode openMode = LOWEST_NEIGHBOR_CEILING;
     float lip = 4.0f;
     float openHeight = 0.0f;
 
+    // The floor goes down as the ceiling goes up.
+    bool split = false;
+    FloorOpenMode floorOpenMode = LOWEST_NEIGHBOR_FLOOR;
+    float floorLip = 0.0f;
+    float floorOpenHeight = 0.0f;
+
     float openSpeed = 40.0f;
     float closeSpeed = 40.0f;
-    float wait = 3.0f; // seconds open
+    float wait = 3.0f; // seconds open (Close, Wait, Open: seconds shut)
 
     int floorIndex = 0;
     SectorCollision closeCollision = SECTOR_RETRACT; // while closing; opening never checks
@@ -511,6 +537,16 @@ struct PayloadDispatchSectorDoor {
     std::string closeSound;
     float soundGain = 1.0f;
     float soundPitch = 1.0f;
+
+    // Locked: an instigator without `requiredTag` doesn't move the door and
+    // gets the locked sound / message instead. Runs with no instigator
+    // entity (timers, Level Start, ...) always move it.
+    bool locked = false;
+    TagId requiredTag = 0;
+    std::string lockedSound;
+    std::string lockedMessage; // empty: none
+    float lockedMessageDuration = 2.0f;
+    Vector3 lockedMessageColor = {1.0f, 1.0f, 1.0f}; // 0-1
 };
 
 struct PayloadDispatchSectorStopMovement {

@@ -1,4 +1,4 @@
-#include "CommandPalette.hpp"
+#include "Headers/Editor/CommandPalette.hpp"
 
 #include <algorithm>
 #include <cctype>
