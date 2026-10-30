@@ -70,7 +70,10 @@ namespace ImGuiDrawFunctions {
     // Editor's single inspector. Null keeps each kind in its own window.
     bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr,
                              MakeDoorRequest *makeDoorRequest = nullptr, const char *windowId = nullptr);
-    bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable, const char *windowId = nullptr);
+    // A non-null openSectorRequest adds buttons for the wall's sectors under
+    // the header; it is set to the pressed one's ID on that frame.
+    bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable, const char *windowId = nullptr,
+                             ID *openSectorRequest = nullptr);
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable, const char *windowId = nullptr);
     // The level's own Events and Dispatches sections (World Settings).
     void DrawLevelEventSections(Level &level, bool draggable);

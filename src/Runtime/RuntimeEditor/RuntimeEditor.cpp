@@ -2577,8 +2577,10 @@ namespace RuntimeEditorUi {
 
             MapEditorInternal::BeginWallInspectorEdit(wallInspectorEdit, level.walls[selectedWall]);
 
+            ID openSectorRequest = INVALID_ID;
+
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE);
+                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE, nullptr, &openSectorRequest);
 
             if (deleteRequested) {
                 // Highest index first, so each erase leaves the rest valid.
@@ -2610,6 +2612,15 @@ namespace RuntimeEditorUi {
                 if (after != before)
                     for (const int index : selectedWalls)
                         if (index != selectedWall) MultiEdit::MirrorWallEdit(before, after, level.walls[index]);
+            }
+
+            // Last, so the wall's own edit above is already recorded and
+            // mirrored. The sector's lowest floor, as SelectAndShowOwner
+            // picks, but the camera stays where it is.
+            if (openSectorRequest != INVALID_ID) {
+                const int sectorIndex = FindSectorIndex(level, level.GetSector(openSectorRequest));
+                if (sectorIndex >= 0 && !level.sectors[sectorIndex].floors.empty())
+                    SelectOnlyFlat({sectorIndex, 0, RayHitType::SectorFloor});
             }
         }
 

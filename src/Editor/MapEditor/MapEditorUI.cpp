@@ -3782,8 +3782,10 @@ namespace {
 
         BeginWallInspectorEdit(wallInspectorEdit, wall);
 
+        ID openSectorRequest = INVALID_ID;
+
         const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID);
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID, &openSectorRequest);
 
         if (deleteRequested) {
             // DeleteSelectedWalls already handles the whole selection as one
@@ -3832,6 +3834,14 @@ namespace {
             // faces exist - so the sectors MoveSharedEndpoint already
             // moved are kept as they are rather than re-derived.
             RebuildGeometryAfterMove();
+        }
+
+        // Last, so the wall's own edit above is already recorded. Same
+        // selection a right-click on the sector gives.
+        if (openSectorRequest != INVALID_ID && level.sectorIDToIndex.contains(openSectorRequest)) {
+            ClearSelectionsExcept(EventOwnerKind::SECTOR);
+            SelectSector(openSectorRequest);
+            editingSector = true;
         }
     }
 

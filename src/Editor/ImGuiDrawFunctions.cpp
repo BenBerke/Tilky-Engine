@@ -2577,7 +2577,7 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable, const char *windowId) {
+    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable, const char *windowId, ID *openSectorRequest) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
@@ -2598,6 +2598,30 @@ namespace ImGuiDrawFunctions {
                 if (open) *open = false;
             }
             Tooltip(Get("editor.tooltip.wall.delete").c_str());
+        }
+
+        // ── Sector buttons: Front + Back on a portal, one Sector otherwise ──
+        if (openSectorRequest != nullptr) {
+            const bool hasFront = wall.frontSector != INVALID_ID;
+            const bool hasBack = wall.backSector != INVALID_ID;
+
+            if (hasFront && hasBack) {
+                const float width = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+
+                if (ImGui::Button(Get("wall.front_sector").c_str(), ImVec2(width, 0.0f)))
+                    *openSectorRequest = wall.frontSector;
+                Tooltip(Get("editor.tooltip.wall.edit_front_sector").c_str());
+
+                ImGui::SameLine();
+                if (ImGui::Button(Get("wall.back_sector").c_str(), ImVec2(-FLT_MIN, 0.0f)))
+                    *openSectorRequest = wall.backSector;
+                Tooltip(Get("editor.tooltip.wall.edit_back_sector").c_str());
+            }
+            else if (hasFront || hasBack) {
+                if (ImGui::Button(Get("sector.title").c_str(), ImVec2(-FLT_MIN, 0.0f)))
+                    *openSectorRequest = hasFront ? wall.frontSector : wall.backSector;
+                Tooltip(Get("editor.tooltip.wall.edit_sector").c_str());
+            }
         }
 
         // ── General ──────────────────────────────────────────────────────────
