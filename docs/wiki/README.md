@@ -45,7 +45,7 @@ Every script can use these globals without setting anything up.
 | Page | In short |
 |---|---|
 | [Game](Game.md) | The level as a whole: find entities, find the sector at a point, raycasts. |
-| [Input](Input.md) | Keyboard and mouse. |
+| [Input](Input.md) | Keyboard, mouse and the `Cursor` (locked or free). |
 | [GameTime](GameTime.md) | `deltaTime`, `timeScale` (slow motion and pause), game time and the real-world clock. |
 | [Invoke](Invoke.md) | `Invoke`, `InvokeReal`, `InvokeFrame`, `InvokeRepeating`: call a function later. |
 | [Debug](Debug.md) | Print to the in-game console or write to the engine log. |

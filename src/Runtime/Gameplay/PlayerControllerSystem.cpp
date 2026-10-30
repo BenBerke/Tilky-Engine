@@ -63,8 +63,10 @@ namespace PlayerControllerSystem {
                 ? controller.runningSpeed
                 : controller.speed;
 
-        // Mouse look only while the player's own camera is the one in use.
-        if (ownCamera != nullptr && ownCamera->isActive) {
+        // Mouse look only while the player's own camera is the one in use,
+        // and the cursor is locked: a free cursor is for pointing at things.
+        if (ownCamera != nullptr && ownCamera->isActive &&
+            InputManager::GetCursorLockMode() == InputManager::CursorLockMode::Locked) {
             ComponentCamera& camera = *ownCamera;
 
             camera.yaw -= InputManager::GetMouseDelta().x * controller.sensitivityX;

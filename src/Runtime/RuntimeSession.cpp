@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <SDL3/SDL.h>
@@ -52,6 +53,18 @@ namespace {
 #endif
 
     std::unique_ptr<IRenderer> renderer;
+
+    // The game's cursor (Cursor.lockState / Cursor.visible) as ApplyGameCursor
+    // last put it on the window, so SDL is only called when it changes. Reset
+    // whenever something else sets the window's cursor.
+    struct AppliedCursor {
+        InputManager::CursorLockMode mode;
+        bool visible;
+
+        bool operator==(const AppliedCursor&) const = default;
+    };
+
+    std::optional<AppliedCursor> appliedCursor;
 
 #ifndef TILKY_STANDALONE
     std::unique_ptr<Level> editorLevelSnapshot;
@@ -152,7 +165,9 @@ namespace {
         renderer->EndSession();
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
+        SDL_SetWindowMouseGrab(renderer->GetWindow(), false);
         SDL_ShowCursor();
+        appliedCursor.reset();
     }
 #endif
 
@@ -237,6 +252,7 @@ namespace {
         LevelSystem::Shutdown(level);
         // Stopping always leaves time running normally again.
         GameTime::ResetGameClock();
+        InputManager::ResetCursor();
         AudioSystem::Shutdown(level);
 #ifdef TILKY_STANDALONE
         SoundManager::DestroyOpenAL();
@@ -256,6 +272,7 @@ namespace {
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), true);
 
         SDL_HideCursor();
+        appliedCursor.reset();
 
         spdlog::info("Runtime started using {} renderer", renderer->GetName());
     }
@@ -417,6 +434,23 @@ namespace {
         messageBoxTops = std::move(boxTops);
     }
 
+    // Puts the game's cursor on the window. Only while the game has the
+    // mouse: in the editor's Play mode, Tab takes it back for the editor.
+    void ApplyGameCursor() {
+        const AppliedCursor wanted{InputManager::GetCursorLockMode(), InputManager::IsCursorVisible()};
+        if (appliedCursor == wanted) return;
+        appliedCursor = wanted;
+
+        SDL_Window* window = renderer->GetWindow();
+        const bool locked = wanted.mode == InputManager::CursorLockMode::Locked;
+
+        InputManager::SetRelativeMouseMode(window, locked);
+        SDL_SetWindowMouseGrab(window, wanted.mode == InputManager::CursorLockMode::Confined);
+
+        if (locked || !wanted.visible) SDL_HideCursor();
+        else SDL_ShowCursor();
+    }
+
 #ifdef TILKY_STANDALONE
 
     bool StartStandalone(Level& level, const std::string& windowName) {
@@ -438,6 +472,8 @@ namespace {
             ZoneScopedN("Level");
             LevelSystem::Update(level);
         }
+
+        ApplyGameCursor();
 
         {
             ZoneScopedN("Renderer");
@@ -465,13 +501,28 @@ namespace {
 
 #else
 
+    // ImGui's SDL backend shows the OS cursor every frame unless told not to,
+    // which would undo a hidden, unlocked game cursor (a locked one stays
+    // hidden anyway). So while the game has the mouse in Play, the cursor is
+    // the game's alone.
+    void SetImGuiControlsCursor(const bool controls) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (controls) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+        else io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    }
+
+    // Whether the game (or the runtime editor's fly camera) has the mouse.
+    // In Play, the game's own cursor then goes on top - see ApplyGameCursor.
     void SetRelativeMouseMode(const bool enabled) {
         relativeMouseMode = enabled;
 
         InputManager::SetRelativeMouseMode(renderer->GetWindow(), enabled);
+        SDL_SetWindowMouseGrab(renderer->GetWindow(), false);
 
         if (enabled) SDL_HideCursor();
         else SDL_ShowCursor();
+
+        appliedCursor.reset();
     }
 
     void UpdateMouseCapture(const bool mouseBlockedByImGui, const bool ignoreImGuiMouseBlocking) {
@@ -560,6 +611,7 @@ namespace {
         level.SyncEntityEnabledStates();
 
         UpdateMouseCapture(io.WantCaptureMouse, false);
+        SetImGuiControlsCursor(true);
 
         {
             ZoneScopedN("Renderer");
@@ -615,10 +667,15 @@ namespace {
         const ImGuiIO& io = ImGui::GetIO();
 
         UpdateMouseCapture(io.WantCaptureMouse, true);
+        SetImGuiControlsCursor(!relativeMouseMode);
 
         if (relativeMouseMode) {
             ZoneScopedN("Level");
             LevelSystem::Update(level);
+
+            // A script unlocking the cursor doesn't hand the mouse back to
+            // the editor: the game keeps running, as in the exported game.
+            ApplyGameCursor();
         }
 
         {

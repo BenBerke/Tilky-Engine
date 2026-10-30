@@ -459,6 +459,24 @@ namespace InputManager {
 
     Vector2 GetMouseDelta() {return mouseDelta;}
 
+    namespace {
+        CursorLockMode cursorLockMode = CursorLockMode::Locked;
+        bool cursorVisible = false;
+    }
+
+    void SetCursorLockMode(const CursorLockMode mode) {cursorLockMode = mode;}
+
+    CursorLockMode GetCursorLockMode() {return cursorLockMode;}
+
+    void SetCursorVisible(const bool visible) {cursorVisible = visible;}
+
+    bool IsCursorVisible() {return cursorVisible;}
+
+    void ResetCursor() {
+        cursorLockMode = CursorLockMode::Locked;
+        cursorVisible = false;
+    }
+
     void SetRelativeMouseMode(SDL_Window* window, const bool enabled) {
         relativeMouseMode = enabled;
 

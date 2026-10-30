@@ -169,6 +169,11 @@ namespace LevelSystem {
         // Before the scripts start, so their Start callbacks change and show from here.
         CaptureStartingSettings(level);
 
+        // Also before them, so a script's Start can still change it.
+        InputManager::SetCursorLockMode(level.worldSettings.lockCursorOnStart
+            ? InputManager::CursorLockMode::Locked : InputManager::CursorLockMode::None);
+        InputManager::SetCursorVisible(!level.worldSettings.hideCursorOnStart);
+
         SoundManager::SetListenerGain(level.listenerSettings.masterGain);
         SoundManager::SetListenerDopplerFactor(level.listenerSettings.dopplerFactor);
         SoundManager::SetListenerSpeedOfSound(level.listenerSettings.speedOfSound);

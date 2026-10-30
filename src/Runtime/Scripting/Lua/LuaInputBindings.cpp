@@ -42,10 +42,51 @@ namespace {
         {"Tab", SDL_SCANCODE_TAB},
         {"Space", SDL_SCANCODE_SPACE},
 
+        // Punctuation, named after the US-layout key (the scancode is the
+        // key's place, whatever the layout prints on it).
+        {"Minus", SDL_SCANCODE_MINUS},
+        {"Equals", SDL_SCANCODE_EQUALS},
+        {"LeftBracket", SDL_SCANCODE_LEFTBRACKET},
+        {"RightBracket", SDL_SCANCODE_RIGHTBRACKET},
+        {"Backslash", SDL_SCANCODE_BACKSLASH},
+        {"Semicolon", SDL_SCANCODE_SEMICOLON},
+        {"Quote", SDL_SCANCODE_APOSTROPHE},
+        {"BackQuote", SDL_SCANCODE_GRAVE},
+        {"Comma", SDL_SCANCODE_COMMA},
+        {"Period", SDL_SCANCODE_PERIOD},
+        {"Slash", SDL_SCANCODE_SLASH},
+        {"CapsLock", SDL_SCANCODE_CAPSLOCK},
+
+        {"F1", SDL_SCANCODE_F1}, {"F2", SDL_SCANCODE_F2}, {"F3", SDL_SCANCODE_F3}, {"F4", SDL_SCANCODE_F4},
+        {"F5", SDL_SCANCODE_F5}, {"F6", SDL_SCANCODE_F6}, {"F7", SDL_SCANCODE_F7}, {"F8", SDL_SCANCODE_F8},
+        {"F9", SDL_SCANCODE_F9}, {"F10", SDL_SCANCODE_F10}, {"F11", SDL_SCANCODE_F11}, {"F12", SDL_SCANCODE_F12},
+
+        {"PrintScreen", SDL_SCANCODE_PRINTSCREEN},
+        {"ScrollLock", SDL_SCANCODE_SCROLLLOCK},
+        {"Pause", SDL_SCANCODE_PAUSE},
+        {"Insert", SDL_SCANCODE_INSERT},
+        {"Home", SDL_SCANCODE_HOME},
+        {"PageUp", SDL_SCANCODE_PAGEUP},
+        {"Delete", SDL_SCANCODE_DELETE},
+        {"End", SDL_SCANCODE_END},
+        {"PageDown", SDL_SCANCODE_PAGEDOWN},
+
         {"Right", SDL_SCANCODE_RIGHT},
         {"Left", SDL_SCANCODE_LEFT},
         {"Down", SDL_SCANCODE_DOWN},
         {"Up", SDL_SCANCODE_UP},
+
+        {"NumLock", SDL_SCANCODE_NUMLOCKCLEAR},
+        {"KeypadDivide", SDL_SCANCODE_KP_DIVIDE},
+        {"KeypadMultiply", SDL_SCANCODE_KP_MULTIPLY},
+        {"KeypadMinus", SDL_SCANCODE_KP_MINUS},
+        {"KeypadPlus", SDL_SCANCODE_KP_PLUS},
+        {"KeypadEnter", SDL_SCANCODE_KP_ENTER},
+        {"Keypad1", SDL_SCANCODE_KP_1}, {"Keypad2", SDL_SCANCODE_KP_2}, {"Keypad3", SDL_SCANCODE_KP_3},
+        {"Keypad4", SDL_SCANCODE_KP_4}, {"Keypad5", SDL_SCANCODE_KP_5}, {"Keypad6", SDL_SCANCODE_KP_6},
+        {"Keypad7", SDL_SCANCODE_KP_7}, {"Keypad8", SDL_SCANCODE_KP_8}, {"Keypad9", SDL_SCANCODE_KP_9},
+        {"Keypad0", SDL_SCANCODE_KP_0},
+        {"KeypadPeriod", SDL_SCANCODE_KP_PERIOD},
 
         {"LCtrl", SDL_SCANCODE_LCTRL},
         {"LShift", SDL_SCANCODE_LSHIFT},
@@ -67,6 +108,8 @@ namespace {
             Prop("MouseLeft", "integer", true),
             Prop("MouseMiddle", "integer", true),
             Prop("MouseRight", "integer", true),
+            Prop("MouseBack", "integer", true, "The side button nearer the user (mouse button 4)."),
+            Prop("MouseForward", "integer", true, "The side button further from the user (mouse button 5)."),
         }, {
             Method("GetKeyDown", {Param("key", "Key")}, "boolean", "True on the frame the key was pressed."),
             Method("GetKey", {Param("key", "Key")}, "boolean", "True while the key is held."),
@@ -80,9 +123,27 @@ namespace {
             Method("GetMouseButtonDown", {Param("button", "integer")}, "boolean"),
             Method("GetMouseButton", {Param("button", "integer")}, "boolean"),
             Method("GetMouseButtonUp", {Param("button", "integer")}, "boolean"),
-            Method("GetMousePosition", {}, "Vector2"),
+            Method("GetMousePosition", {}, "Vector2", "The cursor position in window pixels, from the top-left corner."),
+            Method("GetMouseDelta", {}, "Vector2",
+                   "How far the mouse moved since the last frame, in pixels: +x right, +y down. Works whether the cursor is locked or not."),
+            Method("GetMouseScroll", {}, "number",
+                   "How far the scroll wheel turned this frame: positive away from you (up), negative towards you, 0 when still. One notch is 1 on most mice."),
+        }));
+
+        RegisterType(Enum("CursorLockMode", "Values for Cursor.lockState.", {
+            {"None", static_cast<int>(InputManager::CursorLockMode::None), "Free, and can leave the window."},
+            {"Locked", static_cast<int>(InputManager::CursorLockMode::Locked), "Hidden and held in place: the mouse only turns the view. Player Controller mouse look needs this."},
+            {"Confined", static_cast<int>(InputManager::CursorLockMode::Confined), "Free, but kept inside the window."},
+        }));
+
+        RegisterType(GlobalTable("Cursor", "The mouse cursor, like Unity's Cursor. Each level starts it from World Settings > Cursor (locked and hidden by default).", {
+            Prop("lockState", "CursorLockMode", false,
+                 "CursorLockMode.Locked, None or Confined. Player Controller mouse look only runs while Locked."),
+            Prop("visible", "boolean", false, "Whether the cursor is drawn while not Locked. A Locked cursor is always hidden."),
         }));
     }
+
+    struct ScriptCursor {};
 
     // Raises a Lua error for anything that isn't a value of the Key table.
     // Takes a sol::object, not an int: sol would turn nil (a misspelled
@@ -191,6 +252,48 @@ void LuaScriptSystem::RegisterInputBindings(sol::state& lua) {
     inputManager["MouseLeft"] = SDL_BUTTON_LEFT;
     inputManager["MouseMiddle"] = SDL_BUTTON_MIDDLE;
     inputManager["MouseRight"] = SDL_BUTTON_RIGHT;
+    inputManager["MouseBack"] = SDL_BUTTON_X1;
+    inputManager["MouseForward"] = SDL_BUTTON_X2;
+
+    inputManager.set_function("GetMouseDelta", []() -> Vector2 {
+        return InputManager::GetMouseDelta();
+    });
+
+    inputManager.set_function("GetMouseScroll", []() -> float {
+        return InputManager::GetMouseWheelScroll();
+    });
 
     lua["Input"] = inputManager;
+
+    sol::table lockModes = lua.create_named_table("CursorLockMode");
+    lockModes["None"] = static_cast<int>(InputManager::CursorLockMode::None);
+    lockModes["Locked"] = static_cast<int>(InputManager::CursorLockMode::Locked);
+    lockModes["Confined"] = static_cast<int>(InputManager::CursorLockMode::Confined);
+
+    lua.new_usertype<ScriptCursor>(
+        "ScriptCursor",
+        sol::no_constructor,
+
+        "lockState",
+        sol::property(
+            [](const ScriptCursor&) { return static_cast<int>(InputManager::GetCursorLockMode()); },
+            [](ScriptCursor&, const sol::object& value) {
+                const int mode = value.get_type() == sol::type::number ? value.as<int>() : -1;
+                if (mode < static_cast<int>(InputManager::CursorLockMode::None) ||
+                    mode > static_cast<int>(InputManager::CursorLockMode::Confined))
+                    throw sol::error("Cursor.lockState must be a CursorLockMode value, e.g. CursorLockMode.None");
+
+                InputManager::SetCursorLockMode(static_cast<InputManager::CursorLockMode>(mode));
+            }),
+
+        "visible",
+        sol::property(
+            [](const ScriptCursor&) { return InputManager::IsCursorVisible(); },
+            [](ScriptCursor&, const sol::object& value) {
+                if (value.get_type() != sol::type::boolean) throw sol::error("Cursor.visible must be true or false");
+                InputManager::SetCursorVisible(value.as<bool>());
+            })
+    );
+
+    lua["Cursor"] = ScriptCursor{};
 }

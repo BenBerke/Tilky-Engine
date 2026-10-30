@@ -591,6 +591,8 @@ namespace {
 
             worldSettings.gravity = worldSettingsJson.value("gravity", 9.8f);
             worldSettings.maxPhysicsSubsteps = std::clamp(worldSettingsJson.value("maxPhysicsSubsteps", 8), 1, 64);
+            worldSettings.lockCursorOnStart = worldSettingsJson.value("lockCursorOnStart", true);
+            worldSettings.hideCursorOnStart = worldSettingsJson.value("hideCursorOnStart", true);
 
             LoadEventVariables(worldSettingsJson, worldSettings);
             worldSettings.messageStyle = worldSettingsJson.contains("messageStyle")
@@ -633,6 +635,8 @@ namespace {
                 "worldSettings", {
                     {"gravity", worldSettings.gravity},
                     {"maxPhysicsSubsteps", worldSettings.maxPhysicsSubsteps},
+                    {"lockCursorOnStart", worldSettings.lockCursorOnStart},
+                    {"hideCursorOnStart", worldSettings.hideCursorOnStart},
                     {"eventVariables", SaveEventVariables(worldSettings)},
                     {"nextEventVariableId", worldSettings.nextEventVariableID},
                     {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)}

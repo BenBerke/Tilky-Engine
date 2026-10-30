@@ -1041,6 +1041,22 @@ namespace {
         EndSettingsTable();
     }
 
+    void DrawCursorSettings(Level &level) {
+        if (!BeginSettingsTable("##Cursor")) return;
+
+        const std::string lockTooltip = Get("settings.cursor.tooltip.lock_on_start");
+        SettingRow(Get("settings.cursor.lock_on_start"), lockTooltip.c_str());
+        ImGui::Checkbox("##LockCursorOnStart", &level.worldSettings.lockCursorOnStart);
+        HoverTooltip(lockTooltip.c_str());
+
+        const std::string hideTooltip = Get("settings.cursor.tooltip.hide_on_start");
+        SettingRow(Get("settings.cursor.hide_on_start"), hideTooltip.c_str());
+        ImGui::Checkbox("##HideCursorOnStart", &level.worldSettings.hideCursorOnStart);
+        HoverTooltip(hideTooltip.c_str());
+
+        EndSettingsTable();
+    }
+
     void DrawAudioSettings(Level &level) {
         ListenerSettings &settings = level.listenerSettings;
 
@@ -1243,6 +1259,7 @@ namespace {
         ImGui::Begin(Get("editor.world_settings").c_str());
 
         if (SettingsSection("settings.physics.title", "Physics")) DrawPhysicsSettings(level);
+        if (SettingsSection("settings.cursor.title", "Cursor")) DrawCursorSettings(level);
         if (SettingsSection("settings.audio.title", "Audio")) DrawAudioSettings(level);
         if (SettingsSection("settings.rendering.title", "Rendering")) DrawRenderingSettings(level);
         if (SettingsSection("settings.rendering.sky.title", "Sky")) DrawSkySettings(level);

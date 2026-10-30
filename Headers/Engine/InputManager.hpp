@@ -7,6 +7,12 @@
 #include "../Math/Vector/Vector2.hpp"
 
 namespace InputManager {
+    // Cursor.lockState in Lua, the same three modes as Unity.
+    enum class CursorLockMode : uint8_t {
+        None,     // free, and can leave the window
+        Locked,   // hidden and held in place; the mouse only moves the view
+        Confined  // free, but kept inside the window
+    };
     struct DroppedFile {
         std::filesystem::path path;
         Vector2 position;
@@ -34,7 +40,18 @@ namespace InputManager {
 
     bool GetMouseWheelScrollUp(); // if wheelScroll > 0
     bool GetMouseWheelScrollDown(); // if wheelScroll < 0
-    float GetMouseWheelScroll(); // Returns -1, 0 or +1
+    float GetMouseWheelScroll(); // This frame's scrolling, positive away from the user
+
+    // Cursor.lockState / Cursor.visible: what the game wants. RuntimeSession
+    // applies it to the window while the game has the mouse. A Locked
+    // cursor is always hidden.
+    void SetCursorLockMode(CursorLockMode mode);
+    [[nodiscard]] CursorLockMode GetCursorLockMode();
+    void SetCursorVisible(bool visible);
+    [[nodiscard]] bool IsCursorVisible();
+    // Locked and hidden, where Stop leaves it. Each level sets its own on
+    // start (World Settings > Cursor).
+    void ResetCursor();
 
     Vector2 GetMousePosition(); // Screen Position
     Vector2 GetMouseDelta();

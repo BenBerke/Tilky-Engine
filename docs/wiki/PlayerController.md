@@ -81,8 +81,10 @@ Jump Strength of 100, a jump peaks at roughly `100² / (2 × 96) ≈ 52` units.
 
 ### Looking
 
-Moving the mouse turns the player's own camera, **only while it is the active camera**. While
-another entity's camera is in use, the mouse does nothing. Horizontal movement changes `yaw` by
+Moving the mouse turns the player's own camera, **only while it is the active camera** and the
+cursor is locked ([`Cursor.lockState`](Input.md#cursor) is `CursorLockMode.Locked`, as it is when
+the game starts). While another entity's camera is in use, or a script has freed the cursor for a
+menu, the mouse does nothing. Horizontal movement changes `yaw` by
 `mouse × Sensitivity X` and vertical movement changes `pitch` by `mouse × Sensitivity Y`. Pitch is
 kept between **Min Pitch** and **Max Pitch**. Yaw wraps around to stay within `0..360`, then is
 kept between **Min Yaw** and **Max Yaw** (the defaults allow a full turn).

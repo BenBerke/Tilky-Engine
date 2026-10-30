@@ -85,6 +85,12 @@ struct WorldSettings {
     // a wall; 1 turns sub-stepping off.
     int maxPhysicsSubsteps = 8;
 
+    // What Cursor.lockState / Cursor.visible are set to when this level
+    // starts (Play, the exported game, Game.LoadLevel), before its scripts'
+    // Start. Locked is CursorLockMode.Locked, unlocked None.
+    bool lockCursorOnStart = true;
+    bool hideCursorOnStart = true;
+
     // This level's own event variables (IDs without GLOBAL_EVENT_VARIABLE_BIT;
     // project-wide ones are in GlobalEventVariables). The value is the
     // starting value in the editor and the live one during play. Play restores
