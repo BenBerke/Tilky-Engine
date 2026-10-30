@@ -257,6 +257,10 @@ namespace LevelSystem {
         //     entity.Update(); // currently does nothing. Probably should do nothing
         // }
 
+        // Picks up enabled flags written directly (the runtime editor's
+        // checkbox, prefab sync) before any system reads ownerEnabled.
+        level.SyncEntityEnabledStates();
+
         {
             ZoneScopedN("Scripts");
             scriptingSystem.Update(level);
@@ -293,7 +297,8 @@ namespace LevelSystem {
             previousControllerID = activeControllerID;
         }
 
-        if (activeController != nullptr) {
+        // A disabled player takes no input; its velocity is kept for when it's back.
+        if (activeController != nullptr && activeController->ownerEnabled) {
             const ID ownerID = activeController->ownerID;
 
             ComponentTransform *playerTransform = level.transforms.Get(ownerID);
@@ -349,6 +354,9 @@ namespace LevelSystem {
 
             for (int i = 0; i < substeps; i++) {
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
+                    // A disabled entity's body is frozen, its velocity kept.
+                    if (!r.ownerEnabled) continue;
+
                     // Only an entity's first rigidbody simulates; the others are inert.
                     if (level.rigidbodies.Get(r.ownerID) != &r) continue;
 

@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Engine/InputManager.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
@@ -29,6 +30,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to load project metadata\n";
         return 1;
     }
+
+    // Engine text the game itself shows (the no-camera screen).
+    if (!Localisation::LoadLanguage("en"))
+        std::cerr << "Failed to load the English localisation; engine text will show as <missing>\n";
 
     // Tag names, for entity:HasTag and Game.FindEntitiesWithTag.
     if (!TagRegistry::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))

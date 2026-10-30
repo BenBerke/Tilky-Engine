@@ -13,6 +13,10 @@ void OpenGL::BuildGpuSprites() {
     for (ComponentSprite& spriteComponent : level.sprites.components) {
         if (!spriteComponent.isActive) continue;
 
+        // A disabled entity's sprites are hidden in game; the editor camera
+        // still shows them, dimmed.
+        if (!spriteComponent.ownerEnabled && !useEditorCamera) continue;
+
         ComponentTransform* transform = level.transforms.Get(spriteComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;
@@ -42,6 +46,13 @@ void OpenGL::BuildGpuSprites() {
                 spriteComponent.color.z - (255.0f - light.z) / 255.0f,
                 spriteComponent.color.w
             };
+        }
+
+        if (!spriteComponent.ownerEnabled) {
+            constexpr float DISABLED_DIM = 0.35f;
+            gpuSprite.color.x *= DISABLED_DIM;
+            gpuSprite.color.y *= DISABLED_DIM;
+            gpuSprite.color.z *= DISABLED_DIM;
         }
 
         gpuSprite.textureIndices0 = {

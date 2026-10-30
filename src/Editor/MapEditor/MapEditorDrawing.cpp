@@ -1378,12 +1378,18 @@ namespace MapEditorInternal {
                 spriteTexture = GetEditorTexture(sprite->textureFileNames[0]);
 
             if (spriteTexture != nullptr) {
+                // A disabled entity's sprite is greyed out.
+                if (!entity.enabled)
+                    SDL_SetTextureColorMod(spriteTexture, disabledEntityColor.x, disabledEntityColor.y, disabledEntityColor.z);
+
                 SDL_SetTextureAlphaMod(spriteTexture, alpha);
                 SDL_RenderTexture(renderer, spriteTexture, nullptr, &rect);
                 SDL_SetTextureAlphaMod(spriteTexture, 255);
+                SDL_SetTextureColorMod(spriteTexture, 255, 255, 255);
             }
             else {
                 if (sprite != nullptr) entityColor = spriteEntityColor;
+                if (!entity.enabled) entityColor = disabledEntityColor;
                 if (entity.id == selectedEntity.id && editingEntity) entityColor = highlightedEntityColor;
 
                 SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);

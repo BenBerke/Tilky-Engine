@@ -1710,11 +1710,11 @@ struct ScriptEntity {
         entity->name = name;
     }
 
-    // Entity-level active state. Disabling an Entity effectively
-    // disables every attached script's ticking (Update/FixedUpdate skipped,
-    // OnDisable/OnEnable fired) without touching each script's own `enabled`
-    // flag - see Entity::enabled and ScriptBehaviourRef::GetEnabled/SetEnabled
-    // for the per-script flag.
+    // Entity-level active state. Disabling an Entity takes it out of the
+    // game (scripts' Update/FixedUpdate skipped with OnDisable/OnEnable
+    // fired, no drawing, physics, rays, sounds or events) without touching
+    // each component's own flag - see Entity::enabled and
+    // ScriptBehaviourRef::GetEnabled/SetEnabled for the per-script flag.
     [[nodiscard]] bool GetEnabled() const {
         const Entity* entity = GetEntity();
         return entity != nullptr && entity->enabled;
@@ -1723,7 +1723,7 @@ struct ScriptEntity {
     void SetEnabled(const bool value) const {
         Entity* entity = GetEntity();
         if (entity == nullptr) return;
-        entity->enabled = value;
+        level->SetEntityEnabled(*entity, value);
     }
 
     // Queues this Entity for destruction. Safe to call from anywhere in

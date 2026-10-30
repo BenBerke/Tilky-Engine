@@ -179,6 +179,7 @@ namespace MapEditorInternal {
     Vector3 normalEntityColor = {190, 190, 190};
     Vector3 highlightedEntityColor = {20, 20, 220};
     Vector3 spriteEntityColor = {100, 200, 100};
+    Vector3 disabledEntityColor = {80, 80, 80};
 
     Vector3 normalWallColor = {205, 205, 205};
     Vector3 portalWallColor = {150, 150, 150};

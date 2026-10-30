@@ -18,6 +18,7 @@
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Engine/Local/Local.hpp"
 #include "tracy/Tracy.hpp"
 
 void OpenGL::UpdateVisibleSectors(
@@ -129,6 +130,30 @@ void OpenGL::DrawFlats() const {
     flush();
 }
 
+void OpenGL::DrawNoCameraScreen() {
+    if (!SDL_GetWindowSizeInPixels(window, &screenWidth, &screenHeight)) {
+        spdlog::error("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
+        return;
+    }
+
+    glViewport(0, 0, screenWidth, screenHeight);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // The default font, centred, at a size that follows the window's height.
+    const std::string& text = Localisation::Get("screen.no_active_camera");
+    const float pixelSize = std::max(16.0f, static_cast<float>(screenHeight) * 0.05f);
+    const FontMetrics metrics = GetFontMetrics("", pixelSize);
+    const float width = MeasureTextLine("", pixelSize, text);
+
+    const Vector2 baseline = {
+        (static_cast<float>(screenWidth) - width) * 0.5f,
+        (static_cast<float>(screenHeight) - metrics.lineHeight) * 0.5f + metrics.ascender
+    };
+
+    DrawTextLine("", pixelSize, text, baseline, {1.0f, 1.0f, 1.0f, 1.0f});
+}
+
 void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     using namespace OpenGLRendererInternal;
 
@@ -149,8 +174,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     else {
         camera = LevelSystem::GetActiveCamera(level);
 
-        if (camera == nullptr) [[unlikely]] {
-            spdlog::error("OpenGL::Update failed: no active camera");
+        if (camera == nullptr || !camera->ownerEnabled) [[unlikely]] {
+            DrawNoCameraScreen();
             return;
         }
 
@@ -503,7 +528,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
-            if (!sprite.isActive || sprite.color.w <= 0.0f) continue;
+            if (!sprite.isActive || !sprite.ownerEnabled || sprite.color.w <= 0.0f) continue;
 
             const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
@@ -527,6 +552,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     {
         ZoneScopedN("Rendering UI Text");
         for (ComponentUIText& text : level.ui_texts.components) {
+            if (!text.ownerEnabled) continue;
+
             const ComponentUITransform* transform = level.ui_transforms.Get(text.ownerID);
 
             if (transform == nullptr) [[unlikely]] {

@@ -22,10 +22,16 @@ struct Entity {
 
     // Entity-level active state (Lua: Entity.enabled / Entity:SetEnabled()).
     // Distinct from any single component's own enabled flag (e.g. ComponentScript::enabled):
-    // disabling the entity disables every attached script's effective enabled state
-    // without touching each script's own flag, so re-enabling the entity restores
-    // each script's individual state exactly as it was. See LevelSystem::Update.
+    // a disabled entity is out of the game - no scripts, drawing, physics,
+    // rays, flipbooks, sounds or events - without touching each component's
+    // own flag, so re-enabling it restores every component exactly as it was.
+    // Components see it through their ownerEnabled copy; change it with
+    // Level::SetEntityEnabled so they see it at once (a direct write is
+    // picked up by Level::SyncEntityEnabledStates the next frame).
     bool enabled = true;
+
+    // Runtime only, not saved: the `enabled` last copied to the components.
+    bool appliedEnabled = true;
 
     std::vector<Event> events;
     std::vector<Dispatch> dispatches;

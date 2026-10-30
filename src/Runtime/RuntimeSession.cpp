@@ -159,6 +159,9 @@ namespace {
     void PrepareRuntimeLevel(Level& level) {
         MapQueries::RebuildSectorRuntimeLinks(level);
 
+        // Before any system starts, so a disabled entity starts out of the game.
+        level.ApplyAllEntityEnabled();
+
         for (ComponentTransform& transform : level.transforms.components)
             transform.UpdateObjectSectorAndFloor(level.sectors);
     }
@@ -545,6 +548,10 @@ namespace {
 
     void UpdateEditor(Level& level) {
         const ImGuiIO& io = ImGui::GetIO();
+
+        // The editor camera dims disabled entities' sprites, which reads
+        // ownerEnabled, and the inspector checkbox writes enabled directly.
+        level.SyncEntityEnabledStates();
 
         UpdateMouseCapture(io.WantCaptureMouse, false);
 

@@ -65,6 +65,8 @@ struct ComponentUIText {
 
     // RGBA, each 0..1. Alpha below 1 makes the text see-through.
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 
 struct ComponentUISprite {
@@ -79,6 +81,7 @@ struct ComponentUISprite {
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
     bool isActive = true; // false = not drawn
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 
 struct ComponentUITransform {
@@ -114,6 +117,8 @@ struct ComponentModel {
     Vector3 offset = {0.0f, 0.0f, 0.0f};
 
     std::string fileName;
+
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 
 struct ComponentRigidbody {
@@ -133,6 +138,8 @@ struct ComponentRigidbody {
     // Normal of the floor too steep to stand on that the body is sliding
     // down, zero when it isn't sliding. Set by physics each run.
     Vector3 slideNormal = {.0f, .0f, .0f};
+
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 
     void AddVelocity(const Vector3 &_velocity);
     void ApplyFriction(float _friction, float dt);
@@ -166,6 +173,9 @@ struct ComponentCollider {
     bool isActive = true;
     bool isTrigger = false;
 
+    // Write through ColliderStorage::SetOwnerEnabled, like isActive.
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+
     // Local size, multiplied per axis by the Transform's scale.
     // Box: the AABB's size. Sphere: x is the radius (scaled by scale.x only).
     // Capsule: x is the radius (scaled by scale.x), y the total height
@@ -180,6 +190,10 @@ struct ComponentCollider {
     float maxSlope = 45.0f;
 
     [[nodiscard]] bool IsRound() const { return type == COLLIDERTYPE_SPHERE || type == COLLIDERTYPE_CAPSULE; }
+
+    // Takes part in physics, triggers and rays: ticked and its entity enabled.
+    // The ones in ColliderStorage::ActiveColliders() always are.
+    [[nodiscard]] bool InPhysics() const { return isActive && ownerEnabled; }
 
     // World position of the collider's bottom.
     [[nodiscard]] Vector3 Base(const ComponentTransform& transform) const;
@@ -203,6 +217,7 @@ struct ComponentPlayerController {
     // z = world/map Y
 
     bool isActive = false;
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 
     float speed = 46.0f;
     float runningSpeed = 90.0f;
@@ -246,6 +261,7 @@ struct ComponentCamera {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     bool isActive = true;
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 
     // yaw = left/right rotation.
     float yaw = 0.0f;
@@ -445,6 +461,11 @@ struct ComponentAudioSource {
     // ResumeSound clear it.
     bool isHeld = false;
 
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+    // Runtime only, not saved. Set while AudioSystem has the source paused
+    // because its entity is disabled; it resumes when the entity is enabled.
+    bool pausedByOwner = false;
+
     // Runtime only, not saved: what AudioSystem last sent to this OpenAL
     // source, so each frame only sends values that changed. `valid` is false
     // until the first send and after anything else writes to the source
@@ -547,6 +568,7 @@ struct ComponentSprite {
 
     bool isStatic;
     bool isActive = true; // false = not uploaded to the sprite SSBO, so not drawn
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 
 // Plays a flipbook (.fpk, see FlipbookAsset.hpp) on one of the owner's
@@ -576,6 +598,8 @@ struct ComponentFlipbook {
     bool playing = false;
     bool applyPending = false;  // copy currentFrame to the sprite on the next update
     bool eventPending = false;  // fire currentFrame's event on the next update
+
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 
 // Transform and UITransform place the entity, so there's only ever one.
@@ -787,14 +811,25 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     }
 
     // ── Public mutators ──────────────────────────────────────────────
+    // A collider is in the active regions while InPhysics(): ticked and its
+    // entity enabled.
+
     // Call instead of directly writing collider.isActive
     void SetActive(const ComponentInstanceID instanceID, const bool active) {
         const auto it = instanceToIndex.find(instanceID);
         if (it == instanceToIndex.end()) return;
-        ComponentCollider& c = components[it->second];
-        if (c.isActive == active) return;
-        c.isActive = active;
-        active ? _activateComponent(it->second) : _deactivateComponent(it->second);
+        const bool wasInPhysics = components[it->second].InPhysics();
+        components[it->second].isActive = active;
+        _relocate(it->second, wasInPhysics);
+    }
+
+    // Call instead of directly writing collider.ownerEnabled
+    void SetOwnerEnabled(const ComponentInstanceID instanceID, const bool enabled) {
+        const auto it = instanceToIndex.find(instanceID);
+        if (it == instanceToIndex.end()) return;
+        const bool wasInPhysics = components[it->second].InPhysics();
+        components[it->second].ownerEnabled = enabled;
+        _relocate(it->second, wasInPhysics);
     }
 
     // Call instead of directly writing collider.type
@@ -805,7 +840,7 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
         if (c.type == type) return;
         const bool wasRound = c.IsRound();
         c.type = type;
-        if (!c.isActive || wasRound == c.IsRound()) return; // same region
+        if (!c.InPhysics() || wasRound == c.IsRound()) return; // same region
         if (c.IsRound()) _promoteToRound(it->second);
         else _demoteToBox(it->second);
     }
@@ -829,7 +864,7 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     ComponentCollider& InsertLoaded(const ComponentCollider& loaded) {
         ComponentCollider comp = loaded;
         const bool active = comp.isActive;
-        comp.isActive = false;
+        comp.isActive = false; // out of physics, so SetActive places it
         const ComponentInstanceID instanceID = Insert(comp).instanceID;
         SetActive(instanceID, active);
         return *GetInstance(instanceID);
@@ -841,7 +876,7 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
 
         // Move an active collider into the inactive region first, so the
         // swap-with-last below never pulls an inactive one into an active region.
-        if (components[it->second].isActive) _deactivateComponent(it->second);
+        if (components[it->second].InPhysics()) _deactivateComponent(it->second);
 
         const size_t idx = instanceToIndex[instanceID];
         const ID ownerID = components[idx].ownerID;
@@ -872,6 +907,14 @@ struct ColliderStorage : ComponentStorage<ComponentCollider> {
     }
 
 private:
+    // Moves the collider at idx in or out of the active regions if its
+    // InPhysics() changed from wasInPhysics.
+    void _relocate(const size_t idx, const bool wasInPhysics) {
+        const bool inPhysics = components[idx].InPhysics();
+        if (inPhysics == wasInPhysics) return;
+        inPhysics ? _activateComponent(idx) : _deactivateComponent(idx);
+    }
+
     void _swapElements(size_t a, size_t b) {
         if (a == b) return;
         std::swap(components[a], components[b]);

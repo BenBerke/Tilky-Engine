@@ -537,6 +537,10 @@ private:
     [[nodiscard]] bool IsEntityCulled(const ComponentTransform& transform) const;
     void DrawFlats() const;
 
+    // In game, when there's no active camera or its entity is disabled: a
+    // black screen saying so.
+    void DrawNoCameraScreen();
+
     // OpenGLBackground.cpp: the level's sky, drawn before the world.
     void DrawBackground(const ComponentCamera& camera, const SkySettings& sky);
     GLuint GetSkyTextureID(const std::string& fileName, GLint wrapS, GLint wrapT, Vector2* outSize);

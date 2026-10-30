@@ -606,6 +606,7 @@ namespace MapEditorInternal {
     extern Vector3 normalEntityColor;
     extern Vector3 highlightedEntityColor;
     extern Vector3 spriteEntityColor;
+    extern Vector3 disabledEntityColor;
 
     extern Vector3 normalWallColor;
     extern Vector3 portalWallColor;

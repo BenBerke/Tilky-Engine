@@ -744,6 +744,7 @@
   "launcher.quit": "Quit",
   "screen.title.level_editor": "Tilky Level Editor",
   "screen.title.engine": "Tilky Engine",
+  "screen.no_active_camera": "No Active Camera",
   "settings.audio.tooltip.master_gain": "Overall audio volume for this level. 1.0 = neutral.",
   "settings.audio.tooltip.doppler_factor": "Scales the Doppler effect. 0 = disabled, 1 = physically accurate.",
   "settings.audio.notification.speed_of_sound_clamped": "Speed of sound clamped to 1.",
@@ -1926,5 +1927,5 @@
   "entity.component_menu.move_up": "Move Up",
   "entity.component_menu.move_down": "Move Down",
   "entity.component_menu.remove": "Remove Component",
-  "editor.tooltip.entity.enabled": "Disables every attached script on this Entity (OnDisable fires) without changing each script's own Enabled checkbox."
+  "editor.tooltip.entity.enabled": "Unticked, the Entity is out of the game: its scripts stop (OnDisable fires), its sprites, models and UI are hidden, its colliders and Rigidbody stop (velocity is kept), rays pass through it, its flipbooks and sounds pause, and its events and dispatches don't run, except Enable and Destroy. Each component's own checkbox is left as it is."
 }

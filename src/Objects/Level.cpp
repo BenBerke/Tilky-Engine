@@ -259,6 +259,49 @@ void Level::ActivatePlayerController(const ComponentPlayerController& controller
         other.isActive = other.instanceID == instanceID;
 }
 
+namespace {
+    template<typename Storage>
+    void SetOwnerEnabled(Storage& storage, const ID ownerID, const bool enabled) {
+        for (const ComponentInstanceID instanceID : storage.InstancesOf(ownerID))
+            storage.GetInstance(instanceID)->ownerEnabled = enabled;
+    }
+}
+
+void Level::SetEntityEnabled(Entity& entity, const bool enabled) {
+    entity.enabled = enabled;
+    ApplyEntityEnabled(entity);
+}
+
+void Level::ApplyEntityEnabled(Entity& entity) {
+    const bool enabled = entity.enabled;
+
+    SetOwnerEnabled(sprites, entity.id, enabled);
+    SetOwnerEnabled(audioSources, entity.id, enabled);
+    SetOwnerEnabled(playerControllers, entity.id, enabled);
+    SetOwnerEnabled(cameras, entity.id, enabled);
+    SetOwnerEnabled(rigidbodies, entity.id, enabled);
+    SetOwnerEnabled(models, entity.id, enabled);
+    SetOwnerEnabled(flipbooks, entity.id, enabled);
+    SetOwnerEnabled(ui_sprites, entity.id, enabled);
+    SetOwnerEnabled(ui_texts, entity.id, enabled);
+
+    // Through the storage, which moves them in or out of physics. That
+    // reorders `components` but not the owner's instance list.
+    for (const ComponentInstanceID instanceID : colliders.InstancesOf(entity.id))
+        colliders.SetOwnerEnabled(instanceID, enabled);
+
+    entity.appliedEnabled = enabled;
+}
+
+void Level::SyncEntityEnabledStates() {
+    for (Entity& entity : entities)
+        if (!entity.enabled || entity.enabled != entity.appliedEnabled) ApplyEntityEnabled(entity);
+}
+
+void Level::ApplyAllEntityEnabled() {
+    for (Entity& entity : entities) ApplyEntityEnabled(entity);
+}
+
 void Level::DestroyEntity(const Entity& entity) {
     DestroyEntity(entity.id);
 }
@@ -450,7 +493,7 @@ namespace {
 
             for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(entityID)) {
                 const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
-                if (!collider->isActive || collider->isTrigger) continue;
+                if (!collider->InPhysics() || collider->isTrigger) continue;
 
                 const Vector3 base = collider->Base(*transform);
                 const Vector2 point = {base.x, base.z};

@@ -103,7 +103,15 @@ namespace AudioSystem {
 
         ApplySourceSettings(level, audio);
 
-        if (audio.playOnStart && !audio.soundFileName.empty()) SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
+        if (audio.playOnStart && !audio.soundFileName.empty()) {
+            SoundManager::PlaySoundOnSourceIfNotPlaying(audio.name, audio.soundFileName);
+
+            // On a disabled entity it starts paused, and plays once it's enabled.
+            if (!audio.ownerEnabled) {
+                SoundManager::PauseSource(audio.name);
+                audio.pausedByOwner = true;
+            }
+        }
     }
 
     void DestroySource(ComponentAudioSource& audio) {
@@ -128,6 +136,21 @@ namespace AudioSystem {
                 audio.name = MakeAudioSourceName(audio);
                 if (!SoundManager::CreateSource(audio.name)) continue;
                 audio.applied.valid = false;
+            }
+
+            // A disabled entity's sounds pause, and pick up where they were
+            // once it's enabled again.
+            if (!audio.ownerEnabled) {
+                if (!audio.pausedByOwner) {
+                    SoundManager::PauseSource(audio.name);
+                    audio.pausedByOwner = true;
+                }
+                continue;
+            }
+
+            if (audio.pausedByOwner) {
+                SoundManager::ResumeSource(audio.name);
+                audio.pausedByOwner = false;
             }
 
             ApplySourceSettings(level, audio);

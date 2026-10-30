@@ -266,6 +266,21 @@ struct Level {
     void ActivateCamera(const ComponentCamera& camera);
     void ActivatePlayerController(const ComponentPlayerController& controller);
 
+    // Sets the entity's enabled and copies it to its components' ownerEnabled
+    // right away (colliders move in or out of physics).
+    void SetEntityEnabled(Entity& entity, bool enabled);
+
+    // Copies entity.enabled to its components' ownerEnabled.
+    void ApplyEntityEnabled(Entity& entity);
+
+    // Once a frame: applies every entity whose enabled was written directly
+    // since the last apply, and re-applies the disabled ones so components
+    // added to them since stay off.
+    void SyncEntityEnabledStates();
+
+    // Applies every entity, for a level that was just loaded or copied.
+    void ApplyAllEntityEnabled();
+
     Sector* GetSector(ID sectorID);
     const Sector* GetSector(ID sectorID) const;
 

@@ -96,6 +96,9 @@ namespace FlipbookSystem {
         pendingFlipbookEvents.clear();
 
         for (ComponentFlipbook& flipbook : level.flipbooks.components) {
+            // Paused while its entity is disabled; carries on from the same frame.
+            if (!flipbook.ownerEnabled) continue;
+
             const FlipbookAsset* asset = FlipbookLibrary::Get(flipbook.flipbookFileName);
             if (asset == nullptr || asset->frames.empty()) continue;
 

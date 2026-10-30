@@ -136,6 +136,7 @@ namespace {
         T updated = data;
         updated.ownerID = existing->ownerID;
         updated.instanceID = existing->instanceID;
+        if constexpr (requires { updated.ownerEnabled; }) updated.ownerEnabled = existing->ownerEnabled;
 
         if constexpr (std::is_same_v<T, ComponentCollider>) {
             updated.type = existing->type;

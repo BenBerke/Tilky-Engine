@@ -177,7 +177,7 @@ namespace {
                 {.name = "id", .luaType = "integer", .readOnly = true, .doc = "Stable entity ID."},
                 {.name = "isValid", .luaType = "boolean", .readOnly = true, .doc = "False once this Entity has been destroyed."},
                 {.name = "name", .luaType = "string", .doc = "The Entity's display name."},
-                {.name = "enabled", .luaType = "boolean", .doc = "Active state - disables every attached script's ticking when false."},
+                {.name = "enabled", .luaType = "boolean", .doc = "Active state. False takes the entity out of the game: no scripts, drawing, physics, rays, sounds or events."},
                 {.name = "hasTransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Transform."},
                 {.name = "transform", .luaType = "Transform?", .readOnly = true, .doc = "nil if this Entity has no Transform."},
                 {.name = "hasSprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Sprite."},

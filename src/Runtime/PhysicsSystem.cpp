@@ -1135,7 +1135,7 @@ namespace PhysicsSystem {
         for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(ownerID)) {
             const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
 
-            if (!collider->isActive || collider->isTrigger) continue;
+            if (!collider->InPhysics() || collider->isTrigger) continue;
 
             const float bottom = collider->Base(*transform).y;
 
@@ -1155,7 +1155,7 @@ namespace PhysicsSystem {
 
         for (const ComponentRigidbody& rigidbody : level.rigidbodies.components) {
             // Only an entity's first rigidbody simulates; the others are inert.
-            if (rigidbody.isStatic || level.rigidbodies.Get(rigidbody.ownerID) != &rigidbody) continue;
+            if (rigidbody.isStatic || !rigidbody.ownerEnabled || level.rigidbodies.Get(rigidbody.ownerID) != &rigidbody) continue;
 
             const ComponentTransform* transform = level.transforms.Get(rigidbody.ownerID);
             if (transform == nullptr) [[unlikely]] continue;
@@ -1170,7 +1170,7 @@ namespace PhysicsSystem {
             for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(rigidbody.ownerID)) {
                 const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
 
-                if (!collider->isActive || collider->isTrigger) continue;
+                if (!collider->InPhysics() || collider->isTrigger) continue;
 
                 const Body body = MakeBody(*transform, *collider);
                 const float halfWidth = body.HalfWidth() * MAX_SUBSTEP_TRAVEL;
@@ -1193,6 +1193,9 @@ namespace PhysicsSystem {
             ComponentRigidbody& rigidbody = level.rigidbodies.components[index];
 
             groundedBeforeRun[index] = rigidbody.isGrounded ? 1 : 0;
+
+            // A disabled entity's body keeps its ground state for when it's back.
+            if (!rigidbody.ownerEnabled) continue;
 
             rigidbody.isGrounded = false;
             rigidbody.groundNormal = {};
@@ -1297,7 +1300,7 @@ namespace PhysicsSystem {
                     for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
                         const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
-                        if (!otherCollider->isActive || otherCollider->isTrigger) continue;
+                        if (!otherCollider->InPhysics() || otherCollider->isTrigger) continue;
 
                         Vector3 pushDirection;
                         float penetration;
@@ -1783,7 +1786,7 @@ namespace PhysicsSystem {
                     for (const ComponentInstanceID otherInstance : level.colliders.InstancesOf(otherID)) {
                         const ComponentCollider* otherCollider = level.colliders.GetInstance(otherInstance);
 
-                        if (!otherCollider->isActive) continue;
+                        if (!otherCollider->InPhysics()) continue;
 
                         Vector3 direction;
                         float depth;

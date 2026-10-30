@@ -364,6 +364,9 @@ void OpenGL::BuildGpuModels() {
     for (const ComponentModel& modelComponent : level.models.components) {
         if (modelComponent.fileName.empty()) continue;
 
+        // A disabled entity's models are hidden in game, still shown to the editor camera.
+        if (!modelComponent.ownerEnabled && !useEditorCamera) continue;
+
         const ComponentTransform* transform = level.transforms.Get(modelComponent.ownerID);
 
         if (transform == nullptr) [[unlikely]] continue;

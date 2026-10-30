@@ -1303,6 +1303,9 @@ namespace {
             ComponentTransform* transform = level.transforms.Get(move.entityID);
             if (!transform) return true;
 
+            // Paused while the entity is disabled.
+            if (!IsEnabledEntity(level, move.entityID)) return false;
+
             move.elapsed += deltaTime;
             const float t = move.duration > 0.0f ? std::min(move.elapsed / move.duration, 1.0f) : 1.0f;
 
@@ -1696,6 +1699,12 @@ namespace EventSystem {
             return;
         }
 
+        // A disabled entity ignores every dispatch but Enable and Destroy.
+        if (ownerKind == EventOwnerKind::ENTITY && !IsEnabledEntity(level, ownerID) &&
+            !std::holds_alternative<PayloadDispatchEntityEnable>(dispatch.payload) &&
+            !std::holds_alternative<PayloadDispatchEntityDestroy>(dispatch.payload))
+            return;
+
         const auto moveSector = [&](const int floorIndex, const float speed, const auto& start) {
             Sector* sector = level.GetSector(ownerID);
             if (!sector || floorIndex < 0 || floorIndex >= static_cast<int>(sector->floors.size())) return;
@@ -1819,10 +1828,10 @@ namespace EventSystem {
                 transform->rotation = teleport.rotation.Normalized();
             },
             [&](const PayloadDispatchEntityDisable&) {
-                if (Entity* entity = level.GetEntity(ownerID)) entity->enabled = false;
+                if (Entity* entity = level.GetEntity(ownerID)) level.SetEntityEnabled(*entity, false);
             },
             [&](const PayloadDispatchEntityEnable&) {
-                if (Entity* entity = level.GetEntity(ownerID)) entity->enabled = true;
+                if (Entity* entity = level.GetEntity(ownerID)) level.SetEntityEnabled(*entity, true);
             },
             [&](const PayloadDispatchEntityCallFunction& call) {
                 if (hooks.callFunction && !call.functionName.empty())

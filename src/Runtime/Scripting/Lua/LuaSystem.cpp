@@ -1002,6 +1002,14 @@ namespace {
 
         last = now;
 
+        // A contact that ended because one side was disabled is dropped
+        // without an Exit; it gets a fresh Enter once that side is back.
+        std::erase_if(exited, [&](const PhysicsSystem::CollisionPair& pair) {
+            const Entity* a = level.GetEntity(pair.a);
+            const Entity* b = level.GetEntity(pair.b);
+            return (a != nullptr && !a->enabled) || (b != nullptr && !b->enabled);
+        });
+
         // Entity ID -> indices of its scripts that define any of these
         // callbacks, so entities without one cost nothing below.
         std::unordered_map<ID, std::vector<size_t>> listeners;

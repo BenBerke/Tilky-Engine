@@ -562,7 +562,8 @@ namespace {
         }
         else if (hitEntities) {
             for (const Entity& entity : level.entities) {
-                if (entity.id == ignoredEntity) continue;
+                // Rays pass through disabled entities.
+                if (entity.id == ignoredEntity || !entity.enabled) continue;
 
                 const ComponentTransform* transform = level.transforms.Get(entity.id);
                 if (transform == nullptr) [[unlikely]] continue;
