@@ -288,6 +288,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/RuntimeSession.cpp
         src/Runtime/LevelSystem.cpp
         src/Runtime/EventSystem.cpp
+        src/Runtime/SaveSystem.cpp
 
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
@@ -321,6 +322,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Scripting/Lua/LuaMathBindings.cpp
         src/Runtime/Scripting/Lua/LuaEditorFunctionBindings.cpp
         src/Runtime/Scripting/Lua/LuaGameBindings.cpp
+        src/Runtime/Scripting/Lua/LuaSavingBindings.cpp
 
         src/Math/Geometry/Geometry.cpp
 

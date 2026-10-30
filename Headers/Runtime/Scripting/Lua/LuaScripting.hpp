@@ -68,6 +68,7 @@ public:
 
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
+    static void RegisterSavingBindings(sol::state& lua);
 
     static void RegisterWallBindings(sol::state& lua);
     void RegisterSectorBindings(sol::state& lua);

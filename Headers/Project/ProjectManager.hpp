@@ -154,6 +154,21 @@ namespace ProjectManager {
     // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Assets
     fs::path GetAssetsPath();
 
+    // Where Lua's Saving writes while playing in the editor: a Saves folder
+    // next to Assets. It isn't an asset folder - the Asset Browser doesn't
+    // show it and exports never include it.
+    // Example:
+    // C:\Users\x\Documents\Tilky Engine\Projects\TestProject\Saves
+    fs::path GetProjectSavesPath();
+
+    // Where Saving writes in an exported game: the player's own app-data
+    // folder for this game, since the game's install folder may be
+    // read-only and is shared by every Windows user. Named after the
+    // project, so renaming the project moves its players' saves.
+    // Example:
+    // C:\Users\bob\AppData\Roaming\TestProject\Saves
+    fs::path GetUserSavesPath();
+
     // Returns the folder where the currently running executable is located.
     // This comes from SDL_GetBasePath(), so in CLion it usually points to the build folder.
     // This is NOT the same as the user's Documents\Tilky Engine folder.

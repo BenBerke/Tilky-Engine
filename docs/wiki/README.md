@@ -48,6 +48,7 @@ Every script can use these globals without setting anything up.
 | [Input](Input.md) | Keyboard, mouse and the `Cursor` (locked or free). |
 | [GameTime](GameTime.md) | `deltaTime`, `timeScale` (slow motion and pause), game time and the real-world clock. |
 | [Audio](Audio.md) | `Audio.PlayAt` and `Audio.Play2D`: sounds that play once, without an Audio Source. |
+| [Saving and Loading](SavingAndLoading.md) | `Saving`: values that stay when the game closes (progress, options, checkpoints). |
 | [Invoke](Invoke.md) | `Invoke`, `InvokeReal`, `InvokeFrame`, `InvokeRepeating`: call a function later. |
 | [Debug](Debug.md) | Print to the in-game console or write to the engine log. |
 | [Global](Global.md) | A table shared by every script, for game-wide state that survives level changes. |
@@ -66,7 +67,7 @@ Besides these, a script also gets `entity` (or `sector` in a sector script) and 
 
 ## Conventions used on every page
 
-- **Axes.** `x` and `z` are the ground plane and `y` is up. A map position is a `Vector2` whose
+- **Axes.** `x` and `z` are the ground plane and `y` is up. A 2D topdown view position is a `Vector2` whose
   `.y` is the world `z`.
 - **Units.** Distances are map units. The default player is 12 units tall at the eyes and walks at
   46 units per second, so a doorway is about 40 units tall.

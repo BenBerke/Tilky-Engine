@@ -35,7 +35,7 @@ To reach **one particular** script's variables instead, use `entity:GetScript("N
 |---|---|
 | The game starts (**Play** in the editor, or launching the exported game) | It starts empty. |
 | The level changes ([`Game.LoadLevel`](Game.md#loadlevel)) | It keeps everything in it. |
-| The game stops (**Stop** in the editor, or quitting) | It is thrown away. Nothing is saved to disk. |
+| The game stops (**Stop** in the editor, or quitting) | It is thrown away. Nothing is saved to disk; use [`Saving`](SavingAndLoading.md) for that. |
 
 Because it survives level changes, things you put in it for **one level** stay there in the next
 one too. Keep per-level state somewhere it can be told apart, or clear it when a level begins:

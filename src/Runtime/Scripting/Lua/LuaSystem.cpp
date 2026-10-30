@@ -1499,6 +1499,7 @@ namespace {
         scriptSystem.RegisterGameBindings(lua);
         scriptSystem.RegisterWallBindings(lua);
         scriptSystem.RegisterSectorBindings(lua);
+        scriptSystem.RegisterSavingBindings(lua);
 
         RegisterGameTimeBindings(lua);
         RegisterBehaviourRefBindings(lua);

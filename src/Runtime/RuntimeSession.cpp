@@ -35,6 +35,7 @@
 #include "Headers/Runtime/EventSystem.hpp"
 
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/SaveSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
@@ -200,6 +201,10 @@ namespace {
         // session doesn't carry into this one.
         GameTime::ResetGameClock();
 
+        // Saves are read from disk again, so ones changed between sessions
+        // (Clear Saves, a text editor) count.
+        SaveSystem::Reset();
+
         AudioSystem::Start(level);
         LevelSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
@@ -250,6 +255,8 @@ namespace {
 
     void ShutdownGameSystems(Level& level) {
         LevelSystem::Shutdown(level);
+        SaveSystem::Flush();
+        SaveSystem::Reset();
         // Stopping always leaves time running normally again.
         GameTime::ResetGameClock();
         InputManager::ResetCursor();
@@ -824,6 +831,10 @@ namespace RuntimeSession {
 
         if (const std::optional<std::string> requestedLevel = LevelSystem::TakeRequestedLevel())
             SwitchRuntimeLevel(level, *requestedLevel);
+
+        // Last, so every save made this frame - callbacks, Invoke, dispatches,
+        // a level switch's OnDestroy - is written once.
+        SaveSystem::Flush();
     } // Update
 
     void Shutdown() {

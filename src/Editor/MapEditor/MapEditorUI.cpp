@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/Runtime/SaveSystem.hpp"
 #include "../EditorInternal.hpp"
 #include "Headers/Editor/TagExplorer.hpp"
 #include "Headers/Editor/Comments.hpp"
@@ -2391,6 +2392,36 @@ namespace {
                 ShowNotification(Get("editor.project.texels_per_unit_failed").c_str(), /*isError=*/true);
             HoverTooltip(Get("editor.tooltip.project.texels_per_unit").c_str());
 
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Saves ------------------------------------------------------------
+            SectionHeader(Get("editor.project.saves").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if (FullWidthButton(Get("editor.project.clear_saves").c_str())) ImGui::OpenPopup("##ClearSavesConfirm");
+            HoverTooltip(Get("editor.tooltip.project.clear_saves").c_str());
+
+            if (ImGui::BeginPopupModal("##ClearSavesConfirm", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                ImGui::Text("%s", Get("editor.project.clear_saves_confirm").c_str());
+                ImGui::Spacing();
+
+                PushDangerStyle();
+                if (ImGui::Button(Get("editor.project.clear_saves").c_str())) {
+                    SaveSystem::ClearProjectSaves();
+                    ShowNotification(Get("editor.project.saves_cleared").c_str());
+                    ImGui::CloseCurrentPopup();
+                }
+                PopDangerStyle();
+
+                ImGui::SameLine();
+
+                if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(80.0f, 0.0f))) ImGui::CloseCurrentPopup();
+
+                ImGui::EndPopup();
+            }
 
             //todo TILKYTODO make an editor settings menu
         }

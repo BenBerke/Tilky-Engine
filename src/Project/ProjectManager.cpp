@@ -4,13 +4,16 @@
 #include "Headers/Project/ProjectManager.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <system_error>
 
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -315,6 +318,28 @@ namespace ProjectManager {
     fs::path GetProjectFolder() {return currentProjectFolder;}
 
     fs::path GetAssetsPath() {return currentAssetsPath;}
+
+    fs::path GetProjectSavesPath() {return currentProjectFolder / "Saves";}
+
+    fs::path GetUserSavesPath() {
+        // SDL asks for letters, digits and spaces only in the folder name.
+        std::string folderName;
+        for (const char c : currentProjectName) {
+            const unsigned char byte = static_cast<unsigned char>(c);
+            if (std::isalnum(byte) || c == ' ' || byte >= 0x80) folderName += c;
+        }
+        if (folderName.find_first_not_of(' ') == std::string::npos) folderName = "Tilky Game";
+
+        char* prefPath = SDL_GetPrefPath("", folderName.c_str());
+        if (prefPath == nullptr) {
+            spdlog::error("Couldn't find the user's save folder: {}", SDL_GetError());
+            return {};
+        }
+
+        const fs::path path = fs::path(reinterpret_cast<const char8_t*>(prefPath)) / "Saves";
+        SDL_free(prefPath);
+        return path;
+    }
 
     fs::path GetContentRootPath() {
 #ifdef TILKY_CONTENT_ROOT
