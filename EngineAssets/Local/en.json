@@ -568,6 +568,7 @@
   "component.audio_source.gain": "Gain",
   "component.audio_source.looping": "Looping",
   "component.audio_source.play_on_start": "Play On Start",
+  "component.audio_source.play_sound": "Play Sound",
   "component.audio_source.attenuation_header": "Distance Attenuation",
   "component.audio_source.ref_distance": "Reference Distance",
   "component.audio_source.max_distance": "Max Distance",

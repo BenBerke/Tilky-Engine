@@ -29,6 +29,11 @@ namespace SoundManager {
     void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName);
     void PlaySoundOnSourceIfNotPlaying(const std::string& sourceName, const std::string& soundFileName);
 
+    // Plays a sound once on the editor's own unpositioned source, restarting
+    // it if it is already playing. Loads the file first when it was added
+    // since the sounds were last generated.
+    void PlayPreviewSound(const std::string& soundFileName, float pitch, float gain);
+
     bool IsSourcePlaying(const std::string& sourceName);
 
     // Stop rewinds; Pause keeps the place so ResumeSource can continue from it.

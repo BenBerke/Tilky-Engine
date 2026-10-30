@@ -41,6 +41,7 @@
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Objects/Prefab.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
@@ -3765,6 +3766,10 @@ namespace ImGuiDrawFunctions {
                     PrefabField prefabField("playOnStart");
                     ImGui::Checkbox(Get("component.audio_source.play_on_start").c_str(), &c->playOnStart);
                 }
+                ImGui::BeginDisabled(c->soundFileName.empty());
+                if (ImGui::Button(Get("component.audio_source.play_sound").c_str()))
+                    SoundManager::PlayPreviewSound(c->soundFileName, c->pitch, c->gain);
+                ImGui::EndDisabled();
                 EndSection();
 
                 BeginSection("Attenuation");

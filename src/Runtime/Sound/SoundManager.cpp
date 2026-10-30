@@ -456,6 +456,42 @@ namespace SoundManager {
         CheckALErrors("Failed to play sound on source");
         spdlog::info("Played sound '{}' on source '{}'", soundFileName, sourceName);
     }
+
+    void PlayPreviewSound(const std::string& soundFileName, const float pitch, const float gain) {
+        if (context == nullptr) {
+            spdlog::error("Can't preview sound '{}': OpenAL is not initialized", soundFileName);
+            return;
+        }
+
+        const std::string normalizedFileName = NormalizeSoundFileName(soundFileName);
+
+        if (!buffers.contains(normalizedFileName)) {
+            const fs::path path = ProjectManager::GetAssetsPath() / (normalizedFileName + ".wav");
+            ALuint buffer = 0;
+
+            if (!fs::is_regular_file(path) || !LoadWAVToOpenALBuffer(path.string().c_str(), buffer)) {
+                spdlog::error("Sound not found: '{}'", soundFileName);
+                return;
+            }
+
+            buffers.emplace(normalizedFileName, buffer);
+            std::error_code timeError;
+            const fs::file_time_type writeTime = fs::last_write_time(path, timeError);
+            if (!timeError) bufferWriteTimes.emplace(normalizedFileName, writeTime);
+        }
+
+        const std::string sourceName = "__editor_preview";
+        if (!CreateSource(sourceName)) return;
+
+        const ALuint source = sources[sourceName];
+        alSourcei(source, AL_SOURCE_RELATIVE, AL_TRUE);
+        alSource3f(source, AL_POSITION, 0.0f, 0.0f, 0.0f);
+        alSourcef(source, AL_PITCH, pitch);
+        alSourcef(source, AL_GAIN, gain);
+        alSourcei(source, AL_LOOPING, AL_FALSE);
+
+        PlaySoundOnSource(sourceName, normalizedFileName);
+    }
     // region Setters
 
     void SetSourcePitch(const std::string& sourceName,const float pitch) {
