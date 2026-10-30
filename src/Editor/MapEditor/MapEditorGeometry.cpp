@@ -2000,47 +2000,6 @@ namespace MapEditorInternal {
         SelectEntity(entity->id);
     }
 
-    // Entity Mode — right click selects AND opens the inspector. Ctrl+right
-    // click adds it to (or removes it from) the selection instead, so the
-    // inspector edits every selected entity together.
-    void HandleEntityModeRightClick(const Vector2& point) {
-        Entity* entity = EntityAt(point);
-        if (entity == nullptr) return;
-
-        if (GetKeyBind(KEYBIND_MULTI_SELECT)) {
-            ToggleEntitySelection(entity->id);
-            editingEntity = !selectedEntities.empty();
-            return;
-        }
-
-        // Routed through the shared helper so selectedEntities follows the
-        // primary. Assigning selectedEntity on its own used to leave the
-        // plural selection pointing at whatever was picked before, which
-        // the inspector's multi-edit fan-out would then write to.
-        SelectEntity(entity->id);
-        editingEntity = true;
-    }
-
-    // Sector Mode — right click selects a sector and opens its inspector.
-    // Ctrl+right click adds it to (or removes it from) the selection instead,
-    // so the inspector edits every selected sector together.
-    void HandleSectorModeRightClick(const Vector2& point) {
-        Level& level = LevelManager::CurrentLevel();
-        const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
-        if (index < 0) return;
-
-        if (GetKeyBind(KEYBIND_MULTI_SELECT)) {
-            ToggleSectorSelection(level.sectors[index].id);
-
-            // Deselecting the last one already closed the inspector.
-            if (selectedSectorID != INVALID_ID) editingSector = true;
-            return;
-        }
-
-        SelectSector(level.sectors[index].id);
-        editingSector = true;
-    }
-
     void DeleteWall(const ID wallID) {
         Level& level = LevelManager::CurrentLevel();
 

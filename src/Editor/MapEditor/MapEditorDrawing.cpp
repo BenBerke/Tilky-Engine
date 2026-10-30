@@ -815,10 +815,10 @@ namespace MapEditorInternal {
 
             constexpr SDL_FColor hoveredTexturedSectorTint = {.5f, .5f, .5f, 1.0f};
 
+            // In any mode: the inspector shows sectors in every mode.
             const bool selected = !selectedSectors.empty() &&
                 std::find(selectedSectors.begin(),selectedSectors.end(),sector.id) != selectedSectors.end() &&
-                editingSector &&
-                currentMode == MODE_SECTOR;
+                editingSector;
 
             const bool hovered = sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR;
 
@@ -1050,6 +1050,29 @@ namespace MapEditorInternal {
     }
 
     void DrawGeometryEditOverlay() {
+        const Level& inspectedLevel = LevelManager::CurrentLevel();
+        const bool wallOverlay = currentMode == MODE_GEOMETRY && !linedefMode;
+        const bool linedefOverlay = currentMode == MODE_GEOMETRY && linedefMode;
+
+        // The inspector shows walls and linedefs in every mode. Where this
+        // mode's overlay below doesn't draw them, they still get the
+        // selection highlight - just no hover, handles or lengths.
+        SDL_SetRenderDrawColor(renderer, highlightedWallColor.r, highlightedWallColor.g, highlightedWallColor.b, 255);
+
+        if (editingWall && !wallOverlay)
+            for (const ID wallID : selectedWalls) {
+                const auto it = inspectedLevel.wallIDToIndex.find(wallID);
+                if (it == inspectedLevel.wallIDToIndex.end()) continue;
+
+                const Wall& wall = inspectedLevel.walls[it->second];
+                DrawColoredThickLine(WorldToScreen(wall.start, cameraPos), WorldToScreen(wall.end, cameraPos), 7.0f);
+            }
+
+        if (editingLinedef && !linedefOverlay)
+            for (const ID linedefID : selectedLinedefs)
+                if (const Linedef* linedef = inspectedLevel.GetLinedef(linedefID))
+                    DrawColoredThickLine(WorldToScreen(linedef->start, cameraPos), WorldToScreen(linedef->end, cameraPos), 7.0f);
+
         if (currentMode != MODE_GEOMETRY) return;
 
         if (linedefMode) {
@@ -1185,7 +1208,7 @@ namespace MapEditorInternal {
 
             // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
-                editingWall && currentMode == MODE_GEOMETRY) continue;
+                editingWall) continue;
 
             if (wall.frontSector == -1 || wall.backSector == -1)
                 DrawWallLine(startScreen, endScreen, 5.0f, normalWallColor, alpha);
@@ -1339,7 +1362,7 @@ namespace MapEditorInternal {
             }
             else {
                 if (sprite != nullptr) entityColor = spriteEntityColor;
-                if (entity.id == selectedEntity.id && editingEntity && currentMode == MODE_ENTITY) entityColor = highlightedEntityColor;
+                if (entity.id == selectedEntity.id && editingEntity) entityColor = highlightedEntityColor;
 
                 SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                 SDL_SetRenderDrawColor(renderer, entityColor.x, entityColor.y, entityColor.z, alpha);

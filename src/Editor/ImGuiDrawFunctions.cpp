@@ -204,8 +204,8 @@ namespace {
     // ── Reference-field pickers (Entity / Wall / Sector / Component / Behaviour)
     //
     // Entity, Wall and Sector fields accept a drop of the matching row from
-    // the Map Editor's hierarchy, and Entity fields also accept an entity
-    // dragged straight off the canvas (see SubmitCanvasEntityDragSource).
+    // the Map Editor's hierarchy, or of the object dragged straight off the
+    // canvas (see SubmitCanvasEntityDragSource / SubmitCanvasRefDragSource).
     // Each keeps its combo box for picking by hand. Component and Behaviour
     // fields are combo-only. Asset fields (textures, etc.) get drag-and-drop
     // by reusing MapEditorInternal::DrawAssetField below, same as every other
@@ -239,8 +239,9 @@ namespace {
     }
 
     // Drop target for the item just drawn. A drop from the canvas also
-    // undoes the move the drag made on the way here - the user was
-    // assigning the entity, not relocating it.
+    // undoes what the press did on the way here (an entity or wall move, a
+    // box selection, a started drawing) - the user was assigning the
+    // object, not editing the map.
     bool AcceptLevelObjectDrop(const char *payloadType, ID &id) {
         if (!ImGui::BeginDragDropTarget()) return false;
 
@@ -253,7 +254,10 @@ namespace {
             id = dropped.id;
             changed = true;
 
-            if (dropped.fromCanvas) MapEditorInternal::RevertCanvasEntityDrag();
+            if (dropped.fromCanvas) {
+                if (std::strcmp(payloadType, MapEditorInternal::ENTITY_REF_PAYLOAD) == 0) MapEditorInternal::RevertCanvasEntityDrag();
+                else MapEditorInternal::RevertCanvasRefDrag();
+            }
         }
 
         ImGui::EndDragDropTarget();
@@ -827,6 +831,11 @@ namespace ImGuiDrawFunctions {
     // NoNav prevents the window from stealing keyboard focus (WASD stays functional).
     static constexpr ImGuiWindowFlags kInspectorFlags =
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse;
+
+    // "Title" or, with a shared window ID, "Title###id".
+    static std::string InspectorWindowTitle(const std::string &title, const char *windowId) {
+        return windowId == nullptr ? title : title + "###" + windowId;
+    }
 
     void PutSpace(const int n) {
         for (int i = 0; i < n; i++) ImGui::Spacing();
@@ -2201,7 +2210,7 @@ namespace ImGuiDrawFunctions {
     //  Sector Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawSectorEditor(Sector &sector, bool *open, const bool draggable, bool *copyRequested,
-                          MakeDoorRequest *makeDoorRequest) {
+                          MakeDoorRequest *makeDoorRequest, const char *windowId) {
         bool deleteRequested = false;
         int floorToRemove = -1;
 
@@ -2214,7 +2223,7 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
 
-        if (!ImGui::Begin(Get("sector.title").c_str(), open, kInspectorFlags)) {
+        if (!ImGui::Begin(InspectorWindowTitle(Get("sector.title"), windowId).c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
@@ -2568,11 +2577,11 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable) {
+    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable, const char *windowId) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(Get("wall.title").c_str(), open, kInspectorFlags)) {
+        if (!ImGui::Begin(InspectorWindowTitle(Get("wall.title"), windowId).c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
@@ -2688,11 +2697,11 @@ namespace ImGuiDrawFunctions {
         ImGui::PopID();
     }
 
-    bool DrawLinedefEditor(Linedef &linedef, bool *open, const bool draggable) {
+    bool DrawLinedefEditor(Linedef &linedef, bool *open, const bool draggable, const char *windowId) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(Get("linedef.title").c_str(), open, kInspectorFlags)) {
+        if (!ImGui::Begin(InspectorWindowTitle(Get("linedef.title"), windowId).c_str(), open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }

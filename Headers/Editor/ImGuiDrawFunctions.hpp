@@ -65,10 +65,13 @@ namespace ImGuiDrawFunctions {
         float wait = 3.0f;
     };
 
+    // A non-null windowId puts the window under that ImGui ID ("Title###id"),
+    // so inspectors of different kinds can share one window - the Map
+    // Editor's single inspector. Null keeps each kind in its own window.
     bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr,
-                             MakeDoorRequest *makeDoorRequest = nullptr);
-    bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable);
-    bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable);
+                             MakeDoorRequest *makeDoorRequest = nullptr, const char *windowId = nullptr);
+    bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable, const char *windowId = nullptr);
+    bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable, const char *windowId = nullptr);
     // The level's own Events and Dispatches sections (World Settings).
     void DrawLevelEventSections(Level &level, bool draggable);
     // The entity window: every component is a foldout section in it.

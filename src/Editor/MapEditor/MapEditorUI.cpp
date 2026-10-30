@@ -2820,6 +2820,10 @@ namespace MapEditorInternal {
 
 namespace {
 
+    // The ImGui ID the sector, wall, linedef and entity inspectors share, so
+    // they are one window (see DrawSelectionInspectors).
+    constexpr const char *MAP_INSPECTOR_WINDOW_ID = "MapInspector";
+
     // =========================================================================
     //  Hierarchy panel — search, type-coloured icons, counts,
     //  deferred deletion, copy-ID context menu
@@ -2922,7 +2926,9 @@ namespace {
 
                     const bool selected = selectedIt != selectedSectors.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        currentMode = MODE_SECTOR;
+                        // One selection, and the mode stays as it is - the
+                        // inspector shows the sector in any mode.
+                        ClearSelectionsExcept(EventOwnerKind::SECTOR);
 
                         // Routed through the shared selection helpers, the
                         // same way the wall list below already is, rather
@@ -2994,15 +3000,9 @@ namespace {
 
                     const bool selected = selectedIt != selectedWalls.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        // Clicking a wall in the hierarchy is the same
-                        // gesture as clicking it on the canvas: switch to
-                        // Geometry Mode and open the wall inspector.
-                        if (currentMode != MODE_GEOMETRY) {
-                            const Mode previousMode = currentMode;
-                            currentMode = MODE_GEOMETRY;
-
-                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
-                        }
+                        // Opens the wall inspector in whatever mode is
+                        // active; the rest of the selection goes.
+                        ClearSelectionsExcept(EventOwnerKind::LINE);
 
                         // Routed through the same selection helpers the
                         // canvas uses (rather than assigning the three
@@ -3067,16 +3067,10 @@ namespace {
 
                     const bool selected = std::ranges::find(selectedLinedefs, linedef.id) != selectedLinedefs.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        // Like a wall row: into Geometry Mode (and Linedef
-                        // Mode), then the same selection helpers the canvas uses.
-                        if (currentMode != MODE_GEOMETRY) {
-                            const Mode previousMode = currentMode;
-                            currentMode = MODE_GEOMETRY;
-
-                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
-                        }
-
-                        SetLinedefMode(true);
+                        // Like a wall row: the mode stays, the rest of the
+                        // selection goes, then the same selection helpers
+                        // the canvas uses.
+                        ClearSelectionsExcept(EventOwnerKind::LINEDEF);
 
                         if (GetKeyBind(KEYBIND_RANGE_SELECT))
                             ExtendLinedefSelectionTo(linedef.id);
@@ -3147,7 +3141,7 @@ namespace {
 
                     const bool selected = selectedIt != selectedEntities.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
-                        currentMode = MODE_ENTITY;
+                        ClearSelectionsExcept(EventOwnerKind::ENTITY);
 
                         // Same routing as the sector and wall lists above.
                         if (GetKeyBind(KEYBIND_RANGE_SELECT))
@@ -3688,7 +3682,7 @@ namespace {
     }
 
     void DrawSelectedSectorInspector(Level &level) {
-        if (!editingSector || currentMode != MODE_SECTOR) return;
+        if (!editingSector) return;
 
         const auto it = level.sectorIDToIndex.find(selectedSectorID);
         if (it == level.sectorIDToIndex.end()) {
@@ -3714,7 +3708,8 @@ namespace {
 
         BeginSectorInspectorEdit(sectorInspectorEdit, sector);
 
-        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested, &makeDoorRequest)) {
+        if (ImGuiDrawFunctions::DrawSectorEditor(sector, &editingSector, DRAGGABLE, &copyRequested, &makeDoorRequest,
+                                                 MAP_INSPECTOR_WINDOW_ID)) {
             // Delete acts on the whole selection, the way the Delete key
             // already does.
             const std::vector<ID> sectorsToDelete =
@@ -3754,7 +3749,7 @@ namespace {
     // reached from the new mode's selection - there is deliberately no
     // second wall editor.
     void DrawSelectedWallInspector(Level &level) {
-        if (!editingWall || currentMode != MODE_GEOMETRY) return;
+        if (!editingWall) return;
 
         const auto it = level.wallIDToIndex.find(selectedWallID);
         if (it == level.wallIDToIndex.end()) {
@@ -3784,7 +3779,7 @@ namespace {
         BeginWallInspectorEdit(wallInspectorEdit, wall);
 
         const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE);
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID);
 
         if (deleteRequested) {
             // DeleteSelectedWalls already handles the whole selection as one
@@ -3837,7 +3832,7 @@ namespace {
     }
 
     void DrawSelectedEntityInspector(Level &level) {
-        if (!editingEntity || currentMode != MODE_ENTITY) return;
+        if (!editingEntity) return;
 
         // A canvas drag keeps the inspector on the entity it was showing
         // before the press, so the dragged entity can be dropped onto one of
@@ -3875,6 +3870,9 @@ namespace {
         }
 
         BeginInspectorEdit(level, entityInspectorEdit, entity.id);
+
+        // The shared inspector window (see DrawSelectionInspectors).
+        entityInspectorState.windowTitle = Get("entity.title") + "###" + MAP_INSPECTOR_WINDOW_ID;
 
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
@@ -3972,7 +3970,7 @@ namespace {
     }
 
     void DrawSelectedLinedefInspector(Level &level) {
-        if (!editingLinedef || currentMode != MODE_GEOMETRY || !linedefMode) return;
+        if (!editingLinedef) return;
 
         Linedef *linedef = level.GetLinedef(selectedLinedefID);
         if (linedef == nullptr) {
@@ -3986,7 +3984,7 @@ namespace {
         const Vector2 startBeforeEdit = linedef->start;
         const Vector2 endBeforeEdit = linedef->end;
 
-        if (ImGuiDrawFunctions::DrawLinedefEditor(*linedef, &editingLinedef, DRAGGABLE)) {
+        if (ImGuiDrawFunctions::DrawLinedefEditor(*linedef, &editingLinedef, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID)) {
             DeleteSelectedLinedefs();
             return;
         }
@@ -3997,11 +3995,45 @@ namespace {
                                    pointsMoved ? "editor.history.edit_linedef_points" : "editor.history.edit_linedefs");
     }
 
+    // One inspector, Unity style: whatever was opened last is shown, in any
+    // mode. Plenty of places open an inspector (right click, the hierarchy,
+    // paint select, undo, ...), so rather than each of them closing the
+    // others, a flag that turned on since last frame wins here and the rest
+    // are switched off.
     void DrawSelectionInspectors(Level &level) {
-        DrawSelectedSectorInspector(level);
-        DrawSelectedEntityInspector(level);
-        DrawSelectedWallInspector(level);
-        DrawSelectedLinedefInspector(level);
+        enum InspectorKind { INSPECT_NONE, INSPECT_SECTOR, INSPECT_ENTITY, INSPECT_WALL, INSPECT_LINEDEF };
+
+        static InspectorKind shown = INSPECT_NONE;
+        static bool wasOpen[5] = {};
+
+        bool *const flags[5] = {nullptr, &editingSector, &editingEntity, &editingWall, &editingLinedef};
+
+        for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind)
+            if (*flags[kind] && !wasOpen[kind]) shown = static_cast<InspectorKind>(kind);
+
+        // The shown one was closed: fall back to any still open.
+        if (shown == INSPECT_NONE || !*flags[shown]) {
+            shown = INSPECT_NONE;
+
+            for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind)
+                if (*flags[kind]) {
+                    shown = static_cast<InspectorKind>(kind);
+                    break;
+                }
+        }
+
+        for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind)
+            if (kind != shown) *flags[kind] = false;
+
+        switch (shown) {
+            case INSPECT_SECTOR: DrawSelectedSectorInspector(level); break;
+            case INSPECT_ENTITY: DrawSelectedEntityInspector(level); break;
+            case INSPECT_WALL: DrawSelectedWallInspector(level); break;
+            case INSPECT_LINEDEF: DrawSelectedLinedefInspector(level); break;
+            default: break;
+        }
+
+        for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind) wasOpen[kind] = *flags[kind];
     }
 
     // =========================================================================
@@ -5581,6 +5613,7 @@ namespace MapEditorInternal {
         DrawStatusBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
+        SubmitCanvasRefDragSource();
 
         Level &level = LevelManager::CurrentLevel();
 

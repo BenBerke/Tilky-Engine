@@ -814,6 +814,42 @@ namespace MapEditorInternal {
             RebuildGeometryAfterWallDrag(movedPoints, draggedWallIDs);
         }
 
+        // Puts the walls (and the entities they carried) back where the drag
+        // found them and takes its undo step back off - for a wall dropped
+        // onto a field, which was assigning it, not moving it.
+        void CancelWallDrag() {
+            if (!draggingWallGeometry) return;
+
+            draggingWallGeometry = false;
+
+            if (dragMutatedGeometry) {
+                ApplyGeometryDragOffset(dragOriginalWalls, dragOriginalSectors, dragMovingPoints, {0.0f, 0.0f});
+
+                Level& level = LevelManager::CurrentLevel();
+
+                for (const auto& [entityID, start] : dragCarriedEntities.positions) {
+                    ComponentTransform* transform = level.transforms.Get(entityID);
+                    if (transform == nullptr) continue;
+
+                    transform->SetPosition(start);
+                    transform->isDirty = true;
+                }
+
+                if (!undoSteps.empty()) {
+                    undoSteps.pop_back();
+                    ++undoHistoryVersion;
+                }
+            }
+
+            dragOriginalWalls.clear();
+            dragOriginalSectors.clear();
+            dragMovingPoints.clear();
+            dragSnapIgnoredWalls.clear();
+            dragCarriedEntities = {};
+            dragMutatedGeometry = false;
+            dragDelta = {0.0f, 0.0f};
+        }
+
         // ---- Linedef drag -------------------------------------------------
         // A body drag moves both ends of every selected linedef; an endpoint
         // drag moves just that one end. Like the wall drag, each frame is
@@ -949,6 +985,94 @@ namespace MapEditorInternal {
             }
         }
 
+        // ---- Canvas reference drag ----------------------------------------
+        // A left press on a wall, or on empty canvas inside a sector, can end
+        // on a panel instead of the canvas: then it is a drag of that wall or
+        // sector onto a Wall/Sector field (SubmitCanvasRefDragSource). The
+        // press still does its usual thing on the way - moves the wall,
+        // box-selects, starts a drawing - and a drop takes that back off
+        // (RevertCanvasRefDrag), the same way an entity drag works.
+
+        enum class CanvasPressAction { WALL_DRAG, BOX_SELECT, SECTOR_DRAWING };
+
+        struct SelectionSnapshot {
+            std::vector<ID> walls;
+            std::vector<ID> sectors;
+            std::vector<ID> linedefs;
+            std::vector<ID> entities;
+            ID wallID = INVALID_ID;
+            ID sectorID = INVALID_ID;
+            ID linedefID = INVALID_ID;
+            Entity entity;
+            bool editingWall = false;
+            bool editingSector = false;
+            bool editingLinedef = false;
+            bool editingEntity = false;
+            bool drawingLinedef = false;
+        };
+
+        SelectionSnapshot CaptureSelection() {
+            return {selectedWalls, selectedSectors, selectedLinedefs, selectedEntities,
+                    selectedWallID, selectedSectorID, selectedLinedefID, selectedEntity,
+                    editingWall, editingSector, editingLinedef, editingEntity, drawingLinedef};
+        }
+
+        void RestoreSelection(const SelectionSnapshot& snapshot) {
+            selectedWalls = snapshot.walls;
+            selectedSectors = snapshot.sectors;
+            selectedLinedefs = snapshot.linedefs;
+            selectedEntities = snapshot.entities;
+            selectedWallID = snapshot.wallID;
+            selectedSectorID = snapshot.sectorID;
+            selectedLinedefID = snapshot.linedefID;
+            selectedEntity = snapshot.entity;
+            editingWall = snapshot.editingWall;
+            editingSector = snapshot.editingSector;
+            editingLinedef = snapshot.editingLinedef;
+            editingEntity = snapshot.editingEntity;
+            drawingLinedef = snapshot.drawingLinedef;
+        }
+
+        struct CanvasRefPress {
+            bool active = false;
+            const char* payloadType = nullptr;
+            ID id = INVALID_ID;
+            CanvasPressAction action = CanvasPressAction::BOX_SELECT;
+
+            // The selection (and with it the inspector) as it was before the
+            // press, put back by a drop.
+            SelectionSnapshot selectionBefore;
+
+            // The last UI pass made this press an ImGui drag source.
+            bool sourceSubmitted = false;
+
+            // Released over a panel: the drop, if any, is delivered in this
+            // frame's UI pass, so the press's own release (ending the wall
+            // move, applying the box) waits until the next frame.
+            bool releasePending = false;
+        };
+
+        CanvasRefPress canvasRefPress;
+
+        void BeginCanvasRefPress(const CanvasPressAction action, const char* payloadType, const ID id,
+                                 SelectionSnapshot selectionBefore) {
+            if (id == INVALID_ID) return;
+
+            canvasRefPress.active = true;
+            canvasRefPress.payloadType = payloadType;
+            canvasRefPress.id = id;
+            canvasRefPress.action = action;
+            canvasRefPress.selectionBefore = std::move(selectionBefore);
+        }
+
+        // The sector containing `point`, or INVALID_ID.
+        ID SectorIDAt(const Vector2& point) {
+            const Level& level = LevelManager::CurrentLevel();
+
+            const int index = MapQueries::FindSectorContainingPoint(level.sectors, point, -1);
+            return index >= 0 ? level.sectors[index].id : INVALID_ID;
+        }
+
         // ---- Box selection --------------------------------------------------
         // A left drag that starts on empty canvas in Geometry or Entity Mode
         // draws a box; on release everything it touches is selected - walls
@@ -970,6 +1094,14 @@ namespace MapEditorInternal {
             boxSelectMode = currentMode;
             boxSelectStartWorld = mouseWorld;
             boxSelectStartScreen = InputManager::GetMousePosition();
+
+            // Carried onto a panel, the press is a drag of the wall under it
+            // (Entity Mode and Linedef Mode, where walls aren't picked) or
+            // else the sector it is inside.
+            const ID wallID = PickWallAt(mouseWorld);
+
+            if (wallID != INVALID_ID) BeginCanvasRefPress(CanvasPressAction::BOX_SELECT, WALL_REF_PAYLOAD, wallID, CaptureSelection());
+            else BeginCanvasRefPress(CanvasPressAction::BOX_SELECT, SECTOR_REF_PAYLOAD, SectorIDAt(mouseWorld), CaptureSelection());
         }
 
         // Liang-Barsky: does any part of segment a-b lie in the box?
@@ -1130,30 +1262,8 @@ namespace MapEditorInternal {
             if (!draggingLinedefGeometry)
                 hoveredLinedefID = drawingLinedef || overUnselectedEnd ? INVALID_ID : linedefUnderCursor;
 
-            if (!draggingLinedefGeometry && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                // Right click drops a half-drawn linedef.
-                if (drawingLinedef) {
-                    drawingLinedef = false;
-                    return;
-                }
-
-                if (linedefUnderCursor == INVALID_ID) {
-                    editingLinedef = false;
-                    return;
-                }
-
-                if (MultiSelectModifierHeld()) {
-                    ToggleLinedefSelection(linedefUnderCursor);
-                    return;
-                }
-
-                if (std::ranges::find(selectedLinedefs, linedefUnderCursor) == selectedLinedefs.end())
-                    SelectLinedef(linedefUnderCursor);
-
-                selectedLinedefID = linedefUnderCursor;
-                editingLinedef = true;
-                return;
-            }
+            // Right click (dropping a half-drawn linedef, or opening what is
+            // under the cursor) is handled in HandleEditorInput, for every mode.
 
             if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 // While a linedef is half drawn every click places its end.
@@ -1258,33 +1368,13 @@ namespace MapEditorInternal {
 
             if (!draggingWallGeometry) hoveredWallID = wallUnderCursor;
 
-            // Right click opens the wall for editing. It never starts a drag,
-            // so the inspector can't be opened and the geometry nudged by the
-            // same click.
-            if (!draggingWallGeometry && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
-                if (wallUnderCursor == INVALID_ID) {
-                    editingWall = false;
-                    return;
-                }
-
-                // Same as Ctrl+left click: adds or removes the wall, and the
-                // inspector edits the whole selection.
-                if (MultiSelectModifierHeld()) {
-                    ToggleWallSelection(wallUnderCursor);
-                    return;
-                }
-
-                const bool alreadyInSelection =
-                        std::find(selectedWalls.begin(), selectedWalls.end(), wallUnderCursor) != selectedWalls.end();
-
-                if (!alreadyInSelection) SelectWall(wallUnderCursor);
-
-                selectedWallID = wallUnderCursor;
-                editingWall = true;
-                return;
-            }
+            // Right click is handled in HandleEditorInput, for every mode.
 
             if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
+                // For a wall drag that ends on a field instead (see
+                // BeginCanvasRefPress).
+                SelectionSnapshot selectionBefore = CaptureSelection();
+
                 // Alt+click splits the wall under the cursor at that point,
                 // snapped along the wall to the grid unless Ctrl is held.
                 if (SplitModifierHeld()) {
@@ -1312,6 +1402,7 @@ namespace MapEditorInternal {
                         const Vector2 endpoint = endpointIsStart ? wall.start : wall.end;
 
                         BeginWallDrag(mouseWorld, {endpoint}, endpoint, false);
+                        BeginCanvasRefPress(CanvasPressAction::WALL_DRAG, WALL_REF_PAYLOAD, endpointWallID, std::move(selectionBefore));
                         return;
                     }
                 }
@@ -1352,6 +1443,7 @@ namespace MapEditorInternal {
                 if (it == level.wallIDToIndex.end()) return;
 
                 BeginWallDrag(mouseWorld, UniqueEndpointsOfSelection(), level.walls[it->second].start, true);
+                BeginCanvasRefPress(CanvasPressAction::WALL_DRAG, WALL_REF_PAYLOAD, wallUnderCursor, std::move(selectionBefore));
                 return;
             }
 
@@ -1423,6 +1515,153 @@ namespace MapEditorInternal {
 
     ID GetCanvasDragPinnedEntity() {
         return editingEntity ? inspectorPinnedDuringCanvasDrag : INVALID_ID;
+    }
+
+    void SubmitCanvasRefDragSource() {
+        canvasRefPress.sourceSubmitted = false;
+
+        if (!canvasRefPress.active || canvasRefPress.releasePending || holdingEntity) return;
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) return;
+
+        // The press's own action has to still be running - a wall drag the
+        // mode switch already committed, say, is no longer this press.
+        const bool actionRunning =
+            canvasRefPress.action == CanvasPressAction::WALL_DRAG ? draggingWallGeometry
+            : canvasRefPress.action == CanvasPressAction::BOX_SELECT ? boxSelectPending
+            : true;
+        if (!actionRunning) return;
+
+        // Only over a panel, as with entities - see SubmitCanvasEntityDragSource.
+        ImGuiWindow* hoveredWindow = nullptr;
+        ImGuiWindow* hoveredWindowUnderMoving = nullptr;
+        ImGui::FindHoveredWindowEx(ImGui::GetIO().MousePos, false, &hoveredWindow, &hoveredWindowUnderMoving);
+        if (hoveredWindow == nullptr) return;
+
+        const Level& level = LevelManager::CurrentLevel();
+        std::string label;
+
+        if (canvasRefPress.payloadType == WALL_REF_PAYLOAD) {
+            const auto it = level.wallIDToIndex.find(canvasRefPress.id);
+            if (it == level.wallIDToIndex.end()) return;
+
+            label = WallHierarchyLabel(level.walls[it->second]);
+        }
+        else {
+            const Sector* sector = level.GetSector(canvasRefPress.id);
+            if (sector == nullptr) return;
+
+            label = SectorHierarchyLabel(*sector);
+        }
+
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceExtern)) {
+            const LevelObjectDragPayload payload{canvasRefPress.id, true};
+            ImGui::SetDragDropPayload(canvasRefPress.payloadType, &payload, sizeof(payload));
+
+            ImGui::TextUnformatted(label.c_str());
+            ImGui::EndDragDropSource();
+
+            canvasRefPress.sourceSubmitted = true;
+        }
+    }
+
+    void RevertCanvasRefDrag() {
+        if (!canvasRefPress.active) return;
+
+        switch (canvasRefPress.action) {
+            case CanvasPressAction::WALL_DRAG: CancelWallDrag(); break;
+            case CanvasPressAction::BOX_SELECT: boxSelectPending = false; break;
+            case CanvasPressAction::SECTOR_DRAWING: CancelActiveDrawing(); break;
+        }
+
+        RestoreSelection(canvasRefPress.selectionBefore);
+        canvasRefPress = {};
+    }
+
+    void ClearSelectionsExcept(const EventOwnerKind keep) {
+        if (keep != EventOwnerKind::LINE) ClearWallSelection();
+        if (keep != EventOwnerKind::SECTOR) ClearSectorSelection();
+        if (keep != EventOwnerKind::LINEDEF) ClearLinedefSelection();
+        if (keep != EventOwnerKind::ENTITY) ClearEntitySelection();
+    }
+
+    void HandleCanvasRightClick(const Vector2& mouseWorld) {
+        const bool toggle = MultiSelectModifierHeld();
+
+        if (const Entity* entity = EntityAt(mouseWorld)) {
+            const ID entityID = entity->id;
+            ClearSelectionsExcept(EventOwnerKind::ENTITY);
+
+            if (toggle) {
+                ToggleEntitySelection(entityID);
+                editingEntity = !selectedEntities.empty();
+                return;
+            }
+
+            SelectEntity(entityID);
+            editingEntity = true;
+            return;
+        }
+
+        // Linedefs are drawn over the walls in Linedef Mode, so they win
+        // there; anywhere else the wall does.
+        const ID wallID = PickWallAt(mouseWorld);
+        const ID linedefID = PickLinedefAt(mouseWorld);
+        const bool pickLinedef = linedefID != INVALID_ID && (wallID == INVALID_ID || (currentMode == MODE_GEOMETRY && linedefMode));
+
+        if (pickLinedef) {
+            ClearSelectionsExcept(EventOwnerKind::LINEDEF);
+
+            if (toggle) {
+                ToggleLinedefSelection(linedefID);
+                return;
+            }
+
+            // Right clicking a linedef that is already part of a
+            // multi-selection keeps that selection, so the inspector edits
+            // all of it.
+            if (std::ranges::find(selectedLinedefs, linedefID) == selectedLinedefs.end()) SelectLinedef(linedefID);
+
+            selectedLinedefID = linedefID;
+            editingLinedef = true;
+            return;
+        }
+
+        if (wallID != INVALID_ID) {
+            ClearSelectionsExcept(EventOwnerKind::LINE);
+
+            if (toggle) {
+                ToggleWallSelection(wallID);
+                return;
+            }
+
+            if (std::ranges::find(selectedWalls, wallID) == selectedWalls.end()) SelectWall(wallID);
+
+            selectedWallID = wallID;
+            editingWall = true;
+            return;
+        }
+
+        if (const ID sectorID = SectorIDAt(mouseWorld); sectorID != INVALID_ID) {
+            ClearSelectionsExcept(EventOwnerKind::SECTOR);
+
+            if (toggle) {
+                ToggleSectorSelection(sectorID);
+
+                // Deselecting the last one already closed the inspector.
+                if (selectedSectorID != INVALID_ID) editingSector = true;
+                return;
+            }
+
+            SelectSector(sectorID);
+            editingSector = true;
+            return;
+        }
+
+        // Nothing there: the inspector closes, the selection stays.
+        editingWall = false;
+        editingSector = false;
+        editingLinedef = false;
+        editingEntity = false;
     }
 
     // Copies the clipboard's entities that still exist. The primary lands
@@ -1918,6 +2157,33 @@ namespace MapEditorInternal {
         // inspector can follow the selection again.
         if (!holdingEntity) inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
+        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
+
+        // A wall/sector press released over a panel last frame and not
+        // dropped on a field (a drop clears canvasRefPress): its own release
+        // happens now, the way it would have on the canvas.
+        if (canvasRefPress.releasePending) {
+            const CanvasPressAction action = canvasRefPress.action;
+            canvasRefPress = {};
+
+            if (action == CanvasPressAction::WALL_DRAG) EndWallDrag();
+            else if (action == CanvasPressAction::BOX_SELECT) UpdateBoxSelect(mouseWorld);
+        }
+        else if (canvasRefPress.active && !InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
+            // Released over a panel as a drag source: the drop arrives in
+            // this frame's UI pass, so the release waits a frame. Released
+            // on the canvas, it was an ordinary press.
+            if (canvasRefPress.sourceSubmitted) canvasRefPress.releasePending = true;
+            else canvasRefPress = {};
+        }
+
+        const bool canvasRefReleasing = canvasRefPress.releasePending;
+
+        // A new press starts over; the mode handlers below register it
+        // again if it can become a wall/sector drag.
+        if (!mouseBlockedByImGui && InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) canvasRefPress = {};
+
         if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
             editingEntity = false;
             editingSector = false;
@@ -1936,9 +2202,6 @@ namespace MapEditorInternal {
 
         ValidateSelections(level);
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
-        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-
         // Snap to Wall waits for a right-click on a wall in Entity Mode only.
         WallSnap::CancelPickingIfSelectionChanged(selectedEntities);
 
@@ -1953,11 +2216,12 @@ namespace MapEditorInternal {
         // must never move or deselect a wall behind it. A drag that is
         // interrupted (by a mode switch, or by the pointer crossing onto a
         // panel) is committed rather than abandoned - the walls have
-        // already moved on screen by then.
+        // already moved on screen by then. A wall drag being released over a
+        // panel waits for its drop (see canvasRefPress).
         if (currentMode != MODE_GEOMETRY || mouseBlockedByImGui) {
             hoveredWallID = INVALID_ID;
             hoveredLinedefID = INVALID_ID;
-            EndWallDrag();
+            if (!canvasRefReleasing) EndWallDrag();
             EndLinedefDrag();
         }
 
@@ -1979,15 +2243,27 @@ namespace MapEditorInternal {
                 if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) PaintSelectAt(level, mouseWorld, ctrlHeld);
                 else if (paintSelectTool && InputManager::GetMouseButton(SDL_BUTTON_RIGHT)) PaintSelectAt(level, mouseWorld, true);
             }
-            else if (currentMode == MODE_GEOMETRY) HandleGeometryModeMouse(mouseWorld);
+            else if (currentMode == MODE_GEOMETRY) {
+                if (!canvasRefReleasing) HandleGeometryModeMouse(mouseWorld);
+            }
             else if (InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT)) {
                 if (currentMode == MODE_SECTOR) {
+                    // A press that starts a drawing inside a sector can be
+                    // carried onto a panel instead, as a drag of that sector
+                    // (the drawing is then dropped). Only a fresh drawing: a
+                    // point added to one in progress isn't taken back.
+                    const bool startsDrawing = !IsDrawingInProgress();
+                    SelectionSnapshot selectionBefore = startsDrawing ? CaptureSelection() : SelectionSnapshot{};
+
                     // Dispatches to whichever drawing tool is active
                     // (Freehand/Rectangle/Polygon/Circle/Curve); each one
                     // resolves its own grid/vertex snapping internally
                     // (via Resolve*Point, mirroring what ResolveSnapPoint
                     // used to do here directly for the freehand-only path).
                     HandleSectorDrawClick(mouseWorld);
+
+                    if (startsDrawing)
+                        BeginCanvasRefPress(CanvasPressAction::SECTOR_DRAWING, SECTOR_REF_PAYLOAD, SectorIDAt(mouseWorld), std::move(selectionBefore));
                 }
                 else if (currentMode == MODE_ENTITY) {
                     // The gizmo sits on top of everything, so it is tested
@@ -2047,20 +2323,22 @@ namespace MapEditorInternal {
                 }
             }
 
-            //right click cancels/stops sector chain creation.
+            // Right click: whatever the current mode has in progress gets it
+            // first (a sector drawing, Snap to Wall picking, a half-drawn
+            // linedef, a drag); otherwise it opens what is under the cursor,
+            // whatever the mode.
             if (IsPaintSelectActive(mouseBlockedByImGui)) {}
-            else if (currentMode == MODE_SECTOR && InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
+            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) {
                 const bool freehandHasPlacedPoints =
-                    currentDrawTool == DRAWTOOL_FREEHAND &&
+                    currentMode == MODE_SECTOR && currentDrawTool == DRAWTOOL_FREEHAND &&
                     (manualSectorMode ? !manualSectorDots.empty() : !sectorBeingCreated.empty());
 
                 if (freehandHasPlacedPoints) UndoLastDrawPoint();
-                else if (IsDrawingInProgress()) CancelActiveDrawing();
-                else HandleSectorModeRightClick(mouseWorld);
-            }
-            else if (InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT) && currentMode == MODE_ENTITY) {
-                if (WallSnap::IsPicking()) HandleWallSnapRightClick(level, mouseWorld);
-                else HandleEntityModeRightClick(mouseWorld);
+                else if (currentMode == MODE_SECTOR && IsDrawingInProgress()) CancelActiveDrawing();
+                else if (currentMode == MODE_ENTITY && WallSnap::IsPicking()) HandleWallSnapRightClick(level, mouseWorld);
+                else if (currentMode == MODE_GEOMETRY && linedefMode && drawingLinedef) drawingLinedef = false;
+                else if (draggingWallGeometry || draggingLinedefGeometry || holdingEntity) {}
+                else HandleCanvasRightClick(mouseWorld);
             }
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT) && holdingEntity && currentMode == MODE_ENTITY) {
@@ -2106,7 +2384,9 @@ namespace MapEditorInternal {
             UpdateEditorZoom(keyboardBlockedByImgui);
         }
 
-        UpdateBoxSelect(mouseWorld);
+        // A box press being released over a panel waits for its drop (see
+        // canvasRefPress).
+        if (!canvasRefReleasing) UpdateBoxSelect(mouseWorld);
 
         if (!keyboardBlockedByImgui) {
             // Ctrl is for shortcuts (Ctrl+S, Ctrl+A, ...), so while it is

@@ -1334,7 +1334,7 @@ namespace {
                     const bool selected = std::ranges::find(selectedSectors, sector.id) != selectedSectors.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         currentState = STATE_MAP;
-                        currentMode = MODE_SECTOR;
+                        ClearSelectionsExcept(EventOwnerKind::SECTOR);
                         SelectSector(sector.id);
                         editingSector = selectedSectorID != INVALID_ID;
                     }
@@ -1367,11 +1367,7 @@ namespace {
                     const bool selected = std::ranges::find(selectedWalls, wall.id) != selectedWalls.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         currentState = STATE_MAP;
-                        if (currentMode != MODE_GEOMETRY) {
-                            const Mode previousMode = currentMode;
-                            currentMode = MODE_GEOMETRY;
-                            if (previousMode == MODE_SECTOR) CancelActiveDrawing();
-                        }
+                        ClearSelectionsExcept(EventOwnerKind::LINE);
                         SelectWall(wall.id);
                     }
 
@@ -1408,7 +1404,7 @@ namespace {
                     const bool selected = std::ranges::find(selectedEntities, entity.id) != selectedEntities.end();
                     if (ImGui::Selectable(label.c_str(), selected)) {
                         currentState = STATE_MAP;
-                        currentMode = MODE_ENTITY;
+                        ClearSelectionsExcept(EventOwnerKind::ENTITY);
                         SelectEntity(entity.id);
                         editingEntity = !selectedEntities.empty();
                     }

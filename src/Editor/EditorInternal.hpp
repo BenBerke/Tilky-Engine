@@ -1027,8 +1027,6 @@ namespace MapEditorInternal {
     void DeleteWall(ID wallID);
 
     void HandleEntityModeLeftClick(const Vector2& point);
-    void HandleEntityModeRightClick(const Vector2& point);
-    void HandleSectorModeRightClick(const Vector2& point);
 
     // =========================================================================
     //  Geometry / Wall Edit Mode
@@ -1974,10 +1972,11 @@ namespace MapEditorInternal {
     // `value` changes.
     bool DrawAssetField(const char* label, std::string& value, AssetKind kind, float previewSize = 0.0f);
 
-    // Drag-and-drop of level objects onto Entity/Wall/Sector script fields.
-    // Sources are the hierarchy rows (all three kinds) and the canvas
-    // (entities only, while one is being dragged in Entity Mode); targets
-    // are the reference fields in the script inspector.
+    // Drag-and-drop of level objects onto Entity/Wall/Sector fields. Sources
+    // are the hierarchy rows (all three kinds) and the canvas: a left press
+    // that carries on onto a panel (see SubmitCanvasEntityDragSource and
+    // SubmitCanvasRefDragSource); targets are the script reference fields
+    // and the sector Parent field.
     inline constexpr const char* ENTITY_REF_PAYLOAD = "TILKY_ENTITY_REF";
     inline constexpr const char* WALL_REF_PAYLOAD = "TILKY_WALL_REF";
     inline constexpr const char* SECTOR_REF_PAYLOAD = "TILKY_SECTOR_REF";
@@ -2032,6 +2031,30 @@ namespace MapEditorInternal {
     // INVALID_ID when the inspector should follow the selection as usual.
     // Defined in MapEditorInput.cpp.
     ID GetCanvasDragPinnedEntity();
+
+    // Called once per frame from the UI pass. A left press on a wall, or on
+    // empty canvas inside a sector, that is still held over a panel becomes
+    // an ImGui drag source of that wall or sector, so it can be dropped onto
+    // a Wall/Sector field. Defined in MapEditorInput.cpp.
+    void SubmitCanvasRefDragSource();
+
+    // Undoes what the press of the dropped canvas wall/sector drag did - a
+    // wall move, a box selection or a just-started sector drawing - and
+    // puts back the selection it replaced. Defined in MapEditorInput.cpp.
+    void RevertCanvasRefDrag();
+
+    // The single Unity-style selection: clears every selection that isn't
+    // of `keep`'s kind (walls, sectors, linedefs, entities) and closes its
+    // inspector. Called by the gestures that open an object - right click
+    // and hierarchy rows. Defined in MapEditorInput.cpp.
+    void ClearSelectionsExcept(EventOwnerKind keep);
+
+    // Right click in any mode: opens whatever is under the cursor -
+    // entity, then wall or linedef (linedef first in Linedef Mode), then
+    // the sector containing the point. Ctrl adds to / removes from the
+    // selection of that kind. Nothing under the cursor closes the
+    // inspector. Defined in MapEditorInput.cpp.
+    void HandleCanvasRightClick(const Vector2& mouseWorld);
     
     // Safe to call unconditionally - it no-ops if the drop didn't land on
     // the Asset Browser panel, or if the Map Editor window isn't the one
