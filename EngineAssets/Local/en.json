@@ -30,6 +30,8 @@
   "editor.user_settings.portal_wall_color": "Portal Wall Color",
   "editor.user_settings.highlighted_wall_color": "Highlighted Wall Color",
   "editor.user_settings.hovered_sector_color": "Hovered Sector Color",
+  "editor.user_settings.hover_sectors_in_every_mode": "Highlight Hovered Sectors in Every Mode",
+  "editor.tooltip.user_settings.hover_sectors_in_every_mode": "On: outside Sector Mode, the sector under the mouse gets an outline in the Hovered Sector Color (Sector Mode still fills it). Off: sectors are only highlighted in Sector Mode.",
   "editor.user_settings.highlighted_sector_color": "Highlighted Sector Color",
   "editor.user_settings.snap_indicator_color": "Snap Indicator Color",
   "editor.user_settings.invalid_line_color": "Invalid Line Color",

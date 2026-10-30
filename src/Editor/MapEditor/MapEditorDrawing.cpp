@@ -743,21 +743,6 @@ namespace MapEditorInternal {
         const Level &level = LevelManager::CurrentLevel();
         const ViewRange viewRange = ComputeViewRange(level);
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
-        const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
-
-        int hoveredSectorIndex = -1;
-
-        // Hole-aware on purpose: a sector with something nested inside it
-        // doesn't occupy that inner space, so hovering there has to fall
-        // through to the sector that does rather than highlighting the
-        // parent (the plain polygon test can't tell the two apart).
-        for (int i = static_cast<int>(level.sectors.size()) - 1; i >= 0; --i)
-            if (Geometry::IsPointInPolygon(level.sectors[i].vertices, level.sectors[i].innerLoops, mouseWorld)) {
-                hoveredSectorIndex = i;
-                break;
-            }
-
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
         const auto HSVtoRGB = [](const float h, const float s, const float v) -> SDL_FColor {
@@ -820,7 +805,10 @@ namespace MapEditorInternal {
                 std::find(selectedSectors.begin(),selectedSectors.end(),sector.id) != selectedSectors.end() &&
                 editingSector;
 
-            const bool hovered = sectorIndex == hoveredSectorIndex && currentMode == MODE_SECTOR;
+            // Filled in Sector Mode only; the other modes outline it instead
+            // (DrawGeometryEditOverlay), which is far less distracting while
+            // the mouse moves around for something else.
+            const bool hovered = sector.id == hoveredSectorID && currentMode == MODE_SECTOR;
 
             if (selected) sectorColor = ToFColor(highlightedSectorColor, 0.75f);
             else if (hovered) sectorColor = ToFColor(hoveredSectorColor, 0.65f);
@@ -1072,6 +1060,40 @@ namespace MapEditorInternal {
             for (const ID linedefID : selectedLinedefs)
                 if (const Linedef* linedef = inspectedLevel.GetLinedef(linedefID))
                     DrawColoredThickLine(WorldToScreen(linedef->start, cameraPos), WorldToScreen(linedef->end, cameraPos), 7.0f);
+
+        // The same goes for the hover: amber, as in the overlays below, and
+        // not over a wall or linedef the inspector already highlights.
+        SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+
+        if (hoveredWallID != INVALID_ID && !wallOverlay &&
+            !(editingWall && std::ranges::find(selectedWalls, hoveredWallID) != selectedWalls.end())) {
+            const auto it = inspectedLevel.wallIDToIndex.find(hoveredWallID);
+
+            if (it != inspectedLevel.wallIDToIndex.end()) {
+                const Wall& wall = inspectedLevel.walls[it->second];
+                DrawColoredThickLine(WorldToScreen(wall.start, cameraPos), WorldToScreen(wall.end, cameraPos), 7.0f);
+            }
+        }
+
+        if (hoveredLinedefID != INVALID_ID && !linedefOverlay &&
+            !(editingLinedef && std::ranges::find(selectedLinedefs, hoveredLinedefID) != selectedLinedefs.end()))
+            if (const Linedef* linedef = inspectedLevel.GetLinedef(hoveredLinedefID))
+                DrawColoredThickLine(WorldToScreen(linedef->start, cameraPos), WorldToScreen(linedef->end, cameraPos), 7.0f);
+
+        // Outside Sector Mode a hovered sector is outlined, not filled (see
+        // DrawExistingSectors) - unless the inspector already highlights it.
+        if (const Sector* sector = currentMode != MODE_SECTOR ? inspectedLevel.GetSector(hoveredSectorID) : nullptr;
+            sector != nullptr && !(editingSector && std::ranges::find(selectedSectors, sector->id) != selectedSectors.end())) {
+            SDL_SetRenderDrawColor(renderer, hoveredSectorColor.x, hoveredSectorColor.y, hoveredSectorColor.z, 255);
+
+            const auto outlineLoop = [](const std::vector<Vector2>& loop) {
+                for (std::size_t i = 0; i < loop.size(); ++i)
+                    DrawColoredThickLine(WorldToScreen(loop[i], cameraPos), WorldToScreen(loop[(i + 1) % loop.size()], cameraPos), 3.0f);
+            };
+
+            outlineLoop(sector->vertices);
+            for (const std::vector<Vector2>& innerLoop : sector->innerLoops) outlineLoop(innerLoop);
+        }
 
         if (currentMode != MODE_GEOMETRY) return;
 
@@ -1371,6 +1393,18 @@ namespace MapEditorInternal {
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
             SDL_RenderRect(renderer, &rect);
+
+            // Hover: an amber frame, like the wall hover, so it shows on
+            // sprites too. Not on the entity the inspector already shows.
+            if (entity.id == hoveredEntityID && !(editingEntity && entity.id == selectedEntity.id)) {
+                SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+
+                for (int ring = 1; ring <= 3; ++ring) {
+                    const float inset = static_cast<float>(ring);
+                    const SDL_FRect frame = {rect.x - inset, rect.y - inset, rect.w + inset * 2.0f, rect.h + inset * 2.0f};
+                    SDL_RenderRect(renderer, &frame);
+                }
+            }
         }
     }
 

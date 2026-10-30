@@ -2150,6 +2150,45 @@ namespace MapEditorInternal {
         return ApplyTextureToCanvasItems(LevelManager::CurrentLevel(), selection, reference);
     }
 
+    namespace {
+        // After the mode's own mouse handling, which has already set
+        // hoveredWallID (Geometry Mode) or hoveredLinedefID (Linedef Mode)
+        // by its own rules. Everything else under the cursor is hovered in
+        // the right-click order, in every mode.
+        void UpdateCanvasHover(const Vector2& mouseWorld, const bool mouseBlockedByImGui) {
+            const bool wallsOwnHover = currentMode == MODE_GEOMETRY && !linedefMode;
+            const bool linedefsOwnHover = currentMode == MODE_GEOMETRY && linedefMode;
+
+            hoveredEntityID = INVALID_ID;
+            hoveredSectorID = INVALID_ID;
+            if (!wallsOwnHover) hoveredWallID = INVALID_ID;
+            if (!linedefsOwnHover) hoveredLinedefID = INVALID_ID;
+
+            if (mouseBlockedByImGui) return;
+            if (hoveredWallID != INVALID_ID || hoveredLinedefID != INVALID_ID) return;
+
+            // While something is being drawn, dragged or picked, only the
+            // mode's own hover (above) shows.
+            const bool busy = holdingEntity || draggingWallGeometry || draggingLinedefGeometry ||
+                              (boxSelectPending && boxSelectDragged) || drawingLinedef ||
+                              WallSnap::IsPicking() || IsPaintSelectActive(mouseBlockedByImGui);
+            if (busy) return;
+
+            if (const Entity* entity = EntityAt(mouseWorld)) {
+                hoveredEntityID = entity->id;
+                return;
+            }
+
+            // The mode's own kind was already asked, by its own rules.
+            const ID wallID = wallsOwnHover ? INVALID_ID : PickWallAt(mouseWorld);
+            const ID linedefID = linedefsOwnHover ? INVALID_ID : PickLinedefAt(mouseWorld);
+
+            if (wallID != INVALID_ID) hoveredWallID = wallID;
+            else if (linedefID != INVALID_ID) hoveredLinedefID = linedefID;
+            else if (currentMode == MODE_SECTOR || hoverSectorsInEveryMode) hoveredSectorID = SectorIDAt(mouseWorld);
+        }
+    }
+
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
         Level& level = LevelManager::CurrentLevel();
 
@@ -2387,6 +2426,8 @@ namespace MapEditorInternal {
         // A box press being released over a panel waits for its drop (see
         // canvasRefPress).
         if (!canvasRefReleasing) UpdateBoxSelect(mouseWorld);
+
+        UpdateCanvasHover(mouseWorld, mouseBlockedByImGui);
 
         if (!keyboardBlockedByImgui) {
             // Ctrl is for shortcuts (Ctrl+S, Ctrl+A, ...), so while it is

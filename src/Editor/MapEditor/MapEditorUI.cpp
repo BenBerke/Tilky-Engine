@@ -2003,6 +2003,10 @@ namespace {
                 }
             );
 
+            ImGui::NewLine();
+            ImGui::Checkbox(Get("editor.user_settings.hover_sectors_in_every_mode").c_str(), &hoverSectorsInEveryMode);
+            HoverTooltip(Get("editor.tooltip.user_settings.hover_sectors_in_every_mode").c_str());
+
             DrawGroup(
                 "editor.user_settings.group.geometry",
                 "##GeometryColorSettings",

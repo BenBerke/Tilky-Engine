@@ -110,6 +110,8 @@ namespace Editor {
 
         ClearWallSelection();
         hoveredWallID = INVALID_ID;
+        hoveredEntityID = INVALID_ID;
+        hoveredSectorID = INVALID_ID;
         draggingWallGeometry = false;
 
         ClearLinedefSelection();

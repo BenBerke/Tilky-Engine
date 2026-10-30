@@ -388,10 +388,16 @@ namespace MapEditorInternal {
     extern bool editingWall;
     extern ID selectedWallID;
 
-    // Recomputed every frame by HandleEditorInput() while in
-    // MODE_GEOMETRY; INVALID_ID in every other mode and whenever ImGui
-    // has the mouse. Read-only elsewhere, for the hover highlight.
+    // The canvas hover, recomputed every frame by HandleEditorInput() in
+    // every mode: at most one of hoveredWallID, hoveredLinedefID,
+    // hoveredEntityID and hoveredSectorID is set - the object under the
+    // cursor, in the right-click order (entity, wall or linedef, sector),
+    // except that Geometry and Linedef Mode hover their own walls or
+    // linedefs first. All INVALID_ID whenever ImGui has the mouse.
+    // Read-only elsewhere, for the hover highlights.
     extern ID hoveredWallID;
+    extern ID hoveredEntityID;
+    extern ID hoveredSectorID;
 
     // The wall under the cursor while Snap to Wall waits for one, for its
     // highlight. INVALID_ID otherwise.
@@ -413,7 +419,7 @@ namespace MapEditorInternal {
     extern ID selectedLinedefID;
     extern bool editingLinedef;
 
-    // Linedef under the cursor in Linedef Mode, for the hover highlight.
+    // Linedef under the cursor, for the hover highlight - see hoveredWallID.
     extern ID hoveredLinedefID;
 
     // True from the mouse-down that starts a linedef body/endpoint drag
@@ -614,6 +620,10 @@ namespace MapEditorInternal {
 
     extern Vector3 hoveredSectorColor;
     extern Vector3 highlightedSectorColor;
+
+    // On: outside Sector Mode the hovered sector gets an outline (Sector
+    // Mode fills it). Off: sectors only hover in Sector Mode.
+    extern bool hoverSectorsInEveryMode;
 
     extern Vector3 snapIndicatorColor;
 

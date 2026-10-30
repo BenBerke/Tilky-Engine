@@ -134,6 +134,8 @@ namespace MapEditorInternal {
     bool editingWall = false;
     ID selectedWallID = INVALID_ID;
     ID hoveredWallID = INVALID_ID;
+    ID hoveredEntityID = INVALID_ID;
+    ID hoveredSectorID = INVALID_ID;
     bool draggingWallGeometry = false;
 
     // Linedef Mode — selection, hover, drag and drawing state
@@ -223,6 +225,8 @@ namespace MapEditorInternal {
     float runtimeCameraFov = DEFAULT_RUNTIME_CAMERA_FOV;
 
     bool rememberCameraPosition = true;
+
+    bool hoverSectorsInEveryMode = true;
 
     float textureFieldSize = DEFAULT_TEXTURE_FIELD_SIZE;
 
