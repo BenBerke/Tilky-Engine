@@ -2306,6 +2306,12 @@ namespace LevelSerialization {
             {"deceleration", c.deceleration},
             {"airControl", c.airControl},
             {"useKey", static_cast<int>(c.useKey)},
+            {"forwardKey", static_cast<int>(c.forward)},
+            {"backwardsKey", static_cast<int>(c.backwards)},
+            {"leftKey", static_cast<int>(c.left)},
+            {"rightKey", static_cast<int>(c.right)},
+            {"jumpKey", static_cast<int>(c.jump)},
+            {"runKey", static_cast<int>(c.run)},
             {"useReach", c.useReach},
             {"useRayType", static_cast<int>(c.useRayType)}
         };
@@ -2328,6 +2334,12 @@ namespace LevelSerialization {
         c.deceleration = j.value("deceleration", 60.0f);
         c.airControl = j.value("airControl", .3f);
         c.useKey = static_cast<SDL_Scancode>(j.value("useKey", static_cast<int>(SDL_SCANCODE_E)));
+        c.forward = static_cast<SDL_Scancode>(j.value("forwardKey", static_cast<int>(SDL_SCANCODE_W)));
+        c.backwards = static_cast<SDL_Scancode>(j.value("backwardsKey", static_cast<int>(SDL_SCANCODE_S)));
+        c.left = static_cast<SDL_Scancode>(j.value("leftKey", static_cast<int>(SDL_SCANCODE_A)));
+        c.right = static_cast<SDL_Scancode>(j.value("rightKey", static_cast<int>(SDL_SCANCODE_D)));
+        c.jump = static_cast<SDL_Scancode>(j.value("jumpKey", static_cast<int>(SDL_SCANCODE_SPACE)));
+        c.run = static_cast<SDL_Scancode>(j.value("runKey", static_cast<int>(SDL_SCANCODE_LSHIFT)));
         c.useReach = j.value("useReach", 16.0f);
         c.useRayType = static_cast<RayType>(std::clamp(j.value("useRayType", static_cast<int>(RayType::INTERACT)),
                                                        0, static_cast<int>(RayType::COUNT) - 1));

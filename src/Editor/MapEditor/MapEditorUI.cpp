@@ -2204,11 +2204,11 @@ namespace {
                 }
             }
 
-            if (!keyBindRowDrawn) keyBindBeingListened = nullptr;
+            if (!keyBindRowDrawn && IsUserSettingsKeySlot(keyBindBeingListened)) keyBindBeingListened = nullptr;
         }
         // Hidden (collapsed or docked away) while listening would leave the
         // shortcuts off with nothing on screen to finish the binding.
-        else keyBindBeingListened = nullptr;
+        else if (IsUserSettingsKeySlot(keyBindBeingListened)) keyBindBeingListened = nullptr;
 
         ImGui::End();
 
@@ -2682,7 +2682,7 @@ namespace {
 
         if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
-        else keyBindBeingListened = nullptr;
+        else if (IsUserSettingsKeySlot(keyBindBeingListened)) keyBindBeingListened = nullptr;
         if (layoutMenuOpen) DrawLayoutMenu();
         if (engineSettingsOpen) DrawEngineSettingsWindow();
 

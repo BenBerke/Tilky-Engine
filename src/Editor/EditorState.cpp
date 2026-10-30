@@ -602,6 +602,14 @@ namespace MapEditorInternal {
     }
 
     SDL_Scancode* keyBindBeingListened = nullptr;
+    int componentKeyBindDrawnFrame = 0;
+
+    bool IsUserSettingsKeySlot(const SDL_Scancode* key) {
+        const SDL_Scancode* binds = &keyBindings[0][0];
+        const SDL_Scancode* combos = &comboBindings[0][0];
+        return (key >= binds && key < binds + KEYBIND_COUNT * KEYBIND_SLOTS) ||
+               (key >= combos && key < combos + COMBO_COUNT * COMBO_SLOTS);
+    }
 
     double autoSaveInSeconds = 60.0;
     bool hasUnsavedChanges = false;

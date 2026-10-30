@@ -305,6 +305,12 @@ namespace Editor {
 
         const ImGuiIO &io = ImGui::GetIO();
 
+        // A component inspector key button that wasn't drawn last frame
+        // (entity deselected, inspector closed) can't finish its binding.
+        if (keyBindBeingListened != nullptr && !IsUserSettingsKeySlot(keyBindBeingListened) &&
+            componentKeyBindDrawnFrame < ImGui::GetFrameCount() - 1)
+            keyBindBeingListened = nullptr;
+
         const bool mouseBlockedByImGui = io.WantCaptureMouse;
         // Only a text field being typed into blocks the shortcuts.
         // WantCaptureKeyboard is true whenever any ImGui window has focus

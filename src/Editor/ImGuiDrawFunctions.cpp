@@ -3789,37 +3789,37 @@ namespace ImGuiDrawFunctions {
                     InputOrDrag(Get("component.player_controller.eye_height").c_str(), &c->eyeHeight, draggable);
                     Tooltip(Get("editor.tooltip.component.player_controller.eye_height").c_str());
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("sensitivityX");
                     ImGui::SliderFloat(Get("component.player_controller.sensitivity_x").c_str(),
                         &c->sensitivityX, 0.001f, 2.0f);
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("sensitivityY");
                     ImGui::SliderFloat(Get("component.player_controller.sensitivity_y").c_str(),
                                        &c->sensitivityY, 0.001f, 2.0f);
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("maxPitch");
                     ImGui::SliderFloat(Get("component.player_controller.max_pitch").c_str(),
                                        &c->maxPitch, 0.0f, 360.0f);
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("minPitch");
                     ImGui::SliderFloat(Get("component.player_controller.min_pitch").c_str(),
                                        &c->minPitch, 0.0f, 360.0f);
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("maxYaw");
                     ImGui::SliderFloat(Get("component.player_controller.max_yaw").c_str(),
                                        &c->maxYaw, 0.0f, 360.0f);
                 }
-                //FieldWidth(-1.0f);
+                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("minYaw");
                     ImGui::SliderFloat(Get("component.player_controller.min_yaw").c_str(),
@@ -3829,16 +3829,14 @@ namespace ImGuiDrawFunctions {
 
                 EndSection();
 
-                BeginSection("Use");
-                {
-                    PrefabField prefabField("useKey");
-
-                    // Click, then press a key; Escape or a second click cancels,
-                    // right click clears it (no Use key).
-                    SDL_Scancode *key = &c->useKey;
+                // Click, then press a key; Escape or a second click cancels,
+                // right click clears it (no key).
+                const auto KeyBindButton = [](const char* fieldName, SDL_Scancode* key, const std::string& label) {
+                    PrefabField prefabField(fieldName);
                     const bool listening = MapEditorInternal::keyBindBeingListened == key;
 
                     if (listening) {
+                        MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
                         const SDL_Scancode pressed = InputManager::GetAnyKeyDown();
 
                         if (pressed == SDL_SCANCODE_ESCAPE) MapEditorInternal::keyBindBeingListened = nullptr;
@@ -3852,19 +3850,24 @@ namespace ImGuiDrawFunctions {
                         ? Get("editor.user_settings.key_listening")
                         : *key == SDL_SCANCODE_UNKNOWN
                             ? Get("editor.user_settings.key_none")
-                            : InputManager::ScancodeToString(*key)) + "##UseKey";
+                            : InputManager::ScancodeToString(*key)) + "##" + fieldName;
 
-                    if (ImGui::Button(keyLabel.c_str(), ImVec2(160.0f, 0.0f)))
+                    if (ImGui::Button(keyLabel.c_str(), ImVec2(160.0f, 0.0f))) {
                         MapEditorInternal::keyBindBeingListened = listening ? nullptr : key;
+                        MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
+                    }
                     if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                         *key = SDL_SCANCODE_UNKNOWN;
                         if (listening) MapEditorInternal::keyBindBeingListened = nullptr;
                     }
 
                     ImGui::SameLine();
-                    ImGui::TextUnformatted(Get("component.player_controller.use_key").c_str());
-                    Tooltip(Get("editor.tooltip.component.player_controller.use_key").c_str());
-                }
+                    ImGui::TextUnformatted(label.c_str());
+                };
+
+                BeginSection("Use");
+                KeyBindButton("useKey", &c->useKey, Get("component.player_controller.use_key"));
+                Tooltip(Get("editor.tooltip.component.player_controller.use_key").c_str());
                 FieldWidth(160.0f);
                 {
                     PrefabField prefabField("useReach");
@@ -3878,6 +3881,15 @@ namespace ImGuiDrawFunctions {
                     DrawEnumCombo(Get("component.player_controller.use_ray_type").c_str(), c->useRayType, kRayTypeOptionsWithGeneral);
                     Tooltip(Get("editor.tooltip.component.player_controller.use_ray_type").c_str());
                 }
+                EndSection();
+
+                BeginSection("Keybinds");
+                KeyBindButton("forwardKey", &c->forward, Get("component.player_controller.key_bind.forward"));
+                KeyBindButton("backwardsKey", &c->backwards, Get("component.player_controller.key_bind.backward"));
+                KeyBindButton("leftKey", &c->left, Get("component.player_controller.key_bind.left"));
+                KeyBindButton("rightKey", &c->right, Get("component.player_controller.key_bind.right"));
+                KeyBindButton("jumpKey", &c->jump, Get("component.player_controller.key_bind.jump"));
+                KeyBindButton("runKey", &c->run, Get("component.player_controller.key_bind.run"));
                 EndSection();
             } else { ImGui::TextDisabled("Player Controller component missing"); }
         }

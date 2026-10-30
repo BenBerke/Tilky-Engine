@@ -230,6 +230,10 @@ struct ComponentPlayerController {
     float useReach = 16.0f;
     RayType useRayType = RayType::INTERACT;
 
+    SDL_Scancode forward = SDL_SCANCODE_W, backwards = SDL_SCANCODE_S, left = SDL_SCANCODE_A, right = SDL_SCANCODE_D;
+    SDL_Scancode jump = SDL_SCANCODE_SPACE;
+    SDL_Scancode run = SDL_SCANCODE_LSHIFT;
+
     // Read only, do not change
     Vector3 velocity = {0.0f, 0.0f, 0.0f};
 

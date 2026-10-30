@@ -35,12 +35,12 @@ namespace PlayerControllerSystem {
         // Reset every frame, otherwise input accumulates forever.
         input = {0.0f, 0.0f};
 
-        if (InputManager::GetKey(SDL_SCANCODE_W)) input.y += 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_S)) input.y -= 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_A)) input.x += 1.0f;
-        if (InputManager::GetKey(SDL_SCANCODE_D)) input.x -= 1.0f;
+        if (InputManager::GetKey(controller.forward)) input.y += 1.0f;
+        if (InputManager::GetKey(controller.backwards)) input.y -= 1.0f;
+        if (InputManager::GetKey(controller.left)) input.x += 1.0f;
+        if (InputManager::GetKey(controller.right)) input.x -= 1.0f;
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_SPACE)) jumpPressedTimeStamp = GameTime::timeInSeconds;
+        if (InputManager::GetKeyDown(controller.jump)) jumpPressedTimeStamp = GameTime::timeInSeconds;
 
         const double jumpBufferSeconds = static_cast<double>(controller.jumpBufferMs) / 1000.0;
 
@@ -58,8 +58,8 @@ namespace PlayerControllerSystem {
         if (jumpBufferAge > jumpBufferSeconds) jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 
         controller.currentSpeed =
-            InputManager::GetKey(SDL_SCANCODE_LSHIFT) &&
-            InputManager::GetKey(SDL_SCANCODE_W)
+            InputManager::GetKey(controller.run) &&
+            InputManager::GetKey(controller.forward)
                 ? controller.runningSpeed
                 : controller.speed;
 

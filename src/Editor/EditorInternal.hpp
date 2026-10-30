@@ -1635,6 +1635,13 @@ namespace MapEditorInternal {
     // key being bound doesn't also fire.
     extern SDL_Scancode* keyBindBeingListened;
 
+    // ImGui frame a component inspector last drew the key it is listening
+    // on. The editor stops listening once that button stops being drawn.
+    extern int componentKeyBindDrawnFrame;
+
+    // True when `key` is one of the User Settings window's key slots.
+    [[nodiscard]] bool IsUserSettingsKeySlot(const SDL_Scancode* key);
+
     // Floor height of the sector at `point`, or 0 outside every sector.
     [[nodiscard]] float FloorHeightAt(const Vector2& point);
 
