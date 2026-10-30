@@ -54,6 +54,14 @@ namespace LuaScriptRuntime {
     // (creating them now would grow scriptInstances under its own loop).
     void QueueEntityScriptsStart(ID entityId);
 
+    // Entity:AddComponent("ScriptName"): attaches the script found by name
+    // (see the definition for the matching rules) and creates its instance
+    // right away - the body runs, then OnEnable if the entity is enabled -
+    // so the returned Behaviour works at once. Start runs before its first
+    // Update. Raises a Lua error for a name that matches no script or
+    // several; returns nil if the script fails to load (already reported).
+    sol::object AddEntityScript(Level& level, ID entityId, const std::string& name, sol::this_state state);
+
     // Converts one serialized field value into the live Lua object a script
     // actually sees when the field is seeded at instance-load time:
     // primitives/math types pass through as themselves; EntityRefValue /

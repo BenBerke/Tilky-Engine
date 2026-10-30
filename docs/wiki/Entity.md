@@ -27,7 +27,7 @@ deselects. Right click opens an entity's settings.
 | Field | What it does |
 |---|---|
 | **Name** | Display name. `Game.FindEntity("Name")` looks entities up by it. Names don't have to be unique. |
-| **Tags** | Labels from the project's tag list (Project Settings > **Tags**). Every project has a **Player** tag, added automatically; give it to your player so things like [Make Door](Sector.md#make-door) react to it. Scripts can test tags with `HasTag`, and `Game.FindEntitiesWithTag` finds every entity with one. Scripts can read tags but not change them. **Event Tags** (their own list in Project Settings) aren't offered here: they only link events to dispatches. |
+| **Tags** | Labels from the project's tag list (Project Settings > **Tags**). Every project has a **Player** tag, added automatically; give it to your player so things like [Make Door](Sector.md#make-door) react to it. Scripts can test tags with `HasTag`, and `Game.FindEntitiesWithTag` finds every entity with one. Scripts can also give an entity a tag or take one away while the game runs ([`AddTag` / `RemoveTag`](#tags)), but only tags from this list. **Event Tags** (their own list in Project Settings) aren't offered here: they only link events to dispatches. |
 | **Components** | The components on this entity, each a section you can fold and unfold by clicking its header (the editor remembers this per component type). Components that can be switched off have a checkbox on the header. The **⋮** button (or right-click on the header) has **Move Up**, **Move Down**, the prefab **Revert** / **Apply to Prefab** and **Remove Component**. **Add component...** at the bottom adds one. |
 
 An entity can hold **one** of each component, except scripts: it can have any number of
@@ -104,8 +104,10 @@ Scripts can add and remove them with `AddComponent` and `RemoveComponent`. See
 | `HasScriptNamed(name)` | boolean | `true` if a script matching `name` is attached. Same matching as `GetScript`. |
 | `HasTag(tag)` | boolean | `true` if the entity has `tag`. An unknown tag name returns `false`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. Raises an error if out of range. |
+| `AddTag(tag)` | boolean | Gives the entity `tag`. `false` if it already had it. See [Tags](#tags). |
+| `RemoveTag(tag)` | boolean | Takes `tag` away. `false` if it didn't have it. See [Tags](#tags). |
 | `GetSector()` | Sector or `nil` | The sector the entity stands in, or `nil` outside the map or without a Transform. See [Sector occupancy](Sector.md#occupancy). |
-| `AddComponent(component)` | the component | Adds a new component, e.g. `Component.Sprite`, after any it already has, and returns it. See [Adding and removing components](#adding-and-removing-components). |
+| `AddComponent(component)` | the component | Adds a new component, e.g. `Component.Sprite`, after any it already has, and returns it. With a script name (`"EnemyAI"`) it adds that script and returns its `Behaviour`. See [Adding and removing components](#adding-and-removing-components) and [Adding scripts](#adding-scripts). |
 | `GetComponents(component)` | table | Every component of that type, in order, e.g. `entity:GetComponents(Component.AudioSource)`. An empty table if there are none. |
 | `RemoveComponent(component)` | boolean | With a type (`Component.Collider`), removes **every** component of that type. With a component (`entity.collider`), removes just that one. `false` if there was nothing to remove. |
 
@@ -123,6 +125,34 @@ timing are in [Callback Functions](CallbackFunctions.md).
 | `OnSectorChange(sector)` | This entity moved into a different sector. `sector` is `nil` if it left the map. |
 
 ---
+
+## Tags
+
+```lua
+entity:AddTag("Burning")      -- true, or false if it already had it
+entity:RemoveTag("Burning")   -- true, or false if it didn't have it
+entity:HasTag("Burning")      -- false
+```
+
+Tags are made in **Project Settings > Tags**. Scripts can't make new ones, only give an entity one
+from that list or take one away:
+
+- A tag name that isn't in the list raises an error, so a typo is caught at the line. So does an
+  **Event Tag**: those only link events to dispatches and can't go on an entity.
+- The change counts straight away for everything that looks at tags: `HasTag`,
+  `Game.FindEntitiesWithTag`, `sector:GetEntitiesWithTag`, and the tag filters of events (so
+  adding **Player** to an entity lets it open [Make Door](Sector.md#make-door) doors).
+- Like every change made while the game runs, it isn't saved into the level. Stopping the game in
+  the editor puts the tags back.
+
+```lua
+-- Scripts/Alarm.lua: guards that hear the alarm become "Alerted", which other scripts check.
+function RaiseAlarm()
+    for _, guard in ipairs(Game.FindEntitiesWithTag("Guard")) do
+        guard:AddTag("Alerted")
+    end
+end
+```
 
 ## enabled
 
@@ -156,7 +186,9 @@ drawn, it collides, its handle is valid. At the end of the frame every script on
 
 `Game.CreateEntity()` adds a new, empty world entity to the level and returns it;
 `Game.CreateEntity(true)` adds a UI entity. It starts with only a Transform (or UI Transform). Give
-it more with [`AddComponent`](#adding-and-removing-components). It can't be given a script.
+it more with [`AddComponent`](#adding-and-removing-components), scripts included (see
+[Adding scripts](#adding-scripts)). A world entity can be placed in the same call:
+`Game.CreateEntity(false, position, rotation)`.
 
 `Game.CreateEntity(otherEntity)` adds a copy of another entity, scripts included. Pass an `Entity`
 field holding a `.prefab` to spawn that prefab. See [Game.CreateEntity](Game.md#createentity).
@@ -195,7 +227,8 @@ its values as you type `Component.`:
   `isValid == false`.
 - World components can't be added to a UI entity (one with a UI Transform), and UI components
   can't be added to a world entity (one with a Transform). Trying raises an error.
-- **Scripts** can't be added or removed this way, so there is no `Component.Script`.
+- **Scripts** are added by name instead of with a `Component` value. See
+  [Adding scripts](#adding-scripts).
 - On an entity that has been destroyed, `AddComponent` returns `nil` and `RemoveComponent`
   returns `false`.
 
@@ -212,6 +245,57 @@ Some components behave differently when added while the game runs:
   active camera leaves nothing to draw the level with until another is ticked.
 - **Audio Source**: `playOnStart` has nothing to wait for, so a new source never starts by itself.
   Call `Play()`, or set `looping` with a `soundFileName`.
+
+## Adding scripts
+
+```lua
+local ai = enemy:AddComponent("EnemyAI")   -- Scripts/EnemyAI.lua, returns its Behaviour
+ai.speed = 80                               -- set its public fields straight away
+ai:SetTarget(player)                        -- or call its public functions
+```
+
+`AddComponent` with a **string** attaches that script and returns a
+[`Behaviour`](Script.md#behaviour-references) for it. Scripts go on world and UI entities alike, and
+an entity can have the same script more than once.
+
+**The name** is the script's path under `Assets`, without `.lua` (adding it is fine too). You can
+leave out leading folders as long as only one script matches:
+
+| Name | Finds |
+|---|---|
+| `"Scripts/Enemies/EnemyAI"` | exactly that file |
+| `"Enemies/EnemyAI"` | any `.../Enemies/EnemyAI.lua` |
+| `"EnemyAI"` | any `EnemyAI.lua`, in any folder |
+
+No match raises an error, and so does a name that matches more than one script (the error lists
+them; write more of the path). `AddComponent("Sprite")` and the other component names are looked up
+as scripts too; if there is no such script, the error reminds you to write `Component.Sprite`.
+
+**When it runs**, the same as in Unity:
+
+1. Inside the `AddComponent` call, the script is loaded: its top-level code runs and its public
+   fields get their default values. Then `OnEnable` runs, if the entity is enabled.
+2. `AddComponent` returns. The `Behaviour` works straight away, so you can set fields and call
+   functions on it.
+3. `Start` runs on the next frame, before the script's first `Update`. So it already sees the fields
+   you set in step 2.
+
+On a disabled entity, step 1 stops after loading. `OnEnable` and `Start` run once the entity is
+enabled, like any other script.
+
+- If the script fails to load (a syntax error, an error in its top-level code), the error is
+  shown in the console, the script isn't left attached, and `AddComponent` returns `nil`.
+- On an entity that has been destroyed, it returns `nil`.
+- Like every change made while the game runs, it isn't saved into the level.
+
+```lua
+-- Scripts/Infect.lua (trigger): whatever walks in starts burning.
+function OnTriggerEnter(other)
+    if not other:HasScriptNamed("Burning") then
+        other:AddComponent("Burning").damagePerSecond = 5
+    end
+end
+```
 
 ## Several components of one type
 

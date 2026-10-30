@@ -8,6 +8,7 @@
 
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 
 #include <string>
@@ -203,7 +204,7 @@ namespace {
                 {.name = "hasUIText", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UIText."},
                 {.name = "uiText", .luaType = "UIText?", .readOnly = true, .doc = "nil if this Entity has no UIText."},
                 {.name = "hasScript", .luaType = "boolean", .readOnly = true, .doc = "True if any script is attached."},
-                {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "Tags are assigned from the editor only - there is no SetTag."},
+                {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "How many tags this Entity has."},
             },
             .methods = {
                 {.name = "Destroy", .params = {}, .returnType = "", .doc = "Queues this Entity for destruction at the end of the current frame."},
@@ -212,10 +213,15 @@ namespace {
                 {.name = "GetScripts", .params = {}, .returnType = "Behaviour[]", .doc = "Every script attached to this Entity."},
                 {.name = "HasScriptNamed", .params = {{"name", "string"}}, .returnType = "boolean", .doc = "True if a script matching `name` is attached."},
                 {.name = "HasTag", .params = {{"tag", "string"}}, .returnType = "boolean", .doc = "True if this Entity has the given tag."},
-                {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "1-based. Tags are assigned in the editor - there is no SetTag."},
+                {.name = "GetTag", .params = {{"index", "integer"}}, .returnType = "string", .doc = "The index-th tag, 1-based."},
+                {.name = "AddTag", .params = {{"tag", "string"}}, .returnType = "boolean",
+                 .doc = "Gives this Entity a tag from Project Settings > Tags. False if it already had it. An unknown tag or an Event Tag raises an error."},
+                {.name = "RemoveTag", .params = {{"tag", "string"}}, .returnType = "boolean",
+                 .doc = "Takes a tag away from this Entity. False if it didn't have it. An unknown tag or an Event Tag raises an error."},
                 {.name = "GetSector", .params = {}, .returnType = "Sector?", .doc = "The sector this Entity is standing in, or nil (outside the map, or no Transform)."},
-                {.name = "AddComponent", .params = {{"component", "Component"}}, .returnType = COMPONENT_TYPE,
-                 .doc = "Adds a new component (e.g. Component.Sprite) after any it already has, and returns it. An Entity has only one Transform/UITransform: for those it returns the existing one."},
+                {.name = "AddComponent", .params = {{"component", "Component|string"}}, .returnType = std::string(COMPONENT_TYPE) + "|Behaviour",
+                 .doc = "Adds a new component (e.g. Component.Sprite) after any it already has, and returns it. An Entity has only one Transform/UITransform: for those it returns the existing one. "
+                        "A string adds that script (\"Imp\", \"Enemies/Imp\" or \"Scripts/Enemies/Imp\") and returns its Behaviour: OnEnable runs now, Start before its first Update."},
                 {.name = "GetComponents", .params = {{"component", "Component"}}, .returnType = "table",
                  .doc = "Every component of that type on this Entity, in order (an empty table if none). entity.sprite etc. are the first one."},
                 {.name = "RemoveComponent", .params = {{"component", "Component|" + std::string(COMPONENT_TYPE)}}, .returnType = "boolean",
@@ -458,8 +464,7 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
             }
         ),
 
-        // Tags are assigned only from the editor (Project Settings + the
-        // Sector/Wall/Entity inspectors) - read-only here, no SetTag.
+        // Only tags from Project Settings - see ScriptEntity::AddTag.
         "tagCount",
         sol::property(&ScriptEntity::GetTagCount),
 
@@ -468,6 +473,12 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
         "GetTag",
         &ScriptEntity::GetTag,
+
+        "AddTag",
+        &ScriptEntity::AddTag,
+
+        "RemoveTag",
+        &ScriptEntity::RemoveTag,
 
         // The sector whose entitiesInside lists this Entity - the same
         // membership Sector:ContainsEntity and OnEntityEnter use.
@@ -487,9 +498,27 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
 
         // World components can't go on a UI entity (one with a UITransform)
         // and UI components can't go on a world entity (one with a
-        // Transform), same as in the editor. Flipbook goes on either.
+        // Transform), same as in the editor. Flipbook goes on either. A
+        // string is a script, which goes on either too.
         "AddComponent",
         [](const ScriptEntity& self, const sol::object& type, const sol::this_state state) -> sol::object {
+            if (type.get_type() == sol::type::string) {
+                const std::string name = type.as<std::string>();
+                if (self.level == nullptr) return sol::make_object(state, sol::nil);
+
+                try {
+                    return LuaScriptRuntime::AddEntityScript(*self.level, self.ownerID, name, state);
+                }
+                catch (const sol::error& error) {
+                    // AddComponent("Sprite") most likely meant the component.
+                    for (const LuaComponentKind& kind : LUA_COMPONENT_KINDS)
+                        if (name == kind.name)
+                            throw sol::error(sol::detail::direct_error,
+                                             std::string(error.what()) + " - for the " + name + " component, use Component." + name);
+                    throw;
+                }
+            }
+
             const LuaComponentKind& kind = FindLuaComponentKind(type);
 
             Entity* entity = self.GetEntity();

@@ -1770,11 +1770,9 @@ struct ScriptEntity {
         return false;
     }
 
-    // Tags are assigned only from the editor (Project Settings + the
-    // Sector/Wall/Entity inspectors) - scripts can query them (HasTag,
-    // tagCount, GetTag) but never add/remove/rename one, so gameplay code
-    // can't drift an Entity's tags out of sync with what a level
-    // designer set.
+    // Tags are defined only in Project Settings. Scripts can give an Entity
+    // one of them or take it away (AddTag, RemoveTag) but never make a new
+    // one, so a typo is an error instead of a tag nothing else knows.
     [[nodiscard]] bool HasTag(const std::string& tag) const {
         const Entity* entity = GetEntity();
         if (entity == nullptr) return false;
@@ -1801,6 +1799,37 @@ struct ScriptEntity {
 
         // A tag deleted from the project but still held here reads as "".
         return TagRegistry::GetName(entity->tagIds[index]).value_or("");
+    }
+
+    // A normal tag from Project Settings > Tags; anything else is an error.
+    static TagId FindAssignableTag(const std::string& tag, const char* function) {
+        const std::optional<TagId> tagId = TagRegistry::Find(tag);
+
+        if (!tagId.has_value())
+            throw sol::error(std::string(function) + ": there is no tag \"" + tag + "\" (tags are added in Project Settings > Tags)");
+        if (TagRegistry::GetKind(*tagId) == TagRegistry::TagKind::EVENT)
+            throw sol::error(std::string(function) + ": \"" + tag + "\" is an Event Tag, which only links events to dispatches");
+
+        return *tagId;
+    }
+
+    // False if it already had the tag (or the Entity is gone).
+    bool AddTag(const std::string& tag) const {
+        const TagId tagId = FindAssignableTag(tag, "AddTag");
+
+        Entity* entity = GetEntity();
+        if (entity == nullptr || std::ranges::find(entity->tagIds, tagId) != entity->tagIds.end()) return false;
+
+        entity->tagIds.push_back(tagId);
+        return true;
+    }
+
+    // False if it didn't have the tag (or the Entity is gone).
+    bool RemoveTag(const std::string& tag) const {
+        const TagId tagId = FindAssignableTag(tag, "RemoveTag");
+
+        Entity* entity = GetEntity();
+        return entity != nullptr && std::erase(entity->tagIds, tagId) > 0;
     }
 
     [[nodiscard]] bool HasPlayerController() const {

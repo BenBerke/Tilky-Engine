@@ -13,7 +13,7 @@ end
 
 | Function | Returns | |
 |---|---|---|
-| [`CreateEntity(isUIEntity)`](#createentity) | `Entity` | Adds a new entity to the level, or a copy of one (prefabs too). |
+| [`CreateEntity(isUIEntity, [position], [rotation])`](#createentity) | `Entity` | Adds a new entity to the level, or a copy of one (prefabs too), optionally placed. |
 | [`FindEntity(name)`](#finding-entities) | `Entity` or `nil` | The first entity with exactly this name. |
 | [`FindEntities(name)`](#finding-entities) | list of `Entity` | Every entity with exactly this name. |
 | [`FindEntitiesWithTag(tag)`](#finding-entities) | list of `Entity` | Every entity with this tag. |
@@ -39,12 +39,24 @@ end
 Game.CreateEntity()          -- world entity
 Game.CreateEntity(true)      -- UI entity
 Game.CreateEntity(enemy)     -- a copy of an entity, or a new instance of a prefab
+
+Game.CreateEntity(enemy, position)             -- ...placed at a point
+Game.CreateEntity(enemy, position, rotation)   -- ...and turned
+Game.CreateEntity(false, position)             -- an empty world entity, placed
 ```
 
 | Parameter | Type | |
 |---|---|---|
 | `isUIEntity` | boolean, optional | `true` makes a [UI entity](Entity.md#world-entities-and-ui-entities). Leave it out (or pass `false`) for a world entity. |
 | `entity` | Entity | Instead of a boolean: the new entity is a copy of this one. See [Copies and prefabs](#copies-and-prefabs). |
+| `position` | `Vector3`, optional | Where to put the new entity's [Transform](Transform.md). |
+| `rotation` | `Vector4`, optional | Its rotation, a quaternion like `transform.rotation`. Write `mathT.QuaternionFromEuler(0, 90, 0)` for angles in degrees. |
+
+`position` and `rotation` are each optional: pass `nil` for one to keep the default (the origin and
+no rotation for a new entity, the original's for a copy). They are set before the entity's scripts
+start, so `Start` already sees them. A UI entity has no Transform, so giving one a position or
+rotation raises an error; set its `uiTransform.position` instead. A value of the wrong type also
+raises an error.
 
 Adds a new entity to the level right away and returns it. It is the same as placing a new entity in
 the editor:
@@ -56,8 +68,8 @@ the editor:
   now on.
 
 Give it more components with [`AddComponent`](Entity.md#adding-and-removing-components), for
-example `"Sprite"` to draw it or `"Collider"` to make it solid. Scripts can't be added, so an empty
-created entity can't run a script of its own. A copy can (see below).
+example `Component.Sprite` to draw it or `Component.Collider` to make it solid, or a script by name:
+see [Adding scripts](Entity.md#adding-scripts).
 
 ### Copies and prefabs
 
@@ -72,8 +84,7 @@ public Entity enemy -- a .prefab dropped here in the inspector
 
 function Update()
     if Input.GetKeyDown(Key.E) then
-        local e = Game.CreateEntity(enemy)
-        e.transform.position = entity.transform.position
+        Game.CreateEntity(enemy, entity.transform.position, entity.transform.rotation)
     end
 end
 ```

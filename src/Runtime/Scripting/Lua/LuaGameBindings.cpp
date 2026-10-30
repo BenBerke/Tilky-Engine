@@ -356,10 +356,11 @@ namespace {
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
-            Method("CreateEntity", {Param("isUIEntityOrEntity", "boolean|Entity?")}, "Entity?",
+            Method("CreateEntity", {Param("isUIEntityOrEntity", "boolean|Entity?"), Param("position", "Vector3?"), Param("rotation", "Vector4?")}, "Entity?",
                    "Adds a new Entity to the level and returns it. With nothing or a boolean it is empty, named \"Entity\", "
                    "with a Transform at the origin (a UITransform when true). Given an Entity it is a copy of it, scripts "
-                   "and all - pass an Entity field holding a prefab to spawn that prefab."),
+                   "and all - pass an Entity field holding a prefab to spawn that prefab. position and rotation (a quaternion, "
+                   "e.g. mathT.QuaternionFromEuler(0, 90, 0)) place a world entity; each can be nil to keep the default."),
             Method("FindEntity", {Param("name", "string")}, "Entity?", "First Entity with this exact name, or nil."),
             Method("FindEntities", {Param("name", "string")}, "Entity[]", "Every Entity with this exact name."),
             Method("FindEntitiesWithTag", {Param("tag", "string")}, "Entity[]", "Every Entity that has this tag."),
@@ -450,14 +451,37 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
     // Game.CreateEntity(), Game.CreateEntity(isUIEntity), or
     // Game.CreateEntity(entity): a copy of an entity - a prefab instance
-    // when `entity` came from an Entity field holding a prefab.
-    game.set_function("CreateEntity", [](sol::this_state state, const sol::object argument) -> sol::object {
+    // when `entity` came from an Entity field holding a prefab. A world
+    // entity can also be given a position and a rotation (quaternion), like
+    // Unity's Instantiate(original, position, rotation), each optional.
+    game.set_function("CreateEntity", [](sol::this_state state, const sol::object argument,
+                                         const sol::object position, const sol::object rotation) -> sol::object {
         Level& level = LevelManager::CurrentLevel();
+
+        if (position.get_type() != sol::type::lua_nil && !position.is<Vector3>())
+            throw sol::error("Game.CreateEntity: position must be a Vector3");
+        if (rotation.get_type() != sol::type::lua_nil && !rotation.is<Vector4>())
+            throw sol::error("Game.CreateEntity: rotation must be a Vector4 quaternion, e.g. mathT.QuaternionFromEuler(0, 90, 0)");
+
+        const bool placed = position.get_type() != sol::type::lua_nil || rotation.get_type() != sol::type::lua_nil;
+        const auto place = [&](const ID id) {
+            if (!placed) return;
+
+            const ScriptTransform transform{&level, id};
+            if (position.get_type() != sol::type::lua_nil) transform.SetPosition(position.as<Vector3>());
+            if (rotation.get_type() != sol::type::lua_nil) transform.SetRotation(rotation.as<Vector4>());
+        };
+        const auto throwIfUI = [&](const bool isUIEntity) {
+            if (placed && isUIEntity)
+                throw sol::error("Game.CreateEntity: a UI entity has no Transform to place - set its uiTransform.position instead");
+        };
 
         if (argument.is<ScriptEntity>()) {
             const ScriptEntity source = argument.as<ScriptEntity>();
             Entity* original = source.GetEntity();
             if (original == nullptr) return sol::make_object(state, sol::nil);
+
+            throwIfUI(source.level->transforms.Get(original->id) == nullptr);
 
             ID newID = INVALID_ID;
             if (const std::string prefab = Prefab::ScriptCopyReference(source.level); !prefab.empty())
@@ -469,12 +493,17 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
             if (newID == INVALID_ID) return sol::make_object(state, sol::nil);
 
+            place(newID);
             LuaScriptRuntime::QueueEntityScriptsStart(newID);
             return sol::make_object(state, ScriptEntity{&level, newID});
         }
 
         const bool isUIEntity = argument.is<bool>() && argument.as<bool>();
-        return sol::make_object(state, ScriptEntity{&level, level.CreateEntity(isUIEntity)});
+        throwIfUI(isUIEntity);
+
+        const ID newID = level.CreateEntity(isUIEntity);
+        place(newID);
+        return sol::make_object(state, ScriptEntity{&level, newID});
     });
 
     game.set_function("FindEntity", [](sol::this_state state, const std::string& name) -> sol::object {

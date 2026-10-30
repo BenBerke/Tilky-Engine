@@ -30,6 +30,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -187,6 +188,13 @@ namespace {
     // still need instances - see LuaScriptRuntime::QueueEntityScriptsStart.
     std::vector<ID> pendingScriptStarts;
 
+    // Entity:AddComponent("Script") instances, live straight away (their
+    // Behaviour references and Invoke functions work) but kept out of
+    // scriptInstances until RegisterAddedInstances, since the call can come
+    // from inside a loop over it. A deque, so OnEnable adding another
+    // script can't move the one it runs on.
+    std::deque<ScriptInstance> addedInstances;
+
     // Sector ID -> the entities that were inside it the last time
     // DispatchSectorOccupancyEvents ran. Diffed against
     // Sector::entitiesInside to find who entered and who left.
@@ -268,6 +276,45 @@ namespace {
         return ProjectManager::GetAssetsPath() / (assetId + ".fields.json");
     }
 
+    // Entity:AddComponent's script name: "Scripts/Enemies/Imp", "Enemies/Imp"
+    // or just "Imp", with or without .lua - the whole path from Assets, or its
+    // end from a folder boundary. Raises a Lua error unless exactly one
+    // script matches.
+    std::string FindScriptIdByName(const std::string& rawName) {
+        std::string name = rawName;
+        std::ranges::replace(name, '\\', '/');
+        if (name.ends_with(".lua")) name.resize(name.size() - 4);
+
+        if (name.empty()) throw sol::error("AddComponent: the script name is empty");
+        if (fs::exists(GetScriptPathFromId(name))) return name;
+
+#ifdef TILKY_STANDALONE
+        const fs::path extension = ".luac";
+#else
+        const fs::path extension = ".lua";
+#endif
+        const fs::path assets = ProjectManager::GetAssetsPath();
+        std::vector<std::string> matches;
+        std::error_code error;
+
+        for (auto it = fs::recursive_directory_iterator(assets, error); !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
+            if (!it->is_regular_file() || it->path().extension() != extension) continue;
+
+            const std::string id = NormalizeScriptId(it->path().lexically_relative(assets).generic_string());
+            if (id.ends_with("/" + name)) matches.push_back(id);
+        }
+
+        if (matches.empty()) throw sol::error(fmt::format("AddComponent: there is no script \"{}\" under Assets", rawName));
+
+        if (matches.size() > 1) {
+            std::ranges::sort(matches);
+            throw sol::error(fmt::format("AddComponent: \"{}\" matches several scripts ({}) - write more of its path",
+                                         rawName, fmt::join(matches, ", ")));
+        }
+
+        return matches.front();
+    }
+
     // The name Lua errors use for a script: its Assets-relative path.
     std::string ScriptChunkName(const std::string& assetId) {
         return assetId + ".lua";
@@ -289,9 +336,13 @@ namespace {
 
     ScriptInstance* FindInstanceById(const ScriptInstanceID instanceId) {
         const auto it = instanceIndexById.find(instanceId);
-        if (it == instanceIndexById.end()) return nullptr;
-        if (it->second >= scriptInstances.size()) return nullptr;
-        return &scriptInstances[it->second];
+        if (it != instanceIndexById.end()) return it->second < scriptInstances.size() ? &scriptInstances[it->second] : nullptr;
+
+        // Only entity scripts are ever added from Lua.
+        for (ScriptInstance& instance : addedInstances)
+            if (instance.instanceID == instanceId) return &instance;
+
+        return nullptr;
     }
 
     void RebuildInstanceIndex() {
@@ -830,6 +881,8 @@ namespace {
     ScriptInstance& InvokeOwner(const std::uint64_t serial, const char* function) {
         for (ScriptInstance& instance : scriptInstances)
             if (instance.serial == serial) return instance;
+        for (ScriptInstance& instance : addedInstances)
+            if (instance.serial == serial) return instance;
 
         throw sol::error(fmt::format("{} can't be called from a script's top level - call it from Start or later", function));
     }
@@ -1113,22 +1166,23 @@ namespace {
     }
 
     // Creates (loads + runs the body of) one script instance for `script`,
-    // owned by the entity/sector `ownerID`, and registers it. Everything
-    // that can go wrong is logged and simply skips this one script.
-    void InstantiateScript(Level& level, const ScriptOwnerKind ownerKind, const ID ownerID, ScriptAttachmentData& script) {
+    // owned by the entity/sector `ownerID`, without registering it.
+    // Everything that can go wrong is logged and returns nullopt.
+    std::optional<ScriptInstance> CreateScriptInstance(Level& level, const ScriptOwnerKind ownerKind, const ID ownerID,
+                                                       ScriptAttachmentData& script) {
         const std::string ownerLabel = DescribeOwner(ownerKind, ownerID);
         const std::string assetId = NormalizeScriptId(script.fileName);
 
         if (assetId.empty()) {
             spdlog::warn("Skipping script component with empty file name on {}", ownerLabel);
-            return;
+            return std::nullopt;
         }
 
         const fs::path path = GetScriptPathFromId(assetId);
 
         if (!fs::exists(path)) {
             spdlog::error("Lua script does not exist: {}", path.string());
-            return;
+            return std::nullopt;
         }
 
         ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
@@ -1136,10 +1190,28 @@ namespace {
 
         ScriptInstance instance;
 
-        if (!LoadScriptIntoInstance(level, ownerKind, ownerID, script, asset, instance)) return;
+        if (!LoadScriptIntoInstance(level, ownerKind, ownerID, script, asset, instance)) return std::nullopt;
 
-        if (ownerKind == ScriptOwnerKind::Entity) instanceIndexById[instance.instanceID] = scriptInstances.size();
+        return instance;
+    }
+
+    void RegisterInstance(ScriptInstance&& instance) {
+        if (instance.ownerKind == ScriptOwnerKind::Entity) instanceIndexById[instance.instanceID] = scriptInstances.size();
         scriptInstances.push_back(std::move(instance));
+    }
+
+    // Creates one script instance and registers it. Never while
+    // scriptInstances is being looped over - see addedInstances.
+    void InstantiateScript(Level& level, const ScriptOwnerKind ownerKind, const ID ownerID, ScriptAttachmentData& script) {
+        if (std::optional<ScriptInstance> instance = CreateScriptInstance(level, ownerKind, ownerID, script))
+            RegisterInstance(std::move(*instance));
+    }
+
+    // Moves Entity:AddComponent("Script") instances into scriptInstances.
+    // Only where nothing is looping over scriptInstances.
+    void RegisterAddedInstances() {
+        for (ScriptInstance& instance : addedInstances) RegisterInstance(std::move(instance));
+        addedInstances.clear();
     }
 
     // Flushes Entity:Destroy() requests queued this frame, AND drops any
@@ -1147,6 +1219,10 @@ namespace {
     // ComponentScript had been removed directly, outside Entity:Destroy)
     // from the registry. Always safe to call even with nothing queued.
     void ProcessPendingDestroys(Level& level) {
+        // So a script added this frame to an entity destroyed this frame
+        // is torn down with it.
+        RegisterAddedInstances();
+
         // By index: an Entity Destroyed event's dispatches can queue more.
         for (size_t i = 0; i < pendingDestroys.size(); ++i) {
             const ID entityId = pendingDestroys[i];
@@ -1441,6 +1517,43 @@ namespace LuaScriptRuntime {
         pendingScriptStarts.push_back(entityId);
     }
 
+    sol::object AddEntityScript(Level& level, const ID entityId, const std::string& name, const sol::this_state state) {
+        const std::string assetId = FindScriptIdByName(name);
+
+        Entity* entity = level.GetEntity(entityId);
+        if (entity == nullptr) return sol::make_object(state, sol::nil);
+
+        ComponentScript& attached = entity->AddScript();
+        attached.fileName = assetId;
+        const ScriptInstanceID instanceID = attached.instanceID;
+
+        // A copy: the script's top-level code can spawn entities, which can
+        // move level.scripts. Its reconciled field values are copied back.
+        ComponentScript loaded = attached;
+        std::optional<ScriptInstance> instance = CreateScriptInstance(level, ScriptOwnerKind::Entity, entityId, loaded);
+
+        ComponentScript* script = level.scripts.GetByID(instanceID);
+        if (!instance || script == nullptr) {
+            // Already reported; a script that can't run isn't left attached.
+            if (Entity* owner = level.GetEntity(entityId)) owner->RemoveScript(instanceID);
+            return sol::make_object(state, sol::nil);
+        }
+
+        script->publicValues = std::move(loaded.publicValues);
+        script->schemaHash = loaded.schemaHash;
+
+        ScriptInstance& added = addedInstances.emplace_back(std::move(*instance));
+
+        // Like a script that was there from the start: OnEnable now, and
+        // Start before its first Update - see LuaScriptSystem::Update.
+        if (EffectiveEnabled(level, added, script)) {
+            added.enabled = true;
+            CallLifecycle(added, added.onEnableFunction, "OnEnable");
+        }
+
+        return sol::make_object(state, ScriptBehaviourRef{&level, entityId, instanceID});
+    }
+
     bool IsInstanceValid(const ID entityId, const ScriptInstanceID instanceId) {
         const ScriptInstance* instance = FindInstanceById(instanceId);
         return instance != nullptr && instance->ownerID == entityId && !instance->destroyed;
@@ -1542,6 +1655,7 @@ void LuaScriptSystem::Start(Level& level) {
         instanceIndexById.clear();
         pendingDestroys.clear();
         pendingScriptStarts.clear();
+        addedInstances.clear();
         // A new play session reads fresh copies of any prefab in an Entity field.
         Prefab::ClearScriptCopies();
         fixedUpdateAccumulator = 0.0f;
@@ -1591,6 +1705,9 @@ void LuaScriptSystem::Update(Level& level) {
     // First, so whatever this frame's callbacks schedule waits for the next one.
     ++invokeTick;
 
+    // Before the spawned entities below, which skip scripts that already have one.
+    RegisterAddedInstances();
+
     // Spawned since the last frame: their scripts get instances now, outside
     // any loop over scriptInstances, and Start below like any other.
     for (const ID entityId : std::exchange(pendingScriptStarts, {})) {
@@ -1629,6 +1746,12 @@ void LuaScriptSystem::Update(Level& level) {
                 }
             }
             else CallLifecycle(instance, instance.onDisableFunction, "OnDisable");
+        }
+
+        // Added with Entity:AddComponent, which already ran OnEnable.
+        if (instance.enabled && !instance.started) {
+            CallLifecycle(instance, instance.startFunction, "Start");
+            instance.started = true;
         }
 
         if (!instance.enabled) continue;
@@ -1793,6 +1916,7 @@ void LuaScriptSystem::FlushPendingDestroys(Level& level) {
 
 void LuaScriptSystem::Shutdown() {
     scriptInstances.clear();
+    addedInstances.clear();
     lastEntitySectors.clear();
     lastCollisions.clear();
     lastTriggers.clear();
