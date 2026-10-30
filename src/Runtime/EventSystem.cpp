@@ -1542,6 +1542,14 @@ namespace {
 }
 
 namespace EventSystem {
+    void PlayOneShot(const std::string& sound, const float gain, const float pitch, const std::optional<Vector3>& position) {
+        PayloadDispatchPlaySound play;
+        play.sound = sound;
+        play.gain = gain;
+        play.pitch = pitch;
+        PlaySound(play, position);
+    }
+
     void CreateRegistry(const Level& level) {
         dispatchRegistry.clear();
         crossWalls.clear();

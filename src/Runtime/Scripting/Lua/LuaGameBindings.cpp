@@ -9,6 +9,7 @@
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 #include <sol/state.hpp>
 
 #include "Headers/Map/LevelManager.hpp"
@@ -391,6 +392,32 @@ namespace {
 
         RegisterMessageBoxMetadata();
         RegisterSkyMetadata();
+
+        RegisterType(GlobalTable("Audio", "Sounds that play once, without an Audio Source component.", {}, {
+            Method("PlayAt", {Param("sound", "string"), Param("position", "Vector3"), Param("gain", "number?"), Param("pitch", "number?")}, {},
+                   "Plays a sound once at a point in the world, fading with distance like an Audio Source (Unity's AudioSource.PlayClipAtPoint). "
+                   "sound is a .wav path inside Assets, extension optional. gain and pitch default to 1. Several can play at once."),
+            Method("Play2D", {Param("sound", "string"), Param("gain", "number?"), Param("pitch", "number?")}, {},
+                   "Plays a sound once, the same everywhere: no position, distance or direction. For UI clicks, pickups, announcer lines."),
+        }));
+    }
+
+    // Audio.PlayAt / Audio.Play2D's sound, gain and pitch.
+    std::string OneShotSound(const sol::object& sound, const char* function) {
+        if (sound.get_type() != sol::type::string)
+            throw sol::error(std::string(function) + ": sound must be a string, e.g. \"Sounds/explosion\"");
+
+        const std::string name = sound.as<std::string>();
+        if (!SoundManager::HasSound(name))
+            throw sol::error(std::string(function) + ": there is no sound \"" + name + "\" (a .wav inside Assets)");
+
+        return name;
+    }
+
+    float OneShotNumber(const sol::object& value, const char* function, const char* name, const float minimum) {
+        if (value.get_type() == sol::type::lua_nil) return 1.0f;
+        if (value.get_type() != sol::type::number) throw sol::error(std::string(function) + ": " + name + " must be a number");
+        return std::max(value.as<float>(), minimum);
     }
 
 }
@@ -705,6 +732,26 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     // Functions are plain fields (called with `.`); the settings go through
     // the metatable to the current level's SkySettings.
     sol::table sky = lua.create_table();
+
+    // One-shot sounds, on the event system's temporary sources (the same as
+    // a Play Sound dispatch), so they are cleaned up the same way.
+    sol::table audio = lua.create_named_table("Audio");
+
+    audio.set_function("PlayAt", [](const sol::object sound, const sol::object position, const sol::object gain,
+                                    const sol::object pitch) {
+        const std::string name = OneShotSound(sound, "Audio.PlayAt");
+        if (!position.is<Vector3>()) throw sol::error("Audio.PlayAt: position must be a Vector3");
+
+        // OpenAL takes no pitch of 0 or less.
+        EventSystem::PlayOneShot(name, OneShotNumber(gain, "Audio.PlayAt", "gain", 0.0f),
+                                 OneShotNumber(pitch, "Audio.PlayAt", "pitch", 0.01f), position.as<Vector3>());
+    });
+
+    audio.set_function("Play2D", [](const sol::object sound, const sol::object gain, const sol::object pitch) {
+        const std::string name = OneShotSound(sound, "Audio.Play2D");
+        EventSystem::PlayOneShot(name, OneShotNumber(gain, "Audio.Play2D", "gain", 0.0f),
+                                 OneShotNumber(pitch, "Audio.Play2D", "pitch", 0.01f), std::nullopt);
+    });
 
     sky.set_function("SetCubemapFace", [](const int face, const std::string& path) {
         CurrentSky().Face(ToSkyFace(face, "Game.Sky.SetCubemapFace")) = path;

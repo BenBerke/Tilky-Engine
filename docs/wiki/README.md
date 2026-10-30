@@ -47,6 +47,7 @@ Every script can use these globals without setting anything up.
 | [Game](Game.md) | The level as a whole: find entities, find the sector at a point, raycasts. |
 | [Input](Input.md) | Keyboard, mouse and the `Cursor` (locked or free). |
 | [GameTime](GameTime.md) | `deltaTime`, `timeScale` (slow motion and pause), game time and the real-world clock. |
+| [Audio](Audio.md) | `Audio.PlayAt` and `Audio.Play2D`: sounds that play once, without an Audio Source. |
 | [Invoke](Invoke.md) | `Invoke`, `InvokeReal`, `InvokeFrame`, `InvokeRepeating`: call a function later. |
 | [Debug](Debug.md) | Print to the in-game console or write to the engine log. |
 | [Global](Global.md) | A table shared by every script, for game-wide state that survives level changes. |

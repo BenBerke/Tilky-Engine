@@ -12,6 +12,9 @@ several overlapping sounds, give the entity several Audio Sources (see
 
 ## How it works
 
+For a sound that just has to play once (a gunshot, a click) you don't need this component:
+[`Audio.PlayAt`](Audio.md#playat) and [`Audio.Play2D`](Audio.md#play2d) do it from any script.
+
 ### Sound files
 
 - Sounds must be **`.wav`** files, 8- or 16-bit, mono or stereo.

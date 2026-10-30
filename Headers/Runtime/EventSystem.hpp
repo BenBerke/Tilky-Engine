@@ -91,6 +91,11 @@ namespace EventSystem {
     // Game.Signal: fires every Lua Signal event named `name`, now.
     void Signal(Level& level, const std::string& name, ID instigatorID);
 
+    // Plays a sound once on a source of its own, like a Play Sound dispatch:
+    // at `position`, or unpositioned (2D) without one. The source goes when
+    // the sound ends, or with the level.
+    void PlayOneShot(const std::string& sound, float gain, float pitch, const std::optional<Vector3>& position);
+
     // Fires the entity's Entity Destroyed events. Call before it is removed.
     void FireEntityDestroyed(Level& level, ID entityID);
 

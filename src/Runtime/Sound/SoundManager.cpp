@@ -424,6 +424,10 @@ namespace SoundManager {
         spdlog::info("OpenAL destroyed");
     }
 
+    bool HasSound(const std::string& soundFileName) {
+        return buffers.contains(NormalizeSoundFileName(soundFileName));
+    }
+
     void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName) {
         const auto sourceIterator = sources.find(sourceName);
 
