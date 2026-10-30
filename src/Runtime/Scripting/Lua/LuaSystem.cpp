@@ -27,7 +27,9 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -110,6 +112,27 @@ namespace {
         Sector
     };
 
+    // What an Invoke's countdown is measured in: Invoke (scaled seconds),
+    // InvokeReal (real seconds) or InvokeFrame (frames).
+    enum class InvokeClock : std::uint8_t {
+        Scaled,
+        Real,
+        Frames
+    };
+
+    // One call waiting to happen, kept by the script that scheduled it - see
+    // TickInvokes.
+    struct PendingInvoke {
+        std::int64_t handle = 0;
+        InvokeClock clock = InvokeClock::Scaled;
+        double remaining = 0.0; // seconds, or frames for InvokeClock::Frames
+        double interval = -1.0; // InvokeRepeating's seconds between calls; below 0 = call once
+        std::uint64_t createdTick = 0; // never called on the tick it was scheduled in
+
+        sol::protected_function function;
+        std::vector<sol::object> arguments;
+    };
+
     struct ScriptInstance {
         ScriptOwnerKind ownerKind = ScriptOwnerKind::Entity;
 
@@ -121,6 +144,13 @@ namespace {
         std::string scriptId; // for diagnostics only - identity is instanceID
 
         sol::environment environment;
+
+        // Unique for the whole play session, sector scripts included, so the
+        // Invoke functions bound into the environment can find their instance.
+        std::uint64_t serial = 0;
+
+        // Scheduled by this script, so they go when it does.
+        std::vector<PendingInvoke> invokes;
 
         sol::protected_function startFunction;
         sol::protected_function updateFunction;
@@ -194,6 +224,13 @@ namespace {
     constexpr float kFixedTimeStep = 1.0f / 60.0f;
     constexpr int kMaxFixedStepsPerFrame = 5; // avoids a spiral of death after a long stall
     float fixedUpdateAccumulator = 0.0f;
+
+    std::uint64_t nextInstanceSerial = 1;
+    std::int64_t nextInvokeHandle = 1;
+
+    // Counts LuaScriptSystem::Update calls (0 during Start), so an invoke
+    // never runs in the frame it was scheduled in - see PendingInvoke::createdTick.
+    std::uint64_t invokeTick = 0;
 
     // ------------------------------------------------------------------
     // Script identity
@@ -779,6 +816,204 @@ namespace {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Invoke
+    //
+    // Invoke, InvokeReal, InvokeFrame and InvokeRepeating call a function
+    // later. Each script's environment gets its own copies, bound to that
+    // instance by serial, so whatever a script schedules belongs to it: it
+    // waits while the script is disabled and is dropped with it.
+    // ------------------------------------------------------------------
+
+    // The instance whose Invoke functions are being called. The script's top
+    // level runs before its instance is registered, so it can't schedule.
+    ScriptInstance& InvokeOwner(const std::uint64_t serial, const char* function) {
+        for (ScriptInstance& instance : scriptInstances)
+            if (instance.serial == serial) return instance;
+
+        throw sol::error(fmt::format("{} can't be called from a script's top level - call it from Start or later", function));
+    }
+
+    sol::type ArgumentType(const sol::variadic_args& args, const std::size_t index) {
+        if (index >= args.size()) return sol::type::none;
+        return args.get<sol::object>(static_cast<int>(index)).get_type();
+    }
+
+    // "nothing" when the argument wasn't passed at all.
+    std::string ArgumentTypeName(const sol::variadic_args& args, const std::size_t index) {
+        if (index >= args.size()) return "nothing";
+        return sol::type_name(args.lua_state(), ArgumentType(args, index));
+    }
+
+    double InvokeNumber(const sol::variadic_args& args, const std::size_t index, const char* function, const char* name) {
+        if (ArgumentType(args, index) != sol::type::number)
+            throw sol::error(fmt::format("{}: {} must be a number, got {}", function, name, ArgumentTypeName(args, index)));
+
+        const sol::object value = args.get<sol::object>(static_cast<int>(index));
+
+        const double number = value.as<double>();
+        if (!std::isfinite(number)) throw sol::error(fmt::format("{}: {} must be a finite number", function, name));
+
+        return std::max(number, 0.0);
+    }
+
+    // args: the function, the delay, InvokeRepeating's interval, then the
+    // arguments to call the function with.
+    std::int64_t ScheduleInvoke(const std::uint64_t serial, const char* function, const InvokeClock clock,
+                                const bool repeating, const sol::variadic_args& args) {
+        ScriptInstance& instance = InvokeOwner(serial, function);
+
+        if (ArgumentType(args, 0) != sol::type::function)
+            throw sol::error(fmt::format("{}: the first argument must be a function, got {}", function, ArgumentTypeName(args, 0)));
+
+        PendingInvoke invoke;
+        invoke.handle = nextInvokeHandle++;
+        invoke.clock = clock;
+        invoke.remaining = InvokeNumber(args, 1, function, clock == InvokeClock::Frames ? "frames" : "delay");
+        if (clock == InvokeClock::Frames) invoke.remaining = std::floor(invoke.remaining);
+        if (repeating) invoke.interval = InvokeNumber(args, 2, function, "interval");
+        invoke.createdTick = invokeTick;
+        invoke.function = args.get<sol::protected_function>(0);
+
+        for (std::size_t i = repeating ? 3 : 2; i < args.size(); ++i)
+            invoke.arguments.push_back(args.get<sol::object>(static_cast<int>(i)));
+
+        instance.invokes.push_back(std::move(invoke));
+        return instance.invokes.back().handle;
+    }
+
+    // The invoke whose handle is the first argument, or invokes.end() once it
+    // has been called (one-shot) or cancelled.
+    std::vector<PendingInvoke>::iterator FindInvoke(ScriptInstance& instance, const sol::variadic_args& args, const char* function) {
+        if (ArgumentType(args, 0) != sol::type::number)
+            throw sol::error(fmt::format("{}: expected a handle returned by an Invoke function, got {}", function, ArgumentTypeName(args, 0)));
+
+        return std::ranges::find(instance.invokes, args.get<std::int64_t>(0), &PendingInvoke::handle);
+    }
+
+    void BindInvokeFunctions(ScriptInstance& instance) {
+        const std::uint64_t serial = instance.serial;
+
+        instance.environment.set_function("Invoke", [serial](const sol::variadic_args args) {
+            return ScheduleInvoke(serial, "Invoke", InvokeClock::Scaled, false, args);
+        });
+
+        instance.environment.set_function("InvokeReal", [serial](const sol::variadic_args args) {
+            return ScheduleInvoke(serial, "InvokeReal", InvokeClock::Real, false, args);
+        });
+
+        instance.environment.set_function("InvokeFrame", [serial](const sol::variadic_args args) {
+            return ScheduleInvoke(serial, "InvokeFrame", InvokeClock::Frames, false, args);
+        });
+
+        instance.environment.set_function("InvokeRepeating", [serial](const sol::variadic_args args) {
+            return ScheduleInvoke(serial, "InvokeRepeating", InvokeClock::Scaled, true, args);
+        });
+
+        instance.environment.set_function("CancelInvoke", [serial](const sol::variadic_args args) {
+            ScriptInstance& owner = InvokeOwner(serial, "CancelInvoke");
+
+            if (args.size() == 0) {
+                owner.invokes.clear();
+                return;
+            }
+
+            const auto it = FindInvoke(owner, args, "CancelInvoke");
+            if (it != owner.invokes.end()) owner.invokes.erase(it);
+        });
+
+        instance.environment.set_function("IsInvoking", [serial](const sol::variadic_args args) {
+            ScriptInstance& owner = InvokeOwner(serial, "IsInvoking");
+
+            if (args.size() == 0) return !owner.invokes.empty();
+            return FindInvoke(owner, args, "IsInvoking") != owner.invokes.end();
+        });
+    }
+
+    // Counts down every active script's invokes and calls the ones that are
+    // due. Runs once per frame, after Update and FixedUpdate.
+    void TickInvokes() {
+        // By index, and the instance looked up again after every call: a
+        // called function can do anything another script callback can.
+        for (std::size_t i = 0; i < scriptInstances.size(); ++i) {
+            ScriptInstance& instance = scriptInstances[i];
+
+            // Disabled scripts' invokes wait, without counting down.
+            if (instance.destroyed || !instance.enabled || instance.invokes.empty()) continue;
+
+            std::vector<std::int64_t> due;
+
+            for (PendingInvoke& invoke : instance.invokes) {
+                if (invoke.createdTick == invokeTick) continue;
+
+                // Paused: even ones already due wait for time to run again.
+                if (invoke.clock == InvokeClock::Scaled && GameTime::timeScale <= 0.0f) continue;
+
+                switch (invoke.clock) {
+                    case InvokeClock::Scaled: invoke.remaining -= GameTime::deltaTime; break;
+                    case InvokeClock::Real:   invoke.remaining -= GameTime::unscaledDeltaTime; break;
+                    case InvokeClock::Frames: invoke.remaining -= 1.0; break;
+                }
+
+                if (invoke.remaining <= 0.0) due.push_back(invoke.handle);
+            }
+
+            for (const std::int64_t handle : due) {
+                ScriptInstance& owner = scriptInstances[i];
+                if (owner.destroyed || !owner.enabled) break;
+
+                // An earlier call this tick can have cancelled it.
+                const auto it = std::ranges::find(owner.invokes, handle, &PendingInvoke::handle);
+                if (it == owner.invokes.end()) continue;
+
+                const sol::protected_function function = it->function;
+                const std::vector<sol::object> arguments = it->arguments;
+
+                // At most one call per tick, however short the interval.
+                if (it->interval >= 0.0) it->remaining = std::max(it->remaining + it->interval, 0.0);
+                else owner.invokes.erase(it);
+
+                const std::string scriptId = owner.scriptId;
+                const std::string ownerLabel = DescribeOwner(owner.ownerKind, owner.ownerID);
+                const ScriptInstanceID instanceID = owner.instanceID;
+
+                const sol::protected_function_result result = function(sol::as_args(arguments));
+
+                if (!result.valid()) {
+                    const sol::error error = result;
+                    ReportScriptError(fmt::format("Lua Invoke error in script '{}' on {} (instance {}): {}",
+                                                  scriptId, ownerLabel, instanceID, error.what()));
+                }
+            }
+        }
+    }
+
+    void RegisterInvokeMetadata() {
+        using LuaBindingMetadata::Method;
+        using LuaBindingMetadata::Param;
+
+        LuaBindingMetadata::RegisterScriptFunction(Method("Invoke",
+            {Param("fn", "function"), Param("delay", "number"), Param("...", "any")}, "integer",
+            "Calls fn(...) after delay seconds of game time (follows GameTime.timeScale). A delay of 0 calls it next frame. "
+            "Returns a handle for CancelInvoke and IsInvoking."));
+        LuaBindingMetadata::RegisterScriptFunction(Method("InvokeReal",
+            {Param("fn", "function"), Param("delay", "number"), Param("...", "any")}, "integer",
+            "Like Invoke, but delay is real seconds: GameTime.timeScale doesn't slow or stop it."));
+        LuaBindingMetadata::RegisterScriptFunction(Method("InvokeFrame",
+            {Param("fn", "function"), Param("frames", "integer"), Param("...", "any")}, "integer",
+            "Calls fn(...) after this many frames. 0 and 1 both mean next frame."));
+        LuaBindingMetadata::RegisterScriptFunction(Method("InvokeRepeating",
+            {Param("fn", "function"), Param("delay", "number"), Param("interval", "number"), Param("...", "any")}, "integer",
+            "Calls fn(...) after delay seconds of game time, then every interval seconds until cancelled. At most once per frame."));
+        LuaBindingMetadata::RegisterScriptFunction(Method("CancelInvoke",
+            {Param("handle", "integer?")}, "",
+            "Cancels the invoke with this handle. With no handle, cancels everything this script has scheduled."));
+        LuaBindingMetadata::RegisterScriptFunction(Method("IsInvoking",
+            {Param("handle", "integer?")}, "boolean",
+            "True if the invoke with this handle is still waiting (a repeating one until it is cancelled). "
+            "With no handle, true if this script has anything scheduled."));
+    }
+
     bool LoadScriptIntoInstance(
         Level& level,
         const ScriptOwnerKind ownerKind,
@@ -798,9 +1033,12 @@ namespace {
         instance.destroyed = false;
 
         instance.environment = sol::environment(lua, sol::create, lua.globals());
+        instance.serial = nextInstanceSerial++;
+        instance.invokes.clear();
 
         InjectOwnerGlobals(level, instance);
         instance.environment["Global"] = lua["Global"];
+        BindInvokeFunctions(instance);
 
         LoadedChunk loadedScript = LoadScriptChunk(asset);
 
@@ -1069,7 +1307,13 @@ namespace {
 
     void RegisterGameTimeMetadata() {
         LuaBindingMetadata::RegisterType(LuaBindingMetadata::GlobalTable("GameTime", "Global frame-timing table.", {
-            LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update()."),
+            LuaBindingMetadata::Prop("deltaTime", "number", true, "Seconds since the last Update(), times timeScale."),
+            LuaBindingMetadata::Prop("unscaledDeltaTime", "number", true, "Real seconds since the last Update(), ignoring timeScale."),
+            LuaBindingMetadata::Prop("timeScale", "number", false,
+                "How fast game time runs: 1 normal, 0.5 half speed, 0 paused. Never negative. Back to 1 when the game starts; kept across level changes."),
+            LuaBindingMetadata::Prop("time", "number", true, "Seconds of game time since the game started, following timeScale."),
+            LuaBindingMetadata::Prop("unscaledTime", "number", true, "Real seconds the game has run since it started, ignoring timeScale."),
+            LuaBindingMetadata::Prop("frameCount", "integer", true, "Frames the game has run since it started."),
             LuaBindingMetadata::Prop("fixedDeltaTime", "number", true, "The fixed step FixedUpdate() runs on."),
             LuaBindingMetadata::Prop("osTime", "integer", true, "Wall-clock time: whole seconds since the Unix epoch (1970-01-01 UTC)."),
             LuaBindingMetadata::Prop("fps", "integer", true, "Get the current frames-per-second"),
@@ -1086,6 +1330,27 @@ namespace {
 
             "deltaTime",
             sol::property([](const ScriptGameTime&) { return GameTime::deltaTime; }),
+
+            "unscaledDeltaTime",
+            sol::property([](const ScriptGameTime&) { return GameTime::unscaledDeltaTime; }),
+
+            "timeScale",
+            sol::property(
+                [](const ScriptGameTime&) { return GameTime::timeScale; },
+                [](ScriptGameTime&, const sol::object& value) {
+                    if (value.get_type() != sol::type::number)
+                        throw sol::error("GameTime.timeScale must be a number");
+                    GameTime::SetTimeScale(value.as<float>());
+                }),
+
+            "time",
+            sol::property([](const ScriptGameTime&) { return GameTime::time; }),
+
+            "unscaledTime",
+            sol::property([](const ScriptGameTime&) { return GameTime::unscaledTime; }),
+
+            "frameCount",
+            sol::property([](const ScriptGameTime&) { return static_cast<std::int64_t>(GameTime::frameCount); }),
 
             // Matches Unity's Time.fixedDeltaTime - the fixed step FixedUpdate
             // runs on. See the kFixedTimeStep comment above for why this is a
@@ -1162,6 +1427,7 @@ namespace {
         RegisterGameTimeBindings(lua);
         RegisterBehaviourRefBindings(lua);
         RegisterScriptEnvironmentMetadata();
+        RegisterInvokeMetadata();
     }
 }
 
@@ -1279,6 +1545,7 @@ void LuaScriptSystem::Start(Level& level) {
         // A new play session reads fresh copies of any prefab in an Entity field.
         Prefab::ClearScriptCopies();
         fixedUpdateAccumulator = 0.0f;
+        invokeTick = 0;
     }
     {
         ZoneScopedN("Scripting::Init");
@@ -1321,6 +1588,9 @@ void LuaScriptSystem::Start(Level& level) {
 }
 
 void LuaScriptSystem::Update(Level& level) {
+    // First, so whatever this frame's callbacks schedule waits for the next one.
+    ++invokeTick;
+
     // Spawned since the last frame: their scripts get instances now, outside
     // any loop over scriptInstances, and Start below like any other.
     for (const ID entityId : std::exchange(pendingScriptStarts, {})) {
@@ -1383,6 +1653,11 @@ void LuaScriptSystem::Update(Level& level) {
             fixedUpdateAccumulator -= kFixedTimeStep;
             ++fixedSteps;
         }
+    }
+
+    {
+        ZoneScopedN("Scripting::Invokes");
+        TickInvokes();
     }
 
     // Deliberately NOT flushing pendingDestroys here - see

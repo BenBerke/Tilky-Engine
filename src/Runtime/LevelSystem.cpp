@@ -257,6 +257,8 @@ namespace LevelSystem {
         //     entity.Update(); // currently does nothing. Probably should do nothing
         // }
 
+        GameTime::AdvanceGameClock();
+
         // Picks up enabled flags written directly (the runtime editor's
         // checkbox, prefab sync) before any system reads ownerEnabled.
         level.SyncEntityEnabledStates();

@@ -123,12 +123,22 @@ namespace LuaBindingMetadata {
     void RegisterScriptGlobal(PropertyDoc global);
     const std::vector<PropertyDoc>& AllScriptGlobals();
 
+    // Registers a function the engine injects into every script's
+    // environment (Invoke, CancelInvoke, ...), called without a table.
+    // A ParamDoc named "..." documents trailing extra arguments.
+    void RegisterScriptFunction(MethodDoc function);
+    const std::vector<MethodDoc>& AllScriptFunctions();
+
+    // "Invoke(fn: function, delay: number, ...: any) -> integer" - a
+    // script function's signature as shown in the editor.
+    [[nodiscard]] std::string FunctionSignature(const MethodDoc& function);
+
     // Lua 5.4's reserved words.
     const std::vector<std::string>& LuaKeywordNames();
     [[nodiscard]] bool IsLuaKeyword(std::string_view name);
 
     // True for any name the engine defines for scripts: a callback, a
-    // script global, or a registered type/global table/enum. A script
+    // script global or function, or a registered type/global table/enum. A script
     // variable with such a name would hide the engine's, so public fields
     // and flipbook event functions can't use one. Lua keywords are checked
     // separately (IsLuaKeyword) so callers can word the error differently.

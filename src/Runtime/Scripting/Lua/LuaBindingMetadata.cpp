@@ -10,6 +10,7 @@ namespace {
     std::vector<LuaBindingMetadata::TypeDoc> registeredTypes;
     std::vector<LuaBindingMetadata::CallbackDoc> registeredCallbacks;
     std::vector<LuaBindingMetadata::PropertyDoc> registeredScriptGlobals;
+    std::vector<LuaBindingMetadata::MethodDoc> registeredScriptFunctions;
 }
 
 namespace LuaBindingMetadata {
@@ -37,6 +38,27 @@ namespace LuaBindingMetadata {
         return registeredScriptGlobals;
     }
 
+    void RegisterScriptFunction(MethodDoc function) {
+        registeredScriptFunctions.push_back(std::move(function));
+    }
+
+    const std::vector<MethodDoc>& AllScriptFunctions() {
+        return registeredScriptFunctions;
+    }
+
+    std::string FunctionSignature(const MethodDoc& function) {
+        std::string signature = function.name + "(";
+
+        for (std::size_t i = 0; i < function.params.size(); ++i) {
+            if (i > 0) signature += ", ";
+            signature += function.params[i].name + ": " + function.params[i].luaType;
+        }
+
+        signature += ")";
+        if (!function.returnType.empty()) signature += " -> " + function.returnType;
+        return signature;
+    }
+
     const std::vector<std::string>& LuaKeywordNames() {
         static const std::vector<std::string> keywords = {
             "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
@@ -53,6 +75,7 @@ namespace LuaBindingMetadata {
     bool IsEngineName(const std::string_view name) {
         return std::ranges::find(registeredCallbacks, name, &CallbackDoc::name) != registeredCallbacks.end()
             || std::ranges::find(registeredScriptGlobals, name, &PropertyDoc::name) != registeredScriptGlobals.end()
+            || std::ranges::find(registeredScriptFunctions, name, &MethodDoc::name) != registeredScriptFunctions.end()
             || std::ranges::find(registeredTypes, name, &TypeDoc::name) != registeredTypes.end();
     }
 
@@ -137,6 +160,24 @@ namespace LuaBindingMetadata {
         for (const PropertyDoc& global : registeredScriptGlobals) {
             if (!global.doc.empty()) file << "---" << global.doc << "\n";
             file << "---@type " << global.luaType << "\n" << global.name << " = nil\n\n";
+        }
+
+        for (const MethodDoc& function : registeredScriptFunctions) {
+            if (!function.doc.empty()) file << "---" << function.doc << "\n";
+
+            for (const ParamDoc& param : function.params)
+                file << "---@param " << param.name << " " << param.luaType << "\n";
+
+            if (!function.returnType.empty()) file << "---@return " << function.returnType << "\n";
+
+            file << "function " << function.name << "(";
+
+            for (std::size_t i = 0; i < function.params.size(); ++i) {
+                if (i > 0) file << ", ";
+                file << function.params[i].name;
+            }
+
+            file << ") end\n\n";
         }
 
         // Callbacks are defined by the script, not the engine - declaring

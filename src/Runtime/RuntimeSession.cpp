@@ -181,6 +181,10 @@ namespace {
         // leaves them alone) but every session starts from the defaults.
         GlobalEventVariables::ResetValues();
 
+        // Same for the clock: slow motion or a pause left over from the last
+        // session doesn't carry into this one.
+        GameTime::ResetGameClock();
+
         AudioSystem::Start(level);
         LevelSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
@@ -231,6 +235,8 @@ namespace {
 
     void ShutdownGameSystems(Level& level) {
         LevelSystem::Shutdown(level);
+        // Stopping always leaves time running normally again.
+        GameTime::ResetGameClock();
         AudioSystem::Shutdown(level);
 #ifdef TILKY_STANDALONE
         SoundManager::DestroyOpenAL();
@@ -351,7 +357,7 @@ namespace {
         const float stackTop = anchorPoint.y - stackHeight * 0.5f * row;
 
         // Exponential ease: about 95% of the way in a quarter second.
-        const float ease = 1.0f - std::exp(-12.0f * GameTime::deltaTime);
+        const float ease = 1.0f - std::exp(-12.0f * GameTime::unscaledDeltaTime);
 
         std::unordered_map<uint64_t, float> boxTops;
         float targetTop = stackTop;
@@ -484,7 +490,7 @@ namespace {
     }
 
     void UpdateFpsCounter() {
-        fpsTimer += GameTime::deltaTime;
+        fpsTimer += GameTime::unscaledDeltaTime;
 
         if (fpsTimer < 1.3f) return;
 
@@ -601,7 +607,7 @@ namespace {
 
         level.PropagateSnapshottedSectorChanges(parentsBeforeUpdate);
 
-        EditorFunctions::UpdateConsole(GameTime::deltaTime);
+        EditorFunctions::UpdateConsole(GameTime::unscaledDeltaTime);
         EditorFunctions::ClearConsole();
     }
 
@@ -635,7 +641,7 @@ namespace {
             renderer->EndFrame();
         }
 
-        EditorFunctions::UpdateConsole(GameTime::deltaTime);
+        EditorFunctions::UpdateConsole(GameTime::unscaledDeltaTime);
 
         {
             ZoneScopedN("Audio");

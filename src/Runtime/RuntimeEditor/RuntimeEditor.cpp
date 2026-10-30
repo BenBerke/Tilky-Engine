@@ -2989,7 +2989,7 @@ namespace RuntimeEditor {
 
             if (movementLengthSq > 0.0f) {
                 movement = movement * (1.0f / std::sqrt(movementLengthSq));
-                transform->AddPosition(movement * moveSpeed * GameTime::deltaTime);
+                transform->AddPosition(movement * moveSpeed * GameTime::unscaledDeltaTime);
             }
 
             if (GetKeyBindDown(KEYBIND_RT_GRAVITY_MODE)) {

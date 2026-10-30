@@ -46,7 +46,8 @@ Every script can use these globals without setting anything up.
 |---|---|
 | [Game](Game.md) | The level as a whole: find entities, find the sector at a point, raycasts. |
 | [Input](Input.md) | Keyboard and mouse. |
-| [GameTime](GameTime.md) | `deltaTime`, `fixedDeltaTime` and the real-world clock. |
+| [GameTime](GameTime.md) | `deltaTime`, `timeScale` (slow motion and pause), game time and the real-world clock. |
+| [Invoke](Invoke.md) | `Invoke`, `InvokeReal`, `InvokeFrame`, `InvokeRepeating`: call a function later. |
 | [Debug](Debug.md) | Print to the in-game console or write to the engine log. |
 | [Global](Global.md) | A table shared by every script, for game-wide state that survives level changes. |
 | [mathT](mathT.md) | Maths helpers: clamping, interpolation, angles, random numbers, vector maths. |

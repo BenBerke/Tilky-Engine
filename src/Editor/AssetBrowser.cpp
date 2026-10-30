@@ -62,7 +62,7 @@ namespace {
 
     // Lua highlighting plus Tilky's declaration keywords (`public`) as
     // keywords, and as known identifiers (hover tooltip + their own color)
-    // its field types plus every callback, script global and type
+    // its field types plus every callback, script global, script function and type
     // registered with LuaBindingMetadata.
     const TextEditor::LanguageDefinition& ScriptLanguageDefinition() {
         LevelSystem::EnsureScriptingInitialized();
@@ -91,6 +91,9 @@ namespace {
             for (const LuaBindingMetadata::PropertyDoc& global : LuaBindingMetadata::AllScriptGlobals())
                 addIdentifier(global.name, global.name + ": " + global.luaType + "\n" + WrapText(global.doc));
 
+            for (const LuaBindingMetadata::MethodDoc& function : LuaBindingMetadata::AllScriptFunctions())
+                addIdentifier(function.name, LuaBindingMetadata::FunctionSignature(function) + "\n" + WrapText(function.doc));
+
             for (const LuaBindingMetadata::CallbackDoc& callback : LuaBindingMetadata::AllCallbacks()) {
                 addIdentifier(callback.name, LuaBindingMetadata::CallbackSignature(callback) + "\n" +
                     WrapText(LuaBindingMetadata::CallbackOwnerNote(callback.owner) + callback.doc));
@@ -116,6 +119,7 @@ namespace {
 
             for (const LuaBindingMetadata::CallbackDoc& callback : LuaBindingMetadata::AllCallbacks()) list.push_back(callback.name);
             for (const LuaBindingMetadata::PropertyDoc& global : LuaBindingMetadata::AllScriptGlobals()) list.push_back(global.name);
+            for (const LuaBindingMetadata::MethodDoc& function : LuaBindingMetadata::AllScriptFunctions()) list.push_back(function.name);
 
             for (std::vector<std::string> names : {LuaScriptCompiler::DeclarationKeywordNames(),
                                                    LuaScriptCompiler::FieldTypeNames(),
