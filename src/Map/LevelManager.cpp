@@ -173,6 +173,9 @@ namespace LevelManager {
             if (auto* play = std::get_if<PayloadDispatchPlaySound>(&dispatch.payload); play && play->sound == oldReference)
                 play->sound = newReference;
         });
+
+        for (std::string& track : level.worldSettings.music.tracks)
+            if (track == oldReference) track = newReference;
     }
 
     void RenameScriptReference(const std::string& oldReference, const std::string& newReference) {

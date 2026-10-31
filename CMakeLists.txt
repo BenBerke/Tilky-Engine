@@ -293,6 +293,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
+        src/Runtime/Sound/MusicPlayer.cpp
 
         src/Runtime/Scripting/Lua/LuaWallBindings.cpp
         src/Runtime/Scripting/Lua/LuaSectorBindings.cpp
@@ -324,6 +325,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Scripting/Lua/LuaEditorFunctionBindings.cpp
         src/Runtime/Scripting/Lua/LuaGameBindings.cpp
         src/Runtime/Scripting/Lua/LuaSavingBindings.cpp
+        src/Runtime/Scripting/Lua/LuaMusicBindings.cpp
 
         src/Math/Geometry/Geometry.cpp
 

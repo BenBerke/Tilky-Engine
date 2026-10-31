@@ -1113,6 +1113,26 @@ struct PayloadDispatchSetUIText {
     std::string text;
 };
 
+// Controls the level's music (World Settings > Music), like Lua's Music table.
+struct PayloadDispatchMusic {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.music";
+    transKey saveName = "dispatch.music"; // level file name, never change
+    bool operator==(const PayloadDispatchMusic&) const = default;
+
+    enum Action : uint8_t {
+        PLAY = 0,            // resumes a paused track, else starts the list
+        STOP = 1,
+        PAUSE = 2,
+        SWITCH_TO_TRACK = 3, // `track`
+        SET_VOLUME = 4       // `volume`
+    };
+
+    Action action = PLAY;
+    int track = 0; // 0-based
+    float volume = 1.0f;
+};
+
 // Changes an event variable (level or global, by the ID's scope bit). Acts on
 // the variable, not the owner: the owner only decides which events reach it.
 struct PayloadDispatchChangeVariable {
@@ -1151,7 +1171,7 @@ using DispatchPayload = std::variant<
     PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
-    PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText>;
+    PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText, PayloadDispatchMusic>;
 
 template <typename Payload>
 [[nodiscard]] constexpr EventOwnerMask GetOwners(const Payload& payload) noexcept {

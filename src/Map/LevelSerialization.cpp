@@ -306,6 +306,45 @@ namespace {
         spdlog::warn("worldSettings: unknown {} \"{}\", ignored", key, name);
     }
 
+    constexpr std::pair<MusicSettings::Mode, const char*> kMusicModeNames[] = {
+        {MusicSettings::ONCE, "once"},
+        {MusicSettings::LOOP, "loop"},
+        {MusicSettings::PING_PONG, "ping_pong"},
+        {MusicSettings::SHUFFLE, "shuffle"}
+    };
+
+    const char* MusicModeName(const MusicSettings::Mode mode) {
+        for (const auto& [value, name] : kMusicModeNames)
+            if (value == mode) return name;
+        return "loop";
+    }
+
+    json MusicSettingsToJson(const MusicSettings& music) {
+        return {
+            {"tracks", music.tracks},
+            {"playOnStart", music.playOnStart},
+            {"mode", MusicModeName(music.mode)},
+            {"volume", music.volume},
+            {"fade", music.fade},
+            {"gap", music.gap}
+        };
+    }
+
+    MusicSettings MusicSettingsFromJson(const json& j) {
+        MusicSettings music;
+        music.tracks = j.value("tracks", std::vector<std::string>{});
+        music.playOnStart = j.value("playOnStart", true);
+        if (j.contains("mode")) {
+            const std::string mode = j.at("mode").get<std::string>();
+            for (const auto& [value, name] : kMusicModeNames)
+                if (mode == name) music.mode = value;
+        }
+        music.volume = j.value("volume", 1.0f);
+        music.fade = j.value("fade", 0.0f);
+        music.gap = j.value("gap", 0.0f);
+        return music;
+    }
+
     json MessageStyleToJson(const MessageStyle& style) {
         const auto vec2 = [](const Vector2& v) { return json::array({v.x, v.y}); };
         const auto vec4 = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
@@ -598,6 +637,9 @@ namespace {
             worldSettings.messageStyle = worldSettingsJson.contains("messageStyle")
                 ? MessageStyleFromJson(worldSettingsJson.at("messageStyle"))
                 : MessageStyle{};
+            worldSettings.music = worldSettingsJson.contains("music")
+                ? MusicSettingsFromJson(worldSettingsJson.at("music"))
+                : MusicSettings{};
             LoadEventsAndDispatches(worldSettingsJson, "Level", 0, worldSettings.events, worldSettings.dispatches);
         }
 
@@ -639,7 +681,8 @@ namespace {
                     {"hideCursorOnStart", worldSettings.hideCursorOnStart},
                     {"eventVariables", SaveEventVariables(worldSettings)},
                     {"nextEventVariableId", worldSettings.nextEventVariableID},
-                    {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)}
+                    {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)},
+                    {"music", MusicSettingsToJson(worldSettings.music)}
                 }
             },
             {
@@ -866,6 +909,14 @@ namespace {
         {PayloadDispatchEntitySetField::ADD, "add"},
         {PayloadDispatchEntitySetField::MULTIPLY, "multiply"},
         {PayloadDispatchEntitySetField::TOGGLE, "toggle"}
+    };
+
+    constexpr std::pair<PayloadDispatchMusic::Action, const char*> kMusicActionNames[] = {
+        {PayloadDispatchMusic::PLAY, "play"},
+        {PayloadDispatchMusic::STOP, "stop"},
+        {PayloadDispatchMusic::PAUSE, "pause"},
+        {PayloadDispatchMusic::SWITCH_TO_TRACK, "switch_to_track"},
+        {PayloadDispatchMusic::SET_VOLUME, "set_volume"}
     };
 
     constexpr std::pair<CallTarget, const char*> kCallTargetNames[] = {
@@ -1196,6 +1247,12 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
             j["text"] = payload.text;
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
+            j["action"] = EnumName(kMusicActionNames, payload.action);
+            j["track"] = payload.track;
+            j["volume"] = payload.volume;
+        }
+
         return j;
     }
 
@@ -1450,6 +1507,12 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
             ReadOptional(j, "text", payload.text);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
+            ReadOptionalEnum(j, "action", kMusicActionNames, payload.action);
+            ReadOptional(j, "track", payload.track);
+            ReadOptional(j, "volume", payload.volume);
+        }
     }
 
     template <typename Variant>

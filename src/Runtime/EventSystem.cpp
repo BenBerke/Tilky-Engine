@@ -10,6 +10,7 @@
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
+#include "Headers/Runtime/Sound/MusicPlayer.hpp"
 #include "Headers/TagRegistry.hpp"
 
 #include <spdlog/spdlog.h>
@@ -2947,6 +2948,18 @@ namespace EventSystem {
             },
             [&](const PayloadDispatchQuit&) {
                 if (hooks.quit) hooks.quit();
+            },
+            [&](const PayloadDispatchMusic& music) {
+                switch (music.action) {
+                    case PayloadDispatchMusic::PLAY: MusicPlayer::Start(); break;
+                    case PayloadDispatchMusic::STOP: MusicPlayer::Stop(); break;
+                    case PayloadDispatchMusic::PAUSE: MusicPlayer::Pause(); break;
+                    case PayloadDispatchMusic::SWITCH_TO_TRACK:
+                        if (!MusicPlayer::SwitchToIndex(music.track))
+                            spdlog::warn("Music dispatch: the level has no music track {}", music.track + 1);
+                        break;
+                    case PayloadDispatchMusic::SET_VOLUME: MusicPlayer::SetVolume(music.volume); break;
+                }
             },
             [&](const PayloadDispatchSetUIText& setText) {
                 if (ComponentUIText* text = level.ui_texts.Get(ownerID)) text->text = setText.text;

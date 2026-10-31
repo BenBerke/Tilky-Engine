@@ -77,6 +77,27 @@ struct MessageStyle {
     bool operator==(const MessageStyle&) const = default;
 };
 
+// The level's music: a list of sound files played one after another by
+// MusicPlayer (Runtime/Sound), unpositioned. Lua's Music table and the Music
+// dispatch control it while playing.
+struct MusicSettings {
+    enum Mode : uint8_t {
+        ONCE = 0,      // through the list, then stop
+        LOOP = 1,      // back to the first after the last
+        PING_PONG = 2, // 1, 2, 3, 2, 1, 2...
+        SHUFFLE = 3    // every track once in a random order, then a new order
+    };
+
+    std::vector<std::string> tracks; // Assets-relative sound files
+    bool playOnStart = true;
+    Mode mode = LOOP;
+    float volume = 1.0f;
+    float fade = 0.0f; // seconds of fade out / in when switching or stopping, 0 = cut
+    float gap = 0.0f;  // seconds of silence between a track ending and the next
+
+    bool operator==(const MusicSettings&) const = default;
+};
+
 struct WorldSettings {
     float gravity = 9.8f;
 
@@ -107,6 +128,8 @@ struct WorldSettings {
     std::vector<Dispatch> dispatches;
 
     MessageStyle messageStyle;
+
+    MusicSettings music;
 };
 
 // See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp

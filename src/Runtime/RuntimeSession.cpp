@@ -37,6 +37,7 @@
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/SaveSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
+#include "Headers/Runtime/Sound/MusicPlayer.hpp"
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/Renderer/RendererFactory.hpp"
@@ -208,6 +209,7 @@ namespace {
         AudioSystem::Start(level);
         LevelSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
+        MusicPlayer::OnLevelStart(level);
 
         return true;
     }
@@ -246,6 +248,8 @@ namespace {
         AudioSystem::Start(level);
         LevelSystem::Start(level);
         AudioSystem::ApplyListenerSettings(level);
+        // The same music list keeps playing through the switch.
+        MusicPlayer::OnLevelStart(level);
 
         // The load time shouldn't show up as one huge frame.
         GameTime::Update();
@@ -260,6 +264,7 @@ namespace {
         // Stopping always leaves time running normally again.
         GameTime::ResetGameClock();
         InputManager::ResetCursor();
+        MusicPlayer::Shutdown();
         AudioSystem::Shutdown(level);
 #ifdef TILKY_STANDALONE
         SoundManager::DestroyOpenAL();
@@ -499,6 +504,7 @@ namespace {
         {
             ZoneScopedN("Audio");
             AudioSystem::Update(level);
+            MusicPlayer::Update(GameTime::unscaledDeltaTime);
         }
     }
 
@@ -710,6 +716,7 @@ namespace {
         {
             ZoneScopedN("Audio");
             AudioSystem::Update(level);
+            MusicPlayer::Update(GameTime::unscaledDeltaTime);
         }
 
         UpdateFpsCounter();

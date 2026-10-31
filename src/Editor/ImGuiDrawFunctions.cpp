@@ -1757,6 +1757,14 @@ namespace ImGuiDrawFunctions {
 
     // ── Direct calls ───────────────────────────────────────────────────────
 
+    constexpr std::pair<PayloadDispatchMusic::Action, const char *> kMusicActionOptions[] = {
+        {PayloadDispatchMusic::PLAY, "events.music.action.play"},
+        {PayloadDispatchMusic::STOP, "events.music.action.stop"},
+        {PayloadDispatchMusic::PAUSE, "events.music.action.pause"},
+        {PayloadDispatchMusic::SWITCH_TO_TRACK, "events.music.action.switch"},
+        {PayloadDispatchMusic::SET_VOLUME, "events.music.action.volume"}
+    };
+
     constexpr std::pair<bool, const char *> kRelayModeOptions[] = {
         {false, "events.relay_mode.tag"},
         {true, "events.relay_mode.direct"}
@@ -3108,6 +3116,37 @@ namespace ImGuiDrawFunctions {
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
                                 DrawLevelNameRow(payload.levelName);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
+                                Property(Get("events.music.action").c_str());
+                                DrawEnumCombo("##Action", payload.action, kMusicActionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.music_action").c_str());
+
+                                if (payload.action == PayloadDispatchMusic::SWITCH_TO_TRACK) {
+                                    // The tracks of the level this card is in (World Settings > Music).
+                                    const std::vector<std::string> &tracks = level.worldSettings.music.tracks;
+                                    const auto trackLabel = [&](const int index) {
+                                        const std::string number = std::to_string(index + 1);
+                                        if (index < 0 || index >= static_cast<int>(tracks.size()))
+                                            return number + ": " + Get("events.music.no_track");
+                                        return number + ": " + std::filesystem::path(tracks[index]).stem().string();
+                                    };
+
+                                    Property(Get("events.music.track").c_str());
+                                    if (ImGui::BeginCombo("##Track", trackLabel(payload.track).c_str())) {
+                                        for (int t = 0; t < static_cast<int>(tracks.size()); ++t)
+                                            if (ImGui::Selectable(trackLabel(t).c_str(), t == payload.track)) payload.track = t;
+                                        if (tracks.empty()) ImGui::TextDisabled("%s", Get("events.music.no_tracks").c_str());
+                                        ImGui::EndCombo();
+                                    }
+                                    Tooltip(Get("editor.tooltip.dispatches.music_track").c_str());
+                                }
+
+                                if (payload.action == PayloadDispatchMusic::SET_VOLUME) {
+                                    Property(Get("events.music.volume").c_str());
+                                    if (InputOrDrag("##Volume", &payload.volume, draggable, 0.01f))
+                                        payload.volume = std::max(0.0f, payload.volume);
+                                }
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
                                 Property(Get("events.text").c_str());

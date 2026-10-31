@@ -1058,6 +1058,111 @@ namespace {
         EndSettingsTable();
     }
 
+    // The level's music list: each track a sound field with move up / down /
+    // remove buttons, then how the list plays.
+    void DrawMusicSettings(Level &level) {
+        MusicSettings &music = level.worldSettings.music;
+
+        if (BeginSettingsTable("##Music")) {
+            int moveUp = -1, moveDown = -1, remove = -1;
+
+            for (int i = 0; i < static_cast<int>(music.tracks.size()); ++i) {
+                ImGui::PushID(i);
+
+                // Label column: the number and the list buttons; value column: the sound.
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::AlignTextToFramePadding();
+                ImGui::Text("%d", i + 1);
+
+                ImGui::SameLine();
+                ImGui::BeginDisabled(i == 0);
+                if (ImGui::ArrowButton("##Up", ImGuiDir_Up)) moveUp = i;
+                ImGui::EndDisabled();
+                HoverTooltip(Get("settings.music.tooltip.move_up").c_str());
+
+                ImGui::SameLine();
+                ImGui::BeginDisabled(i + 1 == static_cast<int>(music.tracks.size()));
+                if (ImGui::ArrowButton("##Down", ImGuiDir_Down)) moveDown = i;
+                ImGui::EndDisabled();
+                HoverTooltip(Get("settings.music.tooltip.move_down").c_str());
+
+                ImGui::SameLine();
+                PushDangerStyle();
+                if (ImGui::Button("x", ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = i;
+                PopDangerStyle();
+                HoverTooltip(Get("settings.music.tooltip.remove").c_str());
+
+                ImGui::TableNextColumn();
+                DrawAssetField("", music.tracks[i], AssetKind::Sound);
+
+                ImGui::PopID();
+            }
+
+            if (moveUp > 0) std::swap(music.tracks[moveUp], music.tracks[moveUp - 1]);
+            if (moveDown >= 0) std::swap(music.tracks[moveDown], music.tracks[moveDown + 1]);
+            if (remove >= 0) music.tracks.erase(music.tracks.begin() + remove);
+
+            SettingRow("");
+            if (ImGui::Button(Get("settings.music.add_track").c_str(), ImVec2(-FLT_MIN, 0.0f))) music.tracks.emplace_back();
+            HoverTooltip(Get("settings.music.tooltip.add_track").c_str());
+
+            {
+                const std::string tooltip = Get("settings.music.tooltip.play_on_start");
+                SettingRow(Get("settings.music.play_on_start"), tooltip.c_str());
+                ImGui::Checkbox("##PlayOnStart", &music.playOnStart);
+                HoverTooltip(tooltip.c_str());
+            }
+
+            {
+                static constexpr std::pair<MusicSettings::Mode, const char *> modes[] = {
+                    {MusicSettings::LOOP, "settings.music.mode.loop"},
+                    {MusicSettings::PING_PONG, "settings.music.mode.ping_pong"},
+                    {MusicSettings::SHUFFLE, "settings.music.mode.shuffle"},
+                    {MusicSettings::ONCE, "settings.music.mode.once"}
+                };
+
+                const std::string tooltip = Get("settings.music.tooltip.mode");
+                SettingRow(Get("settings.music.mode"), tooltip.c_str());
+
+                const char *preview = modes[0].second;
+                for (const auto &[mode, key]: modes) if (mode == music.mode) preview = key;
+
+                if (ImGui::BeginCombo("##MusicMode", Get(preview).c_str())) {
+                    for (const auto &[mode, key]: modes)
+                        if (ImGui::Selectable(Get(key).c_str(), mode == music.mode)) music.mode = mode;
+                    ImGui::EndCombo();
+                }
+                HoverTooltip(tooltip.c_str());
+            }
+
+            {
+                const std::string tooltip = Get("settings.music.tooltip.volume");
+                SettingRow(Get("settings.music.volume"), tooltip.c_str());
+                ImGui::SliderFloat("##MusicVolume", &music.volume, 0.0f, 2.0f, "%.2f");
+                HoverTooltip(tooltip.c_str());
+            }
+
+            {
+                const std::string tooltip = Get("settings.music.tooltip.fade");
+                SettingRow(Get("settings.music.fade"), tooltip.c_str());
+                if (ImGui::DragFloat("##MusicFade", &music.fade, 0.05f, 0.0f, 30.0f, "%.2f s"))
+                    music.fade = std::max(0.0f, music.fade);
+                HoverTooltip(tooltip.c_str());
+            }
+
+            {
+                const std::string tooltip = Get("settings.music.tooltip.gap");
+                SettingRow(Get("settings.music.gap"), tooltip.c_str());
+                if (ImGui::DragFloat("##MusicGap", &music.gap, 0.05f, 0.0f, 60.0f, "%.2f s"))
+                    music.gap = std::max(0.0f, music.gap);
+                HoverTooltip(tooltip.c_str());
+            }
+
+            EndSettingsTable();
+        }
+    }
+
     void DrawAudioSettings(Level &level) {
         ListenerSettings &settings = level.listenerSettings;
 
@@ -1262,6 +1367,7 @@ namespace {
         if (SettingsSection("settings.physics.title", "Physics")) DrawPhysicsSettings(level);
         if (SettingsSection("settings.cursor.title", "Cursor")) DrawCursorSettings(level);
         if (SettingsSection("settings.audio.title", "Audio")) DrawAudioSettings(level);
+        if (SettingsSection("settings.music.title", "Music", true, "settings.music.tooltip")) DrawMusicSettings(level);
         if (SettingsSection("settings.rendering.title", "Rendering")) DrawRenderingSettings(level);
         if (SettingsSection("settings.rendering.sky.title", "Sky")) DrawSkySettings(level);
 
