@@ -528,7 +528,13 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
         for (ComponentUISprite& sprite : level.ui_sprites.components) {
-            if (!sprite.isActive || !sprite.ownerEnabled || sprite.color.w <= 0.0f) continue;
+            // The owner's UI Button state look (white and empty without one).
+            const Vector4 color = {
+                sprite.color.x * sprite.buttonTint.x, sprite.color.y * sprite.buttonTint.y,
+                sprite.color.z * sprite.buttonTint.z, sprite.color.w * sprite.buttonTint.w
+            };
+
+            if (!sprite.isActive || !sprite.ownerEnabled || color.w <= 0.0f) continue;
 
             const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
@@ -540,9 +546,9 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             DrawUIRectangle(
                 transform->resolvedPosition,
                 transform->resolvedSize,
-                {sprite.color.x * 255.0f, sprite.color.y * 255.0f, sprite.color.z * 255.0f, sprite.color.w * 255.0f},
+                {color.x * 255.0f, color.y * 255.0f, color.z * 255.0f, color.w * 255.0f},
                 transform->rotation,
-                sprite.texture
+                sprite.buttonTexture.empty() ? sprite.texture : sprite.buttonTexture
             );
         }
 

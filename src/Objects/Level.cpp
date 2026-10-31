@@ -83,6 +83,11 @@ namespace {
         transform.resolvedSize = {};
     }
 
+    void ResetCopiedRuntimeState(ComponentUIButton& button) {
+        button.hovered = false;
+        button.pressed = false;
+    }
+
     void ResetCopiedRuntimeState(ComponentFlipbook& flipbook) {
         flipbook.currentFrame = 0;
         flipbook.frameTime = 0.0f;
@@ -157,6 +162,7 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
     CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
     CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
+    CopyComponents(ui_buttons, copy.id, entity.id, entity.componentsMask, CMP_UI_BUTTON);
 
     // A copied flipbook still names the original's sprite (a UI Sprite on a
     // UI entity). Point it at the copy's sprite in the same position instead.
@@ -240,6 +246,7 @@ void Level::DestroyEntity(const ID entityID) {
     // UI components.
     ui_sprites.RemoveAll(entityID);
     ui_texts.RemoveAll(entityID);
+    ui_buttons.RemoveAll(entityID);
     ui_transforms.RemoveAll(entityID);
 
     std::erase_if(entities, [entityID](const Entity& entity) {
@@ -284,6 +291,7 @@ void Level::ApplyEntityEnabled(Entity& entity) {
     SetOwnerEnabled(flipbooks, entity.id, enabled);
     SetOwnerEnabled(ui_sprites, entity.id, enabled);
     SetOwnerEnabled(ui_texts, entity.id, enabled);
+    SetOwnerEnabled(ui_buttons, entity.id, enabled);
 
     // Through the storage, which moves them in or out of physics. That
     // reorders `components` but not the owner's instance list.

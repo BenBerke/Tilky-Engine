@@ -1531,6 +1531,28 @@ struct ScriptUISprite {
 };
 
 // ---------------------------------------------------------
+// UI Button
+// ---------------------------------------------------------
+
+// Its properties are bound in LuaComponentBindings.cpp, which also puts a
+// changed look on the sprite straight away (UIButtonSystem::ApplyLook).
+struct ScriptUIButton {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's UIButtons this is (only the first one works).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    [[nodiscard]] ComponentUIButton* GetComponent() const {
+        if (level == nullptr) return nullptr;
+        return level->ui_buttons.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
+    }
+};
+
+// ---------------------------------------------------------
 // UI Text
 // ---------------------------------------------------------
 
@@ -1868,6 +1890,10 @@ struct ScriptEntity {
         return level != nullptr && level->ui_texts.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasUIButton() const {
+        return level != nullptr && level->ui_buttons.Has(ownerID);
+    }
+
     [[nodiscard]] ScriptTransform GetTransform() const {
         return {level, ownerID};
     }
@@ -1962,6 +1988,11 @@ struct ScriptEntity {
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUIText GetUIText() const {
         return {level, ownerID, FirstInstance(&Level::ui_texts)};
+    }
+
+    // The first one, the one that works; GetComponents lists them all.
+    [[nodiscard]] ScriptUIButton GetUIButton() const {
+        return {level, ownerID, FirstInstance(&Level::ui_buttons)};
     }
 };
 

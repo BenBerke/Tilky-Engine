@@ -13,7 +13,7 @@ There are two kinds of entity:
 | Kind | Starts with | Used for |
 |---|---|---|
 | World entity | a [Transform](Transform.md) | Anything that exists in the 3D level. |
-| UI entity | a [UI Transform](UITransform.md) | HUD elements drawn on top of the screen: [Image](UISprite.md) and [Text](UIText.md). |
+| UI entity | a [UI Transform](UITransform.md) | HUD elements drawn on top of the screen: [Image](UISprite.md), [Text](UIText.md) and [Button](UIButton.md). |
 
 UI entities are listed separately in the Hierarchy. They have no Transform, so they are never
 "inside" a sector, never collide and `entity:GetSector()` returns `nil` for them.
@@ -90,6 +90,7 @@ except Transform and UI Transform). The property returns the **first** one, and
 | `hasUITransform` | `uiTransform` | [UI Transform](UITransform.md) |
 | `hasUISprite` | `uiSprite` | [UI Sprite](UISprite.md) |
 | `hasUIText` | `uiText` | [UI Text](UIText.md) |
+| `hasUIButton` | `uiButton` | [UI Button](UIButton.md) |
 
 Scripts can add and remove them with `AddComponent` and `RemoveComponent`. See
 [Adding and removing components](#adding-and-removing-components).
@@ -207,7 +208,7 @@ its values as you type `Component.`:
 
 | World entities | UI entities |
 |---|---|
-| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText`, `Component.Flipbook` |
+| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody` | `Component.UITransform`, `Component.UISprite`, `Component.UIText`, `Component.UIButton`, `Component.Flipbook` |
 
 `Component.Flipbook` is the only one that goes on both: on a UI entity it animates a UI Sprite.
 

@@ -143,6 +143,10 @@ namespace LevelManager {
         for (ComponentUISprite& uiSprite : level.ui_sprites.components)
             if (uiSprite.texture == oldReference) uiSprite.texture = newReference;
 
+        for (ComponentUIButton& button : level.ui_buttons.components)
+            for (std::string* texture : {&button.normalTexture, &button.hoverTexture, &button.pressedTexture, &button.disabledTexture})
+                if (*texture == oldReference) *texture = newReference;
+
         if (level.worldSettings.messageStyle.backgroundTexture == oldReference)
             level.worldSettings.messageStyle.backgroundTexture = newReference;
 

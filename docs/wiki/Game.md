@@ -25,6 +25,8 @@ end
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])`](#raycast) | table or `nil` | What a line hits first. |
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
+| [`GetVariable(name)`](#getvariable-and-setvariable) | number | The value of an event variable. |
+| [`SetVariable(name, value)`](#getvariable-and-setvariable) | | Changes an event variable. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
 | [`RestartLevel()`](#restartlevel) | | Loads the current level again at the end of this frame. |
 | [`Pause()`](#pause) | | Stops game time and frees the cursor, for a pause menu. |
@@ -368,6 +370,53 @@ function TakeDamage(amount)
     health = health - amount
     if health <= 0 then
         Game.Signal("boss_dead", entity)
+    end
+end
+```
+
+---
+
+## GetVariable and SetVariable
+
+```lua
+Game.GetVariable(name)          -- number
+Game.SetVariable(name, value)
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `name` | string | The variable's name, exactly as in World Settings or Project Settings. |
+| `value` | number | The new value. |
+
+These read and write **event variables**, the same numbers that event conditions check and
+**Change Variable** dispatches change. A name can be one of the current level's variables (World
+Settings) or a global one (Project Settings). A level variable and a global can't share a name,
+so the name alone is enough.
+
+`SetVariable` does what a Change Variable dispatch with **Set** does. For **Add** or **Subtract**,
+read the value first:
+
+```lua
+Game.SetVariable("keysFound", Game.GetVariable("keysFound") + 1)
+```
+
+When values reset:
+
+- **Level variables** go back to their World Settings values every time a level loads, including
+  `Game.RestartLevel()`.
+- **Global variables** keep their value across `Game.LoadLevel`, and go back to their Project
+  Settings values when play starts again. To keep a value after the game closes, save it with
+  [Saving](SavingAndLoading.md).
+
+Both functions raise an error if no variable has that name. They never create one, so add the
+variable in World Settings or Project Settings first.
+
+```lua
+-- Scripts/KeyPickup.lua: event conditions can check "keysFound" to open the exit.
+function OnTriggerEnter(other)
+    if other:HasTag("Player") then
+        Game.SetVariable("keysFound", Game.GetVariable("keysFound") + 1)
+        entity:Destroy()
     end
 end
 ```

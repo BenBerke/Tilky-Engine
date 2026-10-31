@@ -4,6 +4,7 @@
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Runtime/Scripting/IScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 
 #include <string>
 #include <vector>
@@ -65,6 +66,10 @@ public:
 
     // Same, with an Entity as the argument (nil if `argumentEntityID` doesn't exist).
     bool DispatchEntityEvent(Level& level, ID entityID, const std::string& functionName, ID argumentEntityID);
+
+    // Calls OnClick / OnRelease / OnHoverEnter / OnHoverExit (no arguments)
+    // on every enabled script of the UI Button's entity. From UIButtonSystem.
+    void DispatchUIButtonCallback(Level& level, ID entityID, EventSystem::UIButtonEvent kind);
 
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);

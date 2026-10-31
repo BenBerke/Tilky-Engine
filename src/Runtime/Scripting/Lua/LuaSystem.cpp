@@ -173,6 +173,12 @@ namespace {
         sol::protected_function onTriggerExitFunction;
         sol::protected_function onSectorChangeFunction;
 
+        // Scripts on a UI entity with a UI Button.
+        sol::protected_function onClickFunction;
+        sol::protected_function onReleaseFunction;
+        sol::protected_function onHoverEnterFunction;
+        sol::protected_function onHoverExitFunction;
+
         bool started = false;   // Start() has run at least once
         bool enabled = false;   // last computed effective-enabled state (script.enabled && owner.enabled)
         bool destroyed = false; // OnDestroy has already fired - guards against double teardown
@@ -444,6 +450,16 @@ namespace {
                 "Called when this entity and another collider stop overlapping, where one of them is a trigger."}},
             {&ScriptInstance::onSectorChangeFunction, {"OnSectorChange", CallbackOwner::Entity, {Param("sector", "Sector?")},
                 "Called when this entity moves into a different sector. sector is nil when it is outside every sector."}},
+
+            {&ScriptInstance::onClickFunction, {"OnClick", CallbackOwner::Entity, {},
+                "UI Button: called when the left mouse button goes down on this entity's button. "
+                "Only while the cursor is unlocked and visible, and the button is interactable."}},
+            {&ScriptInstance::onReleaseFunction, {"OnRelease", CallbackOwner::Entity, {},
+                "UI Button: called when the left mouse button is let go after a click on this button, wherever the cursor is by then."}},
+            {&ScriptInstance::onHoverEnterFunction, {"OnHoverEnter", CallbackOwner::Entity, {},
+                "UI Button: called when the cursor comes onto this button (the topmost one under it)."}},
+            {&ScriptInstance::onHoverExitFunction, {"OnHoverExit", CallbackOwner::Entity, {},
+                "UI Button: called when the cursor leaves this button, or another button comes on top of it there."}},
         };
 
         return callbacks;
@@ -1905,6 +1921,30 @@ bool LuaScriptSystem::DispatchEntityEvent(Level& level, const ID entityID, const
         : sol::make_object(lua, ScriptEntity{&level, argumentEntityID});
 
     return DispatchToEntityScripts(entityID, functionName, argument);
+}
+
+void LuaScriptSystem::DispatchUIButtonCallback(Level&, const ID entityID, const EventSystem::UIButtonEvent kind) {
+    using Callback = sol::protected_function ScriptInstance::*;
+
+    Callback callback = nullptr;
+    const char* name = "";
+    switch (kind) {
+        case EventSystem::UIButtonEvent::CLICK: callback = &ScriptInstance::onClickFunction; name = "OnClick"; break;
+        case EventSystem::UIButtonEvent::RELEASE: callback = &ScriptInstance::onReleaseFunction; name = "OnRelease"; break;
+        case EventSystem::UIButtonEvent::HOVER_ENTER: callback = &ScriptInstance::onHoverEnterFunction; name = "OnHoverEnter"; break;
+        case EventSystem::UIButtonEvent::HOVER_EXIT: callback = &ScriptInstance::onHoverExitFunction; name = "OnHoverExit"; break;
+    }
+
+    // By index: a handler can attach a script, which can grow the vector.
+    for (size_t i = 0; i < scriptInstances.size(); ++i) {
+        const ScriptInstance& candidate = scriptInstances[i];
+        if (candidate.ownerKind != ScriptOwnerKind::Entity || candidate.ownerID != entityID) continue;
+        if (candidate.destroyed || !candidate.enabled || !(candidate.*callback).valid()) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const ScriptInstance instance = candidate;
+        CallLifecycle(instance, instance.*callback, name);
+    }
 }
 
 void LuaScriptSystem::Stop(Level&) {

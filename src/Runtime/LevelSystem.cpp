@@ -30,6 +30,7 @@
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
+#include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
 namespace {
@@ -253,7 +254,12 @@ namespace LevelSystem {
 
                 RequestLevelLoad(levelName);
             },
+            .pause = [] { PauseGame(); },
+            .resume = [](const Level& lvl) { ResumeGame(lvl); },
+            .quit = [] { RequestQuit(); },
         });
+
+        UIButtonSystem::Start(level);
 
         // After the scripts' start callbacks.
         EventSystem::FireLevelStart(level);
@@ -270,6 +276,14 @@ namespace LevelSystem {
         // Picks up enabled flags written directly (the runtime editor's
         // checkbox, prefab sync) before any system reads ownerEnabled.
         level.SyncEntityEnabledStates();
+
+        {
+            // Before scripts, so their Update sees this frame's hover and press.
+            ZoneScopedN("UI Buttons");
+            UIButtonSystem::Update(level, [&level](const ID entityID, const EventSystem::UIButtonEvent kind) {
+                scriptingSystem.DispatchUIButtonCallback(level, entityID, kind);
+            });
+        }
 
         {
             ZoneScopedN("Scripts");
@@ -544,5 +558,18 @@ namespace LevelSystem {
 
     bool QuitRequested() {
         return quitRequested;
+    }
+
+    void PauseGame() {
+        GameTime::SetTimeScale(0.0f);
+        InputManager::SetCursorLockMode(InputManager::CursorLockMode::None);
+        InputManager::SetCursorVisible(true);
+    }
+
+    void ResumeGame(const Level& level) {
+        GameTime::SetTimeScale(1.0f);
+        InputManager::SetCursorLockMode(level.worldSettings.lockCursorOnStart
+            ? InputManager::CursorLockMode::Locked : InputManager::CursorLockMode::None);
+        InputManager::SetCursorVisible(!level.worldSettings.hideCursorOnStart);
     }
 }

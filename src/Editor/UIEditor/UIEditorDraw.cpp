@@ -1,6 +1,7 @@
 //
 // Created by berke on 5/17/2026.
 //
+#include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -599,15 +600,27 @@ namespace MapEditorInternal {
             const auto transformIt = transformsByOwner.find(sprite.ownerID);
             if (transformIt == transformsByOwner.end()) continue;
 
-            SDL_Texture *texture = sprite.texture.empty() ? nullptr : GetEditorTexture(sprite.texture);
-            if (!sprite.texture.empty() && texture == nullptr) continue;
+            // The first sprite of an entity with a UI Button shows the
+            // button's look as the game starts it (normal, or disabled).
+            Vector4 color = sprite.color;
+            const std::string *textureName = &sprite.texture;
+            const ComponentUIButton *button = level.ui_buttons.Get(sprite.ownerID);
+            if (button != nullptr && level.ui_sprites.Get(sprite.ownerID) == &sprite) {
+                const Vector4 &stateColor = UIButtonSystem::StateColor(*button);
+                color = {color.x * stateColor.x, color.y * stateColor.y, color.z * stateColor.z, color.w * stateColor.w};
+                if (const std::string &stateTexture = UIButtonSystem::StateTexture(*button); !stateTexture.empty())
+                    textureName = &stateTexture;
+            }
+
+            SDL_Texture *texture = textureName->empty() ? nullptr : GetEditorTexture(*textureName);
+            if (!textureName->empty() && texture == nullptr) continue;
 
             const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
 
             // Inactive sprites aren't drawn in game; show them faded so they can still be found.
             const SDL_FColor tint = {
-                std::clamp(sprite.color.x, 0.0f, 1.0f), std::clamp(sprite.color.y, 0.0f, 1.0f),
-                std::clamp(sprite.color.z, 0.0f, 1.0f), std::clamp(sprite.color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f)
+                std::clamp(color.x, 0.0f, 1.0f), std::clamp(color.y, 0.0f, 1.0f),
+                std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f)
             };
             DrawUISpriteQuad(quad, texture, tint);
         }

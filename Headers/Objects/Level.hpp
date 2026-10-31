@@ -240,6 +240,7 @@ struct Level {
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;
     ComponentStorage<ComponentUIText> ui_texts;
+    ComponentStorage<ComponentUIButton> ui_buttons;
 
 #ifndef TILKY_STANDALONE
     Vector2 editorCamPos = {0.0f, 0.0f};

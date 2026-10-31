@@ -77,6 +77,9 @@ namespace ImGuiDrawFunctions {
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable, const char *windowId = nullptr);
     // The level's own Events and Dispatches sections (World Settings).
     void DrawLevelEventSections(Level &level, bool draggable);
+    // An entity's Events and Dispatches sections, each list one prefab
+    // field. Call between BeginPrefabFields(entity, -1, 0) and EndPrefabFields.
+    void DrawEntityEventSections(Entity &entity, bool draggable);
     // The entity window: every component is a foldout section in it.
     bool DrawEntityEditor(Entity &entity, EntityInspectorState &state, bool *open, bool draggable);
 

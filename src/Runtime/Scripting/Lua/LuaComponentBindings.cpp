@@ -8,6 +8,7 @@
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
+#include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaRayHit.hpp"
 
@@ -160,6 +161,21 @@ namespace {
             Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\"). \"\" = a solid rectangle of color."),
             Prop("color", "Vector4", false, "RGBA, each 0..1, multiplied with the texture. Alpha below 1 makes the image see-through."),
             Prop("isActive", "boolean", false, "false = not drawn."),
+        }));
+
+        RegisterType(Type("UIButton", "Makes a UI element clickable. Each state tints the Entity's first UISprite and can swap its texture.", {
+            Prop("isValid", "boolean", true),
+            Prop("interactable", "boolean", false, "false = no events or callbacks, drawn with the disabled look. It still blocks clicks to buttons under it."),
+            Prop("isHovered", "boolean", true, "The cursor is over it, and it is the topmost button there."),
+            Prop("isPressed", "boolean", true, "Clicked, and the left mouse button hasn't been let go yet."),
+            Prop("normalColor", "Vector4", false, "RGBA, each 0..1, multiplied with the UISprite's color when nothing is happening."),
+            Prop("hoverColor", "Vector4", false, "Multiplied with the UISprite's color while the cursor is over it."),
+            Prop("pressedColor", "Vector4", false, "Multiplied with the UISprite's color while it is held down."),
+            Prop("disabledColor", "Vector4", false, "Multiplied with the UISprite's color while interactable is false."),
+            Prop("normalTexture", "string", false, "Drawn instead of the UISprite's texture in that state. \"\" = the sprite's own texture."),
+            Prop("hoverTexture", "string", false),
+            Prop("pressedTexture", "string", false),
+            Prop("disabledTexture", "string", false),
         }));
 
         RegisterType(Type("UIText", "A UI element's text label.", {
@@ -620,6 +636,77 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
             &ScriptUISprite::SetColor
         )
     );
+
+    {
+        // A changed setting shows on the sprite straight away.
+        const auto boolField = [](bool ComponentUIButton::* field, const bool fallback) {
+            return sol::property(
+                [field, fallback](const ScriptUIButton& self) {
+                    const ComponentUIButton* button = self.GetComponent();
+                    return button != nullptr ? button->*field : fallback;
+                },
+                [field](const ScriptUIButton& self, const bool value) {
+                    ComponentUIButton* button = self.GetComponent();
+                    if (button == nullptr) return;
+                    button->*field = value;
+                    UIButtonSystem::ApplyLook(*self.level, *button);
+                });
+        };
+
+        const auto colorField = [](Vector4 ComponentUIButton::* field) {
+            return sol::property(
+                [field](const ScriptUIButton& self) {
+                    const ComponentUIButton* button = self.GetComponent();
+                    return button != nullptr ? button->*field : Vector4{1.0f, 1.0f, 1.0f, 1.0f};
+                },
+                [field](const ScriptUIButton& self, const Vector4& value) {
+                    ComponentUIButton* button = self.GetComponent();
+                    if (button == nullptr) return;
+                    button->*field = value;
+                    UIButtonSystem::ApplyLook(*self.level, *button);
+                });
+        };
+
+        const auto textureField = [](std::string ComponentUIButton::* field) {
+            return sol::property(
+                [field](const ScriptUIButton& self) {
+                    const ComponentUIButton* button = self.GetComponent();
+                    return button != nullptr ? button->*field : std::string();
+                },
+                [field](const ScriptUIButton& self, const std::string& value) {
+                    ComponentUIButton* button = self.GetComponent();
+                    if (button == nullptr) return;
+                    button->*field = value;
+                    UIButtonSystem::ApplyLook(*self.level, *button);
+                });
+        };
+
+        const auto readOnly = [](bool ComponentUIButton::* field) {
+            return sol::readonly_property([field](const ScriptUIButton& self) {
+                const ComponentUIButton* button = self.GetComponent();
+                return button != nullptr && button->*field;
+            });
+        };
+
+        lua.new_usertype<ScriptUIButton>(
+            "UIButton",
+
+            "isValid", sol::property(&ScriptUIButton::IsValid),
+            "interactable", boolField(&ComponentUIButton::interactable, false),
+            "isHovered", readOnly(&ComponentUIButton::hovered),
+            "isPressed", readOnly(&ComponentUIButton::pressed),
+
+            "normalColor", colorField(&ComponentUIButton::normalColor),
+            "hoverColor", colorField(&ComponentUIButton::hoverColor),
+            "pressedColor", colorField(&ComponentUIButton::pressedColor),
+            "disabledColor", colorField(&ComponentUIButton::disabledColor),
+
+            "normalTexture", textureField(&ComponentUIButton::normalTexture),
+            "hoverTexture", textureField(&ComponentUIButton::hoverTexture),
+            "pressedTexture", textureField(&ComponentUIButton::pressedTexture),
+            "disabledTexture", textureField(&ComponentUIButton::disabledTexture)
+        );
+    }
 
     lua.new_usertype<ScriptUIText>(
         "UIText",

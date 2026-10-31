@@ -375,6 +375,9 @@ bool OpenGL::BuildTextureAtlasFromLevel() {
 
         for (const std::string& fileName : CollectReferencedTextureFileNames(level)) addIfMissing(fileName);
         for (const ComponentUISprite& uiSprite : level.ui_sprites.components) addIfMissing(uiSprite.texture);
+        for (const ComponentUIButton& button : level.ui_buttons.components)
+            for (const std::string* texture : {&button.normalTexture, &button.hoverTexture, &button.pressedTexture, &button.disabledTexture})
+                addIfMissing(*texture);
         addIfMissing(level.worldSettings.messageStyle.backgroundTexture);
     }
 

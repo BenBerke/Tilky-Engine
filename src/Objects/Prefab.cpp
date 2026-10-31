@@ -44,6 +44,7 @@ namespace {
     TILKY_PREFAB_TRAITS(ComponentUITransform, CMP_UI_TRANSFORM, ui_transforms, "uiTransforms")
     TILKY_PREFAB_TRAITS(ComponentUISprite, CMP_UI_SPRITE, ui_sprites, "uiSprites")
     TILKY_PREFAB_TRAITS(ComponentUIText, CMP_UI_TEXT, ui_texts, "uiTexts")
+    TILKY_PREFAB_TRAITS(ComponentUIButton, CMP_UI_BUTTON, ui_buttons, "uiButtons")
 
 #undef TILKY_PREFAB_TRAITS
 

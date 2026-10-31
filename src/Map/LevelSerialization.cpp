@@ -1043,6 +1043,9 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             j["levelName"] = payload.levelName;
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
+            j["text"] = payload.text;
+
         return j;
     }
 
@@ -1226,6 +1229,9 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             ReadOptional(j, "levelName", payload.levelName);
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
+            ReadOptional(j, "text", payload.text);
     }
 
     template <typename Variant>
@@ -2326,6 +2332,40 @@ namespace LevelSerialization {
         return true;
     }
 
+    json ComponentFieldsToJson(const ComponentUIButton& c) {
+        const auto color = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
+        return {
+            {"interactable", c.interactable},
+            {"normalColor", color(c.normalColor)},
+            {"hoverColor", color(c.hoverColor)},
+            {"pressedColor", color(c.pressedColor)},
+            {"disabledColor", color(c.disabledColor)},
+            {"normalTexture", c.normalTexture},
+            {"hoverTexture", c.hoverTexture},
+            {"pressedTexture", c.pressedTexture},
+            {"disabledTexture", c.disabledTexture}
+        };
+    }
+
+    bool ComponentFieldsFromJson(const json& j, ComponentUIButton& c) {
+        const auto readColor = [&](const char* key, Vector4& out) {
+            if (!j.contains(key) || !j[key].is_array() || j[key].size() != 4) return;
+            const json& v = j[key];
+            out = {v[0].get<float>(), v[1].get<float>(), v[2].get<float>(), v[3].get<float>()};
+        };
+
+        c.interactable = j.value("interactable", true);
+        readColor("normalColor", c.normalColor);
+        readColor("hoverColor", c.hoverColor);
+        readColor("pressedColor", c.pressedColor);
+        readColor("disabledColor", c.disabledColor);
+        c.normalTexture = j.value("normalTexture", "");
+        c.hoverTexture = j.value("hoverTexture", "");
+        c.pressedTexture = j.value("pressedTexture", "");
+        c.disabledTexture = j.value("disabledTexture", "");
+        return true;
+    }
+
     json ComponentFieldsToJson(const ComponentPlayerController& c) {
         return {
             {"isActive", c.isActive},
@@ -2550,6 +2590,7 @@ namespace {
         LoadComponentArray<ComponentUITransform>(componentsJson, "uiTransforms", level, level.ui_transforms, CMP_UI_TRANSFORM);
         LoadComponentArray<ComponentUISprite>(componentsJson, "uiSprites", level, level.ui_sprites, CMP_UI_SPRITE);
         LoadComponentArray<ComponentUIText>(componentsJson, "uiTexts", level, level.ui_texts, CMP_UI_TEXT);
+        LoadComponentArray<ComponentUIButton>(componentsJson, "uiButtons", level, level.ui_buttons, CMP_UI_BUTTON);
         LoadComponentArray<ComponentPlayerController>(componentsJson, "playerControllers", level, level.playerControllers, CMP_PLAYER_CONTROLLER);
         LoadComponentArray<ComponentCamera>(componentsJson, "cameras", level, level.cameras, CMP_CAMERA);
         LoadComponentArray<ComponentCollider>(componentsJson, "colliders", level, level.colliders, CMP_COLLIDER);
@@ -2606,6 +2647,7 @@ namespace {
         SaveComponentArray(componentsJson, "uiTransforms", entities, level.ui_transforms);
         SaveComponentArray(componentsJson, "uiSprites", entities, level.ui_sprites);
         SaveComponentArray(componentsJson, "uiTexts", entities, level.ui_texts);
+        SaveComponentArray(componentsJson, "uiButtons", entities, level.ui_buttons);
         SaveComponentArray(componentsJson, "playerControllers", entities, level.playerControllers);
         SaveComponentArray(componentsJson, "cameras", entities, level.cameras);
         SaveComponentArray(componentsJson, "colliders", entities, level.colliders);

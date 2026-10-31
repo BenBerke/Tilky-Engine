@@ -2477,6 +2477,7 @@ namespace {
     void SaveLevelFromEditor() {
         if (Save(Editor::currentMap)) {
             hasUnsavedChanges = false;
+            ClearUIUnsavedChanges();
             ShowNotification(Get("levels.notification.saved").c_str());
         } else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
     }
@@ -2484,6 +2485,7 @@ namespace {
     void SaveAndPlayFromEditor() {
         if (Save(Editor::currentMap)) {
             hasUnsavedChanges = false;
+            ClearUIUnsavedChanges();
             SDL_Log("%s", Editor::currentMap.c_str());
             CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
             quit = true;
@@ -2515,10 +2517,12 @@ namespace {
     }
 
     void OpenRuntimeEditorFromEditor() {
-        if (!rememberCameraPosition) MoveRuntimeCameraToMouse();
+        // In the UI Editor the mouse isn't over the map.
+        if (!rememberCameraPosition && currentState == STATE_MAP) MoveRuntimeCameraToMouse();
 
         if (Save(Editor::currentMap)) {
             hasUnsavedChanges = false;
+            ClearUIUnsavedChanges();
             SDL_Log("%s", Editor::currentMap.c_str());
             CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
             switchToRuntime = true;
@@ -2827,8 +2831,20 @@ namespace {
 
         ImGui::SameLine();
 
-        if (ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.switch_to_ui"), Get("editor.tooltip.switch_to_ui")))
-            currentState = STATE_UI;
+        // Lit in the UI Editor, where it goes back to the map editor.
+        const bool inUIEditor = currentState == STATE_UI;
+        if (inUIEditor) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        const bool uiPressed = inUIEditor
+            ? ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.ui.back_to_map_editor"), Get("editor.tooltip.back_to_map_editor"))
+            : ToolbarButton("edit_ui", ICON_FA_DISPLAY, "UI", Get("editor.switch_to_ui"), Get("editor.tooltip.switch_to_ui"));
+        if (inUIEditor) ImGui::PopStyleColor();
+        if (uiPressed) currentState = inUIEditor ? STATE_MAP : STATE_UI;
+
+        // The paint selection brush is a map editor tool.
+        if (inUIEditor) {
+            ImGui::End();
+            return;
+        }
 
         ImGui::SameLine();
 
@@ -2852,6 +2868,10 @@ namespace {
 namespace MapEditorInternal {
     void OpenRuntimeEditor() {
         OpenRuntimeEditorFromEditor();
+    }
+
+    void DrawEditorToolbar() {
+        DrawToolbar();
     }
 
     void HandleEditorShortcuts(const bool keyboardBlockedByImgui) {

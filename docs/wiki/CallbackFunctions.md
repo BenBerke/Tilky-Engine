@@ -19,6 +19,10 @@ them for public fields.
 | [`OnTrigger(other)`](#ontriggerenter--ontrigger--ontriggerexit) | ✓ | | Every frame while they overlap |
 | [`OnTriggerExit(other)`](#ontriggerenter--ontrigger--ontriggerexit) | ✓ | | They stop overlapping |
 | [`OnSectorChange(sector)`](#onsectorchange) | ✓ | | This entity moved into a different sector |
+| [`OnClick()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The left mouse button went down on this entity's [UI Button](UIButton.md) |
+| [`OnRelease()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The left mouse button was let go after a click on it |
+| [`OnHoverEnter()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor came onto the button |
+| [`OnHoverExit()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor left the button |
 | [`OnEntityEnter(entity)`](#onentityenter--onentityexit) | | ✓ | An entity entered this sector |
 | [`OnEntityExit(entity)`](#onentityenter--onentityexit) | | ✓ | An entity left this sector |
 | [Flipbook frame events](#flipbook-frame-events) | ✓ | | A [Flipbook](Flipbook.md) reached a frame with an event function |
@@ -341,6 +345,41 @@ end
 
 ---
 
+## OnClick / OnRelease / OnHoverEnter / OnHoverExit
+
+```lua
+function OnClick() end
+function OnRelease() end
+function OnHoverEnter() end
+function OnHoverExit() end
+```
+
+Called on the scripts of a UI entity with a [UI Button](UIButton.md).
+
+- `OnClick` fires when the left mouse button goes down on the button. `OnRelease` fires when it
+  is let go after that, wherever the cursor is by then.
+- `OnHoverEnter` / `OnHoverExit` fire when the cursor comes onto or leaves the button. Only the
+  topmost button under the cursor counts as hovered.
+- Only while the cursor is unlocked and visible, and the button is **Interactable**. When the
+  cursor gets locked or hidden, or the button stops being interactable, its hover and press are
+  dropped without `OnHoverExit` or `OnRelease`.
+- They work while the game is paused (`GameTime.timeScale` 0).
+- They run before the button's own [events](UIButton.md#events) of the same kind.
+
+```lua
+-- Scripts/UI/MenuButton.lua (UI entity with a Button and a Text)
+public string levelName = "E1M1"
+
+function OnHoverEnter() entity.uiText.color = Vector4(1, 0.8, 0.2, 1) end
+function OnHoverExit() entity.uiText.color = Vector4(1, 1, 1, 1) end
+
+function OnClick()
+    Game.LoadLevel(levelName)
+end
+```
+
+---
+
 ## Flipbook frame events
 
 ```lua
@@ -369,6 +408,7 @@ See [Flipbook: Frame events](Flipbook.md#frame-events).
 
 | # | Step | Callbacks |
 |---|---|---|
+| 0 | UI Buttons | `OnHoverExit`, `OnHoverEnter`, `OnClick`, `OnRelease` (only while the cursor is free). |
 | 1 | Scripts | For each script in turn: `OnEnable`/`Start` or `OnDisable` if its active state changed, then `Update`. Then all `FixedUpdate` steps. |
 | 2 | Sector movement | Floor/ceiling moves and light fades advance. |
 | 3 | Flipbooks | Every [Flipbook](Flipbook.md) advances and updates its sprite, then frame events fire. |

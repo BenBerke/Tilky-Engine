@@ -37,6 +37,7 @@ Components are what give an entity its behaviour. Add them in the entity inspect
 | [UI Transform](UITransform.md) | UI Transform | Where a UI element sits on screen. |
 | [UI Sprite](UISprite.md) | Image | A picture on the HUD. |
 | [UI Text](UIText.md) | Text | A text label on the HUD, in any `.ttf`/`.otf` font and size. |
+| [UI Button](UIButton.md) | Button | Makes a UI element clickable: events, callbacks and hover/pressed looks. |
 
 ## Built-in Lua tables
 

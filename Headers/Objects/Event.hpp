@@ -365,6 +365,57 @@ struct PayloadLuaSignal {
     TagFilter filter{TagType::ALL, {}};
 };
 
+// UI Button events: on a UI entity with a UI Button only (`needsUIButton`),
+// while the cursor is unlocked and visible. The instigator is the player
+// (the first enabled entity with the Player tag), so the filter checks its
+// tags. They work while the game is paused, and their dispatches' delays and
+// cooldowns run in real time. See UIButtonSystem.
+
+// The left mouse button went down on the button.
+struct PayloadUIButtonClick {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsUIButton = true;
+    transKey translationKey = "event.ui_button.click";
+    transKey saveName = "ui_button.click"; // level file name, never change
+    bool operator==(const PayloadUIButtonClick&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+// The left mouse button was let go after a click on the button, wherever the
+// cursor is by then.
+struct PayloadUIButtonRelease {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsUIButton = true;
+    transKey translationKey = "event.ui_button.release";
+    transKey saveName = "ui_button.release"; // level file name, never change
+    bool operator==(const PayloadUIButtonRelease&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+// The cursor came onto the button (the topmost one under it).
+struct PayloadUIButtonHoverEnter {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsUIButton = true;
+    transKey translationKey = "event.ui_button.hover_enter";
+    transKey saveName = "ui_button.hover_enter"; // level file name, never change
+    bool operator==(const PayloadUIButtonHoverEnter&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+// The cursor left the button, or another button came on top of it there.
+struct PayloadUIButtonHoverExit {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsUIButton = true;
+    transKey translationKey = "event.ui_button.hover_exit";
+    transKey saveName = "ui_button.hover_exit"; // level file name, never change
+    bool operator==(const PayloadUIButtonHoverExit&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
 // Every time the level loads, after the scripts' start callbacks.
 struct PayloadLevelStart {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LEVEL);
@@ -763,6 +814,43 @@ struct PayloadDispatchLoadLevel {
     std::string levelName;
 };
 
+// Like Game.Pause: game time stops (timeScale 0) and the cursor is unlocked
+// and shown.
+struct PayloadDispatchPause {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.pause";
+    transKey saveName = "dispatch.pause"; // level file name, never change
+    bool operator==(const PayloadDispatchPause&) const = default;
+};
+
+// Undoes a pause: timeScale back to 1 and the cursor back to the level's
+// World Settings (Lock Cursor / Hide Cursor on Level Start).
+struct PayloadDispatchResume {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.resume";
+    transKey saveName = "dispatch.resume"; // level file name, never change
+    bool operator==(const PayloadDispatchResume&) const = default;
+};
+
+// Like Game.Quit: at the end of the frame the exported game closes; in the
+// editor, Play stops.
+struct PayloadDispatchQuit {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.quit";
+    transKey saveName = "dispatch.quit"; // level file name, never change
+    bool operator==(const PayloadDispatchQuit&) const = default;
+};
+
+// Replaces the text of the owner's first UI Text. Does nothing without one.
+struct PayloadDispatchSetUIText {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.dispatch.entity.set_ui_text";
+    transKey saveName = "dispatch.entity.set_ui_text"; // level file name, never change
+    bool operator==(const PayloadDispatchSetUIText&) const = default;
+
+    std::string text;
+};
+
 // Changes an event variable (level or global, by the ID's scope bit). Acts on
 // the variable, not the owner: the owner only decides which events reach it.
 struct PayloadDispatchChangeVariable {
@@ -787,7 +875,8 @@ using EventPayload = std::variant<
     PayloadLineEntityCollide, PayloadLineEntityCross,
     PayloadSectorEntityEnter, PayloadSectorEntityExit, PayloadSectorEntityStay, PayloadSectorEntityGrounded, PayloadSectorMoveFinished,
     PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
-    PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadLevelStart>;
+    PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadLevelStart,
+    PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit>;
 
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,
@@ -798,7 +887,8 @@ using DispatchPayload = std::variant<
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
     PayloadDispatchEntitySetSprite,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
-    PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable>;
+    PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
+    PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText>;
 
 template <typename Payload>
 [[nodiscard]] constexpr EventOwnerMask GetOwners(const Payload& payload) noexcept {
@@ -809,6 +899,10 @@ template <typename Payload>
 [[nodiscard]] constexpr bool CanAttachTo(const Payload& payload, const EventOwnerKind kind) noexcept {
     return (GetOwners(payload) & OwnerBit(kind)) != 0;
 }
+
+// Payloads that only go on a UI entity with a UI Button (the UI Button events).
+template <typename Payload>
+inline constexpr bool NeedsUIButton = requires { requires Payload::needsUIButton; };
 
 template <typename Payload>
 [[nodiscard]] constexpr const char* GetTranslationKey(const Payload& payload) noexcept {

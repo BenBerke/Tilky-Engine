@@ -990,6 +990,13 @@ namespace MapEditorInternal {
     // Closes the fonts the UI canvas opened to preview UI Text. Before TTF_Quit().
     void DestroyUIPreviewFonts();
     void DrawUIEditorUI();
+
+    // The map editor's toolbar (Save, Save & Play, Runtime Editor, UI Editor,
+    // and in the map editor the paint select brush). The UI Editor draws it too.
+    void DrawEditorToolbar();
+
+    // Clears the UI Editor's unsaved-changes mark, after a save from either editor.
+    void ClearUIUnsavedChanges();
     // Ctrl+S and the key back to the Map Editor. Defined in UIEditorUI.cpp.
     void HandleUIEditorShortcuts(bool keyboardBlockedByImgui);
     // An asset of `kind` dragged from the Asset Browser and released over the

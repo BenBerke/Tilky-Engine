@@ -10,6 +10,8 @@
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
+#include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
+#include "Headers/Map/LevelManager.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -17,7 +19,7 @@
 
 namespace {
     constexpr const char* COMPONENT_TYPE =
-        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|UITransform|UISprite|UIText";
+        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|UITransform|UISprite|UIText|UIButton";
 
     // One row per component Lua can add or remove. Its value in the Lua
     // `Component` table is its ComponentType. Script is left out: a script
@@ -54,8 +56,22 @@ namespace {
     // Starts unticked: a script switches to it by setting isActive = true.
     void OnAdded(Level&, ComponentCamera& camera) { camera.isActive = false; }
 
+    // Shows the button's look on its sprite straight away.
+    void OnAdded(Level& level, ComponentUIButton& button) { UIButtonSystem::ApplyLook(level, button); }
+
     template<typename T>
     void OnRemoving(T&) {}
+
+    // The sprite goes back to its own look. Removing the first button makes
+    // the next one (if any) the working one; it shows from the next update.
+    void OnRemoving(ComponentUIButton& button) {
+        Level& level = LevelManager::CurrentLevel();
+        if (level.ui_buttons.Get(button.ownerID) != &button) return;
+        if (ComponentUISprite* sprite = level.ui_sprites.Get(button.ownerID)) {
+            sprite->buttonTint = {1.0f, 1.0f, 1.0f, 1.0f};
+            sprite->buttonTexture.clear();
+        }
+    }
 
     void OnRemoving(ComponentAudioSource& audio) { AudioSystem::DestroySource(audio); }
 
@@ -135,6 +151,7 @@ namespace {
         Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, LuaComponentPlacement::UI),
         Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, LuaComponentPlacement::UI),
         Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, LuaComponentPlacement::UI),
+        Kind<ComponentUIButton, ScriptUIButton, &ScriptEntity::GetUIButton>("UIButton", CMP_UI_BUTTON, LuaComponentPlacement::UI),
     };
 
     // Takes a sol::object, not an int: sol would turn nil (a misspelled
@@ -203,6 +220,8 @@ namespace {
                 {.name = "uiSprite", .luaType = "UISprite?", .readOnly = true, .doc = "nil if this Entity has no UISprite."},
                 {.name = "hasUIText", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UIText."},
                 {.name = "uiText", .luaType = "UIText?", .readOnly = true, .doc = "nil if this Entity has no UIText."},
+                {.name = "hasUIButton", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UIButton."},
+                {.name = "uiButton", .luaType = "UIButton?", .readOnly = true, .doc = "nil if this Entity has no UIButton."},
                 {.name = "hasScript", .luaType = "boolean", .readOnly = true, .doc = "True if any script is attached."},
                 {.name = "tagCount", .luaType = "integer", .readOnly = true, .doc = "How many tags this Entity has."},
             },
@@ -461,6 +480,20 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
                 if (!entity.HasUIText()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetUIText());
+            }
+        ),
+
+        "hasUIButton",
+        sol::property(&ScriptEntity::HasUIButton),
+
+        "uiButton",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+
+                if (!entity.HasUIButton()) return sol::nil;
+
+                return sol::make_object(luaState, entity.GetUIButton());
             }
         ),
 

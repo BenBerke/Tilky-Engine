@@ -23,7 +23,7 @@ X(ComponentFlipbook,         CMP_FLIPBOOK,          flipbooks,          "compone
 #define TILKY_UI_COMPONENTS(X) \
 X(ComponentUITransform,      CMP_UI_TRANSFORM,      ui_transforms,      "component.ui_transform") \
 X(ComponentUISprite,         CMP_UI_SPRITE,         ui_sprites,         "component.ui_sprite") \
-X(ComponentUIText,           CMP_UI_TEXT,           ui_texts,           "component.ui_text")
+X(ComponentUIText,           CMP_UI_TEXT,           ui_texts,           "component.ui_text") X(ComponentUIButton,         CMP_UI_BUTTON,         ui_buttons,         "component.ui_button")
 
 #define TILKY_COMPONENTS(X) \
 TILKY_NORMAL_COMPONENTS(X) \

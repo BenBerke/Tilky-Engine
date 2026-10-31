@@ -85,16 +85,6 @@ namespace {
         return ImGui::Button(label, ImVec2(ImGui::GetContentRegionAvail().x, 0.0f));
     }
 
-    void PushAccentStyle() {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.36f, 0.62f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.46f, 0.78f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.13f, 0.28f, 0.52f, 1.00f));
-    }
-
-    void PopAccentStyle() {
-        ImGui::PopStyleColor(3);
-    }
-
     // Local "dirty" flag, scoped to the UI Editor. MapEditorUI.cpp's own
     // hasUnsavedChanges is anonymous-namespace-local to that file (and it is
     // reference material we must not touch), so there is no shared/global
@@ -127,13 +117,14 @@ namespace {
     // components, so their foldouts show the Map Editor's own component
     // fields (ImGuiDrawFunctions::DrawComponentFields). On a UI entity a
     // Flipbook animates a UI Sprite.
-    enum class UIComponentType { Transform, Text, Sprite, Script, Flipbook };
+    enum class UIComponentType { Transform, Text, Sprite, Button, Script, Flipbook };
 
     const char* UIComponentDisplayNameKey(const UIComponentType type) {
         switch (type) {
             case UIComponentType::Transform: return "editor.ui.transform.title";
             case UIComponentType::Text: return "editor.ui.text.title";
             case UIComponentType::Sprite: return "editor.ui.sprite.title";
+            case UIComponentType::Button: return "editor.ui.button.title";
             case UIComponentType::Script: return "component.script";
             case UIComponentType::Flipbook: return "component.flipbook";
         }
@@ -145,6 +136,7 @@ namespace {
             case UIComponentType::Transform: return entity.HasComponent<ComponentUITransform>();
             case UIComponentType::Text: return entity.HasComponent<ComponentUIText>();
             case UIComponentType::Sprite: return entity.HasComponent<ComponentUISprite>();
+            case UIComponentType::Button: return entity.HasComponent<ComponentUIButton>();
             case UIComponentType::Script: return !entity.GetScripts().empty();
             case UIComponentType::Flipbook: return entity.HasComponent<ComponentFlipbook>();
         }
@@ -753,6 +745,66 @@ namespace {
         if (changed) uiHasUnsavedChanges = true;
     }
 
+    // One state's tint and texture.
+    bool DrawUIButtonState(const char* labelKey, const char* tooltipKey, const char* colorField, Vector4& color,
+                           const char* textureField, std::string& texture) {
+        bool changed = false;
+
+        ImGui::PushID(colorField);
+        ImGui::SeparatorText(Get(labelKey).c_str());
+
+        {
+            ImGuiDrawFunctions::PrefabField prefabField(colorField);
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::ColorEdit4(
+                Get("editor.ui.button.tint").c_str(),
+                &color.x,
+                ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_Float
+            )) changed = true;
+            HoverTooltip(Get(tooltipKey).c_str());
+        }
+
+        {
+            ImGuiDrawFunctions::PrefabField prefabField(textureField);
+            if (DrawAssetField(Get("editor.ui.button.texture").c_str(), texture, AssetKind::Texture, 32.0f)) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.button.texture").c_str());
+        }
+
+        ImGui::PopID();
+        return changed;
+    }
+
+    void DrawUIButtonInspector(Entity& entity, ComponentUIButton& button) {
+        bool changed = false;
+
+        Level& level = LevelManager::CurrentLevel();
+        if (level.ui_buttons.Get(entity.id) != &button)
+            ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.button.not_first").c_str());
+        else if (!entity.HasComponent<ComponentUISprite>())
+            ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.button.no_sprite").c_str());
+
+        ImGuiDrawFunctions::BeginSection("Button");
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("interactable");
+            if (ImGui::Checkbox(Get("editor.ui.button.interactable").c_str(), &button.interactable)) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.button.interactable").c_str());
+        }
+        ImGuiDrawFunctions::EndSection();
+
+        ImGuiDrawFunctions::BeginSection("States");
+        changed |= DrawUIButtonState("editor.ui.button.normal", "editor.tooltip.ui.button.normal",
+                                     "normalColor", button.normalColor, "normalTexture", button.normalTexture);
+        changed |= DrawUIButtonState("editor.ui.button.hover", "editor.tooltip.ui.button.hover",
+                                     "hoverColor", button.hoverColor, "hoverTexture", button.hoverTexture);
+        changed |= DrawUIButtonState("editor.ui.button.pressed", "editor.tooltip.ui.button.pressed",
+                                     "pressedColor", button.pressedColor, "pressedTexture", button.pressedTexture);
+        changed |= DrawUIButtonState("editor.ui.button.disabled", "editor.tooltip.ui.button.disabled",
+                                     "disabledColor", button.disabledColor, "disabledTexture", button.disabledTexture);
+        ImGuiDrawFunctions::EndSection();
+
+        if (changed) uiHasUnsavedChanges = true;
+    }
+
     // ---------------------------------------------------------------------
     // Component foldouts + Add Component - port of the component list in
     // the real DrawEntityEditor() and its "Add Component" block.
@@ -771,6 +823,7 @@ namespace {
         switch (componentType) {
             case CMP_UI_TEXT: level.ui_texts.MoveOnOwner(instanceID, index); break;
             case CMP_UI_SPRITE: level.ui_sprites.MoveOnOwner(instanceID, index); break;
+            case CMP_UI_BUTTON: level.ui_buttons.MoveOnOwner(instanceID, index); break;
             case CMP_SCRIPT: level.scripts.MoveOnOwner(instanceID, index); break;
             case CMP_FLIPBOOK: level.flipbooks.MoveOnOwner(instanceID, index); break;
             default: break;
@@ -782,6 +835,7 @@ namespace {
             case CMP_UI_TRANSFORM: entity.RemoveComponent<ComponentUITransform>(); break;
             case CMP_UI_TEXT: entity.RemoveComponentInstance<ComponentUIText>(instanceID); break;
             case CMP_UI_SPRITE: entity.RemoveComponentInstance<ComponentUISprite>(instanceID); break;
+            case CMP_UI_BUTTON: entity.RemoveComponentInstance<ComponentUIButton>(instanceID); break;
             case CMP_SCRIPT: entity.RemoveScript(instanceID); break;
             case CMP_FLIPBOOK: entity.RemoveComponentInstance<ComponentFlipbook>(instanceID); break;
             default: break;
@@ -883,6 +937,10 @@ namespace {
                     if (auto* sprite = entity.GetComponentInstance<ComponentUISprite>(instanceID))
                         DrawUISpriteInspector(*sprite, entity.GetComponent<ComponentUITransform>());
                     break;
+                case CMP_UI_BUTTON:
+                    if (auto* button = entity.GetComponentInstance<ComponentUIButton>(instanceID))
+                        DrawUIButtonInspector(entity, *button);
+                    break;
                 default:
                     ImGuiDrawFunctions::DrawComponentFields(entity, componentType, instanceID, false);
                     break;
@@ -904,11 +962,13 @@ namespace {
         if (const ComponentUITransform* transform = entity.GetComponent<ComponentUITransform>())
             drawFoldout(Get(UIComponentDisplayNameKey(UIComponentType::Transform)), CMP_UI_TRANSFORM, transform->instanceID, 0, 1);
 
-        std::vector<std::uint64_t> texts, sprites;
+        std::vector<std::uint64_t> texts, sprites, buttons;
         for (const ComponentUIText* text : entity.GetComponents<ComponentUIText>()) texts.push_back(text->instanceID);
         for (const ComponentUISprite* sprite : entity.GetComponents<ComponentUISprite>()) sprites.push_back(sprite->instanceID);
+        for (const ComponentUIButton* button : entity.GetComponents<ComponentUIButton>()) buttons.push_back(button->instanceID);
         drawFoldouts(UIComponentType::Text, CMP_UI_TEXT, texts);
         drawFoldouts(UIComponentType::Sprite, CMP_UI_SPRITE, sprites);
+        drawFoldouts(UIComponentType::Button, CMP_UI_BUTTON, buttons);
 
         // Scripts are labelled by their file, flipbooks by theirs too.
         std::vector<std::pair<std::uint64_t, std::string>> scripts, flipbooks;
@@ -954,7 +1014,8 @@ namespace {
             // is skipped in the real Add Component combo. The rest can be
             // added any number of times.
             const std::vector<UIComponentType> addable = {
-                UIComponentType::Text, UIComponentType::Sprite, UIComponentType::Script, UIComponentType::Flipbook
+                UIComponentType::Text, UIComponentType::Sprite, UIComponentType::Button, UIComponentType::Script,
+                UIComponentType::Flipbook
             };
 
             if (state.componentToAdd < 0 || state.componentToAdd >= static_cast<int>(addable.size()))
@@ -976,6 +1037,7 @@ namespace {
             if (ImGui::Button(Get("common.add").c_str())) {
                 if (addable[state.componentToAdd] == UIComponentType::Text) entity.AddComponent<ComponentUIText>();
                 else if (addable[state.componentToAdd] == UIComponentType::Sprite) entity.AddComponent<ComponentUISprite>();
+                else if (addable[state.componentToAdd] == UIComponentType::Button) entity.AddComponent<ComponentUIButton>();
                 else if (addable[state.componentToAdd] == UIComponentType::Script) entity.AddScript().enabled = true;
                 else if (addable[state.componentToAdd] == UIComponentType::Flipbook) entity.AddComponent<ComponentFlipbook>();
                 state.addingComponent = false;
@@ -1031,6 +1093,10 @@ namespace {
 
         DrawUIComponentsSection(entity);
         DrawUIAddComponentSection(entity, state);
+
+        // Back to the entity's own fields for the Events/Dispatches prefab fields.
+        ImGuiDrawFunctions::BeginPrefabFields(entity, -1, 0);
+        ImGuiDrawFunctions::DrawEntityEventSections(entity, false);
 
         // Runs a Revert/Apply picked from the bar or a header.
         ImGuiDrawFunctions::EndPrefabFields();
@@ -1623,8 +1689,13 @@ namespace MapEditorInternal {
         };
     }
 
+    void ClearUIUnsavedChanges() {
+        uiHasUnsavedChanges = false;
+    }
+
     void DrawUIEditorUI() {
         DrawUIEditorDockSpace();
+        DrawEditorToolbar();
         DrawUICanvasContextMenu();
 
         CommandPalette::Draw(KEYSCOPE_UI, [](const KeyBindScope scope) {
@@ -1666,23 +1737,6 @@ namespace MapEditorInternal {
         // ---- Inspector (mirrors DrawEditorUI()'s own inline call exactly -
         // no header, just separator/spacing around it either side) ----
         DrawSelectedUIEntityInspector(level);
-
-        Spacing();
-        ImGui::Separator();
-        Spacing();
-
-        // ---- Actions ----
-        SectionHeader(Get("editor.ui.actions").c_str());
-        Spacing();
-
-        PushAccentStyle();
-        if (FullWidthButton(Get("editor.save").c_str())) SaveFromUIEditor();
-        PopAccentStyle();
-        HoverTooltip(Get("editor.tooltip.save").c_str());
-
-        Spacing();
-
-        if (FullWidthButton(Get("editor.ui.back_to_map_editor").c_str())) currentState = STATE_MAP;
 
         ImGui::End();
 

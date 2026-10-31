@@ -27,7 +27,14 @@ namespace EventSystem {
         std::function<ID(Level& level, const std::string& prefab)> spawnPrefab;
         // Switches to the level at the end of the frame.
         std::function<void(const std::string& levelName)> loadLevel;
+        // Pause / Resume / Quit dispatches, like Game.Pause and Game.Quit.
+        std::function<void()> pause;
+        std::function<void(const Level& level)> resume;
+        std::function<void()> quit;
     };
+
+    // The UI Button events, one per event payload.
+    enum class UIButtonEvent : uint8_t { CLICK, RELEASE, HOVER_ENTER, HOVER_EXIT };
 
     // The text a Show Message dispatch put on screen.
     struct Message {
@@ -95,6 +102,11 @@ namespace EventSystem {
     // at `position`, or unpositioned (2D) without one. The source goes when
     // the sound ends, or with the level.
     void PlayOneShot(const std::string& sound, float gain, float pitch, const std::optional<Vector3>& position);
+
+    // Fires the UI Button events of `kind` on the entity, with the player as
+    // the instigator. The dispatches they run (relays included) count their
+    // delays and cooldowns in real time, so they work while paused.
+    void FireUIButtonEvent(Level& level, ID entityID, UIButtonEvent kind);
 
     // Fires the entity's Entity Destroyed events. Call before it is removed.
     void FireEntityDestroyed(Level& level, ID entityID);

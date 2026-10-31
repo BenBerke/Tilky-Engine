@@ -1373,14 +1373,26 @@ namespace ImGuiDrawFunctions {
         else return nullptr;
     }
 
+    // Whether the owner can have a `Payload`: the owner kind fits, and the UI
+    // Button events only go on an entity with a UI Button.
+    template<typename Payload>
+    static bool PayloadAllowedOn(const EventOwnerKind kind, const ID ownerID) {
+        if ((Payload::owners & OwnerBit(kind)) == 0) return false;
+
+        if constexpr (NeedsUIButton<Payload>)
+            return kind == EventOwnerKind::ENTITY && LevelManager::CurrentLevel().ui_buttons.Has(ownerID);
+
+        return true;
+    }
+
     // The types an object of `kind` can have. Picking another type resets the
     // fields, except a tag filter both types have.
     template<typename Variant>
-    static void DrawPayloadTypeCombo(Variant &payload, const EventOwnerKind kind) {
+    static void DrawPayloadTypeCombo(Variant &payload, const EventOwnerKind kind, const ID ownerID) {
         if (!ImGui::BeginCombo("##Type", Get(GetTranslationKey(payload)).c_str())) return;
 
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
-            if ((Payload::owners & OwnerBit(kind)) == 0) return;
+            if (!PayloadAllowedOn<Payload>(kind, ownerID)) return;
 
             const bool selected = std::holds_alternative<Payload>(payload);
             if (ImGui::Selectable(Get(Payload::translationKey).c_str(), selected) && !selected) {
@@ -1401,13 +1413,14 @@ namespace ImGuiDrawFunctions {
 
     // "Add event..." / "Add dispatch..." listing the types valid for `kind`.
     template<typename Entry>
-    static void DrawAddEntryCombo(const char *placeholderKey, std::vector<Entry> &entries, const EventOwnerKind kind) {
+    static void DrawAddEntryCombo(const char *placeholderKey, std::vector<Entry> &entries, const EventOwnerKind kind,
+                                  const ID ownerID) {
         FieldWidth(ImGui::GetContentRegionAvail().x);
         if (!ImGui::BeginCombo("##Add", Get(placeholderKey).c_str())) return;
 
         using Variant = decltype(Entry::payload);
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
-            if ((Payload::owners & OwnerBit(kind)) == 0) return;
+            if (!PayloadAllowedOn<Payload>(kind, ownerID)) return;
             if (!ImGui::Selectable(Get(Payload::translationKey).c_str())) return;
 
             Entry entry;
@@ -1583,7 +1596,7 @@ namespace ImGuiDrawFunctions {
                 // What every event has...
                 if (BeginProperties("##Common")) {
                     Property(Get("events.type").c_str());
-                    DrawPayloadTypeCombo(event.payload, kind);
+                    DrawPayloadTypeCombo(event.payload, kind, ownerID);
 
                     Property(Get("events.link_tag").c_str());
                     DrawTagCombo("##LinkTag", event.tagId, TagRegistry::TagKind::EVENT);
@@ -1692,7 +1705,7 @@ namespace ImGuiDrawFunctions {
 
         if (eventToRemove >= 0) events.erase(events.begin() + eventToRemove);
 
-        DrawAddEntryCombo("events.add_placeholder", events, kind);
+        DrawAddEntryCombo("events.add_placeholder", events, kind, ownerID);
     }
 
     static void DrawDispatchesEditor(std::vector<Dispatch> &dispatches, const EventOwnerKind kind, const ID ownerID,
@@ -1711,7 +1724,7 @@ namespace ImGuiDrawFunctions {
                 // What every dispatch has...
                 if (BeginProperties("##Common")) {
                     Property(Get("events.type").c_str());
-                    DrawPayloadTypeCombo(dispatch.payload, kind);
+                    DrawPayloadTypeCombo(dispatch.payload, kind, ownerID);
 
                     Property(Get("events.link_tag").c_str());
                     DrawTagCombo("##LinkTag", dispatch.tagId, TagRegistry::TagKind::EVENT);
@@ -1741,7 +1754,10 @@ namespace ImGuiDrawFunctions {
                 const bool hasSettings = std::visit([]<typename Payload>(const Payload &) {
                     return !std::is_same_v<Payload, PayloadDispatchEntityDestroy> &&
                            !std::is_same_v<Payload, PayloadDispatchEntityDisable> &&
-                           !std::is_same_v<Payload, PayloadDispatchEntityEnable>;
+                           !std::is_same_v<Payload, PayloadDispatchEntityEnable> &&
+                           !std::is_same_v<Payload, PayloadDispatchPause> &&
+                           !std::is_same_v<Payload, PayloadDispatchResume> &&
+                           !std::is_same_v<Payload, PayloadDispatchQuit>;
                 }, dispatch.payload);
 
                 if (hasSettings) {
@@ -2125,6 +2141,12 @@ namespace ImGuiDrawFunctions {
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
                                 DrawLevelNameRow(payload.levelName);
                             }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
+                                Property(Get("events.text").c_str());
+                                ImGui::InputTextMultiline("##Text", &payload.text,
+                                                          ImVec2(-FLT_MIN, ImGui::GetTextLineHeightWithSpacing() * 3.0f));
+                                Tooltip(Get("editor.tooltip.dispatches.set_ui_text").c_str());
+                            }
                         }, dispatch.payload);
 
                         EndProperties();
@@ -2147,7 +2169,7 @@ namespace ImGuiDrawFunctions {
 
         if (dispatchToRemove >= 0) dispatches.erase(dispatches.begin() + dispatchToRemove);
 
-        DrawAddEntryCombo("dispatches.add_placeholder", dispatches, kind);
+        DrawAddEntryCombo("dispatches.add_placeholder", dispatches, kind, ownerID);
     }
 
     // The Events and Dispatches sections, placed right under Tags. An entity
@@ -2813,6 +2835,27 @@ namespace ImGuiDrawFunctions {
         ImGui::PushID("LevelEvents");
         DrawEventSections(level.worldSettings.events, level.worldSettings.dispatches, EventOwnerKind::LEVEL, ID{0}, draggable);
         ImGui::PopID();
+    }
+
+    void DrawEntityEventSections(Entity &entity, const bool draggable) {
+        // Each list is one prefab field, overridden as a whole.
+        if (InspectorSection(Get("events.title"), "Events", static_cast<int>(entity.events.size()), false)) {
+            ImGui::PushID("Events");
+            {
+                PrefabField prefabField("events");
+                DrawEventsEditor(entity.events, EventOwnerKind::ENTITY, entity.id);
+            }
+            ImGui::PopID();
+        }
+
+        if (InspectorSection(Get("dispatches.title"), "Dispatches", static_cast<int>(entity.dispatches.size()), false)) {
+            ImGui::PushID("Dispatches");
+            {
+                PrefabField prefabField("dispatches");
+                DrawDispatchesEditor(entity.dispatches, EventOwnerKind::ENTITY, entity.id, draggable);
+            }
+            ImGui::PopID();
+        }
     }
 
     bool DrawLinedefEditor(Linedef &linedef, bool *open, const bool draggable, const char *windowId) {
@@ -3530,24 +3573,7 @@ namespace ImGuiDrawFunctions {
         }
 
         // ── Events / Dispatches ──────────────────────────────────────────────
-        // Each list is one prefab field, overridden as a whole.
-        if (InspectorSection(Get("events.title"), "Events", static_cast<int>(entity.events.size()), false)) {
-            ImGui::PushID("Events");
-            {
-                PrefabField prefabField("events");
-                DrawEventsEditor(entity.events, EventOwnerKind::ENTITY, entity.id);
-            }
-            ImGui::PopID();
-        }
-
-        if (InspectorSection(Get("dispatches.title"), "Dispatches", static_cast<int>(entity.dispatches.size()), false)) {
-            ImGui::PushID("Dispatches");
-            {
-                PrefabField prefabField("dispatches");
-                DrawDispatchesEditor(entity.dispatches, EventOwnerKind::ENTITY, entity.id, draggable);
-            }
-            ImGui::PopID();
-        }
+        DrawEntityEventSections(entity, draggable);
 
         // Runs a Revert/Apply picked from the bar, a card or a field.
         EndPrefabFields();

@@ -38,12 +38,46 @@ enum ComponentType {
     CMP_UI_TRANSFORM, // Transform must always be the first UI component otherwise UIEditorDrawUI breaks (legacy comment)
     CMP_UI_SPRITE,
     CMP_UI_TEXT,
+    CMP_UI_BUTTON,
 
     CMP_COUNT,
 };
 
 
 // region UI Components
+
+// Makes the whole UI entity clickable: its UITransform rectangle (rotation
+// included) is the click area. Fires the entity's UI Button events and its
+// scripts' OnClick/OnHoverEnter/OnHoverExit/OnRelease, only while the cursor
+// is unlocked and visible. Each state tints the entity's first UI Sprite
+// (multiplied with its colour) and can swap its texture. Only an entity's
+// first UI Button does anything. See UIButtonSystem.
+struct ComponentUIButton {
+    ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    // false = no events or callbacks, drawn with the disabled look. It still
+    // blocks clicks to buttons under it.
+    bool interactable = true;
+
+    // RGBA, each 0..1, multiplied with the first UI Sprite's colour.
+    Vector4 normalColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    Vector4 hoverColor = {0.9f, 0.9f, 0.9f, 1.0f};
+    Vector4 pressedColor = {0.7f, 0.7f, 0.7f, 1.0f};
+    Vector4 disabledColor = {0.7f, 0.7f, 0.7f, 0.5f};
+
+    // Shown instead of the first UI Sprite's texture in that state. Empty =
+    // the sprite's own texture.
+    std::string normalTexture;
+    std::string hoverTexture;
+    std::string pressedTexture;
+    std::string disabledTexture;
+
+    // Runtime only, not saved.
+    bool hovered = false; // the cursor is over it, and it's the topmost button there
+    bool pressed = false; // clicked, and the mouse button isn't released yet
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+};
 
 // UI Text's Font Size when nothing else is set: the size all text used
 // before Font Size existed, at the default 1080 UI Reference Height.
@@ -82,6 +116,12 @@ struct ComponentUISprite {
 
     bool isActive = true; // false = not drawn
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+
+    // Runtime only, not saved: the owner's UI Button state look, written by
+    // UIButtonSystem. The tint multiplies `color`; a non-empty texture is
+    // drawn instead of `texture`.
+    Vector4 buttonTint = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::string buttonTexture;
 };
 
 struct ComponentUITransform {

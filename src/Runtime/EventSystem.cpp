@@ -9,6 +9,7 @@
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
+#include "Headers/TagRegistry.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -69,6 +70,7 @@ namespace {
         DispatchHandle handle;
         ID instigatorID;
         float remaining; // seconds
+        bool realTime; // counted in real seconds (a UI Button event's chain)
     };
 
     // A dispatch's cooldown: calls since the last one started, and how long
@@ -76,6 +78,7 @@ namespace {
     struct CooldownState {
         int calls = 0;
         float remaining = 0.0f; // seconds
+        bool realTime = false; // the running one counts real seconds
     };
 
     // DispatchHandle as a map key.
@@ -166,6 +169,19 @@ namespace {
     MessageStyle savedMessageStyle; // the level's, as it started (Game.MessageBox.Reset)
     uint64_t nextMessageID = 1;
     int relayDepth = 0;
+
+    // True while a UI Button event's dispatches run: their delays and
+    // cooldowns count real time, so buttons work while the game is paused.
+    bool realTimeChain = false;
+
+    // Sets realTimeChain for a scope, then puts it back.
+    struct RealTimeChainScope {
+        bool previous;
+        explicit RealTimeChainScope(const bool realTime) : previous(realTimeChain) { realTimeChain = realTime; }
+        ~RealTimeChainScope() { realTimeChain = previous; }
+        RealTimeChainScope(const RealTimeChainScope&) = delete;
+        RealTimeChainScope& operator=(const RealTimeChainScope&) = delete;
+    };
 
     // Last frame's state, diffed against this frame's to find what changed.
     std::unordered_map<ID, Vector2> lastPositions; // entity -> transform (feet) x/z
@@ -372,14 +388,15 @@ namespace {
         if (++state.calls >= std::max(1, dispatch.cooldownTriggers)) {
             state.calls = 0;
             state.remaining = dispatch.cooldown;
+            state.realTime = realTimeChain;
         }
         return true;
     }
 
-    void TickCooldowns(const float deltaTime) {
+    void TickCooldowns(const float deltaTime, const float realDeltaTime) {
         std::erase_if(cooldowns, [&](auto& entry) {
             CooldownState& state = entry.second;
-            state.remaining = std::max(0.0f, state.remaining - deltaTime);
+            state.remaining = std::max(0.0f, state.remaining - (state.realTime ? realDeltaTime : deltaTime));
             return state.remaining <= 0.0f && state.calls == 0;
         });
     }
@@ -404,7 +421,7 @@ namespace {
             if (!dispatch || !PassesCooldown(*dispatch, handle)) continue;
 
             if (dispatch->delay > 0.0f) {
-                pendingDispatches.push_back({handle, instigatorID, dispatch->delay});
+                pendingDispatches.push_back({handle, instigatorID, dispatch->delay, realTimeChain});
                 continue;
             }
 
@@ -949,11 +966,11 @@ namespace {
         }
     }
 
-    void RunPendingDispatches(Level& level, const float deltaTime) {
+    void RunPendingDispatches(Level& level, const float deltaTime, const float realDeltaTime) {
         std::vector<PendingDispatch> due;
 
         std::erase_if(pendingDispatches, [&](PendingDispatch& pending) {
-            pending.remaining -= deltaTime;
+            pending.remaining -= pending.realTime ? realDeltaTime : deltaTime;
             if (pending.remaining > 0.0f) return false;
 
             due.push_back(pending);
@@ -964,6 +981,8 @@ namespace {
             const Dispatch* dispatch = ResolveDispatch(level, pending.handle);
             if (!dispatch) continue;
 
+            // A relay it runs stays in the same kind of time.
+            const RealTimeChainScope scope(pending.realTime);
             const Dispatch copy = *dispatch;
             EventSystem::ExecuteDispatch(level, copy, pending.handle.ownerKind, pending.handle.ownerID, pending.instigatorID);
         }
@@ -1645,8 +1664,8 @@ namespace EventSystem {
     void Update(Level& level, const PhysicsSystem::Contacts& contacts) {
         const float deltaTime = GameTime::deltaTime;
 
-        TickCooldowns(deltaTime);
-        RunPendingDispatches(level, deltaTime);
+        TickCooldowns(deltaTime, GameTime::unscaledDeltaTime);
+        RunPendingDispatches(level, deltaTime, GameTime::unscaledDeltaTime);
 
         UpdateColorFades(level, deltaTime);
         UpdateDoors(level, deltaTime);
@@ -1689,6 +1708,7 @@ namespace EventSystem {
         soundSources.clear();
         shownMessages.clear();
         relayDepth = 0;
+        realTimeChain = false;
         lastPositions.clear();
         lastSectors.clear();
         lastEnabled.clear();
@@ -1928,6 +1948,18 @@ namespace EventSystem {
             [&](const PayloadDispatchLoadLevel& load) {
                 if (!load.levelName.empty() && hooks.loadLevel) hooks.loadLevel(load.levelName);
             },
+            [&](const PayloadDispatchPause&) {
+                if (hooks.pause) hooks.pause();
+            },
+            [&](const PayloadDispatchResume&) {
+                if (hooks.resume) hooks.resume(level);
+            },
+            [&](const PayloadDispatchQuit&) {
+                if (hooks.quit) hooks.quit();
+            },
+            [&](const PayloadDispatchSetUIText& setText) {
+                if (ComponentUIText* text = level.ui_texts.Get(ownerID)) text->text = setText.text;
+            },
             [&](const PayloadDispatchChangeVariable& change) {
                 if (change.variable == 0) return;
 
@@ -2041,6 +2073,38 @@ namespace EventSystem {
 
             FireEvents<PayloadLuaSignal>(level, kind, ownerID, instigatorID, tags,
                 [&](const PayloadLuaSignal& signal) { return signal.name == name; });
+        }
+    }
+
+    void FireUIButtonEvent(Level& level, const ID entityID, const UIButtonEvent kind) {
+        if (!running || !IsEnabledEntity(level, entityID)) return;
+
+        // The player: the first enabled entity with the Player tag.
+        ID playerID = INVALID_ID;
+        if (const std::optional<TagId> playerTag = TagRegistry::Find(TagRegistry::PLAYER_TAG)) {
+            for (const Entity& entity : level.entities) {
+                if (!entity.enabled || std::ranges::find(entity.tagIds, *playerTag) == entity.tagIds.end()) continue;
+                playerID = entity.id;
+                break;
+            }
+        }
+
+        const std::vector<TagId> tags = EntityTags(level, playerID);
+        const RealTimeChainScope scope(true);
+
+        switch (kind) {
+            case UIButtonEvent::CLICK:
+                FireEvents<PayloadUIButtonClick>(level, EventOwnerKind::ENTITY, entityID, playerID, tags);
+                break;
+            case UIButtonEvent::RELEASE:
+                FireEvents<PayloadUIButtonRelease>(level, EventOwnerKind::ENTITY, entityID, playerID, tags);
+                break;
+            case UIButtonEvent::HOVER_ENTER:
+                FireEvents<PayloadUIButtonHoverEnter>(level, EventOwnerKind::ENTITY, entityID, playerID, tags);
+                break;
+            case UIButtonEvent::HOVER_EXIT:
+                FireEvents<PayloadUIButtonHoverExit>(level, EventOwnerKind::ENTITY, entityID, playerID, tags);
+                break;
         }
     }
 

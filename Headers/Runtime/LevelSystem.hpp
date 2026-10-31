@@ -40,6 +40,12 @@ namespace LevelSystem {
     void RequestQuit();
     [[nodiscard]] bool QuitRequested();
 
+    // Game.Pause and the Pause dispatch: timeScale 0, cursor unlocked and shown.
+    void PauseGame();
+    // The Resume dispatch: timeScale 1, cursor as the level's World Settings
+    // start it (Lock Cursor / Hide Cursor on Level Start).
+    void ResumeGame(const Level& level);
+
     // Boots the Lua scripting subsystem (opens the sol::state, registers
     // every binding, populates LuaBindingMetadata) if it hasn't already run.
     // Safe to call outside Play mode - it does not load or run any script -

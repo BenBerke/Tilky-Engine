@@ -486,9 +486,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     // Freezes game time and frees the cursor for a pause menu. Nothing undoes
     // it on its own: set GameTime.timeScale and Cursor back to resume.
     game.set_function("Pause", []() {
-        GameTime::SetTimeScale(0.0f);
-        InputManager::SetCursorLockMode(InputManager::CursorLockMode::None);
-        InputManager::SetCursorVisible(true);
+        LevelSystem::PauseGame();
     });
 
     // Like Unity's Application.Quit: at the end of this frame the exported
