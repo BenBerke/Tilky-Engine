@@ -22,7 +22,9 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <array>
+#include <cctype>
 #include <cfloat>
+#include <map>
 #include <cstring>
 #include <string>
 #include <algorithm>
@@ -1112,23 +1114,31 @@ namespace ImGuiDrawFunctions {
 
     // A dropdown of the project tags of one kind, ending with "New tag...".
     // A tag that no longer exists shows as deleted (or as "no tags" while
-    // there are none).
-    static bool DrawTagCombo(const char *label, TagId &tag, const TagRegistry::TagKind kind) {
+    // there are none). With `useTag`, it starts with "(no tag)", which turns
+    // it off; picking a tag turns it back on.
+    static bool DrawTagCombo(const char *label, TagId &tag, const TagRegistry::TagKind kind, bool *useTag = nullptr) {
         const std::vector<std::pair<std::string, TagId> > tags = TagRegistry::GetAllOfKind(kind);
 
         const auto name = TagRegistry::GetName(tag);
         const char *noTagsKey = kind == TagRegistry::TagKind::EVENT ? "events.no_event_tags" : "events.no_tags";
-        const std::string preview = name ? *name : Get(tags.empty() ? noTagsKey : "tags.missing");
+        const std::string preview = useTag && !*useTag ? Get("events.no_link_tag")
+                                    : name ? *name : Get(tags.empty() ? noTagsKey : "tags.missing");
 
         ImGui::PushID(label);
 
         bool changed = false;
         bool openNewTag = false;
         if (ImGui::BeginCombo(label, preview.c_str())) {
+            if (useTag && ImGui::Selectable(Get("events.no_link_tag").c_str(), !*useTag)) {
+                *useTag = false;
+                changed = true;
+            }
+
             for (const auto &[tagName, id]: tags) {
-                const bool selected = id == tag;
+                const bool selected = id == tag && (!useTag || *useTag);
                 if (ImGui::Selectable(tagName.c_str(), selected)) {
                     tag = id;
+                    if (useTag) *useTag = true;
                     changed = true;
                 }
                 if (selected) ImGui::SetItemDefaultFocus();
@@ -1141,6 +1151,7 @@ namespace ImGuiDrawFunctions {
         if (openNewTag) OpenNewTagPopup();
         if (const std::optional<TagId> created = DrawNewTagPopup(kind)) {
             tag = *created;
+            if (useTag) *useTag = true;
             changed = true;
         }
 
@@ -1672,9 +1683,26 @@ namespace ImGuiDrawFunctions {
         return open;
     }
 
-    static std::string EntryHeader(const char *translationKey, const TagId tag, const char *idSuffix) {
-        const auto tagName = TagRegistry::GetName(tag);
-        return Get(translationKey) + "  ->  " + (tagName ? *tagName : Get("tags.missing")) + idSuffix;
+    // "Type  ->  Tag" (no arrow when the tag is off), then " + 2 calls".
+    static std::string EntryHeader(const char *translationKey, const bool useTag, const TagId tag, const size_t calls,
+                                   const char *idSuffix) {
+        std::string header = Get(translationKey);
+
+        if (useTag) {
+            const auto tagName = TagRegistry::GetName(tag);
+            header += "  ->  " + (tagName ? *tagName : Get("tags.missing"));
+        }
+
+        if (calls == 1) header += "  +  " + Get("events.header.one_call");
+        else if (calls > 1) header += "  +  " + std::to_string(calls) + " " + Get("events.header.calls");
+
+        return header + idSuffix;
+    }
+
+    // "Name  (Type)  ->  Tag" for a named dispatch.
+    static std::string DispatchHeader(const Dispatch &dispatch, const char *idSuffix) {
+        const std::string type = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.useTag, dispatch.tagId, 0, "");
+        return (dispatch.name.empty() ? type : dispatch.name + "  (" + type + ")") + idSuffix;
     }
 
     // Property row: which of the sector's floors, numbered from 1 as in the
@@ -1727,6 +1755,325 @@ namespace ImGuiDrawFunctions {
         Tooltip(Get("editor.tooltip.dispatches.level").c_str());
     }
 
+    // ── Direct calls ───────────────────────────────────────────────────────
+
+    constexpr std::pair<bool, const char *> kRelayModeOptions[] = {
+        {false, "events.relay_mode.tag"},
+        {true, "events.relay_mode.direct"}
+    };
+
+    // A prefab can't point at the objects of a level.
+    static bool EditingPrefab() {
+        const Level *current = &LevelManager::CurrentLevel();
+        return std::ranges::none_of(LevelManager::loadedLevels, [&](const Level &level) { return &level == current; });
+    }
+
+    // How the event's instigator reads in the call target dropdown, nullptr
+    // for events that have none.
+    static const char *InstigatorLabelKey(const EventPayload &payload) {
+        return std::visit([]<typename Payload>(const Payload &) -> const char * {
+            if constexpr (std::is_same_v<Payload, PayloadSectorEntityEnter>) return "events.call.instigator.entered";
+            else if constexpr (std::is_same_v<Payload, PayloadSectorEntityExit>) return "events.call.instigator.left";
+            else if constexpr (std::is_same_v<Payload, PayloadSectorEntityStay> ||
+                               std::is_same_v<Payload, PayloadSectorEntityGrounded>) return "events.call.instigator.inside";
+            else if constexpr (std::is_same_v<Payload, PayloadLineEntityCross>) return "events.call.instigator.crossed";
+            else if constexpr (std::is_same_v<Payload, PayloadLineEntityCollide> ||
+                               std::is_same_v<Payload, PayloadEntityCollide>) return "events.call.instigator.touched";
+            else if constexpr (std::is_same_v<Payload, PayloadReceiveRay>) return "events.call.instigator.ray";
+            else if constexpr (std::is_same_v<Payload, PayloadLuaSignal>) return "events.call.instigator.signal";
+            else if constexpr (std::is_same_v<Payload, PayloadUIButtonClick> || std::is_same_v<Payload, PayloadUIButtonRelease> ||
+                               std::is_same_v<Payload, PayloadUIButtonHoverEnter> ||
+                               std::is_same_v<Payload, PayloadUIButtonHoverExit>) return "events.call.instigator.player";
+            else if constexpr (std::is_same_v<Payload, PayloadTimer> || std::is_same_v<Payload, PayloadConditionMet> ||
+                               std::is_same_v<Payload, PayloadLevelStart> ||
+                               std::is_same_v<Payload, PayloadSectorMoveFinished>) return nullptr;
+            else return "events.call.instigator.relay"; // the entity itself (enable, destroyed, ...)
+        }, payload);
+    }
+
+    static const char *SelfLabelKey(const EventOwnerKind kind) {
+        switch (kind) {
+            case EventOwnerKind::LINE: return "events.call.self.wall";
+            case EventOwnerKind::SECTOR: return "events.call.self.sector";
+            case EventOwnerKind::ENTITY: return "events.call.self.entity";
+            case EventOwnerKind::LINEDEF: return "events.call.self.linedef";
+            case EventOwnerKind::LEVEL: return "events.call.self.level";
+        }
+        return "events.call.self.entity";
+    }
+
+    static std::string CallTargetLabel(const CallTarget target, const EventOwnerKind callerKind, const char *instigatorKey) {
+        switch (target) {
+            case CallTarget::SELF: return Get(SelfLabelKey(callerKind));
+            case CallTarget::INSTIGATOR: return Get(instigatorKey ? instigatorKey : "events.call.instigator.relay");
+            case CallTarget::ENTITY: return Get("events.call.entity");
+            case CallTarget::SECTOR: return Get("events.call.sector");
+            case CallTarget::WALL: return Get("events.call.wall");
+            case CallTarget::LINEDEF: return Get("events.call.linedef");
+            case CallTarget::TAGGED: return Get("events.call.tagged");
+        }
+        return {};
+    }
+
+    static bool IsPickedTarget(const CallTarget target) {
+        return target == CallTarget::ENTITY || target == CallTarget::SECTOR || target == CallTarget::WALL ||
+               target == CallTarget::LINEDEF;
+    }
+
+    // The objects the call reaches that the editor can know: Self, a picked
+    // one, or everything with the tag. Empty for the instigator.
+    static std::vector<std::pair<EventOwnerKind, ID> > EditorCallTargets(const Level &level, const DirectCall &call,
+                                                                         const EventOwnerKind callerKind, const ID callerID) {
+        std::vector<std::pair<EventOwnerKind, ID> > targets;
+        switch (call.target) {
+            case CallTarget::SELF: targets.emplace_back(callerKind, callerID); break;
+            case CallTarget::ENTITY: targets.emplace_back(EventOwnerKind::ENTITY, call.targetID); break;
+            case CallTarget::SECTOR: targets.emplace_back(EventOwnerKind::SECTOR, call.targetID); break;
+            case CallTarget::WALL: targets.emplace_back(EventOwnerKind::LINE, call.targetID); break;
+            case CallTarget::LINEDEF: targets.emplace_back(EventOwnerKind::LINEDEF, call.targetID); break;
+            case CallTarget::TAGGED: {
+                const auto has = [&](const std::vector<TagId> &tags) { return std::ranges::find(tags, call.targetTag) != tags.end(); };
+                for (const Entity &entity: level.entities) if (has(entity.tagIds)) targets.emplace_back(EventOwnerKind::ENTITY, entity.id);
+                for (const Sector &sector: level.sectors) if (has(sector.tagIds)) targets.emplace_back(EventOwnerKind::SECTOR, sector.id);
+                for (const Wall &wall: level.walls) if (has(wall.tagIds)) targets.emplace_back(EventOwnerKind::LINE, wall.id);
+                break;
+            }
+            case CallTarget::INSTIGATOR:
+                break;
+        }
+        return targets;
+    }
+
+    static const std::vector<Dispatch> *DispatchesOf(const Level &level, const EventOwnerKind kind, const ID id) {
+        switch (kind) {
+            case EventOwnerKind::LINE: {
+                const auto it = level.wallIDToIndex.find(id);
+                return it != level.wallIDToIndex.end() ? &level.walls[it->second].dispatches : nullptr;
+            }
+            case EventOwnerKind::SECTOR: {
+                const Sector *sector = level.GetSector(id);
+                return sector ? &sector->dispatches : nullptr;
+            }
+            case EventOwnerKind::ENTITY: {
+                const Entity *entity = level.GetEntity(id);
+                return entity ? &entity->dispatches : nullptr;
+            }
+            case EventOwnerKind::LINEDEF: {
+                const Linedef *linedef = level.GetLinedef(id);
+                return linedef ? &linedef->dispatches : nullptr;
+            }
+            case EventOwnerKind::LEVEL: return &level.worldSettings.dispatches;
+        }
+        return nullptr;
+    }
+
+    // Dispatch name -> how many dispatches have it, over the given objects
+    // (or, for the instigator, over every entity of the level).
+    static std::map<std::string, int> CallableNames(const Level &level, const std::vector<std::pair<EventOwnerKind, ID> > &targets,
+                                                    const bool everyEntity) {
+        std::map<std::string, int> names;
+        const auto count = [&](const std::vector<Dispatch> &dispatches) {
+            for (const Dispatch &dispatch: dispatches) if (!dispatch.name.empty()) ++names[dispatch.name];
+        };
+
+        if (everyEntity) for (const Entity &entity: level.entities) count(entity.dispatches);
+        else for (const auto &[kind, id]: targets) if (const std::vector<Dispatch> *dispatches = DispatchesOf(level, kind, id)) count(*dispatches);
+
+        return names;
+    }
+
+    // A searchable dropdown of the level's objects of the picked kind, which
+    // also takes them dragged from the hierarchy or the canvas.
+    static void DrawCallObjectPicker(DirectCall &call) {
+        Level &level = LevelManager::CurrentLevel();
+        static std::string search;
+
+        std::string preview = Get("events.call.pick_object");
+        const char *payloadType = MapEditorInternal::ENTITY_REF_PAYLOAD;
+        std::vector<std::pair<ID, std::string> > options;
+
+        switch (call.target) {
+            case CallTarget::ENTITY:
+                for (const Entity &entity: level.entities) options.emplace_back(entity.id, DescribeEntity(entity));
+                break;
+            case CallTarget::SECTOR:
+                payloadType = MapEditorInternal::SECTOR_REF_PAYLOAD;
+                for (const Sector &sector: level.sectors) options.emplace_back(sector.id, DescribeSector(sector));
+                break;
+            case CallTarget::WALL:
+                payloadType = MapEditorInternal::WALL_REF_PAYLOAD;
+                for (const Wall &wall: level.walls) options.emplace_back(wall.id, DescribeWall(wall));
+                break;
+            case CallTarget::LINEDEF:
+                payloadType = MapEditorInternal::LINEDEF_REF_PAYLOAD;
+                for (const Linedef &linedef: level.linedefs) options.emplace_back(linedef.id, DescribeLinedef(linedef));
+                break;
+            default:
+                return;
+        }
+
+        if (call.targetID != INVALID_ID) {
+            const auto it = std::ranges::find(options, call.targetID, &std::pair<ID, std::string>::first);
+            preview = it != options.end() ? it->second : Get("events.call.missing_object");
+        }
+
+        Property("");
+        if (ImGui::BeginCombo("##Object", preview.c_str(), ImGuiComboFlags_HeightLarge)) {
+            if (ImGui::IsWindowAppearing()) {
+                search.clear();
+                ImGui::SetKeyboardFocusHere();
+            }
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::InputTextWithHint("##Search", Get("events.call.search").c_str(), &search);
+
+            std::string needle = search;
+            std::ranges::transform(needle, needle.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            for (const auto &[id, label]: options) {
+                std::string lower = label;
+                std::ranges::transform(lower, lower.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (!needle.empty() && lower.find(needle) == std::string::npos) continue;
+
+                ImGui::PushID(static_cast<int>(id));
+                if (ImGui::Selectable(label.c_str(), id == call.targetID)) call.targetID = id;
+                ImGui::PopID();
+            }
+
+            if (options.empty()) ImGui::TextDisabled("%s", Get("events.call.no_objects").c_str());
+            ImGui::EndCombo();
+        }
+        AcceptLevelObjectDrop(payloadType, call.targetID);
+        if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.events.call_object").c_str());
+    }
+
+    // The target, its object or tag, the dispatch name and what will answer.
+    // `instigatorKey` is how the event's instigator reads, nullptr if it has
+    // none. Sets `remove` when the row's x is clicked (if `removable`).
+    static void DrawDirectCallRows(DirectCall &call, const EventOwnerKind callerKind, const ID callerID,
+                                   const char *instigatorKey, const bool removable, bool &remove) {
+        Level &level = LevelManager::CurrentLevel();
+        const bool inPrefab = EditingPrefab();
+
+        // Target.
+        Property(Get("events.call").c_str());
+        const std::string removeLabel = "x";
+        if (removable) FieldWidth(WidthBeforeButtons({removeLabel.c_str()}));
+
+        if (ImGui::BeginCombo("##Target", CallTargetLabel(call.target, callerKind, instigatorKey).c_str())) {
+            for (const CallTarget target: {CallTarget::SELF, CallTarget::INSTIGATOR, CallTarget::ENTITY, CallTarget::SECTOR,
+                                           CallTarget::WALL, CallTarget::LINEDEF, CallTarget::TAGGED}) {
+                if (target == CallTarget::INSTIGATOR && !instigatorKey) continue;
+                if (inPrefab && IsPickedTarget(target)) continue;
+
+                if (ImGui::Selectable(CallTargetLabel(target, callerKind, instigatorKey).c_str(), target == call.target) &&
+                    target != call.target) {
+                    call.target = target;
+                    call.targetID = INVALID_ID;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.events.call_target").c_str());
+
+        if (removable) {
+            ImGui::SameLine();
+            if (SmallDangerButton(removeLabel.c_str())) remove = true;
+            Tooltip(Get("editor.tooltip.events.call_remove").c_str());
+        }
+
+        // Which object, or which tag.
+        if (IsPickedTarget(call.target)) DrawCallObjectPicker(call);
+        else if (call.target == CallTarget::TAGGED) {
+            Property("");
+            DrawTagCombo("##TargetTag", call.targetTag, TagRegistry::TagKind::NORMAL);
+            Tooltip(Get("editor.tooltip.events.call_tag").c_str());
+        }
+
+        // Which dispatch: the names the target has, or (for the instigator)
+        // the names entities in the level have; any name can be typed.
+        const bool runtime = call.target == CallTarget::INSTIGATOR;
+        const std::vector<std::pair<EventOwnerKind, ID> > targets = EditorCallTargets(level, call, callerKind, callerID);
+        const std::map<std::string, int> names = CallableNames(level, targets, runtime);
+
+        Property(Get("events.call_dispatch").c_str());
+        const std::string preview = call.dispatch.empty() ? Get("events.call.pick_dispatch") : call.dispatch;
+        if (ImGui::BeginCombo("##Dispatch", preview.c_str())) {
+            static std::string typed;
+            if (ImGui::IsWindowAppearing()) typed = call.dispatch;
+
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputTextWithHint("##Typed", Get("events.call.type_name").c_str(), &typed,
+                                         ImGuiInputTextFlags_EnterReturnsTrue)) {
+                call.dispatch = typed;
+                ImGui::CloseCurrentPopup();
+            }
+
+            for (const auto &[name, count]: names) {
+                const std::string label = count > 1 ? name + "  (x" + std::to_string(count) + ")" : name;
+                if (ImGui::Selectable(label.c_str(), name == call.dispatch)) call.dispatch = name;
+            }
+
+            if (names.empty()) ImGui::TextDisabled("%s", Get("events.call.no_names").c_str());
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.events.call_dispatch").c_str());
+
+        // What will answer.
+        if (call.dispatch.empty()) return;
+
+        const ImVec4 warning(1.0f, 0.78f, 0.25f, 1.0f);
+        Property("");
+
+        if (runtime) {
+            std::vector<std::string> answering;
+            for (const Entity &entity: level.entities)
+                if (std::ranges::any_of(entity.dispatches, [&](const Dispatch &d) { return d.name == call.dispatch; }))
+                    answering.push_back(DescribeEntity(entity));
+
+            if (answering.empty()) {
+                ImGui::TextColored(warning, "%s", Get("events.call.hint.no_entity_answers").c_str());
+            }
+            else {
+                std::string list;
+                for (size_t i = 0; i < answering.size() && i < 3; ++i) list += (i ? ", " : "") + answering[i];
+                if (answering.size() > 3) list += ", +" + std::to_string(answering.size() - 3);
+                ImGui::TextDisabled("%s %s", Get("events.call.hint.answered_by").c_str(), list.c_str());
+            }
+            return;
+        }
+
+        const auto it = names.find(call.dispatch);
+        const int count = it != names.end() ? it->second : 0;
+
+        if (count == 0) {
+            const bool missing = IsPickedTarget(call.target) || call.target == CallTarget::SELF;
+            ImGui::TextColored(warning, "%s", Get(missing ? "events.call.hint.missing" : "events.call.hint.nothing_answers").c_str());
+        }
+        else if (count == 1) ImGui::TextDisabled("%s", Get("events.call.hint.one_runs").c_str());
+        else ImGui::TextDisabled("%d %s", count, Get("events.call.hint.many_run").c_str());
+    }
+
+    // The event's direct calls and the button adding one. Inside the
+    // event's property table.
+    static void DrawEventCalls(Event &event, const EventOwnerKind kind, const ID ownerID) {
+        const char *instigatorKey = InstigatorLabelKey(event.payload);
+        int toRemove = -1;
+
+        for (size_t i = 0; i < event.calls.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i) + 1000);
+            bool remove = false;
+            DrawDirectCallRows(event.calls[i], kind, ownerID, instigatorKey, true, remove);
+            if (remove) toRemove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+
+        if (toRemove >= 0) event.calls.erase(event.calls.begin() + toRemove);
+
+        Property("");
+        if (ImGui::Button(Get("events.call.add").c_str(), ImVec2(-FLT_MIN, 0.0f))) event.calls.emplace_back();
+        Tooltip(Get("editor.tooltip.events.call_add").c_str());
+    }
+
     static void DrawEventsEditor(std::vector<Event> &events, const EventOwnerKind kind, const ID ownerID) {
         int eventToRemove = -1;
 
@@ -1735,7 +2082,8 @@ namespace ImGuiDrawFunctions {
             ImGui::PushID(static_cast<int>(i));
 
             // "###event" keeps the header's open state while its text changes.
-            const std::string header = EntryHeader(GetTranslationKey(event.payload), event.tagId, "###event");
+            const std::string header = EntryHeader(GetTranslationKey(event.payload), event.useTag, event.tagId,
+                                                   event.calls.size(), "###event");
 
             bool deleteClicked = false;
             if (BeginEntryCard("##EventCard") && EntryCardHeader(header, deleteClicked)) {
@@ -1745,8 +2093,10 @@ namespace ImGuiDrawFunctions {
                     DrawPayloadTypeCombo(event.payload, kind, ownerID);
 
                     Property(Get("events.link_tag").c_str());
-                    DrawTagCombo("##LinkTag", event.tagId, TagRegistry::TagKind::EVENT);
+                    DrawTagCombo("##LinkTag", event.tagId, TagRegistry::TagKind::EVENT, &event.useTag);
                     Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+
+                    DrawEventCalls(event, kind, ownerID);
 
                     int maxTriggers = static_cast<int>(event.maxTriggers);
                     Property(Get("events.max_triggers").c_str());
@@ -2149,7 +2499,7 @@ namespace ImGuiDrawFunctions {
             Dispatch &dispatch = dispatches[i];
             ImGui::PushID(static_cast<int>(i));
 
-            const std::string header = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.tagId, "###dispatch");
+            const std::string header = DispatchHeader(dispatch, "###dispatch");
 
             bool deleteClicked = false;
             if (BeginEntryCard("##DispatchCard") && EntryCardHeader(header, deleteClicked)) {
@@ -2158,9 +2508,13 @@ namespace ImGuiDrawFunctions {
                     Property(Get("events.type").c_str());
                     DrawPayloadTypeCombo(dispatch.payload, kind, ownerID);
 
+                    Property(Get("events.dispatch_name").c_str());
+                    ImGui::InputTextWithHint("##Name", Get("events.dispatch_name.hint").c_str(), &dispatch.name);
+                    Tooltip(Get("editor.tooltip.dispatches.name").c_str());
+
                     Property(Get("events.link_tag").c_str());
-                    DrawTagCombo("##LinkTag", dispatch.tagId, TagRegistry::TagKind::EVENT);
-                    Tooltip(Get("editor.tooltip.events.link_tag").c_str());
+                    DrawTagCombo("##LinkTag", dispatch.tagId, TagRegistry::TagKind::EVENT, &dispatch.useTag);
+                    Tooltip(Get("editor.tooltip.dispatches.link_tag").c_str());
 
                     Property(Get("events.delay").c_str());
                     if (ImGui::InputFloat("##Delay", &dispatch.delay, 0.0f, 0.0f, "%.2f s"))
@@ -2732,13 +3086,25 @@ namespace ImGuiDrawFunctions {
                                 ImGui::ColorEdit3("##Color", &payload.color.x,
                                                   CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
                             }
-                            else if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> ||
-                                               std::is_same_v<Payload, PayloadDispatchResetEvent>) {
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchRelay>) {
+                                Property(Get("events.relay_mode").c_str());
+                                DrawEnumCombo("##RelayMode", payload.direct, kRelayModeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.relay_mode").c_str());
+
+                                if (payload.direct) {
+                                    bool remove = false;
+                                    DrawDirectCallRows(payload.call, kind, ownerID, "events.call.instigator.relay", false, remove);
+                                }
+                                else {
+                                    Property(Get("events.target_tag").c_str());
+                                    DrawTagCombo("##Target", payload.target, TagRegistry::TagKind::EVENT);
+                                    Tooltip(Get("editor.tooltip.dispatches.relay").c_str());
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchResetEvent>) {
                                 Property(Get("events.target_tag").c_str());
                                 DrawTagCombo("##Target", payload.target, TagRegistry::TagKind::EVENT);
-                                Tooltip(Get(std::is_same_v<Payload, PayloadDispatchRelay>
-                                                ? "editor.tooltip.dispatches.relay"
-                                                : "editor.tooltip.dispatches.reset_event").c_str());
+                                Tooltip(Get("editor.tooltip.dispatches.reset_event").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
                                 DrawLevelNameRow(payload.levelName);

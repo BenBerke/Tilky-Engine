@@ -437,6 +437,25 @@ namespace {
             add(EventOwnerKind::SECTOR, level.sectors[selectedSector].id);
         if (editingEntity && selectedEntityId.has_value()) add(EventOwnerKind::ENTITY, *selectedEntityId);
 
+        // Calls to whoever triggers the event have no line to draw: a label instead.
+        const auto instigatorLabel = [&](const EventOwnerKind kind, const ID id) {
+            Vector3 anchor;
+            Vector2 screen;
+            if (!EventLinks::CallsInstigator(level, kind, id) || !EventLinks::AnchorPoint(level, kind, id, anchor)) return;
+            if (Vector3Math::Dot(anchor - view.eye, view.forward) <= 0.05f || !TransformGizmo::ProjectPoint(view, anchor, screen)) return;
+
+            const Vector3& c = MapEditorInternal::eventLinkColor;
+            ImGui::GetBackgroundDrawList()->AddText({screen.x + 8.0f, screen.y - 18.0f},
+                                                    IM_COL32(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.z), 255),
+                                                    Localisation::Get("events.links.instigator").c_str());
+        };
+
+        if (editingWall && selectedWall >= 0 && selectedWall < static_cast<int>(level.walls.size()))
+            instigatorLabel(EventOwnerKind::LINE, level.walls[selectedWall].id);
+        if (editingSector && selectedSector >= 0 && selectedSector < static_cast<int>(level.sectors.size()))
+            instigatorLabel(EventOwnerKind::SECTOR, level.sectors[selectedSector].id);
+        if (editingEntity && selectedEntityId.has_value()) instigatorLabel(EventOwnerKind::ENTITY, *selectedEntityId);
+
         if (links.empty()) return;
 
         // A line running behind the camera is cut where it passes this far

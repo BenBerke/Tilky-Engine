@@ -914,6 +914,31 @@ namespace MapEditorInternal {
             }
         }
 
+        // Puts the dragged linedefs back and takes the drag's undo step off -
+        // for a linedef dropped onto a field, which was assigning it.
+        void CancelLinedefDrag() {
+            if (!draggingLinedefGeometry) return;
+
+            Level& level = LevelManager::CurrentLevel();
+            for (const LinedefDragPart& part : linedefDragParts) {
+                if (Linedef* linedef = level.GetLinedef(part.original.id)) {
+                    linedef->start = part.original.start;
+                    linedef->end = part.original.end;
+                    linedef->RefreshDerived();
+                }
+            }
+
+            if (linedefDragMutated && !undoSteps.empty()) {
+                undoSteps.pop_back();
+                ++undoHistoryVersion;
+            }
+
+            draggingLinedefGeometry = false;
+            linedefDragParts.clear();
+            linedefDragIDs.clear();
+            linedefDragMutated = false;
+        }
+
         void EndLinedefDrag() {
             if (!draggingLinedefGeometry) return;
 
@@ -993,7 +1018,7 @@ namespace MapEditorInternal {
         // box-selects, starts a drawing - and a drop takes that back off
         // (RevertCanvasRefDrag), the same way an entity drag works.
 
-        enum class CanvasPressAction { WALL_DRAG, BOX_SELECT, SECTOR_DRAWING };
+        enum class CanvasPressAction { WALL_DRAG, BOX_SELECT, SECTOR_DRAWING, LINEDEF_DRAG };
 
         struct SelectionSnapshot {
             std::vector<ID> walls;
@@ -1322,6 +1347,8 @@ namespace MapEditorInternal {
                     return;
                 }
 
+                SelectionSnapshot selectionBefore = CaptureSelection();
+
                 const bool alreadyInSelection =
                         std::ranges::find(selectedLinedefs, linedefUnderCursor) != selectedLinedefs.end();
 
@@ -1339,6 +1366,7 @@ namespace MapEditorInternal {
                     if (const Linedef* linedef = level.GetLinedef(linedefID)) parts.push_back({*linedef, true, true});
 
                 BeginLinedefDrag(mouseWorld, std::move(parts), grabbed->start, true);
+                BeginCanvasRefPress(CanvasPressAction::LINEDEF_DRAG, LINEDEF_REF_PAYLOAD, linedefUnderCursor, std::move(selectionBefore));
                 return;
             }
 
@@ -1527,6 +1555,7 @@ namespace MapEditorInternal {
         // mode switch already committed, say, is no longer this press.
         const bool actionRunning =
             canvasRefPress.action == CanvasPressAction::WALL_DRAG ? draggingWallGeometry
+            : canvasRefPress.action == CanvasPressAction::LINEDEF_DRAG ? draggingLinedefGeometry
             : canvasRefPress.action == CanvasPressAction::BOX_SELECT ? boxSelectPending
             : true;
         if (!actionRunning) return;
@@ -1545,6 +1574,12 @@ namespace MapEditorInternal {
             if (it == level.wallIDToIndex.end()) return;
 
             label = WallHierarchyLabel(level.walls[it->second]);
+        }
+        else if (canvasRefPress.payloadType == LINEDEF_REF_PAYLOAD) {
+            const Linedef* linedef = level.GetLinedef(canvasRefPress.id);
+            if (linedef == nullptr) return;
+
+            label = LinedefHierarchyLabel(*linedef);
         }
         else {
             const Sector* sector = level.GetSector(canvasRefPress.id);
@@ -1569,6 +1604,7 @@ namespace MapEditorInternal {
 
         switch (canvasRefPress.action) {
             case CanvasPressAction::WALL_DRAG: CancelWallDrag(); break;
+            case CanvasPressAction::LINEDEF_DRAG: CancelLinedefDrag(); break;
             case CanvasPressAction::BOX_SELECT: boxSelectPending = false; break;
             case CanvasPressAction::SECTOR_DRAWING: CancelActiveDrawing(); break;
         }

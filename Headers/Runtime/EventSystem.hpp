@@ -78,8 +78,10 @@ namespace EventSystem {
     void ExecuteDispatch(Level& level, const Dispatch& dispatch, EventOwnerKind ownerKind, ID ownerID, ID instigatorID);
 
     // Checks the trigger limit, the tag filter against the instigator's tags,
-    // the condition and the chance, then runs every dispatch with the event's tag.
-    void TriggerEvent(Level& level, Event& event, ID instigatorID);
+    // the condition and the chance, then runs every dispatch listening on the
+    // event's tag and its direct calls. `ownerKind` / `ownerID` is the object
+    // the event is on (a call's Self).
+    void TriggerEvent(Level& level, Event& event, EventOwnerKind ownerKind, ID ownerID, ID instigatorID);
 
     // A ray of `type` was cast by `casterID` (INVALID_ID if no entity cast
     // it). `hit` is what it stopped at, nullopt if nothing within `length`.

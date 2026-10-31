@@ -152,6 +152,17 @@ namespace {
     bool running = false;
 
     std::unordered_multimap<TagId, DispatchHandle> dispatchRegistry;
+
+    // Dispatch names as numbers (from 1). Only grows during a play session,
+    // so a call resolved before a registry rebuild keeps its number.
+    std::unordered_map<std::string, uint32_t> dispatchNameIDs;
+
+    // Owner + name number -> that owner's dispatches with the name.
+    std::unordered_map<uint64_t, std::vector<DispatchHandle>> namedDispatches;
+
+    uint64_t NamedDispatchKey(const EventOwnerKind kind, const ID ownerID, const uint32_t nameID) {
+        return (static_cast<uint64_t>(kind) << 56) | (static_cast<uint64_t>(ownerID) << 24) | (nameID & 0xFFFFFFu);
+    }
     std::vector<CrossWall> crossWalls;
     std::vector<ColorFade> colorFades;
     std::vector<PendingDispatch> pendingDispatches;
@@ -402,18 +413,12 @@ namespace {
         });
     }
 
-    // Runs every dispatch linked to `tag` that isn't cooling down, now or after its delay.
-    void RunDispatches(Level& level, const TagId tag, const ID instigatorID) {
+    // Runs the dispatches that aren't cooling down, now or after their delay.
+    void RunHandles(Level& level, const std::vector<DispatchHandle>& handles, const ID instigatorID) {
         if (relayDepth >= MAX_RELAY_DEPTH) {
-            spdlog::warn("Dispatches for tag {} skipped: relays went {} deep, they probably loop", tag, MAX_RELAY_DEPTH);
+            spdlog::warn("Dispatches skipped: relays and calls went {} deep, they probably loop", MAX_RELAY_DEPTH);
             return;
         }
-
-        // Dispatches can add/destroy things, which may move the dispatch
-        // being run - copy what's needed instead of holding references.
-        const auto [begin, end] = dispatchRegistry.equal_range(tag);
-        std::vector<DispatchHandle> handles;
-        for (auto it = begin; it != end; ++it) handles.push_back(it->second);
 
         ++relayDepth;
 
@@ -433,8 +438,61 @@ namespace {
         --relayDepth;
     }
 
+    // Runs every dispatch listening on `tag`.
+    void RunDispatches(Level& level, const TagId tag, const ID instigatorID) {
+        // Dispatches can add/destroy things, which may move the dispatch
+        // being run - copy the handles instead of holding references.
+        const auto [begin, end] = dispatchRegistry.equal_range(tag);
+        std::vector<DispatchHandle> handles;
+        for (auto it = begin; it != end; ++it) handles.push_back(it->second);
+
+        RunHandles(level, handles, instigatorID);
+    }
+
+    // Runs the dispatches named by `call` on its target(s). `callerKind` /
+    // `callerID` is the object the event or relay is on (Self).
+    void RunCall(Level& level, const DirectCall& call, const EventOwnerKind callerKind, const ID callerID,
+                 const ID instigatorID) {
+        // Normally resolved with the registry; one built before the call
+        // existed is looked up once here and kept.
+        if (call.nameID == 0 && !call.dispatch.empty()) {
+            const auto it = dispatchNameIDs.find(call.dispatch);
+            if (it != dispatchNameIDs.end()) call.nameID = it->second;
+        }
+        if (call.nameID == 0) return; // nothing in the level has that name
+
+        std::vector<std::pair<EventOwnerKind, ID>> targets;
+
+        switch (call.target) {
+            case CallTarget::SELF: targets.emplace_back(callerKind, callerID); break;
+            case CallTarget::INSTIGATOR:
+                if (instigatorID != INVALID_ID) targets.emplace_back(EventOwnerKind::ENTITY, instigatorID);
+                break;
+            case CallTarget::ENTITY: targets.emplace_back(EventOwnerKind::ENTITY, call.targetID); break;
+            case CallTarget::SECTOR: targets.emplace_back(EventOwnerKind::SECTOR, call.targetID); break;
+            case CallTarget::WALL: targets.emplace_back(EventOwnerKind::LINE, call.targetID); break;
+            case CallTarget::LINEDEF: targets.emplace_back(EventOwnerKind::LINEDEF, call.targetID); break;
+            case CallTarget::TAGGED: {
+                const auto has = [&](const std::vector<TagId>& tags) { return std::ranges::find(tags, call.targetTag) != tags.end(); };
+                for (const Entity& entity : level.entities) if (has(entity.tagIds)) targets.emplace_back(EventOwnerKind::ENTITY, entity.id);
+                for (const Sector& sector : level.sectors) if (has(sector.tagIds)) targets.emplace_back(EventOwnerKind::SECTOR, sector.id);
+                for (const Wall& wall : level.walls) if (has(wall.tagIds)) targets.emplace_back(EventOwnerKind::LINE, wall.id);
+                break;
+            }
+        }
+
+        std::vector<DispatchHandle> handles;
+        for (const auto& [kind, id] : targets) {
+            const auto it = namedDispatches.find(NamedDispatchKey(kind, id, call.nameID));
+            if (it != namedDispatches.end()) handles.insert(handles.end(), it->second.begin(), it->second.end());
+        }
+
+        if (!handles.empty()) RunHandles(level, handles, instigatorID);
+    }
+
     // `filterTags` is what the event's TagFilter is checked against.
-    void Trigger(Level& level, Event& event, const ID instigatorID, const std::vector<TagId>& filterTags) {
+    void Trigger(Level& level, Event& event, const EventOwnerKind ownerKind, const ID ownerID, const ID instigatorID,
+                 const std::vector<TagId>& filterTags) {
         if (event.maxTriggers != 0 && event.triggerCount >= event.maxTriggers) return;
 
         const TagFilter* filter = std::visit([](const auto& p) { return GetTagFilter(p); }, event.payload);
@@ -448,7 +506,12 @@ namespace {
         ++event.triggerCount;
 
         // `event` may move once dispatches run.
-        RunDispatches(level, event.tagId, instigatorID);
+        const bool useTag = event.useTag;
+        const TagId tag = event.tagId;
+        const std::vector<DirectCall> calls = event.calls;
+
+        if (useTag) RunDispatches(level, tag, instigatorID);
+        for (const DirectCall& call : calls) RunCall(level, call, ownerKind, ownerID, instigatorID);
     }
 
     // Fires every `Payload` event of the owner that `accept` lets through. By
@@ -465,7 +528,7 @@ namespace {
             const Payload* payload = std::get_if<Payload>(&event.payload);
             if (!payload || !accept(*payload)) continue;
 
-            Trigger(level, event, instigatorID, filterTags);
+            Trigger(level, event, kind, ownerID, instigatorID, filterTags);
         }
     }
 
@@ -948,7 +1011,7 @@ namespace {
             state.elapsed = std::min(state.elapsed - wait, std::max(timer->interval, 0.0f));
             state.firedOnce = true;
 
-            Trigger(level, *event, INVALID_ID, {});
+            Trigger(level, *event, handle.ownerKind, handle.ownerID, INVALID_ID, {});
         }
     }
 
@@ -963,7 +1026,7 @@ namespace {
             const bool wasMet = std::exchange(conditionWatches[i].wasMet, met);
 
             if (met && !wasMet && IsOwnerActive(level, handle.ownerKind, handle.ownerID))
-                Trigger(level, *event, INVALID_ID, {});
+                Trigger(level, *event, handle.ownerKind, handle.ownerID, INVALID_ID, {});
         }
     }
 
@@ -2440,9 +2503,17 @@ namespace EventSystem {
         crossWalls.clear();
         staySectors.clear();
 
+        namedDispatches.clear();
+
         const auto add = [](const EventOwnerKind kind, const ID ownerID, const std::vector<Dispatch>& dispatches) {
-            for (size_t i = 0; i < dispatches.size(); ++i)
-                dispatchRegistry.emplace(dispatches[i].tagId, DispatchHandle{kind, ownerID, i});
+            for (size_t i = 0; i < dispatches.size(); ++i) {
+                const Dispatch& dispatch = dispatches[i];
+                if (dispatch.useTag) dispatchRegistry.emplace(dispatch.tagId, DispatchHandle{kind, ownerID, i});
+
+                if (dispatch.name.empty()) continue;
+                const auto [it, added] = dispatchNameIDs.try_emplace(dispatch.name, static_cast<uint32_t>(dispatchNameIDs.size() + 1));
+                namedDispatches[NamedDispatchKey(kind, ownerID, it->second)].push_back({kind, ownerID, i});
+            }
         };
 
         for (const Wall& wall : level.walls) add(EventOwnerKind::LINE, wall.id, wall.dispatches);
@@ -2450,6 +2521,27 @@ namespace EventSystem {
         for (const Sector& sector : level.sectors) add(EventOwnerKind::SECTOR, sector.id, sector.dispatches);
         for (const Entity& entity : level.entities) add(EventOwnerKind::ENTITY, entity.id, entity.dispatches);
         add(EventOwnerKind::LEVEL, ID{0}, level.worldSettings.dispatches);
+
+        // Calls by name become calls by number. A name no dispatch has gets 0.
+        const auto resolve = [](const DirectCall& call) {
+            const auto it = dispatchNameIDs.find(call.dispatch);
+            call.nameID = it != dispatchNameIDs.end() ? it->second : 0;
+        };
+
+        ForEachEventOwner(level, [&](const EventOwnerKind, const ID, const std::vector<Event>& events) {
+            for (const Event& event : events)
+                for (const DirectCall& call : event.calls) resolve(call);
+        });
+
+        const auto resolveRelays = [&](const std::vector<Dispatch>& dispatches) {
+            for (const Dispatch& dispatch : dispatches)
+                if (const auto* relay = std::get_if<PayloadDispatchRelay>(&dispatch.payload)) resolve(relay->call);
+        };
+        for (const Wall& wall : level.walls) resolveRelays(wall.dispatches);
+        for (const Linedef& linedef : level.linedefs) resolveRelays(linedef.dispatches);
+        for (const Sector& sector : level.sectors) resolveRelays(sector.dispatches);
+        for (const Entity& entity : level.entities) resolveRelays(entity.dispatches);
+        resolveRelays(level.worldSettings.dispatches);
 
         for (const Wall& wall : level.walls) {
             const bool hasCross = std::ranges::any_of(wall.events, [](const Event& event) {
@@ -2562,6 +2654,8 @@ namespace EventSystem {
         hooks = {};
         running = false;
         dispatchRegistry.clear();
+        dispatchNameIDs.clear();
+        namedDispatches.clear();
         crossWalls.clear();
         colorFades.clear();
         pendingDispatches.clear();
@@ -2832,7 +2926,8 @@ namespace EventSystem {
                 ShowMessage(level.worldSettings.messageStyle, show.text, show.color * 255.0f, show.duration);
             },
             [&](const PayloadDispatchRelay& relay) {
-                RunDispatches(level, relay.target, instigatorID);
+                if (relay.direct) RunCall(level, relay.call, ownerKind, ownerID, instigatorID);
+                else RunDispatches(level, relay.target, instigatorID);
             },
             [&](const PayloadDispatchResetEvent& reset) {
                 ForEachEventOwner(level, [&](const EventOwnerKind kind, const ID id, const std::vector<Event>&) {
@@ -2874,8 +2969,8 @@ namespace EventSystem {
         }, dispatch.payload);
     }
 
-    void TriggerEvent(Level& level, Event& event, const ID instigatorID) {
-        Trigger(level, event, instigatorID, EntityTags(level, instigatorID));
+    void TriggerEvent(Level& level, Event& event, const EventOwnerKind ownerKind, const ID ownerID, const ID instigatorID) {
+        Trigger(level, event, ownerKind, ownerID, instigatorID, EntityTags(level, instigatorID));
     }
 
     void ReportRay(Level& level, const RayType type, const ID casterID, const Vector3& origin, const Vector3& direction,

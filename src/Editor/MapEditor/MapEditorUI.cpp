@@ -3188,6 +3188,8 @@ namespace {
                         else SelectLinedef(linedef.id);
                     }
 
+                    HierarchyRowDragSource(LINEDEF_REF_PAYLOAD, linedef.id, label);
+
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem(Get("editor.delete").c_str()))
                             linedefPendingDelete = linedef.id;

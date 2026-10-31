@@ -104,6 +104,37 @@ enum class TagType : uint8_t {
     EXCLUDE, // Call event for entities with none of the tags
     ALL, // ignore tags and call event for all entity
 };
+// Who a direct call (an event's, or a Relay's) runs the named dispatches of.
+enum class CallTarget : uint8_t {
+    SELF = 0,       // the object the event / relay is on
+    INSTIGATOR = 1, // the entity that caused the event; nothing without one
+    ENTITY = 2,     // a picked entity (targetID)
+    SECTOR = 3,     // a picked sector
+    WALL = 4,       // a picked wall
+    LINEDEF = 5,    // a picked linedef
+    TAGGED = 6      // every entity, sector and wall with the normal tag targetTag
+};
+
+// Runs every dispatch named `dispatch` on the target (several may share a
+// name). Looked up by name, so renaming a dispatch leaves calls to the old
+// name unanswered until they are re-picked.
+struct DirectCall {
+    CallTarget target = CallTarget::SELF;
+    ID targetID = INVALID_ID; // ENTITY, SECTOR, WALL, LINEDEF
+    TagId targetTag = 0;      // TAGGED
+    std::string dispatch;
+
+    // Runtime only, not saved: `dispatch` as a number, filled when the event
+    // registry is built so a call never compares strings. 0 = no dispatch
+    // in the level has that name.
+    mutable uint32_t nameID = 0;
+
+    [[nodiscard]] bool operator==(const DirectCall& other) const {
+        return target == other.target && targetID == other.targetID && targetTag == other.targetTag &&
+               dispatch == other.dispatch;
+    }
+};
+
 struct TagFilter {
     TagType tagType = TagType::INCLUDE;
     std::vector<TagId> tags;
@@ -1019,6 +1050,10 @@ struct PayloadDispatchRelay {
     bool operator==(const PayloadDispatchRelay&) const = default;
 
     TagId target = 0;
+
+    // Instead of the tag: runs the named dispatches of one target.
+    bool direct = false;
+    DirectCall call;
 };
 
 // Sets the trigger count of every event linked to `target` back to 0.
@@ -1140,7 +1175,12 @@ template <typename Payload>
 struct Event {
     EventPayload payload;
 
+    // Runs every dispatch listening on tagId, unless useTag is off.
+    bool useTag = true;
     TagId tagId = 0;
+
+    // And each of these.
+    std::vector<DirectCall> calls;
 
     Condition condition;
 
@@ -1150,8 +1190,8 @@ struct Event {
 
     // Authored data only - triggerCount is left out.
     [[nodiscard]] bool operator==(const Event& other) const {
-        return payload == other.payload && tagId == other.tagId && condition == other.condition &&
-               maxTriggers == other.maxTriggers && chance == other.chance;
+        return payload == other.payload && useTag == other.useTag && tagId == other.tagId && calls == other.calls &&
+               condition == other.condition && maxTriggers == other.maxTriggers && chance == other.chance;
     }
 
     [[nodiscard]] constexpr bool IsLine() const noexcept { return CanAttachTo(payload, EventOwnerKind::LINE); }
@@ -1164,6 +1204,12 @@ struct Event {
 struct Dispatch {
     DispatchPayload payload;
 
+    // What direct calls run it by. Several dispatches of one object may
+    // share a name. Empty: only tags reach it.
+    std::string name;
+
+    // Listens on tagId, unless useTag is off (then only direct calls run it).
+    bool useTag = true;
     TagId tagId = 0;
 
     // Seconds between the event firing and this running. Each trigger

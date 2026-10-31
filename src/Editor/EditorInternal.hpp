@@ -2019,6 +2019,7 @@ namespace MapEditorInternal {
     inline constexpr const char* ENTITY_REF_PAYLOAD = "TILKY_ENTITY_REF";
     inline constexpr const char* WALL_REF_PAYLOAD = "TILKY_WALL_REF";
     inline constexpr const char* SECTOR_REF_PAYLOAD = "TILKY_SECTOR_REF";
+    inline constexpr const char* LINEDEF_REF_PAYLOAD = "TILKY_LINEDEF_REF";
 
     struct LevelObjectDragPayload {
         ID id = INVALID_ID;
@@ -2053,6 +2054,7 @@ namespace MapEditorInternal {
     // ID, so it matches the inspector header. Defined in MapEditorUI.cpp.
     std::string SectorHierarchyLabel(const Sector& sector);
     std::string WallHierarchyLabel(const Wall& wall);
+    std::string LinedefHierarchyLabel(const Linedef& linedef);
 
     // Called once per frame from the UI pass. Turns an in-progress canvas
     // entity drag into an ImGui drag source while the cursor is over a

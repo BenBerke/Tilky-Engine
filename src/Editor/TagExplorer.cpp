@@ -71,7 +71,7 @@ namespace TagExplorer {
 
             for (const Event& event : events) {
                 const char* key = GetTranslationKey(event.payload);
-                AddUse(index, event.tagId, {kind, id, UseRole::EVENT_LINK, key});
+                if (event.useTag) AddUse(index, event.tagId, {kind, id, UseRole::EVENT_LINK, key});
 
                 named.clear();
                 PayloadTags(event.payload, named);
@@ -80,7 +80,7 @@ namespace TagExplorer {
 
             for (const Dispatch& dispatch : dispatches) {
                 const char* key = GetTranslationKey(dispatch.payload);
-                AddUse(index, dispatch.tagId, {kind, id, UseRole::DISPATCH_LINK, key});
+                if (dispatch.useTag) AddUse(index, dispatch.tagId, {kind, id, UseRole::DISPATCH_LINK, key});
 
                 named.clear();
                 PayloadTags(dispatch.payload, named);

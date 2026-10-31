@@ -868,6 +868,16 @@ namespace {
         {PayloadDispatchEntitySetField::TOGGLE, "toggle"}
     };
 
+    constexpr std::pair<CallTarget, const char*> kCallTargetNames[] = {
+        {CallTarget::SELF, "self"},
+        {CallTarget::INSTIGATOR, "instigator"},
+        {CallTarget::ENTITY, "entity"},
+        {CallTarget::SECTOR, "sector"},
+        {CallTarget::WALL, "wall"},
+        {CallTarget::LINEDEF, "linedef"},
+        {CallTarget::TAGGED, "tagged"}
+    };
+
     // Reads `key` into `out` if present; throws on a value of the wrong type.
     template <typename T>
     void ReadOptional(const json& j, const char* key, T& out) {
@@ -920,6 +930,22 @@ namespace {
     void TagFilterFromJson(const json& j, TagFilter& filter) {
         ReadOptionalEnum(j, "type", kTagTypeNames, filter.tagType);
         ReadOptional(j, "tags", filter.tags);
+    }
+
+    json DirectCallToJson(const DirectCall& call) {
+        json j = {{"target", EnumName(kCallTargetNames, call.target)}, {"dispatch", call.dispatch}};
+        if (call.targetID != INVALID_ID) j["id"] = call.targetID;
+        if (call.target == CallTarget::TAGGED) j["tag"] = call.targetTag;
+        return j;
+    }
+
+    DirectCall DirectCallFromJson(const json& j) {
+        DirectCall call;
+        ReadOptionalEnum(j, "target", kCallTargetNames, call.target);
+        ReadOptional(j, "id", call.targetID);
+        ReadOptional(j, "tag", call.targetTag);
+        ReadOptional(j, "dispatch", call.dispatch);
+        return call;
     }
 
     // Per payload type: its fields (without "type").
@@ -1156,6 +1182,13 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> || std::is_same_v<Payload, PayloadDispatchResetEvent>)
             j["target"] = payload.target;
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchRelay>) {
+            if (payload.direct) {
+                j["direct"] = true;
+                j["call"] = DirectCallToJson(payload.call);
+            }
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             j["levelName"] = payload.levelName;
@@ -1407,6 +1440,11 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchRelay> || std::is_same_v<Payload, PayloadDispatchResetEvent>)
             ReadOptional(j, "target", payload.target);
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchRelay>) {
+            ReadOptional(j, "direct", payload.direct);
+            if (j.contains("call")) payload.call = DirectCallFromJson(j.at("call"));
+        }
+
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             ReadOptional(j, "levelName", payload.levelName);
 
@@ -1454,6 +1492,13 @@ namespace {
 
         // Only written when there is one, so events without a condition save as before.
         if (event.condition.type != Condition::NONE) j["condition"] = ConditionToJson(event.condition);
+        if (!event.useTag) j["useTag"] = false;
+
+        if (!event.calls.empty()) {
+            json calls = json::array();
+            for (const DirectCall& call : event.calls) calls.push_back(DirectCallToJson(call));
+            j["calls"] = std::move(calls);
+        }
 
         return j;
     }
@@ -1465,6 +1510,11 @@ namespace {
         ReadOptional(j, "maxTriggers", event.maxTriggers);
         ReadOptional(j, "chance", event.chance);
         if (j.contains("condition")) event.condition = ConditionFromJson(j.at("condition"));
+        ReadOptional(j, "useTag", event.useTag);
+
+        if (j.contains("calls"))
+            for (const json& call : j.at("calls")) event.calls.push_back(DirectCallFromJson(call));
+
         return event;
     }
 
@@ -1475,6 +1525,8 @@ namespace {
         if (dispatch.delay > 0.0f) j["delay"] = dispatch.delay;
         if (dispatch.cooldown > 0.0f) j["cooldown"] = dispatch.cooldown;
         if (dispatch.cooldownTriggers != 1) j["cooldownTriggers"] = dispatch.cooldownTriggers;
+        if (!dispatch.name.empty()) j["name"] = dispatch.name;
+        if (!dispatch.useTag) j["useTag"] = false;
 
         return j;
     }
@@ -1486,6 +1538,8 @@ namespace {
         ReadOptional(j, "delay", dispatch.delay);
         ReadOptional(j, "cooldown", dispatch.cooldown);
         ReadOptional(j, "cooldownTriggers", dispatch.cooldownTriggers);
+        ReadOptional(j, "name", dispatch.name);
+        ReadOptional(j, "useTag", dispatch.useTag);
         dispatch.cooldownTriggers = std::max(1, dispatch.cooldownTriggers);
         return dispatch;
     }

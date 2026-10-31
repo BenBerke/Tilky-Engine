@@ -18,6 +18,7 @@ namespace {
         ID id;
         const std::vector<Event>* events;
         const std::vector<Dispatch>* dispatches;
+        const std::vector<TagId>* tags; // nullptr: linedefs have none
     };
 
     std::vector<Owner> AllOwners(const Level& level) {
@@ -25,23 +26,53 @@ namespace {
         owners.reserve(level.walls.size() + level.linedefs.size() + level.sectors.size() + level.entities.size());
 
         for (const Wall& wall : level.walls)
-            owners.push_back({EventOwnerKind::LINE, wall.id, &wall.events, &wall.dispatches});
+            owners.push_back({EventOwnerKind::LINE, wall.id, &wall.events, &wall.dispatches, &wall.tagIds});
         for (const Linedef& linedef : level.linedefs)
-            owners.push_back({EventOwnerKind::LINEDEF, linedef.id, &linedef.events, &linedef.dispatches});
+            owners.push_back({EventOwnerKind::LINEDEF, linedef.id, &linedef.events, &linedef.dispatches, nullptr});
         for (const Sector& sector : level.sectors)
-            owners.push_back({EventOwnerKind::SECTOR, sector.id, &sector.events, &sector.dispatches});
+            owners.push_back({EventOwnerKind::SECTOR, sector.id, &sector.events, &sector.dispatches, &sector.tagIds});
         for (const Entity& entity : level.entities)
-            owners.push_back({EventOwnerKind::ENTITY, entity.id, &entity.events, &entity.dispatches});
+            owners.push_back({EventOwnerKind::ENTITY, entity.id, &entity.events, &entity.dispatches, &entity.tagIds});
 
         return owners;
     }
 
     bool HasEventTag(const std::vector<Event>& events, const TagId tag) {
-        return std::ranges::any_of(events, [tag](const Event& event) { return event.tagId == tag; });
+        return std::ranges::any_of(events, [tag](const Event& event) { return event.useTag && event.tagId == tag; });
     }
 
     bool HasDispatchTag(const std::vector<Dispatch>& dispatches, const TagId tag) {
-        return std::ranges::any_of(dispatches, [tag](const Dispatch& dispatch) { return dispatch.tagId == tag; });
+        return std::ranges::any_of(dispatches, [tag](const Dispatch& dispatch) { return dispatch.useTag && dispatch.tagId == tag; });
+    }
+
+    bool HasDispatchNamed(const std::vector<Dispatch>& dispatches, const std::string& name) {
+        return !name.empty() && std::ranges::any_of(dispatches, [&](const Dispatch& dispatch) { return dispatch.name == name; });
+    }
+
+    // Whether a direct call reaches `target` (an object known in the editor:
+    // a picked one, or one with the call's tag) and something there answers.
+    bool CallReaches(const DirectCall& call, const Owner& target) {
+        bool aimed = false;
+        switch (call.target) {
+            case CallTarget::ENTITY: aimed = target.kind == EventOwnerKind::ENTITY && target.id == call.targetID; break;
+            case CallTarget::SECTOR: aimed = target.kind == EventOwnerKind::SECTOR && target.id == call.targetID; break;
+            case CallTarget::WALL: aimed = target.kind == EventOwnerKind::LINE && target.id == call.targetID; break;
+            case CallTarget::LINEDEF: aimed = target.kind == EventOwnerKind::LINEDEF && target.id == call.targetID; break;
+            case CallTarget::TAGGED:
+                aimed = target.tags && std::ranges::find(*target.tags, call.targetTag) != target.tags->end();
+                break;
+            case CallTarget::SELF:
+            case CallTarget::INSTIGATOR:
+                break;
+        }
+        return aimed && HasDispatchNamed(*target.dispatches, call.dispatch);
+    }
+
+    bool EventsReach(const std::vector<Event>& events, const Owner& target) {
+        return std::ranges::any_of(events, [&](const Event& event) {
+            return (event.useTag && HasDispatchTag(*target.dispatches, event.tagId)) ||
+                   std::ranges::any_of(event.calls, [&](const DirectCall& call) { return CallReaches(call, target); });
+        });
     }
 }
 
@@ -166,14 +197,10 @@ namespace EventLinks {
         for (const Owner& other : owners) {
             if (other.kind == kind && other.id == ownerID) continue;
 
-            // Only the other object's tags decide; each pair is drawn once
-            // per direction however many events/dispatches share the tag.
-            const bool outgoing = std::ranges::any_of(*self->events, [&](const Event& event) {
-                return HasDispatchTag(*other.dispatches, event.tagId);
-            });
-            const bool incoming = std::ranges::any_of(*self->dispatches, [&](const Dispatch& dispatch) {
-                return HasEventTag(*other.events, dispatch.tagId);
-            });
+            // Tags and direct calls decide; each pair is drawn once per
+            // direction however many events/dispatches link them.
+            const bool outgoing = EventsReach(*self->events, other);
+            const bool incoming = EventsReach(*other.events, *self);
             if (!outgoing && !incoming) continue;
 
             Vector3 otherPoint;
@@ -184,5 +211,16 @@ namespace EventLinks {
         }
 
         return links;
+    }
+
+    bool CallsInstigator(const Level& level, const EventOwnerKind kind, const ID ownerID) {
+        for (const Owner& owner : AllOwners(level)) {
+            if (owner.kind != kind || owner.id != ownerID) continue;
+
+            return std::ranges::any_of(*owner.events, [](const Event& event) {
+                return std::ranges::any_of(event.calls, [](const DirectCall& call) { return call.target == CallTarget::INSTIGATOR; });
+            });
+        }
+        return false;
     }
 }

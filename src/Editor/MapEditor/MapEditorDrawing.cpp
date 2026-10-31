@@ -1309,6 +1309,18 @@ namespace MapEditorInternal {
         if (editingSector && selectedSectorID != INVALID_ID) add(EventOwnerKind::SECTOR, selectedSectorID);
         if (editingEntity && selectedEntity.id != INVALID_ID) add(EventOwnerKind::ENTITY, selectedEntity.id);
 
+        // Calls to whoever triggers the event have no line to draw.
+        const auto instigatorLabel = [&](const EventOwnerKind kind, const ID id) {
+            Vector3 anchor;
+            if (EventLinks::CallsInstigator(level, kind, id) && EventLinks::AnchorPoint(level, kind, id, anchor))
+                DrawWorldLabel(Localisation::Get("events.links.instigator"), {anchor.x, anchor.z}, ToFColor(eventLinkColor));
+        };
+
+        if (editingWall && selectedWallID != INVALID_ID) instigatorLabel(EventOwnerKind::LINE, selectedWallID);
+        if (editingLinedef && selectedLinedefID != INVALID_ID) instigatorLabel(EventOwnerKind::LINEDEF, selectedLinedefID);
+        if (editingSector && selectedSectorID != INVALID_ID) instigatorLabel(EventOwnerKind::SECTOR, selectedSectorID);
+        if (editingEntity && selectedEntity.id != INVALID_ID) instigatorLabel(EventOwnerKind::ENTITY, selectedEntity.id);
+
         if (links.empty()) return;
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
