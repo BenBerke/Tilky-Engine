@@ -885,16 +885,8 @@ namespace {
             if (GetComboDown(COMBO_UI_SELECT_ALL)) SelectAllUIEntities(level);
         }
 
-        if (GetComboDown(COMBO_UI_UNDO)) {
-            CancelDrag(level);
-            UndoLastAction();
-            AfterUndoOrRedo(level);
-        }
-        else if (GetComboDown(COMBO_UI_REDO)) {
-            CancelDrag(level);
-            RedoLastAction();
-            AfterUndoOrRedo(level);
-        }
+        if (GetComboDown(COMBO_UI_UNDO)) UIEditorUndo();
+        else if (GetComboDown(COMBO_UI_REDO)) UIEditorRedo();
 
         if (GetKeyBindDown(KEYBIND_UI_FOCUS_SELECTION)) FrameSelection(level);
         if (GetKeyBindDown(KEYBIND_UI_TOGGLE_SNAP)) uiSnapEnabled = !uiSnapEnabled;
@@ -924,6 +916,19 @@ namespace {
 }
 
 namespace MapEditorInternal {
+    void UIEditorUndo() {
+        Level& level = LevelManager::CurrentLevel();
+        CancelDrag(level);
+        UndoLastAction();
+        AfterUndoOrRedo(level);
+    }
+
+    void UIEditorRedo() {
+        Level& level = LevelManager::CurrentLevel();
+        CancelDrag(level);
+        RedoLastAction();
+        AfterUndoOrRedo(level);
+    }
     bool IsUIEntitySelected(const ID id) {
         return id != INVALID_ID && std::ranges::find(selectedUIEntities, id) != selectedUIEntities.end();
     }

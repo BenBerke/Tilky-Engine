@@ -91,11 +91,6 @@ namespace {
     // dirty-state symbol this file can reach.
     bool uiHasUnsavedChanges = false;
 
-    // The Save button and Ctrl+S.
-    void SaveFromUIEditor() {
-        if (MapEditorInternal::Save(Editor::currentMap)) uiHasUnsavedChanges = false;
-    }
-
     // Centres the canvas pan on the actual current screen once, the first
     // time the UI Editor is opened - screenWidth/screenHeight aren't known
     // at static init time. After that, pan is fully user-controlled (drag
@@ -1653,9 +1648,13 @@ namespace MapEditorInternal {
     void HandleUIEditorShortcuts(const bool keyboardBlockedByImgui) {
         if (keyboardBlockedByImgui) return;
 
-        if (GetComboDown(COMBO_SAVE)) SaveFromUIEditor();
-        if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_MAP;
+        if (GetComboDown(COMBO_SAVE)) SaveLevel();
         if (GetComboDown(COMBO_COMMAND_PALETTE)) CommandPalette::Open();
+
+        // The same mode keys as the map editor.
+        if (GetKeyBindDown(KEYBIND_TOGGLE_UI_EDITOR)) currentState = STATE_MAP;
+        else if (GetKeyBindDown(KEYBIND_TOGGLE_RUNTIME_EDITOR)) OpenRuntimeEditor();
+        else if (GetKeyBindDown(KEYBIND_SAVE_AND_PLAY)) SaveAndPlay();
     }
 
     void DrawUIEntityInspectorFor(Entity& entity, const std::string& windowTitle, const std::string& idSuffix, bool* open,
@@ -1694,6 +1693,8 @@ namespace MapEditorInternal {
     }
 
     void DrawUIEditorUI() {
+        // Before the dock space, which fills the work area below it.
+        DrawEditorMenuBar();
         DrawUIEditorDockSpace();
         DrawEditorToolbar();
         DrawUICanvasContextMenu();
@@ -1743,6 +1744,9 @@ namespace MapEditorInternal {
         // ---- Other panels ----
         DrawUIHierarchyPanel(level);
         DrawUIAssetBrowserPanel();
+
+        // Saved / export messages.
+        ImGuiDrawFunctions::DrawNotification(std::min(ImGui::GetIO().DeltaTime, 0.1f));
     }
 }
 

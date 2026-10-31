@@ -995,6 +995,20 @@ namespace MapEditorInternal {
     // and in the map editor the paint select brush). The UI Editor draws it too.
     void DrawEditorToolbar();
 
+    // The main menu bar (Project, settings windows) and the exports it
+    // starts. Shared by the map editor and the UI Editor; draw it before
+    // anything that sizes itself to the viewport's work area.
+    void DrawEditorMenuBar();
+
+    // The UI Editor's undo / redo (Ctrl+Z / Ctrl+Y there and its toolbar
+    // buttons): the shared history, ending any drag first.
+    void UIEditorUndo();
+    void UIEditorRedo();
+
+    // Save / Save & Play as the toolbar does them, with the saved notification.
+    void SaveLevel();
+    void SaveAndPlay();
+
     // Clears the UI Editor's unsaved-changes mark, after a save from either editor.
     void ClearUIUnsavedChanges();
     // Ctrl+S and the key back to the Map Editor. Defined in UIEditorUI.cpp.

@@ -2817,6 +2817,29 @@ namespace {
 
         ImGui::SameLine();
 
+        // The one history both editors share; greyed out when there's nothing to do.
+        const bool uiState = currentState == STATE_UI;
+
+        ImGui::BeginDisabled(undoSteps.empty());
+        if (ToolbarButton("undo", ICON_FA_ROTATE_LEFT, "<-", Get("editor.combo.undo"),
+                          FormatKeyBinds(Get(uiState ? "editor.tooltip.toolbar.ui_undo" : "editor.tooltip.toolbar.undo")))) {
+            if (uiState) UIEditorUndo();
+            else UndoLastAction();
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(redoSteps.empty());
+        if (ToolbarButton("redo", ICON_FA_ROTATE_RIGHT, "->", Get("editor.combo.redo"),
+                          FormatKeyBinds(Get(uiState ? "editor.tooltip.toolbar.ui_redo" : "editor.tooltip.toolbar.redo")))) {
+            if (uiState) UIEditorRedo();
+            else RedoLastAction();
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+
         PushSuccessStyle();
         const bool playPressed = ToolbarButton("save_and_play", ICON_FA_PLAY, ">", Get("editor.save_and_play"),
                                                FormatKeyBinds(Get("editor.tooltip.save_and_play")));
@@ -2872,6 +2895,20 @@ namespace MapEditorInternal {
 
     void DrawEditorToolbar() {
         DrawToolbar();
+    }
+
+    void DrawEditorMenuBar() {
+        DrawMainMenuBar();
+        ProcessPendingGameExport();
+        ProcessPendingObjExport();
+    }
+
+    void SaveLevel() {
+        SaveLevelFromEditor();
+    }
+
+    void SaveAndPlay() {
+        SaveAndPlayFromEditor();
     }
 
     void HandleEditorShortcuts(const bool keyboardBlockedByImgui) {
@@ -5689,9 +5726,7 @@ namespace MapEditorInternal {
     void DrawEditorUI() {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
-        DrawMainMenuBar();
-        ProcessPendingGameExport();
-        ProcessPendingObjExport();
+        DrawEditorMenuBar();
         DrawStatusBar();
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
