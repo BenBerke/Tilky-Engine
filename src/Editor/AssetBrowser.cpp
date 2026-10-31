@@ -855,6 +855,9 @@ end
             { ".jpg",  RegisteredExtensionKind::Texture },
             { ".jpeg", RegisteredExtensionKind::Texture },
             { ".wav",  RegisteredExtensionKind::Sound   },
+            { ".mp3",  RegisteredExtensionKind::Sound   },
+            { ".ogg",  RegisteredExtensionKind::Sound   },
+            { ".flac", RegisteredExtensionKind::Sound   },
             { ".lua",  RegisteredExtensionKind::Script  },
             { ".ttf",  RegisteredExtensionKind::Font    },
             { ".otf",  RegisteredExtensionKind::Font    },
@@ -878,7 +881,7 @@ end
         if (entry.GetType() == AssetEntryType::Level) return "lvl";
 
         switch (entry.GetAssetKind()) {
-            case AssetKind::Sound: return "wav";
+            case AssetKind::Sound: return LowerCopy(entry.GetPath().extension().string()).substr(1);
             case AssetKind::Script: return "lua";
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
             case AssetKind::Flipbook: return "fpk";
@@ -1871,7 +1874,9 @@ std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolute
 
         case AssetKind::Prefab: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
 
-        case AssetKind::Sound:
+        // Sounds keep their extension: "open.wav" and "open.mp3" are two sounds.
+        case AssetKind::Sound: return RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath()).generic_string();
+
         case AssetKind::Script: {
             fs::path rel = RelativeOrFallback(absolutePath, ProjectManager::GetAssetsPath());
             rel.replace_extension();

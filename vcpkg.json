@@ -3,6 +3,7 @@
   "version-string": "0.1.0",
   "dependencies": [
     "cpr",
+    "drlibs",
     "freetype",
     "lua",
     "minizip-ng",
@@ -24,6 +25,7 @@
     "sdl3-ttf",
     "sol2",
     "spdlog",
+    "stb",
     "assimp"
   ]
 }

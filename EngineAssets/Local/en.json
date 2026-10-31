@@ -1005,7 +1005,7 @@
   "editor.tooltip.entity.snap_to_floor": "Moves the entity down or up onto the floor it is in: the sector under it, and of that sector's floors the one nearest its height. Does nothing outside every sector.",
   "editor.tooltip.component.decal.wall_t": "Normalised position along the wall (0–1).",
   "editor.tooltip.component.decal.abs_height": "When enabled, verticalPos is an absolute world height instead of a relative offset.",
-  "editor.tooltip.component.audio_source.sound": "Drag a .wav from the Asset Browser, or double-click one there and click here.",
+  "editor.tooltip.component.audio_source.sound": "Drag a sound (.wav, .mp3, .ogg or .flac) from the Asset Browser, or double-click one there and click here.",
   "editor.tooltip.component.audio_source.ref_distance": "Distance at which volume is at full gain.",
   "editor.tooltip.component.audio_source.max_distance": "Beyond this distance sound is inaudible.",
   "editor.tooltip.component.audio_source.rolloff": "How quickly the volume drops with distance.",

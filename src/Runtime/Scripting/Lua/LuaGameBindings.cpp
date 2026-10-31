@@ -405,7 +405,7 @@ namespace {
         RegisterType(GlobalTable("Audio", "Sounds that play once, without an Audio Source component.", {}, {
             Method("PlayAt", {Param("sound", "string"), Param("position", "Vector3"), Param("gain", "number?"), Param("pitch", "number?")}, {},
                    "Plays a sound once at a point in the world, fading with distance like an Audio Source (Unity's AudioSource.PlayClipAtPoint). "
-                   "sound is a .wav path inside Assets, extension optional. gain and pitch default to 1. Several can play at once."),
+                   "sound is a path inside Assets with its extension (.wav, .mp3, .ogg or .flac). gain and pitch default to 1. Several can play at once."),
             Method("Play2D", {Param("sound", "string"), Param("gain", "number?"), Param("pitch", "number?")}, {},
                    "Plays a sound once, the same everywhere: no position, distance or direction. For UI clicks, pickups, announcer lines."),
         }));
@@ -418,7 +418,7 @@ namespace {
 
         const std::string name = sound.as<std::string>();
         if (!SoundManager::HasSound(name))
-            throw sol::error(std::string(function) + ": there is no sound \"" + name + "\" (a .wav inside Assets)");
+            throw sol::error(std::string(function) + ": there is no sound \"" + name + "\" (a .wav, .mp3, .ogg or .flac inside Assets, with its extension)");
 
         return name;
     }

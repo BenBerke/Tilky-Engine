@@ -12,7 +12,7 @@ public int amount = 10
 public int limit = 100          -- Health/Armor: won't go above this
 public string item = ""         -- Weapon: "pistol"/"shotgun". Key: "blue"/"red"
 public string message = "Picked up a stimpack."
-public string sound = "Sounds/item_pickup"
+public string sound = "Sounds/item_pickup.wav"
 
 -- Optional looping animation, e.g. a blinking key card.
 public string spriteFolder = ""

@@ -10,8 +10,8 @@ public number lowHeight = 0         -- the bottom stop
 public number speed = 48
 public number waitTime = 3
 public number useRange = 32
-public string startSound = "Sounds/lift_start"
-public string stopSound = "Sounds/lift_stop"
+public string startSound = "Sounds/lift_start.wav"
+public string stopSound = "Sounds/lift_stop.wav"
 
 local player
 local speaker

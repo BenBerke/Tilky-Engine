@@ -22,6 +22,7 @@
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Objects/Loadables.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Sound/SoundDecoders.hpp"
 
 namespace fs = std::filesystem;
 
@@ -44,16 +45,15 @@ namespace {
             }
         );
 
-        return extension == ".wav";
+        return extension == ".wav" || SoundDecoders::IsCompressedExtension(extension);
     }
 
-    // Sounds are keyed by their path inside Assets without the extension,
-    // matching the reference the inspector stores (AssetBrowser::ToAssetReference
-    // strips it). Stripping it here too means "Sounds/Doors/open" and
-    // "Sounds/Doors/open.wav" both find the sound.
+    // Sounds are keyed by their path inside Assets, extension included, as
+    // the inspector stores it (AssetBrowser::ToAssetReference): "open.wav"
+    // and "open.mp3" are two sounds, and "open" is neither.
     std::string NormalizeSoundFileName(const std::string& fileName) {
         if (fileName.empty()) return {};
-        return fs::path(fileName).lexically_normal().replace_extension().generic_string();
+        return fs::path(fileName).lexically_normal().generic_string();
     }
 }
 
@@ -81,6 +81,32 @@ namespace SoundManager {
         }
 
         return 0;
+    }
+
+    // Hands 16-bit PCM to a new buffer.
+    bool PCMToOpenALBuffer(const SoundDecoders::PCM& pcm, const std::string& path, ALuint& buffer) {
+        ALenum format = 0;
+        if (pcm.channels == 1) format = AL_FORMAT_MONO16;
+        else if (pcm.channels == 2) format = AL_FORMAT_STEREO16;
+
+        if (format == 0) {
+            spdlog::error("Unsupported sound {}: {} channels; use mono or stereo", path, pcm.channels);
+            return false;
+        }
+
+        alGenBuffers(1, &buffer);
+        if (!CheckALErrors("alGenBuffers failed")) return false;
+
+        alBufferData(buffer, format, pcm.samples.data(), static_cast<ALsizei>(pcm.samples.size() * sizeof(int16_t)), pcm.sampleRate);
+
+        if (!CheckALErrors("alBufferData failed")) {
+            alDeleteBuffers(1, &buffer);
+            buffer = 0;
+            return false;
+        }
+
+        spdlog::info("Loaded sound into OpenAL buffer: {}", path);
+        return true;
     }
 
     bool LoadWAVToOpenALBuffer(const char* path, ALuint& buffer) {
@@ -128,6 +154,21 @@ namespace SoundManager {
         spdlog::info("Loaded WAV into OpenAL buffer: {}", path);
 
         return true;
+    }
+
+    // WAV through SDL, MP3 / OGG / FLAC through SoundDecoders.
+    bool LoadSoundToOpenALBuffer(const fs::path& path, ALuint& buffer) {
+        if (!SoundDecoders::IsCompressedExtension(path.extension().string()))
+            return LoadWAVToOpenALBuffer(path.string().c_str(), buffer);
+
+        SoundDecoders::PCM pcm;
+        std::string error;
+        if (!SoundDecoders::Decode(path, pcm, error)) {
+            spdlog::error("Couldn't decode {}: {}", path.string(), error);
+            return false;
+        }
+
+        return PCMToOpenALBuffer(pcm, path.string(), buffer);
     }
 
     bool CreateSource(const std::string& name) {
@@ -288,7 +329,7 @@ namespace SoundManager {
 
             ALuint buffer = 0;
 
-            if (!LoadWAVToOpenALBuffer(entry.path().string().c_str(), buffer)) {
+            if (!LoadSoundToOpenALBuffer(entry.path(), buffer)) {
                 spdlog::error("Failed to load sound '{}'", fileName);
                 continue;
             }
@@ -470,10 +511,11 @@ namespace SoundManager {
         const std::string normalizedFileName = NormalizeSoundFileName(soundFileName);
 
         if (!buffers.contains(normalizedFileName)) {
-            const fs::path path = ProjectManager::GetAssetsPath() / (normalizedFileName + ".wav");
+            const fs::path path = ProjectManager::GetAssetsPath() / normalizedFileName;
             ALuint buffer = 0;
 
-            if (!fs::is_regular_file(path) || !LoadWAVToOpenALBuffer(path.string().c_str(), buffer)) {
+            if (!IsSupportedSoundExtension(path.extension().string()) || !fs::is_regular_file(path) ||
+                !LoadSoundToOpenALBuffer(path, buffer)) {
                 spdlog::error("Sound not found: '{}'", soundFileName);
                 return;
             }

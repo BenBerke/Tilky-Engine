@@ -17,7 +17,7 @@ public string spriteFolder = "Sprites/Effects/Fireball"
 public string flyFrames = "AB"
 public string explodeFrames = "CDE"
 public number frameTime = 0.1
-public string explodeSound = "Sounds/fireball_explode"
+public string explodeSound = "Sounds/fireball_explode.wav"
 
 local direction
 local exploded = false

@@ -14,9 +14,9 @@ public number waitTime = 4          -- seconds before closing again
 public bool stayOpen = false
 public enum(None, Blue, Red) lock = None
 public number useRange = 28
-public string openSound = "Sounds/door_open"
-public string closeSound = "Sounds/door_close"
-public string lockedSound = "Sounds/no_way"
+public string openSound = "Sounds/door_open.wav"
+public string closeSound = "Sounds/door_close.wav"
+public string lockedSound = "Sounds/no_way.wav"
 
 local LOCK_COLORS = { [1] = "blue", [2] = "red" }
 

@@ -11,7 +11,7 @@ public string pressedTexture = "Textures/Walls/sw2exit.png"
 public string nextLevel = ""
 public number useRange = 24
 public number delay = 1
-public string sound = "Sounds/switch_exit"
+public string sound = "Sounds/switch_exit.wav"
 
 local player
 local pressed = false

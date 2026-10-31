@@ -36,7 +36,8 @@ namespace SoundManager {
 
     bool IsSourcePlaying(const std::string& sourceName);
 
-    // True if this sound (a path inside Assets, extension optional) is loaded.
+    // True if this sound (a path inside Assets with its extension: .wav,
+    // .mp3, .ogg or .flac) is loaded.
     [[nodiscard]] bool HasSound(const std::string& soundFileName);
 
     // Stop rewinds; Pause keeps the place so ResumeSource can continue from it.

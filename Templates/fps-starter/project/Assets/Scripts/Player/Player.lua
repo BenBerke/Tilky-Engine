@@ -15,8 +15,8 @@ public int startHealth = 100
 public number hurtFlashTime = 0.25
 public number pickupFlashTime = 0.15
 public number messageTime = 3
-public string painSound = "Sounds/player_pain"
-public string deathSound = "Sounds/player_death"
+public string painSound = "Sounds/player_pain.wav"
+public string deathSound = "Sounds/player_death.wav"
 -- Where "play again" goes after the last level.
 public string firstLevel = "Level 1 - Outpost"
 

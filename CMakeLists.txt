@@ -294,6 +294,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Sound/SoundManager.cpp
         src/Runtime/Sound/AudioSystem.cpp
         src/Runtime/Sound/MusicPlayer.cpp
+        src/Runtime/Sound/SoundDecoders.cpp
 
         src/Runtime/Scripting/Lua/LuaWallBindings.cpp
         src/Runtime/Scripting/Lua/LuaSectorBindings.cpp

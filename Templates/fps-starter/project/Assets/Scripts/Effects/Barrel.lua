@@ -14,7 +14,7 @@ public string explosionFolder = "Sprites/Effects/Explosion"
 public string explosionFrames = "ABCDE"
 public Vector3 explosionScale = Vector3(15, 15, 13)
 public number frameTime = 0.15
-public string explodeSound = "Sounds/barrel_explode"
+public string explodeSound = "Sounds/barrel_explode.wav"
 
 local exploding = false
 local index, timer = 1, 0

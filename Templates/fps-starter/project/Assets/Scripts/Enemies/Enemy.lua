@@ -40,12 +40,12 @@ public number walkFrameTime = 0.15
 public number attackFrameTime = 0.25
 public number deathFrameTime = 0.14
 
-public string sightSound = "Sounds/zombie_sight"
-public string idleSound = "Sounds/zombie_idle"
-public string attackSound = "Sounds/pistol"
+public string sightSound = "Sounds/zombie_sight.wav"
+public string idleSound = "Sounds/zombie_idle.wav"
+public string attackSound = "Sounds/pistol.wav"
 public string meleeSound = ""
-public string painSound = "Sounds/zombie_pain"
-public string deathSound = "Sounds/zombie_death"
+public string painSound = "Sounds/zombie_pain.wav"
+public string deathSound = "Sounds/zombie_death.wav"
 
 public Entity projectilePrefab = nil  -- for attackType Projectile
 public Entity puffPrefab = nil        -- where a hitscan shot hits a wall
