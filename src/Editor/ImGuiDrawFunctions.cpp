@@ -44,6 +44,8 @@
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Objects/EventFields.hpp"
+#include "Headers/Runtime/EventSystem.hpp"
 // #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1057,8 +1059,60 @@ namespace ImGuiDrawFunctions {
     // An event reaches every dispatch with the same tag. Those link tags are
     // the project's event tags; the payloads' tag filters test normal tags.
 
-    // A dropdown of the project tags of one kind. A tag that no longer
-    // exists shows as deleted (or as "no tags" while there are none).
+    // The last entry of an event menu tag dropdown: opens the New Tag popup.
+    // Call inside the combo; true when clicked.
+    static bool NewTagEntry(const bool afterTags) {
+        if (afterTags) ImGui::Separator();
+        return ImGui::Selectable(Get("tags.new_entry").c_str());
+    }
+
+    static std::string newTagName;
+
+    // Opens the New Tag popup; call after EndCombo, at the same ID level as
+    // DrawNewTagPopup.
+    static void OpenNewTagPopup() {
+        newTagName.clear();
+        ImGui::OpenPopup("##NewTagPopup");
+    }
+
+    // Asks for a name and creates a project tag of `kind` with it, saving the
+    // project settings like the Project Settings list does. Returns the new
+    // tag once created.
+    static std::optional<TagId> DrawNewTagPopup(const TagRegistry::TagKind kind) {
+        std::optional<TagId> created;
+        if (!ImGui::BeginPopup("##NewTagPopup")) return created;
+
+        ImGui::TextUnformatted(Get(kind == TagRegistry::TagKind::EVENT ? "tags.new_event_tag_title" : "tags.new_tag_title").c_str());
+
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(220.0f);
+        const bool entered = ImGui::InputText("##Name", &newTagName, ImGuiInputTextFlags_EnterReturnsTrue);
+
+        const bool empty = newTagName.empty();
+        const bool taken = !empty && TagRegistry::Exists(newTagName);
+        if (taken) ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", Get("tags.notification.duplicate_name").c_str());
+
+        ImGui::BeginDisabled(empty || taken);
+        const bool create = ImGui::Button(Get("tags.create").c_str()) || (entered && !empty && !taken);
+        ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (ImGui::Button(Get("common.cancel").c_str())) ImGui::CloseCurrentPopup();
+
+        if (create && !empty && !taken) {
+            created = TagRegistry::Create(newTagName, kind);
+            if (created && !MapEditorInternal::SaveProjectSettings())
+                ShowNotification(Get("tags.notification.save_failed").c_str(), /*isError=*/true);
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+        return created;
+    }
+
+    // A dropdown of the project tags of one kind, ending with "New tag...".
+    // A tag that no longer exists shows as deleted (or as "no tags" while
+    // there are none).
     static bool DrawTagCombo(const char *label, TagId &tag, const TagRegistry::TagKind kind) {
         const std::vector<std::pair<std::string, TagId> > tags = TagRegistry::GetAllOfKind(kind);
 
@@ -1066,7 +1120,10 @@ namespace ImGuiDrawFunctions {
         const char *noTagsKey = kind == TagRegistry::TagKind::EVENT ? "events.no_event_tags" : "events.no_tags";
         const std::string preview = name ? *name : Get(tags.empty() ? noTagsKey : "tags.missing");
 
+        ImGui::PushID(label);
+
         bool changed = false;
+        bool openNewTag = false;
         if (ImGui::BeginCombo(label, preview.c_str())) {
             for (const auto &[tagName, id]: tags) {
                 const bool selected = id == tag;
@@ -1077,10 +1134,17 @@ namespace ImGuiDrawFunctions {
                 if (selected) ImGui::SetItemDefaultFocus();
             }
 
-            if (tags.empty()) ImGui::TextDisabled("%s", Get("tags.none_available").c_str());
+            openNewTag = NewTagEntry(!tags.empty());
             ImGui::EndCombo();
         }
 
+        if (openNewTag) OpenNewTagPopup();
+        if (const std::optional<TagId> created = DrawNewTagPopup(kind)) {
+            tag = *created;
+            changed = true;
+        }
+
+        ImGui::PopID();
         return changed;
     }
 
@@ -1201,7 +1265,79 @@ namespace ImGuiDrawFunctions {
         {SectorHeightMode::LOWEST_NEIGHBOR_FLOOR, "events.height_mode.lowest_neighbor_floor"},
         {SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR, "events.height_mode.highest_neighbor_floor"},
         {SectorHeightMode::LOWEST_NEIGHBOR_CEILING, "events.height_mode.lowest_neighbor_ceiling"},
-        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "events.height_mode.highest_neighbor_ceiling"}
+        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "events.height_mode.highest_neighbor_ceiling"},
+        {SectorHeightMode::NEXT_HIGHER_NEIGHBOR_FLOOR, "events.height_mode.next_higher_neighbor_floor"},
+        {SectorHeightMode::NEXT_LOWER_NEIGHBOR_FLOOR, "events.height_mode.next_lower_neighbor_floor"},
+        {SectorHeightMode::NEXT_HIGHER_NEIGHBOR_CEILING, "events.height_mode.next_higher_neighbor_ceiling"},
+        {SectorHeightMode::NEXT_LOWER_NEIGHBOR_CEILING, "events.height_mode.next_lower_neighbor_ceiling"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::Type, const char *> kLiftTypeOptions[] = {
+        {PayloadDispatchSectorLift::DOWN_WAIT_UP, "events.lift.type.down_wait_up"},
+        {PayloadDispatchSectorLift::UP_WAIT_DOWN, "events.lift.type.up_wait_down"},
+        {PayloadDispatchSectorLift::PERPETUAL, "events.lift.type.perpetual"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::LowMode, const char *> kLiftLowModeOptions[] = {
+        {PayloadDispatchSectorLift::LOWEST_NEIGHBOR_FLOOR, "events.lift.low_mode.lowest_neighbor_floor"},
+        {PayloadDispatchSectorLift::FIXED_LOW, "events.door.open_mode.fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::HighMode, const char *> kLiftHighModeOptions[] = {
+        {PayloadDispatchSectorLift::HIGHEST_NEIGHBOR_FLOOR, "events.lift.high_mode.highest_neighbor_floor"},
+        {PayloadDispatchSectorLift::FIXED_HIGH, "events.door.open_mode.fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorDoor::Retrigger, const char *> kLiftRetriggerOptions[] = {
+        {PayloadDispatchSectorDoor::RESTART, "events.lift.retrigger.restart"},
+        {PayloadDispatchSectorDoor::TOGGLE, "events.door.retrigger.toggle"},
+        {PayloadDispatchSectorDoor::IGNORE_WHILE_OPEN, "events.door.retrigger.ignore"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLightEffect::Type, const char *> kLightEffectTypeOptions[] = {
+        {PayloadDispatchSectorLightEffect::FLICKER, "events.light_effect.type.flicker"},
+        {PayloadDispatchSectorLightEffect::STROBE, "events.light_effect.type.strobe"},
+        {PayloadDispatchSectorLightEffect::GLOW, "events.light_effect.type.glow"},
+        {PayloadDispatchSectorLightEffect::FIRE_FLICKER, "events.light_effect.type.fire_flicker"},
+        {PayloadDispatchSectorLightEffect::NONE, "events.light_effect.type.none"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLightEffect::DimMode, const char *> kLightDimModeOptions[] = {
+        {PayloadDispatchSectorLightEffect::COLOR, "events.light_effect.dim_mode.color"},
+        {PayloadDispatchSectorLightEffect::LOWEST_NEIGHBOR, "events.light_effect.dim_mode.lowest_neighbor"}
+    };
+
+    constexpr std::pair<FieldComponent, const char *> kFieldComponentOptions[] = {
+        {FieldComponent::TRANSFORM, "component.transform"},
+        {FieldComponent::SPRITE, "component.sprite"},
+        {FieldComponent::AUDIO_SOURCE, "component.audio_source"},
+        {FieldComponent::SCRIPT, "component.script"},
+        {FieldComponent::PLAYER_CONTROLLER, "component.player_controller"},
+        {FieldComponent::CAMERA, "component.camera"},
+        {FieldComponent::COLLIDER, "component.collider"},
+        {FieldComponent::RIGIDBODY, "component.rigidbody"},
+        {FieldComponent::MODEL, "component.model"},
+        {FieldComponent::FLIPBOOK, "component.flipbook"},
+        {FieldComponent::UI_TRANSFORM, "component.ui_transform"},
+        {FieldComponent::UI_SPRITE, "component.ui_sprite"},
+        {FieldComponent::UI_TEXT, "component.ui_text"},
+        {FieldComponent::UI_BUTTON, "component.ui_button"}
+    };
+
+    constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char *> kSetFieldNumberOperations[] = {
+        {PayloadDispatchEntitySetField::SET, "events.operation.set"},
+        {PayloadDispatchEntitySetField::ADD, "events.operation.add"},
+        {PayloadDispatchEntitySetField::MULTIPLY, "events.operation.multiply"}
+    };
+
+    constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char *> kSetFieldBoolOperations[] = {
+        {PayloadDispatchEntitySetField::SET, "events.operation.set"},
+        {PayloadDispatchEntitySetField::TOGGLE, "events.toggle.toggle"}
+    };
+
+    constexpr std::pair<bool, const char *> kFieldValueSourceOptions[] = {
+        {false, "events.value_source.fixed"},
+        {true, "events.value_source.variable"}
     };
 
     constexpr std::pair<PayloadDispatchSectorDoor::Type, const char *> kDoorTypeOptions[] = {
@@ -1467,15 +1603,19 @@ namespace ImGuiDrawFunctions {
             if (std::ranges::find(filter.tags, id) == filter.tags.end()) availableTags.emplace_back(name, id);
 
         FieldWidth(-FLT_MIN);
-        const char *previewKey = availableTags.empty() ? "tags.none_available" : "events.filter_tag_add";
-        if (ImGui::BeginCombo("##AddFilterTag", Get(previewKey).c_str())) {
+        bool openNewTag = false;
+        if (ImGui::BeginCombo("##AddFilterTag", Get("events.filter_tag_add").c_str())) {
             for (const auto &[name, id]: availableTags)
                 if (ImGui::Selectable(name.c_str())) filter.tags.push_back(id);
 
-            if (availableTags.empty()) ImGui::TextDisabled("%s", Get("tags.none_available").c_str());
+            openNewTag = NewTagEntry(!availableTags.empty());
             ImGui::EndCombo();
         }
         Tooltip(Get("editor.tooltip.events.filter_tags").c_str());
+
+        if (openNewTag) OpenNewTagPopup();
+        if (const std::optional<TagId> created = DrawNewTagPopup(TagRegistry::TagKind::NORMAL))
+            filter.tags.push_back(*created);
 
         ImGui::PopID();
         ImGui::EndDisabled();
@@ -1488,6 +1628,16 @@ namespace ImGuiDrawFunctions {
         ImGui::Separator();
         ImGui::PopStyleColor();
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
+    }
+
+    // A checkbox inside an event/dispatch card. The card is drawn in the
+    // frame colour, which would hide an empty checkbox, so its box takes the
+    // panel's background instead.
+    static bool CardCheckbox(const char *label, bool *value) {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+        const bool changed = ImGui::Checkbox(label, value);
+        ImGui::PopStyleColor();
+        return changed;
     }
 
     // Starts an entry's card: a framed child that grows to fit its contents.
@@ -1665,7 +1815,7 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.events.ray_type").c_str());
 
                                 Property(Get("events.first_hit_only").c_str());
-                                ImGui::Checkbox("##FirstHitOnly", &payload.firstHitOnly);
+                                CardCheckbox("##FirstHitOnly", &payload.firstHitOnly);
                                 Tooltip(Get("editor.tooltip.events.first_hit_only").c_str());
 
                                 if (kind == EventOwnerKind::LINE || kind == EventOwnerKind::LINEDEF) {
@@ -1706,6 +1856,292 @@ namespace ImGuiDrawFunctions {
         if (eventToRemove >= 0) events.erase(events.begin() + eventToRemove);
 
         DrawAddEntryCombo("events.add_placeholder", events, kind, ownerID);
+    }
+
+    // ── Set Field ──────────────────────────────────────────────────────────
+
+    // How many components of the type the entity has.
+    static int FieldComponentCount(Level &level, const ID owner, const FieldComponent component) {
+        switch (component) {
+            case FieldComponent::TRANSFORM: return static_cast<int>(level.transforms.InstancesOf(owner).size());
+            case FieldComponent::SPRITE: return static_cast<int>(level.sprites.InstancesOf(owner).size());
+            case FieldComponent::AUDIO_SOURCE: return static_cast<int>(level.audioSources.InstancesOf(owner).size());
+            case FieldComponent::SCRIPT: return static_cast<int>(level.scripts.GetAll(owner).size());
+            case FieldComponent::PLAYER_CONTROLLER: return static_cast<int>(level.playerControllers.InstancesOf(owner).size());
+            case FieldComponent::CAMERA: return static_cast<int>(level.cameras.InstancesOf(owner).size());
+            case FieldComponent::COLLIDER: return static_cast<int>(level.colliders.InstancesOf(owner).size());
+            case FieldComponent::RIGIDBODY: return static_cast<int>(level.rigidbodies.InstancesOf(owner).size());
+            case FieldComponent::MODEL: return static_cast<int>(level.models.InstancesOf(owner).size());
+            case FieldComponent::FLIPBOOK: return static_cast<int>(level.flipbooks.InstancesOf(owner).size());
+            case FieldComponent::UI_TRANSFORM: return static_cast<int>(level.ui_transforms.InstancesOf(owner).size());
+            case FieldComponent::UI_SPRITE: return static_cast<int>(level.ui_sprites.InstancesOf(owner).size());
+            case FieldComponent::UI_TEXT: return static_cast<int>(level.ui_texts.InstancesOf(owner).size());
+            case FieldComponent::UI_BUTTON: return static_cast<int>(level.ui_buttons.InstancesOf(owner).size());
+        }
+        return 0;
+    }
+
+    static const char *FieldComponentKey(const FieldComponent component) {
+        for (const auto &[value, key]: kFieldComponentOptions)
+            if (value == component) return key;
+        return "component.script";
+    }
+
+    // "Sprite 2", or for scripts "2: Scripts/Door".
+    static std::string FieldComponentLabel(Level &level, const ID owner, const FieldComponent component, const int index) {
+        const std::string number = std::to_string(index + 1);
+
+        if (component == FieldComponent::SCRIPT) {
+            const std::vector<ComponentScript *> scripts = level.scripts.GetAll(owner);
+            if (index >= 0 && index < static_cast<int>(scripts.size()))
+                return number + ": " + (scripts[index]->fileName.empty() ? Get("events.field.no_script") : scripts[index]->fileName);
+        }
+
+        return Get(FieldComponentKey(component)) + " " + number;
+    }
+
+    // One field the Field dropdown offers.
+    struct FieldChoice {
+        std::string key;
+        std::string label;
+        FieldValueKind kind;
+        const ScriptPublicField *script = nullptr; // script fields only
+    };
+
+    static std::vector<FieldChoice> FieldChoices(Level &level, const ID owner, const FieldComponent component, const int index) {
+        std::vector<FieldChoice> choices;
+
+        if (component != FieldComponent::SCRIPT) {
+            for (const EventFieldInfo &info: EVENT_FIELDS)
+                if (info.component == component) choices.push_back({info.key, Get(info.translationKey), info.kind});
+            return choices;
+        }
+
+        const std::vector<ComponentScript *> scripts = level.scripts.GetAll(owner);
+        if (index < 0 || index >= static_cast<int>(scripts.size())) return choices;
+
+        const std::vector<ScriptPublicField> *fields = LevelSystem::GetPublicFieldsForScript(scripts[index]->fileName);
+        if (!fields) return choices;
+
+        for (const ScriptPublicField &field: *fields) {
+            const std::optional<FieldValueKind> fieldKind = ScriptFieldKindOf(field);
+            if (!fieldKind) continue;
+            choices.push_back({field.name, field.displayName.empty() ? field.name : field.displayName, *fieldKind, &field});
+        }
+
+        return choices;
+    }
+
+    // A script value as a Set Field value.
+    static FieldValue ScriptValueToField(const ScriptValue &value) {
+        FieldValue field;
+        std::visit([&]<typename T>(const T &v) {
+            if constexpr (std::is_same_v<T, int>) field.number.x = static_cast<float>(v);
+            else if constexpr (std::is_same_v<T, float>) field.number.x = v;
+            else if constexpr (std::is_same_v<T, bool>) field.flag = v;
+            else if constexpr (std::is_same_v<T, std::string>) field.text = v;
+            else if constexpr (std::is_same_v<T, Vector2>) field.number = {v.x, v.y, 0.0f, 0.0f};
+            else if constexpr (std::is_same_v<T, Vector3>) field.number = {v.x, v.y, v.z, 0.0f};
+            else if constexpr (std::is_same_v<T, Vector4>) field.number = v;
+            else if constexpr (std::is_same_v<T, AssetRefValue>) field.text = v.path;
+        }, value);
+        return field;
+    }
+
+    // What the picked field holds on the owner now: a new Set starts there.
+    static FieldValue CurrentFieldValue(Level &level, const ID owner, const PayloadDispatchEntitySetField &set,
+                                        const FieldChoice &choice) {
+        if (!choice.script)
+            return EventSystem::ReadEntityField(level, owner, set.component, set.componentIndex, set.field).value_or(FieldValue{});
+
+        const std::vector<ComponentScript *> scripts = level.scripts.GetAll(owner);
+        if (set.componentIndex >= 0 && set.componentIndex < static_cast<int>(scripts.size())) {
+            const auto it = scripts[set.componentIndex]->publicValues.find(choice.key);
+            if (it != scripts[set.componentIndex]->publicValues.end()) return ScriptValueToField(it->second);
+        }
+
+        return ScriptValueToField(choice.script->defaultValue);
+    }
+
+    // The value row(s) for a fixed value of `choice`'s kind.
+    static void DrawFieldValueEditor(FieldValue &value, const FieldChoice &choice, const bool draggable) {
+        Property(Get("events.value").c_str());
+
+        switch (choice.kind) {
+            case FieldValueKind::FLOAT:
+                InputOrDrag("##Value", &value.number.x, draggable, 0.1f);
+                break;
+            case FieldValueKind::INT: {
+                int number = static_cast<int>(std::round(value.number.x));
+                if (InputOrDrag("##Value", &number, draggable, 1.0f)) value.number.x = static_cast<float>(number);
+                break;
+            }
+            case FieldValueKind::BOOL:
+                CardCheckbox("##Value", &value.flag);
+                break;
+            case FieldValueKind::STRING:
+                ImGui::InputText("##Value", &value.text);
+                break;
+            case FieldValueKind::VECTOR2:
+                InputOrDrag2("##Value", &value.number.x, draggable, 0.1f);
+                break;
+            case FieldValueKind::VECTOR3:
+                InputOrDrag3("##Value", &value.number.x, draggable, 0.1f);
+                break;
+            case FieldValueKind::VECTOR4:
+                InputOrDrag4("##Value", &value.number.x, draggable, 0.1f);
+                break;
+            case FieldValueKind::COLOR:
+                ImGui::ColorEdit4("##Value", &value.number.x, CompactColorFlags(ImGui::GetContentRegionAvail().x, 4));
+                break;
+            case FieldValueKind::TEXTURE:
+            case FieldValueKind::SOUND:
+                ImGui::PushID("ValueAsset");
+                MapEditorInternal::DrawAssetField("", value.text,
+                                                  choice.kind == FieldValueKind::SOUND ? AssetKind::Sound : AssetKind::Texture);
+                ImGui::PopID();
+                break;
+            case FieldValueKind::ENUM: {
+                const int current = static_cast<int>(std::round(value.number.x));
+                std::string preview = std::to_string(current);
+                if (choice.script)
+                    for (const ScriptEnumOption &option: choice.script->enumOptions)
+                        if (option.value == current) preview = option.name;
+
+                if (ImGui::BeginCombo("##Value", preview.c_str())) {
+                    if (choice.script)
+                        for (const ScriptEnumOption &option: choice.script->enumOptions)
+                            if (ImGui::Selectable(option.name.c_str(), option.value == current))
+                                value.number.x = static_cast<float>(option.value);
+                    ImGui::EndCombo();
+                }
+                break;
+            }
+        }
+    }
+
+    static void DrawSetFieldSettings(PayloadDispatchEntitySetField &set, const ID ownerID, const bool draggable) {
+        using Set = PayloadDispatchEntitySetField;
+        Level &level = LevelManager::CurrentLevel();
+
+        // Component: the types the owner has, plus the picked one if it
+        // doesn't have it (any more).
+        Property(Get("events.component").c_str());
+        if (ImGui::BeginCombo("##Component", Get(FieldComponentKey(set.component)).c_str())) {
+            for (const auto &[component, key]: kFieldComponentOptions) {
+                if (FieldComponentCount(level, ownerID, component) == 0 && component != set.component) continue;
+                if (ImGui::Selectable(Get(key).c_str(), component == set.component) && component != set.component) {
+                    set.component = component;
+                    set.componentIndex = 0;
+                    set.field.clear();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.dispatches.set_field_component").c_str());
+
+        const int count = FieldComponentCount(level, ownerID, set.component);
+
+        // Which one, when there is a choice (scripts: always, by file).
+        if (count > 1 || set.component == FieldComponent::SCRIPT || set.componentIndex >= count) {
+            Property(Get("events.field.which").c_str());
+            const std::string preview = set.componentIndex < count
+                ? FieldComponentLabel(level, ownerID, set.component, set.componentIndex)
+                : Get("events.field.missing_component");
+
+            if (ImGui::BeginCombo("##Which", preview.c_str())) {
+                for (int i = 0; i < count; ++i)
+                    if (ImGui::Selectable(FieldComponentLabel(level, ownerID, set.component, i).c_str(), i == set.componentIndex) &&
+                        i != set.componentIndex) {
+                        set.componentIndex = i;
+                        if (set.component == FieldComponent::SCRIPT) set.field.clear();
+                    }
+                ImGui::EndCombo();
+            }
+            Tooltip(Get("editor.tooltip.dispatches.set_field_which").c_str());
+        }
+
+        // Field.
+        const std::vector<FieldChoice> choices = FieldChoices(level, ownerID, set.component, set.componentIndex);
+        const auto picked = std::ranges::find(choices, set.field, &FieldChoice::key);
+
+        Property(Get("events.field").c_str());
+        const std::string fieldPreview = picked != choices.end() ? picked->label
+                                         : set.field.empty() ? Get("events.field.none") : set.field + " " + Get("events.field.missing");
+        if (ImGui::BeginCombo("##Field", fieldPreview.c_str())) {
+            for (const FieldChoice &choice: choices) {
+                if (!ImGui::Selectable(choice.label.c_str(), choice.key == set.field) || choice.key == set.field) continue;
+
+                set.field = choice.key;
+                set.value = CurrentFieldValue(level, ownerID, set, choice);
+
+                // Keep the operation only where the new kind allows it.
+                const bool numeric = IsNumericFieldKind(choice.kind);
+                const bool keeps = set.operation == Set::SET ||
+                                   (numeric && set.operation != Set::TOGGLE) ||
+                                   (choice.kind == FieldValueKind::BOOL && set.operation == Set::TOGGLE);
+                if (!keeps) set.operation = Set::SET;
+            }
+            if (choices.empty()) ImGui::TextDisabled("%s", Get("events.field.none_available").c_str());
+            ImGui::EndCombo();
+        }
+        Tooltip(Get("editor.tooltip.dispatches.set_field_field").c_str());
+
+        if (picked == choices.end()) return;
+
+        const FieldChoice &choice = *picked;
+        const bool numeric = IsNumericFieldKind(choice.kind);
+
+        // Operation.
+        if (numeric || choice.kind == FieldValueKind::BOOL) {
+            Property(Get("events.operation").c_str());
+            if (numeric) DrawEnumCombo("##Operation", set.operation, kSetFieldNumberOperations);
+            else DrawEnumCombo("##Operation", set.operation, kSetFieldBoolOperations);
+            Tooltip(Get("editor.tooltip.dispatches.set_field_operation").c_str());
+        }
+        else set.operation = Set::SET;
+
+        // Value: fixed or a variable (not for asset paths, nor Toggle).
+        if (set.operation != Set::TOGGLE) {
+            const bool variableAllowed = choice.kind != FieldValueKind::TEXTURE && choice.kind != FieldValueKind::SOUND;
+            if (!variableAllowed) set.fromVariable = false;
+
+            if (variableAllowed) {
+                Property(Get("events.value_source").c_str());
+                DrawEnumCombo("##Source", set.fromVariable, kFieldValueSourceOptions);
+                Tooltip(Get("editor.tooltip.dispatches.set_field_source").c_str());
+            }
+
+            if (set.fromVariable) {
+                Property(Get("events.variable").c_str());
+                DrawEventVariableCombo("##Variable", set.variable, -FLT_MIN);
+            }
+            else DrawFieldValueEditor(set.value, choice, draggable);
+        }
+
+        // Over time.
+        if (numeric) {
+            Property(Get("events.over_time").c_str());
+            CardCheckbox("##OverTime", &set.overTime);
+            Tooltip(Get("editor.tooltip.dispatches.set_field_over_time").c_str());
+
+            if (set.overTime) {
+                Property(Get("events.speed").c_str());
+                if (InputOrDrag("##Speed", &set.speed, draggable, 0.05f)) set.speed = std::max(0.0f, set.speed);
+                Tooltip(Get("editor.tooltip.dispatches.set_field_speed").c_str());
+            }
+        }
+
+        // Revert.
+        Property(Get("events.revert").c_str());
+        CardCheckbox("##Revert", &set.revert);
+        Tooltip(Get("editor.tooltip.dispatches.set_field_revert").c_str());
+
+        if (set.revert) {
+            Property(Get("events.revert_after").c_str());
+            if (InputOrDrag("##RevertAfter", &set.revertAfter, draggable, 0.05f)) set.revertAfter = std::max(0.0f, set.revertAfter);
+            Tooltip(Get("editor.tooltip.dispatches.set_field_revert_after").c_str());
+        }
     }
 
     static void DrawDispatchesEditor(std::vector<Dispatch> &dispatches, const EventOwnerKind kind, const ID ownerID,
@@ -1913,7 +2349,7 @@ namespace ImGuiDrawFunctions {
                                 }
 
                                 Property(Get("events.door.split").c_str());
-                                ImGui::Checkbox("##Split", &payload.split);
+                                CardCheckbox("##Split", &payload.split);
                                 Tooltip(Get("editor.tooltip.dispatches.door_split").c_str());
 
                                 if (payload.split && usesOpenHeights) {
@@ -1980,7 +2416,7 @@ namespace ImGuiDrawFunctions {
                                     payload.soundPitch = std::max(0.01f, payload.soundPitch);
 
                                 Property(Get("events.door.locked").c_str());
-                                ImGui::Checkbox("##Locked", &payload.locked);
+                                CardCheckbox("##Locked", &payload.locked);
                                 Tooltip(Get("editor.tooltip.dispatches.door_locked").c_str());
 
                                 if (payload.locked) {
@@ -2002,6 +2438,176 @@ namespace ImGuiDrawFunctions {
                                     ImGui::ColorEdit3("##LockedColor", &payload.lockedMessageColor.x,
                                                       CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
                                 }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLift>) {
+                                using Lift = PayloadDispatchSectorLift;
+
+                                const bool usesLow = payload.type != Lift::UP_WAIT_DOWN;
+                                const bool usesHigh = payload.type != Lift::DOWN_WAIT_UP;
+
+                                Property(Get("events.lift.type").c_str());
+                                DrawEnumCombo("##Type", payload.type, kLiftTypeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.lift_type").c_str());
+
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+
+                                if (usesLow) {
+                                    Property(Get("events.lift.low_mode").c_str());
+                                    DrawEnumCombo("##LowMode", payload.lowMode, kLiftLowModeOptions);
+
+                                    if (payload.lowMode == Lift::FIXED_LOW) {
+                                        Property(Get("events.lift.low_height").c_str());
+                                        InputOrDrag("##LowHeight", &payload.lowHeight, draggable, 0.1f);
+                                    }
+                                    else {
+                                        Property(Get("events.lift.low_lip").c_str());
+                                        InputOrDrag("##LowLip", &payload.lowLip, draggable, 0.1f);
+                                        Tooltip(Get("editor.tooltip.dispatches.lift_low_lip").c_str());
+                                    }
+                                }
+
+                                if (usesHigh) {
+                                    Property(Get("events.lift.high_mode").c_str());
+                                    DrawEnumCombo("##HighMode", payload.highMode, kLiftHighModeOptions);
+
+                                    if (payload.highMode == Lift::FIXED_HIGH) {
+                                        Property(Get("events.lift.high_height").c_str());
+                                        InputOrDrag("##HighHeight", &payload.highHeight, draggable, 0.1f);
+                                    }
+                                    else {
+                                        Property(Get("events.lift.high_lip").c_str());
+                                        InputOrDrag("##HighLip", &payload.highLip, draggable, 0.1f);
+                                        Tooltip(Get("editor.tooltip.dispatches.lift_high_lip").c_str());
+                                    }
+                                }
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 0.1f))
+                                    payload.speed = std::max(0.01f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                                Property(Get("events.door.wait").c_str());
+                                if (InputOrDrag("##Wait", &payload.wait, draggable, 0.1f))
+                                    payload.wait = std::max(0.0f, payload.wait);
+                                Tooltip(Get("editor.tooltip.dispatches.lift_wait").c_str());
+
+                                Property(Get("events.lift.collision").c_str());
+                                DrawEnumCombo("##Collision", payload.collision, kSectorCollisionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.lift_collision").c_str());
+
+                                if (payload.type != Lift::PERPETUAL) {
+                                    Property(Get("events.door.retrigger").c_str());
+                                    DrawEnumCombo("##Retrigger", payload.retrigger, kLiftRetriggerOptions);
+                                    Tooltip(Get("editor.tooltip.dispatches.lift_retrigger").c_str());
+                                }
+
+                                DrawAssetRow("events.lift.start_sound", payload.startSound, AssetKind::Sound, "editor.tooltip.dispatches.lift_start_sound");
+                                DrawAssetRow("events.lift.stop_sound", payload.stopSound, AssetKind::Sound, "editor.tooltip.dispatches.lift_stop_sound");
+
+                                Property(Get("events.gain").c_str());
+                                if (InputOrDrag("##Gain", &payload.soundGain, draggable, 0.01f))
+                                    payload.soundGain = std::max(0.0f, payload.soundGain);
+
+                                Property(Get("events.pitch").c_str());
+                                if (InputOrDrag("##Pitch", &payload.soundPitch, draggable, 0.01f))
+                                    payload.soundPitch = std::max(0.01f, payload.soundPitch);
+
+                                Property(Get("events.door.locked").c_str());
+                                CardCheckbox("##Locked", &payload.locked);
+                                Tooltip(Get("editor.tooltip.dispatches.lift_locked").c_str());
+
+                                if (payload.locked) {
+                                    Property(Get("events.door.required_tag").c_str());
+                                    DrawTagCombo("##RequiredTag", payload.requiredTag, TagRegistry::TagKind::NORMAL);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_required_tag").c_str());
+
+                                    DrawAssetRow("events.door.locked_sound", payload.lockedSound, AssetKind::Sound, "editor.tooltip.dispatches.door_locked_sound");
+
+                                    Property(Get("events.door.locked_message").c_str());
+                                    ImGui::InputText("##LockedMessage", &payload.lockedMessage);
+                                    Tooltip(Get("editor.tooltip.dispatches.door_locked_message").c_str());
+
+                                    Property(Get("events.duration").c_str());
+                                    if (InputOrDrag("##LockedDuration", &payload.lockedMessageDuration, draggable, 0.05f))
+                                        payload.lockedMessageDuration = std::max(0.0f, payload.lockedMessageDuration);
+
+                                    Property(Get("events.color").c_str());
+                                    ImGui::ColorEdit3("##LockedColor", &payload.lockedMessageColor.x,
+                                                      CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorRaiseStairs>) {
+                                DrawFloorIndexRow(payload.floorIndex, ownerID, false);
+
+                                Property(Get("events.stairs.step_height").c_str());
+                                InputOrDrag("##StepHeight", &payload.stepHeight, draggable, 0.1f);
+                                Tooltip(Get("editor.tooltip.dispatches.stairs_step_height").c_str());
+
+                                Property(Get("events.speed").c_str());
+                                if (InputOrDrag("##Speed", &payload.speed, draggable, 0.1f))
+                                    payload.speed = std::max(0.01f, payload.speed);
+                                Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                                Property(Get("events.stairs.ignore_texture").c_str());
+                                CardCheckbox("##IgnoreTexture", &payload.ignoreTexture);
+                                Tooltip(Get("editor.tooltip.dispatches.stairs_ignore_texture").c_str());
+
+                                Property(Get("events.collision").c_str());
+                                DrawEnumCombo("##Collision", payload.collision, kSectorCollisionOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLightEffect>) {
+                                using Effect = PayloadDispatchSectorLightEffect;
+
+                                Property(Get("events.light_effect.type").c_str());
+                                DrawEnumCombo("##Type", payload.type, kLightEffectTypeOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.light_effect_type").c_str());
+
+                                if (payload.type != Effect::NONE) {
+                                    Property(Get("events.light_effect.dim_mode").c_str());
+                                    DrawEnumCombo("##DimMode", payload.dimMode, kLightDimModeOptions);
+                                    Tooltip(Get("editor.tooltip.dispatches.light_effect_dim_mode").c_str());
+
+                                    if (payload.dimMode == Effect::COLOR) {
+                                        // 0-255 like the sector inspector's light.
+                                        float color[3] = {payload.dimLight.x / 255.0f, payload.dimLight.y / 255.0f, payload.dimLight.z / 255.0f};
+                                        Property(Get("events.light_effect.dim_light").c_str());
+                                        if (ImGui::ColorEdit3("##DimLight", color, CompactColorFlags(ImGui::GetContentRegionAvail().x, 3)))
+                                            payload.dimLight = {color[0] * 255.0f, color[1] * 255.0f, color[2] * 255.0f};
+                                    }
+
+                                    if (payload.type == Effect::STROBE || payload.type == Effect::FLICKER) {
+                                        const bool flicker = payload.type == Effect::FLICKER;
+
+                                        Property(Get(flicker ? "events.light_effect.bright_time_max" : "events.light_effect.bright_time").c_str());
+                                        if (InputOrDrag("##BrightTime", &payload.brightTime, draggable, 0.01f))
+                                            payload.brightTime = std::max(0.01f, payload.brightTime);
+
+                                        Property(Get(flicker ? "events.light_effect.dim_time_max" : "events.light_effect.dim_time").c_str());
+                                        if (InputOrDrag("##DimTime", &payload.dimTime, draggable, 0.01f))
+                                            payload.dimTime = std::max(0.01f, payload.dimTime);
+                                    }
+
+                                    if (payload.type == Effect::GLOW) {
+                                        Property(Get("events.speed").c_str());
+                                        if (InputOrDrag("##Speed", &payload.speed, draggable, 1.0f))
+                                            payload.speed = std::max(0.01f, payload.speed);
+                                        Tooltip(Get("editor.tooltip.dispatches.light_speed").c_str());
+                                    }
+
+                                    if (payload.type == Effect::FIRE_FLICKER) {
+                                        Property(Get("events.light_effect.interval").c_str());
+                                        if (InputOrDrag("##Interval", &payload.interval, draggable, 0.01f))
+                                            payload.interval = std::max(0.01f, payload.interval);
+                                    }
+
+                                    Property(Get("events.light_effect.sync").c_str());
+                                    CardCheckbox("##Sync", &payload.sync);
+                                    Tooltip(Get("editor.tooltip.dispatches.light_effect_sync").c_str());
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetField>) {
+                                DrawSetFieldSettings(payload, ownerID, draggable);
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
                                 Property(Get("events.surface").c_str());
@@ -2050,7 +2656,7 @@ namespace ImGuiDrawFunctions {
                                 InputOrDrag3("##Position", &payload.position.x, draggable);
 
                                 Property(Get("events.relative").c_str());
-                                ImGui::Checkbox("##Relative", &payload.relative);
+                                CardCheckbox("##Relative", &payload.relative);
                                 Tooltip(Get("editor.tooltip.dispatches.move_relative").c_str());
 
                                 Property(Get("events.move_timing").c_str());
@@ -2068,7 +2674,7 @@ namespace ImGuiDrawFunctions {
                                 }
 
                                 Property(Get("events.rotate").c_str());
-                                ImGui::Checkbox("##Rotate", &payload.rotate);
+                                CardCheckbox("##Rotate", &payload.rotate);
 
                                 if (payload.rotate) {
                                     Property(Get("events.rotation").c_str());
@@ -2098,7 +2704,7 @@ namespace ImGuiDrawFunctions {
                                 DrawAssetRow("events.prefab", payload.prefab, AssetKind::Prefab, "editor.tooltip.dispatches.prefab");
 
                                 Property(Get("events.world_position").c_str());
-                                ImGui::Checkbox("##WorldPosition", &payload.worldPosition);
+                                CardCheckbox("##WorldPosition", &payload.worldPosition);
                                 Tooltip(Get("editor.tooltip.dispatches.world_position").c_str());
 
                                 Property(Get(payload.worldPosition ? "events.position" : "events.offset").c_str());

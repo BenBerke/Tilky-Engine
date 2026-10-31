@@ -31,6 +31,15 @@ namespace EventSystem {
         std::function<void()> pause;
         std::function<void(const Level& level)> resume;
         std::function<void()> quit;
+
+        // Set Field on a script: the entity's `scriptIndex`-th script
+        // (inspector order). Get gives the public field's kind and current
+        // value, nullopt when there is no such field or Set Field can't
+        // change its type. Set writes it.
+        std::function<std::optional<std::pair<FieldValueKind, FieldValue>>(
+            Level& level, ID entityID, int scriptIndex, const std::string& field)> getScriptField;
+        std::function<void(Level& level, ID entityID, int scriptIndex, const std::string& field,
+                           FieldValueKind kind, const FieldValue& value)> setScriptField;
     };
 
     // The UI Button events, one per event payload.
@@ -110,6 +119,13 @@ namespace EventSystem {
 
     // Fires the entity's Entity Destroyed events. Call before it is removed.
     void FireEntityDestroyed(Level& level, ID entityID);
+
+    // The value of an engine field (EventFields.hpp) of the entity's
+    // `componentIndex`-th component of that type, nullopt if there is no such
+    // component or field. Changes nothing; the editor starts a Set Field's
+    // value from it.
+    [[nodiscard]] std::optional<FieldValue> ReadEntityField(Level& level, ID entityID, FieldComponent component,
+                                                           int componentIndex, const std::string& field);
 
     // The Show Message texts to draw this frame, oldest first. Styled by the
     // level's WorldSettings::messageStyle.

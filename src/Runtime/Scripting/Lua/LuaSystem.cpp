@@ -18,6 +18,7 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
+#include "Headers/Objects/EventFields.hpp"
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
@@ -1921,6 +1922,115 @@ bool LuaScriptSystem::DispatchEntityEvent(Level& level, const ID entityID, const
         : sol::make_object(lua, ScriptEntity{&level, argumentEntityID});
 
     return DispatchToEntityScripts(entityID, functionName, argument);
+}
+
+namespace {
+    // The running instance of the entity's `scriptIndex`-th script, nullptr if there isn't one.
+    ScriptInstance* FindEntityScriptInstance(Level& level, const ID entityID, const int scriptIndex,
+                                             const ComponentScript** scriptOut) {
+        const std::vector<ComponentScript*> scripts = level.scripts.GetAll(entityID);
+        if (scriptIndex < 0 || scriptIndex >= static_cast<int>(scripts.size())) return nullptr;
+
+        const ComponentScript* script = scripts[scriptIndex];
+        *scriptOut = script;
+
+        for (ScriptInstance& instance : scriptInstances)
+            if (instance.ownerKind == ScriptOwnerKind::Entity && instance.ownerID == entityID &&
+                instance.instanceID == script->instanceID && !instance.destroyed)
+                return &instance;
+
+        return nullptr;
+    }
+}
+
+std::optional<std::pair<FieldValueKind, FieldValue>> LuaScriptSystem::GetScriptField(
+    Level& level, const ID entityID, const int scriptIndex, const std::string& field) {
+    const ComponentScript* script = nullptr;
+    ScriptInstance* instance = FindEntityScriptInstance(level, entityID, scriptIndex, &script);
+    if (!instance) return std::nullopt;
+
+    const std::vector<ScriptPublicField>* fields = GetPublicFieldsForScript(script->fileName);
+    if (!fields) return std::nullopt;
+
+    const auto declared = std::ranges::find(*fields, field, &ScriptPublicField::name);
+    if (declared == fields->end()) return std::nullopt;
+
+    const std::optional<FieldValueKind> kind = ScriptFieldKindOf(*declared);
+    if (!kind) return std::nullopt;
+
+    const sol::object object = instance->environment[field];
+    FieldValue value;
+
+    switch (*kind) {
+        case FieldValueKind::INT:
+        case FieldValueKind::FLOAT:
+        case FieldValueKind::ENUM:
+            if (object.is<double>()) value.number.x = static_cast<float>(object.as<double>());
+            break;
+        case FieldValueKind::BOOL:
+            value.flag = object.is<bool>() && object.as<bool>();
+            break;
+        case FieldValueKind::STRING:
+        case FieldValueKind::TEXTURE:
+            if (object.is<std::string>()) value.text = object.as<std::string>();
+            break;
+        case FieldValueKind::VECTOR2:
+            if (object.is<Vector2>()) {
+                const Vector2 v = object.as<Vector2>();
+                value.number = {v.x, v.y, 0.0f, 0.0f};
+            }
+            break;
+        case FieldValueKind::VECTOR3:
+            if (object.is<Vector3>()) {
+                const Vector3 v = object.as<Vector3>();
+                value.number = {v.x, v.y, v.z, 0.0f};
+            }
+            break;
+        case FieldValueKind::VECTOR4:
+            if (object.is<Vector4>()) value.number = object.as<Vector4>();
+            break;
+        default:
+            return std::nullopt;
+    }
+
+    return std::pair{*kind, value};
+}
+
+void LuaScriptSystem::SetScriptField(Level& level, const ID entityID, const int scriptIndex, const std::string& field,
+                                     const FieldValueKind kind, const FieldValue& value) {
+    const ComponentScript* script = nullptr;
+    ScriptInstance* instance = FindEntityScriptInstance(level, entityID, scriptIndex, &script);
+    if (!instance) return;
+
+    sol::environment& environment = instance->environment;
+
+    switch (kind) {
+        case FieldValueKind::INT:
+        case FieldValueKind::ENUM:
+            environment[field] = static_cast<int>(value.number.x);
+            break;
+        case FieldValueKind::FLOAT:
+            environment[field] = value.number.x;
+            break;
+        case FieldValueKind::BOOL:
+            environment[field] = value.flag;
+            break;
+        case FieldValueKind::STRING:
+        case FieldValueKind::TEXTURE:
+            environment[field] = value.text;
+            break;
+        case FieldValueKind::VECTOR2:
+            environment[field] = Vector2{value.number.x, value.number.y};
+            break;
+        case FieldValueKind::VECTOR3:
+            environment[field] = Vector3{value.number.x, value.number.y, value.number.z};
+            break;
+        case FieldValueKind::VECTOR4:
+            environment[field] = value.number;
+            break;
+        default:
+            break;
+    }
 }
 
 void LuaScriptSystem::DispatchUIButtonCallback(Level&, const ID entityID, const EventSystem::UIButtonEvent kind) {

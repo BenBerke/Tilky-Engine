@@ -71,6 +71,15 @@ public:
     // on every enabled script of the UI Button's entity. From UIButtonSystem.
     void DispatchUIButtonCallback(Level& level, ID entityID, EventSystem::UIButtonEvent kind);
 
+    // Set Field dispatches on script fields (EventSystem::Hooks): the public
+    // field `field` of the entity's `scriptIndex`-th script, read from / written
+    // to its running Lua instance. Int, Float, Bool, String, Vector2/3/4, Enum
+    // and Texture fields; nullopt for anything else or a missing instance.
+    std::optional<std::pair<FieldValueKind, FieldValue>> GetScriptField(Level& level, ID entityID, int scriptIndex,
+                                                                       const std::string& field);
+    void SetScriptField(Level& level, ID entityID, int scriptIndex, const std::string& field,
+                        FieldValueKind kind, const FieldValue& value);
+
     void RegisterEditorFunctionBindings(sol::state& lua);
     static void RegisterGameBindings(sol::state& lua);
     static void RegisterSavingBindings(sol::state& lua);

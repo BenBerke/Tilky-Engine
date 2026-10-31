@@ -4,6 +4,7 @@
 
 #include "Headers/Runtime/EventSystem.hpp"
 #include "Headers/Objects/Event.hpp"
+#include "Headers/Objects/EventFields.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
@@ -1021,6 +1022,21 @@ namespace {
         return result;
     }
 
+    // The neighbour height closest to `current` that is above it (`higher`)
+    // or below it, nullopt if there is none.
+    std::optional<float> NextNeighborHeight(const Level& level, const ID sectorID, const bool ceiling, const bool higher,
+                                            const float current) {
+        std::optional<float> result;
+
+        for (const Sector* neighbor : NeighborSectors(level, sectorID)) {
+            const float height = ceiling ? neighbor->floors.back().ceiling.height : neighbor->floors.front().floor.height;
+            if (higher ? height <= current : height >= current) continue;
+            if (!result || (higher ? height < *result : height > *result)) result = height;
+        }
+
+        return result;
+    }
+
     // Where a Move to Height heads, nullopt (with a warning) if it can't tell.
     std::optional<float> MoveTargetHeight(const Level& level, const ID sectorID, const float current,
                                           const SectorHeightMode mode, const float height) {
@@ -1033,10 +1049,14 @@ namespace {
             case SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR: base = NeighborHeight(level, sectorID, false, true); break;
             case SectorHeightMode::LOWEST_NEIGHBOR_CEILING: base = NeighborHeight(level, sectorID, true, false); break;
             case SectorHeightMode::HIGHEST_NEIGHBOR_CEILING: base = NeighborHeight(level, sectorID, true, true); break;
+            case SectorHeightMode::NEXT_HIGHER_NEIGHBOR_FLOOR: base = NextNeighborHeight(level, sectorID, false, true, current); break;
+            case SectorHeightMode::NEXT_LOWER_NEIGHBOR_FLOOR: base = NextNeighborHeight(level, sectorID, false, false, current); break;
+            case SectorHeightMode::NEXT_HIGHER_NEIGHBOR_CEILING: base = NextNeighborHeight(level, sectorID, true, true, current); break;
+            case SectorHeightMode::NEXT_LOWER_NEIGHBOR_CEILING: base = NextNeighborHeight(level, sectorID, true, false, current); break;
         }
 
         if (!base) {
-            spdlog::warn("Sector {} has no neighbouring sectors to move to", sectorID);
+            spdlog::warn("Sector {} has no neighbouring sector at a height to move to", sectorID);
             return std::nullopt;
         }
 
@@ -1538,7 +1558,11 @@ namespace {
         });
     }
 
-    bool DoorLocked(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings, const ID instigatorID) {
+    // Door and Lift: plays the locked sound / message and returns true when
+    // `instigatorID` lacks the required tag. Runs without an instigator
+    // entity are never locked out.
+    template <typename Settings>
+    bool SectorDispatchLocked(const Level& level, const ID sectorID, const Settings& settings, const ID instigatorID) {
         if (!settings.locked) return false;
 
         const Entity* instigator = level.GetEntity(instigatorID);
@@ -1557,6 +1581,848 @@ namespace {
                         settings.lockedMessageColor * 255.0f, settings.lockedMessageDuration);
 
         return true;
+    }
+
+    bool DoorLocked(const Level& level, const ID sectorID, const PayloadDispatchSectorDoor& settings, const ID instigatorID) {
+        return SectorDispatchLocked(level, sectorID, settings, instigatorID);
+    }
+
+    void PlaySectorSound(const Level& level, const ID sectorID, const std::string& sound, const float gain, const float pitch) {
+        if (sound.empty()) return;
+
+        PayloadDispatchPlaySound play;
+        play.sound = sound;
+        play.gain = gain;
+        play.pitch = pitch;
+        PlaySound(play, OwnerPosition(level, EventOwnerKind::SECTOR, sectorID));
+    }
+
+    // Puts the sector's light at `light` and passes the change on to its children.
+    void WriteSectorLight(Level& level, Sector& sector, const Vector3& light) {
+        if (sector.light == light) return;
+
+        const Vector3 before = sector.light;
+        sector.light = light;
+        if (!sector.children.empty()) level.PropagateSectorChanges(sector.id, sector.floors, before);
+    }
+
+    // ── Lifts ───────────────────────────────────────────────────────────────
+
+    // A Lift dispatch on one of a sector's floors, from its first trigger
+    // until its cycle ends (Perpetual: until a Stop Movement).
+    struct LiftState {
+        enum Phase { MOVING, WAITING };
+
+        ID sectorID;
+        int floorIndex;
+        PayloadDispatchSectorLift settings;
+        float home;       // where it started: Down/Up, Wait, back return here
+        float low, high;  // what the type uses
+        Phase phase = MOVING;
+        bool away = true; // wait types: heading (or waiting) away from home. Perpetual: toward `high`
+        float waitLeft = 0.0f;
+    };
+
+    std::vector<LiftState> lifts;
+
+    std::optional<float> LiftLow(const Level& level, const ID sectorID, const PayloadDispatchSectorLift& lift) {
+        if (lift.lowMode == PayloadDispatchSectorLift::FIXED_LOW) return lift.lowHeight;
+
+        const std::optional<float> lowest = NeighborHeight(level, sectorID, false, false);
+        if (!lowest) spdlog::warn("Lift on sector {} has no neighbouring sectors to go down to", sectorID);
+        return lowest ? std::optional(*lowest + lift.lowLip) : std::nullopt;
+    }
+
+    std::optional<float> LiftHigh(const Level& level, const ID sectorID, const PayloadDispatchSectorLift& lift) {
+        if (lift.highMode == PayloadDispatchSectorLift::FIXED_HIGH) return lift.highHeight;
+
+        const std::optional<float> highest = NeighborHeight(level, sectorID, false, true);
+        if (!highest) spdlog::warn("Lift on sector {} has no neighbouring sectors to go up to", sectorID);
+        return highest ? std::optional(*highest + lift.highLip) : std::nullopt;
+    }
+
+    // Where the leg the lift is on (or about to start) heads.
+    float LiftTarget(const LiftState& lift) {
+        using Lift = PayloadDispatchSectorLift;
+
+        switch (lift.settings.type) {
+            case Lift::DOWN_WAIT_UP: return lift.away ? lift.low : lift.home;
+            case Lift::UP_WAIT_DOWN: return lift.away ? lift.high : lift.home;
+            case Lift::PERPETUAL: return lift.away ? lift.high : lift.low;
+        }
+        return lift.home;
+    }
+
+    void MoveLift(const Level& level, SectorFloor& floor, LiftState& lift) {
+        const float target = LiftTarget(lift);
+        const SectorCollision collision = target > floor.floor.height ? lift.settings.collision : SECTOR_FORCE_MOVE;
+
+        floor.MoveFloorTo(target, lift.settings.speed, collision);
+        lift.phase = LiftState::MOVING;
+        PlaySectorSound(level, lift.sectorID, lift.settings.startSound, lift.settings.soundGain, lift.settings.soundPitch);
+    }
+
+    void TriggerLift(Level& level, const ID sectorID, const PayloadDispatchSectorLift& settings, const ID instigatorID) {
+        using Lift = PayloadDispatchSectorLift;
+        using Door = PayloadDispatchSectorDoor;
+
+        SectorFloor* floor = GetSectorFloor(level, sectorID, settings.floorIndex);
+        if (!floor) return;
+
+        if (settings.speed <= 0.0f) {
+            spdlog::warn("Lift dispatch on sector {} needs a speed above 0", sectorID);
+            return;
+        }
+
+        if (SectorDispatchLocked(level, sectorID, settings, instigatorID)) return;
+
+        const auto existing = std::ranges::find_if(lifts, [&](const LiftState& lift) {
+            return lift.sectorID == sectorID && lift.floorIndex == settings.floorIndex;
+        });
+
+        if (existing == lifts.end()) {
+            LiftState lift{sectorID, settings.floorIndex, settings, floor->floor.height, floor->floor.height, floor->floor.height};
+
+            if (settings.type != Lift::UP_WAIT_DOWN) {
+                const std::optional<float> low = LiftLow(level, sectorID, settings);
+                if (!low) return;
+                lift.low = *low;
+            }
+
+            if (settings.type != Lift::DOWN_WAIT_UP) {
+                const std::optional<float> high = LiftHigh(level, sectorID, settings);
+                if (!high) return;
+                lift.high = *high;
+            }
+
+            // Perpetual heads first for the end further away.
+            if (settings.type == Lift::PERPETUAL)
+                lift.away = std::abs(lift.high - lift.home) >= std::abs(lift.home - lift.low);
+
+            MoveLift(level, *floor, lift);
+            lifts.push_back(lift);
+            return;
+        }
+
+        LiftState& lift = *existing;
+        if (lift.settings.type == Lift::PERPETUAL) return;
+
+        switch (lift.settings.retrigger) {
+            case Door::RESTART:
+                if (lift.phase == LiftState::MOVING && !lift.away) {
+                    lift.away = true;
+                    MoveLift(level, *floor, lift);
+                }
+                else if (lift.phase == LiftState::WAITING) lift.waitLeft = lift.settings.wait;
+                break;
+            case Door::TOGGLE:
+                lift.away = !lift.away;
+                MoveLift(level, *floor, lift);
+                break;
+            case Door::IGNORE_WHILE_OPEN:
+                break;
+        }
+    }
+
+    void UpdateLifts(Level& level, const float deltaTime) {
+        using Lift = PayloadDispatchSectorLift;
+
+        std::erase_if(lifts, [&](LiftState& lift) {
+            SectorFloor* floor = GetSectorFloor(level, lift.sectorID, lift.floorIndex);
+            if (!floor) return true;
+
+            if (lift.phase == LiftState::WAITING) {
+                lift.waitLeft -= deltaTime;
+                if (lift.waitLeft <= 0.0f) MoveLift(level, *floor, lift);
+                return false;
+            }
+
+            if (floor->floorMove.active) return false;
+
+            PlaySectorSound(level, lift.sectorID, lift.settings.stopSound, lift.settings.soundGain, lift.settings.soundPitch);
+
+            const bool perpetual = lift.settings.type == Lift::PERPETUAL;
+
+            // Blocked and gone back where the leg started: wait there and
+            // try the same leg again - unless that was home, leaving.
+            if (floor->floorMove.retracting) {
+                if (!perpetual && lift.away) return true;
+                lift.phase = LiftState::WAITING;
+                lift.waitLeft = lift.settings.wait;
+                return false;
+            }
+
+            // Arrived (or stopped short): home ends a cycle, anything else
+            // waits and heads for the other end.
+            if (!perpetual && !lift.away) return true;
+
+            lift.away = !lift.away;
+            lift.phase = LiftState::WAITING;
+            lift.waitLeft = lift.settings.wait;
+            return false;
+        });
+    }
+
+    // ── Stairs ──────────────────────────────────────────────────────────────
+
+    void RaiseStairs(Level& level, const ID sectorID, const PayloadDispatchSectorRaiseStairs& stairs) {
+        if (stairs.speed <= 0.0f) {
+            spdlog::warn("Raise Stairs dispatch on sector {} needs a speed above 0", sectorID);
+            return;
+        }
+
+        const auto hasFloor = [&](const Sector* sector) {
+            return sector && stairs.floorIndex >= 0 && stairs.floorIndex < static_cast<int>(sector->floors.size());
+        };
+
+        Sector* step = level.GetSector(sectorID);
+        if (!hasFloor(step)) return;
+
+        const std::string texture = step->floors[stairs.floorIndex].floor.texture;
+        std::vector<ID> visited = {sectorID};
+        float height = step->floors[stairs.floorIndex].floor.height;
+
+        while (true) {
+            height += stairs.stepHeight;
+            step->floors[stairs.floorIndex].MoveFloorTo(height, stairs.speed, stairs.collision);
+
+            // The next step: the one unvisited neighbour that fits. None, or
+            // a choice of several, ends the stairs.
+            std::vector<ID> next;
+            for (const Sector* neighbor : NeighborSectors(level, step->id)) {
+                if (std::ranges::find(visited, neighbor->id) != visited.end() || !hasFloor(neighbor)) continue;
+                if (!stairs.ignoreTexture && neighbor->floors[stairs.floorIndex].floor.texture != texture) continue;
+                next.push_back(neighbor->id);
+            }
+
+            if (next.size() != 1) return;
+
+            step = level.GetSector(next.front());
+            visited.push_back(next.front());
+        }
+    }
+
+    // ── Light effects ───────────────────────────────────────────────────────
+
+    // How far a light effect is from bright (0) to dim (1), and what drives it.
+    struct LightEffectClock {
+        float elapsed = 0.0f; // Glow
+        float stateLeft = 0.0f; // seconds until the next change
+        bool dim = false;
+        float level = 0.0f;
+    };
+
+    // Effects that sync share one clock per type and timing.
+    using LightSyncKey = std::tuple<uint8_t, float, float, float, float>;
+
+    LightSyncKey SyncKeyOf(const PayloadDispatchSectorLightEffect& effect) {
+        return {effect.type, effect.brightTime, effect.dimTime, effect.speed, effect.interval};
+    }
+
+    struct LightEffectState {
+        ID sectorID;
+        PayloadDispatchSectorLightEffect settings;
+        Vector3 bright; // the sector's own light, from before the first effect
+        Vector3 dim;
+        LightEffectClock clock; // unless synced
+    };
+
+    std::vector<LightEffectState> lightEffects;
+    std::map<LightSyncKey, LightEffectClock> lightSyncClocks;
+
+    constexpr float MIN_LIGHT_STATE_TIME = 0.01f;
+
+    // Seconds for Glow to go from bright to dim at `speed`.
+    float GlowHalfPeriod(const LightEffectState& effect) {
+        const Vector3 difference = effect.dim - effect.bright;
+        const float furthest = std::max({std::abs(difference.x), std::abs(difference.y), std::abs(difference.z)});
+        return effect.settings.speed > 0.0f ? furthest / effect.settings.speed : 0.0f;
+    }
+
+    // The next bright / dim stretch of a Strobe or Flicker.
+    float LightStateTime(const PayloadDispatchSectorLightEffect& effect, const bool dim) {
+        const float time = dim ? effect.dimTime : effect.brightTime;
+        if (effect.type == PayloadDispatchSectorLightEffect::FLICKER)
+            return std::max(MIN_LIGHT_STATE_TIME, MathFunctions::GetRandomFloat(0.0f, time));
+        return std::max(MIN_LIGHT_STATE_TIME, time);
+    }
+
+    void AdvanceLightClock(LightEffectClock& clock, const PayloadDispatchSectorLightEffect& effect, const float deltaTime) {
+        using Effect = PayloadDispatchSectorLightEffect;
+
+        clock.elapsed += deltaTime;
+
+        switch (effect.type) {
+            case Effect::STROBE:
+            case Effect::FLICKER:
+                clock.stateLeft -= deltaTime;
+                while (clock.stateLeft <= 0.0f) {
+                    clock.dim = !clock.dim;
+                    clock.stateLeft += LightStateTime(effect, clock.dim);
+                }
+                clock.level = clock.dim ? 1.0f : 0.0f;
+                break;
+
+            case Effect::FIRE_FLICKER: {
+                const float interval = std::max(MIN_LIGHT_STATE_TIME, effect.interval);
+                clock.stateLeft -= deltaTime;
+                if (clock.stateLeft <= 0.0f) {
+                    // One of four steps from bright to dim, like Doom's fire.
+                    clock.level = static_cast<float>(std::min(3, static_cast<int>(MathFunctions::GetRandomFloat(0.0f, 4.0f)))) / 3.0f;
+                    clock.stateLeft = std::max(clock.stateLeft + interval, MIN_LIGHT_STATE_TIME);
+                }
+                break;
+            }
+
+            case Effect::GLOW:
+            case Effect::NONE:
+                break;
+        }
+    }
+
+    // A clock starting at a random point of the effect, so unsynced sectors
+    // don't all change together.
+    LightEffectClock RandomLightClock(const LightEffectState& effect) {
+        using Effect = PayloadDispatchSectorLightEffect;
+        LightEffectClock clock;
+
+        switch (effect.settings.type) {
+            case Effect::STROBE:
+            case Effect::FLICKER:
+                clock.dim = MathFunctions::GetRandomFloat(0.0f, 1.0f) < 0.5f;
+                clock.stateLeft = MathFunctions::GetRandomFloat(0.0f, LightStateTime(effect.settings, clock.dim));
+                clock.level = clock.dim ? 1.0f : 0.0f;
+                break;
+            case Effect::FIRE_FLICKER:
+                clock.stateLeft = MathFunctions::GetRandomFloat(0.0f, std::max(MIN_LIGHT_STATE_TIME, effect.settings.interval));
+                break;
+            case Effect::GLOW:
+                clock.elapsed = MathFunctions::GetRandomFloat(0.0f, 2.0f * GlowHalfPeriod(effect));
+                break;
+            case Effect::NONE:
+                break;
+        }
+
+        return clock;
+    }
+
+    // A clock at the start of the effect: bright, as the sector is.
+    LightEffectClock FreshLightClock(const PayloadDispatchSectorLightEffect& effect) {
+        LightEffectClock clock;
+        clock.stateLeft = effect.type == PayloadDispatchSectorLightEffect::FIRE_FLICKER
+            ? std::max(MIN_LIGHT_STATE_TIME, effect.interval)
+            : LightStateTime(effect, false);
+        return clock;
+    }
+
+    // The darkest neighbouring sector's light, nullopt without neighbours.
+    std::optional<Vector3> DarkestNeighborLight(const Level& level, const ID sectorID) {
+        std::optional<Vector3> darkest;
+        for (const Sector* neighbor : NeighborSectors(level, sectorID)) {
+            const Vector3& light = neighbor->light;
+            if (!darkest || light.x + light.y + light.z < darkest->x + darkest->y + darkest->z) darkest = light;
+        }
+        return darkest;
+    }
+
+    void StopLightEffect(Level& level, const ID sectorID, const bool restore) {
+        const auto it = std::ranges::find(lightEffects, sectorID, &LightEffectState::sectorID);
+        if (it == lightEffects.end()) return;
+
+        if (restore)
+            if (Sector* sector = level.GetSector(sectorID)) WriteSectorLight(level, *sector, it->bright);
+
+        lightEffects.erase(it);
+    }
+
+    void StartLightEffect(Level& level, const ID sectorID, const PayloadDispatchSectorLightEffect& settings) {
+        using Effect = PayloadDispatchSectorLightEffect;
+
+        Sector* sector = level.GetSector(sectorID);
+        if (!sector) return;
+
+        if (settings.type == Effect::NONE) {
+            StopLightEffect(level, sectorID, true);
+            return;
+        }
+
+        // A new effect replaces a running one but keeps its bright light,
+        // which is the sector's own, not wherever the last one left it.
+        const auto old = std::ranges::find(lightEffects, sectorID, &LightEffectState::sectorID);
+        const Vector3 bright = old != lightEffects.end() ? old->bright : sector->light;
+
+        Vector3 dim = settings.dimLight;
+        if (settings.dimMode == Effect::LOWEST_NEIGHBOR) {
+            const std::optional<Vector3> darkest = DarkestNeighborLight(level, sectorID);
+            if (!darkest) {
+                spdlog::warn("Light Effect on sector {} has no neighbouring sectors to take its dim light from", sectorID);
+                return;
+            }
+            dim = *darkest;
+        }
+
+        if (old != lightEffects.end()) lightEffects.erase(old);
+
+        // An effect and a fade would fight over the light.
+        sector->lightFade.active = false;
+
+        LightEffectState effect{sectorID, settings, bright, dim};
+        if (settings.sync) lightSyncClocks.try_emplace(SyncKeyOf(settings), FreshLightClock(settings));
+        else effect.clock = RandomLightClock(effect);
+
+        lightEffects.push_back(effect);
+    }
+
+    void UpdateLightEffects(Level& level, const float deltaTime) {
+        using Effect = PayloadDispatchSectorLightEffect;
+
+        // Clocks nobody uses any more go.
+        std::erase_if(lightSyncClocks, [](const auto& entry) {
+            return std::ranges::none_of(lightEffects, [&](const LightEffectState& effect) {
+                return effect.settings.sync && SyncKeyOf(effect.settings) == entry.first;
+            });
+        });
+
+        // Each shared clock moves once a frame, by its first user's settings
+        // (all of them have the same timing).
+        for (auto& [key, clock] : lightSyncClocks) {
+            const auto user = std::ranges::find_if(lightEffects, [&](const LightEffectState& effect) {
+                return effect.settings.sync && SyncKeyOf(effect.settings) == key;
+            });
+            AdvanceLightClock(clock, user->settings, deltaTime);
+        }
+
+        std::erase_if(lightEffects, [&](LightEffectState& effect) {
+            Sector* sector = level.GetSector(effect.sectorID);
+            if (!sector) return true;
+
+            LightEffectClock* clock = &effect.clock;
+            if (effect.settings.sync) clock = &lightSyncClocks.at(SyncKeyOf(effect.settings));
+            else AdvanceLightClock(*clock, effect.settings, deltaTime);
+
+            float t = clock->level;
+            if (effect.settings.type == Effect::GLOW) {
+                // Down to dim and back up, over and over.
+                const float half = GlowHalfPeriod(effect);
+                const float phase = half > 0.0f ? std::fmod(clock->elapsed, 2.0f * half) / half : 0.0f;
+                t = phase <= 1.0f ? phase : 2.0f - phase;
+            }
+
+            WriteSectorLight(level, *sector, effect.bright + (effect.dim - effect.bright) * t);
+            return false;
+        });
+    }
+
+    // ── Set Field ───────────────────────────────────────────────────────────
+
+    // One field of one component of an entity.
+    struct FieldKey {
+        ID entityID;
+        FieldComponent component;
+        int componentIndex;
+        std::string field;
+
+        bool operator==(const FieldKey&) const = default;
+    };
+
+    // A field sliding toward `target` (Set Field over time).
+    struct FieldTween {
+        FieldKey key;
+        FieldValueKind kind;
+        FieldValue current; // kept here, so an int field doesn't stall on rounding
+        FieldValue target;
+        float speed; // per channel, per second
+        bool realTime;
+    };
+
+    // A Set Field's revert: waits for the change to arrive, then
+    // `waitLeft` seconds, then puts `original` back.
+    struct FieldRevert {
+        enum Phase { ARRIVING, WAITING, RETURNING };
+
+        FieldKey key;
+        FieldValueKind kind;
+        FieldValue original;
+        float revertAfter;
+        float speed; // 0: back at once
+        bool realTime;
+        Phase phase = ARRIVING;
+        float waitLeft = 0.0f;
+    };
+
+    std::vector<FieldTween> fieldTweens;
+    std::vector<FieldRevert> fieldReverts;
+
+    template <typename T>
+    T* NthComponent(ComponentStorage<T>& storage, const ID ownerID, const int index) {
+        const std::vector<ComponentInstanceID>& instances = storage.InstancesOf(ownerID);
+        if (index < 0 || index >= static_cast<int>(instances.size())) return nullptr;
+        return storage.GetInstance(instances[index]);
+    }
+
+    // Copies a field into `read` and/or from `write`.
+    void Access(float& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->number = {field, 0.0f, 0.0f, 0.0f};
+        if (write) field = write->number.x;
+    }
+
+    void Access(bool& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->flag = field;
+        if (write) field = write->flag;
+    }
+
+    void Access(std::string& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->text = field;
+        if (write) field = write->text;
+    }
+
+    void Access(Vector2& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->number = {field.x, field.y, 0.0f, 0.0f};
+        if (write) field = {write->number.x, write->number.y};
+    }
+
+    void Access(Vector3& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->number = {field.x, field.y, field.z, 0.0f};
+        if (write) field = {write->number.x, write->number.y, write->number.z};
+    }
+
+    void Access(Vector4& field, FieldValue* read, const FieldValue* write) {
+        if (read) read->number = field;
+        if (write) field = write->number;
+    }
+
+    // Reads (`read`) and/or writes (`write`) one engine field. False if the
+    // entity has no such component or the field isn't in EVENT_FIELDS.
+    bool AccessEngineField(Level& level, const FieldKey& key, FieldValue* read, const FieldValue* write) {
+        const ID owner = key.entityID;
+        const int index = key.componentIndex;
+        const std::string_view field = key.field;
+
+        switch (key.component) {
+            case FieldComponent::TRANSFORM: {
+                ComponentTransform* c = index == 0 ? level.transforms.Get(owner) : nullptr;
+                if (!c) return false;
+
+                if (field == "position") {
+                    Vector3 position = c->position;
+                    Access(position, read, write);
+                    if (write) PlaceTransform(level, *c, position);
+                    return true;
+                }
+                if (field == "rotation") {
+                    Vector3 euler = c->rotation.Normalized().ToEulerDegrees();
+                    Access(euler, read, write);
+                    if (write) c->rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+                    return true;
+                }
+                if (field == "scale") { Access(c->scale, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::SPRITE: {
+                ComponentSprite* c = NthComponent(level.sprites, owner, index);
+                if (!c) return false;
+                if (field == "color") { Access(c->color, read, write); return true; }
+                if (field == "isActive") { Access(c->isActive, read, write); return true; }
+                if (field == "offset") { Access(c->offset, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::AUDIO_SOURCE: {
+                ComponentAudioSource* c = NthComponent(level.audioSources, owner, index);
+                if (!c) return false;
+                if (field == "sound") { Access(c->soundFileName, read, write); return true; }
+                if (field == "gain") { Access(c->gain, read, write); return true; }
+                if (field == "pitch") { Access(c->pitch, read, write); return true; }
+                if (field == "looping") { Access(c->looping, read, write); return true; }
+                if (field == "referenceDistance") { Access(c->referenceDistance, read, write); return true; }
+                if (field == "maxDistance") { Access(c->maxDistance, read, write); return true; }
+                if (field == "rollOffFactor") { Access(c->rollOffFactor, read, write); return true; }
+                if (field == "offset") { Access(c->offset, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::PLAYER_CONTROLLER: {
+                ComponentPlayerController* c = NthComponent(level.playerControllers, owner, index);
+                if (!c) return false;
+                if (field == "speed") { Access(c->speed, read, write); return true; }
+                if (field == "runningSpeed") { Access(c->runningSpeed, read, write); return true; }
+                if (field == "jumpPower") { Access(c->jumpPower, read, write); return true; }
+                if (field == "eyeHeight") { Access(c->eyeHeight, read, write); return true; }
+                if (field == "acceleration") { Access(c->acceleration, read, write); return true; }
+                if (field == "deceleration") { Access(c->deceleration, read, write); return true; }
+                if (field == "airControl") { Access(c->airControl, read, write); return true; }
+                if (field == "sensitivityX") { Access(c->sensitivityX, read, write); return true; }
+                if (field == "sensitivityY") { Access(c->sensitivityY, read, write); return true; }
+                if (field == "useReach") { Access(c->useReach, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::CAMERA: {
+                ComponentCamera* c = NthComponent(level.cameras, owner, index);
+                if (!c) return false;
+                if (field == "fov") { Access(c->fov, read, write); return true; }
+                if (field == "smoothStep") { Access(c->smoothStep, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::COLLIDER: {
+                ComponentCollider* c = NthComponent(level.colliders, owner, index);
+                if (!c) return false;
+                if (field == "isActive") {
+                    // SetActive moves colliders between partitions.
+                    bool active = c->isActive;
+                    Access(active, read, write);
+                    if (write && active != c->isActive) level.colliders.SetActive(c->instanceID, active);
+                    return true;
+                }
+                if (field == "isTrigger") { Access(c->isTrigger, read, write); return true; }
+                if (field == "scale") { Access(c->scale, read, write); return true; }
+                if (field == "offset") { Access(c->offset, read, write); return true; }
+                if (field == "stepSize") { Access(c->stepSize, read, write); return true; }
+                if (field == "maxSlope") { Access(c->maxSlope, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::RIGIDBODY: {
+                ComponentRigidbody* c = NthComponent(level.rigidbodies, owner, index);
+                if (!c) return false;
+                if (field == "isStatic") { Access(c->isStatic, read, write); return true; }
+                if (field == "mass") { Access(c->mass, read, write); return true; }
+                if (field == "gravityScale") { Access(c->gravityScale, read, write); return true; }
+                if (field == "friction") { Access(c->friction, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::MODEL: {
+                ComponentModel* c = NthComponent(level.models, owner, index);
+                if (!c) return false;
+                if (field == "offset") { Access(c->offset, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::FLIPBOOK: {
+                ComponentFlipbook* c = NthComponent(level.flipbooks, owner, index);
+                if (!c) return false;
+                if (field == "speed") { Access(c->speed, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::UI_TRANSFORM: {
+                ComponentUITransform* c = index == 0 ? level.ui_transforms.Get(owner) : nullptr;
+                if (!c) return false;
+                if (field == "position") { Access(c->position, read, write); return true; }
+                if (field == "scale") { Access(c->scale, read, write); return true; }
+                if (field == "rotation") { Access(c->rotation, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::UI_SPRITE: {
+                ComponentUISprite* c = NthComponent(level.ui_sprites, owner, index);
+                if (!c) return false;
+                if (field == "texture") { Access(c->texture, read, write); return true; }
+                if (field == "color") { Access(c->color, read, write); return true; }
+                if (field == "isActive") { Access(c->isActive, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::UI_TEXT: {
+                ComponentUIText* c = NthComponent(level.ui_texts, owner, index);
+                if (!c) return false;
+                if (field == "text") { Access(c->text, read, write); return true; }
+                if (field == "fontSize") { Access(c->fontSize, read, write); return true; }
+                if (field == "color") { Access(c->color, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::UI_BUTTON: {
+                ComponentUIButton* c = NthComponent(level.ui_buttons, owner, index);
+                if (!c) return false;
+                if (field == "interactable") { Access(c->interactable, read, write); return true; }
+                if (field == "normalColor") { Access(c->normalColor, read, write); return true; }
+                if (field == "hoverColor") { Access(c->hoverColor, read, write); return true; }
+                if (field == "pressedColor") { Access(c->pressedColor, read, write); return true; }
+                if (field == "disabledColor") { Access(c->disabledColor, read, write); return true; }
+                return false;
+            }
+            case FieldComponent::SCRIPT:
+                return false;
+        }
+
+        return false;
+    }
+
+    // The field's kind and value now, nullopt if it can't be found.
+    std::optional<std::pair<FieldValueKind, FieldValue>> ReadField(Level& level, const FieldKey& key) {
+        if (key.component == FieldComponent::SCRIPT) {
+            if (!hooks.getScriptField) return std::nullopt;
+            return hooks.getScriptField(level, key.entityID, key.componentIndex, key.field);
+        }
+
+        const EventFieldInfo* info = FindEventField(key.component, key.field);
+        if (!info) return std::nullopt;
+
+        FieldValue value;
+        if (!AccessEngineField(level, key, &value, nullptr)) return std::nullopt;
+        return std::pair{info->kind, value};
+    }
+
+    void WriteField(Level& level, const FieldKey& key, const FieldValueKind kind, FieldValue value) {
+        // Ints and enums are whole numbers, however they got here.
+        if (kind == FieldValueKind::INT || kind == FieldValueKind::ENUM) value.number.x = std::round(value.number.x);
+
+        if (key.component == FieldComponent::SCRIPT) {
+            if (hooks.setScriptField) hooks.setScriptField(level, key.entityID, key.componentIndex, key.field, kind, value);
+            return;
+        }
+
+        AccessEngineField(level, key, nullptr, &value);
+    }
+
+    // A number as Set Field writes it into text: no decimals when whole.
+    std::string FormatFieldNumber(const float number) {
+        if (std::abs(number - std::round(number)) < 0.0001f) return std::to_string(static_cast<long long>(std::round(number)));
+
+        std::string text = std::to_string(number);
+        while (!text.empty() && text.back() == '0') text.pop_back();
+        if (!text.empty() && text.back() == '.') text.pop_back();
+        return text;
+    }
+
+    // What a Set Field's value is, fixed or from its variable.
+    FieldValue SetFieldInput(Level& level, const PayloadDispatchEntitySetField& set) {
+        if (!set.fromVariable) return set.value;
+
+        const float* variable = set.variable != 0 ? level.GetEventVariableValue(set.variable) : nullptr;
+        const float number = variable ? *variable : 0.0f;
+
+        FieldValue value;
+        value.number = {number, number, number, number};
+        value.flag = number != 0.0f;
+        value.text = FormatFieldNumber(number);
+        return value;
+    }
+
+    // Moves `current` toward `target` by at most `step` per channel. True once there.
+    bool StepFieldToward(FieldValue& current, const FieldValue& target, const int channels, const float step) {
+        float* values[] = {&current.number.x, &current.number.y, &current.number.z, &current.number.w};
+        const float targets[] = {target.number.x, target.number.y, target.number.z, target.number.w};
+
+        bool arrived = true;
+        for (int i = 0; i < channels; ++i) arrived &= StepToward(*values[i], targets[i], step);
+        return arrived;
+    }
+
+    // Starts sliding the field to `target`, replacing a slide already running on it.
+    void StartFieldTween(const FieldKey& key, const FieldValueKind kind, const FieldValue& current, const FieldValue& target,
+                         const float speed, const bool realTime) {
+        std::erase_if(fieldTweens, [&](const FieldTween& tween) { return tween.key == key; });
+        fieldTweens.push_back({key, kind, current, target, speed, realTime});
+    }
+
+    void SetField(Level& level, const ID entityID, const PayloadDispatchEntitySetField& set) {
+        using Set = PayloadDispatchEntitySetField;
+
+        const FieldKey key{entityID, set.component, set.componentIndex, set.field};
+
+        const std::optional<std::pair<FieldValueKind, FieldValue>> read = ReadField(level, key);
+        if (!read) {
+            spdlog::warn("Set Field dispatch on entity {}: it has no field '{}' on that component, skipped", entityID, set.field);
+            return;
+        }
+
+        const auto& [kind, current] = *read;
+        const FieldValue input = SetFieldInput(level, set);
+        const bool numeric = IsNumericFieldKind(kind);
+        const int channels = FieldChannelCount(kind);
+
+        FieldValue target = current;
+        switch (set.operation) {
+            case Set::SET:
+                target = input;
+                break;
+            case Set::ADD:
+            case Set::MULTIPLY: {
+                if (!numeric) {
+                    spdlog::warn("Set Field dispatch on entity {}: '{}' isn't a number, so it can't be added to or multiplied", entityID, set.field);
+                    return;
+                }
+                const float* inputs[] = {&input.number.x, &input.number.y, &input.number.z, &input.number.w};
+                float* values[] = {&target.number.x, &target.number.y, &target.number.z, &target.number.w};
+                for (int i = 0; i < channels; ++i) {
+                    if (set.operation == Set::ADD) *values[i] += *inputs[i];
+                    else *values[i] *= *inputs[i];
+                }
+                break;
+            }
+            case Set::TOGGLE:
+                if (kind != FieldValueKind::BOOL) {
+                    spdlog::warn("Set Field dispatch on entity {}: '{}' isn't on/off, so it can't be toggled", entityID, set.field);
+                    return;
+                }
+                target.flag = !current.flag;
+                break;
+        }
+
+        const bool slides = set.overTime && numeric && set.speed > 0.0f;
+
+        if (set.revert) {
+            // A revert already waiting keeps the value from before its first run.
+            const auto existing = std::ranges::find(fieldReverts, key, &FieldRevert::key);
+            if (existing != fieldReverts.end()) {
+                existing->phase = FieldRevert::ARRIVING;
+                existing->revertAfter = std::max(0.0f, set.revertAfter);
+                existing->speed = slides ? set.speed : 0.0f;
+                existing->realTime = realTimeChain;
+            }
+            else fieldReverts.push_back({key, kind, current, std::max(0.0f, set.revertAfter), slides ? set.speed : 0.0f, realTimeChain});
+        }
+
+        if (slides) StartFieldTween(key, kind, current, target, set.speed, realTimeChain);
+        else {
+            std::erase_if(fieldTweens, [&](const FieldTween& tween) { return tween.key == key; });
+            WriteField(level, key, kind, target);
+        }
+    }
+
+    void UpdateFieldChanges(Level& level, const float deltaTime, const float realDeltaTime) {
+        // Paused while the entity is disabled, like Move To.
+        const auto paused = [&](const FieldKey& key) { return !IsEnabledEntity(level, key.entityID); };
+
+        std::erase_if(fieldTweens, [&](FieldTween& tween) {
+            if (!level.GetEntity(tween.key.entityID)) return true;
+            if (paused(tween.key)) return false;
+
+            const float step = tween.speed * (tween.realTime ? realDeltaTime : deltaTime);
+            const bool arrived = StepFieldToward(tween.current, tween.target, FieldChannelCount(tween.kind), step);
+            WriteField(level, tween.key, tween.kind, tween.current);
+            return arrived;
+        });
+
+        std::erase_if(fieldReverts, [&](FieldRevert& revert) {
+            if (!level.GetEntity(revert.key.entityID)) return true;
+            if (paused(revert.key)) return false;
+
+            const bool sliding = std::ranges::any_of(fieldTweens, [&](const FieldTween& tween) { return tween.key == revert.key; });
+
+            switch (revert.phase) {
+                case FieldRevert::ARRIVING:
+                    if (sliding) return false;
+                    revert.phase = FieldRevert::WAITING;
+                    revert.waitLeft = revert.revertAfter;
+                    [[fallthrough]];
+
+                case FieldRevert::WAITING: {
+                    revert.waitLeft -= revert.realTime ? realDeltaTime : deltaTime;
+                    if (revert.waitLeft > 0.0f) return false;
+
+                    const std::optional<std::pair<FieldValueKind, FieldValue>> now = ReadField(level, revert.key);
+                    if (!now) return true;
+
+                    if (revert.speed > 0.0f) {
+                        StartFieldTween(revert.key, revert.kind, now->second, revert.original, revert.speed, revert.realTime);
+                        revert.phase = FieldRevert::RETURNING;
+                        return false;
+                    }
+
+                    WriteField(level, revert.key, revert.kind, revert.original);
+                    return true;
+                }
+
+                case FieldRevert::RETURNING:
+                    return !sliding;
+            }
+
+            return true;
+        });
     }
 }
 
@@ -1669,6 +2535,9 @@ namespace EventSystem {
 
         UpdateColorFades(level, deltaTime);
         UpdateDoors(level, deltaTime);
+        UpdateLifts(level, deltaTime);
+        UpdateLightEffects(level, deltaTime);
+        UpdateFieldChanges(level, deltaTime, GameTime::unscaledDeltaTime);
         UpdateEntityMoves(level, deltaTime);
         UpdateSounds();
         UpdateMessages(level.worldSettings.messageStyle, deltaTime);
@@ -1704,6 +2573,11 @@ namespace EventSystem {
         rayReports.clear();
         lastRayKeys.clear();
         doors.clear();
+        lifts.clear();
+        lightEffects.clear();
+        lightSyncClocks.clear();
+        fieldTweens.clear();
+        fieldReverts.clear();
         entityMoves.clear();
         soundSources.clear();
         shownMessages.clear();
@@ -1812,10 +2686,32 @@ namespace EventSystem {
                     return door.sectorID == ownerID && door.floorIndex == stop.floorIndex &&
                            (ceiling || (floor && door.settings.split));
                 });
+
+                // A lift's is its floor.
+                if (floor)
+                    std::erase_if(lifts, [&](const LiftState& lift) {
+                        return lift.sectorID == ownerID && lift.floorIndex == stop.floorIndex;
+                    });
+            },
+            [&](const PayloadDispatchSectorLift& lift) {
+                TriggerLift(level, ownerID, lift, instigatorID);
+            },
+            [&](const PayloadDispatchSectorRaiseStairs& stairs) {
+                RaiseStairs(level, ownerID, stairs);
+            },
+            [&](const PayloadDispatchSectorLightEffect& effect) {
+                StartLightEffect(level, ownerID, effect);
+            },
+            [&](const PayloadDispatchEntitySetField& set) {
+                SetField(level, ownerID, set);
             },
             [&](const PayloadDispatchSectorSetLight& setLight) {
                 Sector* sector = level.GetSector(ownerID);
                 if (!sector) return;
+
+                // Set Light ends a light effect; the fade starts from where
+                // the effect left the light.
+                StopLightEffect(level, ownerID, false);
 
                 // A fade long enough for the channel that has furthest to go
                 // to get there at `speed`; advanced (and passed on to child
@@ -2106,6 +3002,13 @@ namespace EventSystem {
                 FireEvents<PayloadUIButtonHoverExit>(level, EventOwnerKind::ENTITY, entityID, playerID, tags);
                 break;
         }
+    }
+
+    std::optional<FieldValue> ReadEntityField(Level& level, const ID entityID, const FieldComponent component,
+                                              const int componentIndex, const std::string& field) {
+        FieldValue value;
+        if (!AccessEngineField(level, {entityID, component, componentIndex, field}, &value, nullptr)) return std::nullopt;
+        return value;
     }
 
     void FireEntityDestroyed(Level& level, const ID entityID) {

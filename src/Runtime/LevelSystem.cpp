@@ -257,6 +257,13 @@ namespace LevelSystem {
             .pause = [] { PauseGame(); },
             .resume = [](const Level& lvl) { ResumeGame(lvl); },
             .quit = [] { RequestQuit(); },
+            .getScriptField = [](Level& lvl, const ID entityID, const int scriptIndex, const std::string& field) {
+                return scriptingSystem.GetScriptField(lvl, entityID, scriptIndex, field);
+            },
+            .setScriptField = [](Level& lvl, const ID entityID, const int scriptIndex, const std::string& field,
+                                 const FieldValueKind kind, const FieldValue& value) {
+                scriptingSystem.SetScriptField(lvl, entityID, scriptIndex, field, kind, value);
+            },
         });
 
         UIButtonSystem::Start(level);

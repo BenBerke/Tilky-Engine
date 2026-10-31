@@ -16,6 +16,7 @@
 #include "Types.hpp"
 #include "client/TracyThread.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
+#include "Headers/Math/Vector/Vector4.hpp"
 #include "Headers/Math/Quaternion/Quaternion.hpp"
 #include "RayHit.hpp"
 
@@ -507,7 +508,12 @@ enum class SectorHeightMode : uint8_t {
     LOWEST_NEIGHBOR_FLOOR = 2,  // the rest are plus `height`
     HIGHEST_NEIGHBOR_FLOOR = 3,
     LOWEST_NEIGHBOR_CEILING = 4,
-    HIGHEST_NEIGHBOR_CEILING = 5
+    HIGHEST_NEIGHBOR_CEILING = 5,
+    // The closest neighbour height above / below the surface as it is now.
+    NEXT_HIGHER_NEIGHBOR_FLOOR = 6,
+    NEXT_LOWER_NEIGHBOR_FLOOR = 7,
+    NEXT_HIGHER_NEIGHBOR_CEILING = 8,
+    NEXT_LOWER_NEIGHBOR_CEILING = 9
 };
 
 struct PayloadDispatchSectorMoveToHeight {
@@ -608,6 +614,120 @@ struct PayloadDispatchSectorStopMovement {
 
     SectorSurfacePick surface = SectorSurfacePick::BOTH;
     int floorIndex = 0;
+};
+
+// The floor moves away from where it is, waits and comes back, or keeps
+// bouncing between its low and high heights, as `type` says.
+struct PayloadDispatchSectorLift {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
+    transKey translationKey = "event.dispatch.sector.lift";
+    transKey saveName = "dispatch.sector.lift"; // level file name, never change
+    bool operator==(const PayloadDispatchSectorLift&) const = default;
+
+    // Down/Up, Wait, back: to the low (high) height, then back to where it
+    // started. Perpetual: low and high, waiting at each, until a Stop
+    // Movement; it heads first for the one further away.
+    enum Type : uint8_t {
+        DOWN_WAIT_UP = 0,
+        PERPETUAL = 1,
+        UP_WAIT_DOWN = 2
+    };
+
+    enum LowMode : uint8_t {
+        LOWEST_NEIGHBOR_FLOOR = 0, // plus `lowLip`
+        FIXED_LOW = 1              // `lowHeight`
+    };
+
+    enum HighMode : uint8_t {
+        HIGHEST_NEIGHBOR_FLOOR = 0, // plus `highLip`
+        FIXED_HIGH = 1              // `highHeight`
+    };
+
+    Type type = DOWN_WAIT_UP;
+
+    LowMode lowMode = LOWEST_NEIGHBOR_FLOOR;
+    float lowLip = 0.0f;
+    float lowHeight = 0.0f;
+
+    HighMode highMode = HIGHEST_NEIGHBOR_FLOOR;
+    float highLip = 0.0f;
+    float highHeight = 0.0f;
+
+    float speed = 40.0f;
+    float wait = 3.0f; // seconds at the far end (Perpetual: at each end)
+
+    int floorIndex = 0;
+    SectorCollision collision = SECTOR_RETRACT; // while rising; going down never hits anything
+
+    // Triggered again during a Down/Up, Wait, back cycle. Perpetual lifts
+    // ignore it. Same names as the Door's.
+    PayloadDispatchSectorDoor::Retrigger retrigger = PayloadDispatchSectorDoor::RESTART;
+
+    // Played from the sector when the floor starts moving / arrives.
+    std::string startSound;
+    std::string stopSound;
+    float soundGain = 1.0f;
+    float soundPitch = 1.0f;
+
+    // As on the Door.
+    bool locked = false;
+    TagId requiredTag = 0;
+    std::string lockedSound;
+    std::string lockedMessage; // empty: none
+    float lockedMessageDuration = 2.0f;
+    Vector3 lockedMessageColor = {1.0f, 1.0f, 1.0f}; // 0-1
+};
+
+// Doom-style stairs: this sector's floor rises `stepHeight`, the next step
+// (the one neighbour with the same floor texture, unless `ignoreTexture`)
+// rises to `stepHeight` above that, and so on until there is no next step
+// or more than one.
+struct PayloadDispatchSectorRaiseStairs {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
+    transKey translationKey = "event.dispatch.sector.raise_stairs";
+    transKey saveName = "dispatch.sector.raise_stairs"; // level file name, never change
+    bool operator==(const PayloadDispatchSectorRaiseStairs&) const = default;
+
+    float stepHeight = 8.0f;
+    float speed = 10.0f;
+    int floorIndex = 0; // the floor that rises, on every step
+    bool ignoreTexture = false; // any single neighbour is the next step
+    SectorCollision collision = SECTOR_STOP;
+};
+
+// Keeps changing the sector's light between its own light (as it was when
+// the effect started) and a dimmer one, until a None effect or Set Light.
+struct PayloadDispatchSectorLightEffect {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
+    transKey translationKey = "event.dispatch.sector.light_effect";
+    transKey saveName = "dispatch.sector.light_effect"; // level file name, never change
+    bool operator==(const PayloadDispatchSectorLightEffect&) const = default;
+
+    enum Type : uint8_t {
+        NONE = 0,         // stops the effect, the light goes back to the sector's own
+        FLICKER = 1,      // random: bright up to brightTime, dim up to dimTime
+        STROBE = 2,       // bright for brightTime, dim for dimTime, repeating
+        GLOW = 3,         // smoothly down to dim and back up at `speed`
+        FIRE_FLICKER = 4  // every `interval`, a random step between bright and dim
+    };
+
+    enum DimMode : uint8_t {
+        COLOR = 0,          // `dimLight`
+        LOWEST_NEIGHBOR = 1 // the darkest neighbouring sector's light
+    };
+
+    Type type = STROBE;
+    DimMode dimMode = COLOR;
+    Vector3 dimLight = {64.0f, 64.0f, 64.0f}; // 0-255, like the inspector
+
+    float brightTime = 1.0f;  // seconds
+    float dimTime = 0.25f;    // seconds
+    float speed = 128.0f;     // Glow: light units (0-255) per second
+    float interval = 0.1f;    // Fire Flicker: seconds between changes
+
+    // Same-type, same-timing effects run on one shared clock, so their
+    // sectors change together. Off: each starts at a random point.
+    bool sync = false;
 };
 
 struct PayloadDispatchSectorSetLight {
@@ -732,6 +852,113 @@ struct PayloadDispatchEntitySetComponent {
 
     ToggleableComponent component = ToggleableComponent::COLLIDER;
     ToggleMode mode = ToggleMode::TOGGLE;
+};
+
+// The components a Set Field dispatch can change (fields: EventFields.hpp).
+enum class FieldComponent : uint8_t {
+    TRANSFORM = 0,
+    SPRITE = 1,
+    AUDIO_SOURCE = 2,
+    SCRIPT = 3,
+    PLAYER_CONTROLLER = 4,
+    CAMERA = 5,
+    COLLIDER = 6,
+    RIGIDBODY = 7,
+    MODEL = 8,
+    FLIPBOOK = 9,
+    UI_TRANSFORM = 10,
+    UI_SPRITE = 11,
+    UI_TEXT = 12,
+    UI_BUTTON = 13
+};
+
+// What a field holds. Numbers, vectors and colours can change over time.
+enum class FieldValueKind : uint8_t {
+    FLOAT,
+    INT,
+    BOOL,
+    STRING,
+    VECTOR2,
+    VECTOR3,
+    VECTOR4,
+    COLOR,   // RGBA, each 0..1
+    TEXTURE, // asset path
+    SOUND,   // asset path
+    ENUM     // a script enum, stored as its int value
+};
+
+[[nodiscard]] constexpr bool IsNumericFieldKind(const FieldValueKind kind) noexcept {
+    switch (kind) {
+        case FieldValueKind::FLOAT: case FieldValueKind::INT: case FieldValueKind::VECTOR2:
+        case FieldValueKind::VECTOR3: case FieldValueKind::VECTOR4: case FieldValueKind::COLOR:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// How many of FieldValue::number's channels a kind uses (0: none).
+[[nodiscard]] constexpr int FieldChannelCount(const FieldValueKind kind) noexcept {
+    switch (kind) {
+        case FieldValueKind::FLOAT: case FieldValueKind::INT: case FieldValueKind::ENUM: return 1;
+        case FieldValueKind::VECTOR2: return 2;
+        case FieldValueKind::VECTOR3: return 3;
+        case FieldValueKind::VECTOR4: case FieldValueKind::COLOR: return 4;
+        default: return 0;
+    }
+}
+
+// A field's value, whatever its kind: numbers and vectors in `number` (a
+// single number or an int in x), bools in `flag`, text and asset paths in
+// `text`.
+struct FieldValue {
+    Vector4 number = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool flag = false;
+    std::string text;
+
+    bool operator==(const FieldValue&) const = default;
+};
+
+// Changes one field of one of the owner's components. Which component is
+// its place among the owner's components of that type (as the inspector
+// lists them), so it survives prefabs and duplicating.
+struct PayloadDispatchEntitySetField {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.dispatch.entity.set_field";
+    transKey saveName = "dispatch.entity.set_field"; // level file name, never change
+    bool operator==(const PayloadDispatchEntitySetField&) const = default;
+
+    // Add and Multiply work on numbers, vectors and colours (per channel),
+    // Toggle on bools; everything can be Set.
+    enum Operation : uint8_t {
+        SET = 0,
+        ADD = 1,
+        MULTIPLY = 2,
+        TOGGLE = 3
+    };
+
+    FieldComponent component = FieldComponent::SPRITE;
+    int componentIndex = 0; // 0 = the owner's first of that type
+    std::string field;      // an engine field's key (EventFields.hpp), or a script's public field name
+
+    Operation operation = SET;
+
+    // The value is an event variable's (every channel gets it; a bool is
+    // true when it isn't 0; text gets the number written out).
+    bool fromVariable = false;
+    EventVariableID variable = 0;
+    FieldValue value;
+
+    // Numbers, vectors and colours slide there at `speed` units per second,
+    // per channel. Everything else changes at once.
+    bool overTime = false;
+    float speed = 1.0f;
+
+    // Goes back to the value from before the first run, `revertAfter`
+    // seconds after it got there (sliding back at `speed` too). Running
+    // again meanwhile restarts the wait and keeps that first value.
+    bool revert = false;
+    float revertAfter = 1.0f;
 };
 
 // Replaces the owner's first Sprite's 8 directional textures (slots as in
@@ -882,10 +1109,11 @@ using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,
     PayloadDispatchLinedefSetEnabled,
     PayloadDispatchSectorMoveCeilingToFloor, PayloadDispatchSectorMoveFloorToCeiling, PayloadDispatchSectorMoveToHeight,
-    PayloadDispatchSectorDoor, PayloadDispatchSectorStopMovement, PayloadDispatchSectorSetLight, PayloadDispatchSectorSetTexture,
+    PayloadDispatchSectorDoor, PayloadDispatchSectorLift, PayloadDispatchSectorRaiseStairs,
+    PayloadDispatchSectorStopMovement, PayloadDispatchSectorSetLight, PayloadDispatchSectorLightEffect, PayloadDispatchSectorSetTexture,
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable,
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
-    PayloadDispatchEntitySetSprite,
+    PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
     PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText>;

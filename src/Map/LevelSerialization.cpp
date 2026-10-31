@@ -775,7 +775,11 @@ namespace {
         {SectorHeightMode::LOWEST_NEIGHBOR_FLOOR, "lowest_neighbor_floor"},
         {SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR, "highest_neighbor_floor"},
         {SectorHeightMode::LOWEST_NEIGHBOR_CEILING, "lowest_neighbor_ceiling"},
-        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "highest_neighbor_ceiling"}
+        {SectorHeightMode::HIGHEST_NEIGHBOR_CEILING, "highest_neighbor_ceiling"},
+        {SectorHeightMode::NEXT_HIGHER_NEIGHBOR_FLOOR, "next_higher_neighbor_floor"},
+        {SectorHeightMode::NEXT_LOWER_NEIGHBOR_FLOOR, "next_lower_neighbor_floor"},
+        {SectorHeightMode::NEXT_HIGHER_NEIGHBOR_CEILING, "next_higher_neighbor_ceiling"},
+        {SectorHeightMode::NEXT_LOWER_NEIGHBOR_CEILING, "next_lower_neighbor_ceiling"}
     };
 
     constexpr std::pair<PayloadDispatchSectorDoor::Type, const char*> kDoorTypeNames[] = {
@@ -809,6 +813,59 @@ namespace {
         {ToggleableComponent::CAMERA, "camera"},
         {ToggleableComponent::COLLIDER, "collider"},
         {ToggleableComponent::UI_SPRITE, "ui_sprite"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::Type, const char*> kLiftTypeNames[] = {
+        {PayloadDispatchSectorLift::DOWN_WAIT_UP, "down_wait_up"},
+        {PayloadDispatchSectorLift::PERPETUAL, "perpetual"},
+        {PayloadDispatchSectorLift::UP_WAIT_DOWN, "up_wait_down"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::LowMode, const char*> kLiftLowModeNames[] = {
+        {PayloadDispatchSectorLift::LOWEST_NEIGHBOR_FLOOR, "lowest_neighbor_floor"},
+        {PayloadDispatchSectorLift::FIXED_LOW, "fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLift::HighMode, const char*> kLiftHighModeNames[] = {
+        {PayloadDispatchSectorLift::HIGHEST_NEIGHBOR_FLOOR, "highest_neighbor_floor"},
+        {PayloadDispatchSectorLift::FIXED_HIGH, "fixed_height"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLightEffect::Type, const char*> kLightEffectTypeNames[] = {
+        {PayloadDispatchSectorLightEffect::NONE, "none"},
+        {PayloadDispatchSectorLightEffect::FLICKER, "flicker"},
+        {PayloadDispatchSectorLightEffect::STROBE, "strobe"},
+        {PayloadDispatchSectorLightEffect::GLOW, "glow"},
+        {PayloadDispatchSectorLightEffect::FIRE_FLICKER, "fire_flicker"}
+    };
+
+    constexpr std::pair<PayloadDispatchSectorLightEffect::DimMode, const char*> kLightDimModeNames[] = {
+        {PayloadDispatchSectorLightEffect::COLOR, "color"},
+        {PayloadDispatchSectorLightEffect::LOWEST_NEIGHBOR, "lowest_neighbor"}
+    };
+
+    constexpr std::pair<FieldComponent, const char*> kFieldComponentNames[] = {
+        {FieldComponent::TRANSFORM, "transform"},
+        {FieldComponent::SPRITE, "sprite"},
+        {FieldComponent::AUDIO_SOURCE, "audio_source"},
+        {FieldComponent::SCRIPT, "script"},
+        {FieldComponent::PLAYER_CONTROLLER, "player_controller"},
+        {FieldComponent::CAMERA, "camera"},
+        {FieldComponent::COLLIDER, "collider"},
+        {FieldComponent::RIGIDBODY, "rigidbody"},
+        {FieldComponent::MODEL, "model"},
+        {FieldComponent::FLIPBOOK, "flipbook"},
+        {FieldComponent::UI_TRANSFORM, "ui_transform"},
+        {FieldComponent::UI_SPRITE, "ui_sprite"},
+        {FieldComponent::UI_TEXT, "ui_text"},
+        {FieldComponent::UI_BUTTON, "ui_button"}
+    };
+
+    constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char*> kSetFieldOperationNames[] = {
+        {PayloadDispatchEntitySetField::SET, "set"},
+        {PayloadDispatchEntitySetField::ADD, "add"},
+        {PayloadDispatchEntitySetField::MULTIPLY, "multiply"},
+        {PayloadDispatchEntitySetField::TOGGLE, "toggle"}
     };
 
     // Reads `key` into `out` if present; throws on a value of the wrong type.
@@ -981,6 +1038,66 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetLight>) {
             j["light"] = {payload.light.x, payload.light.y, payload.light.z};
             j["speed"] = payload.speed;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLift>) {
+            j["liftType"] = EnumName(kLiftTypeNames, payload.type);
+            j["lowMode"] = EnumName(kLiftLowModeNames, payload.lowMode);
+            j["lowLip"] = payload.lowLip;
+            j["lowHeight"] = payload.lowHeight;
+            j["highMode"] = EnumName(kLiftHighModeNames, payload.highMode);
+            j["highLip"] = payload.highLip;
+            j["highHeight"] = payload.highHeight;
+            j["speed"] = payload.speed;
+            j["wait"] = payload.wait;
+            j["floorIndex"] = payload.floorIndex;
+            j["collision"] = EnumName(kSectorCollisionNames, payload.collision);
+            j["retrigger"] = EnumName(kDoorRetriggerNames, payload.retrigger);
+            j["startSound"] = payload.startSound;
+            j["stopSound"] = payload.stopSound;
+            j["soundGain"] = payload.soundGain;
+            j["soundPitch"] = payload.soundPitch;
+            j["locked"] = payload.locked;
+            j["requiredTag"] = payload.requiredTag;
+            j["lockedSound"] = payload.lockedSound;
+            j["lockedMessage"] = payload.lockedMessage;
+            j["lockedMessageDuration"] = payload.lockedMessageDuration;
+            j["lockedMessageColor"] = {payload.lockedMessageColor.x, payload.lockedMessageColor.y, payload.lockedMessageColor.z};
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorRaiseStairs>) {
+            j["stepHeight"] = payload.stepHeight;
+            j["speed"] = payload.speed;
+            j["floorIndex"] = payload.floorIndex;
+            j["ignoreTexture"] = payload.ignoreTexture;
+            j["collision"] = EnumName(kSectorCollisionNames, payload.collision);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLightEffect>) {
+            j["effect"] = EnumName(kLightEffectTypeNames, payload.type);
+            j["dimMode"] = EnumName(kLightDimModeNames, payload.dimMode);
+            j["dimLight"] = {payload.dimLight.x, payload.dimLight.y, payload.dimLight.z};
+            j["brightTime"] = payload.brightTime;
+            j["dimTime"] = payload.dimTime;
+            j["speed"] = payload.speed;
+            j["interval"] = payload.interval;
+            j["sync"] = payload.sync;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetField>) {
+            j["component"] = EnumName(kFieldComponentNames, payload.component);
+            j["componentIndex"] = payload.componentIndex;
+            j["field"] = payload.field;
+            j["operation"] = EnumName(kSetFieldOperationNames, payload.operation);
+            j["fromVariable"] = payload.fromVariable;
+            j["variable"] = payload.variable;
+            j["number"] = {payload.value.number.x, payload.value.number.y, payload.value.number.z, payload.value.number.w};
+            j["flag"] = payload.value.flag;
+            j["text"] = payload.value.text;
+            j["overTime"] = payload.overTime;
+            j["speed"] = payload.speed;
+            j["revert"] = payload.revert;
+            j["revertAfter"] = payload.revertAfter;
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetTexture>) {
@@ -1168,6 +1285,69 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetLight>) {
             ReadOptionalVector3(j, "light", payload.light);
             ReadOptional(j, "speed", payload.speed);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLift>) {
+            ReadOptionalEnum(j, "liftType", kLiftTypeNames, payload.type);
+            ReadOptionalEnum(j, "lowMode", kLiftLowModeNames, payload.lowMode);
+            ReadOptional(j, "lowLip", payload.lowLip);
+            ReadOptional(j, "lowHeight", payload.lowHeight);
+            ReadOptionalEnum(j, "highMode", kLiftHighModeNames, payload.highMode);
+            ReadOptional(j, "highLip", payload.highLip);
+            ReadOptional(j, "highHeight", payload.highHeight);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "wait", payload.wait);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptionalEnum(j, "collision", kSectorCollisionNames, payload.collision);
+            ReadOptionalEnum(j, "retrigger", kDoorRetriggerNames, payload.retrigger);
+            ReadOptional(j, "startSound", payload.startSound);
+            ReadOptional(j, "stopSound", payload.stopSound);
+            ReadOptional(j, "soundGain", payload.soundGain);
+            ReadOptional(j, "soundPitch", payload.soundPitch);
+            ReadOptional(j, "locked", payload.locked);
+            ReadOptional(j, "requiredTag", payload.requiredTag);
+            ReadOptional(j, "lockedSound", payload.lockedSound);
+            ReadOptional(j, "lockedMessage", payload.lockedMessage);
+            ReadOptional(j, "lockedMessageDuration", payload.lockedMessageDuration);
+            ReadOptionalVector3(j, "lockedMessageColor", payload.lockedMessageColor);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorRaiseStairs>) {
+            ReadOptional(j, "stepHeight", payload.stepHeight);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            ReadOptional(j, "ignoreTexture", payload.ignoreTexture);
+            ReadOptionalEnum(j, "collision", kSectorCollisionNames, payload.collision);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLightEffect>) {
+            ReadOptionalEnum(j, "effect", kLightEffectTypeNames, payload.type);
+            ReadOptionalEnum(j, "dimMode", kLightDimModeNames, payload.dimMode);
+            ReadOptionalVector3(j, "dimLight", payload.dimLight);
+            ReadOptional(j, "brightTime", payload.brightTime);
+            ReadOptional(j, "dimTime", payload.dimTime);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "interval", payload.interval);
+            ReadOptional(j, "sync", payload.sync);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetField>) {
+            ReadOptionalEnum(j, "component", kFieldComponentNames, payload.component);
+            ReadOptional(j, "componentIndex", payload.componentIndex);
+            ReadOptional(j, "field", payload.field);
+            ReadOptionalEnum(j, "operation", kSetFieldOperationNames, payload.operation);
+            ReadOptional(j, "fromVariable", payload.fromVariable);
+            ReadOptional(j, "variable", payload.variable);
+            if (j.contains("number")) {
+                const json& n = j.at("number");
+                payload.value.number = {n.at(0).get<float>(), n.at(1).get<float>(), n.at(2).get<float>(), n.at(3).get<float>()};
+            }
+            ReadOptional(j, "flag", payload.value.flag);
+            ReadOptional(j, "text", payload.value.text);
+            ReadOptional(j, "overTime", payload.overTime);
+            ReadOptional(j, "speed", payload.speed);
+            ReadOptional(j, "revert", payload.revert);
+            ReadOptional(j, "revertAfter", payload.revertAfter);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorSetTexture>) {
