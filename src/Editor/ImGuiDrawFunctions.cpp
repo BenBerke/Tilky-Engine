@@ -1630,16 +1630,6 @@ namespace ImGuiDrawFunctions {
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
     }
 
-    // A checkbox inside an event/dispatch card. The card is drawn in the
-    // frame colour, which would hide an empty checkbox, so its box takes the
-    // panel's background instead.
-    static bool CardCheckbox(const char *label, bool *value) {
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
-        const bool changed = ImGui::Checkbox(label, value);
-        ImGui::PopStyleColor();
-        return changed;
-    }
-
     // Starts an entry's card: a framed child that grows to fit its contents.
     static bool BeginEntryCard(const char *id) {
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
@@ -1651,10 +1641,16 @@ namespace ImGuiDrawFunctions {
 
         ImGui::PopStyleColor();
         ImGui::PopStyleVar(2);
+
+        // The card is drawn in the frame colour, which would hide the
+        // checkboxes, text fields and dropdowns on it, so inside it they take
+        // the panel's background instead.
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
         return visible;
     }
 
     static void EndEntryCard() {
+        ImGui::PopStyleColor();
         ImGui::EndChild();
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
     }
@@ -1815,7 +1811,7 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.events.ray_type").c_str());
 
                                 Property(Get("events.first_hit_only").c_str());
-                                CardCheckbox("##FirstHitOnly", &payload.firstHitOnly);
+                                ImGui::Checkbox("##FirstHitOnly", &payload.firstHitOnly);
                                 Tooltip(Get("editor.tooltip.events.first_hit_only").c_str());
 
                                 if (kind == EventOwnerKind::LINE || kind == EventOwnerKind::LINEDEF) {
@@ -1977,7 +1973,7 @@ namespace ImGuiDrawFunctions {
                 break;
             }
             case FieldValueKind::BOOL:
-                CardCheckbox("##Value", &value.flag);
+                ImGui::Checkbox("##Value", &value.flag);
                 break;
             case FieldValueKind::STRING:
                 ImGui::InputText("##Value", &value.text);
@@ -2122,7 +2118,7 @@ namespace ImGuiDrawFunctions {
         // Over time.
         if (numeric) {
             Property(Get("events.over_time").c_str());
-            CardCheckbox("##OverTime", &set.overTime);
+            ImGui::Checkbox("##OverTime", &set.overTime);
             Tooltip(Get("editor.tooltip.dispatches.set_field_over_time").c_str());
 
             if (set.overTime) {
@@ -2134,7 +2130,7 @@ namespace ImGuiDrawFunctions {
 
         // Revert.
         Property(Get("events.revert").c_str());
-        CardCheckbox("##Revert", &set.revert);
+        ImGui::Checkbox("##Revert", &set.revert);
         Tooltip(Get("editor.tooltip.dispatches.set_field_revert").c_str());
 
         if (set.revert) {
@@ -2349,7 +2345,7 @@ namespace ImGuiDrawFunctions {
                                 }
 
                                 Property(Get("events.door.split").c_str());
-                                CardCheckbox("##Split", &payload.split);
+                                ImGui::Checkbox("##Split", &payload.split);
                                 Tooltip(Get("editor.tooltip.dispatches.door_split").c_str());
 
                                 if (payload.split && usesOpenHeights) {
@@ -2416,7 +2412,7 @@ namespace ImGuiDrawFunctions {
                                     payload.soundPitch = std::max(0.01f, payload.soundPitch);
 
                                 Property(Get("events.door.locked").c_str());
-                                CardCheckbox("##Locked", &payload.locked);
+                                ImGui::Checkbox("##Locked", &payload.locked);
                                 Tooltip(Get("editor.tooltip.dispatches.door_locked").c_str());
 
                                 if (payload.locked) {
@@ -2513,7 +2509,7 @@ namespace ImGuiDrawFunctions {
                                     payload.soundPitch = std::max(0.01f, payload.soundPitch);
 
                                 Property(Get("events.door.locked").c_str());
-                                CardCheckbox("##Locked", &payload.locked);
+                                ImGui::Checkbox("##Locked", &payload.locked);
                                 Tooltip(Get("editor.tooltip.dispatches.lift_locked").c_str());
 
                                 if (payload.locked) {
@@ -2549,7 +2545,7 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
 
                                 Property(Get("events.stairs.ignore_texture").c_str());
-                                CardCheckbox("##IgnoreTexture", &payload.ignoreTexture);
+                                ImGui::Checkbox("##IgnoreTexture", &payload.ignoreTexture);
                                 Tooltip(Get("editor.tooltip.dispatches.stairs_ignore_texture").c_str());
 
                                 Property(Get("events.collision").c_str());
@@ -2602,7 +2598,7 @@ namespace ImGuiDrawFunctions {
                                     }
 
                                     Property(Get("events.light_effect.sync").c_str());
-                                    CardCheckbox("##Sync", &payload.sync);
+                                    ImGui::Checkbox("##Sync", &payload.sync);
                                     Tooltip(Get("editor.tooltip.dispatches.light_effect_sync").c_str());
                                 }
                             }
@@ -2656,7 +2652,7 @@ namespace ImGuiDrawFunctions {
                                 InputOrDrag3("##Position", &payload.position.x, draggable);
 
                                 Property(Get("events.relative").c_str());
-                                CardCheckbox("##Relative", &payload.relative);
+                                ImGui::Checkbox("##Relative", &payload.relative);
                                 Tooltip(Get("editor.tooltip.dispatches.move_relative").c_str());
 
                                 Property(Get("events.move_timing").c_str());
@@ -2674,7 +2670,7 @@ namespace ImGuiDrawFunctions {
                                 }
 
                                 Property(Get("events.rotate").c_str());
-                                CardCheckbox("##Rotate", &payload.rotate);
+                                ImGui::Checkbox("##Rotate", &payload.rotate);
 
                                 if (payload.rotate) {
                                     Property(Get("events.rotation").c_str());
@@ -2704,7 +2700,7 @@ namespace ImGuiDrawFunctions {
                                 DrawAssetRow("events.prefab", payload.prefab, AssetKind::Prefab, "editor.tooltip.dispatches.prefab");
 
                                 Property(Get("events.world_position").c_str());
-                                CardCheckbox("##WorldPosition", &payload.worldPosition);
+                                ImGui::Checkbox("##WorldPosition", &payload.worldPosition);
                                 Tooltip(Get("editor.tooltip.dispatches.world_position").c_str());
 
                                 Property(Get(payload.worldPosition ? "events.position" : "events.offset").c_str());
