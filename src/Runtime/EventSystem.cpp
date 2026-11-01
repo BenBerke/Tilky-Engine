@@ -75,6 +75,17 @@ namespace {
         bool realTime; // counted in real seconds (a UI Button event's chain)
     };
 
+    // A flow step of a dispatch that ran, waiting out its wait.
+    struct PendingFlow {
+        DispatchFlow flow;
+        EventOwnerKind callerKind; // the dispatch's object (the call's Self)
+        ID callerID;
+        ID instigatorID;
+        float remaining; // seconds
+        bool realTime;
+        uint64_t firstUpdate; // runs no earlier than this Update (the next frame's)
+    };
+
     // A dispatch's cooldown: calls since the last one started, and how long
     // the running one has left.
     struct CooldownState {
@@ -167,6 +178,9 @@ namespace {
     std::vector<CrossWall> crossWalls;
     std::vector<ColorFade> colorFades;
     std::vector<PendingDispatch> pendingDispatches;
+    std::vector<PendingFlow> pendingFlows;
+    uint64_t updateCount = 0; // Updates started this session
+    bool inUpdate = false;    // EventSystem::Update is running
     std::map<DispatchKey, CooldownState> cooldowns;
     std::vector<TimerState> timers;
     std::vector<ConditionWatch> conditionWatches;
@@ -186,6 +200,10 @@ namespace {
     // True while a UI Button event's dispatches run: their delays and
     // cooldowns count real time, so buttons work while the game is paused.
     bool realTimeChain = false;
+
+    // Set by a dispatch that was refused (a locked door or lift) while it
+    // runs, so its flow doesn't go on.
+    bool dispatchRefused = false;
 
     // Sets realTimeChain for a scope, then puts it back.
     struct RealTimeChainScope {
@@ -1053,6 +1071,36 @@ namespace {
         }
     }
 
+    bool FlowConditionHolds(const Level& level, const FlowCondition& condition) {
+        return std::visit([&]<typename Kind>(const Kind& kind) {
+            if constexpr (std::is_same_v<Kind, FlowVariable>) return level.CheckCondition(kind.condition);
+            else if constexpr (std::is_same_v<Kind, FlowChance>)
+                return kind.chance >= 100.0f || MathFunctions::GetRandomFloat(0.0f, 100.0f) < kind.chance;
+            else return true;
+        }, condition);
+    }
+
+    // A step never runs in the frame it was queued (a 0 wait = the next
+    // frame), so a loop of flows runs at most once a frame.
+    void RunPendingFlows(Level& level, const float deltaTime, const float realDeltaTime) {
+        std::vector<PendingFlow> waiting = std::move(pendingFlows);
+        pendingFlows.clear();
+
+        std::vector<PendingFlow> due;
+        for (PendingFlow& pending : waiting) {
+            pending.remaining -= pending.realTime ? realDeltaTime : deltaTime;
+            if (pending.remaining > 0.0f || updateCount < pending.firstUpdate) pendingFlows.push_back(std::move(pending));
+            else due.push_back(std::move(pending));
+        }
+
+        for (const PendingFlow& pending : due) {
+            if (!FlowConditionHolds(level, pending.flow.condition)) continue;
+
+            const RealTimeChainScope scope(pending.realTime);
+            RunCall(level, pending.flow.call, pending.callerKind, pending.callerID, pending.instigatorID);
+        }
+    }
+
     // ── Sectors ─────────────────────────────────────────────────────────────
 
     // The sectors across this one's two-sided walls.
@@ -1225,7 +1273,10 @@ namespace {
             return;
         }
 
-        if (DoorLocked(level, sectorID, settings, instigatorID)) return;
+        if (DoorLocked(level, sectorID, settings, instigatorID)) {
+            dispatchRefused = true;
+            return;
+        }
 
         const auto existing = std::ranges::find_if(doors, [&](const DoorState& door) {
             return door.sectorID == sectorID && door.floorIndex == settings.floorIndex;
@@ -1738,7 +1789,10 @@ namespace {
             return;
         }
 
-        if (SectorDispatchLocked(level, sectorID, settings, instigatorID)) return;
+        if (SectorDispatchLocked(level, sectorID, settings, instigatorID)) {
+            dispatchRefused = true;
+            return;
+        }
 
         const auto existing = std::ranges::find_if(lifts, [&](const LiftState& lift) {
             return lift.sectorID == sectorID && lift.floorIndex == settings.floorIndex;
@@ -2528,7 +2582,10 @@ namespace EventSystem {
 
         const auto resolveRelays = [&](const std::vector<Dispatch>& dispatches) {
             for (const Dispatch& dispatch : dispatches)
+            {
                 if (const auto* relay = std::get_if<PayloadDispatchRelay>(&dispatch.payload)) resolve(relay->call);
+                for (const DispatchFlow& flow : dispatch.flows) resolve(flow.call);
+            }
         };
         for (const Wall& wall : level.walls) resolveRelays(wall.dispatches);
         for (const Linedef& linedef : level.linedefs) resolveRelays(linedef.dispatches);
@@ -2614,9 +2671,12 @@ namespace EventSystem {
 
     void Update(Level& level, const PhysicsSystem::Contacts& contacts) {
         const float deltaTime = GameTime::deltaTime;
+        ++updateCount;
+        inUpdate = true;
 
         TickCooldowns(deltaTime, GameTime::unscaledDeltaTime);
         RunPendingDispatches(level, deltaTime, GameTime::unscaledDeltaTime);
+        RunPendingFlows(level, deltaTime, GameTime::unscaledDeltaTime);
 
         UpdateColorFades(level, deltaTime);
         UpdateDoors(level, deltaTime);
@@ -2639,6 +2699,7 @@ namespace EventSystem {
 
         // Last, so a variable changed by anything above counts this frame.
         UpdateConditionWatches(level);
+        inUpdate = false;
     }
 
     void Stop() {
@@ -2652,6 +2713,9 @@ namespace EventSystem {
         crossWalls.clear();
         colorFades.clear();
         pendingDispatches.clear();
+        pendingFlows.clear();
+        updateCount = 0;
+        inUpdate = false;
         cooldowns.clear();
         timers.clear();
         conditionWatches.clear();
@@ -2670,6 +2734,7 @@ namespace EventSystem {
         shownMessages.clear();
         relayDepth = 0;
         realTimeChain = false;
+        dispatchRefused = false;
         lastPositions.clear();
         lastSectors.clear();
         lastEnabled.clear();
@@ -2678,21 +2743,23 @@ namespace EventSystem {
         lastLinedefContacts.clear();
     }
 
-    void ExecuteDispatch(Level& level, const Dispatch& dispatch, const EventOwnerKind ownerKind, const ID ownerID,
-                         const ID instigatorID) {
+    // Does what the dispatch's payload says. False when the owner skipped it
+    // (wrong kind of object, a disabled entity).
+    static bool RunPayload(Level& level, const Dispatch& dispatch, const EventOwnerKind ownerKind, const ID ownerID,
+                           const ID instigatorID) {
         // A dispatch for another kind of owner (a sector move on an entity)
         // would use the owner's ID as the wrong kind of thing.
         if (!CanAttachTo(dispatch.payload, ownerKind)) {
             spdlog::warn("Dispatch '{}' is attached to the wrong kind of object (owner {}), skipped",
                          GetTranslationKey(dispatch.payload), ownerID);
-            return;
+            return false;
         }
 
         // A disabled entity ignores every dispatch but Enable and Destroy.
         if (ownerKind == EventOwnerKind::ENTITY && !IsEnabledEntity(level, ownerID) &&
             !std::holds_alternative<PayloadDispatchEntityEnable>(dispatch.payload) &&
             !std::holds_alternative<PayloadDispatchEntityDestroy>(dispatch.payload))
-            return;
+            return false;
 
         const auto moveSector = [&](const int floorIndex, const float speed, const auto& start) {
             Sector* sector = level.GetSector(ownerID);
@@ -2984,6 +3051,26 @@ namespace EventSystem {
                 }
             },
         }, dispatch.payload);
+
+        return true;
+    }
+
+    void ExecuteDispatch(Level& level, const Dispatch& dispatch, const EventOwnerKind ownerKind, const ID ownerID,
+                         const ID instigatorID) {
+        // A relay inside runs dispatches of its own; each answers for itself.
+        const bool outerRefused = dispatchRefused;
+        dispatchRefused = false;
+
+        const bool ran = RunPayload(level, dispatch, ownerKind, ownerID, instigatorID) && !dispatchRefused;
+        dispatchRefused = outerRefused;
+        if (!ran) return;
+
+        // `dispatch` is the caller's copy, so the flows stay valid here.
+        for (const DispatchFlow& flow : dispatch.flows)
+            // Queued before this frame's Update (scripts, UI buttons), the
+            // next frame's is the one after it.
+            pendingFlows.push_back({flow, ownerKind, ownerID, instigatorID, flow.wait, realTimeChain,
+                                    updateCount + (inUpdate ? 1 : 2)});
     }
 
     void TriggerEvent(Level& level, Event& event, const EventOwnerKind ownerKind, const ID ownerID, const ID instigatorID) {

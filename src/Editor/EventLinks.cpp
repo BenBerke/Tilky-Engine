@@ -74,6 +74,17 @@ namespace {
                    std::ranges::any_of(event.calls, [&](const DirectCall& call) { return CallReaches(call, target); });
         });
     }
+
+    // A dispatch's flow steps calling `target`.
+    bool FlowsReach(const std::vector<Dispatch>& dispatches, const Owner& target) {
+        return std::ranges::any_of(dispatches, [&](const Dispatch& dispatch) {
+            return std::ranges::any_of(dispatch.flows, [&](const DispatchFlow& flow) { return CallReaches(flow.call, target); });
+        });
+    }
+
+    bool OwnerReaches(const Owner& from, const Owner& target) {
+        return EventsReach(*from.events, target) || FlowsReach(*from.dispatches, target);
+    }
 }
 
 namespace EventLinks {
@@ -199,8 +210,8 @@ namespace EventLinks {
 
             // Tags and direct calls decide; each pair is drawn once per
             // direction however many events/dispatches link them.
-            const bool outgoing = EventsReach(*self->events, other);
-            const bool incoming = EventsReach(*other.events, *self);
+            const bool outgoing = OwnerReaches(*self, other);
+            const bool incoming = OwnerReaches(other, *self);
             if (!outgoing && !incoming) continue;
 
             Vector3 otherPoint;
@@ -217,9 +228,13 @@ namespace EventLinks {
         for (const Owner& owner : AllOwners(level)) {
             if (owner.kind != kind || owner.id != ownerID) continue;
 
-            return std::ranges::any_of(*owner.events, [](const Event& event) {
-                return std::ranges::any_of(event.calls, [](const DirectCall& call) { return call.target == CallTarget::INSTIGATOR; });
-            });
+            const auto toInstigator = [](const DirectCall& call) { return call.target == CallTarget::INSTIGATOR; };
+            return std::ranges::any_of(*owner.events, [&](const Event& event) {
+                       return std::ranges::any_of(event.calls, toInstigator);
+                   }) ||
+                   std::ranges::any_of(*owner.dispatches, [&](const Dispatch& dispatch) {
+                       return std::ranges::any_of(dispatch.flows, [&](const DispatchFlow& flow) { return toInstigator(flow.call); });
+                   });
         }
         return false;
     }

@@ -29,7 +29,7 @@ namespace EventLinks {
     // an object to itself are left out.
     std::vector<Link> Collect(const Level& level, EventOwnerKind kind, ID ownerID);
 
-    // Whether one of the object's events calls whoever triggered it: a
+    // Whether one of the object's events or flow steps calls whoever triggered it: a
     // target only known while playing, so it gets a label instead of a line.
     [[nodiscard]] bool CallsInstigator(const Level& level, EventOwnerKind kind, ID ownerID);
 

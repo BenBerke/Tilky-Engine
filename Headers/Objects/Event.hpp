@@ -1244,6 +1244,48 @@ struct Event {
     [[nodiscard]] constexpr bool IsLevel() const noexcept { return CanAttachTo(payload, EventOwnerKind::LEVEL); }
 };
 
+// What decides whether a flow step calls its next dispatch, checked once its
+// wait is over. One type per kind, like the payloads: `translationKey` is
+// its display name, `saveName` what level files store it as.
+struct FlowAlways {
+    transKey translationKey = "events.flow.condition.always";
+    transKey saveName = "always"; // level file name, never change
+    bool operator==(const FlowAlways&) const = default;
+};
+
+// Goes on when the event-variable comparison holds (same as an event's).
+struct FlowVariable {
+    transKey translationKey = "events.flow.condition.variable";
+    transKey saveName = "variable"; // level file name, never change
+    bool operator==(const FlowVariable&) const = default;
+
+    Condition condition{EventVariableID{0}, Condition::EQUAL, 0.0f};
+};
+
+// Goes on with a `chance` out of 100, rolled each time.
+struct FlowChance {
+    transKey translationKey = "events.flow.condition.chance";
+    transKey saveName = "chance"; // level file name, never change
+    bool operator==(const FlowChance&) const = default;
+
+    float chance = 50.0f;
+};
+
+using FlowCondition = std::variant<FlowAlways, FlowVariable, FlowChance>;
+
+// One step after a dispatch runs: `wait` seconds later (0 = the next frame),
+// if the condition holds, runs the named dispatches of the call's target.
+// Self is the dispatch's own object; the instigator stays the one that
+// started the chain. Nothing follows a dispatch that didn't run (a disabled
+// entity, a locked door).
+struct DispatchFlow {
+    DirectCall call;
+    float wait = 0.0f; // seconds, counted from when the dispatch runs
+    FlowCondition condition = FlowAlways{};
+
+    bool operator==(const DispatchFlow&) const = default;
+};
+
 struct Dispatch {
     DispatchPayload payload;
 
@@ -1263,6 +1305,9 @@ struct Dispatch {
     // cooldown starts once every `cooldownTriggers` calls (at least 1).
     float cooldown = 0.0f;
     int cooldownTriggers = 1;
+
+    // What runs after it, each step on its own (several may be stacked).
+    std::vector<DispatchFlow> flows;
 
     bool operator==(const Dispatch&) const = default;
 

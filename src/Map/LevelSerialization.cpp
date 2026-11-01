@@ -1593,6 +1593,55 @@ namespace {
         return event;
     }
 
+    json FlowToJson(const DispatchFlow& flow) {
+        json j = {{"call", DirectCallToJson(flow.call)}};
+        if (flow.wait > 0.0f) j["wait"] = flow.wait;
+
+        j["condition"] = std::visit([]<typename Kind>(const Kind& kind) {
+            json c = json::object();
+            if constexpr (std::is_same_v<Kind, FlowVariable>) {
+                // The comparison's own "type" is saved as "comparison".
+                c = ConditionToJson(kind.condition);
+                c["comparison"] = std::move(c["type"]);
+            }
+            else if constexpr (std::is_same_v<Kind, FlowChance>) c["chance"] = kind.chance;
+
+            c["type"] = Kind::saveName;
+            return c;
+        }, flow.condition);
+
+        return j;
+    }
+
+    // Throws on an unknown condition type or a malformed field.
+    DispatchFlow FlowFromJson(const json& j) {
+        DispatchFlow flow;
+        flow.call = DirectCallFromJson(j.at("call"));
+        ReadOptional(j, "wait", flow.wait);
+        flow.wait = std::max(0.0f, flow.wait);
+
+        if (j.contains("condition")) {
+            const json& c = j.at("condition");
+            const std::string type = c.at("type").get<std::string>();
+
+            if (type == FlowAlways::saveName) flow.condition = FlowAlways{};
+            else if (type == FlowVariable::saveName) {
+                json comparison = c;
+                comparison.erase("type");
+                if (c.contains("comparison")) comparison["type"] = c.at("comparison");
+                flow.condition = FlowVariable{ConditionFromJson(comparison)};
+            }
+            else if (type == FlowChance::saveName) {
+                FlowChance chance;
+                ReadOptional(c, "chance", chance.chance);
+                flow.condition = chance;
+            }
+            else throw std::runtime_error("unknown flow condition \"" + type + "\"");
+        }
+
+        return flow;
+    }
+
     json DispatchToJson(const Dispatch& dispatch) {
         json j = {{"payload", PayloadToJson(dispatch.payload)}, {"tag", dispatch.tagId}};
 
@@ -1602,6 +1651,12 @@ namespace {
         if (dispatch.cooldownTriggers != 1) j["cooldownTriggers"] = dispatch.cooldownTriggers;
         if (!dispatch.name.empty()) j["name"] = dispatch.name;
         if (!dispatch.useTag) j["useTag"] = false;
+
+        if (!dispatch.flows.empty()) {
+            json flows = json::array();
+            for (const DispatchFlow& flow : dispatch.flows) flows.push_back(FlowToJson(flow));
+            j["flows"] = std::move(flows);
+        }
 
         return j;
     }
@@ -1616,6 +1671,18 @@ namespace {
         ReadOptional(j, "name", dispatch.name);
         ReadOptional(j, "useTag", dispatch.useTag);
         dispatch.cooldownTriggers = std::max(1, dispatch.cooldownTriggers);
+
+        if (j.contains("flows")) {
+            const json& flows = j.at("flows");
+            for (size_t i = 0; i < flows.size(); ++i) {
+                try {
+                    dispatch.flows.push_back(FlowFromJson(flows[i]));
+                } catch (const std::exception& exception) {
+                    spdlog::warn("Dispatch '{}': skipped flow {}: {}", dispatch.name, i, exception.what());
+                }
+            }
+        }
+
         return dispatch;
     }
 

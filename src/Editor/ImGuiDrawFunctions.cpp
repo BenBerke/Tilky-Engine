@@ -1707,10 +1707,13 @@ namespace ImGuiDrawFunctions {
         return header + idSuffix;
     }
 
-    // "Name  (Type)  ->  Tag" for a named dispatch.
+    // "Name  (Type)  ->  Tag" for a named dispatch, then "  ->  2 next" for its flow.
     static std::string DispatchHeader(const Dispatch &dispatch, const char *idSuffix) {
         const std::string type = EntryHeader(GetTranslationKey(dispatch.payload), dispatch.useTag, dispatch.tagId, 0, "");
-        return (dispatch.name.empty() ? type : dispatch.name + "  (" + type + ")") + idSuffix;
+        std::string header = dispatch.name.empty() ? type : dispatch.name + "  (" + type + ")";
+        if (!dispatch.flows.empty())
+            header += "  ->  " + std::to_string(dispatch.flows.size()) + " " + Get("events.header.next");
+        return header + idSuffix;
     }
 
     // Property row: which of the sector's floors, numbered from 1 as in the
@@ -2512,6 +2515,143 @@ namespace ImGuiDrawFunctions {
         }
     }
 
+    // ── Flow ───────────────────────────────────────────────────────────────
+
+    static const char *ComparisonSymbol(const Condition::ConditionType type) {
+        switch (type) {
+            case Condition::EQUAL: return "=";
+            case Condition::LESS_THAN: return "<";
+            case Condition::GREATER_THAN: return ">";
+            case Condition::LESS_THAN_OR_EQUAL: return "<=";
+            case Condition::GREATER_THAN_OR_EQUAL: return ">=";
+            default: return "";
+        }
+    }
+
+    // Who the call reaches, as it reads in a flow step's sentence.
+    static std::string FlowTargetText(const Level &level, const DirectCall &call, const EventOwnerKind callerKind) {
+        const auto picked = [&](const std::optional<std::string> &label) {
+            if (call.targetID == INVALID_ID) return Get("events.call.pick_object");
+            return label ? *label : Get("events.call.missing_object");
+        };
+
+        switch (call.target) {
+            case CallTarget::SELF: return Get(SelfLabelKey(callerKind));
+            case CallTarget::INSTIGATOR: return Get("events.call.instigator.relay");
+            case CallTarget::ENTITY: {
+                const Entity *entity = level.GetEntity(call.targetID);
+                return picked(entity ? std::optional(DescribeEntity(*entity)) : std::nullopt);
+            }
+            case CallTarget::SECTOR: {
+                const Sector *sector = level.GetSector(call.targetID);
+                return picked(sector ? std::optional(DescribeSector(*sector)) : std::nullopt);
+            }
+            case CallTarget::WALL: {
+                const auto it = level.wallIDToIndex.find(call.targetID);
+                return picked(it != level.wallIDToIndex.end() ? std::optional(DescribeWall(level.walls[it->second])) : std::nullopt);
+            }
+            case CallTarget::LINEDEF: {
+                const Linedef *linedef = level.GetLinedef(call.targetID);
+                return picked(linedef ? std::optional(DescribeLinedef(*linedef)) : std::nullopt);
+            }
+            case CallTarget::TAGGED: {
+                const auto tag = TagRegistry::GetName(call.targetTag);
+                return Get("events.flow.sentence.tagged") + " " + (tag ? *tag : Get("tags.missing"));
+            }
+        }
+        return {};
+    }
+
+    // "After 2 s, if Keys >= 3  ->  call Door A . Open"
+    static std::string FlowSentence(const Level &level, const DispatchFlow &flow, const EventOwnerKind callerKind) {
+        std::string sentence = flow.wait > 0.0f
+            ? Get("events.flow.sentence.after") + " " + FormatEventNumber(flow.wait) + " s"
+            : Get("events.flow.sentence.next_frame");
+
+        std::visit([&]<typename Kind>(const Kind &kind) {
+            if constexpr (std::is_same_v<Kind, FlowVariable>) {
+                const Condition &condition = kind.condition;
+                if (condition.type == Condition::NONE) return;
+
+                const auto side = [&](const Condition::InputField &field) {
+                    if (const float *number = std::get_if<float>(&field)) return FormatEventNumber(*number);
+                    return EventVariableLabel(level, std::get<EventVariableID>(field));
+                };
+                sentence += ", " + Get("events.flow.sentence.if") + " " + side(condition.left) + " " +
+                        ComparisonSymbol(condition.type) + " " + side(condition.right);
+            }
+            else if constexpr (std::is_same_v<Kind, FlowChance>) {
+                sentence += ", " + FormatEventNumber(kind.chance) + "% " + Get("events.flow.sentence.chance");
+            }
+        }, flow.condition);
+
+        sentence += "  ->  " + Get("events.flow.sentence.call") + " " + FlowTargetText(level, flow.call, callerKind) +
+                " . " + (flow.call.dispatch.empty() ? Get("events.call.pick_dispatch") : flow.call.dispatch);
+        return sentence;
+    }
+
+    // The dispatch's Flow section: each step as a sentence, then its wait,
+    // condition and call. Under the dispatch's other settings.
+    static void DrawDispatchFlows(Dispatch &dispatch, const EventOwnerKind kind, const ID ownerID) {
+        const Level &level = LevelManager::CurrentLevel();
+
+        EntrySettingsGap();
+        ImGui::TextUnformatted(Get("events.flow").c_str());
+        Tooltip(Get("editor.tooltip.dispatches.flow").c_str());
+
+        if (!BeginProperties("##Flow")) return;
+
+        int toRemove = -1;
+
+        for (size_t i = 0; i < dispatch.flows.size(); ++i) {
+            DispatchFlow &flow = dispatch.flows[i];
+            ImGui::PushID(static_cast<int>(i) + 2000);
+
+            if (i > 0) ImGui::TableNextRow(ImGuiTableRowFlags_None, 8.0f);
+
+            Property((Get("events.flow.step") + " " + std::to_string(i + 1)).c_str());
+            ImGui::TextWrapped("%s", FlowSentence(level, flow, kind).c_str());
+
+            Property(Get("events.flow.wait").c_str());
+            if (ImGui::InputFloat("##Wait", &flow.wait, 0.0f, 0.0f, "%.2f s")) flow.wait = std::max(0.0f, flow.wait);
+            Tooltip(Get("editor.tooltip.dispatches.flow_wait").c_str());
+
+            Property(Get("events.flow.condition").c_str());
+            if (ImGui::BeginCombo("##FlowCondition", Get(std::visit([](const auto &c) {
+                return std::decay_t<decltype(c)>::translationKey;
+            }, flow.condition)).c_str())) {
+                ForEachPayloadType<FlowCondition>([&]<typename Kind>(std::type_identity<Kind>) {
+                    const bool selected = std::holds_alternative<Kind>(flow.condition);
+                    if (ImGui::Selectable(Get(Kind::translationKey).c_str(), selected) && !selected) flow.condition = Kind{};
+                    if (selected) ImGui::SetItemDefaultFocus();
+                });
+                ImGui::EndCombo();
+            }
+            Tooltip(Get("editor.tooltip.dispatches.flow_condition").c_str());
+
+            if (auto *variable = std::get_if<FlowVariable>(&flow.condition)) DrawConditionFields(variable->condition);
+            else if (auto *chance = std::get_if<FlowChance>(&flow.condition)) {
+                Property(Get("events.chance").c_str());
+                ImGui::SliderFloat("##FlowChance", &chance->chance, 0.0f, 100.0f, "%.1f%%", ImGuiSliderFlags_AlwaysClamp);
+                Tooltip(Get("editor.tooltip.dispatches.flow_chance").c_str());
+            }
+
+            bool remove = false;
+            DrawDirectCallRows(flow.call, kind, ownerID, "events.call.instigator.relay", true, remove);
+            if (remove) toRemove = static_cast<int>(i);
+
+            ImGui::PopID();
+        }
+
+        if (toRemove >= 0) dispatch.flows.erase(dispatch.flows.begin() + toRemove);
+
+        Property("");
+        if (ImGui::Button(Get("events.flow.add").c_str(), ImVec2(-FLT_MIN, 0.0f))) dispatch.flows.emplace_back();
+        Tooltip(Get("editor.tooltip.dispatches.flow_add").c_str());
+
+        EndProperties();
+    }
+
     static void DrawDispatchesEditor(std::vector<Dispatch> &dispatches, const EventOwnerKind kind, const ID ownerID,
                                      const bool draggable) {
         Level &level = LevelManager::CurrentLevel();
@@ -3184,6 +3324,8 @@ namespace ImGuiDrawFunctions {
                         DrawDirectionalTextureSlots(setSprite->textures, SIDECOUNT_45);
                     }
                 }
+
+                DrawDispatchFlows(dispatch, kind, ownerID);
             }
             EndEntryCard();
 
