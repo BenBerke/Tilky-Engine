@@ -1810,7 +1810,7 @@ namespace ImGuiDrawFunctions {
                                std::is_same_v<Payload, PayloadUIButtonHoverEnter> ||
                                std::is_same_v<Payload, PayloadUIButtonHoverExit>) return "events.call.instigator.player";
             else if constexpr (std::is_same_v<Payload, PayloadTimer> || std::is_same_v<Payload, PayloadConditionMet> ||
-                               std::is_same_v<Payload, PayloadLevelStart> ||
+                               std::is_same_v<Payload, PayloadOnStart> ||
                                std::is_same_v<Payload, PayloadSectorMoveFinished>) return nullptr;
             else return "events.call.instigator.relay"; // the entity itself (enable, destroyed, ...)
         }, payload);
@@ -2144,7 +2144,7 @@ namespace ImGuiDrawFunctions {
                            !std::is_same_v<Payload, PayloadEntityDisable> &&
                            !std::is_same_v<Payload, PayloadEntityDestroyed> &&
                            !std::is_same_v<Payload, PayloadConditionMet> &&
-                           !std::is_same_v<Payload, PayloadLevelStart>;
+                           !std::is_same_v<Payload, PayloadOnStart>;
                 }, event.payload);
 
                 if (hasSettings) {

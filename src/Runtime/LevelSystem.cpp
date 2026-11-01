@@ -269,7 +269,7 @@ namespace LevelSystem {
         UIButtonSystem::Start(level);
 
         // After the scripts' start callbacks.
-        EventSystem::FireLevelStart(level);
+        EventSystem::FireOnStart(level);
         // Future level start systems will run here.
     }
 

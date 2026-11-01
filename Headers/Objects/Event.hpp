@@ -459,12 +459,18 @@ struct PayloadUIButtonHoverExit {
     TagFilter filter{TagType::ALL, {}};
 };
 
-// Every time the level loads, after the scripts' start callbacks.
-struct PayloadLevelStart {
-    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LEVEL);
+// "On Start", like a script's Start(): on everything in the level when it
+// loads (after the scripts' Start callbacks; the level's own first, then
+// walls, linedefs, sectors and entities), and on an entity spawned later
+// (Spawn Prefab, Game.CreatePrefab), after its scripts' Start. Not on a
+// disabled entity or linedef, then or later.
+struct PayloadOnStart {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::LEVEL) | OwnerBit(EventOwnerKind::LINE) |
+                                             OwnerBit(EventOwnerKind::LINEDEF) | OwnerBit(EventOwnerKind::SECTOR) |
+                                             OwnerBit(EventOwnerKind::ENTITY);
     transKey translationKey = "event.level.start";
     transKey saveName = "level.start"; // level file name, never change
-    bool operator==(const PayloadLevelStart&) const = default;
+    bool operator==(const PayloadOnStart&) const = default;
 };
 //endregion
 
@@ -1179,7 +1185,7 @@ using EventPayload = std::variant<
     PayloadLineEntityCollide, PayloadLineEntityCross,
     PayloadSectorEntityEnter, PayloadSectorEntityExit, PayloadSectorEntityStay, PayloadSectorEntityGrounded, PayloadSectorMoveFinished,
     PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
-    PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadLevelStart,
+    PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadOnStart,
     PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit>;
 
 using DispatchPayload = std::variant<

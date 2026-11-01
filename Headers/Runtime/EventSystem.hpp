@@ -62,8 +62,9 @@ namespace EventSystem {
     // as the baseline, so nothing fires for how the level starts.
     void Start(Level& level, Hooks hooks);
 
-    // Fires the Level Start events. Run once the scripts have started.
-    void FireLevelStart(Level& level);
+    // Fires the On Start events of everything in the level. Run once the
+    // scripts have started. Spawned entities' fire from Update.
+    void FireOnStart(Level& level);
 
     // Runs the delayed dispatches that are due, advances fades, doors and
     // entity moves, then diffs this frame against the last and fires every

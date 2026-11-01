@@ -572,11 +572,14 @@ namespace {
 
     void FireEnableEvents(Level& level) {
         std::vector<std::pair<ID, bool>> flipped;
+        std::vector<ID> spawned;
 
         for (const Entity& entity : level.entities) {
             const auto [it, inserted] = lastEnabled.try_emplace(entity.id, entity.enabled);
 
-            // Spawned since last frame: how it starts is the baseline.
+            // Spawned since last frame: how it starts is the baseline, and
+            // it gets its On Start (scripts' Start has run by now).
+            if (inserted && entity.enabled) spawned.push_back(entity.id);
             if (inserted || it->second == entity.enabled) continue;
 
             it->second = entity.enabled;
@@ -584,6 +587,9 @@ namespace {
         }
 
         PruneDestroyed(lastEnabled, level);
+
+        for (const ID entityID : spawned)
+            if (IsEnabledEntity(level, entityID)) FireEvents<PayloadOnStart>(level, EventOwnerKind::ENTITY, entityID, INVALID_ID, {});
 
         for (const auto& [entityID, enabled] : flipped) {
             const std::vector<TagId> tags = EntityTags(level, entityID);
@@ -2664,9 +2670,22 @@ namespace EventSystem {
         level.sectorMoveEnds.clear();
     }
 
-    void FireLevelStart(Level& level) {
+    void FireOnStart(Level& level) {
         if (!running) return;
-        FireEvents<PayloadLevelStart>(level, EventOwnerKind::LEVEL, ID{0}, INVALID_ID, {});
+
+        // IDs first: a dispatch can add or remove things while these run.
+        std::vector<std::pair<EventOwnerKind, ID>> owners{{EventOwnerKind::LEVEL, ID{0}}};
+        for (const Wall& wall : level.walls) owners.emplace_back(EventOwnerKind::LINE, wall.id);
+        for (const Linedef& linedef : level.linedefs)
+            if (linedef.enabled) owners.emplace_back(EventOwnerKind::LINEDEF, linedef.id);
+        for (const Sector& sector : level.sectors) owners.emplace_back(EventOwnerKind::SECTOR, sector.id);
+        for (const Entity& entity : level.entities)
+            if (entity.enabled) owners.emplace_back(EventOwnerKind::ENTITY, entity.id);
+
+        for (const auto& [kind, ownerID] : owners) {
+            if (kind == EventOwnerKind::ENTITY && !IsEnabledEntity(level, ownerID)) continue; // disabled by an earlier one
+            FireEvents<PayloadOnStart>(level, kind, ownerID, INVALID_ID, {});
+        }
     }
 
     void Update(Level& level, const PhysicsSystem::Contacts& contacts) {
