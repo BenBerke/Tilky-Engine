@@ -2070,6 +2070,121 @@ namespace MapEditorInternal {
             return changed;
         }
 
+        // What Alt+C (events and dispatches) or Shift+C (everything but the
+        // outline) copied from a sector.
+        struct SectorClipboard {
+            bool filled = false;
+            bool everything = false; // Shift+C: the fields below the events too
+
+            std::vector<Event> events;
+            std::vector<Dispatch> dispatches;
+
+            std::string name;
+            std::vector<uint16_t> tagIds;
+            std::vector<SectorScript> scripts;
+            Vector3 light;
+            std::vector<SectorFloor> floors;
+        };
+        SectorClipboard sectorClipboard;
+
+        // Sector Mode's Alt+C/V and Shift+C/V. Copies from the hovered sector
+        // (else the selected one); pastes onto the selection when the hovered
+        // sector is in it or nothing is hovered, else onto the hovered one.
+        // Pasting replaces what the target had. True when it took the press.
+        bool HandleSectorClipboardShortcuts(Level& level, const Vector2& mouseWorld, const bool mouseBlockedByImGui) {
+            if (currentMode != MODE_SECTOR) return false;
+
+            const bool copyAll = GetComboDown(COMBO_COPY_SECTOR_ALL);
+            const bool copyEvents = !copyAll && GetComboDown(COMBO_COPY_SECTOR_EVENTS);
+            const bool pasteAll = GetComboDown(COMBO_PASTE_SECTOR_ALL);
+            const bool pasteEvents = !pasteAll && GetComboDown(COMBO_PASTE_SECTOR_EVENTS);
+            if (!copyAll && !copyEvents && !pasteAll && !pasteEvents) return false;
+
+            const ID hovered = mouseBlockedByImGui ? INVALID_ID : HoveredCanvasItem(level, mouseWorld);
+
+            if (copyAll || copyEvents) {
+                const Sector* source = level.GetSector(hovered != INVALID_ID ? hovered : selectedSectorID);
+                if (source == nullptr) return true;
+
+                sectorClipboard = {};
+                sectorClipboard.filled = true;
+                sectorClipboard.everything = copyAll;
+                sectorClipboard.events = source->events;
+                sectorClipboard.dispatches = source->dispatches;
+
+                if (copyAll) {
+                    sectorClipboard.name = source->name;
+                    sectorClipboard.tagIds = source->tagIds;
+                    sectorClipboard.scripts = source->scripts;
+                    sectorClipboard.light = source->light;
+                    sectorClipboard.floors = source->floors;
+                }
+
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(copyAll
+                    ? "editor.toast.sector_all_copied" : "editor.toast.sector_events_copied").c_str(), false, 1.5f);
+                return true;
+            }
+
+            // Shift+V needs a Shift+C copy; Alt+V takes the events of either.
+            if (!sectorClipboard.filled || (pasteAll && !sectorClipboard.everything)) {
+                ImGuiDrawFunctions::ShowNotification(Localisation::Get(sectorClipboard.filled
+                    ? "editor.toast.sector_all_not_copied" : "editor.toast.sector_nothing_copied").c_str(), true, 2.0f);
+                return true;
+            }
+
+            std::vector<ID> targets;
+            const bool hoveredSelected = std::ranges::find(selectedSectors, hovered) != selectedSectors.end();
+            if (hovered != INVALID_ID && !hoveredSelected) targets = {hovered};
+            else if (!selectedSectors.empty()) targets = selectedSectors;
+            else if (selectedSectorID != INVALID_ID) targets = {selectedSectorID};
+            if (targets.empty()) return true;
+
+            GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+            int pasted = 0;
+
+            for (const ID id : targets) {
+                Sector* target = level.GetSector(id);
+                if (target == nullptr) continue;
+
+                target->events = sectorClipboard.events;
+                for (Event& event : target->events) event.triggerCount = 0; // runtime only
+                target->dispatches = sectorClipboard.dispatches;
+
+                if (pasteAll) {
+                    target->name = sectorClipboard.name;
+                    target->tagIds = sectorClipboard.tagIds;
+                    target->light = sectorClipboard.light;
+
+                    // Its own outline keeps; the floor stack, heights and
+                    // surfaces come over, without any move in progress.
+                    target->floors = sectorClipboard.floors;
+                    for (SectorFloor& floor : target->floors) {
+                        floor.floorMove = {};
+                        floor.ceilingMove = {};
+                        floor.floorDelta = 0.0f;
+                    }
+
+                    // Scripts get this sector's own instance IDs.
+                    target->scripts.clear();
+                    for (const SectorScript& script : sectorClipboard.scripts) {
+                        SectorScript copy = script;
+                        copy.instanceID = target->nextScriptInstanceID++;
+                        target->scripts.push_back(std::move(copy));
+                    }
+                }
+
+                ++pasted;
+            }
+
+            if (pasted == 0) return true;
+
+            PushGeometryUndoSnapshot(std::move(before), pasteAll ? "editor.history.paste_sector_all" : "editor.history.paste_sector_events", pasted);
+            hasUnsavedChanges = true;
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get(pasteAll
+                ? "editor.toast.sector_all_pasted" : "editor.toast.sector_events_pasted").c_str(), false, 1.5f);
+            return true;
+        }
+
         // True when it took the key press. In Entity Mode that is only while
         // the cursor is on an entity with a sprite, so Ctrl+C / Ctrl+V still
         // copy and paste entities everywhere else.
@@ -2762,9 +2877,13 @@ namespace MapEditorInternal {
             UndoLastAction();
         }
 
-        // Texture copy/paste first: in Entity Mode it shares Ctrl+C/V with
+        // Sector Mode's sector copy/paste first: by default Alt+C/V there
+        // mean events and dispatches, not texture and placement.
+        const bool sectorShortcutTaken = HandleSectorClipboardShortcuts(level, mouseWorld, mouseBlockedByImGui);
+
+        // Texture copy/paste next: in Entity Mode it shares Ctrl+C/V with
         // entity copy/paste, and wins while the cursor is on an entity.
-        const bool textureShortcutTaken = HandleCanvasTextureShortcuts(level, mouseWorld, mouseBlockedByImGui);
+        const bool textureShortcutTaken = !sectorShortcutTaken && HandleCanvasTextureShortcuts(level, mouseWorld, mouseBlockedByImGui);
 
         if (!textureShortcutTaken && currentMode == MODE_ENTITY) {
             if (GetComboDown(COMBO_COPY_ENTITIES) && !selectedEntities.empty()) [[unlikely]] {

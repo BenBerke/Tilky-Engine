@@ -1652,6 +1652,10 @@ namespace MapEditorInternal {
         COMBO_SELECT_ALL,
         COMBO_DUPLICATE,
         COMBO_SAVE,
+        COMBO_COPY_SECTOR_EVENTS,  // Sector Mode: events and dispatches
+        COMBO_PASTE_SECTOR_EVENTS,
+        COMBO_COPY_SECTOR_ALL,     // Sector Mode: everything but the outline
+        COMBO_PASTE_SECTOR_ALL,
 
         // Runtime editor
         COMBO_RT_UNDO,

@@ -373,6 +373,10 @@ namespace MapEditorInternal {
         {"select_all",       "editor.combo.select_all",       "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_A, SDL_SCANCODE_RCTRL, SDL_SCANCODE_A}},
         {"duplicate",        "editor.combo.duplicate",        "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_D, SDL_SCANCODE_RCTRL, SDL_SCANCODE_D}},
         {"save",             "editor.combo.save",             "editor.key_group.shortcuts",         KEYSCOPE_MAP,     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_S, SDL_SCANCODE_RCTRL, SDL_SCANCODE_S}},
+        {"copy_sector_events",  "editor.combo.copy_sector_events",  "editor.key_group.shortcuts", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_C, SDL_SCANCODE_RALT, SDL_SCANCODE_C}},
+        {"paste_sector_events", "editor.combo.paste_sector_events", "editor.key_group.shortcuts", KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_V, SDL_SCANCODE_RALT, SDL_SCANCODE_V}},
+        {"copy_sector_all",     "editor.combo.copy_sector_all",     "editor.key_group.shortcuts", KEYSCOPE_MAP, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_C, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_C}},
+        {"paste_sector_all",    "editor.combo.paste_sector_all",    "editor.key_group.shortcuts", KEYSCOPE_MAP, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_V, SDL_SCANCODE_RSHIFT, SDL_SCANCODE_V}},
 
         {"rt_undo",          "editor.combo.rt_undo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Z, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Z}},
         {"rt_redo",          "editor.combo.rt_redo",          "editor.key_group.runtime_shortcuts", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_Y, SDL_SCANCODE_RCTRL, SDL_SCANCODE_Y}},
