@@ -1,4 +1,5 @@
 #include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Engine/BuildVariant.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -3099,7 +3100,8 @@ namespace {
         return result;
     }
 
-#ifndef TILKY_STANDALONE
+    // The editor's metadata (camera, wall snaps, comments...). The game
+    // neither loads nor saves it.
     void LoadMetadata(const json& levelData, Level& level) {
         if (levelData.contains("metadata")) {
             const json& metadatajson = levelData["metadata"];
@@ -3286,7 +3288,6 @@ namespace {
 
         levelData["metadata"] = metadatajson;
     }
-#endif
 
     void SaveProjectWideInformation() {
 
@@ -3385,9 +3386,7 @@ namespace LevelSerialization {
             LoadSounds(levelData, loadedLevel);
             LoadLevelStats(levelData, loadedLevel);
 
-#ifndef TILKY_STANDALONE
-            LoadMetadata(levelData, loadedLevel);
-#endif
+            if (!BuildVariant::IsStandalone()) LoadMetadata(levelData, loadedLevel);
         }
         catch (const nlohmann::json::exception& e) {
             SetError(
@@ -3452,9 +3451,7 @@ namespace LevelSerialization {
         SaveTextures(levelData, level);
         SaveSounds(levelData, level);
 
-#ifndef TILKY_STANDALONE
-        SaveMetadata(levelData, level);
-#endif
+        if (!BuildVariant::IsStandalone()) SaveMetadata(levelData, level);
         return WriteBsonFile(levelFile, "level", levelData, errorMessage);
     }
 

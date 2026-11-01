@@ -1,5 +1,6 @@
 #include "Headers/Runtime/SaveSystem.hpp"
 
+#include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 #include <algorithm>
@@ -18,11 +19,10 @@ namespace {
     namespace fs = std::filesystem;
     using json = nlohmann::json;
 
-#ifdef TILKY_STANDALONE
-    constexpr const char* EXTENSION = ".bson";
-#else
-    constexpr const char* EXTENSION = ".json";
-#endif
+    // BSON in the game, readable JSON in the editor.
+    const char* Extension() {
+        return BuildVariant::IsStandalone() ? ".bson" : ".json";
+    }
 
     struct SaveFile {
         json values = json::object();
@@ -38,7 +38,7 @@ namespace {
     std::optional<fs::path> folder;
 
     fs::path PathOf(const std::string& fileName) {
-        return SaveSystem::Folder() / (fileName + EXTENSION);
+        return SaveSystem::Folder() / (fileName + Extension());
     }
 
     // A file that can't be read (or was written by a newer engine) is moved
@@ -62,11 +62,8 @@ namespace {
         const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 
         try {
-#ifdef TILKY_STANDALONE
-            return json::from_bson(bytes);
-#else
+            if (BuildVariant::IsStandalone()) return json::from_bson(bytes);
             return json::parse(bytes);
-#endif
         }
         catch (const json::exception&) {
             return std::nullopt;
@@ -112,12 +109,12 @@ namespace {
             std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
             if (!out) return false;
 
-#ifdef TILKY_STANDALONE
-            const std::vector<std::uint8_t> bytes = json::to_bson(document);
-            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-#else
-            out << document.dump(4);
-#endif
+            if (BuildVariant::IsStandalone()) {
+                const std::vector<std::uint8_t> bytes = json::to_bson(document);
+                out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            } else {
+                out << document.dump(4);
+            }
             if (!out) return false;
         }
 
@@ -133,11 +130,8 @@ namespace {
 namespace SaveSystem {
     fs::path Folder() {
         if (!folder) {
-#ifdef TILKY_STANDALONE
-            folder = ProjectManager::GetUserSavesPath();
-#else
-            folder = ProjectManager::GetProjectSavesPath();
-#endif
+            folder = BuildVariant::IsStandalone() ? ProjectManager::GetUserSavesPath()
+                                                  : ProjectManager::GetProjectSavesPath();
         }
         return *folder;
     }
@@ -208,7 +202,7 @@ namespace SaveSystem {
 
         std::error_code ec;
         for (fs::directory_iterator it(Folder(), ec), end; !ec && it != end; it.increment(ec)) {
-            if (!it->is_regular_file() || it->path().extension() != EXTENSION) continue;
+            if (!it->is_regular_file() || it->path().extension() != Extension()) continue;
 
             const std::string name = it->path().stem().string();
             if (FileNameProblem(name).empty()) names.push_back(name);

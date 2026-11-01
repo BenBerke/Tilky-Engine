@@ -27,6 +27,10 @@ public:
 
     static void RegisterVectorBindings(sol::state& lua);
     static void RegisterComponentBindings(sol::state& lua);
+    // Parts of RegisterComponentBindings, in their own files only so each
+    // compiles faster: LuaGameplayComponentBindings.cpp, LuaUIComponentBindings.cpp.
+    static void RegisterGameplayComponentBindings(sol::state& lua);
+    static void RegisterUIComponentBindings(sol::state& lua);
     void RegisterEntityBindings(sol::state& lua);
     void RegisterInputBindings(sol::state& lua);
 

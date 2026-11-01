@@ -46,6 +46,7 @@ message(STATUS "TILKY_ENABLE_TRACY = ${TILKY_ENABLE_TRACY}")
 # ============================================================
 
 option(TILKY_ENABLE_LTO "Enable link-time optimization in optimized builds" ON)
+
 option(TILKY_ENABLE_UNITY_BUILD "Enable CMake unity/jumbo builds for Tilky project targets" OFF)
 
 set(TILKY_UNITY_BUILD_BATCH_SIZE "8" CACHE STRING
@@ -64,6 +65,116 @@ if(TILKY_ENABLE_LTO)
         message(WARNING "IPO/LTO not supported: ${TILKY_IPO_ERROR}")
     endif()
 endif()
+
+# ccache: recompiles nothing it has compiled before (branch switches, clean
+# rebuilds, fresh build folders). Used automatically when it's on PATH.
+option(TILKY_USE_CCACHE "Compile through ccache when it is installed" ON)
+
+set(TILKY_CCACHE_ENABLED OFF)
+
+if(TILKY_USE_CCACHE AND NOT MSVC AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    find_program(TILKY_CCACHE_PROGRAM ccache)
+
+    if(TILKY_CCACHE_PROGRAM)
+        # The sloppiness settings let ccache cache sources built with the
+        # precompiled headers below (see "Precompiled headers" in the ccache
+        # manual), along with -fpch-preprocess. Depend mode reads the -MD
+        # dependency file instead of running the preprocessor first, so a
+        # cache miss (every edited file) costs about what it did without
+        # ccache.
+        set(TILKY_CCACHE_LAUNCHER
+                "${CMAKE_COMMAND}" -E env
+                "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+                "CCACHE_DEPEND=1"
+                "${TILKY_CCACHE_PROGRAM}"
+        )
+        set(CMAKE_C_COMPILER_LAUNCHER ${TILKY_CCACHE_LAUNCHER})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${TILKY_CCACHE_LAUNCHER})
+
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            add_compile_options(-fpch-preprocess)
+        endif()
+
+        set(TILKY_CCACHE_ENABLED ON)
+    endif()
+endif()
+
+message(STATUS "TILKY ccache = ${TILKY_CCACHE_ENABLED}")
+
+# LLVM's lld links several times faster than GNU ld (on MSYS2:
+# pacman -S mingw-w64-ucrt-x86_64-lld). GCC's LTO objects need GNU ld's
+# plugin, so GCC builds that use LTO keep GNU ld.
+option(TILKY_USE_LLD "Link with LLVM lld when the compiler can use it (GCC/Clang)" ON)
+
+set(TILKY_LLD_ENABLED OFF)
+get_property(TILKY_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND TILKY_IPO_ENABLED
+        AND (TILKY_MULTI_CONFIG OR TILKY_BUILD_TYPE_UPPER MATCHES "^(RELEASE|MINSIZEREL|RELWITHDEBINFO)$"))
+    set(TILKY_LLD_ALLOWED OFF)
+else()
+    set(TILKY_LLD_ALLOWED ON)
+endif()
+
+if(TILKY_USE_LLD AND TILKY_LLD_ALLOWED AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-fuse-ld=lld" TILKY_LINKER_SUPPORTS_LLD)
+
+    if(TILKY_LINKER_SUPPORTS_LLD)
+        set(TILKY_LLD_ENABLED ON)
+        set(TILKY_LLD_LINK_OPTIONS -fuse-ld=lld)
+
+        # GCC hands long link lines to the linker in a response file quoted
+        # the GNU way (CLion\ Projects), which lld on Windows splits at every
+        # space in a path. GCC finds this re-quoting ld.lld (-B) before the
+        # real one; see Tools/LldWrapper/LldWrapper.cpp.
+        if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            get_filename_component(TILKY_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            find_program(TILKY_REAL_LLD NAMES ld.lld HINTS "${TILKY_COMPILER_DIR}" NO_CACHE)
+
+            set(TILKY_LLD_WRAPPER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Tools/LldWrapper/LldWrapper.cpp")
+            set(TILKY_LLD_WRAPPER_DIR "${CMAKE_BINARY_DIR}/LldWrapper")
+            set(TILKY_LLD_WRAPPER "${TILKY_LLD_WRAPPER_DIR}/ld.lld.exe")
+            set(TILKY_LLD_WRAPPER_CONFIG "${TILKY_LLD_WRAPPER_DIR}/LldWrapperConfig.h")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${TILKY_LLD_WRAPPER_SOURCE}")
+
+            # Rewritten only when it changes, so the wrapper isn't rebuilt
+            # on every configure.
+            file(CONFIGURE OUTPUT "${TILKY_LLD_WRAPPER_CONFIG}"
+                    CONTENT "#define TILKY_REAL_LLD L\"@TILKY_REAL_LLD@\"\n"
+                    @ONLY
+            )
+
+            if(NOT EXISTS "${TILKY_LLD_WRAPPER}"
+                    OR "${TILKY_LLD_WRAPPER_SOURCE}" IS_NEWER_THAN "${TILKY_LLD_WRAPPER}"
+                    OR "${TILKY_LLD_WRAPPER_CONFIG}" IS_NEWER_THAN "${TILKY_LLD_WRAPPER}")
+                execute_process(
+                        COMMAND "${CMAKE_CXX_COMPILER}" -std=c++20 -O2 -municode -static
+                        "-I${TILKY_LLD_WRAPPER_DIR}"
+                        "${TILKY_LLD_WRAPPER_SOURCE}"
+                        -o "${TILKY_LLD_WRAPPER}"
+                        RESULT_VARIABLE TILKY_LLD_WRAPPER_RESULT
+                        ERROR_VARIABLE TILKY_LLD_WRAPPER_ERROR
+                )
+
+                if(NOT TILKY_LLD_WRAPPER_RESULT EQUAL 0)
+                    file(REMOVE "${TILKY_LLD_WRAPPER}")
+                    message(WARNING "Could not build the ld.lld wrapper, so linking with GNU ld:
+${TILKY_LLD_WRAPPER_ERROR}")
+                    set(TILKY_LLD_ENABLED OFF)
+                endif()
+            endif()
+
+            list(APPEND TILKY_LLD_LINK_OPTIONS "-B${TILKY_LLD_WRAPPER_DIR}/")
+        endif()
+
+        if(TILKY_LLD_ENABLED)
+            add_link_options(${TILKY_LLD_LINK_OPTIONS})
+        endif()
+    endif()
+endif()
+
+message(STATUS "TILKY lld = ${TILKY_LLD_ENABLED}")
 
 function(tilky_configure_unity_build target_name)
     if(NOT TARGET ${target_name})
@@ -320,6 +431,8 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
         src/Runtime/Scripting/Lua/LuaScriptCompiler.cpp
         src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
+        src/Runtime/Scripting/Lua/LuaGameplayComponentBindings.cpp
+        src/Runtime/Scripting/Lua/LuaUIComponentBindings.cpp
         src/Runtime/Scripting/Lua/LuaEntityBindings.cpp
         src/Runtime/Scripting/Lua/LuaInputBindings.cpp
         src/Runtime/Scripting/Lua/LuaMathBindings.cpp
@@ -592,12 +705,66 @@ set(TILKY_EDITOR_SOURCES
 )
 
 # ============================================================
+# Shared and per-target runtime sources
+#
+# Most runtime sources compile the same for the editor and the game, so they
+# are built once (Tilky_RuntimeCommon, below) and linked into both. The
+# variant sources use #ifdef TILKY_STANDALONE / TILKY_USE_IMGUI around ImGui
+# or editor-only code the game doesn't link, so each executable compiles its
+# own copy. Shared code that only needs to know which executable it's in
+# asks BuildVariant::IsStandalone().
+#
+# Headers must have one layout in both executables: no TILKY_STANDALONE
+# inside a struct, a class or an inline function, or the shared objects and
+# the per-target ones disagree.
+#
+# With Tracy on, Tilky_Engine's runtime code has Tracy zones and the game's
+# doesn't (the client opens a network port), so then nothing is shared and
+# both executables compile every runtime source, as before.
+# ============================================================
+
+set(TILKY_VARIANT_SOURCES
+        src/Engine/BuildVariant.cpp
+        Headers/Engine/BuildVariant.hpp
+        src/Engine/InputManager.cpp
+        src/Runtime/RuntimeSession.cpp
+        src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
+        src/Runtime/Renderer/OpenGL/OpenGL.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
+        src/Editor/EditorSaveLoad.cpp
+)
+
+set(TILKY_RUNTIME_COMMON_SOURCES
+        ${TILKY_RUNTIME_SOURCES}
+        ${TILKY_SHARED_SUPPORT_SOURCES}
+)
+list(REMOVE_ITEM TILKY_RUNTIME_COMMON_SOURCES ${TILKY_VARIANT_SOURCES})
+
+# Some runtime sources are listed with the editor's too; one copy only.
+list(REMOVE_ITEM TILKY_EDITOR_SOURCES ${TILKY_RUNTIME_COMMON_SOURCES} ${TILKY_VARIANT_SOURCES})
+
+if(TILKY_ENABLE_TRACY AND TARGET TracyClient)
+    set(TILKY_SHARE_RUNTIME_OBJECTS OFF)
+    set(TILKY_PER_TARGET_RUNTIME_SOURCES
+            ${TILKY_VARIANT_SOURCES}
+            ${TILKY_RUNTIME_COMMON_SOURCES}
+    )
+else()
+    set(TILKY_SHARE_RUNTIME_OBJECTS ON)
+    set(TILKY_PER_TARGET_RUNTIME_SOURCES
+            ${TILKY_VARIANT_SOURCES}
+    )
+endif()
+
+message(STATUS "TILKY shared runtime objects = ${TILKY_SHARE_RUNTIME_OBJECTS}")
+
+# ============================================================
 # Combined editor + runtime engine source list
 # ============================================================
 
 set(TILKY_ENGINE_SOURCES
-        ${TILKY_RUNTIME_SOURCES}
-        ${TILKY_SHARED_SUPPORT_SOURCES}
+        ${TILKY_PER_TARGET_RUNTIME_SOURCES}
         ${TILKY_EDITOR_SOURCES}
         Headers/Math/MathHelpers.hpp
 )
@@ -636,6 +803,8 @@ if(MINGW)
     set_source_files_properties(
             src/Runtime/Scripting/Lua/LuaVectorBindings.cpp
             src/Runtime/Scripting/Lua/LuaComponentBindings.cpp
+            src/Runtime/Scripting/Lua/LuaGameplayComponentBindings.cpp
+            src/Runtime/Scripting/Lua/LuaUIComponentBindings.cpp
             src/Runtime/Scripting/Lua/LuaEntityBindings.cpp
             src/Runtime/Scripting/Lua/LuaInputBindings.cpp
             src/Runtime/Scripting/Lua/LuaMathBindings.cpp
@@ -869,7 +1038,9 @@ function(configure_tilky_engine_executable target_name)
     target_compile_options(${target_name} PRIVATE
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>>:-msse2>
 
-            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Debug>>:-Og;-g3>
+            # -g, not -g3: -g3 also stores every macro definition, which made
+            # objects much larger and compiling and linking slower.
+            $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Debug>>:-Og;-g>
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:Release>>:-O3;-ffunction-sections;-fdata-sections>
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:RelWithDebInfo>>:-O2;-g;-ffunction-sections;-fdata-sections>
             $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU,Clang>,$<CONFIG:MinSizeRel>>:-Os;-ffunction-sections;-fdata-sections>
@@ -912,6 +1083,26 @@ function(configure_tilky_engine_executable target_name)
 
     tilky_configure_unity_build(${target_name})
 endfunction()
+
+# ============================================================
+# Runtime objects shared by Tilky_Engine and Standalone
+# (see "Shared and per-target runtime sources" above)
+# ============================================================
+
+if(TILKY_SHARE_RUNTIME_OBJECTS)
+    add_library(Tilky_RuntimeCommon OBJECT
+            ${TILKY_RUNTIME_COMMON_SOURCES}
+    )
+
+    configure_tilky_engine_executable(Tilky_RuntimeCommon)
+
+    # ImGui headers only, for the types the shared editor-state sources
+    # declare; nothing here calls ImGui (the game doesn't link it).
+    target_include_directories(Tilky_RuntimeCommon PRIVATE
+            $<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>
+            $<TARGET_PROPERTY:imgui_text_editor,INTERFACE_INCLUDE_DIRECTORIES>
+    )
+endif()
 
 # ============================================================
 # Unified executable entry points
@@ -986,6 +1177,10 @@ add_executable(Tilky_Engine
 )
 
 configure_tilky_engine_executable(Tilky_Engine)
+
+if(TILKY_SHARE_RUNTIME_OBJECTS)
+    target_link_libraries(Tilky_Engine PRIVATE Tilky_RuntimeCommon)
+endif()
 
 target_link_libraries(Tilky_Engine PRIVATE
         Tilky_LauncherCore
@@ -1182,8 +1377,7 @@ set_target_properties(Launcher_Only PROPERTIES
 
 add_executable(Tilky_Standalone
         src/Standalone/StandaloneMain.cpp
-        ${TILKY_RUNTIME_SOURCES}
-        ${TILKY_SHARED_SUPPORT_SOURCES}
+        ${TILKY_PER_TARGET_RUNTIME_SOURCES}
         ${TILKY_ICON_OBJECTS}
 )
 
@@ -1193,6 +1387,10 @@ set_target_properties(Tilky_Standalone PROPERTIES
 )
 
 configure_tilky_engine_executable(Tilky_Standalone)
+
+if(TILKY_SHARE_RUNTIME_OBJECTS)
+    target_link_libraries(Tilky_Standalone PRIVATE Tilky_RuntimeCommon)
+endif()
 
 # No ImGui in the standalone game: it never draws any, so the library
 # isn't linked. Only its headers are visible, for the editor-state types
@@ -1207,7 +1405,16 @@ target_include_directories(Tilky_Standalone PRIVATE
         $<TARGET_PROPERTY:imgui_text_editor,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
-add_dependencies(Tilky_Engine Tilky_Standalone)
+# Building Tilky_Engine builds Standalone too (the exporter copies it). With
+# Ninja only Tilky_Engine's link waits for it: add_dependencies would also
+# hold back every Tilky_Engine compile until Standalone was linked.
+if(CMAKE_GENERATOR MATCHES "Ninja")
+    set_property(TARGET Tilky_Engine APPEND PROPERTY LINK_DEPENDS
+            "$<TARGET_FILE:Tilky_Standalone>"
+    )
+else()
+    add_dependencies(Tilky_Engine Tilky_Standalone)
+endif()
 
 # Build group only. It does not create or launch an executable.
 add_custom_target(Tilky_All)
@@ -1325,7 +1532,14 @@ endif()
 
 file(MAKE_DIRECTORY "${TILKY_DESTINATION_DIR}")
 
-function(tilky_copy_dll_directory source_directory)
+# The final DLL set first, then one copy per DLL that's missing or differs
+# (by content, like copy_if_different), all in this process. Release DLLs are the fallback set; in Debug, debug
+# DLLs replace same-named release ones, and the MinGW runtime comes last.
+# Copying each DLL once also stops a Debug build from overwriting every
+# shared name twice (release, then debug) on every link.
+set(runtime_dll_names "")
+
+function(tilky_collect_dll_directory source_directory)
     if("${source_directory}" STREQUAL "")
         return()
     endif()
@@ -1340,23 +1554,16 @@ function(tilky_copy_dll_directory source_directory)
     )
 
     foreach(runtime_dll IN LISTS runtime_dlls)
-        execute_process(
-                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${runtime_dll}"
-                "${TILKY_DESTINATION_DIR}"
-                RESULT_VARIABLE copy_result
-        )
-
-        if(NOT copy_result EQUAL 0)
-            message(FATAL_ERROR "Failed to deploy runtime DLL: ${runtime_dll}")
-        endif()
+        get_filename_component(runtime_dll_name "${runtime_dll}" NAME)
+        list(APPEND runtime_dll_names "${runtime_dll_name}")
+        set("runtime_dll_source_${runtime_dll_name}" "${runtime_dll}" PARENT_SCOPE)
     endforeach()
+
+    set(runtime_dll_names "${runtime_dll_names}" PARENT_SCOPE)
 endfunction()
 
-# Release DLLs are the fallback set. In Debug, debug DLLs are copied afterward
-# and therefore replace same-named release DLLs.
-tilky_copy_dll_directory("${TILKY_RELEASE_RUNTIME_DIR}")
-tilky_copy_dll_directory("${TILKY_DEBUG_RUNTIME_DIR}")
+tilky_collect_dll_directory("${TILKY_RELEASE_RUNTIME_DIR}")
+tilky_collect_dll_directory("${TILKY_DEBUG_RUNTIME_DIR}")
 
 if(DEFINED TILKY_MINGW_RUNTIME_DIR
         AND NOT TILKY_MINGW_RUNTIME_DIR STREQUAL "")
@@ -1375,20 +1582,78 @@ if(DEFINED TILKY_MINGW_RUNTIME_DIR
             )
         endif()
 
-        execute_process(
-                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${mingw_runtime_path}"
-                "${TILKY_DESTINATION_DIR}"
-                RESULT_VARIABLE copy_result
-        )
-
-        if(NOT copy_result EQUAL 0)
-            message(FATAL_ERROR
-                    "Failed to deploy MinGW runtime DLL: ${mingw_runtime_path}"
-            )
-        endif()
+        list(APPEND runtime_dll_names "${mingw_runtime_dll}")
+        set("runtime_dll_source_${mingw_runtime_dll}" "${mingw_runtime_path}")
     endforeach()
 endif()
+
+list(REMOVE_DUPLICATES runtime_dll_names)
+
+# What was last deployed here: "name|source|source size|source time|copy time"
+# per DLL. A DLL whose line still matches is up to date without reading it.
+set(manifest "${TILKY_DESTINATION_DIR}/.tilky_deployed_dlls")
+set(manifest_lines "")
+
+if(EXISTS "${manifest}")
+    file(STRINGS "${manifest}" manifest_lines)
+endif()
+
+set(new_manifest_lines "")
+
+foreach(runtime_dll_name IN LISTS runtime_dll_names)
+    set(source "${runtime_dll_source_${runtime_dll_name}}")
+    set(destination "${TILKY_DESTINATION_DIR}/${runtime_dll_name}")
+
+    file(SIZE "${source}" source_size)
+    file(TIMESTAMP "${source}" source_time "%s" UTC)
+    set(up_to_date FALSE)
+
+    if(EXISTS "${destination}")
+        file(TIMESTAMP "${destination}" destination_time "%s" UTC)
+        set(entry "${runtime_dll_name}|${source}|${source_size}|${source_time}|${destination_time}")
+
+        if(entry IN_LIST manifest_lines)
+            set(up_to_date TRUE)
+        else()
+            # Never rewrite a DLL that's already identical: a running engine
+            # or game keeps its DLLs locked.
+            file(SIZE "${destination}" destination_size)
+
+            if(source_size EQUAL destination_size)
+                file(SHA256 "${source}" source_hash)
+                file(SHA256 "${destination}" destination_hash)
+
+                if(source_hash STREQUAL destination_hash)
+                    set(up_to_date TRUE)
+                endif()
+            endif()
+        endif()
+    endif()
+
+    if(NOT up_to_date)
+        file(COPY_FILE "${source}" "${destination}" RESULT copy_result)
+
+        if(NOT copy_result EQUAL 0)
+            # Standalone's copy can overlap Tilky_Engine's compiles, and
+            # MinGW's cc1plus loads some DLLs (libzstd.dll) from its working
+            # directory, the build folder. Tilky_Engine's copy, after its
+            # link, copies the same DLLs here, so Standalone's leaves it.
+            if(TILKY_LOCKED_DLL_IS_WARNING AND EXISTS "${destination}")
+                message(WARNING "Runtime DLL in use, left for Tilky_Engine's deploy: ${destination}")
+                continue()
+            endif()
+
+            message(FATAL_ERROR "Failed to deploy runtime DLL ${source}: ${copy_result}")
+        endif()
+    endif()
+
+    file(TIMESTAMP "${destination}" destination_time "%s" UTC)
+    list(APPEND new_manifest_lines "${runtime_dll_name}|${source}|${source_size}|${source_time}|${destination_time}")
+endforeach()
+
+list(JOIN new_manifest_lines "\n" new_manifest)
+file(WRITE "${manifest}.tmp" "${new_manifest}\n")
+file(RENAME "${manifest}.tmp" "${manifest}")
 ]=])
 
     function(tilky_deploy_runtime_dlls target_name)
@@ -1398,12 +1663,21 @@ endif()
             )
         endif()
 
+        # See the locked-DLL note in the script: only Standalone's copy,
+        # which Tilky_Engine's repeats, may skip a DLL that's in use.
+        if(target_name STREQUAL "Tilky_Standalone" AND CMAKE_GENERATOR MATCHES "Ninja")
+            set(locked_dll_is_warning ON)
+        else()
+            set(locked_dll_is_warning OFF)
+        endif()
+
         add_custom_command(TARGET ${target_name} POST_BUILD
                 COMMAND "${CMAKE_COMMAND}"
                 "-DTILKY_DESTINATION_DIR=$<TARGET_FILE_DIR:${target_name}>"
                 "-DTILKY_RELEASE_RUNTIME_DIR=${TILKY_VCPKG_RELEASE_BIN}"
                 "-DTILKY_DEBUG_RUNTIME_DIR=$<$<CONFIG:Debug>:${TILKY_VCPKG_DEBUG_BIN}>"
                 "-DTILKY_MINGW_RUNTIME_DIR=${TILKY_MINGW_BIN_DIR}"
+                "-DTILKY_LOCKED_DLL_IS_WARNING=${locked_dll_is_warning}"
                 -P "${TILKY_DEPLOY_RUNTIME_SCRIPT}"
                 COMMENT "Deploying complete runtime DLL set for ${target_name}"
                 VERBATIM

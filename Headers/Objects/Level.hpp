@@ -165,14 +165,14 @@ struct WallSnapData {
     float gap = DEFAULT_GAP;
 };
 
-// How many selection groups the editors have. Outside the editor-only
-// block below because the editor's shortcut table, built into the game
-// too, has a row per group.
+// How many selection groups the editors have. The editor's shortcut table,
+// built into the game too, has a row per group.
 constexpr int EDITOR_SELECTION_GROUP_COUNT = 10;
 
-#ifndef TILKY_STANDALONE
-// Editor-only, like WallSnapData: saved in the level file's
-// metadata, never compiled into the game.
+// Editor-only, like WallSnapData: saved in the level file's metadata. The
+// game has these types and Level's fields below too, so both executables
+// share one Level layout (and one set of compiled runtime objects), but it
+// never reads or writes them.
 
 // Ctrl+Alt+digit stores the selection here, Alt+digit brings it back.
 // Shared by the 2D and runtime editors.
@@ -218,7 +218,6 @@ struct EditorBackgroundImage {
     float opacity = 0.5f;
     bool visible = true;
 };
-#endif
 
 struct Level {
     LevelID id = 0;
@@ -265,7 +264,7 @@ struct Level {
     ComponentStorage<ComponentUIText> ui_texts;
     ComponentStorage<ComponentUIButton> ui_buttons;
 
-#ifndef TILKY_STANDALONE
+    // Editor-only; unused in the game (see EditorSelectionGroup above).
     Vector2 editorCamPos = {0.0f, 0.0f};
     Vector3 runtimeCamPos = {0.0f, 0.0f, 0.0f};
     Vector2 runtimeCamRot = {.0f, .0f};
@@ -280,7 +279,6 @@ struct Level {
 
     EditorGridTransform gridTransform;
     EditorBackgroundImage backgroundImage;
-#endif
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;
     ID CreateEntity(bool uiEntity);

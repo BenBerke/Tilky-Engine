@@ -48,6 +48,13 @@ namespace PlayerControllerSystem {
 
         const bool hasBufferedJump = jumpBufferAge >= 0.0 && jumpBufferAge <= jumpBufferSeconds;
 
+        if (hasBufferedJump && rigidbody.isGrounded) {
+            rigidbody.velocity.y = controller.jumpPower;
+            rigidbody.isGrounded = false;
+            rigidbody.groundNormal = {};
+            jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
+        }
+
         if (jumpBufferAge > jumpBufferSeconds) jumpPressedTimeStamp = -std::numeric_limits<double>::infinity();
 
         controller.currentSpeed =

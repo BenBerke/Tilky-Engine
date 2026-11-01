@@ -337,7 +337,6 @@ public:
     bool BuildTextureAtlasFromLevel();
     const OpenGLRendererInternal::DecodedImage* GetDecodedImage(const std::filesystem::path& path);
 
-#ifndef TILKY_STANDALONE
     void BeginImGuiFrame() const override;
     void EndImGuiFrame() const override;
 
@@ -346,7 +345,6 @@ public:
     [[nodiscard]] ImFont* GetImGuiIconFont() const override {
         return imguiIconFont;
     }
-#endif
 
 private:
     using Glyph = OpenGLRendererInternal::Glyph;
@@ -364,10 +362,9 @@ private:
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
-#ifndef TILKY_STANDALONE
+    // Both stay nullptr in the standalone game, which has no ImGui.
     ImGuiContext* imguiContext = nullptr;
     ImFont* imguiIconFont = nullptr; // in imguiContext's atlas; see InitImGui
-#endif
     bool windowShownOnce = false;
 
     GLuint VAO = 0;
@@ -501,9 +498,7 @@ private:
     bool InitializeFont();
 
     bool InitSDL(const std::string& windowName, bool startHidden);
-#ifndef TILKY_STANDALONE
-    bool InitImGui();
-#endif
+    bool InitImGui(); // editor only; not defined in the standalone game
     bool InitProjection();
     bool InitUI();
     bool InitText();

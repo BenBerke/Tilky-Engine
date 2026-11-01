@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -141,14 +142,14 @@ ID Level::CreateEntity(Entity& copy) {
     // Runtime-only: the copy's events haven't fired yet.
     for (Event& event : entity.events) event.triggerCount = 0;
 
-#ifndef TILKY_STANDALONE
     // A copy of a snapped entity is snapped to the same wall too (see
-    // WallSnap::Enforce, which puts it on the wall).
-    if (const auto snap = wallSnaps.find(copy.id); snap != wallSnaps.end()) {
-        const WallSnapData data = snap->second; // the insert below can rehash
-        wallSnaps[entity.id] = data;
+    // WallSnap::Enforce, which puts it on the wall). Editor only.
+    if (!BuildVariant::IsStandalone()) {
+        if (const auto snap = wallSnaps.find(copy.id); snap != wallSnaps.end()) {
+            const WallSnapData data = snap->second; // the insert below can rehash
+            wallSnaps[entity.id] = data;
+        }
     }
-#endif
 
     CopyComponents(transforms, copy.id, entity.id, entity.componentsMask, CMP_TRANSFORM);
     CopyComponents(sprites, copy.id, entity.id, entity.componentsMask, CMP_SPRITE);

@@ -583,4 +583,8 @@ void OpenGL::EndImGuiFrame() const {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
+#else
+// The game draws no ImGui; these only fill IRenderer's vtable.
+void OpenGL::BeginImGuiFrame() const {}
+void OpenGL::EndImGuiFrame() const {}
 #endif

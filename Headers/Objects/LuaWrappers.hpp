@@ -13,7 +13,7 @@
 #include <tuple>
 #include <vector>
 
-#include <sol/error.hpp>
+#include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
 
 #include "Headers/Math/Constants.hpp"

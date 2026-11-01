@@ -5,6 +5,7 @@
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/Engine/GameTime.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
@@ -272,14 +273,10 @@ namespace {
     // the standalone game (its field manifest sits next to it, see
     // GetScriptFieldsPathFromId).
     fs::path GetScriptPathFromId(const std::string& assetId) {
-#ifdef TILKY_STANDALONE
-        return ProjectManager::GetAssetsPath() / (assetId + ".luac");
-#else
-        return ProjectManager::GetAssetsPath() / (assetId + ".lua");
-#endif
+        return ProjectManager::GetAssetsPath() / (assetId + (BuildVariant::IsStandalone() ? ".luac" : ".lua"));
     }
 
-    [[maybe_unused]] fs::path GetScriptFieldsPathFromId(const std::string& assetId) {
+    fs::path GetScriptFieldsPathFromId(const std::string& assetId) {
         return ProjectManager::GetAssetsPath() / (assetId + ".fields.json");
     }
 
@@ -295,11 +292,7 @@ namespace {
         if (name.empty()) throw sol::error("AddComponent: the script name is empty");
         if (fs::exists(GetScriptPathFromId(name))) return name;
 
-#ifdef TILKY_STANDALONE
-        const fs::path extension = ".luac";
-#else
-        const fs::path extension = ".lua";
-#endif
+        const fs::path extension = BuildVariant::IsStandalone() ? ".luac" : ".lua";
         const fs::path assets = ProjectManager::GetAssetsPath();
         std::vector<std::string> matches;
         std::error_code error;
@@ -654,7 +647,7 @@ namespace {
         return true;
     }
 
-#ifndef TILKY_STANDALONE
+    // The editor compiles the source script.
     void CompileScriptAsset(ScriptAsset& asset) {
         std::string source;
         if (!ReadWholeFile(asset.path, source)) {
@@ -672,7 +665,8 @@ namespace {
         asset.publicFields = std::move(compiled.publicFields);
         asset.chunk = std::move(compiled.luaSource);
     }
-#else
+
+    // The game loads the exporter's bytecode and field manifest.
     void LoadExportedScriptAsset(ScriptAsset& asset) {
         std::string fieldsText;
         std::string error;
@@ -685,7 +679,6 @@ namespace {
             asset.compileError = fmt::format("{}: bad field manifest: {}", ScriptChunkName(asset.assetId), error);
         }
     }
-#endif
 
     ScriptAsset& LoadOrRefreshScriptAsset(const std::string& assetId, const fs::path& path) {
         const fs::file_time_type lastWriteTime = fs::last_write_time(path);
@@ -698,11 +691,8 @@ namespace {
         asset.assetId = assetId;
         asset.path = path;
         asset.lastWriteTime = lastWriteTime;
-#ifndef TILKY_STANDALONE
-        CompileScriptAsset(asset);
-#else
-        LoadExportedScriptAsset(asset);
-#endif
+        if (BuildVariant::IsStandalone()) LoadExportedScriptAsset(asset);
+        else CompileScriptAsset(asset);
         asset.schemaHash = HashPublicFields(asset.publicFields);
         // loadErrorChecked/loadError stay at their defaults - see GetScriptLoadError.
 
@@ -843,11 +833,7 @@ namespace {
     LoadedChunk LoadScriptChunk(const ScriptAsset& asset) {
         if (!asset.compileError.empty()) return {std::nullopt, asset.compileError};
 
-#ifdef TILKY_STANDALONE
-        constexpr sol::load_mode mode = sol::load_mode::binary;
-#else
-        constexpr sol::load_mode mode = sol::load_mode::text;
-#endif
+        const sol::load_mode mode = BuildVariant::IsStandalone() ? sol::load_mode::binary : sol::load_mode::text;
         const sol::load_result loaded = lua.load(asset.chunk, "@" + ScriptChunkName(asset.assetId), mode);
 
         if (!loaded.valid()) {

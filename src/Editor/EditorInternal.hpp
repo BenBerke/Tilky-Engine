@@ -1782,12 +1782,10 @@ namespace MapEditorInternal {
         UNDO_COMMENTS,           // the level's comments
     };
 
-#ifndef TILKY_STANDALONE
     struct CommentsSnapshot {
         std::vector<EditorComment> comments;
         ID nextCommentID = 1;
     };
-#endif
 
     struct EntitiesSnapshot {
         std::vector<Entity> entities;
@@ -1900,9 +1898,7 @@ namespace MapEditorInternal {
         EntityTransformUndo positions;        // UNDO_ENTITY_POSITIONS
         EntitiesSnapshot entities;            // UNDO_ENTITIES
         EntityComponentsSnapshot components;  // UNDO_ENTITY_COMPONENTS
-#ifndef TILKY_STANDALONE
         CommentsSnapshot comments;            // UNDO_COMMENTS
-#endif
 
         // Set on steps that change wall snaps (any kind): every snap, swapped
         // with WallSnap::All() along with the step's own state.
@@ -1936,10 +1932,8 @@ namespace MapEditorInternal {
                           std::optional<WallSnap::Snaps> wallSnapsBefore = std::nullopt);
     void PushEntityPositionsUndo(EntityTransformUndo before, const char* labelKey, int count = 0);
 
-#ifndef TILKY_STANDALONE
     [[nodiscard]] CommentsSnapshot CaptureCommentsSnapshot();
     void PushCommentsUndo(CommentsSnapshot before, const char* labelKey);
-#endif
 
     // WallSnap::Disable and WallSnap::SetGap for either editor's inspector,
     // with an undo step. Gap changes close together - one drag - are one.

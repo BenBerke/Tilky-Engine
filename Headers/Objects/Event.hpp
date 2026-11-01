@@ -14,7 +14,6 @@
 #include <unordered_map>
 
 #include "Types.hpp"
-#include "client/TracyThread.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"
 #include "Headers/Math/Quaternion/Quaternion.hpp"

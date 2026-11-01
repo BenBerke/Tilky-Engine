@@ -13,7 +13,9 @@
 // scripting internals directly.
 struct Level;
 
-#include <sol/sol.hpp>
+// Declarations only, so files that just call these (LevelSystem.cpp) don't
+// compile all of sol2; callers that use the sol types include <sol/sol.hpp>.
+#include <sol/forward.hpp>
 
 #include "Headers/Objects/Types.hpp"
 #include "Headers/Objects/ScriptPublicType.hpp"

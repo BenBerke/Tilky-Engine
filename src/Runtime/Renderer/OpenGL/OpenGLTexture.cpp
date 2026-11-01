@@ -175,7 +175,6 @@ void OpenGL::DestroyAtlas() {
     textureRegions.clear();
 }
 
-#ifndef TILKY_STANDALONE
 ImTextureID OpenGL::GetImGuiTextureID(const std::string& fileName) {
     const int textureIndex = GetOrCreateTextureIndex(fileName);
 
@@ -183,4 +182,3 @@ ImTextureID OpenGL::GetImGuiTextureID(const std::string& fileName) {
 
     return static_cast<ImTextureID>(GetTexture(textureIndex).id);
 }
-#endif
