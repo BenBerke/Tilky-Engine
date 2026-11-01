@@ -61,16 +61,12 @@ inline std::optional<WallTextureAnchor> WallTextureAnchorFromInt(const int value
     return std::nullopt;
 }
 
-// One texture (its animation frames) and its placement. A wall has three: Top covers a solid wall
+// One texture (its animation frames, each placed on its own) and its anchor. A wall has three: Top covers a solid wall
 // and, on a portal, everything except the step under the neighbour's
 // floor, which uses Bottom. Middle fills the openings, where both sides are
 // open space, and only exists while it has a texture.
 struct WallSurface {
-    SurfaceTexture texture;
-    Vector2 textureOffset = {0.0f, 0.0f};
-    Vector2 textureScale = {1.0f, 1.0f};
-    bool flipTextureX = false;
-    bool flipTextureY = false;
+    SurfaceTexture texture; // frames, each with its own offset/scale/flip
     WallTextureAnchor anchor = WallTextureAnchor::Auto;
 };
 

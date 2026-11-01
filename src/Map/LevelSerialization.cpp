@@ -1897,18 +1897,31 @@ namespace {
         }
     }
 
-    // A surface's frames, animation mode and offset per second, stored on
-    // the surface's own object.
+    // A surface's animation mode and frames, each frame with its own
+    // placement, stored on the surface's own object.
+    Vector2 ReadVector2(const json &parent, const char *key, const Vector2 fallback) {
+        if (!parent.contains(key)) return fallback;
+        const json &value = parent.at(key);
+        if (!value.is_array() || value.size() < 2) return fallback;
+        return {value.at(0).get<float>(), value.at(1).get<float>()};
+    }
+
     void LoadSurfaceTexture(const json &surfaceJson, SurfaceTexture &texture) {
         texture = {};
 
         if (surfaceJson.contains("frames") && surfaceJson.at("frames").is_array()) {
             for (const json &frameJson: surfaceJson.at("frames")) {
                 if (!frameJson.is_object()) continue;
-                texture.frames.push_back({
-                    frameJson.value("texture", std::string{}),
-                    frameJson.value("duration", SurfaceTexture::DEFAULT_FRAME_DURATION)
-                });
+
+                TextureFrame frame;
+                frame.texture = frameJson.value("texture", std::string{});
+                frame.duration = frameJson.value("duration", SurfaceTexture::DEFAULT_FRAME_DURATION);
+                frame.textureOffset = ReadVector2(frameJson, "offset", {0.0f, 0.0f});
+                frame.textureScale = ReadVector2(frameJson, "scale", {1.0f, 1.0f});
+                frame.flipTextureX = frameJson.value("flipX", false);
+                frame.flipTextureY = frameJson.value("flipY", false);
+                frame.offsetPerSecond = ReadVector2(frameJson, "offsetPerSecond", {0.0f, 0.0f});
+                texture.frames.push_back(std::move(frame));
             }
         }
 
@@ -1916,51 +1929,32 @@ namespace {
 
         if (const std::optional<TextureAnimationMode> mode = FindTextureAnimationModeByName(modeName)) texture.animation = *mode;
         else spdlog::warn("Unknown texture animation '{}', using {}", modeName, TEXTURE_ANIMATION_MODES[0].name);
-
-        if (surfaceJson.contains("offsetPerSecond") &&
-            surfaceJson.at("offsetPerSecond").is_array() && surfaceJson.at("offsetPerSecond").size() >= 2) {
-            texture.offsetPerSecond = {
-                surfaceJson.at("offsetPerSecond").at(0).get<float>(),
-                surfaceJson.at("offsetPerSecond").at(1).get<float>()
-            };
-        }
     }
 
     void SaveSurfaceTexture(json &surfaceJson, const SurfaceTexture &texture) {
         json frames = json::array();
-        for (const TextureFrame &frame: texture.frames)
-            frames.push_back({{"texture", frame.texture}, {"duration", frame.duration}});
+        for (const TextureFrame &frame: texture.frames) {
+            frames.push_back({
+                {"texture", frame.texture},
+                {"duration", frame.duration},
+                {"offset", {frame.textureOffset.x, frame.textureOffset.y}},
+                {"scale", {frame.textureScale.x, frame.textureScale.y}},
+                {"flipX", frame.flipTextureX},
+                {"flipY", frame.flipTextureY},
+                {"offsetPerSecond", {frame.offsetPerSecond.x, frame.offsetPerSecond.y}},
+            });
+        }
 
         const TextureAnimationModeInfo *mode = FindTextureAnimationMode(texture.animation);
 
         surfaceJson["frames"] = std::move(frames);
         surfaceJson["animation"] = mode != nullptr ? mode->name : TEXTURE_ANIMATION_MODES[0].name;
-        surfaceJson["offsetPerSecond"] = {texture.offsetPerSecond.x, texture.offsetPerSecond.y};
     }
 
     void LoadWallSurface(const json &surfaceJson, WallSurface &surface) {
         if (!surfaceJson.is_object()) return;
 
         LoadSurfaceTexture(surfaceJson, surface.texture);
-
-        if (surfaceJson.contains("textureOffset") &&
-            surfaceJson.at("textureOffset").is_array() && surfaceJson.at("textureOffset").size() >= 2) {
-            surface.textureOffset = {
-                surfaceJson.at("textureOffset").at(0).get<float>(),
-                surfaceJson.at("textureOffset").at(1).get<float>()
-            };
-        }
-
-        if (surfaceJson.contains("textureScale") &&
-            surfaceJson.at("textureScale").is_array() && surfaceJson.at("textureScale").size() >= 2) {
-            surface.textureScale = {
-                surfaceJson.at("textureScale").at(0).get<float>(),
-                surfaceJson.at("textureScale").at(1).get<float>()
-            };
-        }
-
-        surface.flipTextureX = surfaceJson.value("flipX", false);
-        surface.flipTextureY = surfaceJson.value("flipY", false);
 
         const std::string anchorName = surfaceJson.value("anchor", std::string{WALL_TEXTURE_ANCHORS[0].name});
 
@@ -2057,10 +2051,6 @@ namespace {
         const WallTextureAnchorInfo *anchor = FindWallTextureAnchor(surface.anchor);
 
         json surfaceJson = {
-            {"textureOffset", {surface.textureOffset.x, surface.textureOffset.y}},
-            {"textureScale", {surface.textureScale.x, surface.textureScale.y}},
-            {"flipX", surface.flipTextureX},
-            {"flipY", surface.flipTextureY},
             {"anchor", anchor != nullptr ? anchor->name : WALL_TEXTURE_ANCHORS[0].name}
         };
 
@@ -2285,21 +2275,6 @@ namespace {
                 surface.slopeDirection = static_cast<SlopeDirection>(slopeDirection);
 
             surface.slopeStrength = surfaceJson.value("slopeStrength", 0.0f);
-
-            surface.textureOffset = loadVector2(
-                surfaceJson,
-                "textureOffset",
-                {0.0f, 0.0f}
-            );
-
-            surface.textureScale = loadVector2(
-                surfaceJson,
-                "textureScale",
-                {1.0f, 1.0f}
-            );
-
-            surface.flipTextureX = surfaceJson.value("flipTextureX", false);
-            surface.flipTextureY = surfaceJson.value("flipTextureY", false);
 
             return surface;
         };
@@ -2545,17 +2520,7 @@ namespace {
                     "slopeDirection",
                     static_cast<int>(surface.slopeDirection)
                 },
-                {"slopeStrength", surface.slopeStrength},
-                {
-                    "textureOffset",
-                    {surface.textureOffset.x, surface.textureOffset.y}
-                },
-                {
-                    "textureScale",
-                    {surface.textureScale.x, surface.textureScale.y}
-                },
-                {"flipTextureX", surface.flipTextureX},
-                {"flipTextureY", surface.flipTextureY}
+                {"slopeStrength", surface.slopeStrength}
             };
 
             SaveSurfaceTexture(surfaceJson, surface.texture);

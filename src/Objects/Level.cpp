@@ -400,13 +400,35 @@ namespace {
         child.height += after.height - before.height;
         child.slopeStrength += after.slopeStrength - before.slopeStrength;
         child.color += after.color - before.color;
-        child.textureOffset += after.textureOffset - before.textureOffset;
-        child.textureScale += after.textureScale - before.textureScale;
 
-        if (after.texture != before.texture) child.texture = after.texture;
         if (after.slopeDirection != before.slopeDirection) child.slopeDirection = after.slopeDirection;
-        if (after.flipTextureX != before.flipTextureX) child.flipTextureX = after.flipTextureX;
-        if (after.flipTextureY != before.flipTextureY) child.flipTextureY = after.flipTextureY;
+
+        // Frame by frame, offsets and scales move by the same delta (the
+        // child keeps its own alignment); the rest is copied when it changed.
+        const size_t frameCount = before.texture.frames.size();
+        const bool sameShape = after.texture.frames.size() == frameCount && child.texture.frames.size() == frameCount;
+
+        if (!sameShape) {
+            SurfaceTexture::ApplyChange(before.texture, after.texture, child.texture);
+            return;
+        }
+
+        if (after.texture.animation != before.texture.animation) child.texture.animation = after.texture.animation;
+
+        for (size_t i = 0; i < frameCount; ++i) {
+            const TextureFrame& a = after.texture.frames[i];
+            const TextureFrame& b = before.texture.frames[i];
+            TextureFrame& c = child.texture.frames[i];
+
+            c.textureOffset += a.textureOffset - b.textureOffset;
+            c.textureScale += a.textureScale - b.textureScale;
+
+            if (a.texture != b.texture) c.texture = a.texture;
+            if (a.duration != b.duration) c.duration = a.duration;
+            if (a.flipTextureX != b.flipTextureX) c.flipTextureX = a.flipTextureX;
+            if (a.flipTextureY != b.flipTextureY) c.flipTextureY = a.flipTextureY;
+            if (a.offsetPerSecond.x != b.offsetPerSecond.x || a.offsetPerSecond.y != b.offsetPerSecond.y) c.offsetPerSecond = a.offsetPerSecond;
+        }
     }
 
     // Exact compares on purpose: this spots whether an edit wrote a field
@@ -416,11 +438,7 @@ namespace {
                a.color.x == b.color.x && a.color.y == b.color.y && a.color.z == b.color.z && a.color.w == b.color.w &&
                a.texture == b.texture &&
                a.slopeDirection == b.slopeDirection &&
-               a.slopeStrength == b.slopeStrength &&
-               a.textureOffset.x == b.textureOffset.x && a.textureOffset.y == b.textureOffset.y &&
-               a.textureScale.x == b.textureScale.x && a.textureScale.y == b.textureScale.y &&
-               a.flipTextureX == b.flipTextureX &&
-               a.flipTextureY == b.flipTextureY;
+               a.slopeStrength == b.slopeStrength;
     }
 
     bool SameValues(const Level::SectorValuesSnapshot& snapshot, const Sector& sector) {

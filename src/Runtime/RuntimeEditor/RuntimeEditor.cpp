@@ -668,9 +668,10 @@ namespace {
         }
     }
 
-    // WallSurface::textureOffset and SectorSurface::textureOffset are the same idea
-    // living in two structs, so the bounds checks happen here once instead of
-    // at the call site. Returns false for entities and for stale indices.
+    // Moves every frame's offset by `delta`, so frames keep their offsets
+    // relative to each other. Walls and flats keep their textures in two
+    // structs, so the bounds checks happen here once instead of at the call
+    // site. Returns false for entities and for stale indices.
     bool AddUvOffset(Level& level, const SurfaceRef& surface, const Vector2 delta) {
         switch (surface.type) {
             case RayHitType::Wall: {
@@ -678,9 +679,7 @@ namespace {
                     surface.wallIndex >= static_cast<int>(level.walls.size())) return false;
 
                 WallSurface& wallSurface = level.walls[surface.wallIndex].Surface(surface.wallSlot);
-
-                wallSurface.textureOffset.x += delta.x;
-                wallSurface.textureOffset.y += delta.y;
+                wallSurface.texture.ForEachFrame([&](TextureFrame& frame) { frame.textureOffset += delta; });
 
                 return true;
             }
@@ -701,8 +700,7 @@ namespace {
                     ? sectorFloor.floor
                     : sectorFloor.ceiling;
 
-                target.textureOffset.x += delta.x;
-                target.textureOffset.y += delta.y;
+                target.texture.ForEachFrame([&](TextureFrame& frame) { frame.textureOffset += delta; });
 
                 return true;
             }
@@ -783,22 +781,21 @@ namespace {
     // Each surface toggles on its own, so a mixed selection stays mixed.
     int FlipTextures(Level& level, const bool flipX, const bool flipY, const bool hoverAllowed) {
         return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
-            if (flipX) surface.flipTextureX = !surface.flipTextureX;
-            if (flipY) surface.flipTextureY = !surface.flipTextureY;
+            surface.texture.ForEachFrame([&](TextureFrame& frame) {
+                if (flipX) frame.flipTextureX = !frame.flipTextureX;
+                if (flipY) frame.flipTextureY = !frame.flipTextureY;
+            });
         });
     }
 
-    // Ctrl+C / Ctrl+V copy and paste a surface's texture; Alt+C / Alt+V
-    // its offset, scale and flip as well. Walls and flats share one clipboard.
+    // Ctrl+C / Ctrl+V copy and paste a surface's frames (textures,
+    // durations, animation); Alt+C / Alt+V each frame's offset, scale, flip
+    // and offset per second as well. Walls and flats share one clipboard.
     struct SurfaceClipboard {
         bool hasTexture = false;
         bool hasPlacement = false; // copied with Alt
 
-        SurfaceTexture texture; // every frame, the animation and the scroll
-        Vector2 textureOffset = {0.0f, 0.0f};
-        Vector2 textureScale = {1.0f, 1.0f};
-        bool flipTextureX = false;
-        bool flipTextureY = false;
+        SurfaceTexture texture;
     };
 
     SurfaceClipboard surfaceClipboard;
@@ -1076,13 +1073,15 @@ namespace {
 
     // ---- Texture shortcuts ------------------------------------------------
 
-    // Alt+R: offset 0, scale 1, no flip.
+    // Alt+R: offset 0, scale 1, no flip, on every frame.
     int ResetTexturePlacement(Level& level, const bool hoverAllowed) {
         return ForEachTargetSurface(level, hoverAllowed, [](auto& surface) {
-            surface.textureOffset = {0.0f, 0.0f};
-            surface.textureScale = {1.0f, 1.0f};
-            surface.flipTextureX = false;
-            surface.flipTextureY = false;
+            surface.texture.ForEachFrame([](TextureFrame& frame) {
+                frame.textureOffset = {0.0f, 0.0f};
+                frame.textureScale = {1.0f, 1.0f};
+                frame.flipTextureX = false;
+                frame.flipTextureY = false;
+            });
         });
     }
 
@@ -1961,13 +1960,6 @@ namespace {
             surfaceClipboard.hasTexture = true;
             surfaceClipboard.hasPlacement = withPlacement;
             surfaceClipboard.texture = surface.texture;
-
-            if (withPlacement) {
-                surfaceClipboard.textureOffset = surface.textureOffset;
-                surfaceClipboard.textureScale = surface.textureScale;
-                surfaceClipboard.flipTextureX = surface.flipTextureX;
-                surfaceClipboard.flipTextureY = surface.flipTextureY;
-            }
         });
     }
 
@@ -1978,14 +1970,8 @@ namespace {
         const bool pastePlacement = withPlacement && surfaceClipboard.hasPlacement;
 
         return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
-            surface.texture = surfaceClipboard.texture;
-
-            if (pastePlacement) {
-                surface.textureOffset = surfaceClipboard.textureOffset;
-                surface.textureScale = surfaceClipboard.textureScale;
-                surface.flipTextureX = surfaceClipboard.flipTextureX;
-                surface.flipTextureY = surfaceClipboard.flipTextureY;
-            }
+            if (pastePlacement) surface.texture = surfaceClipboard.texture;
+            else surface.texture.PasteFramesKeepingPlacement(surfaceClipboard.texture);
         });
     }
 
@@ -2053,10 +2039,12 @@ namespace {
 
         if (std::abs(screenSlide) < AMBIGUITY_EPSILON) return fallback;
 
-        // Which way along start -> end the texture slides when offset.x grows.
+        // Which way along start -> end the texture slides when offset.x grows,
+        // for the frame on screen.
+        const TextureFrame& frame = surface.texture.Shown();
         float textureSlide = -1.0f;
-        if (surface.flipTextureX) textureSlide = -textureSlide;
-        if (surface.textureScale.x < 0.0f) textureSlide = -textureSlide;
+        if (frame.flipTextureX) textureSlide = -textureSlide;
+        if (frame.textureScale.x < 0.0f) textureSlide = -textureSlide;
 
         return (screenSlide > 0.0f ? 1.0f : -1.0f) * textureSlide;
     }
@@ -2110,8 +2098,9 @@ namespace {
         // offset slides the texture toward negative world positions, and a
         // flip or a negative scale turns that around.
         const auto worldSlide = [&surface](const int axis) {
-            const bool flipped = axis == 0 ? surface.flipTextureX : surface.flipTextureY;
-            const float scale = axis == 0 ? surface.textureScale.x : surface.textureScale.y;
+            const TextureFrame& frame = surface.texture.Shown();
+            const bool flipped = axis == 0 ? frame.flipTextureX : frame.flipTextureY;
+            const float scale = axis == 0 ? frame.textureScale.x : frame.textureScale.y;
 
             float slide = -1.0f;
             if (flipped) slide = -slide;
@@ -3347,7 +3336,7 @@ namespace RuntimeEditor {
             if (uvDragSurface.type == RayHitType::Wall &&
                 uvDragSurface.wallIndex >= 0 &&
                 uvDragSurface.wallIndex < static_cast<int>(level.walls.size()) &&
-                level.walls[uvDragSurface.wallIndex].Surface(uvDragSurface.wallSlot).flipTextureY)
+                level.walls[uvDragSurface.wallIndex].Surface(uvDragSurface.wallSlot).texture.Shown().flipTextureY)
                 uvDragVerticalSign = -1.0f;
 
             if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f) {
@@ -3802,10 +3791,12 @@ namespace RuntimeEditor {
             if (hit->type == RayHitType::Wall && hit->wall != nullptr) {
                 WallSurface& wallSurface = hit->wall->Surface(hoveredSurface.wallSlot);
 
-                if (!MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY))
-                wallSurface.textureScale.x += uvScaleDelta;
-                if (!MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY))
-                wallSurface.textureScale.y += uvScaleDelta;
+                const bool scaleX = !MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_Y_ONLY);
+                const bool scaleY = !MapEditorInternal::GetKeyBind(MapEditorInternal::KEYBIND_RT_TEXTURE_X_ONLY);
+                wallSurface.texture.ForEachFrame([&](TextureFrame& frame) {
+                    if (scaleX) frame.textureScale.x += uvScaleDelta;
+                    if (scaleY) frame.textureScale.y += uvScaleDelta;
+                });
             }
             else if ((hit->type == RayHitType::SectorFloor ||
                       hit->type == RayHitType::SectorCeiling) &&

@@ -21,14 +21,14 @@ namespace LuaSurfaceTextureBindings {
         properties.push_back(Prop(lower + "Animation", "TextureAnimation", false,
                                   "How the " + what + "'s frames play: TextureAnimation.Loop, PingPong or Once."));
         properties.push_back(Prop(lower + "ScrollSpeed", "Vector2", false,
-                                  "The " + what + "'s Offset Per Second: map units the texture moves every second (scaled game time)."));
+                                  "The " + what + "'s Offset Per Second, in map units (scaled game time). Each frame has its own: reading gives the showing frame's, writing sets every frame's."));
 
         methods.push_back(Method("Get" + upper + "Frames", {}, "table",
-                                 "The " + what + "'s frames as a list of {texture = string, duration = number}."));
+                                 "The " + what + "'s frames as a list of {texture, duration, offset, scale, flipX, flipY, scrollSpeed}."));
         methods.push_back(Method("Set" + upper + "Frames", {Param("frames", "table")}, {},
-                                 "Replaces the " + what + "'s frames with a list of {texture = \"...\", duration = seconds} (duration optional) or texture paths, and restarts it from frame 1."));
+                                 "Replaces the " + what + "'s frames with a list of {texture = \"...\", duration, offset, scale, flipX, flipY, scrollSpeed} (only texture required; a key left out keeps the old frame's value) or texture paths, and restarts it from frame 1."));
         methods.push_back(Method("Add" + upper + "Frame", {Param("texture", "string"), Param("duration", "number?")}, {},
-                                 "Adds a frame at the end of the " + what + "'s animation. Duration in seconds, default 0.5."));
+                                 "Adds a frame at the end of the " + what + "'s animation, placed like the last frame. Duration in seconds, default 0.5."));
         methods.push_back(Method("Clear" + upper + "Frames", {}, {},
                                  "Removes every frame: the " + what + " is untextured. Same as Clear" + upper + "Texture."));
         methods.push_back(Method("Restart" + upper + "Animation", {}, {},
@@ -47,9 +47,11 @@ namespace LuaSurfaceTextureBindings {
             });
 
         type[lower + "ScrollSpeed"] = sol::property(
-            [](const Wrapper& wrapper) { return Access::Read(wrapper).offsetPerSecond; },
+            [](const Wrapper& wrapper) { return Access::Read(wrapper).Shown().offsetPerSecond; },
             [](const Wrapper& wrapper, const Vector2& value) {
-                Access::Write(wrapper, [&value](SurfaceTexture& texture) { texture.offsetPerSecond = value; });
+                Access::Write(wrapper, [&value](SurfaceTexture& texture) {
+                    texture.ForEachFrame([&value](TextureFrame& frame) { frame.offsetPerSecond = value; });
+                });
             });
 
         type["Get" + upper + "Frames"] = [](const Wrapper& wrapper, const sol::this_state state) {
@@ -58,7 +60,7 @@ namespace LuaSurfaceTextureBindings {
 
         type["Set" + upper + "Frames"] = [](const Wrapper& wrapper, const sol::table& frames) {
             // Read first, so a bad list leaves the surface as it was.
-            std::vector<TextureFrame> read = LuaSurfaceTextures::ReadFrames(frames);
+            std::vector<TextureFrame> read = LuaSurfaceTextures::ReadFrames(frames, Access::Read(wrapper));
             Access::Write(wrapper, [&read](SurfaceTexture& texture) {
                 texture.frames = std::move(read);
                 texture.Restart();

@@ -3604,30 +3604,8 @@ namespace {
                 wrote = true;
             }
 
-            if (surfaceAfter.texture != surfaceBefore.texture) {
-                target.texture = surfaceAfter.texture;
-                wrote = true;
-            }
-
-            if (ValueChanged(surfaceBefore.textureOffset, surfaceAfter.textureOffset)) {
-                target.textureOffset = surfaceAfter.textureOffset;
-                wrote = true;
-            }
-
-            if (ValueChanged(surfaceBefore.textureScale, surfaceAfter.textureScale)) {
-                target.textureScale = surfaceAfter.textureScale;
-                wrote = true;
-            }
-
-            if (surfaceAfter.flipTextureX != surfaceBefore.flipTextureX) {
-                target.flipTextureX = surfaceAfter.flipTextureX;
-                wrote = true;
-            }
-
-            if (surfaceAfter.flipTextureY != surfaceBefore.flipTextureY) {
-                target.flipTextureY = surfaceAfter.flipTextureY;
-                wrote = true;
-            }
+            // Frame by frame, field by field.
+            if (SurfaceTexture::ApplyChange(surfaceBefore.texture, surfaceAfter.texture, target.texture)) wrote = true;
 
             if (ValueChanged(surfaceBefore.color, surfaceAfter.color)) {
                 target.color = surfaceAfter.color;
@@ -3705,30 +3683,8 @@ namespace {
     bool ApplyWallSurfaceChange(const WallSurface &before, const WallSurface &after, WallSurface &target) {
         bool wrote = false;
 
-        if (after.texture != before.texture) {
-            target.texture = after.texture;
-            wrote = true;
-        }
-
-        if (ValueChanged(before.textureOffset, after.textureOffset)) {
-            target.textureOffset = after.textureOffset;
-            wrote = true;
-        }
-
-        if (ValueChanged(before.textureScale, after.textureScale)) {
-            target.textureScale = after.textureScale;
-            wrote = true;
-        }
-
-        if (after.flipTextureX != before.flipTextureX) {
-            target.flipTextureX = after.flipTextureX;
-            wrote = true;
-        }
-
-        if (after.flipTextureY != before.flipTextureY) {
-            target.flipTextureY = after.flipTextureY;
-            wrote = true;
-        }
+        // Frame by frame, field by field.
+        if (SurfaceTexture::ApplyChange(before.texture, after.texture, target.texture)) wrote = true;
 
         if (after.anchor != before.anchor) {
             target.anchor = after.anchor;

@@ -71,7 +71,8 @@ namespace {
         const bool fullbright,
         const uint8_t metaData
     ) {
-        const WallSurface& surface = wall.Surface(piece.slot);
+        // The showing frame's placement.
+        const TextureFrame& frame = wall.Surface(piece.slot).texture.Shown();
 
         GpuWall gpuWall{};
 
@@ -106,10 +107,10 @@ namespace {
 
         // data2.xy = texture offset; data2.zw = independent X/Y scale.
         gpuWall.data2 = {
-            surface.textureOffset.x + scroll.x,
-            surface.textureOffset.y + scroll.y,
-            surface.textureScale.x,
-            surface.textureScale.y
+            frame.textureOffset.x + scroll.x,
+            frame.textureOffset.y + scroll.y,
+            frame.textureScale.x,
+            frame.textureScale.y
         };
 
         // Store flip flags as floats to match the GPU vec4 layout. zw place
@@ -118,8 +119,8 @@ namespace {
         const float wallLength = wall.length;
 
         gpuWall.data3 = {
-            surface.flipTextureX ? 1.0f : 0.0f,
-            surface.flipTextureY ? 1.0f : 0.0f,
+            frame.flipTextureX ? 1.0f : 0.0f,
+            frame.flipTextureY ? 1.0f : 0.0f,
             piece.startT * wallLength,
             wallLength
         };

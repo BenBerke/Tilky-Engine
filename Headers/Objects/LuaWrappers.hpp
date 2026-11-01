@@ -2055,43 +2055,63 @@ inline void ScriptBehaviourRef::LuaSet(const std::string& key, sol::object value
 // Surface texture frames (walls, floors, ceilings)
 // ---------------------------------------------------------
 namespace LuaSurfaceTextures {
-    // {{texture = "...", duration = 0.5}, ...}
+    // {{texture = "...", duration = 0.5, offset = Vector2, scale = Vector2,
+    //   flipX = false, flipY = false, scrollSpeed = Vector2}, ...}
     inline sol::table GetFrames(const SurfaceTexture& texture, const sol::this_state state) {
         sol::state_view lua(state);
         sol::table frames = lua.create_table(static_cast<int>(texture.frames.size()), 0);
 
         for (size_t i = 0; i < texture.frames.size(); ++i) {
-            sol::table frame = lua.create_table(0, 2);
-            frame["texture"] = texture.frames[i].texture;
-            frame["duration"] = texture.frames[i].duration;
+            const TextureFrame& source = texture.frames[i];
+            sol::table frame = lua.create_table(0, 7);
+            frame["texture"] = source.texture;
+            frame["duration"] = source.duration;
+            frame["offset"] = source.textureOffset;
+            frame["scale"] = source.textureScale;
+            frame["flipX"] = source.flipTextureX;
+            frame["flipY"] = source.flipTextureY;
+            frame["scrollSpeed"] = source.offsetPerSecond;
             frames[i + 1] = frame;
         }
 
         return frames;
     }
 
-    // Each entry is {texture = "...", duration = seconds} (duration
-    // optional) or just the texture's path.
-    inline std::vector<TextureFrame> ReadFrames(const sol::table& table) {
+    // Each entry is a table like GetFrames gives, only `texture` required,
+    // or just the texture's path. A key left out keeps what frame i of
+    // `current` has (its last frame past the end, defaults with none).
+    inline std::vector<TextureFrame> ReadFrames(const sol::table& table, const SurfaceTexture& current) {
         std::vector<TextureFrame> frames;
         const size_t count = table.size();
 
         for (size_t i = 1; i <= count; ++i) {
+            TextureFrame frame;
+            if (!current.frames.empty()) frame = current.frames[std::min(i - 1, current.frames.size() - 1)];
+            frame.duration = SurfaceTexture::DEFAULT_FRAME_DURATION;
+
             const sol::object entry = table[i];
 
             if (entry.is<std::string>()) {
-                frames.push_back({entry.as<std::string>(), SurfaceTexture::DEFAULT_FRAME_DURATION});
+                frame.texture = entry.as<std::string>();
+                frames.push_back(std::move(frame));
                 continue;
             }
 
             if (!entry.is<sol::table>())
-                throw sol::error("SetFrames expects a list of {texture = \"...\", duration = seconds} tables");
+                throw sol::error("SetFrames expects a list of {texture = \"...\", duration = seconds, ...} tables");
 
-            const sol::table frame = entry.as<sol::table>();
-            const sol::optional<std::string> texture = frame["texture"];
+            const sol::table fields = entry.as<sol::table>();
+            const sol::optional<std::string> texture = fields["texture"];
             if (!texture) throw sol::error("SetFrames: frame " + std::to_string(i) + " has no texture");
 
-            frames.push_back({*texture, frame.get_or("duration", SurfaceTexture::DEFAULT_FRAME_DURATION)});
+            frame.texture = *texture;
+            frame.duration = fields.get_or("duration", frame.duration);
+            if (const sol::optional<Vector2> offset = fields["offset"]) frame.textureOffset = *offset;
+            if (const sol::optional<Vector2> scale = fields["scale"]) frame.textureScale = *scale;
+            if (const sol::optional<bool> flipX = fields["flipX"]) frame.flipTextureX = *flipX;
+            if (const sol::optional<bool> flipY = fields["flipY"]) frame.flipTextureY = *flipY;
+            if (const sol::optional<Vector2> speed = fields["scrollSpeed"]) frame.offsetPerSecond = *speed;
+            frames.push_back(std::move(frame));
         }
 
         return frames;
@@ -2189,23 +2209,25 @@ struct ScriptWall {
     // as Top/Bottom/Middle variants.
     [[nodiscard]] SurfaceTexture& SlotTexture(const WallSurfaceSlot slot) const { return GetSurface(slot).texture; }
 
-    [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).textureOffset; }
-    void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureOffset = value; }
+    // Offset and scale live on each frame: reading gives the showing frame's,
+    // writing sets every frame's.
+    [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).texture.Shown().textureOffset; }
+    void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureOffset = value; }); }
 
-    [[nodiscard]] Vector2 GetBottomTextureOffset() const { return GetSurface(WallSurfaceSlot::Bottom).textureOffset; }
-    void SetBottomTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureOffset = value; }
+    [[nodiscard]] Vector2 GetBottomTextureOffset() const { return GetSurface(WallSurfaceSlot::Bottom).texture.Shown().textureOffset; }
+    void SetBottomTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureOffset = value; }); }
 
-    [[nodiscard]] Vector2 GetMiddleTextureOffset() const { return GetSurface(WallSurfaceSlot::Middle).textureOffset; }
-    void SetMiddleTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).textureOffset = value; }
+    [[nodiscard]] Vector2 GetMiddleTextureOffset() const { return GetSurface(WallSurfaceSlot::Middle).texture.Shown().textureOffset; }
+    void SetMiddleTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureOffset = value; }); }
 
-    [[nodiscard]] Vector2 GetTopTextureScale() const { return GetSurface(WallSurfaceSlot::Top).textureScale; }
-    void SetTopTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureScale = value; }
+    [[nodiscard]] Vector2 GetTopTextureScale() const { return GetSurface(WallSurfaceSlot::Top).texture.Shown().textureScale; }
+    void SetTopTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureScale = value; }); }
 
-    [[nodiscard]] Vector2 GetBottomTextureScale() const { return GetSurface(WallSurfaceSlot::Bottom).textureScale; }
-    void SetBottomTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).textureScale = value; }
+    [[nodiscard]] Vector2 GetBottomTextureScale() const { return GetSurface(WallSurfaceSlot::Bottom).texture.Shown().textureScale; }
+    void SetBottomTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Bottom).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureScale = value; }); }
 
-    [[nodiscard]] Vector2 GetMiddleTextureScale() const { return GetSurface(WallSurfaceSlot::Middle).textureScale; }
-    void SetMiddleTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).textureScale = value; }
+    [[nodiscard]] Vector2 GetMiddleTextureScale() const { return GetSurface(WallSurfaceSlot::Middle).texture.Shown().textureScale; }
+    void SetMiddleTextureScale(const Vector2& value) const { GetSurface(WallSurfaceSlot::Middle).texture.ForEachFrame([&](TextureFrame& frame) { frame.textureScale = value; }); }
 
     [[nodiscard]] int GetTopAnchor() const { return static_cast<int>(GetSurface(WallSurfaceSlot::Top).anchor); }
     void SetTopAnchor(const int value) const { GetSurface(WallSurfaceSlot::Top).anchor = ToAnchor(value); }

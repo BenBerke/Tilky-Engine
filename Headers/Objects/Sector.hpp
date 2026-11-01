@@ -35,7 +35,7 @@ enum SlopeDirection {
 struct SectorSurface {
     float height = 0.0f;
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-    SurfaceTexture texture;
+    SurfaceTexture texture; // frames, each with its own offset/scale/flip
 
     SlopeDirection slopeDirection = PLUS_X;
     float slopeStrength = 0.0f; // the slope's angle in degrees
@@ -50,10 +50,6 @@ struct SectorSurface {
     // Height gained per world unit along slopeDirection.
     [[nodiscard]] float SlopeGradient() const { return GradientFromDegrees(slopeStrength); }
 
-    Vector2 textureOffset = {0.0f, 0.0f};
-    Vector2 textureScale = {1.0f, 1.0f};
-    bool flipTextureX = false;
-    bool flipTextureY = false;
 };
 
 // A floor or ceiling travelling toward the opposite surface of its

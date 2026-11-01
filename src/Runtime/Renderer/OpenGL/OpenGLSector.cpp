@@ -67,7 +67,9 @@ void OpenGL::BuildGpuSectors() {
                 ceilingColor.w
             };
 
-            // The frame showing right now, and the scroll so far.
+            // The frame showing right now, its placement, and the scroll so far.
+            const TextureFrame& floorFrame = floor.floor.texture.Shown();
+            const TextureFrame& ceilingFrame = floor.ceiling.texture.Shown();
             const int floorTextureIndex = GetTextureRegionIndex(floor.floor.texture.Current());
             const int ceilingTextureIndex = GetTextureRegionIndex(floor.ceiling.texture.Current());
             const Vector2 floorScroll = SurfaceScroll(floor.floor.texture, floorTextureIndex);
@@ -81,24 +83,24 @@ void OpenGL::BuildGpuSectors() {
             };
 
             gpuFloor.textureOffsets = {
-                floor.floor.textureOffset.x + floorScroll.x,
-                floor.floor.textureOffset.y + floorScroll.y,
-                floor.ceiling.textureOffset.x + ceilingScroll.x,
-                floor.ceiling.textureOffset.y + ceilingScroll.y
+                floorFrame.textureOffset.x + floorScroll.x,
+                floorFrame.textureOffset.y + floorScroll.y,
+                ceilingFrame.textureOffset.x + ceilingScroll.x,
+                ceilingFrame.textureOffset.y + ceilingScroll.y
             };
 
             gpuFloor.textureFlip = {
-                floor.floor.flipTextureX ? 1.0f : 0.0f,
-                floor.floor.flipTextureY ? 1.0f : 0.0f,
-                floor.ceiling.flipTextureX ? 1.0f : 0.0f,
-                floor.ceiling.flipTextureY ? 1.0f : 0.0f
+                floorFrame.flipTextureX ? 1.0f : 0.0f,
+                floorFrame.flipTextureY ? 1.0f : 0.0f,
+                ceilingFrame.flipTextureX ? 1.0f : 0.0f,
+                ceilingFrame.flipTextureY ? 1.0f : 0.0f
             };
 
             gpuFloor.textureScales = {
-                floor.floor.textureScale.x,
-                floor.floor.textureScale.y,
-                floor.ceiling.textureScale.x,
-                floor.ceiling.textureScale.y
+                floorFrame.textureScale.x,
+                floorFrame.textureScale.y,
+                ceilingFrame.textureScale.x,
+                ceilingFrame.textureScale.y
             };
 
             gpuSectorFloors.push_back(gpuFloor);

@@ -16,8 +16,8 @@ Useful `Wall` members:
 | Member | Type | Notes |
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
-| `wall.topTextureOffset`, `wall.bottomTextureOffset`, `wall.middleTextureOffset` | `Vector2` | Shifts a texture |
-| `wall.topScrollSpeed`, `wall.bottomScrollSpeed`, `wall.middleScrollSpeed` | `Vector2` | Offset Per Second: the texture scrolls by itself, no `Update` needed |
+| `wall.topTextureOffset`, `wall.bottomTextureOffset`, `wall.middleTextureOffset` | `Vector2` | Shifts a texture. Each frame has its own: reading gives the showing frame's, writing sets them all |
+| `wall.topScrollSpeed`, `wall.bottomScrollSpeed`, `wall.middleScrollSpeed` | `Vector2` | Offset / Sec: the texture scrolls by itself, no `Update` needed. Per frame, same rules |
 | `wall.topTexture`, `wall.bottomTexture`, `wall.middleTexture` | `string` | Swap a texture (replaces every frame with this one). Reading gives the frame showing now. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` / `wall:ClearMiddleTexture()` remove it |
 | `wall:SetTopFrames(frames)`, `wall:AddTopFrame(texture, seconds)`, `wall:GetTopFrames()` | | Animated textures; also `Bottom` and `Middle` versions |
 | `wall.topAnimation`, `wall.bottomAnimation`, `wall.middleAnimation` | `TextureAnimation` | `Loop`, `PingPong` or `Once` |
@@ -36,7 +36,7 @@ settings, put it on the walls, and filter with `wall:HasTag(...)`.
 ## Scrolling texture
 
 A texture that always scrolls (a waterfall, a conveyor belt, lava) needs no script at all: set
-**Offset Per Second** under the texture's frames in the wall, floor or ceiling inspector. A script
+**Offset / Sec** on its frame in the wall, floor or ceiling inspector. A script
 only helps when the scroll should change during the game.
 
 **Attach to:** the sector whose walls should scroll.
@@ -69,7 +69,8 @@ end
 ## Animated texture
 
 Flickering screens, lava, blinking lights: give a wall, floor or ceiling more than one **frame** in
-its inspector (**Add Frame**), each with a duration in seconds, and pick an **Animation**: **Loop**
+its inspector (**Add Frame**), each with its own texture, duration, offset, scale, flip and
+Offset / Sec, and pick an **Animation**: **Loop**
 (`1 2 3 1 2 3`), **Ping-Pong** (`1 2 3 2 1`) or **Once** (`1 2 3`, then stay on 3). A script can
 build the same thing:
 
@@ -103,6 +104,8 @@ end
 - Animations run on game time: `GameTime.timeScale = 0` pauses them, and every surface starts on
   frame 1 when the level starts, so walls with the same frames blink together.
 - `wall:RestartTopAnimation()` jumps back to frame 1, which is how to replay a **Once** animation.
+- A frame table can also carry `offset`, `scale`, `flipX`, `flipY` and `scrollSpeed`; keys left out
+  keep the old frame's values.
 - Floors and ceilings have the same members with `Floor` / `Ceiling` in the name:
   `sector:GetFloor(1):SetFloorFrames(...)`, `floorAnimation`, `ceilingScrollSpeed`.
 

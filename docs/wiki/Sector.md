@@ -279,18 +279,19 @@ every frame with that one texture. The frame and scroll members are below.
 
 ### Animated textures
 
-A floor and a ceiling each have a list of **frames** (a texture and a duration in seconds), an
-**Animation** (Loop, Ping-Pong or Once) and an **Offset Per Second**, set in the sector inspector
-under each floor and ceiling. They work exactly like a wall's; see
-[Wall: Animated textures](Wall.md#animated-textures) for the rules.
+A floor and a ceiling each have an **Animation** (Loop, Ping-Pong or Once) and a list of **frames**,
+each with its own texture, duration, offset, scale, flip and offset per second, set in the sector
+inspector under each floor and ceiling. Color and slope stay one per floor or ceiling. They work
+exactly like a wall's; see [Wall: Animated textures](Wall.md#animated-textures) for the rules and
+the inspector layout.
 
 | Member | Type | Description |
 |---|---|---|
 | `floorAnimation`, `ceilingAnimation` | TextureAnimation | read/write. `TextureAnimation.Loop`, `PingPong` or `Once`. |
-| `floorScrollSpeed`, `ceilingScrollSpeed` | Vector2 | read/write. Offset Per Second, in map units. |
-| `GetFloorFrames()`, `GetCeilingFrames()` | table | `{ {texture = "...", duration = 0.5}, ... }` |
-| `SetFloorFrames(frames)`, `SetCeilingFrames(frames)` | | Replaces the frames and starts from frame 1. Entries are `{texture = "...", duration = seconds}` (duration optional, default `0.5`) or texture paths. A bad list raises an error and changes nothing. |
-| `AddFloorFrame(texture, duration?)`, `AddCeilingFrame(...)` | | Adds a frame at the end. Default duration `0.5`. |
+| `floorScrollSpeed`, `ceilingScrollSpeed` | Vector2 | read/write. Offset / Sec, in map units. Reading gives the showing frame's, writing sets every frame's. |
+| `GetFloorFrames()`, `GetCeilingFrames()` | table | `{ {texture, duration, offset, scale, flipX, flipY, scrollSpeed}, ... }` |
+| `SetFloorFrames(frames)`, `SetCeilingFrames(frames)` | | Replaces the frames and starts from frame 1. Entries are tables with those keys (only `texture` required; a key left out keeps the old frame's value) or texture paths. A bad list raises an error and changes nothing. |
+| `AddFloorFrame(texture, duration?)`, `AddCeilingFrame(...)` | | Adds a frame at the end, placed like the last frame. Default duration `0.5`. |
 | `ClearFloorFrames()`, `ClearCeilingFrames()` | | Removes every frame. Same as `ClearFloorTexture()` / `ClearCeilingTexture()`. |
 | `RestartFloorAnimation()`, `RestartCeilingAnimation()` | | Back to frame 1. The scroll carries on. |
 

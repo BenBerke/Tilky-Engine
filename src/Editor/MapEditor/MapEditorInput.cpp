@@ -1935,13 +1935,10 @@ namespace MapEditorInternal {
             }
         }
 
+        // Frames carry their own placement, so the texture is all there is.
         template <typename Surface>
         void CopyPlacement(const Surface& from, WallSurface& to) {
             to.texture = from.texture;
-            to.textureOffset = from.textureOffset;
-            to.textureScale = from.textureScale;
-            to.flipTextureX = from.flipTextureX;
-            to.flipTextureY = from.flipTextureY;
         }
 
         bool CopyCanvasTexture(Level& level, const ID itemID, const bool withPlacement) {
@@ -1995,13 +1992,8 @@ namespace MapEditorInternal {
         void PastePrimary(Surface& surface, const bool withPlacement) {
             const WallSurface& primary = canvasTextureClipboard.primary;
 
-            surface.texture = primary.texture;
-            if (!withPlacement) return;
-
-            surface.textureOffset = primary.textureOffset;
-            surface.textureScale = primary.textureScale;
-            surface.flipTextureX = primary.flipTextureX;
-            surface.flipTextureY = primary.flipTextureY;
+            if (withPlacement) surface.texture = primary.texture;
+            else surface.texture.PasteFramesKeepingPlacement(primary.texture);
         }
 
         // Returns how many items changed.
@@ -2029,7 +2021,7 @@ namespace MapEditorInternal {
                                 WallSurface& surface = wall.Surface(WALL_SURFACE_SLOTS[slot]);
 
                                 if (withPlacement) surface = clipboard.wallSurfaces[slot];
-                                else surface.texture = clipboard.wallSurfaces[slot].texture;
+                                else surface.texture.PasteFramesKeepingPlacement(clipboard.wallSurfaces[slot].texture);
                             }
                         }
                         else PastePrimary(wall.top, withPlacement);

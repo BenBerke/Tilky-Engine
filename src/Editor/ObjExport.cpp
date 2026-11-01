@@ -51,13 +51,15 @@ namespace ObjExport {
         // The floor or ceiling's UV at map point `point`, as the shader works
         // it out: scale, flip, then offset, in repeats of the texture.
         Vector2 FlatUV(const SectorSurface& surface, const Vector2& point) {
-            const Vector2 tile = TextureTiling::GetTileSize(surface.texture.First());
+            // The first frame, still: OBJ has no animation.
+            const TextureFrame& frame = surface.texture.FirstFrame();
+            const Vector2 tile = TextureTiling::GetTileSize(frame.texture);
 
-            Vector2 uv = {point.x / tile.x * surface.textureScale.x, point.y / tile.y * surface.textureScale.y};
-            if (surface.flipTextureX) uv.x = -uv.x;
-            if (surface.flipTextureY) uv.y = -uv.y;
+            Vector2 uv = {point.x / tile.x * frame.textureScale.x, point.y / tile.y * frame.textureScale.y};
+            if (frame.flipTextureX) uv.x = -uv.x;
+            if (frame.flipTextureY) uv.y = -uv.y;
 
-            uv = {uv.x + surface.textureOffset.x / tile.x, uv.y + surface.textureOffset.y / tile.y};
+            uv = {uv.x + frame.textureOffset.x / tile.x, uv.y + frame.textureOffset.y / tile.y};
             return {uv.x, -uv.y};
         }
 
@@ -81,13 +83,14 @@ namespace ObjExport {
         // The wall's UV at distance `along` from its start and world height
         // `height`, as the shader works it out.
         Vector2 WallUV(const WallSurface& surface, const WallPieces::WallPiece& piece, const float along, const float height) {
-            const Vector2 tile = TextureTiling::GetTileSize(surface.texture.First());
+            const TextureFrame& frame = surface.texture.FirstFrame();
+            const Vector2 tile = TextureTiling::GetTileSize(frame.texture);
 
-            Vector2 uv = {along / tile.x * surface.textureScale.x, (piece.anchorHeight - height) / tile.y * surface.textureScale.y};
-            if (surface.flipTextureX) uv.x = -uv.x;
-            if (surface.flipTextureY) uv.y = -uv.y;
+            Vector2 uv = {along / tile.x * frame.textureScale.x, (piece.anchorHeight - height) / tile.y * frame.textureScale.y};
+            if (frame.flipTextureX) uv.x = -uv.x;
+            if (frame.flipTextureY) uv.y = -uv.y;
 
-            uv = {uv.x + surface.textureOffset.x / tile.x, uv.y + surface.textureOffset.y / tile.y};
+            uv = {uv.x + frame.textureOffset.x / tile.x, uv.y + frame.textureOffset.y / tile.y};
             return {uv.x, -uv.y};
         }
 

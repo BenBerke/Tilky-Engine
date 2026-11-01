@@ -46,28 +46,51 @@ inline std::optional<TextureAnimationMode> TextureAnimationModeFromInt(const int
     return std::nullopt;
 }
 
-// One step of a surface animation: show `texture` for `duration` seconds.
+// One step of a surface animation: show `texture` for `duration` seconds,
+// placed by its own offset, scale and flips, scrolling at its own speed.
 struct TextureFrame {
     std::string texture;
     float duration = 0.5f;
 
-    bool operator==(const TextureFrame&) const = default;
+    Vector2 textureOffset = {0.0f, 0.0f}; // map units
+    Vector2 textureScale = {1.0f, 1.0f};  // repeats; 1 = the texture's own size
+    bool flipTextureX = false;
+    bool flipTextureY = false;
+    Vector2 offsetPerSecond = {0.0f, 0.0f}; // map units per second while this frame shows
+
+    // Exact compares: this spots whether an edit wrote a field.
+    bool operator==(const TextureFrame& other) const {
+        return texture == other.texture && duration == other.duration &&
+               textureOffset.x == other.textureOffset.x && textureOffset.y == other.textureOffset.y &&
+               textureScale.x == other.textureScale.x && textureScale.y == other.textureScale.y &&
+               flipTextureX == other.flipTextureX && flipTextureY == other.flipTextureY &&
+               offsetPerSecond.x == other.offsetPerSecond.x && offsetPerSecond.y == other.offsetPerSecond.y;
+    }
+
+    // Copies everything but the texture and duration.
+    void CopyPlacement(const TextureFrame& from) {
+        textureOffset = from.textureOffset;
+        textureScale = from.textureScale;
+        flipTextureX = from.flipTextureX;
+        flipTextureY = from.flipTextureY;
+        offsetPerSecond = from.offsetPerSecond;
+    }
 };
 
 // What a wall piece, floor or ceiling shows: one or more frames played in
-// order, plus a scroll that moves the texture by `offsetPerSecond` map
-// units every second. One frame is a plain, still texture. No frames (or
-// only empty ones) means untextured.
+// order. One frame is a plain, still texture. No frames (or only empty ones)
+// means untextured. Each frame carries its own placement and scroll speed;
+// the scroll itself is one running value whose speed is the showing frame's,
+// so changing frames never makes the texture jump.
 //
 // `frameTime` and the scroll are runtime state: never saved, ignored by ==,
 // advanced by Level::UpdateSurfaceAnimations during Play and in the 3D
 // editor view. Everything that only cares about "the" texture (the 2D
 // canvas, tiling, stair building, same-texture selection) uses the first
-// frame; the renderer and Lua's xTexture getters use the current one.
+// frame; the renderer and Lua's getters use the current one.
 struct SurfaceTexture {
     std::vector<TextureFrame> frames;
     TextureAnimationMode animation = TextureAnimationMode::Loop;
-    Vector2 offsetPerSecond = {0.0f, 0.0f};
 
     // Doubles, so hours of scrolling don't wear the precision down; the
     // renderer wraps the scroll by the texture's tile size before the GPU.
@@ -81,10 +104,68 @@ struct SurfaceTexture {
     static constexpr float DEFAULT_FRAME_DURATION = 0.5f;
 
     bool operator==(const SurfaceTexture& other) const {
-        return frames == other.frames &&
-               animation == other.animation &&
-               offsetPerSecond.x == other.offsetPerSecond.x &&
-               offsetPerSecond.y == other.offsetPerSecond.y;
+        return frames == other.frames && animation == other.animation;
+    }
+
+    // The frame showing right now, or default placement with no texture.
+    [[nodiscard]] const TextureFrame& Shown() const {
+        static const TextureFrame NONE;
+        if (frames.empty()) return NONE;
+        return frames[static_cast<size_t>(CurrentFrameIndex())];
+    }
+
+    // The first frame, or default placement with no texture.
+    [[nodiscard]] const TextureFrame& FirstFrame() const {
+        static const TextureFrame NONE;
+        return frames.empty() ? NONE : frames.front();
+    }
+
+    // Runs `edit` on every frame: how a single value (an offset nudge, an
+    // alignment, a script writing topTextureOffset) applies to them all.
+    template<typename Edit>
+    void ForEachFrame(Edit&& edit) {
+        for (TextureFrame& frame : frames) edit(frame);
+    }
+
+    // Field by field, frame by frame: what changed between `before` and
+    // `after` is written to `target`, so an edit to one frame's offset on
+    // one surface doesn't also copy its textures onto every other one. A
+    // change in frame count (or a target with a different count) copies
+    // all the frames. Returns true if anything was written.
+    static bool ApplyChange(const SurfaceTexture& before, const SurfaceTexture& after, SurfaceTexture& target) {
+        if (before == after) return false;
+
+        bool wrote = false;
+
+        if (after.animation != before.animation) {
+            target.animation = after.animation;
+            wrote = true;
+        }
+
+        if (after.frames.size() != before.frames.size() || target.frames.size() != before.frames.size()) {
+            if (!(after.frames == before.frames)) {
+                target.frames = after.frames;
+                target.Restart();
+                wrote = true;
+            }
+            return wrote;
+        }
+
+        for (size_t i = 0; i < after.frames.size(); ++i) {
+            const TextureFrame& a = after.frames[i];
+            const TextureFrame& b = before.frames[i];
+            TextureFrame& t = target.frames[i];
+
+            if (a.texture != b.texture) { t.texture = a.texture; wrote = true; }
+            if (a.duration != b.duration) { t.duration = a.duration; wrote = true; }
+            if (a.textureOffset.x != b.textureOffset.x || a.textureOffset.y != b.textureOffset.y) { t.textureOffset = a.textureOffset; wrote = true; }
+            if (a.textureScale.x != b.textureScale.x || a.textureScale.y != b.textureScale.y) { t.textureScale = a.textureScale; wrote = true; }
+            if (a.flipTextureX != b.flipTextureX) { t.flipTextureX = a.flipTextureX; wrote = true; }
+            if (a.flipTextureY != b.flipTextureY) { t.flipTextureY = a.flipTextureY; wrote = true; }
+            if (a.offsetPerSecond.x != b.offsetPerSecond.x || a.offsetPerSecond.y != b.offsetPerSecond.y) { t.offsetPerSecond = a.offsetPerSecond; wrote = true; }
+        }
+
+        return wrote;
     }
 
     // The first frame's texture: what the surface "is" outside Play.
@@ -111,17 +192,35 @@ struct SurfaceTexture {
     }
 
     // Replaces every frame with one still frame of `texture` (none if it is
-    // empty). The animation mode and scroll speed stay, so a scrolling
-    // surface keeps scrolling with its new texture.
+    // empty). It keeps the first frame's duration, placement and scroll
+    // speed, so a scrolling surface keeps scrolling with its new texture.
     void Set(std::string texture) {
-        const float duration = frames.empty() ? DEFAULT_FRAME_DURATION : frames.front().duration;
+        TextureFrame frame = FirstFrame();
         frames.clear();
-        if (!texture.empty()) frames.push_back({std::move(texture), duration});
+        frame.texture = std::move(texture);
+        if (!frame.texture.empty()) frames.push_back(std::move(frame));
         frameTime = 0.0;
     }
 
+    // Takes `from`'s frames (textures, durations) and animation, but keeps
+    // this surface's own placement: frame i keeps the offset, scale, flips
+    // and scroll speed of this surface's frame i (its last one past the end).
+    // What a texture-only paste does.
+    void PasteFramesKeepingPlacement(const SurfaceTexture& from) {
+        std::vector<TextureFrame> pasted = from.frames;
+        if (!frames.empty())
+            for (size_t i = 0; i < pasted.size(); ++i) pasted[i].CopyPlacement(frames[std::min(i, frames.size() - 1)]);
+        frames = std::move(pasted);
+        animation = from.animation;
+        frameTime = 0.0;
+    }
+
+    // A new last frame, placed like the current last one.
     void AddFrame(std::string texture, const float duration = DEFAULT_FRAME_DURATION) {
-        frames.push_back({std::move(texture), duration});
+        TextureFrame frame = frames.empty() ? TextureFrame{} : frames.back();
+        frame.texture = std::move(texture);
+        frame.duration = duration;
+        frames.push_back(std::move(frame));
     }
 
     void Clear() {
@@ -144,6 +243,11 @@ struct SurfaceTexture {
     }
 
     void Advance(const float deltaTime) {
+        // At the speed of the frame that showed during this step.
+        const Vector2 speed = Shown().offsetPerSecond;
+        scrollX += static_cast<double>(speed.x) * deltaTime;
+        scrollY += static_cast<double>(speed.y) * deltaTime;
+
         if (frames.size() > 1) {
             frameTime += deltaTime;
             // Loops are kept inside one cycle; Once just stops counting.
@@ -152,9 +256,6 @@ struct SurfaceTexture {
             }
             else frameTime = std::min(frameTime, TotalDuration());
         }
-
-        scrollX += static_cast<double>(offsetPerSecond.x) * deltaTime;
-        scrollY += static_cast<double>(offsetPerSecond.y) * deltaTime;
     }
 
     // The scroll so far, wrapped into one repeat of a `tileSize` texture.

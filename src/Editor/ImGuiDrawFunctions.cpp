@@ -950,84 +950,159 @@ namespace ImGuiDrawFunctions {
         return pressed;
     }
 
-    // A property table whose first rows are the texture's frames - each a
-    // texture field with its duration and a remove button - then Add Frame,
-    // the animation mode and the offset per second; `drawSettings` adds the
-    // rest, so everything lines up with the other fields. The thumbnail is
-    // the Texture Field Size user setting, shrunk to fit the value column.
-    // A surface with no frames still shows an empty Frame 1 to drop onto.
+    // Offset, scale and flips - the settings every floor, ceiling and wall
+    // surface has. `prefix` picks the sector or wall translation keys.
+    static void TextureTransformRows(const char *prefix, Vector2 &offset, Vector2 &scale, bool &flipX, bool &flipY,
+                                     const bool draggable) {
+        const std::string p = prefix;
+
+        Property(Get("inspector.texture_offset").c_str());
+        InputOrDrag2("##Offset", &offset.x, draggable);
+        Tooltip(Get("editor.tooltip." + p + ".texture_offset").c_str());
+
+        Property(Get("inspector.texture_scale").c_str());
+        InputOrDrag2("##Scale", &scale.x, draggable);
+        Tooltip(Get("editor.tooltip." + p + ".texture_scale").c_str());
+
+        Property(Get("inspector.texture_flip").c_str());
+        ImGui::Checkbox("X##FlipX", &flipX);
+        ImGui::SameLine();
+        ImGui::Checkbox("Y##FlipY", &flipY);
+    }
+
+    // The ⋮ button the component cards use; defined further down.
+    namespace {
+        bool MenuDotsButton(const char *id, float size);
+    }
+
+    // What a frame's ⋮ menu asked for this frame; applied after the frames
+    // are drawn so the list never changes under the loop.
+    struct FrameAction {
+        enum class Kind { None, MoveUp, MoveDown, Duplicate, PlacementToAll, Remove } kind = Kind::None;
+        size_t index = 0;
+    };
+
+    // "Frame 2   brick_wall   0.50 s": a framed, collapsible header with the
+    // frame's thumbnail, and a ⋮ menu at its right end that works while it is
+    // collapsed.
+    static bool FrameHeader(const SurfaceTexture &texture, const size_t index, FrameAction &action) {
+        const TextureFrame &frame = texture.frames[index];
+        const size_t count = texture.frames.size();
+        const ImGuiStyle &style = ImGui::GetStyle();
+
+        // Only a lone frame starts open; with several, the list reads at a glance.
+        const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth |
+                                         ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_FramePadding |
+                                         (count == 1 ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+        // In the field colours rather than the section blue, so frames read
+        // as parts of the surface, not as sections of their own.
+        ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+        const bool open = ImGui::TreeNodeEx("##frame", flags);
+        ImGui::PopStyleColor(3);
+
+        const ImVec2 headerMin = ImGui::GetItemRectMin();
+        const ImVec2 headerMax = ImGui::GetItemRectMax();
+        const ImVec2 afterHeader = ImGui::GetCursorScreenPos();
+        const float height = headerMax.y - headerMin.y;
+        const bool openMenu = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        float x = headerMin.x + ImGui::GetTreeNodeToLabelSpacing();
+
+        const float thumb = height - 4.0f;
+        if (const ImTextureID preview = MapEditorInternal::GetPreviewTextureID(frame.texture); preview != ImTextureID{})
+            drawList->AddImage(preview, ImVec2(x, headerMin.y + 2.0f), ImVec2(x + thumb, headerMin.y + 2.0f + thumb));
+        else
+            drawList->AddRect(ImVec2(x, headerMin.y + 2.0f), ImVec2(x + thumb, headerMin.y + 2.0f + thumb),
+                              ImGui::GetColorU32(ImGuiCol_TextDisabled), 2.0f);
+        x += thumb + style.ItemInnerSpacing.x * 2.0f;
+
+        char title[64];
+        std::snprintf(title, sizeof(title), Get("texture.frame.label").c_str(), static_cast<int>(index) + 1);
+
+        const std::string name = frame.texture.empty()
+            ? Get("texture.frame.empty")
+            : std::filesystem::path(frame.texture).stem().string();
+
+        char duration[32] = "";
+        if (count > 1) std::snprintf(duration, sizeof(duration), "%.2f s", frame.duration);
+
+        const float textY = headerMin.y + (height - ImGui::GetTextLineHeight()) * 0.5f;
+        const float right = headerMax.x - height;
+
+        // The frame showing right now (Play, 3D view) has its title in the
+        // accent colour.
+        const bool showing = count > 1 && static_cast<size_t>(texture.CurrentFrameIndex()) == index;
+
+        drawList->PushClipRect(ImVec2(x, headerMin.y), ImVec2(right, headerMax.y), true);
+        drawList->AddText(ImVec2(x, textY), ImGui::GetColorU32(showing ? ImGuiCol_CheckMark : ImGuiCol_Text), title);
+        x += ImGui::CalcTextSize(title).x + style.ItemSpacing.x * 2.0f;
+        drawList->AddText(ImVec2(x, textY), ImGui::GetColorU32(ImGuiCol_TextDisabled), name.c_str());
+
+        if (duration[0] != '\0') {
+            const float durationX = right - ImGui::CalcTextSize(duration).x - style.ItemSpacing.x;
+            drawList->AddText(ImVec2(std::max(durationX, x + ImGui::CalcTextSize(name.c_str()).x + style.ItemSpacing.x), textY),
+                              ImGui::GetColorU32(ImGuiCol_TextDisabled), duration);
+        }
+        drawList->PopClipRect();
+
+        ImGui::SetCursorScreenPos(ImVec2(headerMax.x - height, headerMin.y));
+        if (MenuDotsButton("##frame_menu", height) || openMenu) ImGui::OpenPopup("frame_menu");
+        Tooltip(Get("editor.tooltip.texture.frame.menu").c_str());
+
+        if (ImGui::BeginPopup("frame_menu")) {
+            ImGui::TextDisabled("%s", title);
+            ImGui::Separator();
+
+            if (ImGui::MenuItem(Get("texture.frame.move_up").c_str(), nullptr, false, index > 0))
+                action = {FrameAction::Kind::MoveUp, index};
+            if (ImGui::MenuItem(Get("texture.frame.move_down").c_str(), nullptr, false, index + 1 < count))
+                action = {FrameAction::Kind::MoveDown, index};
+            if (ImGui::MenuItem(Get("texture.frame.duplicate").c_str()))
+                action = {FrameAction::Kind::Duplicate, index};
+            if (ImGui::MenuItem(Get("texture.frame.placement_to_all").c_str(), nullptr, false, count > 1))
+                action = {FrameAction::Kind::PlacementToAll, index};
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get("editor.tooltip.texture.frame.placement_to_all").c_str());
+
+            ImGui::Separator();
+            if (ImGui::MenuItem(Get("texture.frame.remove").c_str()))
+                action = {FrameAction::Kind::Remove, index};
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get("editor.tooltip.texture.frame.remove").c_str());
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SetCursorScreenPos(afterHeader);
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        return open;
+    }
+
+    // Duration with its unit, as an input or a drag like every other field.
+    static bool DurationField(const char *id, float &seconds, const bool draggable) {
+        const bool changed = draggable
+            ? ImGui::DragFloat(id, &seconds, 0.01f, 0.0f, FLT_MAX, "%.2f s", ImGuiSliderFlags_AlwaysClamp)
+            : ImGui::InputFloat(id, &seconds, 0.0f, 0.0f, "%.2f s");
+        if (changed) seconds = std::max(seconds, 0.0f);
+        return changed;
+    }
+
+    // A surface's texture: the Animation mode, then each frame as its own
+    // collapsible section (texture, duration, offset, scale, flips, offset
+    // per second), then Add Frame. `drawSettings` adds the surface's own
+    // property rows (anchor, color, slope) in a table below. The thumbnail
+    // is the Texture Field Size user setting, shrunk to fit the value column.
     template<typename DrawSettings>
     static void TextureBlock(const char *id, SurfaceTexture &texture, const char *tooltipKey, const bool draggable,
                              DrawSettings &&drawSettings) {
         ImGui::PushID(id);
 
-        if (BeginProperties("##TextureSettings")) {
-            const std::string removeLabel = Get("texture.frame.remove");
-            const size_t shownFrames = std::max<size_t>(texture.frames.size(), 1);
-            int frameToRemove = -1;
-            int frameToMoveUp = -1;
+        const char *placementPrefix = std::strcmp(id, "floor") == 0 || std::strcmp(id, "ceiling") == 0 ? "sector" : "wall";
 
-            for (size_t frameIndex = 0; frameIndex < shownFrames; ++frameIndex) {
-                ImGui::PushID(static_cast<int>(frameIndex));
-
-                const bool exists = frameIndex < texture.frames.size();
-                char label[64];
-                std::snprintf(label, sizeof(label), Get("texture.frame.label").c_str(), static_cast<int>(frameIndex) + 1);
-                Property(label);
-
-                const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
-
-                if (exists) {
-                    MapEditorInternal::DrawAssetField("", texture.frames[frameIndex].texture, AssetKind::Texture, thumbnail);
-                }
-                else {
-                    std::string first;
-                    if (MapEditorInternal::DrawAssetField("", first, AssetKind::Texture, thumbnail) && !first.empty())
-                        texture.AddFrame(std::move(first));
-                }
-                Tooltip(Get(tooltipKey).c_str());
-
-                // Duration, move up, remove on one line under the thumbnail.
-                if (exists) {
-                    TextureFrame &frame = texture.frames[frameIndex];
-                    const bool canMoveUp = frameIndex > 0;
-
-                    FieldWidth(WidthBeforeButtons({"^", removeLabel.c_str()}));
-                    if (InputOrDrag("##Duration", &frame.duration, draggable, 0.01f))
-                        frame.duration = std::max(frame.duration, 0.0f);
-                    Tooltip(Get("editor.tooltip.texture.frame.duration").c_str());
-
-                    ImGui::SameLine();
-                    ImGui::BeginDisabled(!canMoveUp);
-                    if (ImGui::Button("^")) frameToMoveUp = static_cast<int>(frameIndex);
-                    ImGui::EndDisabled();
-                    Tooltip(Get("editor.tooltip.texture.frame.move_up").c_str());
-
-                    ImGui::SameLine();
-                    if (ImGui::Button(removeLabel.c_str())) frameToRemove = static_cast<int>(frameIndex);
-                    Tooltip(Get("editor.tooltip.texture.frame.remove").c_str());
-                }
-
-                ImGui::PopID();
-            }
-
-            if (frameToMoveUp > 0)
-                std::swap(texture.frames[static_cast<size_t>(frameToMoveUp)], texture.frames[static_cast<size_t>(frameToMoveUp - 1)]);
-
-            if (frameToRemove >= 0) {
-                texture.frames.erase(texture.frames.begin() + frameToRemove);
-                texture.Restart();
-            }
-
-            // Copies the last frame's texture and duration, the usual start
-            // for the next one.
-            Property("");
-            if (ImGui::Button(Get("texture.frame.add").c_str())) {
-                if (texture.frames.empty()) texture.AddFrame({});
-                else texture.frames.push_back(texture.frames.back());
-            }
-            Tooltip(Get("editor.tooltip.texture.frame.add").c_str());
-
+        // ── Animation ────────────────────────────────────────────────────
+        if (BeginProperties("##Animation")) {
             const TextureAnimationModeInfo *selected = FindTextureAnimationMode(texture.animation);
             if (selected == nullptr) selected = &TEXTURE_ANIMATION_MODES[0];
 
@@ -1049,37 +1124,102 @@ namespace ImGuiDrawFunctions {
                 ImGui::EndCombo();
             }
             ImGui::EndDisabled();
-            Tooltip(Get(selected->tooltipKey).c_str());
+            Tooltip(Get(texture.frames.size() < 2 ? "editor.tooltip.texture.animation.needs_frames" : selected->tooltipKey).c_str());
 
-            Property(Get("texture.offset_per_second").c_str());
-            InputOrDrag2("##OffsetPerSecond", &texture.offsetPerSecond.x, draggable, 0.1f);
-            Tooltip(Get("editor.tooltip.texture.offset_per_second").c_str());
+            EndProperties();
+        }
 
+        // ── Frames ───────────────────────────────────────────────────────
+        // No frames yet: one texture field to drop onto makes the first.
+        if (texture.frames.empty() && BeginProperties("##NoFrames")) {
+            Property(Get("inspector.texture").c_str());
+
+            const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
+            std::string first;
+            if (MapEditorInternal::DrawAssetField("", first, AssetKind::Texture, thumbnail) && !first.empty())
+                texture.AddFrame(std::move(first));
+            Tooltip(Get(tooltipKey).c_str());
+
+            EndProperties();
+        }
+
+        FrameAction action;
+
+        for (size_t frameIndex = 0; frameIndex < texture.frames.size(); ++frameIndex) {
+            ImGui::PushID(static_cast<int>(frameIndex));
+
+            if (FrameHeader(texture, frameIndex, action)) {
+                TextureFrame &frame = texture.frames[frameIndex];
+
+                if (BeginProperties("##Frame")) {
+                    Property(Get("inspector.texture").c_str());
+                    const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
+                    MapEditorInternal::DrawAssetField("", frame.texture, AssetKind::Texture, thumbnail);
+                    Tooltip(Get(tooltipKey).c_str());
+
+                    Property(Get("texture.frame.duration").c_str());
+                    FieldWidth(-FLT_MIN);
+                    ImGui::BeginDisabled(texture.frames.size() < 2);
+                    DurationField("##Duration", frame.duration, draggable);
+                    ImGui::EndDisabled();
+                    Tooltip(Get(texture.frames.size() < 2 ? "editor.tooltip.texture.frame.duration_single"
+                                                          : "editor.tooltip.texture.frame.duration").c_str());
+
+                    TextureTransformRows(placementPrefix, frame.textureOffset, frame.textureScale,
+                                         frame.flipTextureX, frame.flipTextureY, draggable);
+
+                    Property(Get("texture.offset_per_second").c_str());
+                    InputOrDrag2("##OffsetPerSecond", &frame.offsetPerSecond.x, draggable, 0.1f);
+                    Tooltip(Get("editor.tooltip.texture.offset_per_second").c_str());
+
+                    EndProperties();
+                }
+
+                ImGui::Spacing();
+                ImGui::TreePop();
+            }
+
+            ImGui::PopID();
+        }
+
+        std::vector<TextureFrame> &frames = texture.frames;
+        const auto at = [&frames](const size_t index) { return frames.begin() + static_cast<std::ptrdiff_t>(index); };
+
+        switch (action.kind) {
+            case FrameAction::Kind::MoveUp: std::swap(frames[action.index], frames[action.index - 1]); break;
+            case FrameAction::Kind::MoveDown: std::swap(frames[action.index], frames[action.index + 1]); break;
+            case FrameAction::Kind::Duplicate: frames.insert(at(action.index + 1), frames[action.index]); break;
+            case FrameAction::Kind::PlacementToAll:
+                for (TextureFrame &frame: frames) frame.CopyPlacement(frames[action.index]);
+                break;
+            case FrameAction::Kind::Remove:
+                frames.erase(at(action.index));
+                texture.Restart();
+                break;
+            case FrameAction::Kind::None: break;
+        }
+
+        // A new frame starts as a copy of the last one, open for editing.
+        if (!frames.empty()) {
+            ImGui::Spacing();
+            if (ImGui::Button(Get("texture.frame.add").c_str(), ImVec2(-FLT_MIN, 0.0f))) {
+                frames.push_back(frames.back());
+                ImGui::PushID(static_cast<int>(frames.size() - 1));
+                ImGui::GetStateStorage()->SetInt(ImGui::GetID("##frame"), 1);
+                ImGui::PopID();
+            }
+            Tooltip(Get("editor.tooltip.texture.frame.add").c_str());
+        }
+
+        // ── The surface's own settings ───────────────────────────────────
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (BeginProperties("##SurfaceSettings")) {
             drawSettings();
             EndProperties();
         }
 
         ImGui::PopID();
-    }
-
-    // Offset, scale and flips - the settings every floor, ceiling and wall
-    // surface has. `prefix` picks the sector or wall translation keys.
-    static void TextureTransformRows(const char *prefix, Vector2 &offset, Vector2 &scale, bool &flipX, bool &flipY,
-                                     const bool draggable) {
-        const std::string p = prefix;
-
-        Property(Get("inspector.texture_offset").c_str());
-        InputOrDrag2("##Offset", &offset.x, draggable);
-        Tooltip(Get("editor.tooltip." + p + ".texture_offset").c_str());
-
-        Property(Get("inspector.texture_scale").c_str());
-        InputOrDrag2("##Scale", &scale.x, draggable);
-        Tooltip(Get("editor.tooltip." + p + ".texture_scale").c_str());
-
-        Property(Get("inspector.texture_flip").c_str());
-        ImGui::Checkbox("X##FlipX", &flipX);
-        ImGui::SameLine();
-        ImGui::Checkbox("Y##FlipY", &flipY);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3750,9 +3890,6 @@ namespace ImGuiDrawFunctions {
     static void DrawSectorSurface(const char *id, const char *textureTooltipKey, SectorSurface &surface,
                                   const bool draggable) {
         TextureBlock(id, surface.texture, textureTooltipKey, draggable, [&] {
-            TextureTransformRows("sector", surface.textureOffset, surface.textureScale,
-                                 surface.flipTextureX, surface.flipTextureY, draggable);
-
             const std::string resetLabel = Get("common.reset");
 
             Property(Get("inspector.color").c_str());
@@ -4244,11 +4381,9 @@ namespace ImGuiDrawFunctions {
         return deleteRequested;
     }
 
-    // Offset, scale, flips and anchor of one wall surface, as property rows.
-    static void DrawWallSurfaceRows(WallSurface &surface, const bool draggable) {
-        TextureTransformRows("wall", surface.textureOffset, surface.textureScale,
-                             surface.flipTextureX, surface.flipTextureY, draggable);
-
+    // The anchor of one wall surface, as a property row; offset, scale and
+    // flips live on each frame.
+    static void DrawWallSurfaceRows(WallSurface &surface, [[maybe_unused]] const bool draggable) {
         const WallTextureAnchorInfo *selected = FindWallTextureAnchor(surface.anchor);
         if (selected == nullptr) selected = &WALL_TEXTURE_ANCHORS[0];
 

@@ -26,8 +26,9 @@ A one-sided wall has only one of them set; the other is invalid (`4294967295`).
 
 ## Top, bottom and middle textures
 
-A wall has three textures, **Top**, **Bottom** and **Middle**, each with its own frames, animation,
-offset per second, offset, scale, flip and anchor (see [Animated textures](#animated-textures)).
+A wall has three textures, **Top**, **Bottom** and **Middle**, each with its own animation, anchor and
+list of frames. Every frame has its own texture, duration, offset, scale, flip and offset per second
+(see [Animated textures](#animated-textures)).
 
 - A **solid** wall (a sector on one side only) shows only Top. The inspector calls it **Texture**.
 - A **portal** shows Bottom on the step under the neighbouring room's floor, and Top on everything
@@ -65,12 +66,31 @@ Each texture of a wall (and each [floor and ceiling](Sector.md#animated-textures
 **frames** instead of a single image. One frame is a still texture; add more and the surface flips
 through them on its own.
 
-| Field | Lua | Notes |
+In the inspector, **Animation** comes first, then each frame as its own collapsible section, then
+**Add Frame**, then the surface's own settings (Anchor on walls; Color and Slope on floors and
+ceilings). A frame's header shows its thumbnail, texture name and duration, so a collapsed list
+still reads at a glance; while the animation runs (Play, 3D view) the title of the frame showing is
+highlighted. Its **⋮** button (or a right-click on the header) has **Move Up**, **Move Down**,
+**Duplicate**, **Use This Placement on All Frames** and **Remove**.
+
+| Surface field | Lua | Notes |
 |---|---|---|
-| **Frame 1**, **Frame 2**, ... | `GetTopFrames()`, `SetTopFrames(frames)`, `AddTopFrame(texture, duration)` | A texture plus how many **seconds** it shows. **^** moves a frame one place earlier, **Remove** deletes it. A surface with no frames is untextured. |
-| **Add Frame** | | Adds a frame at the end, starting as a copy of the last one. |
 | **Animation** | `topAnimation` | How the frames play. Greyed out with fewer than two frames. |
-| **Offset Per Second** | `topScrollSpeed` | Map units (X, Y) the texture moves every second, on top of its UV Offset. Works with one frame too: conveyor belts, flowing water. |
+| **Add Frame** | `AddTopFrame(texture, duration)` | Adds a frame at the end, starting as a copy of the last one (placement included). |
+
+Each frame has:
+
+| Frame field | Key in `GetTopFrames()` | Notes |
+|---|---|---|
+| **Texture** | `texture` | The image. A surface with no frames is untextured. |
+| **Duration** | `duration` | Seconds the frame shows. Greyed out with only one frame. |
+| **Offset** | `offset` | Shifts the texture, in map units: one texture-width moves it by one repeat at scale `1`. |
+| **Scale** | `scale` | How many times the texture repeats. `2.0` means twice as many repeats. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
+| **Flip** X / Y | `flipX`, `flipY` | Mirror the texture horizontally or vertically. |
+| **Offset / Sec** | `scrollSpeed` | Offset per second: map units (X, Y) the texture moves every second, on top of its Offset. Works with one frame too: conveyor belts, flowing water. |
+
+The scroll is **one running value**: each frame sets how fast it moves while that frame shows, and
+switching frames never makes the texture jump.
 
 | Animation | Lua | Plays |
 |---|---|---|
@@ -86,9 +106,13 @@ through them on its own.
   `topTexture`), when a **Set Texture** dispatch hits it, or on `RestartTopAnimation()`. The scroll
   carries on.
 - Setting a single texture (from a script, a dispatch, a texture drop, or the texture tools) replaces
-  every frame with that one texture. The animation mode and Offset Per Second stay.
-- Copy and paste (Ctrl+C / Ctrl+V) carries all frames, the animation and the offset per second.
-  "Same texture" tools (select all with this texture, flood fill, stairs) compare the first frame.
+  every frame with that one texture, placed like the old first frame. The animation mode stays.
+- Ctrl+C / Ctrl+V copies the frames' textures and durations and the animation; each pasted frame
+  keeps the target's own placement. Alt+C / Alt+V copies every frame's placement too.
+- Placement tools act on every frame: nudging and scaling in the 3D view add the same step to each
+  frame, flips toggle each frame, Alt+R resets them all, and the wall tools (align, split, merge,
+  fit to height, reset offsets) line up each frame with its own texture size.
+- "Same texture" tools (select all with this texture, flood fill, stairs) compare the first frame.
 
 ## Collision
 
@@ -105,11 +129,9 @@ instead of being blocked. See [Collider](Collider.md#step-size).
 | **Front Sector** / **Back Sector** | `frontSector` / `backSector` | Set by the map topology. Read-only. |
 | **Texture** (solid) / **Top**, **Bottom** (portal) | `topTexture`, `bottomTexture` | The frames drawn on the solid parts. No frames means colour only. See [Animated textures](#animated-textures). |
 | **Middle** (portal) | `middleTexture` | The frames in the openings. No frames means nothing is there. |
-| **Animation** / **Offset Per Second** | `topAnimation`, `topScrollSpeed`, ... | See [Animated textures](#animated-textures). |
-| **Wall Color** | `color` | Tint, `Vector4`, `0..1` per channel. |
-| **UV Offset** | `topTextureOffset`, `bottomTextureOffset`, `middleTextureOffset` | Shifts the texture, in map units: `32` moves it by one repeat at scale `1`. |
-| **UV Scale** | `topTextureScale`, `bottomTextureScale`, `middleTextureScale` | How many times the texture repeats. `2.0` means twice as many repeats. |
-| **Flip U** / **Flip V** | | Mirror the texture horizontally or vertically. Editor only. |
+| **Animation** | `topAnimation`, ... | See [Animated textures](#animated-textures). |
+| Each frame's **Offset**, **Scale**, **Flip**, **Offset / Sec** | `topTextureOffset`, `topTextureScale`, `topScrollSpeed`, ... | Per frame. See [Animated textures](#animated-textures). |
+| **Wall Color** | `color` | Tint, `Vector4`, `0..1` per channel. One for the whole wall. |
 | **Anchor** | `topAnchor`, `bottomAnchor`, `middleAnchor` | See [Anchor](#anchor). Auto is the top edge for Middle. |
 | **Has Collision** / **Ignored by Raycast** | `middleHasCollision`, `middleIgnoredByRaycast` | Middle only. See [above](#top-bottom-and-middle-textures). |
 | **Tags** | `HasTag`, `GetTag`, `tagCount` | Read-only from scripts. |
@@ -152,18 +174,18 @@ check `isValid`.
 | `topAnimation` | TextureAnimation | read/write | How the top frames play: `TextureAnimation.Loop`, `PingPong` or `Once`. |
 | `bottomAnimation` | TextureAnimation | read/write | How the bottom frames play. |
 | `middleAnimation` | TextureAnimation | read/write | How the middle frames play. |
-| `topScrollSpeed` | Vector2 | read/write | The top texture's **Offset Per Second**, in map units. |
-| `bottomScrollSpeed` | Vector2 | read/write | The bottom texture's Offset Per Second. |
-| `middleScrollSpeed` | Vector2 | read/write | The middle texture's Offset Per Second. |
-| `topTextureOffset` | Vector2 | read/write | Top texture shift in map units. Change it over time to scroll. |
-| `bottomTextureOffset` | Vector2 | read/write | Bottom texture shift in map units. |
-| `topTextureScale` | Vector2 | read/write | Top texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
-| `bottomTextureScale` | Vector2 | read/write | Bottom texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
+| `topScrollSpeed` | Vector2 | read/write | The top texture's **Offset / Sec**, in map units. Per frame: reading gives the showing frame's, writing sets every frame's. |
+| `bottomScrollSpeed` | Vector2 | read/write | The bottom texture's Offset / Sec, same rules. |
+| `middleScrollSpeed` | Vector2 | read/write | The middle texture's Offset / Sec, same rules. |
+| `topTextureOffset` | Vector2 | read/write | Top texture shift in map units. Per frame: reading gives the showing frame's, writing sets every frame's. |
+| `bottomTextureOffset` | Vector2 | read/write | Bottom texture shift, same rules. |
+| `topTextureScale` | Vector2 | read/write | Top texture repeat multiplier, same rules. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
+| `bottomTextureScale` | Vector2 | read/write | Bottom texture repeat multiplier, same rules. |
 | `topAnchor` | WallAnchor | read/write | Where the top texture is pinned, e.g. `WallAnchor.World`. |
 | `bottomAnchor` | WallAnchor | read/write | Where the bottom texture is pinned. |
 | `middleTexture` | string | read/write | Middle texture path, filling the openings, same rules as `topTexture`. `""` means no middle. |
-| `middleTextureOffset` | Vector2 | read/write | Middle texture shift in map units. |
-| `middleTextureScale` | Vector2 | read/write | Middle texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
+| `middleTextureOffset` | Vector2 | read/write | Middle texture shift, same rules as `topTextureOffset`. |
+| `middleTextureScale` | Vector2 | read/write | Middle texture repeat multiplier, same rules. |
 | `middleAnchor` | WallAnchor | read/write | Where the middle texture is pinned. |
 | `middleHasCollision` | boolean | read/write | The middle blocks entity colliders. |
 | `middleIgnoredByRaycast` | boolean | read/write | Raycasts and `LineOfSight` pass through the middle. |
@@ -176,9 +198,9 @@ check `isValid`.
 | `ClearTopTexture()` | | Removes every top frame. |
 | `ClearBottomTexture()` | | Removes every bottom frame. |
 | `ClearMiddleTexture()` | | Removes every middle frame, and with them the middle. |
-| `GetTopFrames()` | table | The top frames: `{ {texture = "...", duration = 0.5}, ... }`. Also `GetBottomFrames()`, `GetMiddleFrames()`. |
-| `SetTopFrames(frames)` | | Replaces the top frames and starts from frame 1. Each entry is `{texture = "...", duration = seconds}` (duration optional, default `0.5`) or just a texture path. A bad list raises an error and changes nothing. Also `SetBottomFrames`, `SetMiddleFrames`. |
-| `AddTopFrame(texture, duration?)` | | Adds a frame at the end. `duration` in seconds, default `0.5`. Also `AddBottomFrame`, `AddMiddleFrame`. |
+| `GetTopFrames()` | table | The top frames: `{ {texture, duration, offset, scale, flipX, flipY, scrollSpeed}, ... }`. Also `GetBottomFrames()`, `GetMiddleFrames()`. |
+| `SetTopFrames(frames)` | | Replaces the top frames and starts from frame 1. Each entry is a table with the keys above (only `texture` is required) or just a texture path. A key left out keeps what the old frame at that position had (the old last frame past the end); a left-out `duration` is `0.5`. A bad list raises an error and changes nothing. Also `SetBottomFrames`, `SetMiddleFrames`. |
+| `AddTopFrame(texture, duration?)` | | Adds a frame at the end, placed like the last frame. `duration` in seconds, default `0.5`. Also `AddBottomFrame`, `AddMiddleFrame`. |
 | `ClearTopFrames()` | | Same as `ClearTopTexture()`. Also `ClearBottomFrames`, `ClearMiddleFrames`. |
 | `RestartTopAnimation()` | | Back to frame 1; the scroll carries on. Also `RestartBottomAnimation`, `RestartMiddleAnimation`. |
 | `HasTag(tag)` | boolean | `true` if the wall has `tag`. |
@@ -215,7 +237,7 @@ raycast from an entity script.
 
 ### Scrolling texture
 
-A texture that always scrolls needs no script: set its **Offset Per Second** in the inspector. A
+A texture that always scrolls needs no script: set its frame's **Offset / Sec** in the inspector. A
 script can switch the scroll on and off:
 
 ```lua
