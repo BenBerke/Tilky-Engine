@@ -568,7 +568,8 @@ private:
     // stay valid.
     void ReloadChangedTextures();
 
-    void RenderUIText(const ComponentUIText& text, const ComponentUITransform& transform);
+    // `shown` is what the label says (Level::ShownUIText).
+    void RenderUIText(const ComponentUIText& text, const std::string& shown, const ComponentUITransform& transform);
 
     // OpenGLText.cpp: fonts and the glyph atlas.
     FT_Face GetFontFace(const std::string& fontReference);

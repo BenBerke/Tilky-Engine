@@ -911,6 +911,12 @@ namespace {
         {PayloadDispatchEntitySetField::TOGGLE, "toggle"}
     };
 
+    constexpr std::pair<PayloadDispatchSetUIText::Part, const char*> kUITextPartNames[] = {
+        {PayloadDispatchSetUIText::TEXT, "text"},
+        {PayloadDispatchSetUIText::PREFIX, "prefix"},
+        {PayloadDispatchSetUIText::SUFFIX, "suffix"}
+    };
+
     constexpr std::pair<PayloadDispatchMusic::Action, const char*> kMusicActionNames[] = {
         {PayloadDispatchMusic::PLAY, "play"},
         {PayloadDispatchMusic::STOP, "stop"},
@@ -1244,8 +1250,10 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             j["levelName"] = payload.levelName;
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
             j["text"] = payload.text;
+            if (payload.part != PayloadDispatchSetUIText::TEXT) j["part"] = EnumName(kUITextPartNames, payload.part);
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
             j["action"] = EnumName(kMusicActionNames, payload.action);
@@ -1505,8 +1513,10 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
             ReadOptional(j, "levelName", payload.levelName);
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>)
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
             ReadOptional(j, "text", payload.text);
+            ReadOptionalEnum(j, "part", kUITextPartNames, payload.part);
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
             ReadOptionalEnum(j, "action", kMusicActionNames, payload.action);
@@ -2604,18 +2614,25 @@ namespace LevelSerialization {
     }
 
     json ComponentFieldsToJson(const ComponentUIText& c) {
-        return {
+        json j = {
             {"text", c.text},
             {"font", c.font},
             {"fontSize", c.fontSize},
-            {"color", {c.color.x, c.color.y, c.color.z, c.color.w}}
+            {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
+            {"variable", c.variable},
+            {"prefix", c.prefix},
+            {"suffix", c.suffix}
         };
+        return j;
     }
 
     bool ComponentFieldsFromJson(const json& j, ComponentUIText& c) {
         c.text = j.value("text", "");
         c.font = j.value("font", "");
         c.fontSize = j.value("fontSize", DEFAULT_UI_FONT_SIZE);
+        c.variable = j.value("variable", EventVariableID{0});
+        c.prefix = j.value("prefix", "");
+        c.suffix = j.value("suffix", "");
 
         if (j.contains("color") && j["color"].is_array() && j["color"].size() == 4) {
             const json& colorJson = j["color"];

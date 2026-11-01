@@ -297,8 +297,9 @@ namespace {
         return opened;
     }
 
-    void DrawUITextEntity(const ComponentUIText& text, const ComponentUITransform& transform) {
-        if (text.text.empty() || textEngine == nullptr || text.color.w <= 0.0f) return;
+    // `shown` is what the label says (Level::ShownUIText): a variable shows its starting value.
+    void DrawUITextEntity(const ComponentUIText& text, const std::string& shown, const ComponentUITransform& transform) {
+        if (shown.empty() || textEngine == nullptr || text.color.w <= 0.0f) return;
 
         const float windowScale = static_cast<float>(screenHeight) / std::max(1.0f, ProjectManager::GetUIReferenceHeight());
         const float pixelSize = text.fontSize * windowScale * uiCanvasZoom;
@@ -307,7 +308,7 @@ namespace {
         TTF_Font* previewFont = GetPreviewFont(text.font, std::clamp(static_cast<int>(std::lround(pixelSize)), 1, 512));
         if (previewFont == nullptr) return;
 
-        TTF_Text* renderedText = TTF_CreateText(textEngine, previewFont, text.text.c_str(), text.text.size());
+        TTF_Text* renderedText = TTF_CreateText(textEngine, previewFont, shown.c_str(), shown.size());
         if (renderedText == nullptr) return;
 
         const auto channel = [](const float value) {
@@ -632,7 +633,7 @@ namespace MapEditorInternal {
 
             if (transformIt == transformsByOwner.end()) continue;
 
-            DrawUITextEntity(text, *transformIt->second);
+            DrawUITextEntity(text, level.ShownUIText(text), *transformIt->second);
         }
 
         SDL_SetRenderClipRect(renderer, nullptr);

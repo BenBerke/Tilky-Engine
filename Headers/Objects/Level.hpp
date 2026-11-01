@@ -443,6 +443,16 @@ struct Level {
         return it != values.end() ? &it->second : nullptr;
     }
 
+    // What a UI Text shows: its text, or with a variable, prefix + the
+    // variable's value + suffix (a missing variable reads as 0).
+    [[nodiscard]] std::string ShownUIText(const ComponentUIText& text) const {
+        if (text.variable == 0) return text.text;
+
+        const auto& values = IsGlobalEventVariable(text.variable) ? GlobalEventVariables::Values() : worldSettings.eventVariables;
+        const auto it = values.find(text.variable);
+        return text.prefix + FormatEventNumber(it != values.end() ? it->second : 0.0f) + text.suffix;
+    }
+
     [[nodiscard]] bool CheckCondition(const Condition& condition) const {
         return condition.Check(worldSettings.eventVariables, GlobalEventVariables::Values());
     }

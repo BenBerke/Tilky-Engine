@@ -79,6 +79,8 @@ inline constexpr EventFieldInfo EVENT_FIELDS[] = {
     {FieldComponent::UI_SPRITE, "isActive", "events.field.is_active", FieldValueKind::BOOL},
 
     {FieldComponent::UI_TEXT, "text", "events.field.text", FieldValueKind::STRING},
+    {FieldComponent::UI_TEXT, "prefix", "events.field.prefix", FieldValueKind::STRING},
+    {FieldComponent::UI_TEXT, "suffix", "events.field.suffix", FieldValueKind::STRING},
     {FieldComponent::UI_TEXT, "fontSize", "events.field.font_size", FieldValueKind::FLOAT},
     {FieldComponent::UI_TEXT, "color", "events.field.color", FieldValueKind::COLOR},
 

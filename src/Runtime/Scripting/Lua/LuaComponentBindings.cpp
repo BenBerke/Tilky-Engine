@@ -180,7 +180,9 @@ namespace {
 
         RegisterType(Type("UIText", "A UI element's text label.", {
             Prop("isValid", "boolean", true),
-            Prop("text", "string", false, "UTF-8. A new line (\\n) starts a new line of text."),
+            Prop("text", "string", false, "UTF-8. A new line (\\n) starts a new line of text. Not shown while the text shows an event variable (set in the editor): it is shown again if the variable is removed."),
+            Prop("prefix", "string", false, "Shown before the event variable's value, when the text shows one."),
+            Prop("suffix", "string", false, "Shown after the event variable's value, when the text shows one."),
             Prop("font", "string", false, "The font file's path relative to Assets, with extension (e.g. \"Fonts/title.ttf\"). \"\" = the engine's default font."),
             Prop("fontSize", "number", false, "Glyph size in pixels at the project's UI Reference Height; scales with the window height. 0 or less hides the text."),
             Prop("color", "Vector4", false, "RGBA, each 0..1. Alpha below 1 makes the text see-through."),
@@ -716,6 +718,16 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
         "text", sol::property(
             &ScriptUIText::GetText,
             &ScriptUIText::SetText
+        ),
+
+        "prefix", sol::property(
+            &ScriptUIText::GetPrefix,
+            &ScriptUIText::SetPrefix
+        ),
+
+        "suffix", sol::property(
+            &ScriptUIText::GetSuffix,
+            &ScriptUIText::SetSuffix
         ),
 
         "font", sol::property(

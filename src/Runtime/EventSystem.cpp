@@ -2283,6 +2283,8 @@ namespace {
                 ComponentUIText* c = NthComponent(level.ui_texts, owner, index);
                 if (!c) return false;
                 if (field == "text") { Access(c->text, read, write); return true; }
+                if (field == "prefix") { Access(c->prefix, read, write); return true; }
+                if (field == "suffix") { Access(c->suffix, read, write); return true; }
                 if (field == "fontSize") { Access(c->fontSize, read, write); return true; }
                 if (field == "color") { Access(c->color, read, write); return true; }
                 return false;
@@ -2331,16 +2333,6 @@ namespace {
         AccessEngineField(level, key, nullptr, &value);
     }
 
-    // A number as Set Field writes it into text: no decimals when whole.
-    std::string FormatFieldNumber(const float number) {
-        if (std::abs(number - std::round(number)) < 0.0001f) return std::to_string(static_cast<long long>(std::round(number)));
-
-        std::string text = std::to_string(number);
-        while (!text.empty() && text.back() == '0') text.pop_back();
-        if (!text.empty() && text.back() == '.') text.pop_back();
-        return text;
-    }
-
     // What a Set Field's value is, fixed or from its variable.
     FieldValue SetFieldInput(Level& level, const PayloadDispatchEntitySetField& set) {
         if (!set.fromVariable) return set.value;
@@ -2351,7 +2343,7 @@ namespace {
         FieldValue value;
         value.number = {number, number, number, number};
         value.flag = number != 0.0f;
-        value.text = FormatFieldNumber(number);
+        value.text = FormatEventNumber(number);
         return value;
     }
 
@@ -2962,7 +2954,14 @@ namespace EventSystem {
                 }
             },
             [&](const PayloadDispatchSetUIText& setText) {
-                if (ComponentUIText* text = level.ui_texts.Get(ownerID)) text->text = setText.text;
+                ComponentUIText* text = level.ui_texts.Get(ownerID);
+                if (!text) return;
+
+                switch (setText.part) {
+                    case PayloadDispatchSetUIText::TEXT: text->text = setText.text; break;
+                    case PayloadDispatchSetUIText::PREFIX: text->prefix = setText.text; break;
+                    case PayloadDispatchSetUIText::SUFFIX: text->suffix = setText.text; break;
+                }
             },
             [&](const PayloadDispatchChangeVariable& change) {
                 if (change.variable == 0) return;

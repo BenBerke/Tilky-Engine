@@ -567,7 +567,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
                 continue;
             }
 
-            RenderUIText(text, *transform);
+            RenderUIText(text, level.ShownUIText(text), *transform);
         }
     }
 }

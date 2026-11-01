@@ -197,6 +197,18 @@ struct Condition {
     transKey transEqual = "event.condition.equal";
 };
 
+// An event variable's value as text: no decimals when it is whole (42),
+// otherwise as short as it goes (2.5).
+[[nodiscard]] inline std::string FormatEventNumber(const float number) {
+    const float rounded = static_cast<float>(static_cast<long long>(number < 0.0f ? number - 0.5f : number + 0.5f));
+    if (number - rounded < 0.0001f && rounded - number < 0.0001f) return std::to_string(static_cast<long long>(rounded));
+
+    std::string text = std::to_string(number);
+    while (!text.empty() && text.back() == '0') text.pop_back();
+    if (!text.empty() && text.back() == '.') text.pop_back();
+    return text;
+}
+
 // Each payload type is the event/dispatch kind itself: `owners` is what it
 // can be attached to, `translationKey` its display name, `saveName` what level
 // files store it as.
@@ -1110,6 +1122,15 @@ struct PayloadDispatchSetUIText {
     transKey saveName = "dispatch.entity.set_ui_text"; // level file name, never change
     bool operator==(const PayloadDispatchSetUIText&) const = default;
 
+    // Which of the UI Text's texts: its plain text, or the prefix / suffix
+    // around a shown variable.
+    enum Part : uint8_t {
+        TEXT = 0,
+        PREFIX = 1,
+        SUFFIX = 2
+    };
+
+    Part part = TEXT;
     std::string text;
 };
 

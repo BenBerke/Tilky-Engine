@@ -1424,12 +1424,18 @@ namespace ImGuiDrawFunctions {
 
     // A dropdown of the current level's variables, then the project's global
     // ones, each in ID order.
-    static bool DrawEventVariableCombo(const char *label, EventVariableID &id, const float width) {
+    // `allowNone` starts the list with "(none)", which sets 0.
+    static bool DrawEventVariableCombo(const char *label, EventVariableID &id, const float width, const bool allowNone = false) {
         const Level &level = LevelManager::CurrentLevel();
         bool changed = false;
 
         FieldWidth(width);
         if (!ImGui::BeginCombo(label, EventVariableLabel(level, id).c_str())) return false;
+
+        if (allowNone && ImGui::Selectable(Get("events.variable.none").c_str(), id == 0)) {
+            id = 0;
+            changed = true;
+        }
 
         std::vector<std::pair<EventVariableID, std::string> > levelVariables(
             level.worldSettings.eventVariableNames.begin(), level.worldSettings.eventVariableNames.end());
@@ -1756,6 +1762,12 @@ namespace ImGuiDrawFunctions {
     }
 
     // ── Direct calls ───────────────────────────────────────────────────────
+
+    constexpr std::pair<PayloadDispatchSetUIText::Part, const char *> kUITextPartOptions[] = {
+        {PayloadDispatchSetUIText::TEXT, "events.ui_text_part.text"},
+        {PayloadDispatchSetUIText::PREFIX, "events.ui_text_part.prefix"},
+        {PayloadDispatchSetUIText::SUFFIX, "events.ui_text_part.suffix"}
+    };
 
     constexpr std::pair<PayloadDispatchMusic::Action, const char *> kMusicActionOptions[] = {
         {PayloadDispatchMusic::PLAY, "events.music.action.play"},
@@ -3149,6 +3161,10 @@ namespace ImGuiDrawFunctions {
                                 }
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
+                                Property(Get("events.ui_text_part").c_str());
+                                DrawEnumCombo("##Part", payload.part, kUITextPartOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.ui_text_part").c_str());
+
                                 Property(Get("events.text").c_str());
                                 ImGui::InputTextMultiline("##Text", &payload.text,
                                                           ImVec2(-FLT_MIN, ImGui::GetTextLineHeightWithSpacing() * 3.0f));
@@ -5513,6 +5529,10 @@ namespace ImGuiDrawFunctions {
 } // namespace ImGuiDrawFunctions
 
 namespace ImGuiDrawFunctions {
+    bool DrawEventVariablePicker(const char *label, EventVariableID &id, const float width) {
+        return DrawEventVariableCombo(label, id, width, true);
+    }
+
     int DrawHistoryList(const std::vector<std::string>& undoLabels,
                         const std::vector<std::string>& redoLabels,
                         const std::string& initialLabel) {

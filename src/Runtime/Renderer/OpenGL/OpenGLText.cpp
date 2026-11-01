@@ -565,9 +565,10 @@ void OpenGL::DrawTextLine(const std::string& font, const float pixelSize, const 
 // UI Reference Height, scaled by the window's actual height.
 void OpenGL::RenderUIText(
     const ComponentUIText& text,
+    const std::string& shown,
     const ComponentUITransform& transform
 ) {
-    if (text.text.empty() || text.color.w <= 0.0f) return;
+    if (shown.empty() || text.color.w <= 0.0f) return;
 
     const float referenceHeight = std::max(1.0f, ProjectManager::GetUIReferenceHeight());
     const float windowScale = static_cast<float>(screenHeight) / referenceHeight;
@@ -586,7 +587,7 @@ void OpenGL::RenderUIText(
         *textShader,
         face,
         pixelSize,
-        text.text,
+        shown,
         transform.resolvedPosition.x + padding,
         transform.resolvedPosition.y + padding + ascender,
         1.0f,

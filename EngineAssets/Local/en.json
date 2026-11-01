@@ -2181,5 +2181,20 @@
   "events.music.no_tracks": "The level has no music. Add tracks in World Settings > Music.",
   "events.music.volume": "Volume",
   "editor.tooltip.dispatches.music_action": "Controls the level's music (World Settings > Music). Play resumes a paused track, or starts the list from the first track.",
-  "editor.tooltip.dispatches.music_track": "One of this level's music tracks. It plays now (fading if the level has a fade), and the list carries on from there."
+  "editor.tooltip.dispatches.music_track": "One of this level's music tracks. It plays now (fading if the level has a fade), and the list carries on from there.",
+  "editor.ui.text.variable_section": "Show Variable",
+  "editor.ui.text.variable": "Variable",
+  "editor.ui.text.prefix": "Prefix",
+  "editor.ui.text.suffix": "Suffix",
+  "editor.ui.text.shows": "Shows:",
+  "editor.ui.text.tooltip.variable": "Shows an event variable (level or global) instead of the text above, kept up to date while playing: Prefix + value + Suffix. Whole numbers show without decimals (42), others as short as they go (2.5). (none): the text above.",
+  "editor.ui.text.tooltip.prefix": "Text before the value, e.g. \"Ammo: \". Lua: UIText.prefix.",
+  "editor.ui.text.tooltip.suffix": "Text after the value, e.g. \" / 50\". Lua: UIText.suffix.",
+  "events.ui_text_part": "Sets",
+  "events.ui_text_part.text": "Text",
+  "events.ui_text_part.prefix": "Prefix (before the variable)",
+  "events.ui_text_part.suffix": "Suffix (after the variable)",
+  "editor.tooltip.dispatches.ui_text_part": "Text: the UI Text's own text, shown when it shows no variable. Prefix / Suffix: the words around the variable it shows.",
+  "events.field.prefix": "Prefix",
+  "events.field.suffix": "Suffix"
 }

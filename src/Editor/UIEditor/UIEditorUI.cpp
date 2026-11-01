@@ -588,6 +588,40 @@ namespace {
 
         ImGuiDrawFunctions::EndSection();
 
+        // Instead of the text above: prefix + a variable's value + suffix.
+        ImGuiDrawFunctions::BeginSection(Get("editor.ui.text.variable_section").c_str());
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("variable");
+            ImGui::TextUnformatted(Get("editor.ui.text.variable").c_str());
+            ImGui::SameLine();
+            if (ImGuiDrawFunctions::DrawEventVariablePicker("##Variable", text.variable, -FLT_MIN)) changed = true;
+            HoverTooltip(Get("editor.ui.text.tooltip.variable").c_str());
+        }
+
+        ImGui::BeginDisabled(text.variable == 0);
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("prefix");
+            ImGui::TextUnformatted(Get("editor.ui.text.prefix").c_str());
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputText("##Prefix", &text.prefix)) changed = true;
+            HoverTooltip(Get("editor.ui.text.tooltip.prefix").c_str());
+        }
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("suffix");
+            ImGui::TextUnformatted(Get("editor.ui.text.suffix").c_str());
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputText("##Suffix", &text.suffix)) changed = true;
+            HoverTooltip(Get("editor.ui.text.tooltip.suffix").c_str());
+        }
+        ImGui::EndDisabled();
+
+        if (text.variable != 0)
+            ImGuiDrawFunctions::SmallMetaText("%s %s", Get("editor.ui.text.shows").c_str(),
+                                               LevelManager::CurrentLevel().ShownUIText(text).c_str());
+        ImGuiDrawFunctions::EndSection();
+
         ImGuiDrawFunctions::BeginSection("Font");
 
         // Drop a .ttf/.otf from the Asset Browser. Empty = the engine's default font.

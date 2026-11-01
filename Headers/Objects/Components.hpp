@@ -100,6 +100,13 @@ struct ComponentUIText {
     // RGBA, each 0..1. Alpha below 1 makes the text see-through.
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 
+    // An event variable (level or global; 0 = none): instead of `text` the
+    // label shows prefix + its value + suffix, kept up to date. See
+    // Level::ShownUIText.
+    EventVariableID variable = 0;
+    std::string prefix;
+    std::string suffix;
+
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };
 

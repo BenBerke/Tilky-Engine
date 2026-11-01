@@ -1577,6 +1577,25 @@ struct ScriptUIText {
         return text->text;
     }
 
+    // The words around a shown event variable (the editor's Show Variable).
+    [[nodiscard]] std::string GetPrefix() const {
+        const ComponentUIText* text = GetComponent();
+        return text == nullptr ? std::string{} : text->prefix;
+    }
+
+    void SetPrefix(const std::string& value) const {
+        if (ComponentUIText* text = GetComponent()) text->prefix = value;
+    }
+
+    [[nodiscard]] std::string GetSuffix() const {
+        const ComponentUIText* text = GetComponent();
+        return text == nullptr ? std::string{} : text->suffix;
+    }
+
+    void SetSuffix(const std::string& value) const {
+        if (ComponentUIText* text = GetComponent()) text->suffix = value;
+    }
+
     void SetText(const std::string& value) const {
         ComponentUIText* text = GetComponent();
         if (text == nullptr) return;

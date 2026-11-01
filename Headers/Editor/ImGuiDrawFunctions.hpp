@@ -175,6 +175,10 @@ namespace ImGuiDrawFunctions {
     // seconds; a new one replaces it. Call DrawNotification once per frame,
     // after the other windows.
     void ShowNotification(const char *msg, bool isError = false, float duration = 3.0f);
+
+    // A dropdown of the current level's event variables and the project's
+    // global ones, starting with "(none)" (0).
+    bool DrawEventVariablePicker(const char *label, EventVariableID &id, float width);
     void DrawNotification(float dt);
     // Same, but centred horizontally with its top edge at `topY` (screen
     // pixels) instead of at the bottom of the window.
