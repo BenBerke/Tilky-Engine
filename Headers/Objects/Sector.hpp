@@ -35,7 +35,7 @@ enum SlopeDirection {
 struct SectorSurface {
     float height = 0.0f;
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-    std::string texture;
+    SurfaceTexture texture;
 
     SlopeDirection slopeDirection = PLUS_X;
     float slopeStrength = 0.0f; // the slope's angle in degrees

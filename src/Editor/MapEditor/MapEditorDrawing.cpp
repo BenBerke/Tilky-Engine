@@ -823,8 +823,8 @@ namespace MapEditorInternal {
             if (IsTextureViewShowingTextures(textureViewMode) && !sector.floors.empty()) {
                 const SectorFloor& shownFloor = sector.floors.front();
                 const std::string &textureFileName = textureViewMode == TextureViewMode::Ceiling
-                    ? shownFloor.ceiling.texture
-                    : shownFloor.floor.texture;
+                    ? shownFloor.ceiling.texture.First()
+                    : shownFloor.floor.texture.First();
 
                 if (!textureFileName.empty()) floorTexture = GetEditorTexture(textureFileName);
             }

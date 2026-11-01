@@ -31,6 +31,7 @@
 #include "imgui_impl_opengl3.h"
 #endif
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/TextureTiling.hpp"
 
 namespace fs = std::filesystem;
 
@@ -38,16 +39,22 @@ namespace {
     std::vector<std::string> CollectReferencedTextureFileNames(const Level& level) {
         std::set<std::string> uniqueNames;
 
+        // Every frame, so an animation never waits on the atlas mid-Play.
+        const auto addSurface = [&uniqueNames](const SurfaceTexture& texture) {
+            for (const TextureFrame& frame : texture.frames)
+                if (!frame.texture.empty()) uniqueNames.insert(frame.texture);
+        };
+
         for (const Wall& wall : level.walls) {
-            if (!wall.top.texture.empty()) uniqueNames.insert(wall.top.texture);
-            if (!wall.bottom.texture.empty()) uniqueNames.insert(wall.bottom.texture);
-            if (!wall.middle.texture.empty()) uniqueNames.insert(wall.middle.texture);
+            addSurface(wall.top.texture);
+            addSurface(wall.bottom.texture);
+            addSurface(wall.middle.texture);
         }
 
         for (const Sector& sector : level.sectors) {
             for (const SectorFloor& floor : sector.floors) {
-                if (!floor.floor.texture.empty()) uniqueNames.insert(floor.floor.texture);
-                if (!floor.ceiling.texture.empty()) uniqueNames.insert(floor.ceiling.texture);
+                addSurface(floor.floor.texture);
+                addSurface(floor.ceiling.texture);
             }
         }
 
@@ -686,6 +693,21 @@ int OpenGL::GetTextureRegionIndex(const std::string& fileName) const {
     if (found == textureRegionIndexByName.end()) return -1;
 
     return found->second;
+}
+
+// Same tile size as GetTextureTileSize() in Rendering.vs.glsl.
+Vector2 OpenGL::SurfaceScroll(const SurfaceTexture& texture, const int regionIndex) const {
+    if (texture.scrollX == 0.0 && texture.scrollY == 0.0) return {0.0f, 0.0f};
+
+    Vector2 tile = {TextureTiling::FALLBACK_TILE_SIZE, TextureTiling::FALLBACK_TILE_SIZE};
+
+    if (regionIndex >= 0 && regionIndex < static_cast<int>(textureRegions.size())) {
+        const Vector4& data = textureRegions[static_cast<size_t>(regionIndex)].data;
+        const float texelsPerUnit = std::max(ProjectManager::GetTexelsPerUnit(), 0.01f);
+        if (data.z >= 0.5f && data.w >= 0.5f) tile = {data.z / texelsPerUnit, data.w / texelsPerUnit};
+    }
+
+    return texture.WrappedScroll(tile);
 }
 
 bool OpenGL::InitProjection() {

@@ -16,6 +16,7 @@
 
 #include "Types.hpp"
 #include "Event.hpp"
+#include "SurfaceTexture.hpp"
 #include "../Math/Vector/Vector2.hpp"
 #include "../Math/Vector/Vector2Math.hpp"
 #include "../Math/Vector/Vector3.hpp"
@@ -60,12 +61,12 @@ inline std::optional<WallTextureAnchor> WallTextureAnchorFromInt(const int value
     return std::nullopt;
 }
 
-// One texture and its placement. A wall has three: Top covers a solid wall
+// One texture (its animation frames) and its placement. A wall has three: Top covers a solid wall
 // and, on a portal, everything except the step under the neighbour's
 // floor, which uses Bottom. Middle fills the openings, where both sides are
 // open space, and only exists while it has a texture.
 struct WallSurface {
-    std::string texture;
+    SurfaceTexture texture;
     Vector2 textureOffset = {0.0f, 0.0f};
     Vector2 textureScale = {1.0f, 1.0f};
     bool flipTextureX = false;
@@ -150,7 +151,7 @@ struct Wall {
       frontSector(fs),
       backSector(bs)
     {
-        top.texture = std::move(topTexture);
+        top.texture.Set(std::move(topTexture));
         RefreshDerived();
     }
 
@@ -174,7 +175,7 @@ struct Wall {
     // Openings exist only on portals, and a middle without a texture draws
     // nothing at all.
     [[nodiscard]] bool HasMiddle() const {
-        return !middle.texture.empty();
+        return !middle.texture.Empty();
     }
 
     // Recomputes dir/normal/vector/lengthSq/length from the current

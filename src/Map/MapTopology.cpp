@@ -274,7 +274,7 @@ namespace {
 
         const Vector4 color = params.wallColor;
         Wall wall(a, b, color, INVALID_ID, INVALID_ID, params.wallTopTexture);
-        wall.bottom.texture = params.wallBottomTexture;
+        wall.bottom.texture.Set(params.wallBottomTexture);
         wall.id = nextWallID++;
 
         walls.push_back(wall);

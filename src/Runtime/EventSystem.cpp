@@ -2129,7 +2129,7 @@ namespace {
         Sector* step = level.GetSector(sectorID);
         if (!hasFloor(step)) return;
 
-        const std::string texture = step->floors[stairs.floorIndex].floor.texture;
+        const std::string texture = step->floors[stairs.floorIndex].floor.texture.First();
         std::vector<ID> visited = {sectorID};
         float height = step->floors[stairs.floorIndex].floor.height;
 
@@ -2142,7 +2142,7 @@ namespace {
             std::vector<ID> next;
             for (const Sector* neighbor : NeighborSectors(level, step->id)) {
                 if (std::ranges::find(visited, neighbor->id) != visited.end() || !hasFloor(neighbor)) continue;
-                if (!stairs.ignoreTexture && neighbor->floors[stairs.floorIndex].floor.texture != texture) continue;
+                if (!stairs.ignoreTexture && neighbor->floors[stairs.floorIndex].floor.texture.First() != texture) continue;
                 next.push_back(neighbor->id);
             }
 
@@ -3042,9 +3042,9 @@ namespace EventSystem {
                 if (!wall) return;
 
                 switch (setTexture.piece) {
-                    case WallPiece::TOP: wall->top.texture = setTexture.texture; break;
-                    case WallPiece::MIDDLE: wall->middle.texture = setTexture.texture; break;
-                    case WallPiece::BOTTOM: wall->bottom.texture = setTexture.texture; break;
+                    case WallPiece::TOP: wall->top.texture.Set(setTexture.texture); break;
+                    case WallPiece::MIDDLE: wall->middle.texture.Set(setTexture.texture); break;
+                    case WallPiece::BOTTOM: wall->bottom.texture.Set(setTexture.texture); break;
                 }
             },
             [&](const PayloadDispatchLineSetCollision& setCollision) {
@@ -3131,8 +3131,8 @@ namespace EventSystem {
 
                 EditSector(level, *sector, [&] {
                     SectorFloor& floor = sector->floors[setTexture.floorIndex];
-                    if (setTexture.surface != SectorSurfacePick::CEILING) floor.floor.texture = setTexture.texture;
-                    if (setTexture.surface != SectorSurfacePick::FLOOR) floor.ceiling.texture = setTexture.texture;
+                    if (setTexture.surface != SectorSurfacePick::CEILING) floor.floor.texture.Set(setTexture.texture);
+                    if (setTexture.surface != SectorSurfacePick::FLOOR) floor.ceiling.texture.Set(setTexture.texture);
                 });
             },
             [&](const PayloadDispatchChangeTag& change) {

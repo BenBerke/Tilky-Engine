@@ -2052,6 +2052,63 @@ inline void ScriptBehaviourRef::LuaSet(const std::string& key, sol::object value
 }
 
 // ---------------------------------------------------------
+// Surface texture frames (walls, floors, ceilings)
+// ---------------------------------------------------------
+namespace LuaSurfaceTextures {
+    // {{texture = "...", duration = 0.5}, ...}
+    inline sol::table GetFrames(const SurfaceTexture& texture, const sol::this_state state) {
+        sol::state_view lua(state);
+        sol::table frames = lua.create_table(static_cast<int>(texture.frames.size()), 0);
+
+        for (size_t i = 0; i < texture.frames.size(); ++i) {
+            sol::table frame = lua.create_table(0, 2);
+            frame["texture"] = texture.frames[i].texture;
+            frame["duration"] = texture.frames[i].duration;
+            frames[i + 1] = frame;
+        }
+
+        return frames;
+    }
+
+    // Each entry is {texture = "...", duration = seconds} (duration
+    // optional) or just the texture's path.
+    inline std::vector<TextureFrame> ReadFrames(const sol::table& table) {
+        std::vector<TextureFrame> frames;
+        const size_t count = table.size();
+
+        for (size_t i = 1; i <= count; ++i) {
+            const sol::object entry = table[i];
+
+            if (entry.is<std::string>()) {
+                frames.push_back({entry.as<std::string>(), SurfaceTexture::DEFAULT_FRAME_DURATION});
+                continue;
+            }
+
+            if (!entry.is<sol::table>())
+                throw sol::error("SetFrames expects a list of {texture = \"...\", duration = seconds} tables");
+
+            const sol::table frame = entry.as<sol::table>();
+            const sol::optional<std::string> texture = frame["texture"];
+            if (!texture) throw sol::error("SetFrames: frame " + std::to_string(i) + " has no texture");
+
+            frames.push_back({*texture, frame.get_or("duration", SurfaceTexture::DEFAULT_FRAME_DURATION)});
+        }
+
+        return frames;
+    }
+
+    inline void AddFrame(SurfaceTexture& texture, const std::string& frameTexture, const sol::optional<float> duration) {
+        texture.AddFrame(frameTexture, duration.value_or(SurfaceTexture::DEFAULT_FRAME_DURATION));
+    }
+
+    inline TextureAnimationMode ToMode(const int value) {
+        const std::optional<TextureAnimationMode> mode = TextureAnimationModeFromInt(value);
+        if (!mode) throw sol::error("Texture animation expects a TextureAnimation value, e.g. TextureAnimation.Loop");
+        return *mode;
+    }
+}
+
+// ---------------------------------------------------------
 // Wall
 // ---------------------------------------------------------
 struct ScriptWall {
@@ -2114,17 +2171,23 @@ struct ScriptWall {
         return wall->IsPortal();
     }
 
-    [[nodiscard]] std::string GetTopTexture() const { return GetSurface(WallSurfaceSlot::Top).texture; }
-    void SetTopTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Top).texture = value; }
+    // Get: the frame showing right now. Set: one still frame (the
+    // animation mode and scroll speed stay).
+    [[nodiscard]] std::string GetTopTexture() const { return GetSurface(WallSurfaceSlot::Top).texture.Current(); }
+    void SetTopTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Top).texture.Set(value); }
     void ClearTopTexture() const { SetTopTexture(""); }
 
-    [[nodiscard]] std::string GetBottomTexture() const { return GetSurface(WallSurfaceSlot::Bottom).texture; }
-    void SetBottomTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Bottom).texture = value; }
+    [[nodiscard]] std::string GetBottomTexture() const { return GetSurface(WallSurfaceSlot::Bottom).texture.Current(); }
+    void SetBottomTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Bottom).texture.Set(value); }
     void ClearBottomTexture() const { SetBottomTexture(""); }
 
-    [[nodiscard]] std::string GetMiddleTexture() const { return GetSurface(WallSurfaceSlot::Middle).texture; }
-    void SetMiddleTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Middle).texture = value; }
+    [[nodiscard]] std::string GetMiddleTexture() const { return GetSurface(WallSurfaceSlot::Middle).texture.Current(); }
+    void SetMiddleTexture(const std::string& value) const { GetSurface(WallSurfaceSlot::Middle).texture.Set(value); }
     void ClearMiddleTexture() const { SetMiddleTexture(""); }
+
+    // Frames, animation and scroll of one slot; the bindings expose them
+    // as Top/Bottom/Middle variants.
+    [[nodiscard]] SurfaceTexture& SlotTexture(const WallSurfaceSlot slot) const { return GetSurface(slot).texture; }
 
     [[nodiscard]] Vector2 GetTopTextureOffset() const { return GetSurface(WallSurfaceSlot::Top).textureOffset; }
     void SetTopTextureOffset(const Vector2& value) const { GetSurface(WallSurfaceSlot::Top).textureOffset = value; }
@@ -2361,16 +2424,18 @@ struct ScriptSectorFloor {
         WriteAndPropagate([&] { floor->ceiling.color = value; });
     }
 
+    // Get: the frame showing right now. Set: one still frame (the
+    // animation mode and scroll speed stay).
     [[nodiscard]] std::string GetFloorTexture() const {
         const SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        return floor->floor.texture;
+        return floor->floor.texture.Current();
     }
 
     void SetFloorTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        WriteAndPropagate([&] { floor->floor.texture = value; });
+        WriteAndPropagate([&] { floor->floor.texture.Set(value); });
     }
 
     void ClearFloorTexture() const {
@@ -2380,17 +2445,33 @@ struct ScriptSectorFloor {
     [[nodiscard]] std::string GetCeilingTexture() const {
         const SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        return floor->ceiling.texture;
+        return floor->ceiling.texture.Current();
     }
 
     void SetCeilingTexture(const std::string& value) const {
         SectorFloor* floor = GetSectorFloor();
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
-        WriteAndPropagate([&] { floor->ceiling.texture = value; });
+        WriteAndPropagate([&] { floor->ceiling.texture.Set(value); });
     }
 
     void ClearCeilingTexture() const {
         SetCeilingTexture("");
+    }
+
+    // Frames, animation and scroll of the floor or ceiling; the bindings
+    // expose them as Floor/Ceiling variants.
+    [[nodiscard]] const SurfaceTexture& ReadTexture(const bool ceiling) const {
+        const SectorFloor* floor = GetSectorFloor();
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
+        return ceiling ? floor->ceiling.texture : floor->floor.texture;
+    }
+
+    // Child sectors follow, same as every other SectorFloor write.
+    template<typename Write>
+    void WriteTexture(const bool ceiling, Write&& write) const {
+        SectorFloor* floor = GetSectorFloor();
+        if (floor == nullptr) throw sol::error("Invalid SectorFloor");
+        WriteAndPropagate([&] { write(ceiling ? floor->ceiling.texture : floor->floor.texture); });
     }
 };
 

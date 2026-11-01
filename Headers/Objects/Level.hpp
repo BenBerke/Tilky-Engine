@@ -351,6 +351,14 @@ struct Level {
     // Lua.
     void UpdateSectorMovement(float deltaTime);
 
+    // Advances every wall piece's, floor's and ceiling's texture animation
+    // and offset per second (SurfaceTexture::Advance) by `deltaTime`.
+    void UpdateSurfaceAnimations(float deltaTime);
+
+    // Puts every surface back on its first frame with no scroll, so each
+    // Play and level load starts its animations together.
+    void RestartSurfaceAnimations();
+
     // Every floor/ceiling move that ended since EventSystem last took them
     // (Sector Move Finished). Runtime only.
     std::vector<SectorMoveEnd> sectorMoveEnds;

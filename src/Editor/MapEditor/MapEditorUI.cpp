@@ -3875,11 +3875,11 @@ namespace {
 
             floorHeight = bottomFloor.floor.height;
             floorColor = bottomFloor.floor.color;
-            floorTexture = bottomFloor.floor.texture;
+            floorTexture = bottomFloor.floor.texture.First();
 
             ceilHeight = bottomFloor.ceiling.height;
             ceilColor = bottomFloor.ceiling.color;
-            ceilTexture = bottomFloor.ceiling.texture;
+            ceilTexture = bottomFloor.ceiling.texture.First();
         }
 
         lightValue = sector.light;
@@ -3889,8 +3889,8 @@ namespace {
         });
 
         if (firstWall != level.walls.end()) {
-            wallTopTexture = firstWall->top.texture;
-            wallBottomTexture = firstWall->bottom.texture;
+            wallTopTexture = firstWall->top.texture.First();
+            wallBottomTexture = firstWall->bottom.texture.First();
             wallColor = firstWall->color;
         }
 
@@ -5803,12 +5803,12 @@ namespace MapEditorInternal {
 
             floor.height = floorHeight;
             floor.color = floorColor;
-            floor.texture = floorTexture;
+            floor.texture.Set(floorTexture);
 
             ceiling.height = std::max(ceilHeight, floorHeight + MIN_ROOM_HEIGHT);
 
             ceiling.color = ceilColor;
-            ceiling.texture = ceilTexture;
+            ceiling.texture.Set(ceilTexture);
         }
 
         // ---- Floor selector -----------------------------------------------

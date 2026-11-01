@@ -1897,10 +1897,51 @@ namespace {
         }
     }
 
+    // A surface's frames, animation mode and offset per second, stored on
+    // the surface's own object.
+    void LoadSurfaceTexture(const json &surfaceJson, SurfaceTexture &texture) {
+        texture = {};
+
+        if (surfaceJson.contains("frames") && surfaceJson.at("frames").is_array()) {
+            for (const json &frameJson: surfaceJson.at("frames")) {
+                if (!frameJson.is_object()) continue;
+                texture.frames.push_back({
+                    frameJson.value("texture", std::string{}),
+                    frameJson.value("duration", SurfaceTexture::DEFAULT_FRAME_DURATION)
+                });
+            }
+        }
+
+        const std::string modeName = surfaceJson.value("animation", std::string{TEXTURE_ANIMATION_MODES[0].name});
+
+        if (const std::optional<TextureAnimationMode> mode = FindTextureAnimationModeByName(modeName)) texture.animation = *mode;
+        else spdlog::warn("Unknown texture animation '{}', using {}", modeName, TEXTURE_ANIMATION_MODES[0].name);
+
+        if (surfaceJson.contains("offsetPerSecond") &&
+            surfaceJson.at("offsetPerSecond").is_array() && surfaceJson.at("offsetPerSecond").size() >= 2) {
+            texture.offsetPerSecond = {
+                surfaceJson.at("offsetPerSecond").at(0).get<float>(),
+                surfaceJson.at("offsetPerSecond").at(1).get<float>()
+            };
+        }
+    }
+
+    void SaveSurfaceTexture(json &surfaceJson, const SurfaceTexture &texture) {
+        json frames = json::array();
+        for (const TextureFrame &frame: texture.frames)
+            frames.push_back({{"texture", frame.texture}, {"duration", frame.duration}});
+
+        const TextureAnimationModeInfo *mode = FindTextureAnimationMode(texture.animation);
+
+        surfaceJson["frames"] = std::move(frames);
+        surfaceJson["animation"] = mode != nullptr ? mode->name : TEXTURE_ANIMATION_MODES[0].name;
+        surfaceJson["offsetPerSecond"] = {texture.offsetPerSecond.x, texture.offsetPerSecond.y};
+    }
+
     void LoadWallSurface(const json &surfaceJson, WallSurface &surface) {
         if (!surfaceJson.is_object()) return;
 
-        surface.texture = surfaceJson.value("texture", std::string{});
+        LoadSurfaceTexture(surfaceJson, surface.texture);
 
         if (surfaceJson.contains("textureOffset") &&
             surfaceJson.at("textureOffset").is_array() && surfaceJson.at("textureOffset").size() >= 2) {
@@ -2015,14 +2056,16 @@ namespace {
     json SaveWallSurface(const WallSurface &surface) {
         const WallTextureAnchorInfo *anchor = FindWallTextureAnchor(surface.anchor);
 
-        return {
-            {"texture", surface.texture},
+        json surfaceJson = {
             {"textureOffset", {surface.textureOffset.x, surface.textureOffset.y}},
             {"textureScale", {surface.textureScale.x, surface.textureScale.y}},
             {"flipX", surface.flipTextureX},
             {"flipY", surface.flipTextureY},
             {"anchor", anchor != nullptr ? anchor->name : WALL_TEXTURE_ANCHORS[0].name}
         };
+
+        SaveSurfaceTexture(surfaceJson, surface.texture);
+        return surfaceJson;
     }
 
     void SaveWalls(json &levelData, const Level &level) {
@@ -2231,7 +2274,7 @@ namespace {
                 surfaceJson["color"][2].get<float>(),
                 surfaceJson["color"][3].get<float>(),
             };
-            surface.texture = surfaceJson.value("texture", std::string{});
+            LoadSurfaceTexture(surfaceJson, surface.texture);
 
             const int slopeDirection = surfaceJson.value(
                 "slopeDirection",
@@ -2492,13 +2535,12 @@ namespace {
         };
 
         const auto saveSurface = [](const SectorSurface &surface) {
-            return json{
+            json surfaceJson{
                 {"height", surface.height},
                 {
                     "color",
                     {surface.color.x, surface.color.y, surface.color.z, surface.color.w},
                 },
-                {"texture", surface.texture},
                 {
                     "slopeDirection",
                     static_cast<int>(surface.slopeDirection)
@@ -2515,6 +2557,9 @@ namespace {
                 {"flipTextureX", surface.flipTextureX},
                 {"flipTextureY", surface.flipTextureY}
             };
+
+            SaveSurfaceTexture(surfaceJson, surface.texture);
+            return surfaceJson;
         };
 
         json sectorArray = json::array();

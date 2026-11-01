@@ -125,15 +125,15 @@ namespace LevelManager {
         Level& level = CurrentLevel();
 
         for (Wall& wall : level.walls) {
-            if (wall.top.texture == oldReference) wall.top.texture = newReference;
-            if (wall.bottom.texture == oldReference) wall.bottom.texture = newReference;
-            if (wall.middle.texture == oldReference) wall.middle.texture = newReference;
+            wall.top.texture.ReplaceTexture(oldReference, newReference);
+            wall.bottom.texture.ReplaceTexture(oldReference, newReference);
+            wall.middle.texture.ReplaceTexture(oldReference, newReference);
         }
 
         for (Sector& sector : level.sectors)
             for (SectorFloor& floor : sector.floors) {
-                if (floor.floor.texture == oldReference) floor.floor.texture = newReference;
-                if (floor.ceiling.texture == oldReference) floor.ceiling.texture = newReference;
+                floor.floor.texture.ReplaceTexture(oldReference, newReference);
+                floor.ceiling.texture.ReplaceTexture(oldReference, newReference);
             }
 
         for (ComponentSprite& sprite : level.sprites.components)

@@ -608,7 +608,7 @@ namespace {
                 if (hoveredSurface.wallIndex < 0 ||
                     hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return {};
 
-                return level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture;
+                return level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture.First();
             }
 
             case RayHitType::SectorFloor:
@@ -624,8 +624,8 @@ namespace {
                 const SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
 
                 return hoveredSurface.type == RayHitType::SectorFloor
-                    ? sectorFloor.floor.texture
-                    : sectorFloor.ceiling.texture;
+                    ? sectorFloor.floor.texture.First()
+                    : sectorFloor.ceiling.texture.First();
             }
 
             default:
@@ -639,7 +639,7 @@ namespace {
                 if (hoveredSurface.wallIndex < 0 ||
                     hoveredSurface.wallIndex >= static_cast<int>(level.walls.size())) return false;
 
-                level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture = textureFileName;
+                level.walls[hoveredSurface.wallIndex].Surface(hoveredSurface.wallSlot).texture.Set(textureFileName);
                 return true;
             }
 
@@ -656,9 +656,9 @@ namespace {
                 SectorFloor& sectorFloor = sector.floors[hoveredSurface.floorIndex];
 
                 if (hoveredSurface.type == RayHitType::SectorFloor)
-                    sectorFloor.floor.texture = textureFileName;
+                    sectorFloor.floor.texture.Set(textureFileName);
                 else
-                    sectorFloor.ceiling.texture = textureFileName;
+                    sectorFloor.ceiling.texture.Set(textureFileName);
 
                 return true;
             }
@@ -794,7 +794,7 @@ namespace {
         bool hasTexture = false;
         bool hasPlacement = false; // copied with Alt
 
-        std::string texture;
+        SurfaceTexture texture; // every frame, the animation and the scroll
         Vector2 textureOffset = {0.0f, 0.0f};
         Vector2 textureScale = {1.0f, 1.0f};
         bool flipTextureX = false;
@@ -1127,7 +1127,7 @@ namespace {
     // own texture's folder.
     int CycleTextures(Level& level, const int direction, const bool hoverAllowed) {
         return ForEachTargetSurface(level, hoverAllowed, [&](auto& surface) {
-            if (std::string next = StepTextureInFolder(surface.texture, direction); !next.empty()) surface.texture = std::move(next);
+            if (std::string next = StepTextureInFolder(surface.texture.First(), direction); !next.empty()) surface.texture.Set(std::move(next));
         });
     }
 
@@ -1163,14 +1163,15 @@ namespace {
     // a textured wall, floor or ceiling.
     bool SelectAllWithHoveredTexture(Level& level) {
         std::string texture;
-        if (!ForHoveredSurface(level, [&](const auto& surface) { texture = surface.texture; }) || texture.empty()) return false;
+        // By first frame, like every other "same texture" pick.
+        if (!ForHoveredSurface(level, [&](const auto& surface) { texture = surface.texture.First(); }) || texture.empty()) return false;
 
         if (hoveredSurface.type == RayHitType::Wall) {
             SelectOnlyWall(hoveredSurface.wallIndex);
 
             for (int i = 0; i < static_cast<int>(level.walls.size()); ++i)
                 if (i != hoveredSurface.wallIndex &&
-                    (level.walls[i].top.texture == texture || level.walls[i].bottom.texture == texture || level.walls[i].middle.texture == texture))
+                    (level.walls[i].top.texture.First() == texture || level.walls[i].bottom.texture.First() == texture || level.walls[i].middle.texture.First() == texture))
                     selectedWalls.push_back(i);
 
             return true;
@@ -1186,7 +1187,7 @@ namespace {
                     const SectorSurface& surface = type == RayHitType::SectorFloor ? sector.floors[floorIndex].floor : sector.floors[floorIndex].ceiling;
                     const SelectedFlat flat = {sectorIndex, floorIndex, type};
 
-                    if (surface.texture == texture && std::ranges::find(selectedFlats, flat) == selectedFlats.end())
+                    if (surface.texture.First() == texture && std::ranges::find(selectedFlats, flat) == selectedFlats.end())
                         selectedFlats.push_back(flat);
                 }
             }
@@ -1347,7 +1348,7 @@ namespace {
 
         const std::vector<SelectedFlat> flats = byHeight
             ? ConnectedFlats(level, start, [&](const SectorSurface& other) { return std::abs(other.height - surface.height) <= HEIGHT_EPSILON; })
-            : ConnectedFlats(level, start, [&](const SectorSurface& other) { return !surface.texture.empty() && other.texture == surface.texture; });
+            : ConnectedFlats(level, start, [&](const SectorSurface& other) { return !surface.texture.First().empty() && other.texture.First() == surface.texture.First(); });
 
         SelectOnlyFlat(start);
         for (const SelectedFlat& flat : flats)
@@ -1364,7 +1365,7 @@ namespace {
     int FloodFillTexture(Level& level) {
         if (!surfaceClipboard.hasTexture) return 0;
 
-        const std::string& texture = surfaceClipboard.texture;
+        const SurfaceTexture& texture = surfaceClipboard.texture;
         int changed = 0;
 
         if (hoveredSurface.type == RayHitType::Wall) {
@@ -1392,10 +1393,11 @@ namespace {
 
         const SelectedFlat start = {hoveredSurface.sectorIndex, hoveredSurface.floorIndex, hoveredSurface.type};
         const SectorFloor& interval = sector.floors[start.floorIndex];
-        const std::string original = (start.surface == RayHitType::SectorFloor ? interval.floor : interval.ceiling).texture;
+        const SurfaceTexture original = (start.surface == RayHitType::SectorFloor ? interval.floor : interval.ceiling).texture;
         if (original == texture) return 0;
 
-        for (const SelectedFlat& flat : ConnectedFlats(level, start, [&](const SectorSurface& other) { return other.texture == original; })) {
+        // Connected by first frame, like the wall flood fill.
+        for (const SelectedFlat& flat : ConnectedFlats(level, start, [&](const SectorSurface& other) { return other.texture.First() == original.First(); })) {
             SectorFloor& target = level.sectors[flat.sectorIndex].floors[flat.floorIndex];
             (flat.surface == RayHitType::SectorFloor ? target.floor : target.ceiling).texture = texture;
             ++changed;
@@ -1864,7 +1866,7 @@ namespace {
             for (const int wallIndex : selectedWalls) {
                 if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
 
-                level.walls[wallIndex].Surface(hoveredSurface.wallSlot).texture = textureReference;
+                level.walls[wallIndex].Surface(hoveredSurface.wallSlot).texture.Set(textureReference);
                 ++count;
             }
             return count;
@@ -1877,7 +1879,7 @@ namespace {
             if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
 
             SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
-            (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture = textureReference;
+            (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture.Set(textureReference);
             ++count;
         }
         return count;
@@ -1921,7 +1923,7 @@ namespace {
             for (const int wallIndex : selectedWalls) {
                 if (wallIndex < 0 || wallIndex >= static_cast<int>(level.walls.size())) continue;
 
-                level.walls[wallIndex].top.texture = reference;
+                level.walls[wallIndex].top.texture.Set(reference);
                 ++count;
             }
 
@@ -1932,7 +1934,7 @@ namespace {
                 if (flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(sector.floors.size())) continue;
 
                 SectorFloor& sectorFloor = sector.floors[flat.floorIndex];
-                (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture = reference;
+                (flat.surface == RayHitType::SectorFloor ? sectorFloor.floor : sectorFloor.ceiling).texture.Set(reference);
                 ++count;
             }
 

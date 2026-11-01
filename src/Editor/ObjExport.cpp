@@ -51,7 +51,7 @@ namespace ObjExport {
         // The floor or ceiling's UV at map point `point`, as the shader works
         // it out: scale, flip, then offset, in repeats of the texture.
         Vector2 FlatUV(const SectorSurface& surface, const Vector2& point) {
-            const Vector2 tile = TextureTiling::GetTileSize(surface.texture);
+            const Vector2 tile = TextureTiling::GetTileSize(surface.texture.First());
 
             Vector2 uv = {point.x / tile.x * surface.textureScale.x, point.y / tile.y * surface.textureScale.y};
             if (surface.flipTextureX) uv.x = -uv.x;
@@ -72,7 +72,7 @@ namespace ObjExport {
 
                     for (const Triangle& triangle : sector.triangles) {
                         const Face face = {vertex(triangle.a), vertex(triangle.b), vertex(triangle.c)};
-                        faces[surface.texture].push_back(Facing(face, {0.0f, ceiling ? -1.0f : 1.0f, 0.0f}));
+                        faces[surface.texture.First()].push_back(Facing(face, {0.0f, ceiling ? -1.0f : 1.0f, 0.0f}));
                     }
                 }
             }
@@ -81,7 +81,7 @@ namespace ObjExport {
         // The wall's UV at distance `along` from its start and world height
         // `height`, as the shader works it out.
         Vector2 WallUV(const WallSurface& surface, const WallPieces::WallPiece& piece, const float along, const float height) {
-            const Vector2 tile = TextureTiling::GetTileSize(surface.texture);
+            const Vector2 tile = TextureTiling::GetTileSize(surface.texture.First());
 
             Vector2 uv = {along / tile.x * surface.textureScale.x, (piece.anchorHeight - height) / tile.y * surface.textureScale.y};
             if (surface.flipTextureX) uv.x = -uv.x;
@@ -106,7 +106,7 @@ namespace ObjExport {
 
             for (const WallPieces::WallPiece& piece : pieces) {
                 const WallSurface& surface = wall.Surface(piece.slot);
-                if (piece.slot == WallSurfaceSlot::Middle && surface.texture.empty()) continue;
+                if (piece.slot == WallSurfaceSlot::Middle && surface.texture.Empty()) continue;
 
                 const Vector2 start = piece.Start(wall);
                 const Vector2 end = piece.End(wall);
@@ -121,8 +121,8 @@ namespace ObjExport {
                 const bool facesLeft = piece.facingSector != nullptr && leftSector >= 0 && &level.sectors[leftSector] == piece.facingSector;
                 const Vector3 wanted = facesLeft ? Vector3{normal.x, 0.0f, normal.y} : Vector3{-normal.x, 0.0f, -normal.y};
 
-                faces[surface.texture].push_back(Facing({bottomStart, topStart, bottomEnd}, wanted));
-                faces[surface.texture].push_back(Facing({bottomEnd, topStart, topEnd}, wanted));
+                faces[surface.texture.First()].push_back(Facing({bottomStart, topStart, bottomEnd}, wanted));
+                faces[surface.texture.First()].push_back(Facing({bottomEnd, topStart, topEnd}, wanted));
             }
         }
     }

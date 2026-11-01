@@ -558,6 +558,36 @@ namespace {
     }
 }
 
+void Level::UpdateSurfaceAnimations(const float deltaTime) {
+    for (Wall& wall : walls)
+        for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) wall.Surface(slot).texture.Advance(deltaTime);
+
+    for (Sector& sector : sectors) {
+        for (SectorFloor& floor : sector.floors) {
+            floor.floor.texture.Advance(deltaTime);
+            floor.ceiling.texture.Advance(deltaTime);
+        }
+    }
+}
+
+void Level::RestartSurfaceAnimations() {
+    const auto restart = [](SurfaceTexture& texture) {
+        texture.frameTime = 0.0;
+        texture.scrollX = 0.0;
+        texture.scrollY = 0.0;
+    };
+
+    for (Wall& wall : walls)
+        for (const WallSurfaceSlot slot : WALL_SURFACE_SLOTS) restart(wall.Surface(slot).texture);
+
+    for (Sector& sector : sectors) {
+        for (SectorFloor& floor : sector.floors) {
+            restart(floor.floor.texture);
+            restart(floor.ceiling.texture);
+        }
+    }
+}
+
 void Level::UpdateSectorMovement(const float deltaTime) {
     // Holds each floor's height before this frame until the deltas are
     // worked out below. Every sector, since a parent's move also moves its

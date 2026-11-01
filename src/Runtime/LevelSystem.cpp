@@ -304,6 +304,12 @@ namespace LevelSystem {
         }
 
         {
+            // Scaled, so the frames and scrolls hold while timeScale is 0.
+            ZoneScopedN("Surface Animations");
+            level.UpdateSurfaceAnimations(GameTime::deltaTime);
+        }
+
+        {
             // After scripts, so a Play() from this frame's Update shows this frame.
             ZoneScopedN("Flipbooks");
             FlipbookSystem::Update(level, GameTime::deltaTime,

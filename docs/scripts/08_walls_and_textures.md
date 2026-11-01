@@ -16,8 +16,11 @@ Useful `Wall` members:
 | Member | Type | Notes |
 |--------|------|-------|
 | `wall.color` | `Vector4` | Tint, `0..1` per channel (r, g, b, a) |
-| `wall.topTextureOffset`, `wall.bottomTextureOffset`, `wall.middleTextureOffset` | `Vector2` | Scrolls a texture. Change it over time for moving surfaces |
-| `wall.topTexture`, `wall.bottomTexture`, `wall.middleTexture` | `string` | Swap a texture. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` / `wall:ClearMiddleTexture()` remove it |
+| `wall.topTextureOffset`, `wall.bottomTextureOffset`, `wall.middleTextureOffset` | `Vector2` | Shifts a texture |
+| `wall.topScrollSpeed`, `wall.bottomScrollSpeed`, `wall.middleScrollSpeed` | `Vector2` | Offset Per Second: the texture scrolls by itself, no `Update` needed |
+| `wall.topTexture`, `wall.bottomTexture`, `wall.middleTexture` | `string` | Swap a texture (replaces every frame with this one). Reading gives the frame showing now. `wall:ClearTopTexture()` / `wall:ClearBottomTexture()` / `wall:ClearMiddleTexture()` remove it |
+| `wall:SetTopFrames(frames)`, `wall:AddTopFrame(texture, seconds)`, `wall:GetTopFrames()` | | Animated textures; also `Bottom` and `Middle` versions |
+| `wall.topAnimation`, `wall.bottomAnimation`, `wall.middleAnimation` | `TextureAnimation` | `Loop`, `PingPong` or `Once` |
 | `wall.topAnchor`, `wall.bottomAnchor`, `wall.middleAnchor` | `WallAnchor` | Where a texture is pinned (`Auto`, `TopEdge`, `BottomEdge`, `World`) |
 | `wall.isPortal` | boolean | `true` if a sector is on both sides. Bottom and Middle only show on portals |
 | `wall.middleHasCollision`, `wall.middleIgnoredByRaycast` | boolean | Whether the middle (fence, bars) blocks movement, and whether raycasts pass through it |
@@ -32,7 +35,11 @@ settings, put it on the walls, and filter with `wall:HasTag(...)`.
 
 ## Scrolling texture
 
-**Attach to:** the sector whose walls should scroll: a waterfall, a conveyor belt, lava.
+A texture that always scrolls (a waterfall, a conveyor belt, lava) needs no script at all: set
+**Offset Per Second** under the texture's frames in the wall, floor or ceiling inspector. A script
+only helps when the scroll should change during the game.
+
+**Attach to:** the sector whose walls should scroll.
 
 ```lua
 -- Scripts/Walls/ScrollingWall.lua (sector script)
@@ -40,33 +47,64 @@ public number scrollX = 0.0
 public number scrollY = 0.25
 public string onlyTag = ""
 
-local walls = {}
-
 function Start()
     for i = 1, sector.wallCount do
         local wall = sector:GetWall(i)
 
         if wall.isValid and (onlyTag == "" or wall:HasTag(onlyTag)) then
-            walls[#walls + 1] = wall
+            wall.topScrollSpeed = Vector2(scrollX, scrollY)
         end
-    end
-end
-
-function Update()
-    local dt = GameTime.deltaTime
-
-    for _, wall in ipairs(walls) do
-        local offset = wall.topTextureOffset
-        wall.topTextureOffset = Vector2(offset.x + scrollX * dt, offset.y + scrollY * dt)
     end
 end
 ```
 
 **Notes**
 
-- Walls are looked up **once** in `Start` and kept in a table, so `Update` doesn't have to search
-  the sector every frame.
+- The engine moves the texture every frame from then on, so there is no `Update`. Set the speed
+  back to `Vector2(0, 0)` to stop it.
 - Set `onlyTag` to something like `Scroll` to animate only some walls of the sector.
+
+---
+
+## Animated texture
+
+Flickering screens, lava, blinking lights: give a wall, floor or ceiling more than one **frame** in
+its inspector (**Add Frame**), each with a duration in seconds, and pick an **Animation**: **Loop**
+(`1 2 3 1 2 3`), **Ping-Pong** (`1 2 3 2 1`) or **Once** (`1 2 3`, then stay on 3). A script can
+build the same thing:
+
+**Attach to:** the sector containing walls tagged `Screen`.
+
+```lua
+-- Scripts/Walls/Screens.lua (sector script)
+public Texture frame1 = nil
+public Texture frame2 = nil
+public Texture frame3 = nil
+public number seconds = 0.2
+
+function Start()
+    for i = 1, sector.wallCount do
+        local wall = sector:GetWall(i)
+
+        if wall.isValid and wall:HasTag("Screen") then
+            wall:SetTopFrames({
+                {texture = frame1, duration = seconds},
+                {texture = frame2, duration = seconds},
+                {texture = frame3, duration = seconds},
+            })
+            wall.topAnimation = TextureAnimation.Loop
+        end
+    end
+end
+```
+
+**Notes**
+
+- Animations run on game time: `GameTime.timeScale = 0` pauses them, and every surface starts on
+  frame 1 when the level starts, so walls with the same frames blink together.
+- `wall:RestartTopAnimation()` jumps back to frame 1, which is how to replay a **Once** animation.
+- Floors and ceilings have the same members with `Floor` / `Ceiling` in the name:
+  `sector:GetFloor(1):SetFloorFrames(...)`, `floorAnimation`, `ceilingScrollSpeed`.
 
 ---
 

@@ -66,6 +66,7 @@ namespace {
         const Wall& wall,
         const WallPieces::WallPiece& piece,
         const float textureRegionIndex,
+        const Vector2 scroll,
         const float wallContrast,
         const bool fullbright,
         const uint8_t metaData
@@ -105,8 +106,8 @@ namespace {
 
         // data2.xy = texture offset; data2.zw = independent X/Y scale.
         gpuWall.data2 = {
-            surface.textureOffset.x,
-            surface.textureOffset.y,
+            surface.textureOffset.x + scroll.x,
+            surface.textureOffset.y + scroll.y,
             surface.textureScale.x,
             surface.textureScale.y
         };
@@ -142,21 +143,25 @@ void OpenGL::BuildGpuWallsFromMap() {
         const Wall& wall = level.walls[wallIndex];
         if (IsWallCulled(level, wall)) continue;
 
-        const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture));
-        const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture));
-        const float middleTextureIndex = wall.HasMiddle() ? static_cast<float>(GetTextureRegionIndex(wall.middle.texture)) : 0.0f;
+        // The frame showing right now.
+        const float topTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.top.texture.Current()));
+        const float bottomTextureIndex = static_cast<float>(GetTextureRegionIndex(wall.bottom.texture.Current()));
+        const float middleTextureIndex = wall.HasMiddle() ? static_cast<float>(GetTextureRegionIndex(wall.middle.texture.Current())) : 0.0f;
 
         pieces.clear();
         WallPieces::Build(level, wall, boundsCache, pieces);
 
         for (const WallPieces::WallPiece& piece : pieces) {
+            const float textureIndex = piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex
+                : piece.slot == WallSurfaceSlot::Middle ? middleTextureIndex
+                : topTextureIndex;
+
             PushGpuWallPiece(
                 gpuWalls,
                 wall,
                 piece,
-                piece.slot == WallSurfaceSlot::Bottom ? bottomTextureIndex
-                    : piece.slot == WallSurfaceSlot::Middle ? middleTextureIndex
-                    : topTextureIndex,
+                textureIndex,
+                SurfaceScroll(wall.Surface(piece.slot).texture, static_cast<int>(textureIndex)),
                 wallContrast,
                 fullbright,
                 WallPieceMetaData(wallIndex, piece.slot)

@@ -67,18 +67,24 @@ void OpenGL::BuildGpuSectors() {
                 ceilingColor.w
             };
 
+            // The frame showing right now, and the scroll so far.
+            const int floorTextureIndex = GetTextureRegionIndex(floor.floor.texture.Current());
+            const int ceilingTextureIndex = GetTextureRegionIndex(floor.ceiling.texture.Current());
+            const Vector2 floorScroll = SurfaceScroll(floor.floor.texture, floorTextureIndex);
+            const Vector2 ceilingScroll = SurfaceScroll(floor.ceiling.texture, ceilingTextureIndex);
+
             gpuFloor.textureData = {
-                static_cast<float>(GetTextureRegionIndex(floor.floor.texture)),
-                static_cast<float>(GetTextureRegionIndex(floor.ceiling.texture)),
+                static_cast<float>(floorTextureIndex),
+                static_cast<float>(ceilingTextureIndex),
                 static_cast<float>(FlatMetaData(static_cast<int>(sectorIndex), floorIndex, MarkedSurfaceKind::Floor)),
                 static_cast<float>(FlatMetaData(static_cast<int>(sectorIndex), floorIndex, MarkedSurfaceKind::Ceiling))
             };
 
             gpuFloor.textureOffsets = {
-                floor.floor.textureOffset.x,
-                floor.floor.textureOffset.y,
-                floor.ceiling.textureOffset.x,
-                floor.ceiling.textureOffset.y
+                floor.floor.textureOffset.x + floorScroll.x,
+                floor.floor.textureOffset.y + floorScroll.y,
+                floor.ceiling.textureOffset.x + ceilingScroll.x,
+                floor.ceiling.textureOffset.y + ceilingScroll.y
             };
 
             gpuFloor.textureFlip = {

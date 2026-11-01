@@ -504,8 +504,8 @@ namespace MapEditorInternal {
             params.wallBottomTexture = wallBottomTexture;
             params.floors = {
                 {
-                    {floorHeight, floorColor, floorTexture},
-                    {ceilHeight, ceilColor, ceilTexture}
+                    {floorHeight, floorColor, SurfaceTexture::Single(floorTexture)},
+                    {ceilHeight, ceilColor, SurfaceTexture::Single(ceilTexture)}
                 }
             };
             params.lightValue = lightValue;
@@ -2803,7 +2803,7 @@ namespace MapEditorInternal {
         // (GetTextureTileSize() in Rendering.vs.glsl). A wall's U is
         // s * scale / tile + offset / tile.
         Vector2 SurfaceTile(const WallSurface& surface) {
-            return TextureTiling::GetTileSize(surface.texture);
+            return TextureTiling::GetTileSize(surface.texture.First());
         }
 
         // Neither half of a split may be shorter than this.
@@ -3304,8 +3304,8 @@ namespace MapEditorInternal {
             Wall* wall = FindWall(level, wallID);
             if (wall == nullptr) continue;
 
-            if (values.applyTopTexture) wall->top.texture = values.topTexture;
-            if (values.applyBottomTexture) wall->bottom.texture = values.bottomTexture;
+            if (values.applyTopTexture) wall->top.texture.Set(values.topTexture);
+            if (values.applyBottomTexture) wall->bottom.texture.Set(values.bottomTexture);
             if (values.applyColor) wall->color = values.color;
             ++changed;
         }
@@ -3404,7 +3404,8 @@ namespace MapEditorInternal {
         const auto startIt = level.wallIDToIndex.find(startWallID);
         if (startIt == level.wallIDToIndex.end()) return {};
 
-        const std::string& texture = level.walls[startIt->second].Surface(slot).texture;
+        // By first frame, like every other "same texture" pick.
+        const std::string& texture = level.walls[startIt->second].Surface(slot).texture.First();
         if (texture.empty()) return {};
 
         std::vector<ID> found = {startWallID};
@@ -3416,7 +3417,7 @@ namespace MapEditorInternal {
 
             for (int i = 0; i < static_cast<int>(level.walls.size()); ++i) {
                 const Wall& other = level.walls[i];
-                if (other.Surface(slot).texture != texture) continue;
+                if (other.Surface(slot).texture.First() != texture) continue;
                 if (std::ranges::find(found, other.id) != found.end()) continue;
 
                 const bool touches = NearlySame(other.start, wall.start) || NearlySame(other.start, wall.end) ||

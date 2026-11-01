@@ -5,13 +5,23 @@
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Objects/LuaWrappers.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaSurfaceTextureBindings.hpp"
 #include "sol/sol.hpp"
 
 namespace {
     using namespace LuaBindingMetadata;
 
+    // One wall slot's frames, for LuaSurfaceTextureBindings::Bind.
+    template<WallSurfaceSlot SLOT>
+    struct WallSlotAccess {
+        static const SurfaceTexture& Read(const ScriptWall& wall) { return wall.SlotTexture(SLOT); }
+
+        template<typename Fn>
+        static void Write(const ScriptWall& wall, Fn&& write) { write(wall.SlotTexture(SLOT)); }
+    };
+
     void RegisterWallMetadata() {
-        RegisterType(Type("Wall", "A safe reference to one map wall.", {
+        std::vector<PropertyDoc> properties = {
             Prop("id", "integer", true),
             Prop("isValid", "boolean", true),
             Prop("start", "Vector2", true),
@@ -38,13 +48,27 @@ namespace {
             Prop("middleHasCollision", "boolean"),
             Prop("middleIgnoredByRaycast", "boolean"),
             Prop("tagCount", "integer", true),
-        }, {
+        };
+
+        std::vector<MethodDoc> methods = {
             Method("ClearTopTexture"),
             Method("ClearBottomTexture"),
             Method("ClearMiddleTexture"),
             Method("HasTag", {Param("tag", "string")}, "boolean", "True if this wall has the given tag."),
             Method("GetTag", {Param("index", "integer")}, "string", "1-based. Tags are assigned in the editor - there is no SetTag."),
-        }));
+        };
+
+        LuaSurfaceTextureBindings::AppendDocs(properties, methods, "top", "Top", "Top texture");
+        LuaSurfaceTextureBindings::AppendDocs(properties, methods, "bottom", "Bottom", "Bottom texture");
+        LuaSurfaceTextureBindings::AppendDocs(properties, methods, "middle", "Middle", "Middle texture");
+
+        RegisterType(Type("Wall", "A safe reference to one map wall.", std::move(properties), std::move(methods)));
+
+        std::vector<EnumValueDoc> animationModes;
+        for (const TextureAnimationModeInfo& mode : TEXTURE_ANIMATION_MODES) animationModes.push_back({mode.name, static_cast<int>(mode.mode), {}});
+        RegisterType(Enum("TextureAnimation",
+                          "How a wall, floor or ceiling plays its texture frames. Loop: 1 2 3 1 2 3. PingPong: 1 2 3 2 1. Once: 1 2 3, then stays on the last frame.",
+                          std::move(animationModes)));
 
         std::vector<EnumValueDoc> anchors;
         for (const WallTextureAnchorInfo& anchor : WALL_TEXTURE_ANCHORS) anchors.push_back({anchor.name, static_cast<int>(anchor.anchor), {}});
@@ -60,7 +84,11 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
     sol::table wallAnchor = lua.create_named_table("WallAnchor");
     for (const WallTextureAnchorInfo& anchor : WALL_TEXTURE_ANCHORS) wallAnchor[anchor.name] = static_cast<int>(anchor.anchor);
 
-    lua.new_usertype<ScriptWall>(
+    // Shared with SectorFloor's floor/ceiling animations.
+    sol::table textureAnimation = lua.create_named_table("TextureAnimation");
+    for (const TextureAnimationModeInfo& mode : TEXTURE_ANIMATION_MODES) textureAnimation[mode.name] = static_cast<int>(mode.mode);
+
+    sol::usertype<ScriptWall> wallType = lua.new_usertype<ScriptWall>(
         "Wall",
 
         "id", sol::readonly_property(
@@ -199,4 +227,8 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
         "GetTag",
         &ScriptWall::GetTag
     );
+
+    LuaSurfaceTextureBindings::Bind<ScriptWall, WallSlotAccess<WallSurfaceSlot::Top>>(wallType, "top", "Top");
+    LuaSurfaceTextureBindings::Bind<ScriptWall, WallSlotAccess<WallSurfaceSlot::Bottom>>(wallType, "bottom", "Bottom");
+    LuaSurfaceTextureBindings::Bind<ScriptWall, WallSlotAccess<WallSurfaceSlot::Middle>>(wallType, "middle", "Middle");
 }

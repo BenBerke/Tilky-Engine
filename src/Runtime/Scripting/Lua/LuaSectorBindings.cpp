@@ -5,13 +5,23 @@
 #include <Headers/Objects/LuaWrappers.hpp>
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/Runtime/Scripting/Lua/LuaSurfaceTextureBindings.hpp"
 #include "sol/sol.hpp"
 
 namespace {
     using namespace LuaBindingMetadata;
 
+    // The floor or ceiling's frames, for LuaSurfaceTextureBindings::Bind.
+    template<bool CEILING>
+    struct FlatAccess {
+        static const SurfaceTexture& Read(const ScriptSectorFloor& floor) { return floor.ReadTexture(CEILING); }
+
+        template<typename Fn>
+        static void Write(const ScriptSectorFloor& floor, Fn&& write) { floor.WriteTexture(CEILING, std::forward<Fn>(write)); }
+    };
+
     void RegisterSectorMetadata() {
-        RegisterType(Type("SectorFloor", "One floor/ceiling height interval within a Sector.", {
+        std::vector<PropertyDoc> floorProperties = {
             Prop("index", "integer", true, "1-based."),
             Prop("isValid", "boolean", true),
             Prop("floorHeight", "number"),
@@ -20,10 +30,18 @@ namespace {
             Prop("ceilingColor", "Vector4"),
             Prop("floorTexture", "string"),
             Prop("ceilingTexture", "string"),
-        }, {
+        };
+
+        std::vector<MethodDoc> floorMethods = {
             Method("ClearFloorTexture"),
             Method("ClearCeilingTexture"),
-        }));
+        };
+
+        LuaSurfaceTextureBindings::AppendDocs(floorProperties, floorMethods, "floor", "Floor", "floor");
+        LuaSurfaceTextureBindings::AppendDocs(floorProperties, floorMethods, "ceiling", "Ceiling", "ceiling");
+
+        RegisterType(Type("SectorFloor", "One floor/ceiling height interval within a Sector.",
+                          std::move(floorProperties), std::move(floorMethods)));
 
         RegisterType(Type("Sector", "A safe reference to one map sector.", {
             Prop("id", "integer", true),
@@ -129,7 +147,7 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "Retract", static_cast<int>(SECTOR_RETRACT),
         "DontMove", static_cast<int>(SECTOR_DONT_MOVE));
 
-    lua.new_usertype<ScriptSectorFloor>(
+    sol::usertype<ScriptSectorFloor> floorType = lua.new_usertype<ScriptSectorFloor>(
         "SectorFloor",
 
         "index", sol::readonly_property(
@@ -176,6 +194,9 @@ void LuaScriptSystem::RegisterSectorBindings(sol::state& lua) {
         "ClearCeilingTexture",
         &ScriptSectorFloor::ClearCeilingTexture
     );
+
+    LuaSurfaceTextureBindings::Bind<ScriptSectorFloor, FlatAccess<false>>(floorType, "floor", "Floor");
+    LuaSurfaceTextureBindings::Bind<ScriptSectorFloor, FlatAccess<true>>(floorType, "ceiling", "Ceiling");
 
     lua.new_usertype<ScriptSector>(
         "Sector",

@@ -26,8 +26,8 @@ A one-sided wall has only one of them set; the other is invalid (`4294967295`).
 
 ## Top, bottom and middle textures
 
-A wall has three textures, **Top**, **Bottom** and **Middle**, each with its own offset, scale, flip
-and anchor.
+A wall has three textures, **Top**, **Bottom** and **Middle**, each with its own frames, animation,
+offset per second, offset, scale, flip and anchor (see [Animated textures](#animated-textures)).
 
 - A **solid** wall (a sector on one side only) shows only Top. The inspector calls it **Texture**.
 - A **portal** shows Bottom on the step under the neighbouring room's floor, and Top on everything
@@ -59,6 +59,37 @@ to the moving edge moves with it; otherwise the edge slides over a texture that 
 
 The offset is added on top of the anchor. Textures read upright from both sides of a wall.
 
+## Animated textures
+
+Each texture of a wall (and each [floor and ceiling](Sector.md#animated-textures)) is a list of
+**frames** instead of a single image. One frame is a still texture; add more and the surface flips
+through them on its own.
+
+| Field | Lua | Notes |
+|---|---|---|
+| **Frame 1**, **Frame 2**, ... | `GetTopFrames()`, `SetTopFrames(frames)`, `AddTopFrame(texture, duration)` | A texture plus how many **seconds** it shows. **^** moves a frame one place earlier, **Remove** deletes it. A surface with no frames is untextured. |
+| **Add Frame** | | Adds a frame at the end, starting as a copy of the last one. |
+| **Animation** | `topAnimation` | How the frames play. Greyed out with fewer than two frames. |
+| **Offset Per Second** | `topScrollSpeed` | Map units (X, Y) the texture moves every second, on top of its UV Offset. Works with one frame too: conveyor belts, flowing water. |
+
+| Animation | Lua | Plays |
+|---|---|---|
+| **Loop** | `TextureAnimation.Loop` | `1 2 3 1 2 3 ...` |
+| **Ping-Pong** | `TextureAnimation.PingPong` | `1 2 3 2 1 2 3 ...` The end frames don't show twice. |
+| **Once** | `TextureAnimation.Once` | `1 2 3`, then stays on the last frame. |
+
+- Animations and scrolls play in **Play** and in the **3D editor view**. The 2D map view always
+  shows the first frame, still.
+- They run on scaled game time, so `GameTime.timeScale = 0` holds them. Every surface starts on
+  frame 1 when Play starts or a level loads, so surfaces with the same frames stay in step.
+- A surface starts again from frame 1 when a script replaces its frames (`SetTopFrames`, setting
+  `topTexture`), when a **Set Texture** dispatch hits it, or on `RestartTopAnimation()`. The scroll
+  carries on.
+- Setting a single texture (from a script, a dispatch, a texture drop, or the texture tools) replaces
+  every frame with that one texture. The animation mode and Offset Per Second stay.
+- Copy and paste (Ctrl+C / Ctrl+V) carries all frames, the animation and the offset per second.
+  "Same texture" tools (select all with this texture, flood fill, stairs) compare the first frame.
+
 ## Collision
 
 Physics tests entity colliders against the solid parts of each wall. An opening is passable as
@@ -72,8 +103,9 @@ instead of being blocked. See [Collider](Collider.md#step-size).
 |---|---|---|
 | **Name** | | Editor only. Scripts can't read it. |
 | **Front Sector** / **Back Sector** | `frontSector` / `backSector` | Set by the map topology. Read-only. |
-| **Texture** (solid) / **Top**, **Bottom** (portal) | `topTexture`, `bottomTexture` | Texture drawn on the solid parts. Empty means colour only. |
-| **Middle** (portal) | `middleTexture` | Texture in the openings. Empty means nothing is there. |
+| **Texture** (solid) / **Top**, **Bottom** (portal) | `topTexture`, `bottomTexture` | The frames drawn on the solid parts. No frames means colour only. See [Animated textures](#animated-textures). |
+| **Middle** (portal) | `middleTexture` | The frames in the openings. No frames means nothing is there. |
+| **Animation** / **Offset Per Second** | `topAnimation`, `topScrollSpeed`, ... | See [Animated textures](#animated-textures). |
 | **Wall Color** | `color` | Tint, `Vector4`, `0..1` per channel. |
 | **UV Offset** | `topTextureOffset`, `bottomTextureOffset`, `middleTextureOffset` | Shifts the texture, in map units: `32` moves it by one repeat at scale `1`. |
 | **UV Scale** | `topTextureScale`, `bottomTextureScale`, `middleTextureScale` | How many times the texture repeats. `2.0` means twice as many repeats. |
@@ -115,15 +147,21 @@ check `isValid`.
 | `backSector` | integer | read-only | **ID** of the back sector. |
 | `isPortal` | boolean | read-only | `true` if there is a sector on both sides, so `bottomTexture` can show. |
 | `color` | Vector4 | read/write | Tint, `0..1`. |
-| `topTexture` | string | read/write | Top texture path relative to `Assets`, e.g. `"Textures/brick.png"`. |
-| `bottomTexture` | string | read/write | Bottom texture path. Only shows on a portal. |
+| `topTexture` | string | read/write | Top texture path relative to `Assets`, e.g. `"Textures/brick.png"`. Reading gives the frame showing right now; writing replaces every frame with this one texture. |
+| `bottomTexture` | string | read/write | Bottom texture path, same rules. Only shows on a portal. |
+| `topAnimation` | TextureAnimation | read/write | How the top frames play: `TextureAnimation.Loop`, `PingPong` or `Once`. |
+| `bottomAnimation` | TextureAnimation | read/write | How the bottom frames play. |
+| `middleAnimation` | TextureAnimation | read/write | How the middle frames play. |
+| `topScrollSpeed` | Vector2 | read/write | The top texture's **Offset Per Second**, in map units. |
+| `bottomScrollSpeed` | Vector2 | read/write | The bottom texture's Offset Per Second. |
+| `middleScrollSpeed` | Vector2 | read/write | The middle texture's Offset Per Second. |
 | `topTextureOffset` | Vector2 | read/write | Top texture shift in map units. Change it over time to scroll. |
 | `bottomTextureOffset` | Vector2 | read/write | Bottom texture shift in map units. |
 | `topTextureScale` | Vector2 | read/write | Top texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
 | `bottomTextureScale` | Vector2 | read/write | Bottom texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
 | `topAnchor` | WallAnchor | read/write | Where the top texture is pinned, e.g. `WallAnchor.World`. |
 | `bottomAnchor` | WallAnchor | read/write | Where the bottom texture is pinned. |
-| `middleTexture` | string | read/write | Middle texture path, filling the openings. `""` means no middle. |
+| `middleTexture` | string | read/write | Middle texture path, filling the openings, same rules as `topTexture`. `""` means no middle. |
 | `middleTextureOffset` | Vector2 | read/write | Middle texture shift in map units. |
 | `middleTextureScale` | Vector2 | read/write | Middle texture repeat multiplier. At `1` the texture covers its own size (pixels / the project's Texels Per Unit). |
 | `middleAnchor` | WallAnchor | read/write | Where the middle texture is pinned. |
@@ -135,9 +173,14 @@ check `isValid`.
 
 | Method | Returns | Description |
 |---|---|---|
-| `ClearTopTexture()` | | Removes the top texture. |
-| `ClearBottomTexture()` | | Removes the bottom texture. |
-| `ClearMiddleTexture()` | | Removes the middle texture, and with it the middle. |
+| `ClearTopTexture()` | | Removes every top frame. |
+| `ClearBottomTexture()` | | Removes every bottom frame. |
+| `ClearMiddleTexture()` | | Removes every middle frame, and with them the middle. |
+| `GetTopFrames()` | table | The top frames: `{ {texture = "...", duration = 0.5}, ... }`. Also `GetBottomFrames()`, `GetMiddleFrames()`. |
+| `SetTopFrames(frames)` | | Replaces the top frames and starts from frame 1. Each entry is `{texture = "...", duration = seconds}` (duration optional, default `0.5`) or just a texture path. A bad list raises an error and changes nothing. Also `SetBottomFrames`, `SetMiddleFrames`. |
+| `AddTopFrame(texture, duration?)` | | Adds a frame at the end. `duration` in seconds, default `0.5`. Also `AddBottomFrame`, `AddMiddleFrame`. |
+| `ClearTopFrames()` | | Same as `ClearTopTexture()`. Also `ClearBottomFrames`, `ClearMiddleFrames`. |
+| `RestartTopAnimation()` | | Back to frame 1; the scroll carries on. Also `RestartBottomAnimation`, `RestartMiddleAnimation`. |
 | `HasTag(tag)` | boolean | `true` if the wall has `tag`. |
 | `GetTag(index)` | string | The `index`-th tag, 1-based. |
 
@@ -172,25 +215,43 @@ raycast from an entity script.
 
 ### Scrolling texture
 
+A texture that always scrolls needs no script: set its **Offset Per Second** in the inspector. A
+script can switch the scroll on and off:
+
 ```lua
--- Scripts/Walls/Scroll.lua (sector script)
--- Scrolls every wall of this sector that has the "conveyor" tag.
-public Vector2 speed = Vector2(0.5, 0)
+-- Scripts/Walls/Conveyor.lua (sector script)
+-- Starts every "conveyor" wall of this sector scrolling when the room is entered.
+public Vector2 speed = Vector2(8, 0)
 
-local walls = {}
+function OnEntityEnter(other)
+    if not other:HasTag("Player") then return end
 
-function Start()
     for i = 1, sector.wallCount do
         local wall = sector:GetWall(i)
-        if wall.isValid and wall:HasTag("conveyor") then walls[#walls + 1] = wall end
+        if wall.isValid and wall:HasTag("conveyor") then wall.topScrollSpeed = speed end
     end
 end
+```
 
-function Update()
-    local step = speed * GameTime.deltaTime
-    for _, wall in ipairs(walls) do
-        wall.topTextureOffset = wall.topTextureOffset + step
-    end
+### Animated texture from a script
+
+```lua
+-- Scripts/Walls/Alarm Panel.lua (sector script)
+-- Makes the first wall blink between two textures, then stay on the last after three passes.
+public Texture offTexture = nil
+public Texture onTexture = nil
+
+function Start()
+    local wall = sector:GetWall(1)
+    wall:SetTopFrames({
+        {texture = offTexture, duration = 0.3},
+        {texture = onTexture, duration = 0.3},
+        {texture = offTexture, duration = 0.3},
+        {texture = onTexture, duration = 0.3},
+        {texture = offTexture, duration = 0.3},
+        {texture = onTexture, duration = 0.3},
+    })
+    wall.topAnimation = TextureAnimation.Once
 end
 ```
 

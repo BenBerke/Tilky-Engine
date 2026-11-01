@@ -274,6 +274,43 @@ One floor/ceiling interval. `SectorFloor` has `floorHeight`, `ceilingHeight`, `f
 `ClearFloorTexture()` and `ClearCeilingTexture()`. Writing a height raises an error if the floor
 would reach its ceiling or overlap another interval.
 
+Reading `floorTexture` / `ceilingTexture` gives the frame showing right now; writing one replaces
+every frame with that one texture. The frame and scroll members are below.
+
+### Animated textures
+
+A floor and a ceiling each have a list of **frames** (a texture and a duration in seconds), an
+**Animation** (Loop, Ping-Pong or Once) and an **Offset Per Second**, set in the sector inspector
+under each floor and ceiling. They work exactly like a wall's; see
+[Wall: Animated textures](Wall.md#animated-textures) for the rules.
+
+| Member | Type | Description |
+|---|---|---|
+| `floorAnimation`, `ceilingAnimation` | TextureAnimation | read/write. `TextureAnimation.Loop`, `PingPong` or `Once`. |
+| `floorScrollSpeed`, `ceilingScrollSpeed` | Vector2 | read/write. Offset Per Second, in map units. |
+| `GetFloorFrames()`, `GetCeilingFrames()` | table | `{ {texture = "...", duration = 0.5}, ... }` |
+| `SetFloorFrames(frames)`, `SetCeilingFrames(frames)` | | Replaces the frames and starts from frame 1. Entries are `{texture = "...", duration = seconds}` (duration optional, default `0.5`) or texture paths. A bad list raises an error and changes nothing. |
+| `AddFloorFrame(texture, duration?)`, `AddCeilingFrame(...)` | | Adds a frame at the end. Default duration `0.5`. |
+| `ClearFloorFrames()`, `ClearCeilingFrames()` | | Removes every frame. Same as `ClearFloorTexture()` / `ClearCeilingTexture()`. |
+| `RestartFloorAnimation()`, `RestartCeilingAnimation()` | | Back to frame 1. The scroll carries on. |
+
+Changes to a parent sector's floor reach its child sectors, like every other `SectorFloor` write.
+
+```lua
+-- Scripts/World/Lava.lua (sector script)
+-- Bubbling lava that slowly drifts.
+public Texture lava1 = nil
+public Texture lava2 = nil
+public Texture lava3 = nil
+
+function Start()
+    local floor = sector:GetFloor(1)
+    floor:SetFloorFrames({lava1, lava2, lava3})
+    floor.floorAnimation = TextureAnimation.PingPong
+    floor.floorScrollSpeed = Vector2(1, 0.5)
+end
+```
+
 ### GetFloorHeightAt 
 
 ```lua

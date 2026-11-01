@@ -1957,7 +1957,7 @@ namespace MapEditorInternal {
 
                 for (size_t slot = 0; slot < WALL_SURFACE_SLOTS.size(); ++slot) {
                     copied.wallSurfaces[slot] = wall.Surface(WALL_SURFACE_SLOTS[slot]);
-                    anyTexture = anyTexture || !copied.wallSurfaces[slot].texture.empty();
+                    anyTexture = anyTexture || !copied.wallSurfaces[slot].texture.Empty();
                 }
 
                 if (!anyTexture) return false;
@@ -1970,7 +1970,7 @@ namespace MapEditorInternal {
                 if (index < 0) return false;
 
                 const SectorSurface* flat = ShownFlat(level.sectors[index]);
-                if (flat == nullptr || flat->texture.empty()) return false;
+                if (flat == nullptr || flat->texture.Empty()) return false;
 
                 copied.source = CanvasTextureClipboard::Source::Flat;
                 CopyPlacement(*flat, copied.primary);
@@ -1982,7 +1982,7 @@ namespace MapEditorInternal {
                 copied.source = CanvasTextureClipboard::Source::Sprite;
                 copied.spriteTextures = sprite->textureFileNames;
                 copied.spriteSideCount = sprite->sideCount;
-                copied.primary.texture = sprite->textureFileNames[0];
+                copied.primary.texture.Set(sprite->textureFileNames[0]);
             }
             else return false;
 
@@ -2061,7 +2061,7 @@ namespace MapEditorInternal {
                     sprite->textureFileNames = clipboard.spriteTextures;
                     sprite->sideCount = clipboard.spriteSideCount;
                 }
-                else sprite->textureFileNames[0] = clipboard.primary.texture;
+                else sprite->textureFileNames[0] = clipboard.primary.texture.First();
 
                 ++changed;
             }
@@ -2259,7 +2259,7 @@ namespace MapEditorInternal {
                     const int index = WallIndexOf(level, id);
                     if (index < 0) continue;
 
-                    level.walls[index].top.texture = texture;
+                    level.walls[index].top.texture.Set(texture);
                 }
                 else {
                     const int index = SectorIndexOf(level, id);
@@ -2268,7 +2268,7 @@ namespace MapEditorInternal {
                     SectorSurface* flat = ShownFlat(level.sectors[index]);
                     if (flat == nullptr) continue;
 
-                    flat->texture = texture;
+                    flat->texture.Set(texture);
                 }
 
                 ++changed;

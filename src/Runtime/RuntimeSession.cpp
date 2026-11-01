@@ -176,6 +176,9 @@ namespace {
     void PrepareRuntimeLevel(Level& level) {
         MapQueries::RebuildSectorRuntimeLinks(level);
 
+        // The 3D editor view animates the editor's copy; Play starts fresh.
+        level.RestartSurfaceAnimations();
+
         // Before any system starts, so a disabled entity starts out of the game.
         level.ApplyAllEntityEnabled();
 
@@ -625,6 +628,10 @@ namespace {
 
         UpdateMouseCapture(io.WantCaptureMouse, false);
         SetImGuiControlsCursor(true);
+
+        // Texture animations play in the 3D editor view too (game time is
+        // stopped here, so real time drives them).
+        level.UpdateSurfaceAnimations(GameTime::unscaledDeltaTime);
 
         {
             ZoneScopedN("Renderer");

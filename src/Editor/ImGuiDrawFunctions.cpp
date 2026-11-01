@@ -950,20 +950,110 @@ namespace ImGuiDrawFunctions {
         return pressed;
     }
 
-    // A property table whose first row is the texture (`drawSettings` adds
-    // the rest), so the texture's settings line up with every other field.
-    // The thumbnail is the Texture Field Size user setting, shrunk to fit the
-    // value column.
+    // A property table whose first rows are the texture's frames - each a
+    // texture field with its duration and a remove button - then Add Frame,
+    // the animation mode and the offset per second; `drawSettings` adds the
+    // rest, so everything lines up with the other fields. The thumbnail is
+    // the Texture Field Size user setting, shrunk to fit the value column.
+    // A surface with no frames still shows an empty Frame 1 to drop onto.
     template<typename DrawSettings>
-    static void TextureBlock(const char *id, std::string &texture, const char *tooltipKey, DrawSettings &&drawSettings) {
+    static void TextureBlock(const char *id, SurfaceTexture &texture, const char *tooltipKey, const bool draggable,
+                             DrawSettings &&drawSettings) {
         ImGui::PushID(id);
 
         if (BeginProperties("##TextureSettings")) {
-            Property(Get("inspector.texture").c_str());
+            const std::string removeLabel = Get("texture.frame.remove");
+            const size_t shownFrames = std::max<size_t>(texture.frames.size(), 1);
+            int frameToRemove = -1;
+            int frameToMoveUp = -1;
 
-            const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
-            MapEditorInternal::DrawAssetField("", texture, AssetKind::Texture, thumbnail);
-            Tooltip(Get(tooltipKey).c_str());
+            for (size_t frameIndex = 0; frameIndex < shownFrames; ++frameIndex) {
+                ImGui::PushID(static_cast<int>(frameIndex));
+
+                const bool exists = frameIndex < texture.frames.size();
+                char label[64];
+                std::snprintf(label, sizeof(label), Get("texture.frame.label").c_str(), static_cast<int>(frameIndex) + 1);
+                Property(label);
+
+                const float thumbnail = std::min(MapEditorInternal::textureFieldSize, ImGui::GetContentRegionAvail().x);
+
+                if (exists) {
+                    MapEditorInternal::DrawAssetField("", texture.frames[frameIndex].texture, AssetKind::Texture, thumbnail);
+                }
+                else {
+                    std::string first;
+                    if (MapEditorInternal::DrawAssetField("", first, AssetKind::Texture, thumbnail) && !first.empty())
+                        texture.AddFrame(std::move(first));
+                }
+                Tooltip(Get(tooltipKey).c_str());
+
+                // Duration, move up, remove on one line under the thumbnail.
+                if (exists) {
+                    TextureFrame &frame = texture.frames[frameIndex];
+                    const bool canMoveUp = frameIndex > 0;
+
+                    FieldWidth(WidthBeforeButtons({"^", removeLabel.c_str()}));
+                    if (InputOrDrag("##Duration", &frame.duration, draggable, 0.01f))
+                        frame.duration = std::max(frame.duration, 0.0f);
+                    Tooltip(Get("editor.tooltip.texture.frame.duration").c_str());
+
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(!canMoveUp);
+                    if (ImGui::Button("^")) frameToMoveUp = static_cast<int>(frameIndex);
+                    ImGui::EndDisabled();
+                    Tooltip(Get("editor.tooltip.texture.frame.move_up").c_str());
+
+                    ImGui::SameLine();
+                    if (ImGui::Button(removeLabel.c_str())) frameToRemove = static_cast<int>(frameIndex);
+                    Tooltip(Get("editor.tooltip.texture.frame.remove").c_str());
+                }
+
+                ImGui::PopID();
+            }
+
+            if (frameToMoveUp > 0)
+                std::swap(texture.frames[static_cast<size_t>(frameToMoveUp)], texture.frames[static_cast<size_t>(frameToMoveUp - 1)]);
+
+            if (frameToRemove >= 0) {
+                texture.frames.erase(texture.frames.begin() + frameToRemove);
+                texture.Restart();
+            }
+
+            // Copies the last frame's texture and duration, the usual start
+            // for the next one.
+            Property("");
+            if (ImGui::Button(Get("texture.frame.add").c_str())) {
+                if (texture.frames.empty()) texture.AddFrame({});
+                else texture.frames.push_back(texture.frames.back());
+            }
+            Tooltip(Get("editor.tooltip.texture.frame.add").c_str());
+
+            const TextureAnimationModeInfo *selected = FindTextureAnimationMode(texture.animation);
+            if (selected == nullptr) selected = &TEXTURE_ANIMATION_MODES[0];
+
+            Property(Get("texture.animation").c_str());
+            FieldWidth(-FLT_MIN);
+            ImGui::BeginDisabled(texture.frames.size() < 2);
+            if (ImGui::BeginCombo("##Animation", Get(selected->labelKey).c_str())) {
+                for (const TextureAnimationModeInfo &mode: TEXTURE_ANIMATION_MODES) {
+                    const bool isSelected = mode.mode == texture.animation;
+
+                    if (ImGui::Selectable(Get(mode.labelKey).c_str(), isSelected)) {
+                        texture.animation = mode.mode;
+                        texture.Restart();
+                    }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Get(mode.tooltipKey).c_str());
+                    if (isSelected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+            ImGui::EndDisabled();
+            Tooltip(Get(selected->tooltipKey).c_str());
+
+            Property(Get("texture.offset_per_second").c_str());
+            InputOrDrag2("##OffsetPerSecond", &texture.offsetPerSecond.x, draggable, 0.1f);
+            Tooltip(Get("editor.tooltip.texture.offset_per_second").c_str());
 
             drawSettings();
             EndProperties();
@@ -3659,7 +3749,7 @@ namespace ImGuiDrawFunctions {
     // and flips beside it, then color and slope.
     static void DrawSectorSurface(const char *id, const char *textureTooltipKey, SectorSurface &surface,
                                   const bool draggable) {
-        TextureBlock(id, surface.texture, textureTooltipKey, [&] {
+        TextureBlock(id, surface.texture, textureTooltipKey, draggable, [&] {
             TextureTransformRows("sector", surface.textureOffset, surface.textureScale,
                                  surface.flipTextureX, surface.flipTextureY, draggable);
 
@@ -4273,19 +4363,19 @@ namespace ImGuiDrawFunctions {
             if (wall.IsPortal()) {
                 if (ImGui::BeginTabBar("##Surfaces")) {
                     if (ImGui::BeginTabItem(Get("wall.texture_top").c_str())) {
-                        TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture",
+                        TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture", draggable,
                                      [&] { DrawWallSurfaceRows(wall.top, draggable); });
                         ImGui::EndTabItem();
                     }
 
                     if (ImGui::BeginTabItem(Get("wall.texture_bottom").c_str())) {
-                        TextureBlock("Bottom", wall.bottom.texture, "editor.tooltip.wall.texture",
+                        TextureBlock("Bottom", wall.bottom.texture, "editor.tooltip.wall.texture", draggable,
                                      [&] { DrawWallSurfaceRows(wall.bottom, draggable); });
                         ImGui::EndTabItem();
                     }
 
                     if (ImGui::BeginTabItem(Get("wall.texture_middle").c_str())) {
-                        TextureBlock("Middle", wall.middle.texture, "editor.tooltip.wall.texture_middle",
+                        TextureBlock("Middle", wall.middle.texture, "editor.tooltip.wall.texture_middle", draggable,
                                      [&] { DrawWallSurfaceRows(wall.middle, draggable); });
 
                         ImGui::Checkbox(Get("wall.has_collision").c_str(), &wall.middleHasCollision);
@@ -4300,7 +4390,7 @@ namespace ImGuiDrawFunctions {
                     ImGui::EndTabBar();
                 }
             }
-            else TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture",
+            else TextureBlock("Top", wall.top.texture, "editor.tooltip.wall.texture", draggable,
                               [&] { DrawWallSurfaceRows(wall.top, draggable); });
         }
 

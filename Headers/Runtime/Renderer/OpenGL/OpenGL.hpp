@@ -542,6 +542,10 @@ private:
     int GetOrCreateTextureIndex(const std::string& fileName);
     int GetTextureRegionIndex(const std::string& fileName) const;
 
+    // A surface's offset per second so far, wrapped by one repeat of the
+    // atlas region it shows, so the GPU only ever sees a small offset.
+    Vector2 SurfaceScroll(const SurfaceTexture& texture, int regionIndex) const;
+
     void RefreshTexturesFromLevel() override;
     void RefreshTexturesIfLevelNeedsNew() override;
 
