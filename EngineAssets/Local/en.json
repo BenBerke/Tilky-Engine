@@ -475,7 +475,7 @@
   "sector.copy": "Copy",
   "sector.make_door": "Make Door...",
   "sector.make_teleporter": "Make Teleporter...",
-  "sector.make_teleporter_waiting": "Click the destination sector...",
+  "sector.make_teleporter_waiting": "Click a sector...",
   "sector.make_teleporter_pick": "Click the sector to teleport to on the map (Escape cancels).",
   "sector.make_teleporter_cancelled": "Make Teleporter cancelled",
   "sector.make_teleporter_no_sector": "No sector there - click the destination sector.",

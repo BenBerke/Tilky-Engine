@@ -3771,7 +3771,10 @@ namespace ImGuiDrawFunctions {
                 static float doorLip = 4.0f;
                 static float doorWait = 3.0f;
 
-                if (ImGui::Button(Get("sector.make_door").c_str(), ImVec2(-FLT_MIN, 0.0f))) ImGui::OpenPopup("make_door");
+                // Make Door and Make Teleporter share a row, at one fixed width.
+                constexpr float MAKE_BUTTON_WIDTH = 150.0f;
+
+                if (ImGui::Button(Get("sector.make_door").c_str(), ImVec2(MAKE_BUTTON_WIDTH, 0.0f))) ImGui::OpenPopup("make_door");
                 Tooltip(Get("editor.tooltip.sector.make_door").c_str());
 
                 ImGui::SetNextWindowSize(ImVec2(240.0f, 0.0f));
@@ -3800,10 +3803,11 @@ namespace ImGuiDrawFunctions {
 
                 // ── Make Teleporter: the destination is clicked on the map ──
                 if (makeDoorRequest->teleporterAllowed) {
+                    ImGui::SameLine();
                     const bool waiting = MapEditorInternal::teleporterPick.has_value() &&
                                          MapEditorInternal::teleporterPick->sectorID == sector.id;
                     ImGui::BeginDisabled(waiting);
-                    if (ImGui::Button(Get(waiting ? "sector.make_teleporter_waiting" : "sector.make_teleporter").c_str(), ImVec2(-FLT_MIN, 0.0f)))
+                    if (ImGui::Button(Get(waiting ? "sector.make_teleporter_waiting" : "sector.make_teleporter").c_str(), ImVec2(MAKE_BUTTON_WIDTH, 0.0f)))
                         makeDoorRequest->teleporterFloorIndex = static_cast<int>(floorIndex);
                     ImGui::EndDisabled();
                     Tooltip(Get("editor.tooltip.sector.make_teleporter").c_str());
