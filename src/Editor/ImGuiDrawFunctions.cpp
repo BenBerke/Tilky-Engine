@@ -3789,11 +3789,24 @@ namespace ImGuiDrawFunctions {
                     }
 
                     if (ImGui::Button(Get("sector.make_door_confirm").c_str(), ImVec2(-FLT_MIN, 0.0f))) {
-                        *makeDoorRequest = {static_cast<int>(floorIndex), doorLip, doorWait};
+                        makeDoorRequest->floorIndex = static_cast<int>(floorIndex);
+                        makeDoorRequest->lip = doorLip;
+                        makeDoorRequest->wait = doorWait;
                         ImGui::CloseCurrentPopup();
                     }
 
                     ImGui::EndPopup();
+                }
+
+                // ── Make Teleporter: the destination is clicked on the map ──
+                if (makeDoorRequest->teleporterAllowed) {
+                    const bool waiting = MapEditorInternal::teleporterPick.has_value() &&
+                                         MapEditorInternal::teleporterPick->sectorID == sector.id;
+                    ImGui::BeginDisabled(waiting);
+                    if (ImGui::Button(Get(waiting ? "sector.make_teleporter_waiting" : "sector.make_teleporter").c_str(), ImVec2(-FLT_MIN, 0.0f)))
+                        makeDoorRequest->teleporterFloorIndex = static_cast<int>(floorIndex);
+                    ImGui::EndDisabled();
+                    Tooltip(Get("editor.tooltip.sector.make_teleporter").c_str());
                 }
             }
 

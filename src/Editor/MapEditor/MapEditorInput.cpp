@@ -184,6 +184,9 @@ namespace MapEditorInternal {
     // list holds IDs, like the sector and wall ones.
 
     ID wallSnapHoveredWallID = INVALID_ID;
+    ID teleporterPickHoveredSectorID = INVALID_ID;
+    std::optional<TeleporterPick> teleporterPick;
+
 
     bool IsPaintSelectActive(const bool mouseBlockedByImGui) {
         return !mouseBlockedByImGui && currentState == STATE_MAP && (paintSelectTool || GetKeyBind(KEYBIND_PAINT_SELECT));
@@ -2223,6 +2226,64 @@ namespace MapEditorInternal {
             else if (linedefID != INVALID_ID) hoveredLinedefID = linedefID;
             else if (currentMode == MODE_SECTOR || hoverSectorsInEveryMode) hoveredSectorID = SectorIDAt(mouseWorld);
         }
+    }
+
+    void BeginTeleporterPick(const ID sectorID, const int floorIndex) {
+        teleporterPick = TeleporterPick{sectorID, floorIndex};
+        ImGuiDrawFunctions::ShowNotification(Localisation::Get("sector.make_teleporter_pick").c_str(), false, 4.0f);
+    }
+
+    bool HandleTeleporterPick(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
+        // The picking click is kept from the canvas until it's released, so
+        // its release doesn't select or end anything there.
+        static bool swallowingClick = false;
+        if (swallowingClick) {
+            const bool stillPressed = InputManager::GetMouseButton(SDL_BUTTON_LEFT) || InputManager::GetMouseButton(SDL_BUTTON_RIGHT) ||
+                                      InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT) || InputManager::GetMouseButtonUp(SDL_BUTTON_RIGHT);
+            if (stillPressed) return true;
+            swallowingClick = false;
+        }
+
+        teleporterPickHoveredSectorID = INVALID_ID;
+        if (!teleporterPick) return false;
+
+        Level& level = LevelManager::CurrentLevel();
+        if (level.GetSector(teleporterPick->sectorID) == nullptr) {
+            teleporterPick.reset();
+            return false;
+        }
+
+        if (!keyboardBlockedByImgui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+            teleporterPick.reset();
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get("sector.make_teleporter_cancelled").c_str(), false, 1.5f);
+            return false;
+        }
+
+        if (mouseBlockedByImGui) return false;
+
+        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+        teleporterPickHoveredSectorID = SectorIDAt(mouseWorld);
+
+        if (!InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) return false;
+
+        swallowingClick = true;
+        const TeleporterPick pick = *teleporterPick;
+        const ID destinationID = teleporterPickHoveredSectorID;
+
+        // Clicking empty space or the teleporter itself waits for another click.
+        if (destinationID == INVALID_ID || destinationID == pick.sectorID) {
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get(destinationID == INVALID_ID
+                ? "sector.make_teleporter_no_sector" : "sector.make_teleporter_same_sector").c_str(), true, 2.0f);
+            return true;
+        }
+
+        teleporterPick.reset();
+        teleporterPickHoveredSectorID = INVALID_ID;
+
+        const std::string tagName = MakeTeleporter(level, pick.sectorID, pick.floorIndex, destinationID);
+        if (!tagName.empty())
+            ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_teleporter_done") + " " + tagName).c_str(), false);
+        return true;
     }
 
     void HandleEditorInput(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {

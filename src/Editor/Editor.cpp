@@ -320,7 +320,8 @@ namespace Editor {
         const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr || CommandPalette::IsOpen();
 
         if (currentState == STATE_MAP) {
-            HandleEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
+            const bool teleporterPickTookMouse = HandleTeleporterPick(mouseBlockedByImGui, keyboardBlockedByImgui);
+            HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse, keyboardBlockedByImgui);
             HandleEditorShortcuts(keyboardBlockedByImgui);
 
             // After everything that moves entities, so a snapped one is
@@ -340,6 +341,7 @@ namespace Editor {
             // first would put every highlight underneath them.
             DrawGeometryEditOverlay();
             DrawWallSnapPickHighlight();
+            DrawTeleporterPickHighlight();
 
             DrawEntities();
             DrawEventLinks();

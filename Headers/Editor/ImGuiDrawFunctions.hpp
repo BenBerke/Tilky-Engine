@@ -63,6 +63,11 @@ namespace ImGuiDrawFunctions {
         int floorIndex = -1; // -1: nothing picked
         float lip = 4.0f;
         float wait = 3.0f;
+
+        // Make Teleporter, on the same inspector. Its destination is picked
+        // on the 2D map, so only an inspector there sets teleporterAllowed.
+        bool teleporterAllowed = false;
+        int teleporterFloorIndex = -1; // -1: not pressed
     };
 
     // A non-null windowId puts the window under that ImGui ID ("Title###id"),

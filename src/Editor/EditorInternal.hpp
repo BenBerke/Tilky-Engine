@@ -403,6 +403,10 @@ namespace MapEditorInternal {
     // highlight. INVALID_ID otherwise.
     extern ID wallSnapHoveredWallID;
 
+    // The sector under the cursor while Make Teleporter waits for one, for
+    // its highlight. INVALID_ID otherwise.
+    extern ID teleporterPickHoveredSectorID;
+
     // True from the mouse-down that starts a wall body/endpoint drag
     // until that drag is committed.
     extern bool draggingWallGeometry;
@@ -1201,6 +1205,30 @@ namespace MapEditorInternal {
     // by that tag. Returns the tag's name, empty when the sector is gone.
     std::string MakeDoor(Level& level, ID sectorID, int floorIndex, float lip, float wait);
 
+    // The sector inspector's Make Teleporter, as one undo step: a new event
+    // tag "Teleporter <sector name>" (numbered when taken), an Entity
+    // Grounded event (entities tagged Player) on the sector and a Teleport
+    // Entities Inside dispatch (Player, on `floorIndex`) to the centre of
+    // `destinationID`'s first floor, linked by that tag. Returns the tag's
+    // name, empty when either sector is gone or they're the same.
+    std::string MakeTeleporter(Level& level, ID sectorID, int floorIndex, ID destinationID);
+
+    // Make Teleporter waits for a click on the destination sector in the 2D
+    // map (any mode). Empty when it isn't waiting.
+    struct TeleporterPick {
+        ID sectorID = INVALID_ID;
+        int floorIndex = 0;
+    };
+    extern std::optional<TeleporterPick> teleporterPick;
+
+    // Starts waiting, with a hint on screen.
+    void BeginTeleporterPick(ID sectorID, int floorIndex);
+
+    // Run before HandleEditorInput. True while it uses the mouse this frame
+    // (the click that picks, until it's released): the canvas then treats
+    // the mouse as taken. Escape cancels.
+    bool HandleTeleporterPick(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
+
     // Deletes every wall in the current selection as one undoable
     // operation, with a single topology rebuild at the end.
     void DeleteSelectedWalls();
@@ -1670,6 +1698,9 @@ namespace MapEditorInternal {
     // Draws the hover highlight of the wall Snap to Wall would pick
     // (MapEditorDrawing.cpp).
     void DrawWallSnapPickHighlight();
+
+    // The outline of the sector Make Teleporter would pick (MapEditorDrawing.cpp).
+    void DrawTeleporterPickHighlight();
 
     // Lines from the selected wall/sector/entity's events to the dispatches
     // they reach, and from the events reaching its dispatches to it.

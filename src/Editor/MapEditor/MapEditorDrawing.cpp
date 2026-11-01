@@ -1170,6 +1170,19 @@ namespace MapEditorInternal {
         }
     }
 
+    // Amber, like Snap to Wall's pick.
+    void DrawTeleporterPickHighlight() {
+        if (teleporterPickHoveredSectorID == INVALID_ID) return;
+
+        const Sector* sector = LevelManager::CurrentLevel().GetSector(teleporterPickHoveredSectorID);
+        if (sector == nullptr) return;
+
+        SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+        for (const Wall* wall : sector->walls)
+            if (wall != nullptr)
+                DrawColoredThickLine(WorldToScreen(wall->start, cameraPos), WorldToScreen(wall->end, cameraPos), 7.0f);
+    }
+
     // Amber, like Geometry Mode's hover.
     void DrawWallSnapPickHighlight() {
         if (wallSnapHoveredWallID == INVALID_ID) return;

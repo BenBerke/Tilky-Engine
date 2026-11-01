@@ -1682,6 +1682,48 @@ namespace MapEditorInternal {
         return tagName;
     }
 
+    std::string MakeTeleporter(Level& level, const ID sectorID, const int floorIndex, const ID destinationID) {
+        Sector* sector = level.GetSector(sectorID);
+        if (sector == nullptr || level.GetSector(destinationID) == nullptr || sectorID == destinationID) return {};
+
+        GeometrySnapshot before = CaptureGeometrySnapshot(level);
+
+        const std::string tagName =
+            TagRegistry::UniqueName("Teleporter " + (sector->name.empty() ? "#" + std::to_string(sector->id) : sector->name));
+        const TagId link = TagRegistry::GetOrCreate(tagName, TagRegistry::TagKind::EVENT);
+        const TagId player = TagRegistry::GetOrCreate(TagRegistry::PLAYER_TAG);
+        if (!SaveProjectSettings()) spdlog::error("Make Teleporter: couldn't save the new tag to the project settings");
+
+        PayloadSectorEntityGrounded grounded;
+        grounded.filter.tagType = TagType::INCLUDE;
+        grounded.filter.tags = {player};
+
+        Event event;
+        event.payload = grounded;
+        event.tagId = link;
+        sector->events.push_back(event);
+
+        PayloadDispatchSectorTeleportInside teleport;
+        teleport.filter.tagType = TagType::INCLUDE;
+        teleport.filter.tags = {player};
+        teleport.insideFloor = floorIndex;
+        teleport.target = TeleportTarget::SECTOR;
+        teleport.targetID = destinationID;
+        teleport.floorIndex = 0;
+        teleport.facing = TeleportFacing::KEEP;
+        teleport.stopVelocity = true;
+
+        Dispatch dispatch;
+        dispatch.payload = teleport;
+        dispatch.tagId = link;
+        sector->dispatches.push_back(dispatch);
+
+        PushGeometryUndoSnapshot(std::move(before), "editor.history.make_teleporter");
+        hasUnsavedChanges = true;
+
+        return tagName;
+    }
+
     void PushGeometryUndoSnapshot(GeometrySnapshot snapshot, const char* labelKey, const int count) {
         UndoStep step;
         step.kind = UNDO_GEOMETRY;

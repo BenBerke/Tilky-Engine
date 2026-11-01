@@ -3922,6 +3922,7 @@ namespace {
 
         bool copyRequested = false;
         ImGuiDrawFunctions::MakeDoorRequest makeDoorRequest;
+        makeDoorRequest.teleporterAllowed = true;
 
         BeginSectorInspectorEdit(sectorInspectorEdit, sector);
 
@@ -3959,6 +3960,9 @@ namespace {
             const std::string tagName = MakeDoor(level, sector.id, makeDoorRequest.floorIndex, makeDoorRequest.lip, makeDoorRequest.wait);
             if (!tagName.empty()) ShowNotification((Get("sector.make_door_done") + " " + tagName).c_str(), false);
         }
+
+        // Waits for the destination to be clicked on the map (HandleTeleporterPick).
+        if (makeDoorRequest.teleporterFloorIndex >= 0) BeginTeleporterPick(sector.id, makeDoorRequest.teleporterFloorIndex);
     }
 
     // Geometry Mode's inspector. This is the same

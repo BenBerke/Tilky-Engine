@@ -219,6 +219,11 @@ namespace {
     std::unordered_map<ID, Vector2> lastPositions; // entity -> transform (feet) x/z
     std::unordered_map<ID, ID> lastSectors;        // entity -> sector ID, INVALID_ID outside the map
     std::unordered_map<ID, bool> lastEnabled;
+
+    // Land-lock: entity -> the sector a teleport put it in. Teleport Entities
+    // Inside leaves it alone until it has left that sector, so two
+    // teleporters pointing at each other don't bounce it back every frame.
+    std::unordered_map<ID, ID> teleportLocks;
     std::vector<PhysicsSystem::CollisionPair> lastEntityContacts; // sorted, unique
     std::vector<PhysicsSystem::WallContact> lastWallContacts;     // sorted, unique
     std::vector<LinedefContact> lastLinedefContacts;              // sorted, unique
@@ -1667,6 +1672,17 @@ namespace {
         // Kept otherwise, as with a script's SetPosition.
         if (teleport.stopVelocity)
             if (ComponentRigidbody* rigidbody = level.rigidbodies.Get(ownerID)) rigidbody->velocity = {0.0f, 0.0f, 0.0f};
+
+        teleportLocks[ownerID] = SectorIDAt(level, transform->sectorIndex);
+    }
+
+    // Drops the land-locks of entities that have left the sector they were
+    // teleported into (or are gone).
+    void UpdateTeleportLocks(const Level& level) {
+        std::erase_if(teleportLocks, [&](const auto& lock) {
+            const ComponentTransform* transform = level.transforms.Get(lock.first);
+            return transform == nullptr || SectorIDAt(level, transform->sectorIndex) != lock.second;
+        });
     }
 
     void UpdateEntityMoves(Level& level, const float deltaTime) {
@@ -2905,6 +2921,7 @@ namespace EventSystem {
         inUpdate = true;
 
         TickCooldowns(deltaTime, GameTime::unscaledDeltaTime);
+        UpdateTeleportLocks(level);
         RunPendingDispatches(level, deltaTime, GameTime::unscaledDeltaTime);
         RunPendingFlows(level, deltaTime, GameTime::unscaledDeltaTime);
 
@@ -2969,6 +2986,7 @@ namespace EventSystem {
         lastPositions.clear();
         lastSectors.clear();
         lastEnabled.clear();
+        teleportLocks.clear();
         lastEntityContacts.clear();
         lastWallContacts.clear();
         lastLinedefContacts.clear();
@@ -3139,7 +3157,11 @@ namespace EventSystem {
                 std::vector<std::pair<ID, Vector2>> inside; // entity, offset from this sector's centre
                 for (const ComponentTransform& transform : level.transforms.components) {
                     if (level.transforms.Get(transform.ownerID) != &transform) continue; // first transform only
-                    if (transform.sectorId != ownerID || !IsEnabledEntity(level, transform.ownerID)) continue;
+                    if (SectorIDAt(level, transform.sectorIndex) != ownerID || !IsEnabledEntity(level, transform.ownerID)) continue;
+
+                    // Just teleported in and hasn't left yet.
+                    if (const auto lock = teleportLocks.find(transform.ownerID); lock != teleportLocks.end() && lock->second == ownerID)
+                        continue;
 
                     const Vector2 point = {transform.position.x, transform.position.z};
                     if (teleport.insideFloor >= 0 &&
