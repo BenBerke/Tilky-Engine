@@ -34,6 +34,7 @@ Components are what give an entity its behaviour. Add them in the entity inspect
 | [Camera](Camera.md) | Camera | Where the game is rendered from. |
 | [Collider](Collider.md) | Collider | A collision shape. It can also be a trigger volume. |
 | [Rigidbody](Rigidbody.md) | Rigidbody | Velocity and gravity, so physics can move the entity. |
+| [Pathfinder](Pathfinder.md) | Pathfinder | Walks the entity to a point or after another entity, Doom style. No baked paths. |
 | [UI Transform](UITransform.md) | UI Transform | Where a UI element sits on screen. |
 | [UI Sprite](UISprite.md) | Image | A picture on the HUD. |
 | [UI Text](UIText.md) | Text | A text label on the HUD, in any `.ttf`/`.otf` font and size. |

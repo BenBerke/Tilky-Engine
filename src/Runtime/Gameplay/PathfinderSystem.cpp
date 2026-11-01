@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
@@ -200,6 +201,7 @@ namespace {
         if (pathfinder.driving && rigidbody != nullptr && pathfinder.IsAirEntity()) rigidbody->velocity.y = 0.0f;
         StopHorizontal(pathfinder, rigidbody);
         pathfinder.driving = false;
+        pathfinder.arrived = false;
     }
 
     float TargetRadius(const Level& level, const ID targetID) {
@@ -216,11 +218,16 @@ namespace PathfinderSystem {
             pathfinder.moveTimer = 0.0f;
             pathfinder.expectedStep = 0.0f;
             pathfinder.driving = false;
+            pathfinder.arrived = false;
         }
     }
 
-    void Update(Level& level, const float deltaTime) {
+    void Update(Level& level, const float deltaTime, const ArrivalDispatcher& onArrived) {
         if (deltaTime <= 0.0f) return;
+
+        // Fired once every pathfinder has moved: a handler can add or
+        // remove components, which would shift the storage under the loop.
+        std::vector<ID> arrivals;
 
         for (ComponentPathfinder& pathfinder : level.pathfinders.components) {
             // A disabled entity is frozen, its velocity kept.
@@ -293,14 +300,19 @@ namespace PathfinderSystem {
             const float horizontal = std::hypot(dx, dz);
 
             // ── Arrived? ───────────────────────────────────────────────
-            bool arrived = lost || speed <= 0.0f;
-            if (!arrived) {
+            bool reached = false;
+            if (!lost) {
                 if (pathfinder.IsRangedEntity()) {
                     const float distance = body.air ? std::sqrt(horizontal * horizontal + dy * dy) : horizontal;
-                    arrived = distance <= pathfinder.range;
+                    reached = distance <= pathfinder.range;
                 }
-                else arrived = horizontal <= deadzone + body.radius + targetRadius;
+                else reached = horizontal <= deadzone + body.radius + targetRadius;
             }
+
+            if (reached && !pathfinder.arrived) arrivals.push_back(ownerID);
+            pathfinder.arrived = reached;
+
+            const bool arrived = reached || lost || speed <= 0.0f;
 
             Ground ahead = standing;
 
@@ -376,5 +388,24 @@ namespace PathfinderSystem {
 
             pathfinder.driving = rigidbody != nullptr;
         }
+
+        if (onArrived)
+            for (const ID ownerID : arrivals) onArrived(ownerID);
+    }
+
+    void SetDestination(ComponentPathfinder& pathfinder, const Vector3& destination) {
+        pathfinder.input = PathfinderInput::POSITION;
+        pathfinder.destination = destination;
+        pathfinder.arrived = false;
+    }
+
+    void SetTarget(Level& level, ComponentPathfinder& pathfinder, const ID targetID, const Vector3& offset) {
+        pathfinder.input = PathfinderInput::ENTITY;
+        pathfinder.targetEntityID = targetID;
+        pathfinder.offset = offset;
+        pathfinder.arrived = false;
+
+        if (const ComponentTransform* target = level.transforms.Get(targetID))
+            pathfinder.destination = target->position + offset;
     }
 }

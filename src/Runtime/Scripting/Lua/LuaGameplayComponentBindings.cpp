@@ -95,6 +95,41 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "GetFrame", &ScriptFlipbook::GetFrame
     );
 
+    lua.new_usertype<ScriptPathfinder>(
+        "Pathfinder",
+
+        "isValid", sol::property(&ScriptPathfinder::IsValid),
+        "isActive", sol::property(&ScriptPathfinder::GetIsActive, &ScriptPathfinder::SetIsActive),
+        "hasArrived", sol::property(&ScriptPathfinder::GetHasArrived),
+
+        "input", sol::property(&ScriptPathfinder::GetInput),
+        "destination", sol::property(&ScriptPathfinder::GetDestination),
+        "target", sol::property(
+            [](const ScriptPathfinder& self, const sol::this_state state) -> sol::object {
+                const ID targetID = self.GetTargetID();
+                if (targetID == INVALID_ENTITY_ID) return sol::make_object(state, sol::nil);
+                return sol::make_object(state, ScriptEntity{self.level, targetID});
+            }
+        ),
+        "offset", sol::property(&ScriptPathfinder::GetOffset, &ScriptPathfinder::SetOffset),
+
+        "speed", sol::property(&ScriptPathfinder::GetSpeed, &ScriptPathfinder::SetSpeed),
+        "range", sol::property(&ScriptPathfinder::GetRange, &ScriptPathfinder::SetRange),
+        "isAirEntity", sol::property(&ScriptPathfinder::GetIsAirEntity, &ScriptPathfinder::SetIsAirEntity),
+        "isRangedEntity", sol::property(&ScriptPathfinder::GetIsRangedEntity, &ScriptPathfinder::SetIsRangedEntity),
+
+        "SetDestination", &ScriptPathfinder::SetDestination,
+        "SetTarget", [](const ScriptPathfinder& self, const ScriptEntity& target, const sol::optional<Vector3> offset) {
+            if (target.GetEntity() == nullptr) {
+                spdlog::warn("Pathfinder.SetTarget: the entity is gone");
+                return;
+            }
+            self.SetTargetID(target.ownerID, offset ? std::optional<Vector3>(*offset) : std::nullopt);
+        },
+        "Stop", &ScriptPathfinder::Stop,
+        "Resume", &ScriptPathfinder::Resume
+    );
+
     lua.new_usertype<ScriptCollider>(
         "Collider",
 

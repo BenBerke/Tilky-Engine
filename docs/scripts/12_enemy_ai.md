@@ -7,6 +7,11 @@ Both use the same small `Steer(dx, dz, dist, speed)` helper: it takes a directio
 plane and sets the horizontal velocity, keeping the current vertical velocity so gravity still
 works.
 
+`Steer` heads in a straight line, so these enemies get stuck behind pillars and corners. For an
+enemy that walks around obstacles, give it a [Pathfinder](../wiki/Pathfinder.md) and replace the
+`Steer` calls with `entity.pathfinder:SetTarget(target)` (chase) and `entity.pathfinder:Stop()`
+(stand still), as in the [Pathfinder examples](../wiki/Pathfinder.md#examples).
+
 ---
 
 ## Chase and attack

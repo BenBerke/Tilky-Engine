@@ -364,7 +364,9 @@ namespace LevelSystem {
             // After scripts, so a destination set this frame is used, and
             // before physics, which moves the Rigidbodies it steers.
             ZoneScopedN("Pathfinders");
-            PathfinderSystem::Update(level, GameTime::deltaTime);
+            PathfinderSystem::Update(level, GameTime::deltaTime, [&level](const ID entityID) {
+                scriptingSystem.DispatchPathfinderArrived(level, entityID);
+            });
         }
 
         // Only here, so the sky spins while the game runs and never in the editor.

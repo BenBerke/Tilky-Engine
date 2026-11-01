@@ -28,6 +28,7 @@
 #include "Headers/Runtime/Gameplay/CameraSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
+#include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 // ---------------------------------------------------------
@@ -937,6 +938,131 @@ struct ScriptFlipbook {
         const ComponentFlipbook* flipbook = GetComponent();
         if (flipbook == nullptr) return {};
         return FlipbookSystem::GetFrameName(*flipbook);
+    }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
+};
+
+// ---------------------------------------------------------
+// Pathfinder
+// ---------------------------------------------------------
+
+// The target is handed over as an entity ID: ScriptEntity is defined further
+// down, so `target` and SetTarget are bound as lambdas in
+// LuaGameplayComponentBindings.cpp.
+struct ScriptPathfinder {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Pathfinders this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    [[nodiscard]] ComponentPathfinder* GetComponent() const {
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
+        return level->pathfinders.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
+    }
+
+    [[nodiscard]] bool GetIsActive() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->isActive;
+    }
+
+    void SetIsActive(const bool isActive) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->isActive = isActive;
+    }
+
+    void Stop() const { SetIsActive(false); }
+    void Resume() const { SetIsActive(true); }
+
+    // "Position" or "Entity", as PathfinderInput values.
+    [[nodiscard]] int GetInput() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return static_cast<int>(pathfinder != nullptr ? pathfinder->input : PathfinderInput::POSITION);
+    }
+
+    [[nodiscard]] Vector3 GetDestination() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr ? pathfinder->destination : Vector3{};
+    }
+
+    void SetDestination(const Vector3& destination) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) PathfinderSystem::SetDestination(*pathfinder, destination);
+    }
+
+    // INVALID_ENTITY_ID unless following an entity that still exists.
+    [[nodiscard]] ID GetTargetID() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        if (pathfinder == nullptr || pathfinder->input != PathfinderInput::ENTITY) return INVALID_ENTITY_ID;
+        return level->GetEntity(pathfinder->targetEntityID) != nullptr ? pathfinder->targetEntityID : INVALID_ENTITY_ID;
+    }
+
+    // `offset` keeps the current one when not given.
+    void SetTargetID(const ID targetID, const std::optional<Vector3>& offset) const {
+        ComponentPathfinder* pathfinder = GetComponent();
+        if (pathfinder == nullptr) return;
+
+        if (targetID == ownerID) {
+            spdlog::warn("Pathfinder.SetTarget: entity {} can't follow itself", ownerID);
+            return;
+        }
+
+        PathfinderSystem::SetTarget(*level, *pathfinder, targetID, offset.value_or(pathfinder->offset));
+    }
+
+    [[nodiscard]] Vector3 GetOffset() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr ? pathfinder->offset : Vector3{};
+    }
+
+    void SetOffset(const Vector3& offset) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->offset = offset;
+    }
+
+    [[nodiscard]] float GetSpeed() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr ? pathfinder->speed : 0.0f;
+    }
+
+    void SetSpeed(const float speed) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->speed = std::max(speed, 0.0f);
+    }
+
+    [[nodiscard]] float GetRange() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr ? pathfinder->range : 0.0f;
+    }
+
+    void SetRange(const float range) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->range = std::max(range, 0.0f);
+    }
+
+    [[nodiscard]] bool GetIsAirEntity() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->IsAirEntity();
+    }
+
+    void SetIsAirEntity(const bool air) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->SetFlag(ComponentPathfinder::IS_AIR_ENTITY, air);
+    }
+
+    [[nodiscard]] bool GetIsRangedEntity() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->IsRangedEntity();
+    }
+
+    void SetIsRangedEntity(const bool ranged) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) pathfinder->SetFlag(ComponentPathfinder::IS_RANGED_ENTITY, ranged);
+    }
+
+    [[nodiscard]] bool GetHasArrived() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->arrived;
     }
 
 public:
@@ -1972,6 +2098,10 @@ struct ScriptEntity {
         return LiveLevel() != nullptr && LiveLevel()->flipbooks.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasPathfinder() const {
+        return LiveLevel() != nullptr && LiveLevel()->pathfinders.Has(ownerID);
+    }
+
     [[nodiscard]] bool HasUITransform() const {
         return LiveLevel() != nullptr && LiveLevel()->ui_transforms.Has(ownerID);
     }
@@ -2068,6 +2198,11 @@ struct ScriptEntity {
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptFlipbook GetFlipbook() const {
         return {LiveLevel(), ownerID, FirstInstance(&Level::flipbooks)};
+    }
+
+    // The first one; GetComponents lists them all.
+    [[nodiscard]] ScriptPathfinder GetPathfinder() const {
+        return {LiveLevel(), ownerID, FirstInstance(&Level::pathfinders)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {

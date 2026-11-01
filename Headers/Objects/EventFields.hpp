@@ -89,6 +89,13 @@ inline constexpr EventFieldInfo EVENT_FIELDS[] = {
     {FieldComponent::UI_BUTTON, "hoverColor", "events.field.hover_color", FieldValueKind::COLOR},
     {FieldComponent::UI_BUTTON, "pressedColor", "events.field.pressed_color", FieldValueKind::COLOR},
     {FieldComponent::UI_BUTTON, "disabledColor", "events.field.disabled_color", FieldValueKind::COLOR},
+
+    {FieldComponent::PATHFINDER, "isActive", "events.field.is_active", FieldValueKind::BOOL},
+    {FieldComponent::PATHFINDER, "speed", "events.field.speed", FieldValueKind::FLOAT},
+    {FieldComponent::PATHFINDER, "range", "events.field.range", FieldValueKind::FLOAT},
+    {FieldComponent::PATHFINDER, "offset", "events.field.target_offset", FieldValueKind::VECTOR3},
+    {FieldComponent::PATHFINDER, "isAirEntity", "events.field.air_entity", FieldValueKind::BOOL},
+    {FieldComponent::PATHFINDER, "isRangedEntity", "events.field.ranged_entity", FieldValueKind::BOOL},
 };
 
 // The engine field `key` of `component`, nullptr if there isn't one.

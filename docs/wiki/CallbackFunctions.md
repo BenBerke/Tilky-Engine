@@ -24,6 +24,7 @@ them for public fields.
 | [`OnRelease()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The left mouse button was let go after a click on it |
 | [`OnHoverEnter()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor came onto the button |
 | [`OnHoverExit()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor left the button |
+| [`OnPathfinderArrived()`](#onpathfinderarrived) | ✓ | | This entity's [Pathfinder](Pathfinder.md) got to its destination |
 | [`OnEntityEnter(entity)`](#onentityenter--onentityexit) | | ✓ | An entity entered this sector |
 | [`OnEntityExit(entity)`](#onentityenter--onentityexit) | | ✓ | An entity left this sector |
 | [Flipbook frame events](#flipbook-frame-events) | ✓ | | A [Flipbook](Flipbook.md) reached a frame with an event function |
@@ -407,6 +408,42 @@ end
 
 ---
 
+## OnPathfinderArrived
+
+```lua
+function OnPathfinderArrived() end
+```
+
+Called when this entity's [Pathfinder](Pathfinder.md) gets to its destination: close enough to
+it, or within **Range** for a ranged entity.
+
+- It fires once each time it arrives, not every frame it stays there. `pathfinder.hasArrived`
+  stays `true` meanwhile.
+- Following an entity that walks away, the Pathfinder sets off again, and catching up calls
+  `OnPathfinderArrived` again.
+- `SetDestination` and `SetTarget` count as a new trip: arriving fires it again, even at a point
+  it is already standing on (on the next frame).
+- It doesn't fire when the Pathfinder stops because its target was destroyed.
+
+```lua
+-- Walk back and forth between two points.
+public Vector3 a = Vector3(0, 0, 0)
+public Vector3 b = Vector3(128, 0, 0)
+
+local goingToB = true
+
+function Start()
+    entity.pathfinder:SetDestination(b)
+end
+
+function OnPathfinderArrived()
+    goingToB = not goingToB
+    entity.pathfinder:SetDestination(goingToB and b or a)
+end
+```
+
+---
+
 ## Flipbook frame events
 
 ```lua
@@ -439,12 +476,13 @@ See [Flipbook: Frame events](Flipbook.md#frame-events).
 | 1 | Scripts | For each script in turn: `OnEnable`/`Start` or `OnDisable` if its active state changed, then `Update`. Then all `FixedUpdate` steps. |
 | 2 | Sector movement | Floor/ceiling moves and light fades advance. |
 | 3 | Flipbooks | Every [Flipbook](Flipbook.md) advances and updates its sprite, then frame events fire. |
-| 4 | Player controller | WASD movement, jumping, mouse look. |
-| 5 | Physics | Gravity, velocity, collisions. |
-| 6 | Sector membership | Every moved entity is assigned to the sector it's in now. |
-| 7 | Sector events | `OnEntityExit`, `OnEntityEnter` (sector scripts), then `OnSectorChange` (entity scripts). |
-| 8 | Contact events | `OnCollisionExit`, `OnCollisionEnter`, `OnCollision`, then `OnTriggerExit`, `OnTriggerEnter`, `OnTrigger`. |
-| 9 | Destroys | Entities queued with `Destroy()` run `OnDestroy` and are removed. |
+| 4 | Pathfinders | Every [Pathfinder](Pathfinder.md) picks its direction and sets its entity moving, then `OnPathfinderArrived` fires. |
+| 5 | Player controller | WASD movement, jumping, mouse look. |
+| 6 | Physics | Gravity, velocity, collisions. |
+| 7 | Sector membership | Every moved entity is assigned to the sector it's in now. |
+| 8 | Sector events | `OnEntityExit`, `OnEntityEnter` (sector scripts), then `OnSectorChange` (entity scripts). |
+| 9 | Contact events | `OnCollisionExit`, `OnCollisionEnter`, `OnCollision`, then `OnTriggerExit`, `OnTriggerEnter`, `OnTrigger`. |
+| 10 | Destroys | Entities queued with `Destroy()` run `OnDestroy` and are removed. |
 
 In step 1, entity scripts run before sector scripts. Something a script does in
 `Update` (moving an entity, starting a door) is already reflected in the events at the end of the

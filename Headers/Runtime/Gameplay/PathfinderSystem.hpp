@@ -5,6 +5,8 @@
 #ifndef TILKY_ENGINE_PATHFINDERSYSTEM_HPP
 #define TILKY_ENGINE_PATHFINDERSYSTEM_HPP
 
+#include <functional>
+
 #include "Headers/Objects/Level.hpp"
 
 /// Moves every ComponentPathfinder's owner toward its destination with
@@ -30,8 +32,24 @@ namespace PathfinderSystem {
     // Forgets every pathfinder's direction and step. Call once at Play start.
     void Start(Level& level);
 
+    // Called with the owner's ID each time a pathfinder arrives (gets within
+    // reach of its destination, or within range when ranged, after not being).
+    using ArrivalDispatcher = std::function<void(ID ownerID)>;
+
     // `deltaTime` is scaled (GameTime::deltaTime), so timeScale 0 holds them.
-    void Update(Level& level, float deltaTime);
+    // Arrivals are reported through `onArrived` after every pathfinder moved.
+    void Update(Level& level, float deltaTime, const ArrivalDispatcher& onArrived = {});
+
+    // --- Shared by the Lua API ---------------------------------------------
+
+    // Switches to Position input and walks to `destination`. Counts as not
+    // arrived, so arriving (even right away) fires OnPathfinderArrived again.
+    void SetDestination(ComponentPathfinder& pathfinder, const Vector3& destination);
+
+    // Switches to Entity input and follows `targetID`, aiming at its position
+    // + `offset` (world axes). `destination` is updated right away. Counts as
+    // not arrived, like SetDestination.
+    void SetTarget(Level& level, ComponentPathfinder& pathfinder, ID targetID, const Vector3& offset);
 }
 
 #endif //TILKY_ENGINE_PATHFINDERSYSTEM_HPP

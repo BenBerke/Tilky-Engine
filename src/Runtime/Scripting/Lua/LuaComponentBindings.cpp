@@ -89,6 +89,32 @@ namespace {
             Method("GetFrame", {}, "string", "Name of the frame being shown (empty if there is no flipbook)."),
         }));
 
+        RegisterType(Type("PathfinderInput", "Enum: Position or Entity - see Pathfinder.input.", {
+            Prop("Position", "integer", true),
+            Prop("Entity", "integer", true),
+        }));
+
+        RegisterType(Type("Pathfinder", "Walks the Entity to a point or after another Entity, Doom style: along 8 directions, stepping around whatever blocks it. No baked paths.", {
+            Prop("isValid", "boolean", true),
+            Prop("isActive", "boolean", false, "False stops it where it is (and lets go of its Rigidbody). Same as Stop/Resume."),
+            Prop("hasArrived", "boolean", true, "True while it is at its destination (within range when ranged). OnPathfinderArrived is called each time this turns true."),
+            Prop("input", "PathfinderInput", true, "Position or Entity. SetDestination and SetTarget switch it."),
+            Prop("destination", "Vector3", true, "Where it is heading. Following an entity: the target's position + offset, or where the target last was while it is disabled."),
+            Prop("target", "Entity?", true, "The entity it follows. nil when walking to a position, or once the target is destroyed."),
+            Prop("offset", "Vector3", false, "Added to the target's position on the world axes (Entity input only)."),
+            Prop("speed", "number", false, "World units per second, slowed and paused by the time scale."),
+            Prop("range", "number", false, "How close a ranged entity gets before it stops."),
+            Prop("isAirEntity", "boolean", false, "Flies: ignores step height and drop-offs, and rises or sinks toward the destination's height."),
+            Prop("isRangedEntity", "boolean", false, "Stops once the destination is within range instead of walking right up to it."),
+        }, {
+            Method("SetDestination", {Param("position", "Vector3")}, {},
+                   "Walks to this world position (switches input to Position)."),
+            Method("SetTarget", {Param("entity", "Entity"), Param("offset", "Vector3?")}, {},
+                   "Follows this entity, keeping up as it moves (switches input to Entity). offset is added to its position on the world axes; left out, the current offset is kept."),
+            Method("Stop", {}, {}, "Stops moving: isActive = false."),
+            Method("Resume", {}, {}, "Starts moving again: isActive = true."),
+        }));
+
         RegisterType(Type("Collider", "Sphere, capsule or box collision volume. It is the body for every physics contact.", {
             Prop("isValid", "boolean", true),
             Prop("offset", "Vector3", false, "Local position of the collider's bottom relative to the Entity's Transform, multiplied by its scale and turned with its rotation. Lets several sit at different spots on one Entity."),
@@ -248,6 +274,9 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
     RegisterComponentMetadata();
 
     lua.new_enum( "ColliderType","Sphere", COLLIDERTYPE_SPHERE, "Box", COLLIDERTYPE_BOX, "Capsule", COLLIDERTYPE_CAPSULE);
+    lua.new_enum("PathfinderInput",
+                 "Position", static_cast<int>(PathfinderInput::POSITION),
+                 "Entity", static_cast<int>(PathfinderInput::ENTITY));
 
     lua.new_usertype<ScriptAudioSource>(
         "AudioSource",

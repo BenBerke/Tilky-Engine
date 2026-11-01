@@ -182,6 +182,7 @@ namespace {
         sol::protected_function onClickFunction;
         sol::protected_function onReleaseFunction;
         sol::protected_function onHoverEnterFunction;
+        sol::protected_function onPathfinderArrivedFunction;
         sol::protected_function onHoverExitFunction;
 
         bool started = false;   // Start() has run at least once
@@ -462,6 +463,10 @@ namespace {
                 "UI Button: called when the cursor comes onto this button (the topmost one under it)."}},
             {&ScriptInstance::onHoverExitFunction, {"OnHoverExit", CallbackOwner::Entity, {},
                 "UI Button: called when the cursor leaves this button, or another button comes on top of it there."}},
+
+            {&ScriptInstance::onPathfinderArrivedFunction, {"OnPathfinderArrived", CallbackOwner::Entity, {},
+                "Pathfinder: called each time this entity's Pathfinder gets to its destination (within Range when ranged). "
+                "Following an entity, it is called again every time it catches up after the target moved away."}},
         };
 
         return callbacks;
@@ -773,6 +778,7 @@ namespace {
             case CMP_RIGIDBODY: return ResolveInstanceRef<ScriptRigidbody>(luaView, level, level.rigidbodies, ref);
             case CMP_MODEL: return ResolveInstanceRef<ScriptModel>(luaView, level, level.models, ref);
             case CMP_FLIPBOOK: return ResolveInstanceRef<ScriptFlipbook>(luaView, level, level.flipbooks, ref);
+            case CMP_PATHFINDER: return ResolveInstanceRef<ScriptPathfinder>(luaView, level, level.pathfinders, ref);
 
             default: break;
         }
@@ -2049,6 +2055,19 @@ void LuaScriptSystem::DispatchUIButtonCallback(Level&, const ID entityID, const 
         // Copied: the instance can move while the handler runs.
         const ScriptInstance instance = candidate;
         CallLifecycle(instance, instance.*callback, name);
+    }
+}
+
+void LuaScriptSystem::DispatchPathfinderArrived(Level&, const ID entityID) {
+    // By index: a handler can attach a script, which can grow the vector.
+    for (size_t i = 0; i < scriptInstances.size(); ++i) {
+        const ScriptInstance& candidate = scriptInstances[i];
+        if (candidate.ownerKind != ScriptOwnerKind::Entity || candidate.ownerID != entityID) continue;
+        if (candidate.destroyed || !candidate.enabled || !candidate.onPathfinderArrivedFunction.valid()) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const ScriptInstance instance = candidate;
+        CallLifecycle(instance, instance.onPathfinderArrivedFunction, "OnPathfinderArrived");
     }
 }
 

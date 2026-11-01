@@ -464,6 +464,19 @@ struct PayloadUIButtonHoverExit {
     TagFilter filter{TagType::ALL, {}};
 };
 
+// The entity's Pathfinder got to its destination (within Range when ranged),
+// once per arrival. Following an entity, the instigator is that target (the
+// filter checks its tags); walking to a point there's none. See PathfinderSystem.
+struct PayloadPathfinderArrived {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.pathfinder_arrived";
+    transKey saveName = "pathfinder_arrived"; // level file name, never change
+    bool operator==(const PayloadPathfinderArrived&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
 // "On Start", like a script's Start(): on everything in the level when it
 // loads (after the scripts' Start callbacks; the level's own first, then
 // walls, linedefs, sectors and entities), and on an entity spawned later
@@ -966,7 +979,8 @@ enum class ToggleableComponent : uint8_t {
     PLAYER_CONTROLLER = 2,
     CAMERA = 3,
     COLLIDER = 4,
-    UI_SPRITE = 5
+    UI_SPRITE = 5,
+    PATHFINDER = 6
 };
 
 // Every component of the type on the owner.
@@ -995,7 +1009,8 @@ enum class FieldComponent : uint8_t {
     UI_TRANSFORM = 10,
     UI_SPRITE = 11,
     UI_TEXT = 12,
-    UI_BUTTON = 13
+    UI_BUTTON = 13,
+    PATHFINDER = 14
 };
 
 // What a field holds. Numbers, vectors and colours can change over time.
@@ -1096,6 +1111,32 @@ struct PayloadDispatchEntitySetSprite {
     bool operator==(const PayloadDispatchEntitySetSprite&) const = default;
 
     std::array<std::string, 8> textures;
+};
+
+// What a Pathfinder dispatch does to its owner's Pathfinder (its first).
+enum class PathfinderAction : uint8_t {
+    GO_TO_COORDINATES = 0, // walk to `position`
+    GO_TO_SECTOR = 1,      // walk to sector `targetID`'s centre, on floor `floorIndex`
+    FOLLOW_ENTITY = 2,     // follow entity `targetID`, aiming at its position + `offset`
+    FOLLOW_INSTIGATOR = 3, // follow the instigator, + `offset`
+    STOP = 4,              // isActive = false
+    RESUME = 5,            // isActive = true
+};
+
+// Controls the owner's Pathfinder, like Pathfinder:SetDestination /
+// SetTarget / Stop / Resume in Lua. Going somewhere doesn't change isActive.
+struct PayloadDispatchEntityPathfinder {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.dispatch.entity.pathfinder";
+    transKey saveName = "dispatch.entity.pathfinder"; // level file name, never change
+    bool operator==(const PayloadDispatchEntityPathfinder&) const = default;
+
+    PathfinderAction action = PathfinderAction::GO_TO_COORDINATES;
+    Vector3 position;         // GO_TO_COORDINATES
+    ID targetID = INVALID_ID; // GO_TO_SECTOR (sector) or FOLLOW_ENTITY (entity)
+    int floorIndex = 0;       // GO_TO_SECTOR: which of its floors
+    Vector3 offset;           // FOLLOW_ENTITY / FOLLOW_INSTIGATOR, world axes
 };
 
 // Spawns at the owner: an entity's transform, a wall or linedef's middle on
@@ -1265,7 +1306,7 @@ using EventPayload = std::variant<
     PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
     PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadOnStart,
     PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit,
-    PayloadKeyPress, PayloadKeyRelease>;
+    PayloadKeyPress, PayloadKeyRelease, PayloadPathfinderArrived>;
 
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,
@@ -1276,7 +1317,7 @@ using DispatchPayload = std::variant<
     PayloadDispatchSectorTeleportInside,
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable,
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
-    PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite,
+    PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite, PayloadDispatchEntityPathfinder,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
     PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText, PayloadDispatchMusic>;
@@ -1294,6 +1335,10 @@ template <typename Payload>
 // Payloads that only go on a UI entity with a UI Button (the UI Button events).
 template <typename Payload>
 inline constexpr bool NeedsUIButton = requires { requires Payload::needsUIButton; };
+
+// Payloads that only go on an entity with a Pathfinder.
+template <typename Payload>
+inline constexpr bool NeedsPathfinder = requires { requires Payload::needsPathfinder; };
 
 template <typename Payload>
 [[nodiscard]] constexpr const char* GetTranslationKey(const Payload& payload) noexcept {

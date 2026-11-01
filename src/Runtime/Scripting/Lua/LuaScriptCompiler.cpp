@@ -182,6 +182,7 @@ namespace {
             {"Rigidbody",        ScriptValueType::Component, "Rigidbody",        CMP_RIGIDBODY},
             {"Model",            ScriptValueType::Component, "Model",            CMP_MODEL},
             {"Flipbook",         ScriptValueType::Component, "Flipbook",         CMP_FLIPBOOK},
+            {"Pathfinder",       ScriptValueType::Component, "Pathfinder",       CMP_PATHFINDER},
         };
         return types;
     }

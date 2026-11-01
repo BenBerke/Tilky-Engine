@@ -87,6 +87,10 @@ public:
     // on every enabled script of the UI Button's entity. From UIButtonSystem.
     void DispatchUIButtonCallback(Level& level, ID entityID, EventSystem::UIButtonEvent kind);
 
+    // Calls OnPathfinderArrived() on every enabled script of the entity. From
+    // PathfinderSystem, once each time its Pathfinder arrives.
+    void DispatchPathfinderArrived(Level& level, ID entityID);
+
     // Set Field dispatches on script fields (EventSystem::Hooks): the public
     // field `field` of the entity's `scriptIndex`-th script, read from / written
     // to its running Lua instance. Int, Float, Bool, String, Vector2/3/4, Enum

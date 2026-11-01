@@ -225,6 +225,7 @@ struct ComponentPathfinder {
     bool isActive = true; // false = doesn't move the owner
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
     bool driving = false; // runtime only: set its Rigidbody's velocity last update
+    bool arrived = false; // runtime only: at the destination (within range when ranged) last update
 
     [[nodiscard]] bool IsAirEntity() const { return (metadata & IS_AIR_ENTITY) != 0; }
     [[nodiscard]] bool IsRangedEntity() const { return (metadata & IS_RANGED_ENTITY) != 0; }

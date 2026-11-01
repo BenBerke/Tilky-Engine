@@ -19,7 +19,7 @@
 
 namespace {
     constexpr const char* COMPONENT_TYPE =
-        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|UITransform|UISprite|UIText|UIButton";
+        "Transform|Sprite|AudioSource|PlayerController|Camera|Collider|Rigidbody|Model|Flipbook|Pathfinder|UITransform|UISprite|UIText|UIButton";
 
     // One row per component Lua can add or remove. Its value in the Lua
     // `Component` table is its ComponentType. Script is left out: a script
@@ -148,6 +148,7 @@ namespace {
         Kind<ComponentRigidbody, ScriptRigidbody, &ScriptEntity::GetRigidbody>("Rigidbody", CMP_RIGIDBODY, LuaComponentPlacement::World),
         Kind<ComponentModel, ScriptModel, &ScriptEntity::GetModel>("Model", CMP_MODEL, LuaComponentPlacement::World),
         Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, LuaComponentPlacement::Any),
+        Kind<ComponentPathfinder, ScriptPathfinder, &ScriptEntity::GetPathfinder>("Pathfinder", CMP_PATHFINDER, LuaComponentPlacement::World),
         Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, LuaComponentPlacement::UI),
         Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, LuaComponentPlacement::UI),
         Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, LuaComponentPlacement::UI),
@@ -214,6 +215,8 @@ namespace {
                 {.name = "model", .luaType = "Model?", .readOnly = true, .doc = "nil if this Entity has no Model."},
                 {.name = "hasFlipbook", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Flipbook."},
                 {.name = "flipbook", .luaType = "Flipbook?", .readOnly = true, .doc = "nil if this Entity has no Flipbook."},
+                {.name = "hasPathfinder", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Pathfinder."},
+                {.name = "pathfinder", .luaType = "Pathfinder?", .readOnly = true, .doc = "nil if this Entity has no Pathfinder."},
                 {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
                 {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
                 {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
@@ -438,6 +441,20 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
                 if (!entity.HasFlipbook()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetFlipbook());
+            }
+        ),
+
+        "hasPathfinder",
+        sol::property(&ScriptEntity::HasPathfinder),
+
+        "pathfinder",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+
+                if (!entity.HasPathfinder()) return sol::nil;
+
+                return sol::make_object(luaState, entity.GetPathfinder());
             }
         ),
 
