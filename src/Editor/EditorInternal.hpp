@@ -1213,6 +1213,52 @@ namespace MapEditorInternal {
     // name, empty when either sector is gone or they're the same.
     std::string MakeTeleporter(Level& level, ID sectorID, int floorIndex, ID destinationID);
 
+    // The sector inspector's Make Lift popup, kept between uses.
+    struct MakeLiftSettings {
+        enum Motion : uint8_t {
+            DOWN_WAIT_UP = 0,   // Lift dispatch
+            UP_WAIT_DOWN = 1,   // Lift dispatch
+            BACK_AND_FORTH = 2, // Lift dispatch (Perpetual): started, never stopped by a trigger
+            DOWN_STAY = 3,      // Move To Height, lowest neighbour floor + lip (or fixed)
+            UP_STAY = 4         // Move To Height, highest neighbour floor + lip (or fixed)
+        };
+
+        Motion motion = DOWN_WAIT_UP;
+
+        // What sets it off; all on the lift itself, Player only.
+        bool useWalls = true; // Receive Ray (Interact) on each of its walls
+        bool stepOn = true;   // Entity Enter on the sector
+        bool onStart = false; // On Start on the sector
+
+        PayloadDispatchSectorLift::LowMode lowMode = PayloadDispatchSectorLift::LOWEST_NEIGHBOR_FLOOR;
+        float lowLip = 0.0f;
+        float lowHeight = 0.0f;
+        PayloadDispatchSectorLift::HighMode highMode = PayloadDispatchSectorLift::HIGHEST_NEIGHBOR_FLOOR;
+        float highLip = 0.0f;
+        float highHeight = 0.0f;
+
+        float speed = 40.0f;
+        float wait = 3.0f;
+        PayloadDispatchSectorDoor::Retrigger retrigger = PayloadDispatchSectorDoor::RESTART;
+
+        bool onceOnly = false; // each trigger event fires once (Max Triggers 1)
+
+        bool locked = false; // lifts that come back only
+        TagId requiredTag = 0;
+
+        [[nodiscard]] bool UsesLiftDispatch() const { return motion <= BACK_AND_FORTH; }
+        [[nodiscard]] bool GoesDown() const { return motion == DOWN_WAIT_UP || motion == BACK_AND_FORTH || motion == DOWN_STAY; }
+        [[nodiscard]] bool GoesUp() const { return motion == UP_WAIT_DOWN || motion == BACK_AND_FORTH || motion == UP_STAY; }
+    };
+    extern MakeLiftSettings makeLiftSettings;
+
+    // The sector inspector's Make Lift, as one undo step: a new event tag
+    // "Lift <sector name>" (numbered when taken), the triggers `settings`
+    // picks (on the sector and its walls, entities tagged Player) and a Lift
+    // or Move To Height dispatch on the sector for `floorIndex`, all linked
+    // by that tag. Returns the tag's name, empty when the sector is gone.
+    std::string MakeLift(Level& level, ID sectorID, int floorIndex, const MakeLiftSettings& settings);
+
     // Make Teleporter waits for a click on the destination sector in the 2D
     // map (any mode). Empty when it isn't waiting.
     struct TeleporterPick {

@@ -68,6 +68,9 @@ namespace ImGuiDrawFunctions {
         // on the 2D map, so only an inspector there sets teleporterAllowed.
         bool teleporterAllowed = false;
         int teleporterFloorIndex = -1; // -1: not pressed
+
+        // Make Lift, with MapEditorInternal::makeLiftSettings.
+        int liftFloorIndex = -1; // -1: not pressed
     };
 
     // A non-null windowId puts the window under that ImGui ID ("Title###id"),

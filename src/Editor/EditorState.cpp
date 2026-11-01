@@ -602,6 +602,7 @@ namespace MapEditorInternal {
         }
     }
 
+    MakeLiftSettings makeLiftSettings;
     SDL_Scancode* keyBindBeingListened = nullptr;
     int componentKeyBindDrawnFrame = 0;
 

@@ -1682,6 +1682,91 @@ namespace MapEditorInternal {
         return tagName;
     }
 
+    std::string MakeLift(Level& level, const ID sectorID, const int floorIndex, const MakeLiftSettings& settings) {
+        Sector* sector = level.GetSector(sectorID);
+        if (sector == nullptr) return {};
+
+        GeometrySnapshot before = CaptureGeometrySnapshot(level);
+
+        const std::string tagName =
+            TagRegistry::UniqueName("Lift " + (sector->name.empty() ? "#" + std::to_string(sector->id) : sector->name));
+        const TagId link = TagRegistry::GetOrCreate(tagName, TagRegistry::TagKind::EVENT);
+        const TagId player = TagRegistry::GetOrCreate(TagRegistry::PLAYER_TAG);
+        if (!SaveProjectSettings()) spdlog::error("Make Lift: couldn't save the new tag to the project settings");
+
+        const auto linked = [&](EventPayload payload) {
+            Event event;
+            event.payload = std::move(payload);
+            event.tagId = link;
+            if (settings.onceOnly) event.maxTriggers = 1;
+            return event;
+        };
+
+        // Triggers.
+        if (settings.useWalls) {
+            PayloadReceiveRay ray;
+            ray.rayType = RayType::INTERACT;
+            ray.filter.tagType = TagType::INCLUDE;
+            ray.filter.tags = {player};
+
+            for (Wall* wall : sector->walls)
+                if (wall != nullptr) wall->events.push_back(linked(ray));
+        }
+
+        if (settings.stepOn) {
+            PayloadSectorEntityEnter enter;
+            enter.filter.tagType = TagType::INCLUDE;
+            enter.filter.tags = {player};
+            sector->events.push_back(linked(enter));
+        }
+
+        if (settings.onStart) sector->events.push_back(linked(PayloadOnStart{}));
+
+        // The move.
+        Dispatch dispatch;
+        dispatch.tagId = link;
+
+        if (settings.UsesLiftDispatch()) {
+            PayloadDispatchSectorLift lift;
+            lift.type = settings.motion == MakeLiftSettings::UP_WAIT_DOWN ? PayloadDispatchSectorLift::UP_WAIT_DOWN
+                      : settings.motion == MakeLiftSettings::BACK_AND_FORTH ? PayloadDispatchSectorLift::PERPETUAL
+                      : PayloadDispatchSectorLift::DOWN_WAIT_UP;
+            lift.lowMode = settings.lowMode;
+            lift.lowLip = settings.lowLip;
+            lift.lowHeight = settings.lowHeight;
+            lift.highMode = settings.highMode;
+            lift.highLip = settings.highLip;
+            lift.highHeight = settings.highHeight;
+            lift.speed = settings.speed;
+            lift.wait = settings.wait;
+            lift.retrigger = settings.retrigger;
+            lift.floorIndex = floorIndex;
+            lift.locked = settings.locked;
+            lift.requiredTag = settings.requiredTag;
+            dispatch.payload = lift;
+        } else {
+            const bool down = settings.motion == MakeLiftSettings::DOWN_STAY;
+            const bool fixed = down ? settings.lowMode == PayloadDispatchSectorLift::FIXED_LOW
+                                    : settings.highMode == PayloadDispatchSectorLift::FIXED_HIGH;
+
+            PayloadDispatchSectorMoveToHeight move;
+            move.ceiling = false;
+            move.mode = fixed ? SectorHeightMode::ABSOLUTE_HEIGHT
+                      : down ? SectorHeightMode::LOWEST_NEIGHBOR_FLOOR : SectorHeightMode::HIGHEST_NEIGHBOR_FLOOR;
+            move.height = fixed ? (down ? settings.lowHeight : settings.highHeight) : (down ? settings.lowLip : settings.highLip);
+            move.speed = settings.speed;
+            move.floorIndex = floorIndex;
+            dispatch.payload = move;
+        }
+
+        sector->dispatches.push_back(dispatch);
+
+        PushGeometryUndoSnapshot(std::move(before), "editor.history.make_lift");
+        hasUnsavedChanges = true;
+
+        return tagName;
+    }
+
     std::string MakeTeleporter(Level& level, const ID sectorID, const int floorIndex, const ID destinationID) {
         Sector* sector = level.GetSector(sectorID);
         if (sector == nullptr || level.GetSector(destinationID) == nullptr || sectorID == destinationID) return {};

@@ -1265,6 +1265,14 @@ namespace ImGuiDrawFunctions {
         }
     }
 
+    constexpr std::pair<MapEditorInternal::MakeLiftSettings::Motion, const char *> kMakeLiftMotionOptions[] = {
+        {MapEditorInternal::MakeLiftSettings::DOWN_WAIT_UP, "sector.make_lift.motion.down_wait_up"},
+        {MapEditorInternal::MakeLiftSettings::UP_WAIT_DOWN, "sector.make_lift.motion.up_wait_down"},
+        {MapEditorInternal::MakeLiftSettings::BACK_AND_FORTH, "sector.make_lift.motion.back_and_forth"},
+        {MapEditorInternal::MakeLiftSettings::DOWN_STAY, "sector.make_lift.motion.down_stay"},
+        {MapEditorInternal::MakeLiftSettings::UP_STAY, "sector.make_lift.motion.up_stay"}
+    };
+
     constexpr std::pair<TeleportTarget, const char *> kTeleportTargetOptions[] = {
         {TeleportTarget::COORDINATES, "events.teleport.to.coordinates"},
         {TeleportTarget::ENTITY, "events.teleport.to.entity"},
@@ -3804,8 +3812,8 @@ namespace ImGuiDrawFunctions {
                 static float doorLip = 4.0f;
                 static float doorWait = 3.0f;
 
-                // Make Door and Make Teleporter share a row, at one fixed width.
-                constexpr float MAKE_BUTTON_WIDTH = 150.0f;
+                // Make Door, Make Teleporter and Make Lift share a row, at one fixed width.
+                constexpr float MAKE_BUTTON_WIDTH = 130.0f;
 
                 if (ImGui::Button(Get("sector.make_door").c_str(), ImVec2(MAKE_BUTTON_WIDTH, 0.0f))) ImGui::OpenPopup("make_door");
                 Tooltip(Get("editor.tooltip.sector.make_door").c_str());
@@ -3844,6 +3852,103 @@ namespace ImGuiDrawFunctions {
                         makeDoorRequest->teleporterFloorIndex = static_cast<int>(floorIndex);
                     ImGui::EndDisabled();
                     Tooltip(Get("editor.tooltip.sector.make_teleporter").c_str());
+                }
+
+                // ── Make Lift: motion, triggers and heights in a popup ───
+                ImGui::SameLine();
+                if (ImGui::Button(Get("sector.make_lift").c_str(), ImVec2(MAKE_BUTTON_WIDTH, 0.0f))) ImGui::OpenPopup("make_lift");
+                Tooltip(Get("editor.tooltip.sector.make_lift").c_str());
+
+                ImGui::SetNextWindowSize(ImVec2(300.0f, 0.0f));
+                if (ImGui::BeginPopup("make_lift")) {
+                    MapEditorInternal::MakeLiftSettings &lift = MapEditorInternal::makeLiftSettings;
+                    using Lift = PayloadDispatchSectorLift;
+
+                    if (BeginProperties("##MakeLift")) {
+                        Property(Get("sector.make_lift.motion").c_str());
+                        DrawEnumCombo("##Motion", lift.motion, kMakeLiftMotionOptions);
+                        Tooltip(Get("editor.tooltip.sector.make_lift.motion").c_str());
+
+                        Property(Get("sector.make_lift.use_walls").c_str());
+                        ImGui::Checkbox("##UseWalls", &lift.useWalls);
+                        Tooltip(Get("editor.tooltip.sector.make_lift.use_walls").c_str());
+
+                        Property(Get("sector.make_lift.step_on").c_str());
+                        ImGui::Checkbox("##StepOn", &lift.stepOn);
+                        Tooltip(Get("editor.tooltip.sector.make_lift.step_on").c_str());
+
+                        Property(Get("sector.make_lift.on_start").c_str());
+                        ImGui::Checkbox("##OnStart", &lift.onStart);
+                        Tooltip(Get("editor.tooltip.sector.make_lift.on_start").c_str());
+
+                        if (lift.GoesDown()) {
+                            Property(Get("events.lift.low_mode").c_str());
+                            DrawEnumCombo("##LowMode", lift.lowMode, kLiftLowModeOptions);
+                            if (lift.lowMode == Lift::FIXED_LOW) {
+                                Property(Get("events.lift.low_height").c_str());
+                                ImGui::DragFloat("##LowHeight", &lift.lowHeight, 0.25f, 0.0f, 0.0f, "%.2f");
+                            } else {
+                                Property(Get("events.lift.low_lip").c_str());
+                                ImGui::DragFloat("##LowLip", &lift.lowLip, 0.25f, 0.0f, 0.0f, "%.2f");
+                                Tooltip(Get("editor.tooltip.dispatches.lift_low_lip").c_str());
+                            }
+                        }
+
+                        if (lift.GoesUp()) {
+                            Property(Get("events.lift.high_mode").c_str());
+                            DrawEnumCombo("##HighMode", lift.highMode, kLiftHighModeOptions);
+                            if (lift.highMode == Lift::FIXED_HIGH) {
+                                Property(Get("events.lift.high_height").c_str());
+                                ImGui::DragFloat("##HighHeight", &lift.highHeight, 0.25f, 0.0f, 0.0f, "%.2f");
+                            } else {
+                                Property(Get("events.lift.high_lip").c_str());
+                                ImGui::DragFloat("##HighLip", &lift.highLip, 0.25f, 0.0f, 0.0f, "%.2f");
+                                Tooltip(Get("editor.tooltip.dispatches.lift_high_lip").c_str());
+                            }
+                        }
+
+                        Property(Get("events.speed").c_str());
+                        if (ImGui::DragFloat("##Speed", &lift.speed, 0.25f, 0.01f, 100000.0f, "%.2f")) lift.speed = std::max(0.01f, lift.speed);
+                        Tooltip(Get("editor.tooltip.dispatches.move_speed").c_str());
+
+                        if (lift.UsesLiftDispatch()) {
+                            Property(Get("events.door.wait").c_str());
+                            if (ImGui::DragFloat("##Wait", &lift.wait, 0.05f, 0.0f, 10000.0f, "%.2f s")) lift.wait = std::max(0.0f, lift.wait);
+                            Tooltip(Get("editor.tooltip.dispatches.lift_wait").c_str());
+                        }
+
+                        if (lift.motion == MapEditorInternal::MakeLiftSettings::DOWN_WAIT_UP ||
+                            lift.motion == MapEditorInternal::MakeLiftSettings::UP_WAIT_DOWN) {
+                            Property(Get("events.door.retrigger").c_str());
+                            DrawEnumCombo("##Retrigger", lift.retrigger, kLiftRetriggerOptions);
+                            Tooltip(Get("editor.tooltip.dispatches.lift_retrigger").c_str());
+                        }
+
+                        Property(Get("sector.make_lift.once_only").c_str());
+                        ImGui::Checkbox("##OnceOnly", &lift.onceOnly);
+                        Tooltip(Get("editor.tooltip.sector.make_lift.once_only").c_str());
+
+                        if (lift.UsesLiftDispatch()) {
+                            Property(Get("events.door.locked").c_str());
+                            ImGui::Checkbox("##Locked", &lift.locked);
+                            Tooltip(Get("editor.tooltip.dispatches.lift_locked").c_str());
+
+                            if (lift.locked) {
+                                Property(Get("events.door.required_tag").c_str());
+                                DrawTagCombo("##RequiredTag", lift.requiredTag, TagRegistry::TagKind::NORMAL);
+                                Tooltip(Get("editor.tooltip.dispatches.door_required_tag").c_str());
+                            }
+                        }
+
+                        EndProperties();
+                    }
+
+                    if (ImGui::Button(Get("sector.make_lift_confirm").c_str(), ImVec2(-FLT_MIN, 0.0f))) {
+                        makeDoorRequest->liftFloorIndex = static_cast<int>(floorIndex);
+                        ImGui::CloseCurrentPopup();
+                    }
+
+                    ImGui::EndPopup();
                 }
             }
 

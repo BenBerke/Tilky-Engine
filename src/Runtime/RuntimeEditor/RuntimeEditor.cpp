@@ -2697,6 +2697,13 @@ namespace RuntimeEditorUi {
                     if (!tagName.empty())
                         ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_door_done") + " " + tagName).c_str(), false);
                 }
+
+                if (open && makeDoorRequest.liftFloorIndex >= 0) {
+                    const std::string tagName = MapEditorInternal::MakeLift(level, level.sectors[selectedSector].id,
+                        makeDoorRequest.liftFloorIndex, MapEditorInternal::makeLiftSettings);
+                    if (!tagName.empty())
+                        ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_lift_done") + " " + tagName).c_str(), false);
+                }
             }
         }
 
