@@ -4853,8 +4853,54 @@ namespace ImGuiDrawFunctions {
         }
     }
 
+    // The component's Persist Between Levels "take from level copy" flag, in
+    // the current level.
+    template<typename Storage>
+    static bool *LevelCopyFlagIn(Storage &storage, const std::uint64_t instanceID) {
+        auto *component = storage.GetInstance(instanceID);
+        return component != nullptr ? &component->takeFromLevelCopy : nullptr;
+    }
+
+    static bool *LevelCopyFlagIn(ScriptComponentStorage &storage, const std::uint64_t instanceID) {
+        ComponentScript *script = storage.GetByID(instanceID);
+        return script != nullptr ? &script->takeFromLevelCopy : nullptr;
+    }
+
+    static bool *TakeFromLevelCopyFlag(const int componentType, const std::uint64_t instanceID) {
+        Level &level = LevelManager::CurrentLevel();
+
+        switch (componentType) {
+#define TILKY_LEVEL_COPY_FLAG(Type, Bit, Storage, LabelKey) case Bit: return LevelCopyFlagIn(level.Storage, instanceID);
+            TILKY_COMPONENTS(TILKY_LEVEL_COPY_FLAG)
+#undef TILKY_LEVEL_COPY_FLAG
+            default: return nullptr;
+        }
+    }
+
+    void DrawPersistenceFields(Entity &entity) {
+        ImGui::PushID("persistence");
+
+        {
+            PrefabField prefabField("persistent");
+            ImGui::Checkbox(Get("entity.persist_between_levels").c_str(), &entity.persistent);
+            Tooltip(Get("editor.tooltip.entity.persist_between_levels").c_str());
+        }
+
+        if (entity.persistent) {
+            PrefabField prefabField("persistenceKey");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::InputTextWithHint("##PersistenceKey", Get("entity.persistence_key_hint").c_str(), &entity.persistenceKey);
+            Tooltip(Get("editor.tooltip.entity.persistence_key").c_str());
+        }
+
+        ImGui::PopID();
+    }
+
     ComponentHeaderResult DrawComponentHeader(const Entity &entity, const ComponentHeader &header) {
         ComponentHeaderResult result;
+
+        // Only a persistent entity has a level copy to take values from.
+        bool *levelCopyFlag = entity.persistent ? TakeFromLevelCopyFlag(header.componentType, header.instanceID) : nullptr;
 
         // Remembered per type, so collapsing Transform once keeps every
         // entity's Transform collapsed.
@@ -4899,8 +4945,15 @@ namespace ImGuiDrawFunctions {
 
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         drawList->PushClipRect(ImVec2(labelX, headerMin.y), ImVec2(headerMax.x - menuSize, headerMax.y), true);
-        drawList->AddText(ImVec2(labelX, headerMin.y + (height - ImGui::GetTextLineHeight()) * 0.5f),
-                          ImGui::GetColorU32(ImGuiCol_Text), header.label.c_str());
+        const ImVec2 labelPos(labelX, headerMin.y + (height - ImGui::GetTextLineHeight()) * 0.5f);
+        drawList->AddText(labelPos, ImGui::GetColorU32(ImGuiCol_Text), header.label.c_str());
+
+        if (levelCopyFlag != nullptr && *levelCopyFlag) {
+            const std::string marker = "  " + Get("entity.component_menu.level_copy_marker");
+            drawList->AddText(ImVec2(labelPos.x + ImGui::CalcTextSize(header.label.c_str()).x, labelPos.y),
+                              ImGui::GetColorU32(ImGuiCol_TextDisabled), marker.c_str());
+        }
+
         drawList->PopClipRect();
 
         ImGui::SetCursorScreenPos(ImVec2(headerMax.x - menuSize, headerMin.y));
@@ -4922,6 +4975,12 @@ namespace ImGuiDrawFunctions {
                 header.componentType != CMP_TRANSFORM && header.componentType != CMP_UI_TRANSFORM) {
                 ImGui::Separator();
                 DrawPrefabComponentMenuItems(entity, header.componentType, header.instanceID);
+            }
+
+            if (levelCopyFlag != nullptr) {
+                ImGui::Separator();
+                ImGui::MenuItem(Get("entity.component_menu.take_from_level_copy").c_str(), nullptr, levelCopyFlag);
+                Tooltip(Get("editor.tooltip.entity.take_from_level_copy").c_str());
             }
 
             ImGui::Separator();
@@ -5045,6 +5104,8 @@ namespace ImGuiDrawFunctions {
 
             ImGui::PopID();
         }
+
+        DrawPersistenceFields(entity);
 
         // ── Components ───────────────────────────────────────────────────────
         // One foldout per component instance, Unity style. An entity can have

@@ -527,48 +527,61 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
-        for (ComponentUISprite& sprite : level.ui_sprites.components) {
-            // The owner's UI Button state look (white and empty without one).
-            const Vector4 color = {
-                sprite.color.x * sprite.buttonTint.x, sprite.color.y * sprite.buttonTint.y,
-                sprite.color.z * sprite.buttonTint.z, sprite.color.w * sprite.buttonTint.w
-            };
+        // Layer by layer (the UI layouts, then the level's own UI), each
+        // layer's Sprites and then its Texts. Text drawing switches shaders,
+        // so the sprite state is set again after it.
+        bool spriteStateSet = true;
 
-            if (!sprite.isActive || !sprite.ownerEnabled || color.w <= 0.0f) continue;
+        UISystem::ForEachInDrawOrder(level,
+            [&](const ComponentUISprite& sprite) {
+                // The owner's UI Button state look (white and empty without one).
+                const Vector4 color = {
+                    sprite.color.x * sprite.buttonTint.x, sprite.color.y * sprite.buttonTint.y,
+                    sprite.color.z * sprite.buttonTint.z, sprite.color.w * sprite.buttonTint.w
+                };
 
-            const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
+                if (!sprite.isActive || !sprite.ownerEnabled || color.w <= 0.0f) return;
+                if (level.IsUIHidden(sprite.ownerID)) return;
 
-            if (transform == nullptr) [[unlikely]] {
-                spdlog::error("UI Sprite does not have UI transform");
-                continue;
-            }
+                const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
-            DrawUIRectangle(
-                transform->resolvedPosition,
-                transform->resolvedSize,
-                {color.x * 255.0f, color.y * 255.0f, color.z * 255.0f, color.w * 255.0f},
-                transform->rotation,
-                sprite.buttonTexture.empty() ? sprite.texture : sprite.buttonTexture
-            );
-        }
+                if (transform == nullptr) [[unlikely]] {
+                    spdlog::error("UI Sprite does not have UI transform");
+                    return;
+                }
+
+                if (!spriteStateSet) {
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    uiShader->use();
+                    spriteStateSet = true;
+                }
+
+                DrawUIRectangle(
+                    transform->resolvedPosition,
+                    transform->resolvedSize,
+                    {color.x * 255.0f, color.y * 255.0f, color.z * 255.0f, color.w * 255.0f},
+                    transform->rotation,
+                    sprite.buttonTexture.empty() ? sprite.texture : sprite.buttonTexture
+                );
+            },
+            [&](const ComponentUIText& text) {
+                if (!text.ownerEnabled || level.IsUIHidden(text.ownerID)) return;
+
+                const ComponentUITransform* transform = level.ui_transforms.Get(text.ownerID);
+
+                if (transform == nullptr) [[unlikely]] {
+                    spdlog::error("UI Text does not have UI transform");
+                    return;
+                }
+
+                if (spriteStateSet) glDisable(GL_BLEND);
+                spriteStateSet = false;
+
+                RenderUIText(text, level.ShownUIText(text), *transform);
+            });
 
         glDisable(GL_BLEND);
-    }
-
-    {
-        ZoneScopedN("Rendering UI Text");
-        for (ComponentUIText& text : level.ui_texts.components) {
-            if (!text.ownerEnabled) continue;
-
-            const ComponentUITransform* transform = level.ui_transforms.Get(text.ownerID);
-
-            if (transform == nullptr) [[unlikely]] {
-                spdlog::error("UI Text does not have UI transform");
-                continue;
-            }
-
-            RenderUIText(text, level.ShownUIText(text), *transform);
-        }
     }
 }
 

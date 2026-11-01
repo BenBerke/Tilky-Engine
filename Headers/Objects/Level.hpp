@@ -130,6 +130,10 @@ struct WorldSettings {
     MessageStyle messageStyle;
 
     MusicSettings music;
+
+    // The UI layouts (UILayouts) this level shows, by layout ID, bottom
+    // first. The level's own UI draws on top of all of them.
+    std::vector<std::uint64_t> uiLayouts;
 };
 
 // See src/Runtime/Renderer/OpenGL/OpenGLInit.cpp
@@ -281,6 +285,27 @@ struct Level {
     EditorBackgroundImage backgroundImage;
     Entity* GetEntity(ID entityID);
     const Entity* GetEntity(ID entityID) const;
+
+    // Runtime only: the LevelEpoch this level's walls, sectors and linedefs
+    // came in with.
+    std::uint32_t geometryEpoch = 0;
+
+    // Runtime only: the UI layouts Lua hid (UI.SetLayoutVisible). Their
+    // entities aren't drawn and their buttons don't respond.
+    std::vector<std::uint64_t> hiddenUILayouts;
+
+    // For script handles made at LevelEpoch `epoch`. An entity that came
+    // into the level after that isn't the one the handle meant (it is from
+    // an earlier level and wasn't carried): nullptr, with a warning the
+    // first time. Same for walls, sectors and linedefs, which are all new
+    // after a switch.
+    Entity* GetEntityForHandle(ID entityID, std::uint32_t epoch);
+    [[nodiscard]] bool IsEntityHandleCurrent(ID entityID, std::uint32_t epoch) const;
+    [[nodiscard]] bool IsGeometryHandleCurrent(std::uint32_t epoch, const char* kind, ID id) const;
+
+    // A UI entity of a layout hidden with UI.SetLayoutVisible.
+    [[nodiscard]] bool IsUIHidden(ID entityID) const;
+
     ID CreateEntity(bool uiEntity);
     ID CreateEntity(Entity& entity);
     void DestroyEntity(ID entityID);

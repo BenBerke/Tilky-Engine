@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <future>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 #include "Headers/Editor/EditorStyle.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/GlobalEventVariables.hpp"
@@ -595,6 +597,12 @@ namespace MapEditorInternal {
     bool Save(const std::string& saveTo) {
         Editor::WaitForAutoSave();
 
+        // The level, even while the UI editor has a UI layout as the current one.
+        std::optional<LevelManager::ScopedCurrentLevel> openLevel;
+        if (LevelManager::HasCurrentLevel() && UILayouts::IdOf(&LevelManager::CurrentLevel()) != 0 &&
+            LevelManager::currentLevelIndex >= 0 && LevelManager::currentLevelIndex < static_cast<int>(LevelManager::loadedLevels.size()))
+            openLevel.emplace(LevelManager::loadedLevels[LevelManager::currentLevelIndex]);
+
         Level& level = GetOrCreateCurrentLevel();
 
         const std::string cleanName = LevelSerialization::CleanLevelName(saveTo);
@@ -622,6 +630,16 @@ namespace MapEditorInternal {
         if (!SaveProjectSettings()) {
             spdlog::critical("Failed to save project settings {}", errorMessage);
             return false;
+        }
+
+        // UI layouts edited since they were last saved go with it.
+        for (const std::uint64_t layoutID : UILayouts::DirtyLayouts()) {
+            if (Level* layout = UILayouts::Get(layoutID)) Prefab::RefreshAllOverrides(*layout);
+
+            if (std::string layoutError; !UILayouts::Save(layoutID, &layoutError)) {
+                spdlog::critical("Failed to save UI layout: {}", layoutError);
+                return false;
+            }
         }
 
         spdlog::info("Level saved successfully {}", path.string());

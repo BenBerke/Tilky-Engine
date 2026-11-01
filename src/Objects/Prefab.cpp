@@ -513,6 +513,8 @@ namespace {
 
         if (path == "entity/enabled") { root.enabled = instance.enabled; return; }
         if (path == "entity/tags") { root.tagIds = instance.tagIds; return; }
+        if (path == "entity/persistent") { root.persistent = instance.persistent; return; }
+        if (path == "entity/persistenceKey") { root.persistenceKey = instance.persistenceKey; return; }
         if (path == "entity/events") { root.events = instance.events; return; }
         if (path == "entity/dispatches") { root.dispatches = instance.dispatches; return; }
 
@@ -544,6 +546,8 @@ namespace {
         entity.name = source.name;
         entity.enabled = source.enabled;
         entity.tagIds = source.tagIds;
+        entity.persistent = source.persistent;
+        entity.persistenceKey = source.persistenceKey;
         entity.events = source.events;
         entity.dispatches = source.dispatches;
 
@@ -723,6 +727,8 @@ namespace Prefab {
 
         if (instance.enabled != root.enabled) overrides.emplace_back("entity/enabled");
         if (instance.tagIds != root.tagIds) overrides.emplace_back("entity/tags");
+        if (instance.persistent != root.persistent) overrides.emplace_back("entity/persistent");
+        if (instance.persistenceKey != root.persistenceKey) overrides.emplace_back("entity/persistenceKey");
         if (instance.events != root.events) overrides.emplace_back("entity/events");
         if (instance.dispatches != root.dispatches) overrides.emplace_back("entity/dispatches");
 
@@ -741,6 +747,8 @@ namespace Prefab {
 
         if (!HasOverride(link, "entity/enabled")) instance.enabled = root.enabled;
         if (!HasOverride(link, "entity/tags")) instance.tagIds = root.tagIds;
+        if (!HasOverride(link, "entity/persistent")) instance.persistent = root.persistent;
+        if (!HasOverride(link, "entity/persistenceKey")) instance.persistenceKey = root.persistenceKey;
         if (!HasOverride(link, "entity/events")) instance.events = root.events;
         if (!HasOverride(link, "entity/dispatches")) instance.dispatches = root.dispatches;
 
@@ -844,6 +852,8 @@ namespace Prefab {
         const Entity& root = RootOf(*prefab);
         if (instance.enabled != root.enabled) fields.emplace_back("enabled");
         if (instance.tagIds != root.tagIds) fields.emplace_back("tags");
+        if (instance.persistent != root.persistent) fields.emplace_back("persistent");
+        if (instance.persistenceKey != root.persistenceKey) fields.emplace_back("persistenceKey");
         if (instance.events != root.events) fields.emplace_back("events");
         if (instance.dispatches != root.dispatches) fields.emplace_back("dispatches");
         return fields;

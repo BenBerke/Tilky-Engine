@@ -18,7 +18,9 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Objects/Entity.hpp"
+#include "Headers/Objects/EntityTransfer.hpp"
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 // ASSUMPTION: wherever ComponentUIText / ComponentUISprite / ComponentUITransform
 // actually live in your project (e.g. Components.hpp). Adjust this path -
@@ -34,6 +36,7 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 /// This script is responsible for drawing the ImGUI of the UI Editor.
@@ -1118,6 +1121,7 @@ namespace {
         ImGuiDrawFunctions::SmallMetaText("ID: %u", static_cast<unsigned>(entity.id));
         ImGuiDrawFunctions::FieldWidth(220.0f);
         ImGui::InputText(Get("entity.name").c_str(), &entity.name);
+        ImGuiDrawFunctions::DrawPersistenceFields(entity);
         ImGuiDrawFunctions::EndSection();
 
         DrawUIComponentsSection(entity);
@@ -1640,6 +1644,178 @@ namespace {
         uiHasUnsavedChanges = true;
     }
 
+    // ---------------------------------------------------------------------
+    // UI layouts: what the editor edits, new layouts, Paste UI
+    // ---------------------------------------------------------------------
+
+    // New layouts go here, under Assets.
+    constexpr const char* NEW_UI_LAYOUT_FOLDER = "UI Layouts";
+
+    char newLayoutName[64] = "";
+    std::string newLayoutError;
+
+    // Paste UI waits for the next frame: the panel that asks for it is drawn
+    // while the layout is the current level.
+    std::uint64_t pendingLayoutPaste = 0;
+
+    std::string LayoutLabel(const std::uint64_t id) {
+        const UILayouts::Info* info = UILayouts::Find(id);
+        return info != nullptr ? info->name : Get("editor.ui.layout.missing");
+    }
+
+    bool LevelUsesLayout(const Level& level, const std::uint64_t id) {
+        return std::ranges::find(level.worldSettings.uiLayouts, id) != level.worldSettings.uiLayouts.end();
+    }
+
+    // The layout's UI copied into the level's own UI, where it is in the
+    // layout: new entities, not linked to the layout. One undo step.
+    void PasteLayoutIntoLevelUI(const std::uint64_t layoutID) {
+        const Level* layout = UILayouts::Get(layoutID);
+        if (layout == nullptr || layout->entities.empty()) return;
+
+        Level& level = EditorLevel();
+        LevelManager::ScopedCurrentLevel levelScope(level);
+
+        EntitiesSnapshot before = CaptureEntitiesSnapshot();
+        const EntityTransfer::Bundle bundle = EntityTransfer::Copy(*layout, EntityTransfer::AllEntityIDs(*layout));
+        const EntityTransfer::IdMap map = EntityTransfer::InsertAsNew(level, bundle);
+        PushEntitiesUndo(std::move(before), "editor.history.ui_paste_layout", static_cast<int>(bundle.entities.size()));
+
+        SetUIEditedLayout(0);
+
+        for (const Entity& source : bundle.entities) selectedUIEntities.push_back(map.entities.at(source.id));
+        selectedUIEntityID = selectedUIEntities.empty() ? INVALID_ID : selectedUIEntities.front();
+
+        uiHasUnsavedChanges = true;
+        ImGuiDrawFunctions::ShowNotification(Get("editor.ui.layout.pasted").c_str());
+    }
+
+    // It becomes the file name.
+    bool ValidLayoutName(const std::string& name) {
+        return !name.empty() && name.find_first_of("\\/:*?\"<>|") == std::string::npos && name.front() != '.' &&
+               name.back() != '.';
+    }
+
+    void DrawNewLayoutPopup() {
+        if (!ImGui::BeginPopup("##NewUILayout")) return;
+
+        ImGui::TextUnformatted(Get("editor.ui.layout.new_title").c_str());
+        ImGui::TextDisabled("%s", (std::string(NEW_UI_LAYOUT_FOLDER) + "/").c_str());
+
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(240.0f);
+        const bool entered = ImGui::InputTextWithHint("##NewLayoutName", Get("editor.ui.layout.name_hint").c_str(), newLayoutName,
+                                                      sizeof(newLayoutName), ImGuiInputTextFlags_EnterReturnsTrue);
+
+        if (!newLayoutError.empty()) ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", newLayoutError.c_str());
+
+        if (ImGui::Button(Get("editor.ui.layout.create").c_str()) || entered) {
+            std::string name = newLayoutName;
+            while (!name.empty() && name.front() == ' ') name.erase(name.begin());
+            while (!name.empty() && name.back() == ' ') name.pop_back();
+
+            const std::filesystem::path path = ProjectManager::GetAssetsPath() / NEW_UI_LAYOUT_FOLDER /
+                                               (name + std::string(UILayouts::kExtension));
+            std::error_code ec;
+
+            if (!ValidLayoutName(name)) newLayoutError = Get("editor.ui.layout.error_name");
+            else if (std::filesystem::exists(path, ec) || UILayouts::FindByName(name) != nullptr)
+                newLayoutError = Get("editor.ui.layout.error_exists");
+            else {
+                std::uint64_t id = 0;
+                std::string error;
+
+                if (UILayouts::Create(path, &id, &error)) {
+                    SetUIEditedLayout(id);
+                    assetBrowser.Refresh();
+                    ImGui::CloseCurrentPopup();
+                }
+                else newLayoutError = error;
+            }
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button(Get("common.cancel").c_str())) ImGui::CloseCurrentPopup();
+
+        ImGui::EndPopup();
+    }
+
+    // The top of the panel: the level's own UI or one of the project's UI
+    // layouts, and what can be done with the layout.
+    void DrawUILayoutControls() {
+        Level& level = EditorLevel();
+
+        SectionHeader(Get("editor.ui.layout.editing").c_str());
+        Spacing();
+
+        const std::uint64_t edited = uiEditedLayout;
+        std::string preview = edited == 0 ? Get("editor.ui.layout.level_ui") : LayoutLabel(edited);
+        if (edited != 0 && UILayouts::IsDirty(edited)) preview += "  *";
+
+        const std::string newLabel = Get("editor.ui.layout.new");
+        const float newWidth = ImGui::CalcTextSize(newLabel.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - newWidth - ImGui::GetStyle().ItemSpacing.x));
+
+        if (ImGui::BeginCombo("##UIEditedLayout", preview.c_str())) {
+            if (ImGui::Selectable(Get("editor.ui.layout.level_ui").c_str(), edited == 0)) SetUIEditedLayout(0);
+
+            const std::vector<UILayouts::Info>& layouts = UILayouts::List();
+            if (!layouts.empty()) ImGui::Separator();
+
+            for (const UILayouts::Info& info : layouts) {
+                ImGui::PushID(static_cast<int>(info.id & 0x7FFFFFFF));
+
+                std::string label = info.name;
+                if (LevelUsesLayout(level, info.id)) label += "  " + Get("editor.ui.layout.used_marker");
+                if (ImGui::Selectable(label.c_str(), info.id == edited)) SetUIEditedLayout(info.id);
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndCombo();
+        }
+        HoverTooltip(Get("editor.tooltip.ui.layout.editing").c_str());
+
+        ImGui::SameLine();
+        if (ImGui::Button(newLabel.c_str())) {
+            newLayoutName[0] = '\0';
+            newLayoutError.clear();
+            ImGui::OpenPopup("##NewUILayout");
+        }
+        HoverTooltip(Get("editor.tooltip.ui.layout.new").c_str());
+        DrawNewLayoutPopup();
+
+        if (edited != 0) {
+            bool used = LevelUsesLayout(level, edited);
+            if (ImGui::Checkbox(Get("editor.ui.layout.use_in_level").c_str(), &used)) {
+                std::vector<std::uint64_t>& list = level.worldSettings.uiLayouts;
+                if (used) list.push_back(edited);
+                else std::erase(list, edited);
+
+                LevelManager::ScopedCurrentLevel levelScope(level);
+                MarkUnsavedChanges();
+            }
+            HoverTooltip(Get("editor.tooltip.ui.layout.use_in_level").c_str());
+
+            if (ImGui::Button(Get("editor.ui.layout.save").c_str())) {
+                if (std::string error; UILayouts::Save(edited, &error))
+                    ImGuiDrawFunctions::ShowNotification(Get("editor.ui.layout.saved").c_str());
+                else ImGuiDrawFunctions::ShowNotification((Get("editor.ui.layout.save_failed") + " " + error).c_str(), true);
+            }
+            HoverTooltip(Get("editor.tooltip.ui.layout.save").c_str());
+
+            ImGui::SameLine();
+            if (ImGui::Button(Get("editor.ui.layout.paste").c_str())) pendingLayoutPaste = edited;
+            HoverTooltip(Get("editor.tooltip.ui.layout.paste").c_str());
+
+            ImGui::TextDisabled("%s", Get("editor.ui.layout.links_hint").c_str());
+        }
+
+        Spacing();
+        ImGui::Separator();
+        Spacing();
+    }
+
     void DrawUIEditorDockSpace() {
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
@@ -1677,6 +1853,43 @@ namespace MapEditorInternal {
 
     void MarkUIUnsavedChanges() {
         uiHasUnsavedChanges = true;
+    }
+
+    std::uint64_t uiEditedLayout = 0;
+
+    Level& EditorLevel() {
+        return LevelManager::loadedLevels[LevelManager::currentLevelIndex];
+    }
+
+    Level* UIEditedLayout() {
+        if (uiEditedLayout == 0) return nullptr;
+
+        Level* layout = UILayouts::Get(uiEditedLayout);
+        if (layout == nullptr) SetUIEditedLayout(0);
+        return layout;
+    }
+
+    void SetUIEditedLayout(const std::uint64_t layoutID) {
+        if (layoutID == uiEditedLayout) return;
+
+        uiEditedLayout = layoutID;
+
+        // The selection's IDs are the other level's.
+        selectedUIEntityID = INVALID_ID;
+        selectedUIEntities.clear();
+        hoveredUIEntityID = INVALID_ID;
+        lastKnownSelectedUIEntityID = INVALID_ID;
+        ResetUIInspectorState();
+        uiInspectorEdit = {};
+    }
+
+    void OpenUILayoutInEditor(const std::uint64_t layoutID) {
+        SetUIEditedLayout(layoutID);
+        currentState = STATE_UI;
+    }
+
+    UIEditedLevelScope::UIEditedLevelScope() {
+        if (Level* layout = UIEditedLayout()) scope.emplace(*layout);
     }
 
     void HandleUIEditorShortcuts(const bool keyboardBlockedByImgui) {
@@ -1727,16 +1940,30 @@ namespace MapEditorInternal {
     }
 
     void DrawUIEditorUI() {
+        if (const std::uint64_t paste = std::exchange(pendingLayoutPaste, 0); paste != 0) PasteLayoutIntoLevelUI(paste);
+
         // Before the dock space, which fills the work area below it.
         DrawEditorMenuBar();
+
+        // From here on the edited UI layout (if any) is the current level;
+        // the toolbar, the command palette and the Asset Browser still act
+        // on the level.
+        UIEditedLevelScope editedScope;
+
         DrawUIEditorDockSpace();
-        DrawEditorToolbar();
+        {
+            LevelManager::ScopedCurrentLevel levelScope(EditorLevel());
+            DrawEditorToolbar();
+        }
         DrawUICanvasContextMenu();
 
-        CommandPalette::Draw(KEYSCOPE_UI, [](const KeyBindScope scope) {
-            currentState = STATE_MAP;
-            if (scope == KEYSCOPE_RUNTIME) OpenRuntimeEditor();
-        });
+        {
+            LevelManager::ScopedCurrentLevel levelScope(EditorLevel());
+            CommandPalette::Draw(KEYSCOPE_UI, [](const KeyBindScope scope) {
+                currentState = STATE_MAP;
+                if (scope == KEYSCOPE_RUNTIME) OpenRuntimeEditor();
+            });
+        }
 
         Level& level = LevelManager::CurrentLevel();
 
@@ -1754,9 +1981,11 @@ namespace MapEditorInternal {
         }
 
         std::string panelTitle = Get("editor.ui.title");
-        if (uiHasUnsavedChanges) panelTitle += "  *";
+        if (uiEditedLayout != 0 ? UILayouts::IsDirty(uiEditedLayout) : uiHasUnsavedChanges) panelTitle += "  *";
 
         ImGui::Begin(panelTitle.c_str());
+
+        DrawUILayoutControls();
 
         // ---- Canvas view (mirrors the "Mode" toolbar section) ----
         SectionHeader(Get("editor.ui.canvas_view").c_str());
@@ -1777,7 +2006,10 @@ namespace MapEditorInternal {
 
         // ---- Other panels ----
         DrawUIHierarchyPanel(level);
-        DrawUIAssetBrowserPanel();
+        {
+            LevelManager::ScopedCurrentLevel levelScope(EditorLevel());
+            DrawUIAssetBrowserPanel();
+        }
 
         // Saved / export messages.
         ImGuiDrawFunctions::DrawNotification(std::min(ImGui::GetIO().DeltaTime, 0.1f));

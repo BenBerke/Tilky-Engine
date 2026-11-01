@@ -22,7 +22,8 @@
 // (Transform, or UITransform for UI entities) are always the instance's own.
 //
 // Override paths: "entity/enabled", "entity/tags", "entity/events",
-// "entity/dispatches" (each list as a whole), and
+// "entity/dispatches" (each list as a whole), "entity/persistent",
+// "entity/persistenceKey", and
 // "<components key>/<prefab instance ID>/<field>" using level.bson's keys,
 // e.g. "sprites/2/color". A script's public fields are one level deeper:
 // "scripts/3/publicValues/speed".

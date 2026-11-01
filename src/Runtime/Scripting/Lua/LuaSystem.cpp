@@ -175,6 +175,9 @@ namespace {
         sol::protected_function onTriggerExitFunction;
         sol::protected_function onSectorChangeFunction;
 
+        // Entity scripts carried into a new level (LevelTransfer).
+        sol::protected_function onLevelLoadedFunction;
+
         // Scripts on a UI entity with a UI Button.
         sol::protected_function onClickFunction;
         sol::protected_function onReleaseFunction;
@@ -444,6 +447,11 @@ namespace {
                 "Called when this entity and another collider stop overlapping, where one of them is a trigger."}},
             {&ScriptInstance::onSectorChangeFunction, {"OnSectorChange", CallbackOwner::Entity, {Param("sector", "Sector?")},
                 "Called when this entity moves into a different sector. sector is nil when it is outside every sector."}},
+
+            {&ScriptInstance::onLevelLoadedFunction, {"OnLevelLoaded", CallbackOwner::Entity, {},
+                "Called when this script's entity is carried into a new level by Game.LoadLevel or a Load Level dispatch "
+                "(Persist Between Levels, or a UI layout the new level uses too), after the new level's scripts ran Start. "
+                "The script keeps running: Start doesn't run again."}},
 
             {&ScriptInstance::onClickFunction, {"OnClick", CallbackOwner::Entity, {},
                 "UI Button: called when the left mouse button goes down on this entity's button. "
@@ -2046,6 +2054,74 @@ void LuaScriptSystem::DispatchUIButtonCallback(Level&, const ID entityID, const 
 
 void LuaScriptSystem::Stop(Level&) {
     for (ScriptInstance& instance : scriptInstances) CallDestroy(instance);
+}
+
+void LuaScriptSystem::StopExcept(Level&, const std::unordered_set<ID>& keepEntities) {
+    // So one added this frame ends (or carries on) with its entity.
+    RegisterAddedInstances();
+
+    for (ScriptInstance& instance : scriptInstances) {
+        if (instance.ownerKind == ScriptOwnerKind::Entity && keepEntities.contains(instance.ownerID)) continue;
+        CallDestroy(instance);
+    }
+}
+
+void LuaScriptSystem::ContinueIntoLevel(Level& level, const std::vector<ScriptInstanceID>& restart) {
+    ZoneScopedN("Scripting::ContinueIntoLevel");
+
+    RegisterAddedInstances();
+
+    // They start over with the values their level copy had.
+    for (const ScriptInstanceID id : restart)
+        if (ScriptInstance* instance = FindInstanceById(id)) CallDestroy(*instance);
+
+    // Before any new instance: a destroyed one can have the same ID.
+    std::erase_if(scriptInstances, [](const ScriptInstance& instance) { return instance.destroyed; });
+    RebuildInstanceIndex();
+    pendingDestroys.clear();
+    pendingScriptStarts.clear();
+
+    const size_t carriedCount = scriptInstances.size();
+
+    for (ComponentScript& script : level.scripts.components)
+        if (FindInstanceById(script.instanceID) == nullptr)
+            InstantiateScript(level, ScriptOwnerKind::Entity, script.ownerID, script);
+
+    for (Sector& sector : level.sectors)
+        for (SectorScript& script : sector.scripts)
+            InstantiateScript(level, ScriptOwnerKind::Sector, sector.id, script);
+
+    // The same baselines as Start: nobody entered a sector or changed one yet.
+    lastSectorOccupants.clear();
+    for (const Sector& sector : level.sectors) lastSectorOccupants[sector.id] = sector.entitiesInside;
+
+    lastEntitySectors.clear();
+    for (const ScriptInstance& instance : scriptInstances)
+        if (instance.ownerKind == ScriptOwnerKind::Entity)
+            lastEntitySectors[instance.ownerID] = GetEntitySectorID(level, instance.ownerID);
+
+    lastCollisions.clear();
+    lastTriggers.clear();
+
+    // By index: the callbacks can only add instances to addedInstances.
+    for (size_t i = carriedCount; i < scriptInstances.size(); ++i) {
+        ScriptInstance& instance = scriptInstances[i];
+        const ScriptAttachmentData* script = ResolveAttachment(level, instance);
+        if (!EffectiveEnabled(level, instance, script)) continue;
+
+        instance.enabled = true;
+        CallLifecycle(instance, instance.onEnableFunction, "OnEnable");
+        CallLifecycle(instance, instance.startFunction, "Start");
+        instance.started = true;
+    }
+
+    for (size_t i = 0; i < carriedCount; ++i) {
+        if (scriptInstances[i].destroyed || !scriptInstances[i].enabled) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const ScriptInstance instance = scriptInstances[i];
+        CallLifecycle(instance, instance.onLevelLoadedFunction, "OnLevelLoaded");
+    }
 }
 
 void LuaScriptSystem::FlushPendingDestroys(Level& level) {

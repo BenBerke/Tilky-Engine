@@ -7,6 +7,7 @@
 #include "Headers/Runtime/EventSystem.hpp"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace sol {
@@ -24,6 +25,17 @@ public:
     void Update(Level& level) override;
     void Stop(Level& level) override;
     void Shutdown() override;
+
+    // A level switch: OnDestroy on every script except those of the
+    // entities that go on into the next level (see LevelTransfer), which
+    // keep running with their Lua state and Invokes.
+    void StopExcept(Level& level, const std::unordered_set<ID>& keepEntities);
+
+    // After a level switch, instead of Start: the carried scripts carry on
+    // (those listed in `restart` took their level copy's values and start
+    // over), every other script gets an instance and OnEnable/Start, then
+    // the carried ones get OnLevelLoaded.
+    void ContinueIntoLevel(Level& level, const std::vector<ScriptInstanceID>& restart);
 
     static void RegisterVectorBindings(sol::state& lua);
     static void RegisterComponentBindings(sol::state& lua);

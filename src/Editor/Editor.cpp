@@ -362,13 +362,19 @@ namespace Editor {
         }
         else if (currentState == STATE_UI) {
             HandleUIEditorShortcuts(keyboardBlockedByImgui);
-            HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
-            // Again after the input, so a drag made this frame is drawn where
-            // it now is.
-            Level& level = LevelManager::CurrentLevel();
-            UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
+            {
+                // The canvas edits the UI layout the editor has open, if any.
+                UIEditedLevelScope editedScope;
+                HandleUIEditorInput(mouseBlockedByImGui, keyboardBlockedByImgui);
 
+                // Again after the input, so a drag made this frame is drawn where
+                // it now is.
+                Level& level = LevelManager::CurrentLevel();
+                UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
+            }
+
+            // Both pick the edited layout themselves.
             DrawUIEditorUI();
             UIEditorDraw();
         }

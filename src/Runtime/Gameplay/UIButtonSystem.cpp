@@ -72,20 +72,16 @@ namespace {
         return local.x >= -halfX && local.x <= halfX && local.y >= -halfY && local.y <= halfY;
     }
 
-    // How high each UI entity is drawn: Texts over Sprites, and later
-    // components over earlier ones (OpenGL::Update's UI order). 0 = draws nothing.
+    // How high each UI entity is drawn: its last Sprite or Text in
+    // OpenGL::Update's UI order (UISystem::ForEachInDrawOrder). 0 = draws nothing.
     std::unordered_map<ID, size_t> DrawRanks(const Level& level) {
         std::unordered_map<ID, size_t> ranks;
+        size_t next = 1;
 
-        const size_t spriteCount = level.ui_sprites.components.size();
-        for (size_t i = 0; i < spriteCount; ++i) {
-            size_t& rank = ranks[level.ui_sprites.components[i].ownerID];
-            rank = std::max(rank, i + 1);
-        }
-        for (size_t i = 0; i < level.ui_texts.components.size(); ++i) {
-            size_t& rank = ranks[level.ui_texts.components[i].ownerID];
-            rank = std::max(rank, spriteCount + i + 1);
-        }
+        UISystem::ForEachInDrawOrder(level,
+            [&](const ComponentUISprite& sprite) { ranks[sprite.ownerID] = next++; },
+            [&](const ComponentUIText& text) { ranks[text.ownerID] = next++; });
+
         return ranks;
     }
 
@@ -98,6 +94,8 @@ namespace {
 
         for (const ComponentUIButton& button : level.ui_buttons.components) {
             if (!button.ownerEnabled || !IsFirstOnOwner(level, button)) continue;
+            // Its UI layout is hidden (UI.SetLayoutVisible).
+            if (level.IsUIHidden(button.ownerID)) continue;
 
             ComponentUITransform* transform = level.ui_transforms.Get(button.ownerID);
             if (transform == nullptr) continue;

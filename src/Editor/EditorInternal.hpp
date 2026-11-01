@@ -8,6 +8,7 @@
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Editor/WallSnap.hpp"
 
 #include <cstdint>
@@ -1036,6 +1037,36 @@ namespace MapEditorInternal {
                                   const std::function<void()>& drawExtras);
     void HandleUIEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
+    // ---- UI layouts in the UI editor (UIEditorUI.cpp) ---------------------
+    // Which UI layout (UILayouts) the UI editor edits; 0 = the level's own UI.
+    extern std::uint64_t uiEditedLayout;
+
+    // The edited layout, or nullptr while the level's own UI is edited. A
+    // layout that can't be loaded goes back to the level's UI.
+    Level* UIEditedLayout();
+
+    // Switches what the UI editor edits (0 = the level's UI), dropping the
+    // UI selection. Leaves the editor state alone.
+    void SetUIEditedLayout(std::uint64_t layoutID);
+
+    // The Asset Browser's double click on a .uilayout: the UI editor, on it.
+    void OpenUILayoutInEditor(std::uint64_t layoutID);
+
+    // While one lives, LevelManager::CurrentLevel() is the edited layout (no
+    // change for the level's own UI), so the UI editor's code - drawing,
+    // input, the inspector, undo steps - works on it.
+    class UIEditedLevelScope {
+    public:
+        UIEditedLevelScope();
+        UIEditedLevelScope(const UIEditedLevelScope&) = delete;
+        UIEditedLevelScope& operator=(const UIEditedLevelScope&) = delete;
+    private:
+        std::optional<LevelManager::ScopedCurrentLevel> scope;
+    };
+
+    // The level open in the editor, even inside a LevelManager::ScopedCurrentLevel.
+    Level& EditorLevel();
+
     void ChangeMode();
 
     bool Save(const std::string& saveTo);
@@ -1989,6 +2020,10 @@ namespace MapEditorInternal {
         // the entities inside, floors carry what stands on them): their
         // positions, swapped along with the step's own state.
         std::optional<EntityTransformUndo> carriedEntities;
+
+        // The UI layout the step was made in (the UI editor editing one), 0
+        // for the level. Undoing it edits that layout, and shows it.
+        std::uint64_t uiLayout = 0;
     };
 
     constexpr std::size_t MAX_MAP_UNDO_STEPS = 128;

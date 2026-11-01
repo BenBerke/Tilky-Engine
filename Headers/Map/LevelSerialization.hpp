@@ -74,6 +74,14 @@ namespace LevelSerialization {
     bool LoadPrefabFromFile(const std::filesystem::path& prefabFile, Level& outPrefab, std::string* errorMessage = nullptr);
     bool SavePrefabToFile(const std::filesystem::path& prefabFile, const Level& prefab, std::string* errorMessage = nullptr);
 
+    // A .uilayout (see UILayouts.hpp): a Level holding only UI entities, in
+    // a prefab's layout plus "layoutId", the ID levels name it by.
+    bool ReadUILayoutID(const std::filesystem::path& layoutFile, std::uint64_t& outID, std::string* errorMessage = nullptr);
+    bool LoadUILayoutFromFile(const std::filesystem::path& layoutFile, Level& outLayout, std::uint64_t& outID,
+                              std::string* errorMessage = nullptr);
+    bool SaveUILayoutToFile(const std::filesystem::path& layoutFile, const Level& layout, std::uint64_t layoutID,
+                            std::string* errorMessage = nullptr);
+
     // One wall / sector as level.bson stores it in its "walls" / "sectors"
     // array. FromJson returns false (outWall/outSector untouched) for data
     // that can't be loaded.

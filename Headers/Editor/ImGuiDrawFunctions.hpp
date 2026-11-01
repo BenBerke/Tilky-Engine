@@ -123,6 +123,11 @@ namespace ImGuiDrawFunctions {
     };
 
     ComponentHeaderResult DrawComponentHeader(const Entity &entity, const ComponentHeader &header);
+
+    // The Persist Between Levels checkbox and, while it's ticked, the
+    // persistence key. Both inspectors; call between BeginPrefabFields(entity,
+    // -1, 0) and the components.
+    void DrawPersistenceFields(Entity &entity);
     void SmallMetaText(const char* fmt, ...);
     void Tooltip(const char *text);
     void BeginSection(const char *label);

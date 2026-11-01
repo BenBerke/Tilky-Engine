@@ -166,7 +166,21 @@ namespace LevelSystem {
         return nullptr;
     }
 
+    namespace {
+        // Start, or ContinueLevel with `transfer`.
+        void StartLevel(Level &level, const LevelTransfer::Result* transfer);
+    }
+
     void Start(Level &level) {
+        StartLevel(level, nullptr);
+    }
+
+    void ContinueLevel(Level &level, const LevelTransfer::Result& transfer) {
+        StartLevel(level, &transfer);
+    }
+
+    namespace {
+    void StartLevel(Level &level, const LevelTransfer::Result* transfer) {
         ZoneScopedN("LevelSystemStart");
         if (!EnsureScriptingInitialized()) return;
 
@@ -227,7 +241,24 @@ namespace LevelSystem {
 
         {
             ZoneScopedN("Scripting System Start");
-            scriptingSystem.Start(level);
+            if (transfer != nullptr) scriptingSystem.ContinueIntoLevel(level, transfer->restartScripts);
+            else scriptingSystem.Start(level);
+        }
+
+        // EventSystem::Start counts every event from 0; carried ones go on.
+        std::vector<std::pair<ID, std::vector<uint32_t>>> carriedTriggerCounts;
+        std::unordered_set<ID> carried;
+        if (transfer != nullptr) {
+            carried.insert(transfer->carried.begin(), transfer->carried.end());
+
+            for (const ID id : transfer->carried) {
+                const Entity* entity = level.GetEntity(id);
+                if (entity == nullptr) continue;
+
+                std::vector<uint32_t> counts;
+                for (const Event& event : entity->events) counts.push_back(event.triggerCount);
+                carriedTriggerCounts.emplace_back(id, std::move(counts));
+            }
         }
 
         // After scripts, so a first-frame event finds their functions.
@@ -266,11 +297,20 @@ namespace LevelSystem {
             },
         });
 
+        for (const auto& [id, counts] : carriedTriggerCounts) {
+            Entity* entity = level.GetEntity(id);
+            if (entity == nullptr) continue;
+
+            for (size_t i = 0; i < counts.size() && i < entity->events.size(); ++i) entity->events[i].triggerCount = counts[i];
+        }
+
         UIButtonSystem::Start(level);
 
-        // After the scripts' start callbacks.
-        EventSystem::FireOnStart(level);
+        // After the scripts' start callbacks. Carried entities started in
+        // an earlier level.
+        EventSystem::FireOnStart(level, transfer != nullptr ? &carried : nullptr);
         // Future level start systems will run here.
+    }
     }
 
     void Update(Level &level) {
@@ -550,9 +590,9 @@ namespace LevelSystem {
         quitRequested = false;
     }
 
-    void StopLevel(Level &level) {
+    void StopLevel(Level &level, const std::unordered_set<ID>& keepEntities) {
         EventSystem::Stop();
-        scriptingSystem.Stop(level);
+        scriptingSystem.StopExcept(level, keepEntities);
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;
     }

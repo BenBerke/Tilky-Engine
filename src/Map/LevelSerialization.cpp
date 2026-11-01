@@ -641,6 +641,10 @@ namespace {
             worldSettings.music = worldSettingsJson.contains("music")
                 ? MusicSettingsFromJson(worldSettingsJson.at("music"))
                 : MusicSettings{};
+            worldSettings.uiLayouts.clear();
+            if (worldSettingsJson.contains("uiLayouts") && worldSettingsJson.at("uiLayouts").is_array())
+                for (const json& layoutID : worldSettingsJson.at("uiLayouts"))
+                    if (layoutID.is_number_integer()) worldSettings.uiLayouts.push_back(layoutID.get<std::uint64_t>());
             LoadEventsAndDispatches(worldSettingsJson, "Level", 0, worldSettings.events, worldSettings.dispatches);
         }
 
@@ -683,7 +687,8 @@ namespace {
                     {"eventVariables", SaveEventVariables(worldSettings)},
                     {"nextEventVariableId", worldSettings.nextEventVariableID},
                     {"messageStyle", MessageStyleToJson(worldSettings.messageStyle)},
-                    {"music", MusicSettingsToJson(worldSettings.music)}
+                    {"music", MusicSettingsToJson(worldSettings.music)},
+                    {"uiLayouts", worldSettings.uiLayouts}
                 }
             },
             {
@@ -1799,6 +1804,8 @@ namespace {
             entity.id = entityJson.at("id").get<ID>();
             entity.name = entityJson.value("name", "Entity");
             entity.enabled = entityJson.value("enabled", true);
+            entity.persistent = entityJson.value("persistent", false);
+            entity.persistenceKey = entityJson.value("persistenceKey", std::string{});
             entity.attachedLevelId = level.id;
 
             LoadTagIds(entityJson, "Entity", entity.id, entity.tagIds);
@@ -1821,6 +1828,8 @@ namespace {
                 {"id", entity->id},
                 {"name", entity->name},
                 {"enabled", entity->enabled},
+                {"persistent", entity->persistent},
+                {"persistenceKey", entity->persistenceKey},
                 {"tagIds", entity->tagIds}
             };
 
@@ -2592,7 +2601,7 @@ namespace {
 // without "ownerID"/"instanceID" - the level save adds those, and prefab
 // syncing compares these objects field by field (see Prefab.cpp).
 namespace LevelSerialization {
-    json ComponentFieldsToJson(const ComponentTransform& c) {
+    json ComponentOwnFieldsToJson(const ComponentTransform& c) {
         return {
             {"position", Vec3Json(c.position)},
             {"rotation", {c.rotation.x, c.rotation.y, c.rotation.z, c.rotation.w}},
@@ -2601,7 +2610,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentTransform& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentTransform& c) {
         c.position = Vec3FromJson(j["position"]);
         c.rotation = Quaternion{
             j["rotation"][0].get<float>(),
@@ -2614,7 +2623,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentSprite& c) {
+    json ComponentOwnFieldsToJson(const ComponentSprite& c) {
         return {
             {"offset", Vec3Json(c.offset)},
             {"textureFileNames", c.textureFileNames},
@@ -2625,7 +2634,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentSprite& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentSprite& c) {
         const auto textureFileNames = j.at("textureFileNames").get<std::array<std::string, 8>>();
         const int sideCountValue = j.at("sideCount").get<int>();
 
@@ -2647,7 +2656,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentAudioSource& c) {
+    json ComponentOwnFieldsToJson(const ComponentAudioSource& c) {
         return {
             {"offset", Vec3Json(c.offset)},
             {"soundFileName", c.soundFileName},
@@ -2664,7 +2673,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentAudioSource& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentAudioSource& c) {
         c.soundFileName = j.value("soundFileName", std::string{});
         c.pitch = j.value("pitch", 1.0f);
         c.gain = j.value("gain", 1.0f);
@@ -2680,13 +2689,13 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentScript& c) {
+    json ComponentOwnFieldsToJson(const ComponentScript& c) {
         json scriptJson = ScriptAttachmentToJson(c);
         scriptJson.erase("instanceID");
         return scriptJson;
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentScript& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentScript& c) {
         ScriptAttachmentSettingsFromJson(j, c);
 
         // Keep the full saved path (Assets-relative, no extension) - NOT
@@ -2698,7 +2707,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentUITransform& c) {
+    json ComponentOwnFieldsToJson(const ComponentUITransform& c) {
         return {
             {"anchorMin", {c.anchorMin.x, c.anchorMin.y}},
             {"anchorMax", {c.anchorMax.x, c.anchorMax.y}},
@@ -2709,7 +2718,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentUITransform& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentUITransform& c) {
         auto readVector2 = [&j](const char* key, Vector2& out) {
             if (j.contains(key)) out = {j[key][0].get<float>(), j[key][1].get<float>()};
         };
@@ -2723,7 +2732,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentUISprite& c) {
+    json ComponentOwnFieldsToJson(const ComponentUISprite& c) {
         return {
             {"texture", c.texture},
             {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
@@ -2731,7 +2740,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentUISprite& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentUISprite& c) {
         c.texture = j.value("texture", "");
         c.isActive = j.value("isActive", true);
 
@@ -2747,7 +2756,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentUIText& c) {
+    json ComponentOwnFieldsToJson(const ComponentUIText& c) {
         json j = {
             {"text", c.text},
             {"font", c.font},
@@ -2760,7 +2769,7 @@ namespace LevelSerialization {
         return j;
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentUIText& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentUIText& c) {
         c.text = j.value("text", "");
         c.font = j.value("font", "");
         c.fontSize = j.value("fontSize", DEFAULT_UI_FONT_SIZE);
@@ -2780,7 +2789,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentUIButton& c) {
+    json ComponentOwnFieldsToJson(const ComponentUIButton& c) {
         const auto color = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
         return {
             {"interactable", c.interactable},
@@ -2795,7 +2804,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentUIButton& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentUIButton& c) {
         const auto readColor = [&](const char* key, Vector4& out) {
             if (!j.contains(key) || !j[key].is_array() || j[key].size() != 4) return;
             const json& v = j[key];
@@ -2814,7 +2823,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentPlayerController& c) {
+    json ComponentOwnFieldsToJson(const ComponentPlayerController& c) {
         return {
             {"isActive", c.isActive},
             {"velocity", Vec3Json(c.velocity)},
@@ -2844,7 +2853,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentPlayerController& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentPlayerController& c) {
         c.isActive = j.value("isActive", true);
         c.speed = j.value("speed", 46.0f);
         c.runningSpeed = j.value("runningSpeed", 90.0f);
@@ -2874,7 +2883,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentCamera& c) {
+    json ComponentOwnFieldsToJson(const ComponentCamera& c) {
         return {
             {"isActive", c.isActive},
             {"yaw", c.yaw},
@@ -2890,7 +2899,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentCamera& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentCamera& c) {
         c.isActive = j.value("isActive", true);
         c.yaw = j.value("yaw", 0.0f);
         c.pitch = j.value("pitch", 0.0f);
@@ -2905,7 +2914,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentCollider& c) {
+    json ComponentOwnFieldsToJson(const ComponentCollider& c) {
         return {
             {"offset", Vec3Json(c.offset)},
             {"isActive", c.isActive},
@@ -2917,7 +2926,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentCollider& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentCollider& c) {
         c.isActive = j.value("isActive", true);
         c.isTrigger = j.value("isTrigger", false);
         c.type = j.value("type", COLLIDERTYPE_SPHERE);
@@ -2928,7 +2937,7 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentRigidbody& c) {
+    json ComponentOwnFieldsToJson(const ComponentRigidbody& c) {
         return {
             {"isStatic", c.isStatic},
             {"mass", c.mass},
@@ -2937,7 +2946,7 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentRigidbody& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentRigidbody& c) {
         c.isStatic = j.value("isStatic", true);
         c.mass = j.value("mass", 1.0f);
         c.gravityScale = j.value("gravityScale", 1.0f);
@@ -2945,20 +2954,20 @@ namespace LevelSerialization {
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentModel& c) {
+    json ComponentOwnFieldsToJson(const ComponentModel& c) {
         return {
             {"offset", Vec3Json(c.offset)},
             {"fileName", c.fileName}
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentModel& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentModel& c) {
         c.fileName = j.value("fileName", std::string{});
         if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
         return true;
     }
 
-    json ComponentFieldsToJson(const ComponentFlipbook& c) {
+    json ComponentOwnFieldsToJson(const ComponentFlipbook& c) {
         return {
             {"flipbookFileName", c.flipbookFileName},
             {"spriteInstanceID", c.spriteInstanceID},
@@ -2966,12 +2975,28 @@ namespace LevelSerialization {
         };
     }
 
-    bool ComponentFieldsFromJson(const json& j, ComponentFlipbook& c) {
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentFlipbook& c) {
         c.flipbookFileName = j.value("flipbookFileName", std::string{});
         c.spriteInstanceID = j.value("spriteInstanceID", INVALID_COMPONENT_INSTANCE_ID);
         c.speed = j.value("speed", 1.0f);
         return true;
     }
+
+    // What every component has besides its own fields: Persist Between
+    // Levels' takeFromLevelCopy (each type has its own default).
+#define TILKY_DEFINE_COMPONENT_JSON(Type, Bit, Storage, LabelKey) \
+    json ComponentFieldsToJson(const Type& c) { \
+        json j = ComponentOwnFieldsToJson(c); \
+        j["takeFromLevelCopy"] = c.takeFromLevelCopy; \
+        return j; \
+    } \
+    bool ComponentFieldsFromJson(const json& j, Type& c) { \
+        if (!ComponentOwnFieldsFromJson(j, c)) return false; \
+        c.takeFromLevelCopy = j.value("takeFromLevelCopy", Type{}.takeFromLevelCopy); \
+        return true; \
+    }
+    TILKY_COMPONENTS(TILKY_DEFINE_COMPONENT_JSON)
+#undef TILKY_DEFINE_COMPONENT_JSON
 }
 
 namespace {
@@ -3088,6 +3113,7 @@ namespace {
 
             json scriptJson = ScriptAttachmentToJson(c);
             scriptJson["ownerID"] = c.ownerID;
+            scriptJson["takeFromLevelCopy"] = c.takeFromLevelCopy;
 
             componentsJson["scripts"].push_back(std::move(scriptJson));
         }
@@ -3577,6 +3603,64 @@ namespace LevelSerialization {
         }
 
         return WriteBsonFile(prefabFile, "prefab", EntitiesToJson(prefab, {prefab.entities.front().id}), errorMessage);
+    }
+
+    bool ReadUILayoutID(const fs::path& layoutFile, std::uint64_t& outID, std::string* errorMessage) {
+        json data;
+        if (!ReadBsonFile(layoutFile, "UI layout", data, errorMessage)) return false;
+
+        if (!data.contains("layoutId") || !data.at("layoutId").is_number_integer()) {
+            SetError(errorMessage, "UI layout file has no layout ID: " + layoutFile.string());
+            return false;
+        }
+
+        outID = data.at("layoutId").get<std::uint64_t>();
+        return true;
+    }
+
+    bool LoadUILayoutFromFile(const fs::path& layoutFile, Level& outLayout, std::uint64_t& outID, std::string* errorMessage) {
+        json data;
+        if (!ReadBsonFile(layoutFile, "UI layout", data, errorMessage)) return false;
+
+        if (!data.contains("layoutId") || !data.at("layoutId").is_number_integer()) {
+            SetError(errorMessage, "UI layout file has no layout ID: " + layoutFile.string());
+            return false;
+        }
+
+        Level loaded;
+        loaded.name = layoutFile.stem().string();
+
+        std::string error;
+        if (!EntitiesFromJson(data, loaded, &error)) {
+            SetError(errorMessage, error + " (" + layoutFile.string() + ")");
+            return false;
+        }
+
+        // A layout only holds UI entities.
+        std::vector<ID> worldEntities;
+        for (const Entity& entity : loaded.entities)
+            if (!loaded.ui_transforms.Has(entity.id)) worldEntities.push_back(entity.id);
+
+        if (!worldEntities.empty()) {
+            spdlog::warn("UI layout {} held {} entities that aren't UI entities; they were left out",
+                         layoutFile.string(), worldEntities.size());
+            for (const ID id : worldEntities) loaded.DestroyEntity(id);
+        }
+
+        Prefab::SyncAllInstances(loaded);
+
+        outID = data.at("layoutId").get<std::uint64_t>();
+        outLayout = std::move(loaded);
+        return true;
+    }
+
+    bool SaveUILayoutToFile(const fs::path& layoutFile, const Level& layout, const std::uint64_t layoutID, std::string* errorMessage) {
+        std::vector<ID> ids;
+        for (const Entity& entity : layout.entities) ids.push_back(entity.id);
+
+        json data = EntitiesToJson(layout, ids);
+        data["layoutId"] = layoutID;
+        return WriteBsonFile(layoutFile, "UI layout", data, errorMessage);
     }
 }
 

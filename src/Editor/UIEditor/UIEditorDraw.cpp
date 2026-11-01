@@ -7,6 +7,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/UISystem.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 #include "Headers/Objects/Entity.hpp"
 // ASSUMPTION: same as UIEditorUI.cpp - adjust to wherever ComponentUIText /
 // ComponentUISprite / ComponentUITransform actually live in your project.
@@ -554,46 +555,20 @@ namespace {
     }
 }
 
-namespace MapEditorInternal {
-    void DestroyUIPreviewFonts() {
-        for (TTF_Font* previewFont : previewFonts | std::views::values) TTF_CloseFont(previewFont);
-        previewFonts.clear();
-    }
+namespace {
+    using namespace MapEditorInternal;
 
-    void UIEditorDraw() {
-        Level& level = LevelManager::CurrentLevel();
+    // How strongly the UI drawn behind the edited one shows.
+    constexpr float UI_CONTEXT_ALPHA = 0.3f;
 
-        // Resolve against the same dimensions sent to uScreenSize at runtime.
-        // This also makes inspector changes visible immediately instead of
-        // drawing stale resolvedPosition/resolvedSize values.
-        UISystem::UpdateAllTransforms(
-            level,
-            static_cast<float>(screenWidth),
-            static_cast<float>(screenHeight)
-        );
-
-        DrawUICanvasCheckerboard();
-        DrawUICanvasGrid();
-
-        // Clip entity rendering to the current-screen boundary (not
-        // whatever the editor's own viewport happens to show at the
-        // current zoom/pan), so an element positioned outside the actual
-        // screen doesn't bleed across the rest of the editor view.
-        const Vector2 clipTopLeft = UICanvasToScreen({0.0f, 0.0f});
-        const Vector2 clipBottomRight = UICanvasToScreen(CurrentScreenResolution());
-        const SDL_Rect clipRect = {
-            static_cast<int>(clipTopLeft.x), static_cast<int>(clipTopLeft.y),
-            static_cast<int>(clipBottomRight.x - clipTopLeft.x), static_cast<int>(clipBottomRight.y - clipTopLeft.y)
-        };
-        SDL_SetRenderClipRect(renderer, &clipRect);
-
+    // Every UI Sprite and Text of `level`, `alpha` times as opaque. Returns
+    // each UI entity's transform, by owner.
+    std::unordered_map<ID, const ComponentUITransform *> DrawUIContent(const Level& level, const float alpha) {
         std::unordered_map<ID, const ComponentUITransform *> transformsByOwner;
         transformsByOwner.reserve(level.ui_transforms.components.size());
 
-        for (const ComponentUITransform &transform:
-             level.ui_transforms.components) {
+        for (const ComponentUITransform &transform: level.ui_transforms.components)
             transformsByOwner.emplace(transform.ownerID, &transform);
-        }
 
         // Draw sprites. One without a texture is a solid rectangle of its colour.
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
@@ -621,7 +596,7 @@ namespace MapEditorInternal {
             // Inactive sprites aren't drawn in game; show them faded so they can still be found.
             const SDL_FColor tint = {
                 std::clamp(color.x, 0.0f, 1.0f), std::clamp(color.y, 0.0f, 1.0f),
-                std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f)
+                std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f) * alpha
             };
             DrawUISpriteQuad(quad, texture, tint);
         }
@@ -633,8 +608,72 @@ namespace MapEditorInternal {
 
             if (transformIt == transformsByOwner.end()) continue;
 
-            DrawUITextEntity(text, level.ShownUIText(text), *transformIt->second);
+            ComponentUIText shown = text;
+            shown.color.w *= alpha;
+            DrawUITextEntity(shown, level.ShownUIText(text), *transformIt->second);
         }
+
+        return transformsByOwner;
+    }
+}
+
+namespace MapEditorInternal {
+    void DestroyUIPreviewFonts() {
+        for (TTF_Font* previewFont : previewFonts | std::views::values) TTF_CloseFont(previewFont);
+        previewFonts.clear();
+    }
+
+    void UIEditorDraw() {
+        // The UI layout being edited, or the level's own UI.
+        Level& openLevel = EditorLevel();
+        Level* editedLayout = UIEditedLayout();
+        Level& level = editedLayout != nullptr ? *editedLayout : openLevel;
+        LevelManager::ScopedCurrentLevel editedScope(level);
+
+        // Resolve against the same dimensions sent to uScreenSize at runtime.
+        // This also makes inspector changes visible immediately instead of
+        // drawing stale resolvedPosition/resolvedSize values.
+        UISystem::UpdateAllTransforms(
+            level,
+            static_cast<float>(screenWidth),
+            static_cast<float>(screenHeight)
+        );
+
+        DrawUICanvasCheckerboard();
+        DrawUICanvasGrid();
+
+        // Clip entity rendering to the current-screen boundary (not
+        // whatever the editor's own viewport happens to show at the
+        // current zoom/pan), so an element positioned outside the actual
+        // screen doesn't bleed across the rest of the editor view.
+        const Vector2 clipTopLeft = UICanvasToScreen({0.0f, 0.0f});
+        const Vector2 clipBottomRight = UICanvasToScreen(CurrentScreenResolution());
+        const SDL_Rect clipRect = {
+            static_cast<int>(clipTopLeft.x), static_cast<int>(clipTopLeft.y),
+            static_cast<int>(clipBottomRight.x - clipTopLeft.x), static_cast<int>(clipBottomRight.y - clipTopLeft.y)
+        };
+        SDL_SetRenderClipRect(renderer, &clipRect);
+
+        // Faded behind what is edited: the level's UI layouts, bottom first,
+        // and, while a layout is edited, the level's own UI.
+        for (const std::uint64_t layoutID : openLevel.worldSettings.uiLayouts) {
+            if (layoutID == uiEditedLayout) continue;
+
+            Level* other = UILayouts::Get(layoutID);
+            if (other == nullptr) continue;
+
+            LevelManager::ScopedCurrentLevel otherScope(*other);
+            UISystem::UpdateAllTransforms(*other, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+            DrawUIContent(*other, UI_CONTEXT_ALPHA);
+        }
+
+        if (editedLayout != nullptr) {
+            LevelManager::ScopedCurrentLevel openScope(openLevel);
+            UISystem::UpdateAllTransforms(openLevel, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+            DrawUIContent(openLevel, UI_CONTEXT_ALPHA);
+        }
+
+        const std::unordered_map<ID, const ComponentUITransform *> transformsByOwner = DrawUIContent(level, 1.0f);
 
         SDL_SetRenderClipRect(renderer, nullptr);
 

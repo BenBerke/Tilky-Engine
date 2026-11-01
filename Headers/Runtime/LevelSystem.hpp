@@ -9,6 +9,9 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
+
+#include "Headers/Runtime/LevelTransfer.hpp"
 
 /// This only runs during Play or Standalone. Does not run during Realtime Editor
 /// Responsible for updating physics, scripts, audio etc.
@@ -25,9 +28,15 @@ namespace LevelSystem {
     void Update(Level& level);
     void Shutdown(Level& level);
 
-    // Ends the level for a level change: every script gets OnDestroy, but
-    // the Lua state (and the Global table) stays for the next Start().
-    void StopLevel(Level& level);
+    // Ends the level for a level change: every script gets OnDestroy except
+    // those of `keepEntities` (the ones LevelTransfer carries), but the Lua
+    // state (and the Global table) stays for ContinueLevel().
+    void StopLevel(Level& level, const std::unordered_set<ID>& keepEntities);
+
+    // Start, for the level a switch made (LevelTransfer::Merge): the carried
+    // entities' scripts carry on and get OnLevelLoaded, their events keep
+    // their trigger counts and don't fire On Start again.
+    void ContinueLevel(Level& level, const LevelTransfer::Result& transfer);
 
     // Game.LoadLevel queues the level here; RuntimeSession switches to it
     // once the current frame has finished. A later request in the same

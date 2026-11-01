@@ -81,7 +81,10 @@ namespace AudioSystem {
     void Start(Level& level) {
         UpdateListener(level);
 
-        for (ComponentAudioSource& audio : level.audioSources.components) StartSource(level, audio);
+        // One with a sound source already has it: an entity a level switch
+        // carried keeps playing (LevelTransfer).
+        for (ComponentAudioSource& audio : level.audioSources.components)
+            if (audio.name.empty()) StartSource(level, audio);
 
         spdlog::info("Audio system started");
     }

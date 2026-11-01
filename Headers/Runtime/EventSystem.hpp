@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 #include "Headers/Objects/Event.hpp"
 #include "Headers/Objects/RayHit.hpp"
@@ -64,7 +65,7 @@ namespace EventSystem {
 
     // Fires the On Start events of everything in the level. Run once the
     // scripts have started. Spawned entities' fire from Update.
-    void FireOnStart(Level& level);
+    void FireOnStart(Level& level, const std::unordered_set<ID>* skipEntities = nullptr);
 
     // Runs the delayed dispatches that are due, advances fades, doors and
     // entity moves, then diffs this frame against the last and fires every

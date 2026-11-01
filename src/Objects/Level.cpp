@@ -10,6 +10,11 @@
 #include "Headers/Math/Constants.hpp"
 
 #include <algorithm>
+#include <set>
+#include <string>
+#include <tuple>
+
+#include <spdlog/spdlog.h>
 
 namespace {
     ID EntityIDOf(const Entity& entity) { return entity.id; }
@@ -25,9 +30,56 @@ const Entity* Level::GetEntity(const ID entityID) const {
     return index == VectorIndexCache<ID>::npos ? nullptr : &entities[index];
 }
 
+namespace {
+    // Once per object and level switch, so a script reading it every frame
+    // doesn't flood the log.
+    void WarnStaleHandle(const char* kind, const ID id, const std::uint32_t epoch) {
+        static std::set<std::tuple<std::string, ID, std::uint32_t>> warned;
+        if (!warned.emplace(kind, id, epoch).second) return;
+
+        spdlog::warn("A script used {} #{} from an earlier level. It wasn't carried into this level "
+                     "(Persist Between Levels is off), so it is treated as gone.", kind, id);
+    }
+}
+
+Entity* Level::GetEntityForHandle(const ID entityID, const std::uint32_t epoch) {
+    Entity* entity = GetEntity(entityID);
+    if (epoch == LevelEpoch::current || entityID == INVALID_ID) return entity;
+    if (entity != nullptr && entity->sinceEpoch <= epoch) return entity;
+
+    WarnStaleHandle("entity", entityID, epoch);
+    return nullptr;
+}
+
+bool Level::IsEntityHandleCurrent(const ID entityID, const std::uint32_t epoch) const {
+    // Made in this level: nothing of an earlier level can be behind it.
+    if (epoch == LevelEpoch::current || entityID == INVALID_ID) return true;
+
+    const Entity* entity = GetEntity(entityID);
+    if (entity != nullptr && entity->sinceEpoch <= epoch) return true;
+
+    WarnStaleHandle("entity", entityID, epoch);
+    return false;
+}
+
+bool Level::IsGeometryHandleCurrent(const std::uint32_t epoch, const char* kind, const ID id) const {
+    if (epoch >= geometryEpoch) return true;
+
+    WarnStaleHandle(kind, id, epoch);
+    return false;
+}
+
+bool Level::IsUIHidden(const ID entityID) const {
+    if (hiddenUILayouts.empty()) return false;
+
+    const Entity* entity = GetEntity(entityID);
+    return entity != nullptr && entity->layoutID != 0 && std::ranges::find(hiddenUILayouts, entity->layoutID) != hiddenUILayouts.end();
+}
+
 ID Level::CreateEntity(const bool uiEntity) {
     Entity entity;
     entity.id = nextEntityID++;
+    entity.sinceEpoch = LevelEpoch::current;
     entity.name = "Entity";
     entity.attachedLevelId = id;
 
@@ -134,6 +186,10 @@ ID Level::CreateEntity(Entity& copy) {
     entity.id = nextEntityID++;
     entity.name = copy.name + "Copy";
     entity.enabled = copy.enabled;
+    entity.persistent = copy.persistent;
+    entity.persistenceKey = copy.persistenceKey;
+    entity.layoutID = copy.layoutID;
+    entity.sinceEpoch = LevelEpoch::current;
     entity.attachedLevelId = id;
     entity.tagIds = copy.tagIds;
     entity.dispatches = copy.dispatches;
@@ -199,6 +255,7 @@ ID Level::CreateEntity(Entity& copy) {
         s.enabled = originalScript->enabled;
         s.publicValues = originalScript->publicValues;
         s.schemaHash = originalScript->schemaHash;
+        s.takeFromLevelCopy = originalScript->takeFromLevelCopy;
     }
 
     // A copy of a prefab instance is an instance too, with the same

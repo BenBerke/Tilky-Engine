@@ -391,6 +391,8 @@ set(TILKY_RUNTIME_SOURCES
         src/Objects/Level.cpp
         src/Objects/FlipbookAsset.cpp
         src/Objects/Prefab.cpp
+        src/Objects/EntityTransfer.cpp
+        src/Objects/UILayouts.cpp
 
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/Gameplay/GameFunctions.cpp
@@ -399,6 +401,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/RuntimeSession.cpp
         src/Runtime/LevelSystem.cpp
+        src/Runtime/LevelTransfer.cpp
         src/Runtime/EventSystem.cpp
         src/Runtime/SaveSystem.cpp
 
@@ -460,6 +463,9 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Objects/Loadables.hpp
         Headers/Objects/FlipbookAsset.hpp
         Headers/Objects/Prefab.hpp
+        Headers/Objects/EntityTransfer.hpp
+        Headers/Objects/UILayouts.hpp
+        Headers/Runtime/LevelTransfer.hpp
         Headers/Objects/LuaWrappers.hpp
 
         Headers/Map/LevelManager.hpp

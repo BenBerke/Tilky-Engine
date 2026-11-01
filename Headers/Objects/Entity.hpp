@@ -41,6 +41,24 @@ struct Entity {
     // Which .prefab this entity is an instance of, if any.
     PrefabLink prefabLink;
 
+    // Persist Between Levels: Game.LoadLevel and the Load Level dispatch keep
+    // the entity, with its running scripts, and add it to the next level.
+    // When that level has an entity with the same non-empty persistenceKey,
+    // that entity (the level copy) is merged into this one and removed: each
+    // component whose takeFromLevelCopy is set takes the copy's values,
+    // components only the copy has are added. See LevelTransfer.
+    bool persistent = false;
+    std::string persistenceKey;
+
+    // Runtime only, not saved: the UI layout (UILayouts) this entity was
+    // created from while playing, 0 for the level's own entities.
+    std::uint64_t layoutID = 0;
+
+    // Runtime only, not saved: the LevelEpoch the entity came into the
+    // running level in. A script handle made before then can't mean it:
+    // the handle is from an earlier level and this entity wasn't carried.
+    std::uint32_t sinceEpoch = 0;
+
     void Start();
     void Update();
 

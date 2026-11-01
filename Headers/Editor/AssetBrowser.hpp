@@ -50,6 +50,7 @@ enum class AssetKind {
     Flipbook,
     Font,
     Prefab,
+    UILayout, // a .uilayout: opens in the UI editor; levels name it by ID, not path
     Other // shown for transparency, but not draggable/thumbnailed
 };
 
@@ -348,6 +349,8 @@ public:
     // Opens a .prefab in the prefab editor (or focuses it). Drawn by
     // DrawPrefabEditorWindows(), which the Map, UI and runtime editors call.
     void RequestOpenPrefab(const std::filesystem::path& absolutePath);
+    // Opens the UI editor on the .uilayout.
+    void RequestOpenUILayout(const std::filesystem::path& absolutePath);
     void DrawPrefabEditorWindows();
 
     // The one place the expected level-file extension is spelled out, per

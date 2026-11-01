@@ -47,6 +47,7 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/GlobalEventVariables.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1163,6 +1164,109 @@ namespace {
         }
     }
 
+    // The UI layouts the level shows, bottom first (the level's own UI is
+    // drawn on top of them all).
+    void DrawUILayoutSettings(Level &level) {
+        std::vector<std::uint64_t> &layouts = level.worldSettings.uiLayouts;
+
+        if (!BeginSettingsTable("##UILayouts")) return;
+
+        int moveUp = -1, moveDown = -1, remove = -1, edit = -1;
+
+        for (int i = 0; i < static_cast<int>(layouts.size()); ++i) {
+            ImGui::PushID(i);
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%d", i + 1);
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(i == 0);
+            if (ImGui::ArrowButton("##Up", ImGuiDir_Up)) moveUp = i;
+            ImGui::EndDisabled();
+            HoverTooltip(Get("settings.ui_layouts.tooltip.move_up").c_str());
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(i + 1 == static_cast<int>(layouts.size()));
+            if (ImGui::ArrowButton("##Down", ImGuiDir_Down)) moveDown = i;
+            ImGui::EndDisabled();
+            HoverTooltip(Get("settings.ui_layouts.tooltip.move_down").c_str());
+
+            ImGui::SameLine();
+            PushDangerStyle();
+            if (ImGui::Button("x", ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = i;
+            PopDangerStyle();
+            HoverTooltip(Get("settings.ui_layouts.tooltip.remove").c_str());
+
+            ImGui::TableNextColumn();
+
+            const UILayouts::Info *info = UILayouts::Find(layouts[i]);
+            const std::string editLabel = Get("settings.ui_layouts.edit");
+            const float editWidth = ImGui::CalcTextSize(editLabel.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+            if (info == nullptr) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
+            ImGui::SetNextItemWidth(std::max(60.0f, ImGui::GetContentRegionAvail().x - editWidth - ImGui::GetStyle().ItemSpacing.x));
+            const bool comboOpen = ImGui::BeginCombo("##Layout", info != nullptr ? info->name.c_str() : Get("settings.ui_layouts.missing").c_str());
+            if (info == nullptr) ImGui::PopStyleColor();
+
+            if (comboOpen) {
+                for (const UILayouts::Info &candidate : UILayouts::List()) {
+                    const bool listed = std::ranges::find(layouts, candidate.id) != layouts.end();
+                    if (listed && candidate.id != layouts[i]) continue;
+
+                    ImGui::PushID(static_cast<int>(candidate.id & 0x7FFFFFFF));
+                    if (ImGui::Selectable(candidate.name.c_str(), candidate.id == layouts[i]) && candidate.id != layouts[i]) {
+                        layouts[i] = candidate.id;
+                        MarkUnsavedChanges();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get("settings.ui_layouts.tooltip.layout").c_str());
+
+            ImGui::SameLine();
+            ImGui::BeginDisabled(info == nullptr);
+            if (ImGui::Button(editLabel.c_str())) edit = i;
+            ImGui::EndDisabled();
+            HoverTooltip(Get("settings.ui_layouts.tooltip.edit").c_str());
+
+            ImGui::PopID();
+        }
+
+        if (moveUp > 0) std::swap(layouts[moveUp], layouts[moveUp - 1]);
+        if (moveDown >= 0) std::swap(layouts[moveDown], layouts[moveDown + 1]);
+        if (remove >= 0) layouts.erase(layouts.begin() + remove);
+        if (moveUp > 0 || moveDown >= 0 || remove >= 0) MarkUnsavedChanges();
+        if (edit >= 0) OpenUILayoutInEditor(layouts[edit]);
+
+        SettingRow("");
+        if (ImGui::Button(Get("settings.ui_layouts.add").c_str(), ImVec2(-FLT_MIN, 0.0f))) ImGui::OpenPopup("##AddUILayout");
+        HoverTooltip(Get("settings.ui_layouts.tooltip.add").c_str());
+
+        if (ImGui::BeginPopup("##AddUILayout")) {
+            bool any = false;
+
+            for (const UILayouts::Info &candidate : UILayouts::List()) {
+                if (std::ranges::find(layouts, candidate.id) != layouts.end()) continue;
+                any = true;
+
+                ImGui::PushID(static_cast<int>(candidate.id & 0x7FFFFFFF));
+                if (ImGui::Selectable(candidate.name.c_str())) {
+                    layouts.push_back(candidate.id);
+                    MarkUnsavedChanges();
+                }
+                ImGui::PopID();
+            }
+
+            if (!any) ImGui::TextDisabled("%s", Get("settings.ui_layouts.none_left").c_str());
+            ImGui::EndPopup();
+        }
+
+        EndSettingsTable();
+    }
+
     void DrawAudioSettings(Level &level) {
         ListenerSettings &settings = level.listenerSettings;
 
@@ -1368,6 +1472,7 @@ namespace {
         if (SettingsSection("settings.cursor.title", "Cursor")) DrawCursorSettings(level);
         if (SettingsSection("settings.audio.title", "Audio")) DrawAudioSettings(level);
         if (SettingsSection("settings.music.title", "Music", true, "settings.music.tooltip")) DrawMusicSettings(level);
+        if (SettingsSection("settings.ui_layouts.title", "UILayouts", true, "settings.ui_layouts.tooltip")) DrawUILayoutSettings(level);
         if (SettingsSection("settings.rendering.title", "Rendering")) DrawRenderingSettings(level);
         if (SettingsSection("settings.rendering.sky.title", "Sky")) DrawSkySettings(level);
 
@@ -4279,6 +4384,9 @@ namespace {
 
 namespace MapEditorInternal {
     void MarkUnsavedChanges() {
+        // Edits to a UI layout make the layout unsaved, not the level
+        // (UILayouts::IsDirty).
+        if (UILayouts::IdOf(&LevelManager::CurrentLevel()) != 0) return;
         hasUnsavedChanges = true;
     }
 

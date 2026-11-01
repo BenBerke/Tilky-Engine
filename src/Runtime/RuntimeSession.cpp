@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <memory>
 #include <optional>
@@ -35,6 +36,7 @@
 #include "Headers/Runtime/EventSystem.hpp"
 
 #include "Headers/Runtime/LevelSystem.hpp"
+#include "Headers/Runtime/LevelTransfer.hpp"
 #include "Headers/Runtime/SaveSystem.hpp"
 #include "Headers/Runtime/Sound/AudioSystem.hpp"
 #include "Headers/Runtime/Sound/MusicPlayer.hpp"
@@ -220,6 +222,8 @@ namespace {
     // Game.LoadLevel, after the frame that asked for it. The new level is read
     // from its saved file first, so a level that fails to load leaves the
     // current one running. The Lua state is kept, and with it Global.
+    // Persistent entities and the UI layouts both levels use go on into the
+    // new level with their scripts still running (see LevelTransfer).
     void SwitchRuntimeLevel(Level& level, const std::string& levelName) {
         ZoneScopedN("SwitchRuntimeLevel");
 
@@ -236,20 +240,40 @@ namespace {
 
         loadedLevel.name = levelName;
 
-        LevelSystem::StopLevel(level);
-        AudioSystem::Shutdown(level);
+        const std::vector<ID> carried = LevelTransfer::CarriedEntities(level, loadedLevel.worldSettings.uiLayouts);
+        const std::unordered_set<ID> carriedSet(carried.begin(), carried.end());
+
+        LevelSystem::StopLevel(level, carriedSet);
+
+        // Carried entities' sounds keep playing.
+        for (ComponentAudioSource& audio : level.audioSources.components)
+            if (!carriedSet.contains(audio.ownerID)) AudioSystem::DestroySource(audio);
 
         // A script's OnDestroy may have asked for another level; the switch
         // already under way wins.
         LevelSystem::TakeRequestedLevel();
 
+        // From here on, handles scripts made in the old level can't reach
+        // anything new.
+        ++LevelEpoch::current;
+
+        // After the OnDestroy callbacks, which may still change the carried entities.
+        const LevelTransfer::Result transfer = LevelTransfer::Merge(level, carried, loadedLevel);
+
+        // A hidden layout that carries on stays hidden.
+        for (const std::uint64_t layoutID : level.hiddenUILayouts)
+            if (std::ranges::find(loadedLevel.worldSettings.uiLayouts, layoutID) != loadedLevel.worldSettings.uiLayouts.end())
+                loadedLevel.hiddenUILayouts.push_back(layoutID);
+
         level = std::move(loadedLevel);
+        level.geometryEpoch = LevelEpoch::current;
 
         PrepareRuntimeLevel(level);
         renderer->ReloadMap();
 
+        // Only the new ones: the carried keep theirs.
         AudioSystem::Start(level);
-        LevelSystem::Start(level);
+        LevelSystem::ContinueLevel(level, transfer);
         AudioSystem::ApplyListenerSettings(level);
         // The same music list keeps playing through the switch.
         MusicPlayer::OnLevelStart(level);
@@ -469,6 +493,7 @@ namespace {
 #ifdef TILKY_STANDALONE
 
     bool StartStandalone(Level& level, const std::string& windowName) {
+        LevelTransfer::AddLayouts(level);
         PrepareRuntimeLevel(level);
 
         if (!StartRenderer(windowName, false)) return false;
@@ -598,6 +623,8 @@ namespace {
 
         spdlog::info("Runtime level snapshot created");
 
+        // On the copy that runs: the snapshot keeps the editor's level as it was.
+        LevelTransfer::AddLayouts(level);
         PrepareRuntimeLevel(level);
 
         if (!StartRenderer(false)) {

@@ -2897,7 +2897,7 @@ namespace EventSystem {
         level.sectorMoveEnds.clear();
     }
 
-    void FireOnStart(Level& level) {
+    void FireOnStart(Level& level, const std::unordered_set<ID>* skipEntities) {
         if (!running) return;
 
         // IDs first: a dispatch can add or remove things while these run.
@@ -2907,7 +2907,8 @@ namespace EventSystem {
             if (linedef.enabled) owners.emplace_back(EventOwnerKind::LINEDEF, linedef.id);
         for (const Sector& sector : level.sectors) owners.emplace_back(EventOwnerKind::SECTOR, sector.id);
         for (const Entity& entity : level.entities)
-            if (entity.enabled) owners.emplace_back(EventOwnerKind::ENTITY, entity.id);
+            if (entity.enabled && (skipEntities == nullptr || !skipEntities->contains(entity.id)))
+                owners.emplace_back(EventOwnerKind::ENTITY, entity.id);
 
         for (const auto& [kind, ownerID] : owners) {
             if (kind == EventOwnerKind::ENTITY && !IsEnabledEntity(level, ownerID)) continue; // disabled by an earlier one

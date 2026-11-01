@@ -19,6 +19,7 @@ them for public fields.
 | [`OnTrigger(other)`](#ontriggerenter--ontrigger--ontriggerexit) | ✓ | | Every frame while they overlap |
 | [`OnTriggerExit(other)`](#ontriggerenter--ontrigger--ontriggerexit) | ✓ | | They stop overlapping |
 | [`OnSectorChange(sector)`](#onsectorchange) | ✓ | | This entity moved into a different sector |
+| [`OnLevelLoaded()`](#onlevelloaded) | ✓ | | This entity was carried into a new level |
 | [`OnClick()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The left mouse button went down on this entity's [UI Button](UIButton.md) |
 | [`OnRelease()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The left mouse button was let go after a click on it |
 | [`OnHoverEnter()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor came onto the button |
@@ -301,6 +302,32 @@ function OnSectorChange(sector)
     if sector:HasTag("water") then audio.soundFileName = "Sounds/Footsteps/splash.wav"
     elseif sector:HasTag("metal") then audio.soundFileName = "Sounds/Footsteps/clank.wav"
     else audio.soundFileName = "Sounds/Footsteps/step.wav" end
+end
+```
+
+---
+
+## OnLevelLoaded
+
+```lua
+function OnLevelLoaded() end
+```
+
+Called on entity scripts whose entity went on into a new level with `Game.LoadLevel` or a Load
+Level dispatch: entities with **Persist Between Levels** ticked, and the entities of a UI layout
+the new level shows too.
+
+- Their scripts keep running through the switch: their variables, `Global` and pending `Invoke`s
+  stay, and `Start` doesn't run again.
+- It runs after the new level's own scripts have run `Start`, and only while the script is
+  active.
+- References the script holds to things of the old level that didn't come along (entities,
+  components, walls, sectors) stop working: `isValid` is `false`, and using one logs a warning.
+
+```lua
+-- Scripts/Player.lua: say which level we arrived in.
+function OnLevelLoaded()
+    Debug.Print("Arrived in " .. Game.levelName)
 end
 ```
 

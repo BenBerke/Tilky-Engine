@@ -41,7 +41,7 @@ struct ScriptAudioSource {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentAudioSource* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
 
         return level->audioSources.GetInstance(instanceID);
     }
@@ -277,6 +277,11 @@ struct ScriptAudioSource {
 
         audio->SetSourcePosition(position);
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -288,7 +293,7 @@ struct ScriptTransform {
     ID ownerID = static_cast<ID>(-1);
 
     [[nodiscard]] ComponentTransform* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->transforms.Get(ownerID);
     }
 
@@ -440,6 +445,11 @@ private:
         if (transform == nullptr) return local;
         return QuaternionMath::Rotate(transform->rotation, local);
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -464,7 +474,7 @@ struct ScriptSprite {
     static constexpr int SLOT_NW = 7;
 
     [[nodiscard]] ComponentSprite* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
 
         return level->sprites.GetInstance(instanceID);
     }
@@ -645,6 +655,11 @@ struct ScriptSprite {
         if (sprite == nullptr) return false;
         return sprite->isStatic;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -658,7 +673,7 @@ struct ScriptRigidbody {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentRigidbody* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->rigidbodies.GetInstance(instanceID);
     }
 
@@ -765,6 +780,11 @@ struct ScriptRigidbody {
         if (rb == nullptr) return;
         rb->velocity = {0.0f, 0.0f, 0.0f};
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -778,7 +798,7 @@ struct ScriptModel {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentModel* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->models.GetInstance(instanceID);
     }
 
@@ -815,6 +835,11 @@ struct ScriptModel {
     void ClearFileName() const {
         SetFileName("");
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -828,7 +853,7 @@ struct ScriptFlipbook {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentFlipbook* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->flipbooks.GetInstance(instanceID);
     }
 
@@ -913,6 +938,11 @@ struct ScriptFlipbook {
         if (flipbook == nullptr) return {};
         return FlipbookSystem::GetFrameName(*flipbook);
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -926,7 +956,7 @@ struct ScriptCollider {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCollider* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->colliders.GetInstance(instanceID);
     }
 
@@ -1015,6 +1045,11 @@ struct ScriptCollider {
         if (collider == nullptr) return;
         collider->maxSlope = std::clamp(maxSlope, 0.0f, 90.0f);
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1028,7 +1063,7 @@ struct ScriptPlayerController {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentPlayerController* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->playerControllers.GetInstance(instanceID);
     }
 
@@ -1175,6 +1210,11 @@ struct ScriptPlayerController {
         if (pc == nullptr) return 0.0f;
         return pc->currentEyeHeight;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1188,7 +1228,7 @@ struct ScriptCamera {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentCamera* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->cameras.GetInstance(instanceID);
     }
 
@@ -1369,6 +1409,11 @@ private:
 
         up = Vector3Math::Cross(right, forward);
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1380,7 +1425,7 @@ struct ScriptUITransform {
     ID ownerID = static_cast<ID>(-1);
 
     [[nodiscard]] ComponentUITransform* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->ui_transforms.Get(ownerID);
     }
 
@@ -1471,6 +1516,11 @@ struct ScriptUITransform {
         if (transform == nullptr) return {};
         return transform->resolvedSize;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1484,7 +1534,7 @@ struct ScriptUISprite {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUISprite* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->ui_sprites.GetInstance(instanceID);
     }
 
@@ -1528,6 +1578,11 @@ struct ScriptUISprite {
         if (sprite == nullptr) return;
         sprite->color = value;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1543,13 +1598,18 @@ struct ScriptUIButton {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUIButton* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->ui_buttons.GetInstance(instanceID);
     }
 
     [[nodiscard]] bool IsValid() const {
         return GetComponent() != nullptr;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1563,7 +1623,7 @@ struct ScriptUIText {
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
 
     [[nodiscard]] ComponentUIText* GetComponent() const {
-        if (level == nullptr) return nullptr;
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
         return level->ui_texts.GetInstance(instanceID);
     }
 
@@ -1637,6 +1697,11 @@ struct ScriptUIText {
         if (text == nullptr) return;
         text->color = value;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1667,7 +1732,7 @@ struct ScriptBehaviourRef {
     ScriptInstanceID instanceID = INVALID_SCRIPT_INSTANCE_ID;
 
     [[nodiscard]] bool IsValid() const {
-        return LuaScriptRuntime::IsInstanceValid(ownerID, instanceID);
+        return OwnerCurrent() && LuaScriptRuntime::IsInstanceValid(ownerID, instanceID);
     }
 
     [[nodiscard]] ScriptEntity GetEntity() const;
@@ -1675,12 +1740,12 @@ struct ScriptBehaviourRef {
     // The referenced script's own enabled flag - independent of the
     // Entity's enabled flag (Entity::enabled).
     [[nodiscard]] bool GetEnabled() const {
-        if (level == nullptr) return false;
+        if (level == nullptr || !OwnerCurrent()) return false;
         return LuaScriptRuntime::GetInstanceEnabled(*level, ownerID, instanceID);
     }
 
     void SetEnabled(const bool value) const {
-        if (level == nullptr) return;
+        if (level == nullptr || !OwnerCurrent()) return;
         LuaScriptRuntime::SetInstanceEnabled(*level, ownerID, instanceID, value);
     }
 
@@ -1702,6 +1767,16 @@ struct ScriptBehaviourRef {
     // visible at this point in the file.
     [[nodiscard]] sol::object LuaGet(const std::string& key, sol::this_state state) const;
     void LuaSet(const std::string& key, sol::object value) const;
+
+    // False when the owner is from an earlier level and wasn't carried into this one.
+    [[nodiscard]] bool OwnerCurrent() const {
+        return level == nullptr || level->IsEntityHandleCurrent(ownerID, epoch);
+    }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -1722,14 +1797,14 @@ struct ScriptEntity {
     // INVALID_COMPONENT_INSTANCE_ID (an invalid handle) when it has none.
     template<typename Storage>
     [[nodiscard]] ComponentInstanceID FirstInstance(Storage Level::* storage) const {
-        if (level == nullptr) return INVALID_COMPONENT_INSTANCE_ID;
-        const auto* component = (level->*storage).Get(ownerID);
+        if (LiveLevel() == nullptr) return INVALID_COMPONENT_INSTANCE_ID;
+        const auto* component = (LiveLevel()->*storage).Get(ownerID);
         return component == nullptr ? INVALID_COMPONENT_INSTANCE_ID : component->instanceID;
     }
 
     [[nodiscard]] Entity* GetEntity() const {
         if (level == nullptr || ownerID == INVALID_ENTITY_ID) return nullptr;
-        return level->GetEntity(ownerID);
+        return level->GetEntityForHandle(ownerID, epoch);
     }
 
     [[nodiscard]] ID GetID() const {
@@ -1764,7 +1839,7 @@ struct ScriptEntity {
     void SetEnabled(const bool value) const {
         Entity* entity = GetEntity();
         if (entity == nullptr) return;
-        level->SetEntityEnabled(*entity, value);
+        LiveLevel()->SetEntityEnabled(*entity, value);
     }
 
     // Queues this Entity for destruction. Safe to call from anywhere in
@@ -1778,19 +1853,19 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] bool HasTransform() const {
-        return level != nullptr && level->transforms.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->transforms.Has(ownerID);
     }
 
     [[nodiscard]] bool HasSprite() const {
-        return level != nullptr && level->sprites.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->sprites.Has(ownerID);
     }
 
     [[nodiscard]] bool HasAudioSource() const {
-        return level != nullptr && level->audioSources.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->audioSources.Has(ownerID);
     }
 
     [[nodiscard]] bool HasScript() const {
-        return level != nullptr && level->scripts.HasAny(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->scripts.HasAny(ownerID);
     }
 
     // True if this Entity has an attached script whose asset id
@@ -1801,11 +1876,11 @@ struct ScriptEntity {
     // Use GetScriptById for an unambiguous lookup when several same-named
     // scripts might be attached.
     [[nodiscard]] bool HasScriptNamed(const std::string& scriptName) const {
-        if (level == nullptr) return false;
+        if (LiveLevel() == nullptr) return false;
 
         const std::string wanted = std::filesystem::path(scriptName).filename().string();
 
-        for (const ComponentScript* script : level->scripts.GetAll(ownerID))
+        for (const ComponentScript* script : LiveLevel()->scripts.GetAll(ownerID))
             if (std::filesystem::path(script->fileName).filename().string() == wanted) return true;
 
         return false;
@@ -1874,57 +1949,57 @@ struct ScriptEntity {
     }
 
     [[nodiscard]] bool HasPlayerController() const {
-        return level != nullptr && level->playerControllers.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->playerControllers.Has(ownerID);
     }
 
     [[nodiscard]] bool HasCamera() const {
-        return level != nullptr && level->cameras.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->cameras.Has(ownerID);
     }
 
     [[nodiscard]] bool HasCollider() const {
-        return level != nullptr && level->colliders.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->colliders.Has(ownerID);
     }
 
     [[nodiscard]] bool HasRigidbody() const {
-        return level != nullptr && level->rigidbodies.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->rigidbodies.Has(ownerID);
     }
 
     [[nodiscard]] bool HasModel() const {
-        return level != nullptr && level->models.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->models.Has(ownerID);
     }
 
     [[nodiscard]] bool HasFlipbook() const {
-        return level != nullptr && level->flipbooks.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->flipbooks.Has(ownerID);
     }
 
     [[nodiscard]] bool HasUITransform() const {
-        return level != nullptr && level->ui_transforms.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->ui_transforms.Has(ownerID);
     }
 
     [[nodiscard]] bool HasUISprite() const {
-        return level != nullptr && level->ui_sprites.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->ui_sprites.Has(ownerID);
     }
 
     [[nodiscard]] bool HasUIText() const {
-        return level != nullptr && level->ui_texts.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->ui_texts.Has(ownerID);
     }
 
     [[nodiscard]] bool HasUIButton() const {
-        return level != nullptr && level->ui_buttons.Has(ownerID);
+        return LiveLevel() != nullptr && LiveLevel()->ui_buttons.Has(ownerID);
     }
 
     [[nodiscard]] ScriptTransform GetTransform() const {
-        return {level, ownerID};
+        return {LiveLevel(), ownerID};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptSprite GetSprite() const {
-        return {level, ownerID, FirstInstance(&Level::sprites)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::sprites)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptAudioSource GetAudioSource() const {
-        return {level, ownerID, FirstInstance(&Level::audioSources)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::audioSources)};
     }
 
     // Looks up an attached script (Behaviour) by asset id, matching only the
@@ -1934,85 +2009,96 @@ struct ScriptEntity {
     // found; use GetScriptById for an unambiguous lookup, or GetScripts() to
     // enumerate every instance.
     [[nodiscard]] ScriptBehaviourRef GetScript(const std::string& scriptName) const {
-        if (level == nullptr) return {level, ownerID, INVALID_SCRIPT_INSTANCE_ID};
+        if (LiveLevel() == nullptr) return {LiveLevel(), ownerID, INVALID_SCRIPT_INSTANCE_ID};
 
         const std::string wanted = std::filesystem::path(scriptName).filename().string();
 
-        for (const ComponentScript* script : level->scripts.GetAll(ownerID)) {
+        for (const ComponentScript* script : LiveLevel()->scripts.GetAll(ownerID)) {
             if (std::filesystem::path(script->fileName).filename().string() == wanted)
-                return {level, ownerID, script->instanceID};
+                return {LiveLevel(), ownerID, script->instanceID};
         }
 
-        return {level, ownerID, INVALID_SCRIPT_INSTANCE_ID};
+        return {LiveLevel(), ownerID, INVALID_SCRIPT_INSTANCE_ID};
     }
 
     // Looks up an attached script (Behaviour) by its exact, globally-unique
     // ScriptInstanceID - the unambiguous form of GetScript(name), and what a
     // serialized Behaviour-reference field resolves through.
     [[nodiscard]] ScriptBehaviourRef GetScriptById(const ScriptInstanceID instanceId) const {
-        return {level, ownerID, instanceId};
+        return {LiveLevel(), ownerID, instanceId};
     }
 
     // Every script attached to this Entity, as Behaviour references.
     [[nodiscard]] std::vector<ScriptBehaviourRef> GetScripts() const {
         std::vector<ScriptBehaviourRef> result;
 
-        if (level == nullptr) return result;
+        if (LiveLevel() == nullptr) return result;
 
-        for (const ComponentScript* script : level->scripts.GetAll(ownerID))
-            result.push_back({level, ownerID, script->instanceID});
+        for (const ComponentScript* script : LiveLevel()->scripts.GetAll(ownerID))
+            result.push_back({LiveLevel(), ownerID, script->instanceID});
 
         return result;
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptPlayerController GetPlayerController() const {
-        return {level, ownerID, FirstInstance(&Level::playerControllers)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::playerControllers)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCamera GetCamera() const {
-        return {level, ownerID, FirstInstance(&Level::cameras)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::cameras)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptCollider GetCollider() const {
-        return {level, ownerID, FirstInstance(&Level::colliders)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::colliders)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptRigidbody GetRigidbody() const {
-        return {level, ownerID, FirstInstance(&Level::rigidbodies)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::rigidbodies)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptModel GetModel() const {
-        return {level, ownerID, FirstInstance(&Level::models)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::models)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptFlipbook GetFlipbook() const {
-        return {level, ownerID, FirstInstance(&Level::flipbooks)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::flipbooks)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {
-        return {level, ownerID};
+        return {LiveLevel(), ownerID};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUISprite GetUISprite() const {
-        return {level, ownerID, FirstInstance(&Level::ui_sprites)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::ui_sprites)};
     }
 
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptUIText GetUIText() const {
-        return {level, ownerID, FirstInstance(&Level::ui_texts)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::ui_texts)};
     }
 
     // The first one, the one that works; GetComponents lists them all.
     [[nodiscard]] ScriptUIButton GetUIButton() const {
-        return {level, ownerID, FirstInstance(&Level::ui_buttons)};
+        return {LiveLevel(), ownerID, FirstInstance(&Level::ui_buttons)};
     }
+
+    // `level`, or nullptr when this Entity is from an earlier level and
+    // wasn't carried into this one.
+    [[nodiscard]] Level* LiveLevel() const {
+        return level != nullptr && level->IsEntityHandleCurrent(ownerID, epoch) ? level : nullptr;
+    }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -2024,7 +2110,10 @@ struct ScriptEntity {
 // ---------------------------------------------------------
 
 inline ScriptEntity ScriptBehaviourRef::GetEntity() const {
-    return {level, ownerID};
+    // An Entity from the same level as this handle.
+    ScriptEntity entity{OwnerCurrent() ? level : nullptr, ownerID};
+    entity.epoch = epoch;
+    return entity;
 }
 
 inline sol::object ScriptBehaviourRef::LuaGet(const std::string& key, const sol::this_state state) const {
@@ -2033,6 +2122,7 @@ inline sol::object ScriptBehaviourRef::LuaGet(const std::string& key, const sol:
     if (key == "isValid") return sol::make_object(luaView, IsValid());
     if (key == "entity") return sol::make_object(luaView, GetEntity());
     if (key == "enabled") return sol::make_object(luaView, GetEnabled());
+    if (!OwnerCurrent()) return sol::make_object(luaView, sol::nil);
 
     return LuaScriptRuntime::GetInstanceField(ownerID, instanceID, key, state);
 }
@@ -2047,6 +2137,7 @@ inline void ScriptBehaviourRef::LuaSet(const std::string& key, sol::object value
     // rather than silently poking a same-named field into the target
     // script's environment.
     if (key == "isValid" || key == "entity") return;
+    if (!OwnerCurrent()) return;
 
     LuaScriptRuntime::SetInstanceField(ownerID, instanceID, key, std::move(value));
 }
@@ -2136,7 +2227,7 @@ struct ScriptWall {
     ID wallID = INVALID_ID;
 
     [[nodiscard]] Wall* GetWall() const {
-        if (level == nullptr || wallID == INVALID_ID) return nullptr;
+        if (level == nullptr || wallID == INVALID_ID || !level->IsGeometryHandleCurrent(epoch, "wall", wallID)) return nullptr;
 
         const auto it = level->wallIDToIndex.find(wallID);
         if (it == level->wallIDToIndex.end()) return nullptr;
@@ -2321,6 +2412,11 @@ struct ScriptWall {
         if (wall == nullptr) throw sol::error("Invalid Wall");
         return wall->length;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -2333,7 +2429,7 @@ struct ScriptSectorFloor {
     int floorIndex = -1;
 
     [[nodiscard]] Sector* GetSector() const {
-        if (level == nullptr || sectorID == INVALID_ID) return nullptr;
+        if (level == nullptr || sectorID == INVALID_ID || !level->IsGeometryHandleCurrent(epoch, "sector", sectorID)) return nullptr;
 
         const auto it = level->sectorIDToIndex.find(sectorID);
         if (it == level->sectorIDToIndex.end()) return nullptr;
@@ -2495,6 +2591,11 @@ struct ScriptSectorFloor {
         if (floor == nullptr) throw sol::error("Invalid SectorFloor");
         WriteAndPropagate([&] { write(ceiling ? floor->ceiling.texture : floor->floor.texture); });
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 // ---------------------------------------------------------
@@ -2506,7 +2607,7 @@ struct ScriptSector {
     ID sectorID = INVALID_ID;
 
     [[nodiscard]] Sector* GetSector() const {
-        if (level == nullptr || sectorID == INVALID_ID) return nullptr;
+        if (level == nullptr || sectorID == INVALID_ID || !level->IsGeometryHandleCurrent(epoch, "sector", sectorID)) return nullptr;
 
         const auto it = level->sectorIDToIndex.find(sectorID);
         if (it == level->sectorIDToIndex.end()) return nullptr;
@@ -3060,6 +3161,11 @@ private:
 
         return surface.height;
     }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
 };
 
 #endif // TILKY_ENGINE_WRAPPERS_HPP

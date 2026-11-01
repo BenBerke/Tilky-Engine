@@ -30,6 +30,7 @@
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 
 #include <cstdio>
 
@@ -4086,9 +4087,22 @@ namespace MapEditorInternal {
             MarkUnsavedChanges();
         }
 
+        void SwapUndoStepIn(UndoStep& step);
+
         // Puts `step`'s state back and leaves the state it replaced in
-        // `step`, so the same step takes it back the other way.
+        // `step`, so the same step takes it back the other way. A step made
+        // in a UI layout is put back there, and the UI editor shows it.
         void SwapUndoStep(UndoStep& step) {
+            Level* layout = step.uiLayout != 0 ? UILayouts::Get(step.uiLayout) : nullptr;
+            if (step.uiLayout != 0 && layout == nullptr) return; // its file is gone
+
+            if (step.uiLayout != uiEditedLayout) SetUIEditedLayout(step.uiLayout);
+
+            LevelManager::ScopedCurrentLevel scope(layout != nullptr ? *layout : EditorLevel());
+            SwapUndoStepIn(step);
+        }
+
+        void SwapUndoStepIn(UndoStep& step) {
             Level& level = LevelManager::CurrentLevel();
 
             if (step.wallSnaps.has_value()) std::swap(*step.wallSnaps, WallSnap::All());
@@ -4352,6 +4366,9 @@ namespace MapEditorInternal {
     // Every undoable edit lands here, so it's also where the level is marked
     // unsaved - creating a sector or wall marks nothing else.
     void PushUndoStep(UndoStep step) {
+        // Made while the UI editor edits a layout: it belongs to the layout.
+        step.uiLayout = UILayouts::IdOf(&LevelManager::CurrentLevel());
+
         undoSteps.push_back(std::move(step));
         if (undoSteps.size() > MAX_MAP_UNDO_STEPS) undoSteps.erase(undoSteps.begin());
 
@@ -4452,9 +4469,10 @@ namespace MapEditorInternal {
         undoSteps.pop_back();
 
         SwapUndoStep(step);
+        // A layout's own changes show as the layout being unsaved.
+        if (step.uiLayout == 0) MarkUnsavedChanges();
         redoSteps.push_back(std::move(step));
         ++undoHistoryVersion;
-        MarkUnsavedChanges();
     }
 
     void RedoLastAction() {
@@ -4464,9 +4482,9 @@ namespace MapEditorInternal {
         redoSteps.pop_back();
 
         SwapUndoStep(step);
+        if (step.uiLayout == 0) MarkUnsavedChanges();
         undoSteps.push_back(std::move(step));
         ++undoHistoryVersion;
-        MarkUnsavedChanges();
     }
 
     void JumpToUndoPosition(const std::size_t position) {

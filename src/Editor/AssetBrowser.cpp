@@ -23,6 +23,7 @@
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Objects/UILayouts.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -837,7 +838,7 @@ end
 
     // --- Extension registry, backing CreateAssetEntry ------------------------
 
-    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Font, Prefab, Level };
+    enum class RegisteredExtensionKind { Texture, Sound, Script, Model, Flipbook, Font, Prefab, UILayout, Level };
 
     // Extension -> first-class kind. Matching is case-insensitive (see
     // LowerCopy). Add an entry here (and, if it needs behavior beyond just
@@ -863,6 +864,7 @@ end
             { ".otf",  RegisteredExtensionKind::Font    },
             { std::string(FlipbookIO::kExtension), RegisteredExtensionKind::Flipbook },
             { std::string(Prefab::kExtension), RegisteredExtensionKind::Prefab },
+            { std::string(UILayouts::kExtension), RegisteredExtensionKind::UILayout },
             { std::string(AssetBrowser::kLevelFileExtension), RegisteredExtensionKind::Level },
         };
 
@@ -886,6 +888,7 @@ end
             case AssetKind::Model: return LowerCopy(entry.GetPath().extension().string());
             case AssetKind::Flipbook: return "fpk";
             case AssetKind::Prefab: return "prefab";
+            case AssetKind::UILayout: return "ui layout";
             case AssetKind::Font: return LowerCopy(entry.GetPath().extension().string());
             default: return "file";
         }
@@ -901,6 +904,7 @@ end
             case AssetKind::Model: return ICON_FA_CUBE;
             case AssetKind::Flipbook: return ICON_FA_FILM;
             case AssetKind::Prefab: return ICON_FA_CUBES;
+            case AssetKind::UILayout: return ICON_FA_LAYER_GROUP;
             case AssetKind::Font: return ICON_FA_FONT;
             default: return ICON_FA_FILE;
         }
@@ -915,6 +919,7 @@ end
             case AssetKind::Model: return IM_COL32(95, 70, 45, 255);
             case AssetKind::Flipbook: return IM_COL32(100, 55, 75, 255);
             case AssetKind::Prefab: return IM_COL32(45, 85, 95, 255);
+            case AssetKind::UILayout: return IM_COL32(70, 90, 50, 255);
             case AssetKind::Font: return IM_COL32(85, 85, 45, 255);
             default: return IM_COL32(60, 60, 65, 255);
         }
@@ -1755,6 +1760,10 @@ void GenericFileEntry::OnDoubleClick(AssetBrowser& browser) {
         browser.RequestOpenPrefab(GetPath());
         return;
     }
+    if (kind == AssetKind::UILayout) {
+        browser.RequestOpenUILayout(GetPath());
+        return;
+    }
     if (kind == AssetKind::Other && AssetBrowser::IsPlainTextFile(GetPath())) {
         browser.RequestOpenScript(GetPath());
         return;
@@ -1778,6 +1787,10 @@ void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const
 void GenericFileEntry::DrawContextMenu(AssetBrowser& browser) {
     if (kind == AssetKind::Script || AssetBrowser::IsPlainTextFile(GetPath())) {
         if (ImGui::MenuItem("Open in Text Editor")) browser.RequestOpenScript(GetPath());
+        ImGui::Separator();
+    }
+    if (kind == AssetKind::UILayout) {
+        if (ImGui::MenuItem("Open in UI Editor")) browser.RequestOpenUILayout(GetPath());
         ImGui::Separator();
     }
     DrawRenameAndDeleteMenuItems(browser);
@@ -1838,6 +1851,8 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Font);
         case RegisteredExtensionKind::Prefab:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Prefab);
+        case RegisteredExtensionKind::UILayout:
+            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::UILayout);
         case RegisteredExtensionKind::Level:
             return std::make_unique<LevelEntry>(absolutePath, std::move(relativePath), std::move(displayName));
     }
@@ -1912,6 +1927,9 @@ void AssetBrowser::SetRootDirectory(const std::filesystem::path& root) {
 
 void AssetBrowser::Refresh() {
     ScanCurrentDirectory();
+
+    // A UI layout may have been made, moved, renamed or deleted.
+    UILayouts::Rescan();
 }
 
 bool AssetBrowser::IsPathWithinRoot(const std::filesystem::path& absolutePath) const {
@@ -2765,6 +2783,13 @@ void AssetBrowser::DrawCreateFileModal() {
                 else spdlog::error("Asset browser: {}", error);
             }
 
+            // A .uilayout needs its layout ID from the start; it opens in the UI editor.
+            if (created && LowerCopy(createdFilePath.extension().string()) == UILayouts::kExtension) {
+                std::uint64_t layoutID = 0;
+                if (UILayouts::Create(createdFilePath, &layoutID, &error)) MapEditorInternal::OpenUILayoutInEditor(layoutID);
+                else spdlog::error("Asset browser: {}", error);
+            }
+
             // A new text file opens straight away, ready to type into.
             if (created && IsPlainTextFile(createdFilePath)) RequestOpenScript(createdFilePath);
 
@@ -3152,6 +3177,7 @@ bool AssetBrowser::RequestAssignToEditTarget(const AssetKind kind, const std::fi
 void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &destinationDirectory) {
     if (ImGui::MenuItem("Script (.lua)")) RequestCreateFile(destinationDirectory, ".lua");
     if (ImGui::MenuItem("Flipbook (.fpk)")) RequestCreateFile(destinationDirectory, std::string(FlipbookIO::kExtension));
+    if (ImGui::MenuItem("UI Layout (.uilayout)")) RequestCreateFile(destinationDirectory, std::string(UILayouts::kExtension));
     if (ImGui::MenuItem("Text (.txt)")) RequestCreateFile(destinationDirectory, ".txt");
     if (ImGui::MenuItem("Custom...")) RequestCreateFile(destinationDirectory, "");
 }
@@ -3159,6 +3185,21 @@ void AssetBrowser::DrawCreateFileSubmenuItems(const std::filesystem::path &desti
 void AssetBrowser::DrawCreatePrefabSubmenuItems(const std::filesystem::path& destinationDirectory) {
     if (ImGui::MenuItem("Empty Prefab")) RequestCreatePrefab(destinationDirectory, false);
     if (ImGui::MenuItem("Empty UI Prefab")) RequestCreatePrefab(destinationDirectory, true);
+}
+
+void AssetBrowser::RequestOpenUILayout(const std::filesystem::path& absolutePath) {
+    std::uint64_t layoutID = 0;
+    std::string error;
+
+    if (!LevelSerialization::ReadUILayoutID(absolutePath, layoutID, &error)) {
+        lastOperationError = error;
+        spdlog::warn("Asset browser: {}", error);
+        return;
+    }
+
+    // Found by ID, so the file has to be in the list.
+    if (UILayouts::Find(layoutID) == nullptr) UILayouts::Rescan();
+    MapEditorInternal::OpenUILayoutInEditor(layoutID);
 }
 
 void AssetBrowser::RequestCreatePrefab(const std::filesystem::path& destinationDirectory, const bool uiEntity) {

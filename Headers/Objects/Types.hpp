@@ -29,6 +29,15 @@ constexpr EventVariableID GLOBAL_EVENT_VARIABLE_BIT = EventVariableID{1} << 31;
 }
 constexpr ID INVALID_ENTITY_ID = INVALID_ID;
 
+// Counts the level switches of the running game (Game.LoadLevel, the Load
+// Level dispatch). Script handles (Entity, components, Wall, Sector...)
+// remember the count they were made at, so one kept from an earlier level
+// never reaches something of this level that happens to have the same ID:
+// see Entity::sinceEpoch and Level::geometryEpoch.
+namespace LevelEpoch {
+    inline std::uint32_t current = 0;
+}
+
 using ScriptInstanceID = std::uint64_t;
 constexpr ScriptInstanceID INVALID_SCRIPT_INSTANCE_ID = 0;
 

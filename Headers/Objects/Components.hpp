@@ -46,6 +46,11 @@ enum ComponentType {
 
 // region UI Components
 
+// Which layer a UI Sprite or Text draws in while playing: the level's UI
+// layouts are layers 0, 1, ... in their World Settings order, and the
+// level's own UI is on top of them all. Set by UILayouts::SortUIDrawOrder.
+inline constexpr std::uint32_t UI_LEVEL_DRAW_LAYER = 0xFFFFFFFFu;
+
 // Makes the whole UI entity clickable: its UITransform rectangle (rotation
 // included) is the click area. Fires the entity's UI Button events and its
 // scripts' OnClick/OnHoverEnter/OnHoverExit/OnRelease, only while the cursor
@@ -55,6 +60,9 @@ enum ComponentType {
 struct ComponentUIButton {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // false = no events or callbacks, drawn with the disabled look. It still
     // blocks clicks to buttons under it.
@@ -86,6 +94,9 @@ inline constexpr float DEFAULT_UI_FONT_SIZE = 48.0f;
 struct ComponentUIText {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     std::string text;
 
@@ -108,11 +119,17 @@ struct ComponentUIText {
     std::string suffix;
 
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+
+    // Runtime only, not saved: see UI_LEVEL_DRAW_LAYER.
+    std::uint32_t drawLayer = UI_LEVEL_DRAW_LAYER;
 };
 
 struct ComponentUISprite {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Empty = a solid rectangle of `color`.
     std::string texture;
@@ -129,11 +146,17 @@ struct ComponentUISprite {
     // drawn instead of `texture`.
     Vector4 buttonTint = {1.0f, 1.0f, 1.0f, 1.0f};
     std::string buttonTexture;
+
+    // Runtime only, not saved: see UI_LEVEL_DRAW_LAYER.
+    std::uint32_t drawLayer = UI_LEVEL_DRAW_LAYER;
 };
 
 struct ComponentUITransform {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = true;
 
     Vector2 anchorMin = {0.5f, 0.5f};
     Vector2 anchorMax = {0.5f, 0.5f};
@@ -158,6 +181,9 @@ struct ComponentUITransform {
 struct ComponentModel {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Local position relative to the owner's Transform, turned with its
     // rotation. Lets several of these sit at different spots on one entity.
@@ -171,6 +197,9 @@ struct ComponentModel {
 struct ComponentRigidbody {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     bool isStatic = false;
     float mass = 1.0f;
@@ -209,6 +238,9 @@ struct ComponentTransform;
 struct ComponentCollider {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Local position of the collider's bottom relative to the owner's
     // Transform, scaled by its scale and turned with its rotation. Lets
@@ -257,6 +289,9 @@ struct ComponentCollider {
 struct ComponentPlayerController {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Physical player/camera-body position.
     // x = world/map X
@@ -306,6 +341,9 @@ struct ComponentPlayerController {
 struct ComponentCamera {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     bool isActive = true;
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
@@ -343,6 +381,9 @@ struct ComponentCamera {
 // ScriptAttachmentData (ScriptPublicType.hpp), shared with sector scripts.
 struct ComponentScript : ScriptAttachmentData {
     ID ownerID = static_cast<ID>(-1);
+    // Persist Between Levels: see the other components' takeFromLevelCopy. A
+    // script that takes it restarts with the level copy's values.
+    bool takeFromLevelCopy = false;
 };
 
 class ScriptComponentStorage {
@@ -478,6 +519,9 @@ private:
 struct ComponentAudioSource {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Local position relative to the owner's Transform, turned with its
     // rotation. Lets several of these sit at different spots on one entity.
@@ -568,6 +612,9 @@ struct Sector;
 struct ComponentTransform {
     ID ownerID = -1;
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = true;
 
     /*
      * relativeHeight = height relative to the current sector floor
@@ -602,6 +649,9 @@ enum SideCount {
 struct ComponentSprite {
     ID ownerID = -1;
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Local position relative to the owner's Transform, turned with its
     // rotation. Lets several of these sit at different spots on one entity.
@@ -627,6 +677,9 @@ struct ComponentSprite {
 struct ComponentFlipbook {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
 
     // Assets-relative .fpk reference, extension included, e.g. "Animations/walk.fpk".
     std::string flipbookFileName;
@@ -785,6 +838,15 @@ struct ComponentStorage {
         instanceToIndex.clear();
         ownerToInstances.clear();
         nextInstanceID = 1;
+    }
+
+    // Reorders `components` (no owner's own order changes), e.g. into the
+    // UI's draw order. Not for colliders, whose order is their partition.
+    template<typename Less>
+    void StableSortComponents(Less less) {
+        std::stable_sort(components.begin(), components.end(), less);
+        instanceToIndex.clear();
+        for (size_t i = 0; i < components.size(); ++i) instanceToIndex[components[i].instanceID] = i;
     }
 
 protected:
