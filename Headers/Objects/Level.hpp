@@ -262,6 +262,7 @@ struct Level {
     ComponentStorage<ComponentRigidbody> rigidbodies;
     ComponentStorage<ComponentModel> models;
     ComponentStorage<ComponentFlipbook> flipbooks;
+    ComponentStorage<ComponentPathfinder> pathfinders;
 
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;

@@ -216,6 +216,7 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(rigidbodies, copy.id, entity.id, entity.componentsMask, CMP_RIGIDBODY);
     CopyComponents(models, copy.id, entity.id, entity.componentsMask, CMP_MODEL);
     CopyComponents(flipbooks, copy.id, entity.id, entity.componentsMask, CMP_FLIPBOOK);
+    CopyComponents(pathfinders, copy.id, entity.id, entity.componentsMask, CMP_PATHFINDER);
     CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
     CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
     CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
@@ -295,6 +296,7 @@ void Level::DestroyEntity(const ID entityID) {
     sprites.RemoveAll(entityID);
     models.RemoveAll(entityID);
     flipbooks.RemoveAll(entityID);
+    pathfinders.RemoveAll(entityID);
     audioSources.RemoveAll(entityID);
     scripts.RemoveAll(entityID);
     playerControllers.RemoveAll(entityID);
@@ -347,6 +349,7 @@ void Level::ApplyEntityEnabled(Entity& entity) {
     SetOwnerEnabled(rigidbodies, entity.id, enabled);
     SetOwnerEnabled(models, entity.id, enabled);
     SetOwnerEnabled(flipbooks, entity.id, enabled);
+    SetOwnerEnabled(pathfinders, entity.id, enabled);
     SetOwnerEnabled(ui_sprites, entity.id, enabled);
     SetOwnerEnabled(ui_texts, entity.id, enabled);
     SetOwnerEnabled(ui_buttons, entity.id, enabled);

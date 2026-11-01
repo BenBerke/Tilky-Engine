@@ -2982,6 +2982,32 @@ namespace LevelSerialization {
         return true;
     }
 
+    json ComponentOwnFieldsToJson(const ComponentPathfinder& c) {
+        return {
+            {"input", static_cast<int>(c.input)},
+            {"destination", Vec3Json(c.destination)},
+            {"targetEntityID", c.targetEntityID},
+            {"offset", Vec3Json(c.offset)},
+            {"speed", c.speed},
+            {"range", c.range},
+            {"metadata", c.metadata},
+            {"isActive", c.isActive}
+        };
+    }
+
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentPathfinder& c) {
+        const ComponentPathfinder defaults{};
+        c.input = j.value("input", 0) == static_cast<int>(PathfinderInput::ENTITY) ? PathfinderInput::ENTITY : PathfinderInput::POSITION;
+        if (j.contains("destination")) c.destination = Vec3FromJson(j["destination"]);
+        c.targetEntityID = j.value("targetEntityID", INVALID_ID);
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        c.speed = j.value("speed", defaults.speed);
+        c.range = j.value("range", defaults.range);
+        c.metadata = j.value("metadata", std::uint8_t{0});
+        c.isActive = j.value("isActive", true);
+        return true;
+    }
+
     // What every component has besides its own fields: Persist Between
     // Levels' takeFromLevelCopy (each type has its own default).
 #define TILKY_DEFINE_COMPONENT_JSON(Type, Bit, Storage, LabelKey) \
@@ -3070,6 +3096,7 @@ namespace {
         LoadComponentArray<ComponentRigidbody>(componentsJson, "rigidbodies", level, level.rigidbodies, CMP_RIGIDBODY);
         LoadComponentArray<ComponentModel>(componentsJson, "models", level, level.models, CMP_MODEL);
         LoadComponentArray<ComponentFlipbook>(componentsJson, "flipbooks", level, level.flipbooks, CMP_FLIPBOOK);
+        LoadComponentArray<ComponentPathfinder>(componentsJson, "pathfinders", level, level.pathfinders, CMP_PATHFINDER);
     }
 
     // A storage's components grouped by entity, each entity's in their own
@@ -3128,6 +3155,7 @@ namespace {
         SaveComponentArray(componentsJson, "rigidbodies", entities, level.rigidbodies);
         SaveComponentArray(componentsJson, "models", entities, level.models);
         SaveComponentArray(componentsJson, "flipbooks", entities, level.flipbooks);
+        SaveComponentArray(componentsJson, "pathfinders", entities, level.pathfinders);
 
         levelData["components"] = componentsJson;
     }

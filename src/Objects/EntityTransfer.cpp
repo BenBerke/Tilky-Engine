@@ -160,6 +160,8 @@ namespace EntityTransfer {
             });
             VisitFlipbook(visitor, flipbook, uiEntity);
         }
+
+        for (ComponentPathfinder& pathfinder : bundle.pathfinders) VisitEntity(visitor, pathfinder.targetEntityID);
     }
 
     void VisitEntities(Level& level, const std::vector<ID>& entityIDs, const ReferenceVisitor& visitor) {
@@ -178,6 +180,9 @@ namespace EntityTransfer {
 
         for (ComponentFlipbook& flipbook : level.flipbooks.components)
             if (owners.contains(flipbook.ownerID)) VisitFlipbook(visitor, flipbook, level.ui_transforms.Has(flipbook.ownerID));
+
+        for (ComponentPathfinder& pathfinder : level.pathfinders.components)
+            if (owners.contains(pathfinder.ownerID)) VisitEntity(visitor, pathfinder.targetEntityID);
     }
 
     void VisitGeometry(Level& level, const ReferenceVisitor& visitor) {

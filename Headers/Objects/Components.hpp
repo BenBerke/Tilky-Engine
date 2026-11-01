@@ -32,6 +32,7 @@ enum ComponentType {
     CMP_RIGIDBODY,
     CMP_MODEL,
     CMP_FLIPBOOK,
+    CMP_PATHFINDER,
 
     CMP_NORMAL_COUNT,
 
@@ -173,6 +174,69 @@ struct ComponentUITransform {
 };
 
 // endregion
+
+// Where a Pathfinder heads: a fixed point, or an entity it follows as it moves.
+enum class PathfinderInput : std::uint8_t {
+    POSITION,
+    ENTITY
+};
+
+// Walks the owner toward a destination the Doom way (P_NewChaseDir): along
+// one of 8 compass directions, held for a random number of chase steps, with
+// no baked paths. A step that would climb more than the collider's stepSize,
+// drop off a ledge higher than it, or not fit under the ceiling isn't taken;
+// it picks another direction instead. With a Rigidbody it moves through
+// physics, so walls and other bodies block it too. See PathfinderSystem.
+//
+// Fields are ordered largest alignment first so the struct has no padding
+// holes (80 bytes with SIMD vectors).
+struct ComponentPathfinder {
+    // POSITION: the point it walks to. ENTITY: runtime only, the target's
+    // position + offset, kept as the last known one while the target is disabled.
+    Vector3 destination = {0.0f, 0.0f, 0.0f};
+    // World axes, added to the target entity's position (ENTITY only).
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
+
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    ID ownerID = static_cast<ID>(-1);
+    ID targetEntityID = INVALID_ID; // ENTITY only
+
+    float speed = 64.0f; // world units per second, scaled by timeScale
+    float range = 0.0f;  // ranged only: stops once the destination is this close
+
+    // Runtime only, not saved. See PathfinderSystem.
+    float lastX = 0.0f, lastZ = 0.0f; // owner position after the last step
+    float expectedStep = 0.0f;        // how far that step should have gone
+    float moveTimer = 0.0f;           // seconds left on the current direction (Doom's movecount)
+
+    enum MetadataMask : std::uint8_t {
+        IS_AIR_ENTITY = 1,    // flies: no step/drop-off limits, rises and sinks toward the destination
+        IS_RANGED_ENTITY = 2  // stops within `range` of the destination
+    };
+
+    PathfinderInput input = PathfinderInput::POSITION;
+    std::uint8_t metadata = 0;
+    std::uint8_t moveDirection = 8; // runtime only: PathfinderSystem's 0..7 compass direction, 8 = none
+
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
+
+    bool isActive = true; // false = doesn't move the owner
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+    bool driving = false; // runtime only: set its Rigidbody's velocity last update
+
+    [[nodiscard]] bool IsAirEntity() const { return (metadata & IS_AIR_ENTITY) != 0; }
+    [[nodiscard]] bool IsRangedEntity() const { return (metadata & IS_RANGED_ENTITY) != 0; }
+
+    void SetFlag(const MetadataMask flag, const bool on) {
+        metadata = on ? static_cast<std::uint8_t>(metadata | flag) : static_cast<std::uint8_t>(metadata & ~flag);
+    }
+};
+
+#ifndef NOSIMD
+static_assert(sizeof(ComponentPathfinder) == 80, "ComponentPathfinder layout changed: keep fields largest alignment first");
+#endif
 
 // Static 3D model drawn at the owner's ComponentTransform. fileName is
 // relative to the project's Assets folder, extension included (same as

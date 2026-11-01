@@ -397,6 +397,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Gameplay/PlayerControllerSystem.cpp
         src/Runtime/Gameplay/GameFunctions.cpp
         src/Runtime/Gameplay/FlipbookSystem.cpp
+        src/Runtime/Gameplay/PathfinderSystem.cpp
         src/Runtime/Gameplay/UIButtonSystem.cpp
 
         src/Runtime/RuntimeSession.cpp
@@ -487,6 +488,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Runtime/Gameplay/CameraSystem.hpp
         Headers/Runtime/Gameplay/GameFunctions.hpp
         Headers/Runtime/Gameplay/FlipbookSystem.hpp
+        Headers/Runtime/Gameplay/PathfinderSystem.hpp
         Headers/Runtime/Gameplay/UIButtonSystem.hpp
 
         Headers/Runtime/Renderer/IRenderer.hpp

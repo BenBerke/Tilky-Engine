@@ -41,6 +41,7 @@ namespace {
     TILKY_PREFAB_TRAITS(ComponentRigidbody, CMP_RIGIDBODY, rigidbodies, "rigidbodies")
     TILKY_PREFAB_TRAITS(ComponentModel, CMP_MODEL, models, "models")
     TILKY_PREFAB_TRAITS(ComponentFlipbook, CMP_FLIPBOOK, flipbooks, "flipbooks")
+    TILKY_PREFAB_TRAITS(ComponentPathfinder, CMP_PATHFINDER, pathfinders, "pathfinders")
     TILKY_PREFAB_TRAITS(ComponentUITransform, CMP_UI_TRANSFORM, ui_transforms, "uiTransforms")
     TILKY_PREFAB_TRAITS(ComponentUISprite, CMP_UI_SPRITE, ui_sprites, "uiSprites")
     TILKY_PREFAB_TRAITS(ComponentUIText, CMP_UI_TEXT, ui_texts, "uiTexts")
@@ -195,6 +196,9 @@ namespace {
             std::uint64_t mapped = map.Map(CMP_SPRITE, component.spriteInstanceID);
             if (mapped == 0) mapped = map.Map(CMP_UI_SPRITE, component.spriteInstanceID);
             component.spriteInstanceID = mapped;
+        }
+        else if constexpr (std::is_same_v<T, ComponentPathfinder>) {
+            if (component.targetEntityID == map.fromEntity) component.targetEntityID = map.toEntity;
         }
     }
 
@@ -578,6 +582,9 @@ namespace {
             }
             else if (link.componentType == CMP_FLIPBOOK) {
                 if (ComponentFlipbook* flipbook = to.flipbooks.GetInstance(link.instanceID)) RemapRefs(*flipbook, toCopy);
+            }
+            else if (link.componentType == CMP_PATHFINDER) {
+                if (ComponentPathfinder* pathfinder = to.pathfinders.GetInstance(link.instanceID)) RemapRefs(*pathfinder, toCopy);
             }
         }
 

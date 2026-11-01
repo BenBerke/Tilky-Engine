@@ -30,6 +30,7 @@
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
+#include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
@@ -263,6 +264,7 @@ namespace LevelSystem {
 
         // After scripts, so a first-frame event finds their functions.
         FlipbookSystem::Start(level);
+        PathfinderSystem::Start(level);
 
         // After the transforms' sectors are set, so they are the baseline.
         EventSystem::Start(level, {
@@ -356,6 +358,13 @@ namespace LevelSystem {
                 [&level](const ID entityID, const std::string& functionName, const std::string& frameName) {
                     return scriptingSystem.DispatchEntityEvent(level, entityID, functionName, frameName);
                 });
+        }
+
+        {
+            // After scripts, so a destination set this frame is used, and
+            // before physics, which moves the Rigidbodies it steers.
+            ZoneScopedN("Pathfinders");
+            PathfinderSystem::Update(level, GameTime::deltaTime);
         }
 
         // Only here, so the sky spins while the game runs and never in the editor.

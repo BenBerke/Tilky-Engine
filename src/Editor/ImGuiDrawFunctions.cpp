@@ -5167,6 +5167,9 @@ namespace ImGuiDrawFunctions {
                 case CMP_PLAYER_CONTROLLER:
                     if (const auto *c = entity.GetComponentInstance<ComponentPlayerController>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
                     break;
+                case CMP_PATHFINDER:
+                    if (const auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
+                    break;
                 default: break;
             }
 
@@ -5247,6 +5250,9 @@ namespace ImGuiDrawFunctions {
                             c->isActive = enabled;
                             if (enabled) level.ActivatePlayerController(*c);
                         }
+                        break;
+                    case CMP_PATHFINDER:
+                        if (auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID)) c->isActive = enabled;
                         break;
                     default: break;
                 }
@@ -6133,6 +6139,109 @@ namespace ImGuiDrawFunctions {
 
                 EndSection();
             } else { ImGui::TextDisabled("Flipbook component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Pathfinder
+        // ════════════════════════════════════════════════════════════════════
+        else if (componentType == CMP_PATHFINDER) {
+            auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID);
+            if (c) {
+                if (entity.GetComponent<ComponentPathfinder>() != c)
+                    ImGui::TextWrapped("%s", Get("component.pathfinder.not_first").c_str());
+
+                BeginSection(Get("component.pathfinder.destination").c_str());
+                {
+                    PrefabField prefabField("input");
+                    const std::string inputLabels[] = {
+                        Get("component.pathfinder.input.position"), Get("component.pathfinder.input.entity")
+                    };
+                    const int input = static_cast<int>(c->input);
+                    FieldWidth(160.0f);
+                    if (ImGui::BeginCombo(Get("component.pathfinder.input").c_str(), inputLabels[input].c_str())) {
+                        for (int i = 0; i < 2; ++i)
+                            if (ImGui::Selectable(inputLabels[i].c_str(), input == i)) c->input = static_cast<PathfinderInput>(i);
+                        ImGui::EndCombo();
+                    }
+                    Tooltip(Get("editor.tooltip.component.pathfinder.input").c_str());
+                }
+
+                if (c->input == PathfinderInput::POSITION) {
+                    PrefabField prefabField("destination");
+                    ImGui::TextDisabled("X                Y               Z");
+                    FieldWidth(220.0f);
+                    InputOrDrag3("##destination", &c->destination.x, draggable);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.destination").c_str());
+                    ResetFloat3Button("rst_destination", &c->destination.x);
+                }
+                else {
+                    {
+                        PrefabField prefabField("targetEntityID");
+                        Level &level = LevelManager::CurrentLevel();
+                        const Entity *target = c->targetEntityID == INVALID_ID ? nullptr : level.GetEntity(c->targetEntityID);
+                        const ID selfID = entity.id;
+
+                        DrawLevelObjectRefField(
+                            Get("component.pathfinder.target").c_str(), c->targetEntityID,
+                            target != nullptr ? DescribeEntity(*target) : "(None)",
+                            MapEditorInternal::ENTITY_REF_PAYLOAD, "editor.tooltip.component.pathfinder.target",
+                            [&level, selfID](ID &id, bool &changed) {
+                                for (const Entity &candidate : level.entities) {
+                                    if (candidate.id == selfID) continue;
+                                    const bool isSelected = candidate.id == id;
+                                    if (ImGui::Selectable(DescribeEntity(candidate).c_str(), isSelected)) {
+                                        id = candidate.id;
+                                        changed = true;
+                                    }
+                                    if (isSelected) ImGui::SetItemDefaultFocus();
+                                }
+                            }
+                        );
+                        // Dropped onto itself from the canvas.
+                        if (c->targetEntityID == selfID) c->targetEntityID = INVALID_ID;
+                    }
+                    {
+                        PrefabField prefabField("offset");
+                        ImGui::TextUnformatted(Get("component.pathfinder.offset").c_str());
+                        ImGui::TextDisabled("X                Y               Z");
+                        FieldWidth(220.0f);
+                        InputOrDrag3("##target_offset", &c->offset.x, draggable);
+                        Tooltip(Get("editor.tooltip.component.pathfinder.offset").c_str());
+                        ResetFloat3Button("rst_target_offset", &c->offset.x);
+                    }
+                }
+                EndSection();
+
+                BeginSection(Get("component.pathfinder.movement").c_str());
+                FieldWidth(160.0f);
+                {
+                    PrefabField prefabField("speed");
+                    InputOrDrag(Get("component.pathfinder.speed").c_str(), &c->speed, draggable);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.speed").c_str());
+                    c->speed = std::max(c->speed, 0.0f);
+                }
+                {
+                    PrefabField prefabField("metadata");
+                    bool air = c->IsAirEntity();
+                    if (ImGui::Checkbox(Get("component.pathfinder.air").c_str(), &air)) c->SetFlag(ComponentPathfinder::IS_AIR_ENTITY, air);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.air").c_str());
+
+                    bool ranged = c->IsRangedEntity();
+                    if (ImGui::Checkbox(Get("component.pathfinder.ranged").c_str(), &ranged)) c->SetFlag(ComponentPathfinder::IS_RANGED_ENTITY, ranged);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.ranged").c_str());
+                }
+                if (c->IsRangedEntity()) {
+                    PrefabField prefabField("range");
+                    FieldWidth(160.0f);
+                    InputOrDrag(Get("component.pathfinder.range").c_str(), &c->range, draggable);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.range").c_str());
+                    c->range = std::max(c->range, 0.0f);
+                }
+                EndSection();
+
+                if (!entity.HasComponent<ComponentRigidbody>())
+                    ImGui::TextWrapped("%s", Get("component.pathfinder.no_rigidbody").c_str());
+            } else { ImGui::TextDisabled("Pathfinder component missing"); }
         }
     }
 
