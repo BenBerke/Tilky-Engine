@@ -9,6 +9,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Engine/GameTime.hpp"
+#include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "Headers/Runtime/Sound/MusicPlayer.hpp"
 #include "Headers/TagRegistry.hpp"
@@ -596,6 +597,74 @@ namespace {
 
             if (enabled) FireEvents<PayloadEntityEnable>(level, EventOwnerKind::ENTITY, entityID, entityID, tags);
             else FireEvents<PayloadEntityDisable>(level, EventOwnerKind::ENTITY, entityID, entityID, tags);
+        }
+    }
+
+    // The SDL mouse button behind a KeyEventInput (KEY has none).
+    Uint32 MouseButtonOf(const KeyEventInput input) {
+        switch (input) {
+            case KeyEventInput::MOUSE_LEFT: return SDL_BUTTON_LEFT;
+            case KeyEventInput::MOUSE_RIGHT: return SDL_BUTTON_RIGHT;
+            case KeyEventInput::MOUSE_MIDDLE: return SDL_BUTTON_MIDDLE;
+            case KeyEventInput::MOUSE_BACK: return SDL_BUTTON_X1;
+            case KeyEventInput::MOUSE_FORWARD: return SDL_BUTTON_X2;
+            case KeyEventInput::KEY: break;
+        }
+        return 0;
+    }
+
+    // Whether the event's key or button went down (`press`) or up this frame.
+    template <typename Payload>
+    bool KeyInputHappened(const Payload& payload, const bool press) {
+        if (payload.input == KeyEventInput::KEY) {
+            if (payload.key == SDL_SCANCODE_UNKNOWN) return false;
+            return press ? InputManager::GetKeyDown(payload.key) : InputManager::GetKeyUp(payload.key);
+        }
+
+        const Uint32 button = MouseButtonOf(payload.input);
+        return press ? InputManager::GetMouseButtonDown(button) : InputManager::GetMouseButtonUp(button);
+    }
+
+    bool HasKeyEvent(const std::vector<Event>& events) {
+        return std::ranges::any_of(events, [](const Event& event) {
+            return std::holds_alternative<PayloadKeyPress>(event.payload) ||
+                   std::holds_alternative<PayloadKeyRelease>(event.payload);
+        });
+    }
+
+    // Key Press / Key Release. Runs while paused too (deltaTime 0), so a
+    // key can resume the game.
+    void FireKeyEvents(Level& level) {
+        // Nothing went down or up this frame: no need to look at any event.
+        bool anyChange = InputManager::GetAnyKeyDown() != SDL_SCANCODE_UNKNOWN ||
+                         InputManager::GetAnyKeyUp() != SDL_SCANCODE_UNKNOWN;
+
+        for (const Uint32 button : {SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE, SDL_BUTTON_X1, SDL_BUTTON_X2})
+            anyChange = anyChange || InputManager::GetMouseButtonDown(button) || InputManager::GetMouseButtonUp(button);
+
+        if (!anyChange) return;
+
+        // IDs first: a dispatch can add or remove things while these run.
+        std::vector<std::pair<EventOwnerKind, ID>> owners;
+        for (const Wall& wall : level.walls) if (HasKeyEvent(wall.events)) owners.emplace_back(EventOwnerKind::LINE, wall.id);
+        for (const Linedef& linedef : level.linedefs)
+            if (linedef.enabled && HasKeyEvent(linedef.events)) owners.emplace_back(EventOwnerKind::LINEDEF, linedef.id);
+        for (const Sector& sector : level.sectors) if (HasKeyEvent(sector.events)) owners.emplace_back(EventOwnerKind::SECTOR, sector.id);
+        for (const Entity& entity : level.entities)
+            if (entity.enabled && HasKeyEvent(entity.events)) owners.emplace_back(EventOwnerKind::ENTITY, entity.id);
+
+        for (const auto& [kind, ownerID] : owners) {
+            // An earlier one's dispatch may have disabled it.
+            if (kind == EventOwnerKind::ENTITY && !IsEnabledEntity(level, ownerID)) continue;
+            if (kind == EventOwnerKind::LINEDEF) {
+                const Linedef* linedef = level.GetLinedef(ownerID);
+                if (linedef == nullptr || !linedef->enabled) continue;
+            }
+
+            FireEvents<PayloadKeyPress>(level, kind, ownerID, INVALID_ID, {},
+                                        [](const PayloadKeyPress& payload) { return KeyInputHappened(payload, true); });
+            FireEvents<PayloadKeyRelease>(level, kind, ownerID, INVALID_ID, {},
+                                          [](const PayloadKeyRelease& payload) { return KeyInputHappened(payload, false); });
         }
     }
 
@@ -2707,6 +2776,7 @@ namespace EventSystem {
         UpdateMessages(level.worldSettings.messageStyle, deltaTime);
 
         FireEnableEvents(level);
+        FireKeyEvents(level);
         FireMovementEvents(level);
         FireStayEvents(level, deltaTime);
         FireGroundedEvents(level);

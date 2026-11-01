@@ -796,6 +796,15 @@ namespace {
         {ToggleMode::ON, "on"}, {ToggleMode::OFF, "off"}, {ToggleMode::TOGGLE, "toggle"}
     };
 
+    constexpr std::pair<KeyEventInput, const char*> kKeyEventInputNames[] = {
+        {KeyEventInput::KEY, "key"},
+        {KeyEventInput::MOUSE_LEFT, "mouse_left"},
+        {KeyEventInput::MOUSE_RIGHT, "mouse_right"},
+        {KeyEventInput::MOUSE_MIDDLE, "mouse_middle"},
+        {KeyEventInput::MOUSE_BACK, "mouse_back"},
+        {KeyEventInput::MOUSE_FORWARD, "mouse_forward"}
+    };
+
     constexpr std::pair<RayType, const char*> kRayTypeNames[] = {
         {RayType::GENERAL, "general"},
         {RayType::INTERACT, "interact"},
@@ -1071,6 +1080,11 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadLuaSignal>)
             j["name"] = payload.name;
 
+        if constexpr (std::is_same_v<Payload, PayloadKeyPress> || std::is_same_v<Payload, PayloadKeyRelease>) {
+            j["input"] = EnumName(kKeyEventInputNames, payload.input);
+            j["key"] = static_cast<int>(payload.key); // SDL scancode, like the Player Controller's keys
+        }
+
         if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetTexture>) {
             j["piece"] = EnumName(kWallPieceNames, payload.piece);
             j["texture"] = payload.texture;
@@ -1332,6 +1346,13 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadLuaSignal>)
             ReadOptional(j, "name", payload.name);
+
+        if constexpr (std::is_same_v<Payload, PayloadKeyPress> || std::is_same_v<Payload, PayloadKeyRelease>) {
+            ReadOptionalEnum(j, "input", kKeyEventInputNames, payload.input);
+            int key = static_cast<int>(payload.key);
+            ReadOptional(j, "key", key);
+            payload.key = key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT ? static_cast<SDL_Scancode>(key) : SDL_SCANCODE_UNKNOWN;
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchLineSetTexture>) {
             ReadOptionalEnum(j, "piece", kWallPieceNames, payload.piece);

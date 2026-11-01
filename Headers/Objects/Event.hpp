@@ -13,6 +13,8 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include <SDL3/SDL_scancode.h>
+
 #include "Types.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"
@@ -50,6 +52,9 @@ using EventOwnerMask = uint8_t;
 constexpr EventOwnerMask ALL_EVENT_OWNERS =
     OwnerBit(EventOwnerKind::LINE) | OwnerBit(EventOwnerKind::SECTOR) | OwnerBit(EventOwnerKind::ENTITY) |
     OwnerBit(EventOwnerKind::LINEDEF) | OwnerBit(EventOwnerKind::LEVEL);
+
+// Everything but the level itself (World Settings).
+constexpr EventOwnerMask OBJECT_EVENT_OWNERS = ALL_EVENT_OWNERS & ~OwnerBit(EventOwnerKind::LEVEL);
 
 // Which side of a wall or linedef something is on. A wall's front is its
 // front sector's side; a linedef's is its normal side (the editor's tick).
@@ -471,6 +476,39 @@ struct PayloadOnStart {
     transKey translationKey = "event.level.start";
     transKey saveName = "level.start"; // level file name, never change
     bool operator==(const PayloadOnStart&) const = default;
+};
+// What a Key Press / Key Release event listens to.
+enum class KeyEventInput : uint8_t {
+    KEY,           // the keyboard key in `key`
+    MOUSE_LEFT,
+    MOUSE_RIGHT,
+    MOUSE_MIDDLE,
+    MOUSE_BACK,    // side button 1
+    MOUSE_FORWARD, // side button 2
+};
+
+// The key or mouse button went down this frame. No instigator; fires while
+// the game is paused too (so a key can resume it). Not on a disabled entity
+// or linedef.
+struct PayloadKeyPress {
+    static constexpr EventOwnerMask owners = OBJECT_EVENT_OWNERS;
+    transKey translationKey = "event.key.press";
+    transKey saveName = "key.press"; // level file name, never change
+    bool operator==(const PayloadKeyPress&) const = default;
+
+    KeyEventInput input = KeyEventInput::KEY;
+    SDL_Scancode key = SDL_SCANCODE_UNKNOWN; // KEY only; none never fires
+};
+
+// The key or mouse button came back up this frame. Like Key Press otherwise.
+struct PayloadKeyRelease {
+    static constexpr EventOwnerMask owners = OBJECT_EVENT_OWNERS;
+    transKey translationKey = "event.key.release";
+    transKey saveName = "key.release"; // level file name, never change
+    bool operator==(const PayloadKeyRelease&) const = default;
+
+    KeyEventInput input = KeyEventInput::KEY;
+    SDL_Scancode key = SDL_SCANCODE_UNKNOWN;
 };
 //endregion
 
@@ -1186,7 +1224,8 @@ using EventPayload = std::variant<
     PayloadSectorEntityEnter, PayloadSectorEntityExit, PayloadSectorEntityStay, PayloadSectorEntityGrounded, PayloadSectorMoveFinished,
     PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
     PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadOnStart,
-    PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit>;
+    PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit,
+    PayloadKeyPress, PayloadKeyRelease>;
 
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,

@@ -438,12 +438,16 @@ namespace InputManager {
     }
 
     SDL_Scancode GetAnyKeyDown() {
+        if (!keyboardState) return SDL_SCANCODE_UNKNOWN; // before Initialize (headless runs)
+
         for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (keyboardState[i] && !prevKeyboardState[i])
             return static_cast<SDL_Scancode>(i);
         return SDL_SCANCODE_UNKNOWN;
     }
 
     SDL_Scancode GetAnyKeyUp() {
+        if (!keyboardState) return SDL_SCANCODE_UNKNOWN; // before Initialize (headless runs)
+
         for (int i = 0; i < SDL_SCANCODE_COUNT; ++i) if (!keyboardState[i] && prevKeyboardState[i])
             return static_cast<SDL_Scancode>(i);
         return SDL_SCANCODE_UNKNOWN;

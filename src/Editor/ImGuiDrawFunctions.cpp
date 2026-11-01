@@ -1224,6 +1224,47 @@ namespace ImGuiDrawFunctions {
         {LineSide::BACK, "events.side.back"}
     };
 
+    // Click, then press a key; Escape or a second click cancels, right click
+    // clears it (no key). `id` keeps the button's ImGui ID unique.
+    static void DrawKeyBindButton(const char* id, SDL_Scancode* key, const float width = 160.0f) {
+        const bool listening = MapEditorInternal::keyBindBeingListened == key;
+
+        if (listening) {
+            MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
+            const SDL_Scancode pressed = InputManager::GetAnyKeyDown();
+
+            if (pressed == SDL_SCANCODE_ESCAPE) MapEditorInternal::keyBindBeingListened = nullptr;
+            else if (pressed != SDL_SCANCODE_UNKNOWN) {
+                *key = pressed;
+                MapEditorInternal::keyBindBeingListened = nullptr;
+            }
+        }
+
+        const std::string keyLabel = (listening
+            ? Get("editor.user_settings.key_listening")
+            : *key == SDL_SCANCODE_UNKNOWN
+                ? Get("editor.user_settings.key_none")
+                : InputManager::ScancodeToString(*key)) + "##" + id;
+
+        if (ImGui::Button(keyLabel.c_str(), ImVec2(width, 0.0f))) {
+            MapEditorInternal::keyBindBeingListened = listening ? nullptr : key;
+            MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            *key = SDL_SCANCODE_UNKNOWN;
+            if (listening) MapEditorInternal::keyBindBeingListened = nullptr;
+        }
+    }
+
+    constexpr std::pair<KeyEventInput, const char *> kKeyEventInputOptions[] = {
+        {KeyEventInput::KEY, "events.key_input.key"},
+        {KeyEventInput::MOUSE_LEFT, "events.key_input.mouse_left"},
+        {KeyEventInput::MOUSE_RIGHT, "events.key_input.mouse_right"},
+        {KeyEventInput::MOUSE_MIDDLE, "events.key_input.mouse_middle"},
+        {KeyEventInput::MOUSE_BACK, "events.key_input.mouse_back"},
+        {KeyEventInput::MOUSE_FORWARD, "events.key_input.mouse_forward"}
+    };
+
     constexpr std::pair<RayType, const char *> kRayTypeOptions[] = {
         {RayType::INTERACT, "events.ray_type.interact"},
         {RayType::LINE_OF_SIGHT, "events.ray_type.line_of_sight"},
@@ -1811,6 +1852,7 @@ namespace ImGuiDrawFunctions {
                                std::is_same_v<Payload, PayloadUIButtonHoverExit>) return "events.call.instigator.player";
             else if constexpr (std::is_same_v<Payload, PayloadTimer> || std::is_same_v<Payload, PayloadConditionMet> ||
                                std::is_same_v<Payload, PayloadOnStart> ||
+                               std::is_same_v<Payload, PayloadKeyPress> || std::is_same_v<Payload, PayloadKeyRelease> ||
                                std::is_same_v<Payload, PayloadSectorMoveFinished>) return nullptr;
             else return "events.call.instigator.relay"; // the entity itself (enable, destroyed, ...)
         }, payload);
@@ -2210,6 +2252,18 @@ namespace ImGuiDrawFunctions {
                                 Property(Get("events.signal_name").c_str());
                                 ImGui::InputText("##SignalName", &payload.name);
                                 Tooltip(Get("editor.tooltip.events.signal_name").c_str());
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadKeyPress> ||
+                                               std::is_same_v<Payload, PayloadKeyRelease>) {
+                                Property(Get("events.key_input").c_str());
+                                DrawEnumCombo("##KeyInput", payload.input, kKeyEventInputOptions);
+                                Tooltip(Get("editor.tooltip.events.key_input").c_str());
+
+                                if (payload.input == KeyEventInput::KEY) {
+                                    Property(Get("events.key").c_str());
+                                    DrawKeyBindButton("KeyEventKey", &payload.key, -FLT_MIN);
+                                    Tooltip(Get("editor.tooltip.events.key").c_str());
+                                }
                             }
                         }, event.payload);
 
@@ -5120,37 +5174,9 @@ namespace ImGuiDrawFunctions {
 
                 EndSection();
 
-                // Click, then press a key; Escape or a second click cancels,
-                // right click clears it (no key).
                 const auto KeyBindButton = [](const char* fieldName, SDL_Scancode* key, const std::string& label) {
                     PrefabField prefabField(fieldName);
-                    const bool listening = MapEditorInternal::keyBindBeingListened == key;
-
-                    if (listening) {
-                        MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
-                        const SDL_Scancode pressed = InputManager::GetAnyKeyDown();
-
-                        if (pressed == SDL_SCANCODE_ESCAPE) MapEditorInternal::keyBindBeingListened = nullptr;
-                        else if (pressed != SDL_SCANCODE_UNKNOWN) {
-                            *key = pressed;
-                            MapEditorInternal::keyBindBeingListened = nullptr;
-                        }
-                    }
-
-                    const std::string keyLabel = (listening
-                        ? Get("editor.user_settings.key_listening")
-                        : *key == SDL_SCANCODE_UNKNOWN
-                            ? Get("editor.user_settings.key_none")
-                            : InputManager::ScancodeToString(*key)) + "##" + fieldName;
-
-                    if (ImGui::Button(keyLabel.c_str(), ImVec2(160.0f, 0.0f))) {
-                        MapEditorInternal::keyBindBeingListened = listening ? nullptr : key;
-                        MapEditorInternal::componentKeyBindDrawnFrame = ImGui::GetFrameCount();
-                    }
-                    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                        *key = SDL_SCANCODE_UNKNOWN;
-                        if (listening) MapEditorInternal::keyBindBeingListened = nullptr;
-                    }
+                    DrawKeyBindButton(fieldName, key);
 
                     ImGui::SameLine();
                     ImGui::TextUnformatted(label.c_str());
