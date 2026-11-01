@@ -1554,12 +1554,18 @@ namespace {
         return {static_cast<float>(x / (6.0 * area)), static_cast<float>(z / (6.0 * area))};
     }
 
+    // How far the entity's feet are above its base collider's bottom (0
+    // without a collider).
+    float FeetAboveBase(const Level& level, const ComponentTransform& transform) {
+        if (const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, transform.ownerID))
+            return transform.position.y - collider->Base(transform).y;
+        return 0.0f;
+    }
+
     // Stands the entity on `floorHeight` at `point`: its base collider's
     // bottom there (its feet without a collider), grounded at once.
     void StandOn(Level& level, ComponentTransform& transform, const Vector2 point, const float floorHeight) {
-        float feetToBase = 0.0f;
-        if (const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, transform.ownerID))
-            feetToBase = transform.position.y - collider->Base(transform).y;
+        const float feetToBase = FeetAboveBase(level, transform);
 
         PlaceTransform(level, transform, {point.x, floorHeight + feetToBase, point.y});
 
@@ -1584,7 +1590,31 @@ namespace {
         return best.value_or(sector.floors.empty() ? height : lowest);
     }
 
-    void Teleport(Level& level, const ID ownerID, const PayloadDispatchEntityTeleport& teleport) {
+    // Which of the sector's floors (slabs) something whose bottom is at
+    // `height` stands in: the highest floor at or below it, else the lowest.
+    int FloorIndexAt(const Sector& sector, const Vector2 point, const float height) {
+        int best = -1, lowest = 0;
+        float bestHeight = 0.0f, lowestHeight = std::numeric_limits<float>::max();
+
+        for (int i = 0; i < static_cast<int>(sector.floors.size()); ++i) {
+            const float h = MapQueries::SurfaceHeightAt(sector, sector.floors[i].floor, point);
+            if (h < lowestHeight) {
+                lowestHeight = h;
+                lowest = i;
+            }
+            if (h <= height + 0.01f && (best < 0 || h > bestHeight)) {
+                best = i;
+                bestHeight = h;
+            }
+        }
+
+        return best >= 0 ? best : lowest;
+    }
+
+    // Teleports `entityID` as `teleport` says. `offset` (map X and Z) moves
+    // its landing point from the target point, which keeps a group's spacing.
+    void Teleport(Level& level, const ID entityID, const TeleportSettings& teleport, const Vector2 offset = {0.0f, 0.0f}) {
+        const ID ownerID = entityID;
         ComponentTransform* transform = level.transforms.Get(ownerID);
         if (!transform) return;
 
@@ -1592,7 +1622,7 @@ namespace {
 
         switch (teleport.target) {
             case TeleportTarget::COORDINATES:
-                PlaceTransform(level, *transform, teleport.position);
+                PlaceTransform(level, *transform, {teleport.position.x + offset.x, teleport.position.y, teleport.position.z + offset.y});
                 break;
 
             case TeleportTarget::ENTITY: {
@@ -1602,7 +1632,7 @@ namespace {
                     return;
                 }
 
-                const Vector3 destination = target->position;
+                const Vector3 destination = {target->position.x + offset.x, target->position.y, target->position.z + offset.y};
                 targetRotation = target->rotation;
                 const Vector2 point = {destination.x, destination.z};
 
@@ -1620,9 +1650,10 @@ namespace {
                 }
 
                 const Vector2 centre = SectorCentre(*sector);
+                const Vector2 point = {centre.x + offset.x, centre.y + offset.y};
                 const int floorIndex = std::clamp(teleport.floorIndex, 0, static_cast<int>(sector->floors.size()) - 1);
-                const float height = MapQueries::SurfaceHeightAt(*sector, sector->floors[floorIndex].floor, centre);
-                StandOn(level, *transform, centre, height);
+                const float height = MapQueries::SurfaceHeightAt(*sector, sector->floors[floorIndex].floor, point);
+                StandOn(level, *transform, point, height);
                 break;
             }
         }
@@ -3098,6 +3129,30 @@ namespace EventSystem {
                 if (hooks.destroyEntity) hooks.destroyEntity(ownerID);
             },
             [&](const PayloadDispatchEntityTeleport& teleport) { Teleport(level, ownerID, teleport); },
+            [&](const PayloadDispatchSectorTeleportInside& teleport) {
+                const Sector* sector = level.GetSector(ownerID);
+                if (!sector) return;
+
+                const Vector2 centre = SectorCentre(*sector);
+
+                // Who's inside first: teleporting moves them out (or in).
+                std::vector<std::pair<ID, Vector2>> inside; // entity, offset from this sector's centre
+                for (const ComponentTransform& transform : level.transforms.components) {
+                    if (level.transforms.Get(transform.ownerID) != &transform) continue; // first transform only
+                    if (transform.sectorId != ownerID || !IsEnabledEntity(level, transform.ownerID)) continue;
+
+                    const Vector2 point = {transform.position.x, transform.position.z};
+                    if (teleport.insideFloor >= 0 &&
+                        FloorIndexAt(*sector, point, transform.position.y - FeetAboveBase(level, transform)) != teleport.insideFloor)
+                        continue;
+
+                    if (!PassesTagFilter(teleport.filter, EntityTags(level, transform.ownerID))) continue;
+
+                    inside.emplace_back(transform.ownerID, Vector2{point.x - centre.x, point.y - centre.y});
+                }
+
+                for (const auto& [entityID, offset] : inside) Teleport(level, entityID, teleport, offset);
+            },
             [&](const PayloadDispatchEntityDisable&) {
                 if (Entity* entity = level.GetEntity(ownerID)) level.SetEntityEnabled(*entity, false);
             },

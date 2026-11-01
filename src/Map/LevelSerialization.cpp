@@ -1052,7 +1052,11 @@ namespace {
             j["collision"] = EnumName(kSectorCollisionNames, payload.collisionType);
         }
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorTeleportInside>) {
+            j["insideFloor"] = payload.insideFloor;
+        }
+
+        if constexpr (std::is_base_of_v<TeleportSettings, Payload>) {
             j["target"] = EnumName(kTeleportTargetNames, payload.target);
             j["position"] = {payload.position.x, payload.position.y, payload.position.z};
             j["targetID"] = payload.targetID;
@@ -1319,7 +1323,12 @@ namespace {
             ReadOptionalEnum(j, "collision", kSectorCollisionNames, payload.collisionType);
         }
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+        if constexpr (std::is_same_v<Payload, PayloadDispatchSectorTeleportInside>) {
+            ReadOptional(j, "insideFloor", payload.insideFloor);
+            payload.insideFloor = std::max(-1, payload.insideFloor);
+        }
+
+        if constexpr (std::is_base_of_v<TeleportSettings, Payload>) {
             // Older levels have only position and rotation: Coordinates, Set.
             ReadOptionalEnum(j, "target", kTeleportTargetNames, payload.target);
             ReadOptional(j, "targetID", payload.targetID);

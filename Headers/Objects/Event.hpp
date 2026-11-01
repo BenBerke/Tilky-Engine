@@ -870,12 +870,9 @@ enum class TeleportFacing : uint8_t {
     TARGET, // the target entity's rotation (ENTITY only)
 };
 
-struct PayloadDispatchEntityTeleport {
-    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
-    transKey translationKey = "event.dispatch.entity.teleport";
-    transKey saveName = "dispatch.entity.teleport"; // level file name, never change
-    bool operator==(const PayloadDispatchEntityTeleport&) const = default;
-
+// Where and how a teleport goes; the Teleport and Teleport Entities Inside
+// dispatches share it.
+struct TeleportSettings {
     TeleportTarget target = TeleportTarget::COORDINATES;
     Vector3 position;              // COORDINATES
     ID targetID = INVALID_ID;      // ENTITY or SECTOR
@@ -885,6 +882,28 @@ struct PayloadDispatchEntityTeleport {
     Quaternion rotation;           // SET
 
     bool stopVelocity = false;     // zero the Rigidbody's velocity, else it's kept
+
+    bool operator==(const TeleportSettings&) const = default;
+};
+
+struct PayloadDispatchEntityTeleport : TeleportSettings {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    transKey translationKey = "event.dispatch.entity.teleport";
+    transKey saveName = "dispatch.entity.teleport"; // level file name, never change
+    bool operator==(const PayloadDispatchEntityTeleport&) const = default;
+};
+
+// Teleports every enabled entity standing in this sector (on `insideFloor`,
+// -1 = any) that passes `filter`. They keep their spacing: each lands as far
+// from the target point as it stood from this sector's centre.
+struct PayloadDispatchSectorTeleportInside : TeleportSettings {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::SECTOR);
+    transKey translationKey = "event.dispatch.sector.teleport_inside";
+    transKey saveName = "dispatch.sector.teleport_inside"; // level file name, never change
+    bool operator==(const PayloadDispatchSectorTeleportInside&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+    int insideFloor = 0;
 };
 
 struct PayloadDispatchEntityDisable {
@@ -1254,6 +1273,7 @@ using DispatchPayload = std::variant<
     PayloadDispatchSectorMoveCeilingToFloor, PayloadDispatchSectorMoveFloorToCeiling, PayloadDispatchSectorMoveToHeight,
     PayloadDispatchSectorDoor, PayloadDispatchSectorLift, PayloadDispatchSectorRaiseStairs,
     PayloadDispatchSectorStopMovement, PayloadDispatchSectorSetLight, PayloadDispatchSectorLightEffect, PayloadDispatchSectorSetTexture,
+    PayloadDispatchSectorTeleportInside,
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable,
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
     PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite,

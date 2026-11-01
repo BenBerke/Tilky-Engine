@@ -1778,7 +1778,8 @@ namespace ImGuiDrawFunctions {
 
     // Property row: which of the sector's floors, numbered from 1 as in the
     // sector inspector. `allowAny` adds "Any floor" for -1.
-    static void DrawFloorIndexRow(int &floorIndex, const ID sectorID, const bool allowAny) {
+    static void DrawFloorIndexRow(int &floorIndex, const ID sectorID, const bool allowAny,
+                                  const char *labelKey = "events.floor") {
         const Sector *sector = LevelManager::CurrentLevel().GetSector(sectorID);
         const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 0;
 
@@ -1786,7 +1787,7 @@ namespace ImGuiDrawFunctions {
             return index < 0 ? Get("events.floor_any") : Get("events.floor") + " " + std::to_string(index + 1);
         };
 
-        Property(Get("events.floor").c_str());
+        Property(Get(labelKey).c_str());
         if (ImGui::BeginCombo("##Floor", floorLabel(floorIndex).c_str())) {
             if (allowAny && ImGui::Selectable(floorLabel(-1).c_str(), floorIndex < 0)) floorIndex = -1;
 
@@ -2829,7 +2830,14 @@ namespace ImGuiDrawFunctions {
                                 DrawEnumCombo("##Collision", payload.collisionType, kSectorCollisionOptions);
                                 Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
                             }
-                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+                            else if constexpr (std::is_base_of_v<TeleportSettings, Payload>) {
+                                // Who: the entities standing in this sector.
+                                if constexpr (std::is_same_v<Payload, PayloadDispatchSectorTeleportInside>) {
+                                    DrawTagFilterFields(payload.filter);
+                                    DrawFloorIndexRow(payload.insideFloor, ownerID, true, "events.teleport.inside_floor");
+                                    Tooltip(Get("editor.tooltip.dispatches.teleport_inside_floor").c_str());
+                                }
+
                                 // Where to. A prefab has no level objects to pick.
                                 const bool inPrefab = EditingPrefab();
                                 Property(Get("events.teleport.to").c_str());
@@ -2920,7 +2928,8 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.dispatches.teleport_stop_velocity").c_str());
 
                                 // Fills what Coordinates / Set use from the entity as it stands now.
-                                if (payload.target == TeleportTarget::COORDINATES || payload.facing == TeleportFacing::SET) {
+                                if (kind == EventOwnerKind::ENTITY &&
+                                    (payload.target == TeleportTarget::COORDINATES || payload.facing == TeleportFacing::SET)) {
                                     const ComponentTransform *transform = level.transforms.Get(ownerID);
                                     Property("");
                                     ImGui::BeginDisabled(transform == nullptr);
