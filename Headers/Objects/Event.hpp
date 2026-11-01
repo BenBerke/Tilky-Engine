@@ -856,14 +856,35 @@ struct PayloadDispatchEntityDestroy { // Nothing needed
     bool operator==(const PayloadDispatchEntityDestroy&) const = default;
 };
 
+// Where a Teleport dispatch sends its entity.
+enum class TeleportTarget : uint8_t {
+    COORDINATES, // `position`, exactly
+    ENTITY,      // the target entity's x/z, standing on the floor under it
+    SECTOR,      // the sector's centre, standing on floor `floorIndex`
+};
+
+// Which way the entity faces after a Teleport.
+enum class TeleportFacing : uint8_t {
+    SET,    // `rotation`
+    KEEP,   // as it was
+    TARGET, // the target entity's rotation (ENTITY only)
+};
+
 struct PayloadDispatchEntityTeleport {
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     transKey translationKey = "event.dispatch.entity.teleport";
     transKey saveName = "dispatch.entity.teleport"; // level file name, never change
     bool operator==(const PayloadDispatchEntityTeleport&) const = default;
 
-    Vector3 position;
-    Quaternion rotation;
+    TeleportTarget target = TeleportTarget::COORDINATES;
+    Vector3 position;              // COORDINATES
+    ID targetID = INVALID_ID;      // ENTITY or SECTOR
+    int floorIndex = 0;            // SECTOR: which of its floors
+
+    TeleportFacing facing = TeleportFacing::SET;
+    Quaternion rotation;           // SET
+
+    bool stopVelocity = false;     // zero the Rigidbody's velocity, else it's kept
 };
 
 struct PayloadDispatchEntityDisable {

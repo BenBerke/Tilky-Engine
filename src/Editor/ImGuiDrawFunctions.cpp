@@ -1256,6 +1256,25 @@ namespace ImGuiDrawFunctions {
         }
     }
 
+    constexpr std::pair<TeleportTarget, const char *> kTeleportTargetOptions[] = {
+        {TeleportTarget::COORDINATES, "events.teleport.to.coordinates"},
+        {TeleportTarget::ENTITY, "events.teleport.to.entity"},
+        {TeleportTarget::SECTOR, "events.teleport.to.sector"}
+    };
+
+    constexpr std::pair<TeleportFacing, const char *> kTeleportFacingOptions[] = {
+        {TeleportFacing::SET, "events.teleport.facing.set"},
+        {TeleportFacing::KEEP, "events.teleport.facing.keep"},
+        {TeleportFacing::TARGET, "events.teleport.facing.target"}
+    };
+
+    // The translation key of `value` in an option table.
+    template<typename Enum, size_t N>
+    static const char *EnumOptionKey(const Enum value, const std::pair<Enum, const char *> (&options)[N]) {
+        for (const auto &[option, key]: options) if (option == value) return key;
+        return options[0].second;
+    }
+
     constexpr std::pair<KeyEventInput, const char *> kKeyEventInputOptions[] = {
         {KeyEventInput::KEY, "events.key_input.key"},
         {KeyEventInput::MOUSE_LEFT, "events.key_input.mouse_left"},
@@ -1949,9 +1968,10 @@ namespace ImGuiDrawFunctions {
         return names;
     }
 
-    // A searchable dropdown of the level's objects of the picked kind, which
-    // also takes them dragged from the hierarchy or the canvas.
-    static void DrawCallObjectPicker(DirectCall &call) {
+    // A searchable dropdown of the level's objects of `kind` (an entity,
+    // sector, wall or linedef), which also takes them dragged from the
+    // hierarchy or the canvas. The caller puts the Property label first.
+    static void DrawLevelObjectPicker(const char *imguiID, const EventOwnerKind kind, ID &targetID) {
         Level &level = LevelManager::CurrentLevel();
         static std::string search;
 
@@ -1959,19 +1979,19 @@ namespace ImGuiDrawFunctions {
         const char *payloadType = MapEditorInternal::ENTITY_REF_PAYLOAD;
         std::vector<std::pair<ID, std::string> > options;
 
-        switch (call.target) {
-            case CallTarget::ENTITY:
+        switch (kind) {
+            case EventOwnerKind::ENTITY:
                 for (const Entity &entity: level.entities) options.emplace_back(entity.id, DescribeEntity(entity));
                 break;
-            case CallTarget::SECTOR:
+            case EventOwnerKind::SECTOR:
                 payloadType = MapEditorInternal::SECTOR_REF_PAYLOAD;
                 for (const Sector &sector: level.sectors) options.emplace_back(sector.id, DescribeSector(sector));
                 break;
-            case CallTarget::WALL:
+            case EventOwnerKind::LINE:
                 payloadType = MapEditorInternal::WALL_REF_PAYLOAD;
                 for (const Wall &wall: level.walls) options.emplace_back(wall.id, DescribeWall(wall));
                 break;
-            case CallTarget::LINEDEF:
+            case EventOwnerKind::LINEDEF:
                 payloadType = MapEditorInternal::LINEDEF_REF_PAYLOAD;
                 for (const Linedef &linedef: level.linedefs) options.emplace_back(linedef.id, DescribeLinedef(linedef));
                 break;
@@ -1979,13 +1999,12 @@ namespace ImGuiDrawFunctions {
                 return;
         }
 
-        if (call.targetID != INVALID_ID) {
-            const auto it = std::ranges::find(options, call.targetID, &std::pair<ID, std::string>::first);
+        if (targetID != INVALID_ID) {
+            const auto it = std::ranges::find(options, targetID, &std::pair<ID, std::string>::first);
             preview = it != options.end() ? it->second : Get("events.call.missing_object");
         }
 
-        Property("");
-        if (ImGui::BeginCombo("##Object", preview.c_str(), ImGuiComboFlags_HeightLarge)) {
+        if (ImGui::BeginCombo(imguiID, preview.c_str(), ImGuiComboFlags_HeightLarge)) {
             if (ImGui::IsWindowAppearing()) {
                 search.clear();
                 ImGui::SetKeyboardFocusHere();
@@ -2002,14 +2021,29 @@ namespace ImGuiDrawFunctions {
                 if (!needle.empty() && lower.find(needle) == std::string::npos) continue;
 
                 ImGui::PushID(static_cast<int>(id));
-                if (ImGui::Selectable(label.c_str(), id == call.targetID)) call.targetID = id;
+                if (ImGui::Selectable(label.c_str(), id == targetID)) targetID = id;
                 ImGui::PopID();
             }
 
             if (options.empty()) ImGui::TextDisabled("%s", Get("events.call.no_objects").c_str());
             ImGui::EndCombo();
         }
-        AcceptLevelObjectDrop(payloadType, call.targetID);
+        AcceptLevelObjectDrop(payloadType, targetID);
+    }
+
+    // The object a picked call target (ENTITY, SECTOR, WALL, LINEDEF) names.
+    static void DrawCallObjectPicker(DirectCall &call) {
+        EventOwnerKind kind;
+        switch (call.target) {
+            case CallTarget::ENTITY: kind = EventOwnerKind::ENTITY; break;
+            case CallTarget::SECTOR: kind = EventOwnerKind::SECTOR; break;
+            case CallTarget::WALL: kind = EventOwnerKind::LINE; break;
+            case CallTarget::LINEDEF: kind = EventOwnerKind::LINEDEF; break;
+            default: return;
+        }
+
+        Property("");
+        DrawLevelObjectPicker("##Object", kind, call.targetID);
         if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.events.call_object").c_str());
     }
 
@@ -2796,37 +2830,107 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.dispatches.collision").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
-                                Property(Get("events.position").c_str());
-                                InputOrDrag3("##Position", &payload.position.x, draggable);
+                                // Where to. A prefab has no level objects to pick.
+                                const bool inPrefab = EditingPrefab();
+                                Property(Get("events.teleport.to").c_str());
+                                if (ImGui::BeginCombo("##TeleportTo", Get(EnumOptionKey(payload.target, kTeleportTargetOptions)).c_str())) {
+                                    for (const auto &[option, key]: kTeleportTargetOptions) {
+                                        if (inPrefab && option != TeleportTarget::COORDINATES) continue;
+                                        if (ImGui::Selectable(Get(key).c_str(), option == payload.target) && option != payload.target) {
+                                            payload.target = option;
+                                            payload.targetID = INVALID_ID;
+                                            payload.floorIndex = 0;
+                                            if (option != TeleportTarget::ENTITY && payload.facing == TeleportFacing::TARGET)
+                                                payload.facing = TeleportFacing::KEEP;
+                                        }
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                                Tooltip(Get("editor.tooltip.dispatches.teleport_to").c_str());
 
-                                // Euler angles kept between frames, re-read when the
-                                // quaternion was changed elsewhere (as in the
-                                // Transform inspector), so dragging doesn't jump.
-                                static std::pair<ID, size_t> eulerOwner = {INVALID_ID, 0};
-                                static Vector3 euler = {0.0f, 0.0f, 0.0f};
+                                if (payload.target == TeleportTarget::COORDINATES) {
+                                    Property(Get("events.position").c_str());
+                                    InputOrDrag3("##Position", &payload.position.x, draggable);
+                                } else if (payload.target == TeleportTarget::ENTITY) {
+                                    Property(Get("events.teleport.entity").c_str());
+                                    DrawLevelObjectPicker("##TeleportEntity", EventOwnerKind::ENTITY, payload.targetID);
+                                    if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.dispatches.teleport_entity").c_str());
+                                } else {
+                                    Property(Get("events.teleport.sector").c_str());
+                                    DrawLevelObjectPicker("##TeleportSector", EventOwnerKind::SECTOR, payload.targetID);
+                                    if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.dispatches.teleport_sector").c_str());
 
-                                const Quaternion shown = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
-                                const Quaternion actual = payload.rotation.Normalized();
-                                const float dot = shown.x * actual.x + shown.y * actual.y + shown.z * actual.z + shown.w * actual.w;
+                                    // Its floors, bottom first.
+                                    const Sector *sector = level.GetSector(payload.targetID);
+                                    const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 1;
+                                    payload.floorIndex = std::clamp(payload.floorIndex, 0, std::max(0, floorCount - 1));
 
-                                if (eulerOwner != std::pair{ownerID, i} || std::abs(dot) < 0.99999f) {
-                                    eulerOwner = {ownerID, i};
-                                    euler = actual.ToEulerDegrees();
+                                    const auto floorLabel = [](const int index) {
+                                        return Get("events.floor") + " " + std::to_string(index + 1);
+                                    };
+
+                                    Property(Get("events.teleport.floor").c_str());
+                                    ImGui::BeginDisabled(floorCount <= 1);
+                                    if (ImGui::BeginCombo("##TeleportFloor", floorLabel(payload.floorIndex).c_str())) {
+                                        for (int f = 0; f < floorCount; ++f) {
+                                            ImGui::PushID(f);
+                                            if (ImGui::Selectable(floorLabel(f).c_str(), f == payload.floorIndex)) payload.floorIndex = f;
+                                            ImGui::PopID();
+                                        }
+                                        ImGui::EndCombo();
+                                    }
+                                    ImGui::EndDisabled();
+                                    Tooltip(Get("editor.tooltip.dispatches.teleport_floor").c_str());
                                 }
 
-                                Property(Get("events.rotation").c_str());
-                                if (InputOrDrag3("##Rotation", &euler.x, draggable))
-                                    payload.rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
-
-                                const ComponentTransform *transform = level.transforms.Get(ownerID);
-                                Property("");
-                                ImGui::BeginDisabled(transform == nullptr);
-                                if (ImGui::Button(Get("events.use_entity").c_str(), ImVec2(-FLT_MIN, 0.0f)) && transform != nullptr) {
-                                    payload.position = transform->position;
-                                    payload.rotation = transform->rotation.Normalized();
+                                // Which way it faces after.
+                                Property(Get("events.teleport.facing").c_str());
+                                if (ImGui::BeginCombo("##TeleportFacing", Get(EnumOptionKey(payload.facing, kTeleportFacingOptions)).c_str())) {
+                                    for (const auto &[option, key]: kTeleportFacingOptions) {
+                                        if (option == TeleportFacing::TARGET && payload.target != TeleportTarget::ENTITY) continue;
+                                        if (ImGui::Selectable(Get(key).c_str(), option == payload.facing)) payload.facing = option;
+                                    }
+                                    ImGui::EndCombo();
                                 }
-                                ImGui::EndDisabled();
-                                Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
+                                Tooltip(Get("editor.tooltip.dispatches.teleport_facing").c_str());
+
+                                if (payload.facing == TeleportFacing::SET) {
+                                    // Euler angles kept between frames, re-read when the
+                                    // quaternion was changed elsewhere (as in the
+                                    // Transform inspector), so dragging doesn't jump.
+                                    static std::pair<ID, size_t> eulerOwner = {INVALID_ID, 0};
+                                    static Vector3 euler = {0.0f, 0.0f, 0.0f};
+
+                                    const Quaternion shown = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+                                    const Quaternion actual = payload.rotation.Normalized();
+                                    const float dot = shown.x * actual.x + shown.y * actual.y + shown.z * actual.z + shown.w * actual.w;
+
+                                    if (eulerOwner != std::pair{ownerID, i} || std::abs(dot) < 0.99999f) {
+                                        eulerOwner = {ownerID, i};
+                                        euler = actual.ToEulerDegrees();
+                                    }
+
+                                    Property(Get("events.rotation").c_str());
+                                    if (InputOrDrag3("##Rotation", &euler.x, draggable))
+                                        payload.rotation = Quaternion::FromEulerDegrees(euler.x, euler.y, euler.z);
+                                }
+
+                                Property(Get("events.teleport.stop_velocity").c_str());
+                                ImGui::Checkbox("##StopVelocity", &payload.stopVelocity);
+                                Tooltip(Get("editor.tooltip.dispatches.teleport_stop_velocity").c_str());
+
+                                // Fills what Coordinates / Set use from the entity as it stands now.
+                                if (payload.target == TeleportTarget::COORDINATES || payload.facing == TeleportFacing::SET) {
+                                    const ComponentTransform *transform = level.transforms.Get(ownerID);
+                                    Property("");
+                                    ImGui::BeginDisabled(transform == nullptr);
+                                    if (ImGui::Button(Get("events.use_entity").c_str(), ImVec2(-FLT_MIN, 0.0f)) && transform != nullptr) {
+                                        if (payload.target == TeleportTarget::COORDINATES) payload.position = transform->position;
+                                        if (payload.facing == TeleportFacing::SET) payload.rotation = transform->rotation.Normalized();
+                                    }
+                                    ImGui::EndDisabled();
+                                    Tooltip(Get("editor.tooltip.dispatches.use_entity").c_str());
+                                }
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>) {
                                 Property(Get("events.function_name").c_str());

@@ -796,6 +796,18 @@ namespace {
         {ToggleMode::ON, "on"}, {ToggleMode::OFF, "off"}, {ToggleMode::TOGGLE, "toggle"}
     };
 
+    constexpr std::pair<TeleportTarget, const char*> kTeleportTargetNames[] = {
+        {TeleportTarget::COORDINATES, "coordinates"},
+        {TeleportTarget::ENTITY, "entity"},
+        {TeleportTarget::SECTOR, "sector"}
+    };
+
+    constexpr std::pair<TeleportFacing, const char*> kTeleportFacingNames[] = {
+        {TeleportFacing::SET, "set"},
+        {TeleportFacing::KEEP, "keep"},
+        {TeleportFacing::TARGET, "target"}
+    };
+
     constexpr std::pair<KeyEventInput, const char*> kKeyEventInputNames[] = {
         {KeyEventInput::KEY, "key"},
         {KeyEventInput::MOUSE_LEFT, "mouse_left"},
@@ -1041,8 +1053,13 @@ namespace {
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+            j["target"] = EnumName(kTeleportTargetNames, payload.target);
             j["position"] = {payload.position.x, payload.position.y, payload.position.z};
+            j["targetID"] = payload.targetID;
+            j["floorIndex"] = payload.floorIndex;
+            j["facing"] = EnumName(kTeleportFacingNames, payload.facing);
             j["rotation"] = {payload.rotation.x, payload.rotation.y, payload.rotation.z, payload.rotation.w};
+            j["stopVelocity"] = payload.stopVelocity;
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
@@ -1303,6 +1320,13 @@ namespace {
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityTeleport>) {
+            // Older levels have only position and rotation: Coordinates, Set.
+            ReadOptionalEnum(j, "target", kTeleportTargetNames, payload.target);
+            ReadOptional(j, "targetID", payload.targetID);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            payload.floorIndex = std::max(0, payload.floorIndex);
+            ReadOptionalEnum(j, "facing", kTeleportFacingNames, payload.facing);
+            ReadOptional(j, "stopVelocity", payload.stopVelocity);
             ReadOptionalVector3(j, "position", payload.position);
             if (j.contains("rotation")) {
                 const json& r = j.at("rotation");

@@ -1527,6 +1527,117 @@ namespace {
         transform.UpdateObjectSectorAndFloor(level.sectors);
     }
 
+    // The area centroid of the sector's outline (map X and Z); the corners'
+    // average if it has no area. Not always inside the sector (an L or a
+    // ring has it outside).
+    Vector2 SectorCentre(const Sector& sector) {
+        const std::vector<Vector2>& corners = sector.vertices;
+        if (corners.empty()) return {0.0f, 0.0f};
+
+        double area = 0.0, x = 0.0, z = 0.0;
+        for (size_t i = 0; i < corners.size(); ++i) {
+            const Vector2& a = corners[i];
+            const Vector2& b = corners[(i + 1) % corners.size()];
+            const double cross = static_cast<double>(a.x) * b.y - static_cast<double>(b.x) * a.y;
+            area += cross;
+            x += (a.x + b.x) * cross;
+            z += (a.y + b.y) * cross;
+        }
+
+        if (std::abs(area) < 1e-6) {
+            Vector2 sum = {0.0f, 0.0f};
+            for (const Vector2& corner : corners) sum = {sum.x + corner.x, sum.y + corner.y};
+            return {sum.x / static_cast<float>(corners.size()), sum.y / static_cast<float>(corners.size())};
+        }
+
+        area *= 0.5;
+        return {static_cast<float>(x / (6.0 * area)), static_cast<float>(z / (6.0 * area))};
+    }
+
+    // Stands the entity on `floorHeight` at `point`: its base collider's
+    // bottom there (its feet without a collider), grounded at once.
+    void StandOn(Level& level, ComponentTransform& transform, const Vector2 point, const float floorHeight) {
+        float feetToBase = 0.0f;
+        if (const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, transform.ownerID))
+            feetToBase = transform.position.y - collider->Base(transform).y;
+
+        PlaceTransform(level, transform, {point.x, floorHeight + feetToBase, point.y});
+
+        if (ComponentRigidbody* rigidbody = level.rigidbodies.Get(transform.ownerID)) {
+            rigidbody->isGrounded = true;
+            if (rigidbody->velocity.y < 0.0f) rigidbody->velocity.y = 0.0f;
+        }
+    }
+
+    // The highest of the sector's floors at or below `height` at `point`
+    // (the floor something at that height stands over); the lowest if none.
+    float FloorBelow(const Sector& sector, const Vector2 point, const float height) {
+        std::optional<float> best;
+        float lowest = std::numeric_limits<float>::max();
+
+        for (const SectorFloor& floor : sector.floors) {
+            const float h = MapQueries::SurfaceHeightAt(sector, floor.floor, point);
+            lowest = std::min(lowest, h);
+            if (h <= height + 0.01f && (!best || h > *best)) best = h;
+        }
+
+        return best.value_or(sector.floors.empty() ? height : lowest);
+    }
+
+    void Teleport(Level& level, const ID ownerID, const PayloadDispatchEntityTeleport& teleport) {
+        ComponentTransform* transform = level.transforms.Get(ownerID);
+        if (!transform) return;
+
+        std::optional<Quaternion> targetRotation;
+
+        switch (teleport.target) {
+            case TeleportTarget::COORDINATES:
+                PlaceTransform(level, *transform, teleport.position);
+                break;
+
+            case TeleportTarget::ENTITY: {
+                const ComponentTransform* target = level.transforms.Get(teleport.targetID);
+                if (!target) {
+                    spdlog::warn("Teleport dispatch on entity {} skipped: its target entity {} doesn't exist", ownerID, teleport.targetID);
+                    return;
+                }
+
+                const Vector3 destination = target->position;
+                targetRotation = target->rotation;
+                const Vector2 point = {destination.x, destination.z};
+
+                if (target->sectorIndex >= 0 && target->sectorIndex < static_cast<int>(level.sectors.size()))
+                    StandOn(level, *transform, point, FloorBelow(level.sectors[target->sectorIndex], point, destination.y));
+                else PlaceTransform(level, *transform, destination); // outside the map: exactly there
+                break;
+            }
+
+            case TeleportTarget::SECTOR: {
+                const Sector* sector = level.GetSector(teleport.targetID);
+                if (!sector || sector->floors.empty()) {
+                    spdlog::warn("Teleport dispatch on entity {} skipped: its target sector {} doesn't exist", ownerID, teleport.targetID);
+                    return;
+                }
+
+                const Vector2 centre = SectorCentre(*sector);
+                const int floorIndex = std::clamp(teleport.floorIndex, 0, static_cast<int>(sector->floors.size()) - 1);
+                const float height = MapQueries::SurfaceHeightAt(*sector, sector->floors[floorIndex].floor, centre);
+                StandOn(level, *transform, centre, height);
+                break;
+            }
+        }
+
+        switch (teleport.facing) {
+            case TeleportFacing::SET: transform->rotation = teleport.rotation.Normalized(); break;
+            case TeleportFacing::TARGET: if (targetRotation) transform->rotation = targetRotation->Normalized(); break;
+            case TeleportFacing::KEEP: break;
+        }
+
+        // Kept otherwise, as with a script's SetPosition.
+        if (teleport.stopVelocity)
+            if (ComponentRigidbody* rigidbody = level.rigidbodies.Get(ownerID)) rigidbody->velocity = {0.0f, 0.0f, 0.0f};
+    }
+
     void UpdateEntityMoves(Level& level, const float deltaTime) {
         std::erase_if(entityMoves, [&](EntityMove& move) {
             ComponentTransform* transform = level.transforms.Get(move.entityID);
@@ -2986,14 +3097,7 @@ namespace EventSystem {
             [&](const PayloadDispatchEntityDestroy&) {
                 if (hooks.destroyEntity) hooks.destroyEntity(ownerID);
             },
-            [&](const PayloadDispatchEntityTeleport& teleport) {
-                ComponentTransform* transform = level.transforms.Get(ownerID);
-                if (!transform) return;
-
-                // Velocity is kept, as with a script's SetPosition.
-                PlaceTransform(level, *transform, teleport.position);
-                transform->rotation = teleport.rotation.Normalized();
-            },
+            [&](const PayloadDispatchEntityTeleport& teleport) { Teleport(level, ownerID, teleport); },
             [&](const PayloadDispatchEntityDisable&) {
                 if (Entity* entity = level.GetEntity(ownerID)) level.SetEntityEnabled(*entity, false);
             },
