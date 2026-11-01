@@ -16,6 +16,10 @@ namespace Localisation {
     // Get the respective translation in the last loaded language
     const std::string& Get(const std::string& key);
 
+    // Like Get, for text that's optional: the translation (English when the
+    // language lacks it), or nullptr - without logging - when there is none.
+    const std::string* Find(const std::string& key);
+
     // Returns the last loaded languageCode
     const std::string& CurrentLanguage();
 }

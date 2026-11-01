@@ -112,6 +112,12 @@ namespace Localisation {
         return missingString;
     }
 
+    const std::string* Find(const std::string& key) {
+        if (const auto translated = strings.find(key); translated != strings.end()) return &translated->second;
+        if (const auto english = englishStrings.find(key); english != englishStrings.end()) return &english->second;
+        return nullptr;
+    }
+
     const std::string& CurrentLanguage() {
         return currentLanguage;
     }

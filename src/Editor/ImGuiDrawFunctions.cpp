@@ -1159,6 +1159,14 @@ namespace ImGuiDrawFunctions {
         return changed;
     }
 
+    // For the item just drawn in a dropdown (an option, or an event or
+    // dispatch type): the tooltip written as "editor.tooltip.<its key>" in
+    // the language file. Nothing when there is none.
+    static void OptionTooltip(const std::string &key) {
+        if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) return;
+        if (const std::string *text = Localisation::Find("editor.tooltip." + key)) ImGui::SetTooltip("%s", text->c_str());
+    }
+
     // A dropdown over {value, translation key} options.
     template<typename Enum, size_t N>
     static bool DrawEnumCombo(const char *label, Enum &value, const std::pair<Enum, const char *> (&options)[N]) {
@@ -1174,6 +1182,7 @@ namespace ImGuiDrawFunctions {
                     value = optionValue;
                     changed = true;
                 }
+                OptionTooltip(key);
                 if (selected) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
@@ -1610,7 +1619,9 @@ namespace ImGuiDrawFunctions {
             if (!PayloadAllowedOn<Payload>(kind, ownerID)) return;
 
             const bool selected = std::holds_alternative<Payload>(payload);
-            if (ImGui::Selectable(Get(Payload::translationKey).c_str(), selected) && !selected) {
+            const bool picked = ImGui::Selectable(Get(Payload::translationKey).c_str(), selected);
+            OptionTooltip(Payload::translationKey);
+            if (picked && !selected) {
                 const TagFilter *oldFilter = std::visit([](const auto &p) { return FilterOf(p); }, payload);
                 const std::optional<TagFilter> keptFilter = oldFilter ? std::optional(*oldFilter) : std::nullopt;
 
@@ -1636,7 +1647,9 @@ namespace ImGuiDrawFunctions {
         using Variant = decltype(Entry::payload);
         ForEachPayloadType<Variant>([&]<typename Payload>(std::type_identity<Payload>) {
             if (!PayloadAllowedOn<Payload>(kind, ownerID)) return;
-            if (!ImGui::Selectable(Get(Payload::translationKey).c_str())) return;
+            const bool picked = ImGui::Selectable(Get(Payload::translationKey).c_str());
+            OptionTooltip(Payload::translationKey);
+            if (!picked) return;
 
             Entry entry;
             entry.payload = Payload{};
@@ -1902,6 +1915,21 @@ namespace ImGuiDrawFunctions {
         return {};
     }
 
+    // "events.call_target.<kind>": the tooltip of a call target, whatever its
+    // label says for this event.
+    static std::string CallTargetTooltipKey(const CallTarget target) {
+        switch (target) {
+            case CallTarget::SELF: return "events.call_target.self";
+            case CallTarget::INSTIGATOR: return "events.call_target.instigator";
+            case CallTarget::ENTITY: return "events.call_target.entity";
+            case CallTarget::SECTOR: return "events.call_target.sector";
+            case CallTarget::WALL: return "events.call_target.wall";
+            case CallTarget::LINEDEF: return "events.call_target.linedef";
+            case CallTarget::TAGGED: return "events.call_target.tagged";
+        }
+        return {};
+    }
+
     static bool IsPickedTarget(const CallTarget target) {
         return target == CallTarget::ENTITY || target == CallTarget::SECTOR || target == CallTarget::WALL ||
                target == CallTarget::LINEDEF;
@@ -2072,6 +2100,7 @@ namespace ImGuiDrawFunctions {
                     call.target = target;
                     call.targetID = INVALID_ID;
                 }
+                OptionTooltip(CallTargetTooltipKey(target));
             }
             ImGui::EndCombo();
         }
@@ -2495,6 +2524,7 @@ namespace ImGuiDrawFunctions {
                     set.componentIndex = 0;
                     set.field.clear();
                 }
+                OptionTooltip(key);
             }
             ImGui::EndCombo();
         }
@@ -2712,6 +2742,7 @@ namespace ImGuiDrawFunctions {
                 ForEachPayloadType<FlowCondition>([&]<typename Kind>(std::type_identity<Kind>) {
                     const bool selected = std::holds_alternative<Kind>(flow.condition);
                     if (ImGui::Selectable(Get(Kind::translationKey).c_str(), selected) && !selected) flow.condition = Kind{};
+                    OptionTooltip(Kind::translationKey);
                     if (selected) ImGui::SetItemDefaultFocus();
                 });
                 ImGui::EndCombo();
@@ -2851,6 +2882,7 @@ namespace ImGuiDrawFunctions {
                                             if (option != TeleportTarget::ENTITY && payload.facing == TeleportFacing::TARGET)
                                                 payload.facing = TeleportFacing::KEEP;
                                         }
+                                        OptionTooltip(key);
                                     }
                                     ImGui::EndCombo();
                                 }
@@ -2897,6 +2929,7 @@ namespace ImGuiDrawFunctions {
                                     for (const auto &[option, key]: kTeleportFacingOptions) {
                                         if (option == TeleportFacing::TARGET && payload.target != TeleportTarget::ENTITY) continue;
                                         if (ImGui::Selectable(Get(key).c_str(), option == payload.facing)) payload.facing = option;
+                                        OptionTooltip(key);
                                     }
                                     ImGui::EndCombo();
                                 }
