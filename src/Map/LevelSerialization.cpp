@@ -778,7 +778,9 @@ namespace {
     constexpr std::pair<PayloadDispatchChangeVariable::Operation, const char*> kVariableOperationNames[] = {
         {PayloadDispatchChangeVariable::SET, "set"},
         {PayloadDispatchChangeVariable::ADD, "add"},
-        {PayloadDispatchChangeVariable::SUBTRACT, "subtract"}
+        {PayloadDispatchChangeVariable::SUBTRACT, "subtract"},
+        {PayloadDispatchChangeVariable::MULTIPLY, "multiply"},
+        {PayloadDispatchChangeVariable::DIVIDE, "divide"}
     };
 
     constexpr std::pair<LineSide, const char*> kLineSideNames[] = {

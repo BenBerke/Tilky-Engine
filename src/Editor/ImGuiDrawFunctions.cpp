@@ -1213,7 +1213,9 @@ namespace ImGuiDrawFunctions {
     constexpr std::pair<PayloadDispatchChangeVariable::Operation, const char *> kVariableOperationOptions[] = {
         {PayloadDispatchChangeVariable::SET, "events.operation.set"},
         {PayloadDispatchChangeVariable::ADD, "events.operation.add"},
-        {PayloadDispatchChangeVariable::SUBTRACT, "events.operation.subtract"}
+        {PayloadDispatchChangeVariable::SUBTRACT, "events.operation.subtract"},
+        {PayloadDispatchChangeVariable::MULTIPLY, "events.operation.multiply"},
+        {PayloadDispatchChangeVariable::DIVIDE, "events.operation.divide"}
     };
 
     constexpr std::pair<LineSide, const char *> kLineSideOptions[] = {

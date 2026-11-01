@@ -1165,7 +1165,9 @@ struct PayloadDispatchChangeVariable {
     enum Operation : uint8_t {
         SET = 0,
         ADD = 1,
-        SUBTRACT = 2
+        SUBTRACT = 2,
+        MULTIPLY = 3,
+        DIVIDE = 4,
     };
 
     EventVariableID variable = 0; // 0 = none picked, does nothing

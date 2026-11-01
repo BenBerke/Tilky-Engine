@@ -2976,6 +2976,11 @@ namespace EventSystem {
                     case PayloadDispatchChangeVariable::SET: *value = change.value; break;
                     case PayloadDispatchChangeVariable::ADD: *value += change.value; break;
                     case PayloadDispatchChangeVariable::SUBTRACT: *value -= change.value; break;
+                    case PayloadDispatchChangeVariable::MULTIPLY: *value *= change.value; break;
+                    case PayloadDispatchChangeVariable::DIVIDE:
+                        if (change.value == 0.0f) spdlog::warn("Change Variable dispatch on owner {} divides by 0, skipped", ownerID);
+                        else *value /= change.value;
+                        break;
                 }
             },
         }, dispatch.payload);
