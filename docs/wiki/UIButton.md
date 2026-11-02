@@ -13,8 +13,9 @@ area is the rectangle of the entity's [UI Transform](UITransform.md), rotation i
   cursor is locked or hidden, buttons are skipped completely. Any hover or press they had is
   dropped without events.
 - **The topmost button wins.** When buttons overlap, only the one drawn on top reacts. It also
-  blocks the ones under it, even if it isn't interactable. Text is drawn over images, and later
-  components over earlier ones, the same order the UI Editor shows.
+  blocks the ones under it, even if it isn't interactable. Text is drawn over images, images follow
+  their [Draw Order](UISprite.md), and otherwise later components are over earlier ones, the same
+  order the UI Editor shows.
 - **A click happens when the left mouse button goes down** on the button. The release comes when
   the button is let go, wherever the cursor is by then.
 - **Buttons work while the game is paused** (`GameTime.timeScale` 0, for example after

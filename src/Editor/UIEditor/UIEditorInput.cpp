@@ -219,20 +219,15 @@ namespace {
     }
 
     // Every UI entity, topmost first in the order the canvas draws them:
-    // Text over Sprites, and within each, later components over earlier
-    // ones. Entities with neither are at the bottom.
+    // Text over Sprites, Sprites by Draw Order, and otherwise later components
+    // over earlier ones. Entities with neither are at the bottom.
     std::vector<ID> UIEntitiesTopmostFirst(Level& level) {
         std::unordered_map<ID, std::size_t> drawRank;
 
-        const std::size_t spriteCount = level.ui_sprites.components.size();
-        for (std::size_t i = 0; i < spriteCount; ++i) {
-            std::size_t& rank = drawRank[level.ui_sprites.components[i].ownerID];
-            rank = std::max(rank, i + 1);
-        }
-        for (std::size_t i = 0; i < level.ui_texts.components.size(); ++i) {
-            std::size_t& rank = drawRank[level.ui_texts.components[i].ownerID];
-            rank = std::max(rank, spriteCount + i + 1);
-        }
+        std::size_t next = 1;
+        UISystem::ForEachInDrawOrder(level,
+            [&](const ComponentUISprite& sprite) { drawRank[sprite.ownerID] = next++; },
+            [&](const ComponentUIText& text) { drawRank[text.ownerID] = next++; });
 
         std::vector<ID> order;
         for (auto it = level.entities.rbegin(); it != level.entities.rend(); ++it)

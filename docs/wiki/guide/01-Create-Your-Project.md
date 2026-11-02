@@ -24,6 +24,7 @@ an example you can copy.
 | **W A S D** | Walk |
 | **Mouse** | Look |
 | **Left click** or **Left Ctrl** | Shoot |
+| **Space** | Jump |
 | **E** | Use: opens doors, presses switches |
 | **1** to **9** | Change weapon |
 | **Esc** | Pause menu |

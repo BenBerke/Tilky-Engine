@@ -619,6 +619,11 @@ namespace {
             );
 
             listenerSettings.distanceModel = ValidateDistanceModel(distanceModel);
+            listenerSettings.oneShotReferenceDistance = std::max(
+                listenerJson.value("oneShotReferenceDistance", ListenerSettings{}.oneShotReferenceDistance), 0.0f);
+            listenerSettings.oneShotMaxDistance = std::max(
+                listenerJson.value("oneShotMaxDistance", ListenerSettings{}.oneShotMaxDistance),
+                listenerSettings.oneShotReferenceDistance);
 
             listenerSettings.masterGain = std::max(0.0f, listenerSettings.masterGain);
             listenerSettings.dopplerFactor = std::max(0.0f, listenerSettings.dopplerFactor);
@@ -681,7 +686,9 @@ namespace {
                     {"masterGain", listenerSettings.masterGain},
                     {"dopplerFactor", listenerSettings.dopplerFactor},
                     {"speedOfSound", listenerSettings.speedOfSound},
-                    {"distanceModel", static_cast<int>(listenerSettings.distanceModel)}
+                    {"distanceModel", static_cast<int>(listenerSettings.distanceModel)},
+                    {"oneShotReferenceDistance", listenerSettings.oneShotReferenceDistance},
+                    {"oneShotMaxDistance", listenerSettings.oneShotMaxDistance}
                 }
             },
             {
@@ -2824,13 +2831,15 @@ namespace LevelSerialization {
         return {
             {"texture", c.texture},
             {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
-            {"isActive", c.isActive}
+            {"isActive", c.isActive},
+            {"drawOrder", c.drawOrder}
         };
     }
 
     bool ComponentOwnFieldsFromJson(const json& j, ComponentUISprite& c) {
         c.texture = j.value("texture", "");
         c.isActive = j.value("isActive", true);
+        c.drawOrder = j.value("drawOrder", 0);
 
         if (j.contains("color") && j["color"].is_array() && j["color"].size() == 4) {
             const json& colorJson = j["color"];

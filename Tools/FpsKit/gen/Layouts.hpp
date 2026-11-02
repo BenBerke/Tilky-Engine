@@ -169,20 +169,21 @@ inline void BuildHud(LayoutB& h) {
         auto set = SetF(FieldComponent::UI_SPRITE, "color", Vec(color.x, color.y, color.z, color.w));
         set.revert = true;
         set.revertAfter = seconds;
+        set.overTime = true; // without this, speed is ignored and the flash just pops on and off
         set.speed = fadeSpeed;
         h.At(entityID).dispatches.push_back(Dp(name, set));
         return entityID;
     };
-    const ID hurt = flash("Hurt Flash", {1.0f, 0.0f, 0.0f, 0.35f}, 0.05f, 1.5f);
+    const ID hurt = flash("Hurt Flash", {0.8f, 0.05f, 0.0f, 0.14f}, 0.05f, 0.8f);
     PayloadLuaSignal hurtSignal;
     hurtSignal.name = "PlayerHurt";
     h.At(hurt).events.push_back(Ev(hurtSignal, {Self("Hurt Flash")}));
-    flash("Pickup Flash", {1.0f, 0.85f, 0.3f, 0.18f}, 0.03f, 1.0f);
+    flash("Pickup Flash", {1.0f, 0.85f, 0.4f, 0.06f}, 0.03f, 0.5f);
 
     const ID suit = h.Image("Radiation Suit Tint", {0, 0}, {1, 1}, "", {0.1f, 1.0f, 0.2f, 0.0f});
     h.At(suit).events.push_back(Ev(PayloadConditionMet{}, {Self("Suit On")}, If("RadSuit", EQ, 1)));
     h.At(suit).events.push_back(Ev(PayloadConditionMet{}, {Self("Suit Off")}, If("RadSuit", EQ, 0)));
-    h.At(suit).dispatches.push_back(Dp("Suit On", SetF(FieldComponent::UI_SPRITE, "color", Vec(0.1f, 1.0f, 0.2f, 0.15f))));
+    h.At(suit).dispatches.push_back(Dp("Suit On", SetF(FieldComponent::UI_SPRITE, "color", Vec(0.1f, 0.8f, 0.2f, 0.06f))));
     h.At(suit).dispatches.push_back(Dp("Suit Off", SetF(FieldComponent::UI_SPRITE, "color", Vec(0.1f, 1.0f, 0.2f, 0.0f))));
 
     // ── The bar itself, with Doom's border flat beside it on a wide screen ──
@@ -302,7 +303,7 @@ inline void BuildDeath(LayoutB& d) {
     const ID control = d.Add("Death Control", {0, 0}, {0, 0}, tags);
     d.At(control).dispatches.push_back(Dp("Show", PayloadDispatchPause{}, 1.2f));
 
-    shown.push_back(d.Image("Dim", {0, 0}, {1, 0.84f}, "", {0.35f, 0, 0, 0.5f}, tags, false));
+    shown.push_back(d.Image("Dim", {0, 0}, {1, 0.84f}, "", {0.2f, 0, 0, 0.35f}, tags, false));
     shown.push_back(d.WordCentred("Title", 30, "You Died", tags, false, 2.0f));
 
     shown.push_back(d.Button("Try Again", 110, MenuY(90, 0), "Try Again",

@@ -26,6 +26,11 @@ struct ListenerSettings {
     float dopplerFactor = 0.0f;
     float speedOfSound = 343.3f;
     ALenum distanceModel = AL_INVERSE_DISTANCE_CLAMPED;
+
+    // Falloff of sounds played once at a place: Play Sound dispatches, doors,
+    // lifts and Audio.PlayAt. The defaults are a new Audio Source's.
+    float oneShotReferenceDistance = 1.0f;
+    float oneShotMaxDistance = 10000.0f;
 };
 
 // Where Show Message text sits on screen.

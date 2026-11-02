@@ -1113,7 +1113,14 @@ namespace {
         if (velocityIntoWall < 0.0f)
             rigidbody.velocity = rigidbody.velocity - hit.normal * velocityIntoWall;
 
-        if (correctedPenetration <= Constants::Epsilon) return WallResult::TOUCHING;
+        // Floats get coarser further from the origin: near x = 172 they step by
+        // about 0.000015, so a fixed tolerance never settles there. The leftover
+        // would count as "still pushing" on every pass, and the wedge fallback in
+        // resolveWalls would then undo the real push.
+        const float roundingNoise =
+                4.0f * std::numeric_limits<float>::epsilon() * std::max(std::abs(body.base.x), std::abs(body.base.z));
+
+        if (correctedPenetration <= std::max(Constants::Epsilon, roundingNoise)) return WallResult::TOUCHING;
 
         const Vector3 correction = hit.normal * correctedPenetration;
 

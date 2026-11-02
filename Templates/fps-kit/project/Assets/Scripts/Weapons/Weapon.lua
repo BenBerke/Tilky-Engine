@@ -41,7 +41,7 @@ public Entity projectilePrefab = nil
 
 -- How it looks while moving.
 public number raiseTime = 0.2       -- seconds to come up or go down
-public number bobAmount = 0.018     -- sway while walking, as a share of the screen height
+public number bobAmount = 0.035     -- sway while walking, as a share of the weapon's height
 
 local owner = nil
 local holder = 0        -- 0 = down, 1 = up
@@ -164,8 +164,8 @@ function Update()
     if owner ~= nil and owner.rigidbody ~= nil then
         local velocity = owner.rigidbody.velocity
         local speed = math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
-        if speed > 1 and cooldown <= 0 then bobTime = bobTime + dt * 7 end
-        local amount = bobAmount * size.y * math.min(speed / 60, 1)
+        if speed > 1 and cooldown <= 0 then bobTime = bobTime + dt * 11 end
+        local amount = bobAmount * size.y * math.min(speed / 80, 1)
         offset = offset + Vector2(math.cos(bobTime) * amount, math.abs(math.sin(bobTime)) * amount)
     end
     entity.uiTransform.position = offset

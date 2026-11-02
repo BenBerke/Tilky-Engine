@@ -572,9 +572,9 @@ namespace {
 
         // Draw sprites. One without a texture is a solid rectangle of its colour.
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-        for (const ComponentUISprite &sprite: level.ui_sprites.components) {
+        UISystem::ForEachSpriteInDrawOrder(level, [&](const ComponentUISprite &sprite) {
             const auto transformIt = transformsByOwner.find(sprite.ownerID);
-            if (transformIt == transformsByOwner.end()) continue;
+            if (transformIt == transformsByOwner.end()) return;
 
             // The first sprite of an entity with a UI Button shows the
             // button's look as the game starts it (normal, or disabled).
@@ -589,7 +589,7 @@ namespace {
             }
 
             SDL_Texture *texture = textureName->empty() ? nullptr : GetEditorTexture(*textureName);
-            if (!textureName->empty() && texture == nullptr) continue;
+            if (!textureName->empty() && texture == nullptr) return;
 
             const UIEntityScreenQuad quad = ComputeUIEntityScreenQuad(*transformIt->second);
 
@@ -599,7 +599,7 @@ namespace {
                 std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f) * alpha
             };
             DrawUISpriteQuad(quad, texture, tint);
-        }
+        });
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 
         // Draw text.

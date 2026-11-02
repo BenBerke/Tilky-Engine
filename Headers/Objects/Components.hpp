@@ -146,6 +146,11 @@ struct ComponentUISprite {
     bool isActive = true; // false = not drawn
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 
+    // Higher draws on top of lower, across all UI, whichever UI layout each
+    // one is in. Equal numbers keep the layout order. Text is always on top of
+    // every Sprite. See UISystem::ForEachSpriteInDrawOrder.
+    int drawOrder = 0;
+
     // Runtime only, not saved: the owner's UI Button state look, written by
     // UIButtonSystem. The tint multiplies `color`; a non-empty texture is
     // drawn instead of `texture`.

@@ -38,8 +38,9 @@ Think of it as a radio channel: the switch sends on channel "Switch 1", and anyt
 
 ## Build it: a switch that opens a door
 
-1. **Place the switch.** Drag **Prefabs/Level Logic/Switch** next to a wall. It already sends on the event
-   tag `Switch 1` when you press it.
+1. **Place the switch.** Drag **Prefabs/Level Logic/Switch** next to a wall. In its inspector, click
+   **Snap to Wall**, then right-click the wall. It lies flat on the wall now, and it already sends on the
+   event tag `Switch 1` when you press it.
 2. **Draw a door.** Draw a thin sector between two rooms, as on [page 6](06-Doors.md), but don't click
    Make Door. Instead:
 3. **Shut it.** Right-click the sector and set its **Ceiling Height** equal to its **Floor Height**.

@@ -194,6 +194,13 @@ static int RoundTrip(const fs::path& assets) {
         for (const Wall& w : after.walls) walls += w.events.size();
         const bool same = ok && before.sectors.size() == after.sectors.size() && before.walls.size() == after.walls.size() &&
                           before.entities.size() == after.entities.size() && before.comments.size() == after.comments.size() && shut == shutAfter;
+        for (const auto& [entityID, snap] : after.wallSnaps) {
+            const ComponentTransform* transform = after.transforms.Get(entityID);
+            const Wall* wall = nullptr;
+            for (const Wall& each : after.walls) if (each.id == snap.wallID) wall = &each;
+            std::printf("[snap] %s: entity %s wall %s at %.2f %.2f\n", after.name.c_str(), after.GetEntity(entityID) ? after.GetEntity(entityID)->name.c_str() : "MISSING",
+                        wall ? "found" : "MISSING", transform ? transform->position.x : 0.0f, transform ? transform->position.z : 0.0f);
+        }
         std::printf("[roundtrip] %s: %s, sectors %zu, walls %zu (%zu events), entities %zu, comments %zu, shut %zu %s\n",
                     file.path().stem().string().c_str(), same ? "same" : "DIFFERENT", after.sectors.size(), after.walls.size(), walls,
                     after.entities.size(), after.comments.size(), shutAfter, error.c_str());

@@ -536,9 +536,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         UISystem::UpdateAllTransforms(level, screenWidth, screenHeight);
 
-        // Layer by layer (the UI layouts, then the level's own UI), each
-        // layer's Sprites and then its Texts. Text drawing switches shaders,
-        // so the sprite state is set again after it.
+        // Every Sprite by Draw Order, then every Text. Text drawing switches
+        // shaders, so the sprite state is set again after it.
         bool spriteStateSet = true;
 
         UISystem::ForEachInDrawOrder(level,

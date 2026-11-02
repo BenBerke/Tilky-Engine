@@ -744,6 +744,13 @@ namespace {
             HoverTooltip(Get("editor.tooltip.ui.sprite.color").c_str());
         }
 
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("drawOrder");
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::InputInt(Get("editor.ui.sprite.draw_order").c_str(), &sprite.drawOrder)) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.sprite.draw_order").c_str());
+        }
+
         // Sizes the element to the texture's own pixel size.
         if (preview != nullptr && transform != nullptr && texW > 0.0f && texH > 0.0f) {
             const bool stretched = transform->anchorMin.x != transform->anchorMax.x || transform->anchorMin.y != transform->anchorMax.y;

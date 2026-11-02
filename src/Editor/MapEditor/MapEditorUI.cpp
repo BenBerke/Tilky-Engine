@@ -1328,6 +1328,22 @@ namespace {
             HoverTooltip(tooltip.c_str());
         }
 
+        {
+            const std::string tooltip = Get("settings.audio.tooltip.one_shot_reference_distance");
+            SettingRow(Get("settings.audio.one_shot_reference_distance"), tooltip.c_str());
+            if (ImGui::DragFloat("##OneShotReferenceDistance", &settings.oneShotReferenceDistance, 1.0f, 0.0f, 100000.0f, "%.0f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
+
+        {
+            const std::string tooltip = Get("settings.audio.tooltip.one_shot_max_distance");
+            SettingRow(Get("settings.audio.one_shot_max_distance"), tooltip.c_str());
+            if (ImGui::DragFloat("##OneShotMaxDistance", &settings.oneShotMaxDistance, 1.0f, 0.0f, 100000.0f, "%.0f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
+
         EndSettingsTable();
     }
 

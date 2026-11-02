@@ -19,7 +19,7 @@ local ROUTES = {
         { go = { 0, 270 } }, { face = { 0, 300 } }, { use = true }, { wait = 2.5 }, { shot = "l1_lift_down" },
         { go = { 0, 304 } }, { wait = 5 }, { shot = "l1_lift_up" }, { report = "lift" },
         { go = { 0, 345 } }, { go = { 0, 370 } }, { face = { 0, 380 } }, { use = true }, { wait = 1.2 },
-        { go = { 0, 395 } }, { go = { 0, 412 } }, { face = { 0, 424 } }, { shot = "l1_exit" }, { use = true }, { wait = 0.5 },
+        { go = { 0, 395 } }, { go = { 0, 416 } }, { face = { 0, 432 } }, { shot = "l1_exit" }, { use = true }, { wait = 0.5 },
         { shot = "l1_intermission" }, { report = "intermission" },
         { wait = 0.6 }, { shot = "l1_tally" }, { click = { 0.5, 0.66 } }, { wait = 0.3 }, { shot = "l1_tally_done" }, { click = { 0.5, 0.66 } }, { wait = 1 },
     },
@@ -31,13 +31,13 @@ local ROUTES = {
         { go = { -88, 64 } }, { face = { -100, 64 } }, { use = true }, { wait = 1.2 },
         { go = { -120, 64 } }, { go = { -150, 64 } }, { go = { -190, 64 } }, { report = "red key" }, { shot = "l2_redkey" },
         { go = { -92, 64 } }, { go = { 0, 118 } }, { face = { 0, 130 } }, { use = true }, { wait = 1.2 },
-        { go = { 0, 150 } }, { go = { -48, 176 } }, { face = { -60, 180 } }, { use = true }, { wait = 2.5 }, { shot = "l2_stairs" },
+        { go = { 0, 150 } }, { go = { -60, 180 } }, { face = { -72, 180 } }, { use = true }, { wait = 2.5 }, { shot = "l2_stairs" },
         { go = { 0, 205 } }, { go = { 0, 240 } }, { go = { 0, 300 } }, { report = "blue key" },
         { go = { 56, 275 }, teleports = true }, { wait = 0.5 }, { shot = "l2_teleported" }, { report = "teleported" },
         { go = { 0, 16 } }, { face = { 0, -4 } }, { use = true }, { wait = 1.2 }, { go = { 0, -24 } }, { report = "secret" }, { shot = "l2_secret" },
         { go = { 0, 16 } }, { go = { 88, 64 } }, { face = { 100, 64 } }, { use = true }, { wait = 1.2 },
         { go = { 120, 64 } }, { go = { 190, 64 } }, { face = { 204, 64 } }, { use = true }, { wait = 1.2 },
-        { go = { 220, 64 } }, { go = { 238, 64 } }, { face = { 248, 64 } }, { use = true }, { wait = 0.5 },
+        { go = { 220, 64 } }, { go = { 240, 64 } }, { face = { 256, 64 } }, { shot = "l2_exit_switch" }, { use = true }, { wait = 0.5 },
         { report = "intermission" }, { shot = "l2_intermission" }, { click = { 0.5, 0.66 } }, { wait = 0.3 }, { click = { 0.5, 0.66 } }, { wait = 1 },
     },
     ["Level 3 - Courtyard"] = {
@@ -52,7 +52,7 @@ local ROUTES = {
         { go = { 0, 125 } }, { go = { 0, 95 } }, { go = { -120, 95 } }, { go = { -130, 245 } }, { go = { -108, 248 } }, { face = { -108, 262 } }, { use = true }, { wait = 2.5 },
         { go = { -108, 268 } }, { wait = 5 }, { go = { -130, 300 } }, { report = "rockets" }, { shot = "l3_ledge" },
         { go = { -108, 268 } }, { wait = 3 }, { go = { -108, 248 } }, { go = { 130, 250 } }, { go = { 136, 314 } }, { face = { 136, 324 } }, { use = true }, { wait = 1.2 },
-        { go = { 136, 340 } }, { go = { 136, 358 } }, { face = { 136, 368 } }, { use = true }, { wait = 0.5 },
+        { go = { 136, 340 } }, { go = { 136, 360 } }, { face = { 136, 376 } }, { shot = "l3_exit_switch" }, { use = true }, { wait = 0.5 },
         { report = "intermission" }, { shot = "l3_intermission" }, { click = { 0.5, 0.66 } }, { wait = 0.3 }, { click = { 0.5, 0.66 } }, { wait = 1 },
     },
     ["Level 4 - The Tripod"] = {
@@ -62,7 +62,7 @@ local ROUTES = {
         { fight = 8 }, { shot = "l4_fight" },
         -- Only the boss still stands in the way: end it, so the gate test doesn't depend on aim.
         { killall = true }, { wait = 2 }, { report = "boss dead" }, { shot = "l4_gate" },
-        { go = { 90, 200 } }, { go = { 90, 340 } }, { go = { 0, 365 } }, { go = { 0, 395 } }, { go = { 0, 412 } }, { face = { 0, 424 } }, { use = true }, { wait = 0.5 },
+        { go = { 90, 200 } }, { go = { 90, 340 } }, { go = { 0, 365 } }, { go = { 0, 395 } }, { go = { 0, 416 } }, { face = { 0, 432 } }, { shot = "l4_exit_switch" }, { use = true }, { wait = 0.5 },
         { report = "victory" }, { shot = "l4_victory" }, { flag = "sawVictory" },
         { click = { 0.476, 0.895 } }, { wait = 1 },
     },
@@ -173,6 +173,11 @@ function Update()
             scan = 0.2
             enemies = Game.FindEntitiesWithTag("Enemy")
             if target == nil or not Alive(target) then target, targetTime = FindTarget(), 0 end
+            -- A Pain Bringer spawns these for ever: fighting them all, the route would never go on.
+            if target ~= nil and target.name == "Deadflare" then
+                ignored[target.id] = true
+                target = nil
+            end
         end
         if target ~= nil and Alive(target) and Game.LineOfSight(Eye(), Center(target)) then
             targetTime = targetTime + dt

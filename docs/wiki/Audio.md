@@ -36,8 +36,13 @@ Audio.PlayAt(sound, position, [gain], [pitch])
 The sound plays once, from the start, at `position`, the way Unity's
 `AudioSource.PlayClipAtPoint` does. It gets quieter with distance from the listener (the active
 camera) and comes from the right direction, using the level's audio settings (**World Settings >
-Audio**) and the same falloff as a new Audio Source: reference distance `1`, roll-off factor `1`,
-and no max distance.
+Audio**). **One-Shot Reference Distance** and **One-Shot Max Distance** set its falloff, and also
+that of Play Sound dispatches, doors and lifts. By default they match a new Audio Source: reference
+distance `1`, max distance `10000`. Roll-off factor is `1`.
+
+At those defaults a sound a room away is almost silent, so raise the reference distance to suit the
+size of your level. For Doom's falloff, use the **Linear Clamped** distance model, which is full
+volume up to the reference distance and silent at the max distance.
 
 - Any number can play at once; a new one never cuts off another.
 - The sound stays at `position` even if whatever made it moves away.

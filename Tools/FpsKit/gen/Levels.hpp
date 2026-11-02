@@ -162,6 +162,41 @@ struct LevelB {
         return id;
     }
 
+    // Places a prefab flat on the wall at (x, z), snapped to it the way the inspector's
+    // Snap to Wall does, on the side (fromX, fromZ) is on. The snap is saved with the
+    // level, so the editor shows it and keeps the prefab on the wall.
+    ID PutOnWall(const Str& prefab, const float x, const float z, const float fromX, const float fromZ, const float aboveFloor = 0.0f) {
+        const Wall* wall = nullptr;
+        for (const Wall& each : level.walls) {
+            const float dx = each.end.x - each.start.x, dz = each.end.y - each.start.y;
+            const float lengthSq = dx * dx + dz * dz;
+            if (lengthSq <= 0.0f) continue;
+            const float t = std::clamp(((x - each.start.x) * dx + (z - each.start.y) * dz) / lengthSq, 0.0f, 1.0f);
+            const float ox = each.start.x + dx * t - x, oz = each.start.y + dz * t - z;
+            if (ox * ox + oz * oz < 0.0001f) { wall = &each; break; }
+        }
+        if (wall == nullptr) { Fail(level.name + ": no wall at " + std::to_string(x) + "," + std::to_string(z)); return INVALID_ID; }
+
+        const ID id = Put(prefab, fromX, fromZ, 0.0f, aboveFloor);
+        if (id == INVALID_ID) return id;
+
+        const float dx = wall->end.x - wall->start.x, dz = wall->end.y - wall->start.y;
+        const float length = std::sqrt(dx * dx + dz * dz);
+        const Vector2 normal = {-dz / length, dx / length};
+        const float side = (fromX - x) * normal.x + (fromZ - z) * normal.y < 0.0f ? -1.0f : 1.0f;
+
+        WallSnapData snap;
+        snap.wallID = wall->id;
+        snap.side = side;
+        level.wallSnaps[id] = snap;
+
+        auto* transform = level.GetEntity(id)->GetComponent<ComponentTransform>();
+        transform->position.x = x + normal.x * side * snap.gap;
+        transform->position.z = z + normal.y * side * snap.gap;
+        transform->rotation = Quaternion::FromAxisAngle(0.0f, 1.0f, 0.0f, std::atan2(normal.x * side, normal.y * side));
+        return id;
+    }
+
     void Note(const float x, const float z, const Str& text) {
         EditorComment comment;
         comment.id = level.nextCommentID++;
@@ -262,6 +297,11 @@ struct LevelB {
         world.messageStyle.align = MessageTextAlign::LEFT;
         world.messageStyle.offset = {12.0f, 28.0f}; // below the FPS counter of the editor's Play mode
 
+        // Doom's sound falloff, at this kit's scale: full volume up close, silent far away.
+        level.listenerSettings.distanceModel = AL_LINEAR_DISTANCE_CLAMPED;
+        level.listenerSettings.oneShotReferenceDistance = 40.0f;
+        level.listenerSettings.oneShotMaxDistance = 350.0f;
+
         // Far things fall into the dark, as in Doom. The engine's default fade starts
         // further away than most of these rooms are long. Daylight fades less.
         auto& renderer = level.rendererSettings;
@@ -340,6 +380,10 @@ inline void Level1(LevelB& b) {
 
     // Pillars and lamps: rooms drawn inside rooms. These are the sectors that stop a
     // level looking like a row of boxes.
+    // A secret: this door looks like the hall's wall.
+    {Room& r = b.R("Secret Door", 80, 232, 88, 248, 16, 72, "DOORTRAK", "FLAT5", "FLAT5"); r.top = "BROWN1";}
+    b.R("Secret Closet", 88, 224, 120, 256, 16, 64, "STONE2", "FLOOR7_1", "CEIL3_1", 120);
+
     b.Lamp("Start", -12, 40, 12, 64);
     b.Pillar("Start", -40, 40, -32, 48, "SUPPORT3");
     b.Pillar("Start", 32, 40, 40, 48, "SUPPORT3");
@@ -357,6 +401,7 @@ inline void Level1(LevelB& b) {
     b.Build();
 
     b.LightFx("Corridor", PayloadDispatchSectorLightEffect::FLICKER, 60.0f);
+    b.MakeDoor("Secret Door");
     b.MakeDoor("Door 1");
     b.MakeDoor("Door 2");
     b.MakeLift("Lift");
@@ -366,6 +411,12 @@ inline void Level1(LevelB& b) {
     b.Put("Pickups/Health/Stimpack", 24, 72);
     b.Put("Decorations/Tall Lamp", -40, 88);
     b.Put("Decorations/Tall Lamp", 40, 88);
+
+    // A trail of bonuses, which count as Items on the Intermission.
+    for (const float z : {108.0f, 118.0f, 128.0f}) b.Put("Pickups/Health/Health Bonus", 10, z);
+    for (const float x : {-70.0f, -60.0f, -50.0f}) b.Put("Pickups/Armor/Armor Bonus", x, 276);
+    b.Put("Pickups/Armor/Green Armor", 104, 240);
+    b.Put("Level Logic/Secret Spot", 96, 240);
 
     b.Put("Enemies/Zombie", -6, 140);
     b.Put("Enemies/Zombie", 6, 156);
@@ -388,7 +439,7 @@ inline void Level1(LevelB& b) {
     b.Put("Enemies/Serpentipede", -40, 350);
     b.Put("Enemies/Serpentipede", 40, 350);
     b.Put("Pickups/Health/Medikit", 0, 350);
-    b.Put("Level Logic/Exit Switch", 0, 424);
+    b.PutOnWall("Level Logic/Exit Switch", 0, 432, 0, 412);
 
     b.Note(0, 8, "WELCOME! These yellow notes are comments: they only exist in the editor. "
                  "Press Play to try the level. WASD moves, the mouse looks, E uses things, left click shoots, Esc pauses.");
@@ -403,11 +454,12 @@ inline void Level1(LevelB& b) {
                      "This hall is a big rectangle with a higher ceiling.");
     b.Note(-40, 228, "PILLARS AND LAMPS are small sectors drawn inside this one. A pillar's floor and ceiling are the same height. "
                      "A lamp is just brighter, with a light texture on a slightly higher ceiling.");
+    b.Note(74, 240, "A SECRET: this bit of wall is a door. Its Secret Spot prefab counts it on the Intermission.");
     b.Note(-10, 112, "FLICKERING LIGHT: select this corridor. Its On Start event runs a Light Effect dispatch.");
     b.Note(30, 300, "A LIFT: this sector's floor starts up high. Face its wall and press E, it comes down, step on and ride up. "
                     "Made with Make Lift in the sector inspector.");
     b.Note(0, 428, "THE EXIT SWITCH shows the Intermission and then loads the next level in Project Settings > Levels. "
-                   "Drag Prefabs/Level Logic/Exit Switch into any level.");
+                   "Drag Prefabs/Level Logic/Exit Switch into any level, then click Snap to Wall in its inspector and right-click a wall.");
     b.Music("Rocky Musicloop", 0.37f);
     b.Finish();
 }
@@ -497,7 +549,7 @@ inline void Level2(LevelB& b) {
 
     b.Put("Enemies/Flesh Worm", -50, 200);
     b.Put("Enemies/Flesh Worm", 50, 200);
-    b.Put("Level Logic/Switch", -60, 180);
+    b.PutOnWall("Level Logic/Switch", -72, 180, -60, 180);
     b.Put("Pickups/Health/Medikit", 60, 150);
     b.Put("Pickups/Keys/Blue Key", 0, 300);
     b.Put("Enemies/Serpentipede", -30, 290);
@@ -515,7 +567,7 @@ inline void Level2(LevelB& b) {
     b.Put("Pickups/Armor/Armor Bonus", 120, 30);
     b.Put("Pickups/Armor/Armor Bonus", 130, 30);
     b.Put("Pickups/Armor/Armor Bonus", 140, 30);
-    b.Put("Level Logic/Exit Switch", 248, 64);
+    b.PutOnWall("Level Logic/Exit Switch", 256, 64, 240, 64);
 
     b.Put("Pickups/Health/Soul Sphere", 0, -30);
     b.Put("Level Logic/Secret Spot", 0, -24);
@@ -621,7 +673,7 @@ inline void Level3(LevelB& b) {
     b.Put("Pickups/Health/Medikit", -115, 300);
     b.Put("Enemies/Zombie", -150, 310);
 
-    b.Put("Level Logic/Exit Switch", 136, 368);
+    b.PutOnWall("Level Logic/Exit Switch", 136, 376, 136, 358);
 
     b.Note(0, 10, "OUTDOORS is a sector with no ceiling picture: its ceiling colour's alpha is 0, so the level's Sky shows through. "
                   "The Sky is in World Settings > Rendering. Keep the ceiling higher than anything near it.");
@@ -703,7 +755,7 @@ inline void Level4(LevelB& b) {
             if (std::holds_alternative<PayloadMonsterDied>(event.payload)) { event.useTag = true; event.tagId = died.tagId; }
     }
 
-    b.Put("Level Logic/End Game Switch", 0, 424);
+    b.PutOnWall("Level Logic/End Game Switch", 0, 432, 0, 412);
 
     b.Note(0, 30, "THE BOSS LEVEL. Everything you need is here. Take it, then open the door.");
     b.Note(30, 310, "THE BOSS is an ordinary enemy prefab with one change: its Monster Died event also fires the event tag 'Boss Dead'. "

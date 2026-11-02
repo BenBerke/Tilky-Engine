@@ -84,6 +84,9 @@ These are what make a level into a game:
 | **Secret Spot** | Counts as a found secret when you step on it |
 | **Teleport Trigger** and **Teleport Destination** | Step on the trigger to go to the destination. See below. |
 
+Switches are flat pictures that belong on a wall. After dragging one in, click **Snap to Wall** in its
+inspector and right-click the wall.
+
 ### Also there
 
 **Hazards** has the Explosive Barrel. **Decorations** has lamps, torches, pillars, trees, gore and

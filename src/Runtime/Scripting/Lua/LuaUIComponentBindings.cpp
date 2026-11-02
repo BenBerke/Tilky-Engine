@@ -107,6 +107,11 @@ void LuaScriptSystem::RegisterUIComponentBindings(sol::state& lua) {
         "color", sol::property(
             &ScriptUISprite::GetColor,
             &ScriptUISprite::SetColor
+        ),
+
+        "drawOrder", sol::property(
+            &ScriptUISprite::GetDrawOrder,
+            &ScriptUISprite::SetDrawOrder
         )
     );
 

@@ -340,6 +340,9 @@ inline Str MakeWeaponView(const WeaponSpec& s) {
         auto* sprite = e.AddComponent<ComponentUISprite>();
         sprite->texture = ready[0].textures[0];
         sprite->isActive = false;
+        // Spawned from a script, so it counts as the level's own UI, on top of every
+        // layout. Below 0 puts it under the HUD, the screen flashes and the menus.
+        sprite->drawOrder = -1;
 
         e.AddComponent<ComponentFlipbook>()->flipbookFileName = readyBook;
 
@@ -565,14 +568,17 @@ inline void MakeDecorations() {
 // ── Level logic ─────────────────────────────────────────────────────────────
 
 inline void MakeLevelLogic() {
-    // A picture of a switch you press with Use, then something happens.
-    const auto useSwitch = [](const Str& name, const Str& offTexture, const Str& onTexture, const Str& sound,
+    // A flat picture of a switch that goes on a wall (Snap to Wall in the inspector).
+    // You press it with Use, then something happens. It has no collider, so it doesn't
+    // stick out of the wall: the Use ray hits an entity's Transform box without one, so
+    // the box's depth is what you can reach it through.
+    const auto useSwitch = [](const Str& name, const float widthPx, const float heightPx, const Str& offTexture, const Str& onTexture, const Str& sound,
                               const std::function<void(Entity&, std::vector<DirectCall>&)>& extra, const uint32_t maxTriggers) {
-        MakePrefab("Prefabs/Level Logic/" + name + ".prefab", false, [&](Level& level, Entity& e) {
-            auto* sprite = AddSprite(e, 64, 96, false);
+        MakePrefab("Prefabs/Level Logic/" + name + ".prefab", false, [&](Level&, Entity& e) {
+            auto* sprite = AddSprite(e, widthPx, heightPx, false);
+            sprite->isStatic = true;
             sprite->textureFileNames.fill("Textures/Walls/" + offTexture + ".png");
-            AddCapsule(level, e, 5.0f, 24.0f);
-            AddBody(e, true);
+            e.GetComponent<ComponentTransform>()->scale.z = 16.0f;
 
             PayloadReceiveRay use;
             use.rayType = RayType::INTERACT;
@@ -589,14 +595,14 @@ inline void MakeLevelLogic() {
         });
     };
 
-    useSwitch("Exit Switch", "SW1EXIT", "SW2EXIT", "World/switch exit", [](Entity&, std::vector<DirectCall>& calls) {
+    useSwitch("Exit Switch", 48, 108, "SW1EXIT", "SW2EXIT", "World/switch exit", [](Entity&, std::vector<DirectCall>& calls) {
         calls.push_back(Tagged("Intermission", "Show"));
     }, 1);
-    useSwitch("End Game Switch", "SW1EXIT", "SW2EXIT", "World/switch exit", [](Entity&, std::vector<DirectCall>& calls) {
+    useSwitch("End Game Switch", 48, 108, "SW1EXIT", "SW2EXIT", "World/switch exit", [](Entity&, std::vector<DirectCall>& calls) {
         calls.push_back(Tagged("Victory", "Show"));
     }, 1);
     // Fires the event tag "Switch 1": anything that listens on it reacts.
-    useSwitch("Switch", "SW1COMP", "SW2COMP", "World/switch on", [](Entity&, std::vector<DirectCall>&) {}, 0);
+    useSwitch("Switch", 64, 128, "SW1COMP", "SW2COMP", "World/switch on", [](Entity&, std::vector<DirectCall>&) {}, 0);
     {
         // Same as above, plus the link tag on its one event.
         const Str reference = "Prefabs/Level Logic/Switch.prefab";
@@ -662,17 +668,22 @@ inline void MakePlayer(const std::vector<Str>& weaponViews) {
         level.ActivateCamera(*e.AddComponent<ComponentCamera>());
         auto* controller = e.AddComponent<ComponentPlayerController>();
         level.ActivatePlayerController(*controller);
-        controller->speed = 62.0f;
-        controller->runningSpeed = 105.0f;
+        // Doom's pace at this kit's scale, with its quick start and short slide.
+        controller->speed = 100.0f;
+        controller->runningSpeed = 132.0f;
+        controller->acceleration = 520.0f;
+        controller->deceleration = 280.0f;
+        controller->airControl = 0.25f;
         controller->eyeHeight = 10.25f;
         controller->useReach = 20.0f;
-        controller->jumpPower = 0.0f; // Doom has no jump. Raise this in the Player prefab for one.
+        controller->jumpPower = 40.0f; // Set to 0 for Doom's no jumping.
 
         AddCapsule(level, e, 4.0f, 14.0f);
         AddBody(e, false, 10.0f);
 
         AddLua(e, "Scripts/Combat/DamageRules");
         AddLua(e, "Scripts/Player/PlayerHealth");
+        AddLua(e, "Scripts/Player/ViewFeel");
         ComponentScript& holder = AddLua(e, "Scripts/Weapons/WeaponHolder");
         for (size_t i = 0; i < weaponViews.size(); ++i)
             holder.publicValues["weapon" + std::to_string(i + 1)] = PrefabRef(weaponViews[i]);

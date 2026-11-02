@@ -1844,7 +1844,12 @@ namespace {
         const std::string name = "event_sound_" + std::to_string(nextSoundSource++);
         if (!SoundManager::CreateSource(name)) return;
 
-        if (position) SoundManager::SetSourcePosition(name, *position);
+        if (position) {
+            const ListenerSettings& listener = LevelManager::CurrentLevel().listenerSettings;
+            SoundManager::SetSourcePosition(name, *position);
+            SoundManager::SetSourceReferenceDistance(name, listener.oneShotReferenceDistance);
+            SoundManager::SetSourceMaxDistance(name, listener.oneShotMaxDistance);
+        }
         else SoundManager::SetSourceRelative(name, true);
 
         SoundManager::SetSourceGain(name, play.gain);

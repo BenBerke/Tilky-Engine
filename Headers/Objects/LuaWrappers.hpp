@@ -1744,6 +1744,15 @@ struct ScriptUISprite {
         sprite->isActive = active;
     }
 
+    [[nodiscard]] int GetDrawOrder() const {
+        const ComponentUISprite* sprite = GetComponent();
+        return sprite != nullptr ? sprite->drawOrder : 0;
+    }
+
+    void SetDrawOrder(const int drawOrder) const {
+        if (ComponentUISprite* sprite = GetComponent()) sprite->drawOrder = drawOrder;
+    }
+
     [[nodiscard]] Vector4 GetColor() const {
         const ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return {1.0f, 1.0f, 1.0f, 1.0f};
