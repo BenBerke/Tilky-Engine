@@ -124,3 +124,7 @@ kit's music is public domain (CC0), so it has no such rule. `Music/CREDITS.txt` 
   your next step.
 
 That's everything you need to make your game. Go and make something horrible.
+
+---
+
+Next, when you want to change how the game plays: [How the kit works](11-How-The-Kit-Works.md)

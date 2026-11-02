@@ -23,6 +23,21 @@ Read the pages in order the first time. Each one takes about ten minutes.
 | 9 | [Events and dispatches: making things happen](09-Events-And-Dispatches.md) | Make a switch that opens a door, with no code |
 | 10 | [Finish your game](10-Finish-Your-Game.md) | Add levels, change the menus and export the game |
 
+## Changing the kit
+
+Once you've built a level, these pages open the kit up, so you can change how the game plays. Read them
+whenever you need them, in any order, though page 11 helps with all the others.
+
+| # | Page | What you'll learn |
+|---|---|---|
+| 11 | [How the kit works](11-How-The-Kit-Works.md) | The map of the kit: its folders, variables and tags, and how damage and levels flow |
+| 12 | [Inside the player](12-Inside-The-Player.md) | What all 65 of the player's dispatches do, and how to change them |
+| 13 | [Change the enemies](13-Change-Enemies.md) | Read an enemy's events, change its attacks, and make a new one |
+| 14 | [Change the weapons and pickups](14-Change-Weapons-And-Pickups.md) | Tune weapons, and add new weapons, ammo and pickups |
+| 15 | [Change the UI](15-Change-The-UI.md) | How the HUD and menus are wired, and how to add to them |
+| 16 | [More engine features](16-More-Engine-Features.md) | Every event and dispatch, chains, linedefs, lighting, sound and scripts |
+| 17 | [When something goes wrong](17-Troubleshooting.md) | Common problems and how to fix them |
+
 ## Words you'll meet
 
 | Word | Plain meaning |
