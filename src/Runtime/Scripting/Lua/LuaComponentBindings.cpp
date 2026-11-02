@@ -145,15 +145,20 @@ namespace {
             Prop("Snap", "integer", true),
         }));
 
-        RegisterType(Type("MonsterAIState", "Enum: Idle or Chasing - see MonsterAI.state.", {
+        RegisterType(Type("MonsterAIState", "Enum: Idle, Chasing or Dead - see MonsterAI.state.", {
             Prop("Idle", "integer", true),
             Prop("Chasing", "integer", true),
+            Prop("Dead", "integer", true),
         }));
 
         RegisterType(Type("MonsterAI", "A Doom monster's brain: notices targets by sight and sound, decides when to attack and who to fight. It never attacks: OnMeleeReady, OnMissileReady and the events of the same name are where the attack goes.", {
             Prop("isValid", "boolean", true),
             Prop("isActive", "boolean", false, "False stops it thinking."),
-            Prop("state", "MonsterAIState", true, "Idle (looking and listening) or Chasing."),
+            Prop("state", "MonsterAIState", true, "Idle (looking and listening), Chasing or Dead."),
+            Prop("health", "number", false, "It dies at 0: it stops thinking and walking and stays as a corpse. Raising it afterward doesn't bring it back."),
+            Prop("walkFlipbook", "string", false, "Played on the first Flipbook while its Pathfinder walks, held while it stands still. Relative to Assets, with extension. Empty: left alone."),
+            Prop("attackFlipbook", "string", false, "Played from its start when it decides to attack, until attackPause ends. Empty: left alone."),
+            Prop("dieFlipbook", "string", false, "Played from its start when it dies. Empty: the flipbook just stops."),
             Prop("target", "Entity?", true, "Who it is chasing. nil while idle."),
             Prop("canSeeTarget", "boolean", true, "True when it could see its target now: range, field of view and line of sight."),
             Prop("sightFov", "number", false, "Field of view in degrees (Doom: 180)."),
@@ -184,7 +189,7 @@ namespace {
         }, {
             Method("Wake", {Param("target", "Entity")}, {}, "Starts chasing target, or switches to it if already chasing."),
             Method("Sleep", {}, {}, "Back to idle, target forgotten."),
-            Method("Hurt", {Param("attacker", "Entity?")}, {}, "Tell it it took damage: rolls painChance for OnPain, and turns it on attacker unless locked on another target. The AI keeps no health: that's yours."),
+            Method("Hurt", {Param("attacker", "Entity?"), Param("damage", "number?")}, {}, "Takes damage off its health (none if left out). At 0 it dies and OnDeath runs. Otherwise rolls painChance for OnPain, and turns it on attacker unless locked on another target."),
         }));
 
         RegisterType(Type("Collider", "Sphere, capsule or box collision volume. It is the body for every physics contact.", {
@@ -358,7 +363,8 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
                  "Snap", static_cast<int>(PathfinderTurning::SNAP));
     lua.new_enum("MonsterAIState",
                  "Idle", static_cast<int>(MonsterAIState::IDLE),
-                 "Chasing", static_cast<int>(MonsterAIState::CHASING));
+                 "Chasing", static_cast<int>(MonsterAIState::CHASING),
+                 "Dead", static_cast<int>(MonsterAIState::DEAD));
 
     lua.new_usertype<ScriptAudioSource>(
         "AudioSource",

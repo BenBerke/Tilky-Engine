@@ -25,10 +25,11 @@ namespace MonsterAISystem {
         MELEE_READY,
         MISSILE_READY,
         PAIN,
-        ACTIVE
+        ACTIVE,
+        DIED
     };
 
-    // `otherID` is the target (the attacker for PAIN), INVALID_ID if none.
+    // `otherID` is the target (the attacker for PAIN and DIED), INVALID_ID if none.
     using NoticeHandler = std::function<void(ID ownerID, NoticeKind kind, ID otherID)>;
 
     // Clears the sectors' heard noises and every Monster AI's state. Call once
@@ -56,9 +57,10 @@ namespace MonsterAISystem {
     // Back to idle, target forgotten.
     void Sleep(Level& level, ComponentMonsterAI& ai);
 
-    // What taking damage does: rolls Pain Chance, and turns it on `attackerID`
-    // (INVALID_ID for none) unless it is locked on another target.
-    void Hurt(Level& level, ComponentMonsterAI& ai, ID attackerID);
+    // What taking damage does: takes `damage` off its health and dies at 0.
+    // Otherwise rolls Pain Chance, and turns it on `attackerID` (INVALID_ID for
+    // none) unless it is locked on another target.
+    void Hurt(Level& level, ComponentMonsterAI& ai, ID attackerID, float damage = 0.0f);
 
     // True when the owner could see `targetID` now: range, field of view and
     // line of sight (P_CheckSight).

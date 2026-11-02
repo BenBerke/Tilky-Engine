@@ -192,12 +192,20 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         #name, sol::property( \
             [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return c != nullptr ? c->name : 0.0f; }, \
             [](const ScriptMonsterAI& self, const float value) { if (auto* c = self.GetComponent()) c->name = std::max(value, 0.0f); })
+#define TILKY_MONSTER_TEXT(name) \
+        #name, sol::property( \
+            [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return c != nullptr ? c->name : std::string{}; }, \
+            [](const ScriptMonsterAI& self, const std::string& value) { if (auto* c = self.GetComponent()) c->name = value; })
 #define TILKY_MONSTER_FLAG(name) \
         #name, sol::property( \
             [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return c != nullptr && c->name; }, \
             [](const ScriptMonsterAI& self, const bool value) { if (auto* c = self.GetComponent()) c->name = value; })
 
         TILKY_MONSTER_FLAG(isActive),
+        TILKY_MONSTER_NUMBER(health),
+        TILKY_MONSTER_TEXT(walkFlipbook),
+        TILKY_MONSTER_TEXT(attackFlipbook),
+        TILKY_MONSTER_TEXT(dieFlipbook),
         TILKY_MONSTER_NUMBER(sightFov),
         TILKY_MONSTER_NUMBER(sightRange),
         TILKY_MONSTER_NUMBER(nearRange),
@@ -224,6 +232,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         TILKY_MONSTER_FLAG(drivePathfinder),
         TILKY_MONSTER_FLAG(faceTargetOnAttack),
 #undef TILKY_MONSTER_NUMBER
+#undef TILKY_MONSTER_TEXT
 #undef TILKY_MONSTER_FLAG
 
         "Wake", [](const ScriptMonsterAI& self, const ScriptEntity& target) {
@@ -232,8 +241,8 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "Sleep", [](const ScriptMonsterAI& self) {
             if (auto* c = self.GetComponent()) MonsterAISystem::Sleep(*self.level, *c);
         },
-        "Hurt", [](const ScriptMonsterAI& self, const sol::optional<ScriptEntity> attacker) {
-            if (auto* c = self.GetComponent()) MonsterAISystem::Hurt(*self.level, *c, attacker ? attacker->ownerID : INVALID_ID);
+        "Hurt", [](const ScriptMonsterAI& self, const sol::optional<ScriptEntity> attacker, const sol::optional<float> damage) {
+            if (auto* c = self.GetComponent()) MonsterAISystem::Hurt(*self.level, *c, attacker ? attacker->ownerID : INVALID_ID, damage.value_or(0.0f));
         }
     );
 

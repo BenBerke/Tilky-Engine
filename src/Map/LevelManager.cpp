@@ -263,6 +263,10 @@ namespace LevelManager {
         for (ComponentFlipbook& flipbook : level.flipbooks.components)
             if (flipbook.flipbookFileName == oldReference) flipbook.flipbookFileName = newReference;
 
+        for (ComponentMonsterAI& ai : level.monsterAIs.components)
+            for (std::string* reference : {&ai.walkFlipbook, &ai.attackFlipbook, &ai.dieFlipbook})
+                if (*reference == oldReference) *reference = newReference;
+
         // Scripts hold flipbooks in FlipbookAsset fields. Only a path ending
         // in .fpk can be one, so a texture field with the same text can't match.
         const auto renameInScript = [&](ScriptAttachmentData& script) {

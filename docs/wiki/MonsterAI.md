@@ -3,11 +3,11 @@
 **Inspector name:** Monster AI · **Lua:** `entity.monsterAI` · **Public field type:** `MonsterAI`
 
 A Monster AI is a Doom monster's brain. It notices targets by sight and sound, decides when to
-attack, feels pain and turns on whoever hurt it.
+attack, feels pain, turns on whoever hurt it, and dies when its health runs out.
 
-**It never attacks.** It has no weapons and keeps no health. When it decides to attack it fires an
-event and a script callback, and whatever you wire up there is the attack. That can be a projectile,
-a sound, a flipbook or anything else.
+**It never attacks.** It has no weapons. When it decides to attack it fires an event and a script
+callback, and whatever you wire up there is the attack. That can be a projectile, a sound or anything
+else. It does play your [flipbooks](#flipbooks) for walking, attacking and dying.
 
 It works with a [Pathfinder](Pathfinder.md), which does the walking. With **Drive Pathfinder** ticked
 (the default) it sends the Pathfinder after its target and holds it still while idle. Without a
@@ -15,30 +15,26 @@ Pathfinder it still thinks, so a turret works too.
 
 ## Quick start
 
-1. Give the enemy a [Collider](Collider.md), a [Rigidbody](Rigidbody.md), a Pathfinder and a Monster AI.
+1. Give the enemy a [Collider](Collider.md), a [Rigidbody](Rigidbody.md), a Pathfinder, a
+   [Flipbook](Flipbook.md) and a Monster AI.
 2. Give the player entity the built-in **Player** tag.
-3. Handle the attack, with an event or a script:
+3. Set the Monster AI's **Walking**, **Attacking** and **Dying** flipbooks.
+4. Handle the attack, with an event or a script:
 
 ```lua
-function OnTargetSpotted(target)
-    entity.flipbook:Play("Flipbooks/ImpWalk.fpk")
-end
-
 function OnMissileReady(target)
-    entity.flipbook:Play("Flipbooks/ImpAttack.fpk")
     -- spawn the fireball here
 end
 
 function OnMeleeReady(target)
-    entity.flipbook:Play("Flipbooks/ImpClaw.fpk")
     -- damage the target here
 end
 ```
 
-4. When your damage code hurts the monster, tell it, so it can react:
+5. When your damage code hurts the monster, tell it how much:
 
 ```lua
-enemy.monsterAI:Hurt(attacker)
+enemy.monsterAI:Hurt(attacker, 20)
 ```
 
 ## How it thinks
@@ -64,7 +60,8 @@ Every **Decision Step** it checks these in order, and stops at the first that ap
    as the Pathfinder finishes holding a direction, as Doom does.
 5. **Active:** a small chance of the Active event, Doom's random monster noises.
 
-After deciding to attack it stands still for **Attack Pause**. Set this to match your attack animation.
+After deciding to attack it stands still for **Attack Pause**. Set this to match your Attacking
+flipbook, which stops when the pause ends.
 
 ### The missile roll
 
@@ -84,11 +81,39 @@ So it fires much more often up close. The defaults are Doom's. For a Cyberdemon'
 The AI can't tell when something damages the entity, because the damage is yours. Call `Hurt`, or
 run the Monster AI dispatch's **Hurt** action:
 
+- The damage comes off **Health**. If that reaches 0 it [dies](#dying), and none of the rest happens.
+  With no damage given it only reacts.
 - **Reaction Time** ends at once.
 - It rolls **Pain Chance**. On a pass it fires Pain, stands still for **Pain Pause**, and its next
   missile roll passes.
 - With **Infights** ticked it turns on its attacker, waking if idle. After that, for **Target Lock
   Time**, another attacker can't turn it (Doom's `threshold`).
+
+### Dying
+
+When **Health** reaches 0, through `Hurt`, a script or a Set Field, this is what happens:
+
+- It stops thinking, and its Pathfinder is switched off even with **Drive Pathfinder** unticked. A
+  flyer with a Rigidbody falls.
+- It plays **Dying**, and fires the Died event and `OnDeath`.
+- It stays in the level as a corpse, and other monsters stop chasing it. **Its collider stays on**, so
+  turn that off or destroy the entity in the Died event if you want the body gone.
+
+Ignored from then on: `Wake`, `Sleep` and `Hurt`. Raising its health doesn't bring it back. Neither
+`Hurt` nor death does anything while the component is off or the entity is disabled.
+
+## Flipbooks
+
+These play on the entity's first [Flipbook](Flipbook.md) component, which it needs for them to work.
+An empty field leaves the flipbook alone for that state.
+
+| Field | When |
+|---|---|
+| **Walking** | Plays while its Pathfinder is walking. It holds on its frame while the entity stands still, in idle or pain. |
+| **Attacking** | Plays from its start on a melee or missile decision, until **Attack Pause** ends. Afterward: Walking, or with no Walking, whatever was showing before. |
+| **Dying** | Plays from its start on death. Use a Once flipbook, so it ends on the corpse frame. |
+
+It only changes the flipbook when the state changes. One a script starts stays on until then.
 
 ## Noise
 
@@ -106,6 +131,15 @@ Game.NoiseAlert(entity) -- this entity made a noise; whoever hears it comes afte
 ```
 
 ## In the editor
+
+### Health and flipbooks
+
+| Field | Lua | Default | Notes |
+|---|---|---|---|
+| **Health** | `health` | `100` | It dies at `0`. |
+| **Walking** | `walkFlipbook` | none | `.fpk` path relative to Assets. See [Flipbooks](#flipbooks). |
+| **Attacking** | `attackFlipbook` | none | |
+| **Dying** | `dieFlipbook` | none | |
 
 ### Senses
 
@@ -166,9 +200,10 @@ instigator, and what the event's tag filter checks.
 | **Missile Ready** | It decides on a ranged attack. |
 | **Pain** | A `Hurt` passes Pain Chance. |
 | **Active** | Now and then while chasing. Doom's active sound goes here. |
+| **Died** | Its health reached 0. The attacker is the instigator, if there is one. |
 
 The **Monster AI** dispatch has these actions: Wake On Player, Wake On Instigator, Wake On Entity,
-Sleep, and Hurt (the instigator is the attacker). **Noise Alert** works on any object, and its target
+Sleep, and Hurt (the instigator is the attacker, with a **Damage** field). **Noise Alert** works on any object, and its target
 is the player, the instigator or the entity it's on. Every number above also has a **Set Field**
 entry, and the component has an **Enable / Disable Component** entry.
 
@@ -179,7 +214,7 @@ Every field in the tables with a Lua name can be read and written. Negative numb
 | Property | Type | | Description |
 |---|---|---|---|
 | `isValid` | boolean | read-only | `false` if the entity or its Monster AI is gone. |
-| `state` | MonsterAIState | read-only | `MonsterAIState.Idle` or `MonsterAIState.Chasing`. |
+| `state` | MonsterAIState | read-only | `MonsterAIState.Idle`, `.Chasing` or `.Dead`. |
 | `target` | Entity? | read-only | Who it is chasing. `nil` while idle. |
 | `canSeeTarget` | boolean | read-only | It could see its target now: range, field of view and line of sight. |
 
@@ -187,9 +222,9 @@ Every field in the tables with a Lua name can be read and written. Negative numb
 |---|---|
 | `Wake(target)` | Starts chasing `target`, or switches to it if already chasing. |
 | `Sleep()` | Back to idle, target forgotten. |
-| `Hurt(attacker?)` | Tells it it took damage. See [Being hurt](#being-hurt). |
+| `Hurt(attacker?, damage?)` | Takes `damage` off its health. See [Being hurt](#being-hurt). |
 
 Callbacks, on every enabled script of the entity:
 [`OnTargetSpotted(target)`, `OnTargetLost()`, `OnMeleeReady(target)`, `OnMissileReady(target)`,
-`OnPain(attacker)` and `OnActive()`](CallbackFunctions.md#monster-ai-callbacks). A `Wake` from a
+`OnPain(attacker)`, `OnActive()` and `OnDeath(attacker)`](CallbackFunctions.md#monster-ai-callbacks). A `Wake` from a
 script's `Start` reports on the first frame, once the level has fully started.

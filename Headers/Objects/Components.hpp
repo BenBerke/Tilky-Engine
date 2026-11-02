@@ -281,10 +281,20 @@ struct ComponentPathfinder {
 };
 
 // Idle: standing, looking and listening (A_Look). Chasing: after a target,
-// deciding when to attack (A_Chase).
+// deciding when to attack (A_Chase). Dead: its health reached 0, a corpse for
+// good.
 enum class MonsterAIState : std::uint8_t {
     IDLE,
-    CHASING
+    CHASING,
+    DEAD
+};
+
+// Which of its flipbooks the AI last put on (runtime only).
+enum class MonsterAIAnimation : std::uint8_t {
+    NONE,
+    WALKING,
+    STANDING,
+    ATTACKING
 };
 
 // A Doom monster's brain: notices targets by sight and sound, decides when to
@@ -297,6 +307,14 @@ struct ComponentMonsterAI {
 
     // Who it hunts. Empty: entities with the built-in Player tag.
     std::vector<TagId> targetTags;
+
+    // What it plays on the owner's first Flipbook, Assets-relative .fpk
+    // references. Empty: the AI leaves the flipbook alone for that state.
+    std::string walkFlipbook;
+    std::string attackFlipbook;
+    std::string dieFlipbook;
+
+    float health = 100.0f; // 0 or less: it dies (see MonsterAIState::DEAD)
 
     // Senses (A_Look, P_LookForPlayers).
     float sightFov = 180.0f;            // degrees, centred on where it faces
@@ -333,6 +351,9 @@ struct ComponentMonsterAI {
     bool justAttacked = false; // MF_JUSTATTACKED: its next decision only picks a direction
     bool justHit = false;      // MF_JUSTHIT: its next missile roll always passes
     bool started = false;
+    MonsterAIAnimation animation = MonsterAIAnimation::NONE;
+    bool flipbookWasPlaying = false; // beforeAttackFlipbook was playing
+    std::string beforeAttackFlipbook; // goes back to this after an attack, with no walkFlipbook
 
     bool hasMelee = true;
     bool hasMissile = true;

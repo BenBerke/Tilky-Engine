@@ -95,7 +95,7 @@ public:
     void DispatchPathfinderNotice(Level& level, ID entityID, PathfinderSystem::NoticeKind kind);
 
     // Calls OnTargetSpotted(target) / OnTargetLost() / OnMeleeReady(target) /
-    // OnMissileReady(target) / OnPain(attacker) / OnActive() on every enabled
+    // OnMissileReady(target) / OnPain(attacker) / OnActive() / OnDeath(attacker) on every enabled
     // script of the entity. From MonsterAISystem through LevelSystem.
     void DispatchMonsterNotice(Level& level, ID entityID, MonsterAISystem::NoticeKind kind, ID otherID);
 

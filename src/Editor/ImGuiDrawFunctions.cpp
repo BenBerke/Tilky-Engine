@@ -2160,7 +2160,7 @@ namespace ImGuiDrawFunctions {
             else if constexpr (std::is_same_v<Payload, PayloadPathfinderArrived>) return "events.call.instigator.followed";
             else if constexpr (std::is_same_v<Payload, PayloadMonsterTargetSpotted> || std::is_same_v<Payload, PayloadMonsterMeleeReady> ||
                                std::is_same_v<Payload, PayloadMonsterMissileReady> || std::is_same_v<Payload, PayloadMonsterActive>) return "events.call.instigator.monster_target";
-            else if constexpr (std::is_same_v<Payload, PayloadMonsterPain>) return "events.call.instigator.attacker";
+            else if constexpr (std::is_same_v<Payload, PayloadMonsterPain> || std::is_same_v<Payload, PayloadMonsterDied>) return "events.call.instigator.attacker";
             else if constexpr (std::is_same_v<Payload, PayloadPathfinderBlocked> || std::is_same_v<Payload, PayloadPathfinderStuck> ||
                                std::is_same_v<Payload, PayloadPathfinderStartedMoving> || std::is_same_v<Payload, PayloadPathfinderStoppedMoving> ||
                                std::is_same_v<Payload, PayloadMonsterTargetLost>) return nullptr;
@@ -3354,6 +3354,12 @@ namespace ImGuiDrawFunctions {
                                     Property(Get("events.teleport.entity").c_str());
                                     DrawLevelObjectPicker("##MonsterEntity", EventOwnerKind::ENTITY, payload.targetID);
                                     if (payload.targetID == ownerID) payload.targetID = INVALID_ID; // can't chase itself
+                                }
+                                else if (payload.action == MonsterAIAction::HURT) {
+                                    Property(Get("events.monster_ai.damage").c_str());
+                                    InputOrDrag("##MonsterDamage", &payload.damage, draggable);
+                                    payload.damage = std::max(payload.damage, 0.0f);
+                                    Tooltip(Get("editor.tooltip.dispatches.monster_ai_damage").c_str());
                                 }
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>) {
@@ -6501,6 +6507,22 @@ namespace ImGuiDrawFunctions {
                     ImGui::Checkbox(Get(labelKey).c_str(), value);
                     Tooltip(Get(tooltipKey).c_str());
                 };
+
+                BeginSection(Get("component.monster_ai.body").c_str());
+                number("health", "component.monster_ai.health", "editor.tooltip.component.monster_ai.health", &c->health);
+
+                const auto flipbookField = [&](const char *field, const char *labelKey, const char *tooltipKey, std::string &value) {
+                    PrefabField prefabField(field);
+                    MapEditorInternal::DrawAssetField(Get(labelKey).c_str(), value, AssetKind::Flipbook);
+                    Tooltip(Get(tooltipKey).c_str());
+                };
+                flipbookField("walkFlipbook", "component.monster_ai.walk_flipbook", "editor.tooltip.component.monster_ai.walk_flipbook", c->walkFlipbook);
+                flipbookField("attackFlipbook", "component.monster_ai.attack_flipbook", "editor.tooltip.component.monster_ai.attack_flipbook", c->attackFlipbook);
+                flipbookField("dieFlipbook", "component.monster_ai.die_flipbook", "editor.tooltip.component.monster_ai.die_flipbook", c->dieFlipbook);
+
+                if ((!c->walkFlipbook.empty() || !c->attackFlipbook.empty() || !c->dieFlipbook.empty()) && !entity.HasComponent<ComponentFlipbook>())
+                    ImGui::TextWrapped("%s", Get("component.monster_ai.no_flipbook").c_str());
+                EndSection();
 
                 BeginSection(Get("component.monster_ai.senses").c_str());
                 {

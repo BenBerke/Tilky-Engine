@@ -15,6 +15,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
+#include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
@@ -55,11 +56,16 @@ namespace {
 
     bool RollPercent(const float percent) { return static_cast<float>(RandomByte()) / 256.0f * 100.0f < percent; }
 
+    bool IsCorpse(const Level& level, const ID entityID) {
+        const ComponentMonsterAI* ai = level.monsterAIs.Get(entityID);
+        return ai != nullptr && ai->state == MonsterAIState::DEAD;
+    }
+
     // A target that can still be chased.
     const Entity* LiveTarget(const Level& level, const ID targetID) {
         if (targetID == INVALID_ID) return nullptr;
         const Entity* entity = level.GetEntity(targetID);
-        return entity != nullptr && entity->enabled && level.transforms.Get(targetID) != nullptr ? entity : nullptr;
+        return entity != nullptr && entity->enabled && level.transforms.Get(targetID) != nullptr && !IsCorpse(level, targetID) ? entity : nullptr;
     }
 
     float Radius(const Level& level, const ID entityID) {
@@ -139,7 +145,7 @@ namespace {
 
         std::vector<std::pair<float, ID>> candidates;
         for (const Entity& entity : level.entities) {
-            if (entity.id == ai.ownerID || !entity.enabled || !HasAnyTag(entity, tags)) continue;
+            if (entity.id == ai.ownerID || !entity.enabled || !HasAnyTag(entity, tags) || IsCorpse(level, entity.id)) continue;
 
             const ComponentTransform* transform = level.transforms.Get(entity.id);
             if (transform == nullptr) continue;
@@ -179,6 +185,59 @@ namespace {
             self->rotation = facing;
 
         if (ComponentPathfinder* pathfinder = level.pathfinders.Get(ai.ownerID)) pathfinder->facingOctant = 8; // turns from here again
+    }
+
+    void PlayAttackFlipbook(Level& level, ComponentMonsterAI& ai) {
+        ComponentFlipbook* flipbook = level.flipbooks.Get(ai.ownerID);
+        if (flipbook == nullptr || ai.attackFlipbook.empty()) return;
+
+        if (ai.animation != MonsterAIAnimation::ATTACKING) {
+            ai.beforeAttackFlipbook = flipbook->flipbookFileName;
+            ai.flipbookWasPlaying = flipbook->playing;
+        }
+
+        FlipbookSystem::Play(*flipbook, ai.attackFlipbook, true);
+        ai.animation = MonsterAIAnimation::ATTACKING;
+    }
+
+    // Only acts when what it should show changes, so a flipbook a script
+    // started stays on until the next change.
+    void UpdateFlipbook(Level& level, ComponentMonsterAI& ai) {
+        ComponentFlipbook* flipbook = level.flipbooks.Get(ai.ownerID);
+        if (flipbook == nullptr) return;
+
+        bool attackEnded = false;
+        if (ai.animation == MonsterAIAnimation::ATTACKING) {
+            if (ai.attackLeft > 0.0f) return;
+            attackEnded = true;
+            ai.animation = MonsterAIAnimation::NONE;
+        }
+
+        if (ai.walkFlipbook.empty()) {
+            if (!attackEnded) return;
+
+            // Back to what it was showing before the attack.
+            if (ai.flipbookWasPlaying) FlipbookSystem::Play(*flipbook, ai.beforeAttackFlipbook, false);
+            else {
+                FlipbookSystem::SetFlipbookFileName(*flipbook, ai.beforeAttackFlipbook);
+                FlipbookSystem::Pause(*flipbook);
+            }
+            return;
+        }
+
+        const ComponentPathfinder* pathfinder = level.pathfinders.Get(ai.ownerID);
+        const bool moving = pathfinder != nullptr && pathfinder->moving;
+        const MonsterAIAnimation wanted = moving ? MonsterAIAnimation::WALKING : MonsterAIAnimation::STANDING;
+        if (ai.animation == wanted) return;
+        ai.animation = wanted;
+
+        if (moving) FlipbookSystem::Play(*flipbook, ai.walkFlipbook, false);
+        else {
+            // Standing still holds the walk on a frame. A flipbook that isn't
+            // the walk or its own attack is someone else's: left playing.
+            if (attackEnded) FlipbookSystem::SetFlipbookFileName(*flipbook, ai.walkFlipbook);
+            if (flipbook->flipbookFileName == ai.walkFlipbook) FlipbookSystem::Pause(*flipbook);
+        }
     }
 
     // Doom's P_CheckMissileRange past the sight check.
@@ -228,7 +287,7 @@ namespace MonsterAISystem {
     }
 
     static void WakeWith(Level& level, ComponentMonsterAI& ai, const ID targetID, const NoticeHandler& onNotice) {
-        if (targetID == ai.ownerID || LiveTarget(level, targetID) == nullptr) return;
+        if (ai.state == MonsterAIState::DEAD || targetID == ai.ownerID || LiveTarget(level, targetID) == nullptr) return;
 
         const bool wasIdle = ai.state == MonsterAIState::IDLE;
 
@@ -248,6 +307,8 @@ namespace MonsterAISystem {
     }
 
     static void SleepWith(Level& level, ComponentMonsterAI& ai, const NoticeHandler& onNotice) {
+        if (ai.state == MonsterAIState::DEAD) return;
+
         const bool wasChasing = ai.state == MonsterAIState::CHASING;
 
         ai.state = MonsterAIState::IDLE;
@@ -264,6 +325,32 @@ namespace MonsterAISystem {
         if (wasChasing && onNotice) onNotice(ai.ownerID, NoticeKind::TARGET_LOST, INVALID_ID);
     }
 
+    // Doom's P_KillMobj: it stops thinking and walking, and stays as a corpse.
+    static void Die(Level& level, ComponentMonsterAI& ai, const ID attackerID, const NoticeHandler& onNotice) {
+        ai.state = MonsterAIState::DEAD;
+        ai.health = 0.0f;
+        ai.targetID = INVALID_ID;
+        ai.started = true;
+        ai.lockLeft = 0.0f;
+        ai.attackLeft = 0.0f;
+        ai.justAttacked = false;
+        ai.justHit = false;
+
+        // Off rather than held, so a flyer's corpse falls.
+        if (ComponentPathfinder* pathfinder = level.pathfinders.Get(ai.ownerID)) {
+            pathfinder->isActive = false;
+            pathfinder->pauseTimer = 0.0f;
+        }
+
+        if (ComponentFlipbook* flipbook = level.flipbooks.Get(ai.ownerID)) {
+            if (!ai.dieFlipbook.empty()) FlipbookSystem::Play(*flipbook, ai.dieFlipbook, true);
+            else if (ai.animation != MonsterAIAnimation::NONE) FlipbookSystem::Pause(*flipbook); // not walking on the spot
+        }
+        ai.animation = MonsterAIAnimation::NONE;
+
+        if (onNotice) onNotice(ai.ownerID, NoticeKind::DIED, attackerID);
+    }
+
     void Wake(Level& level, ComponentMonsterAI& ai, const ID targetID) {
         const NoticeHandler handler = CurrentHandler();
         WakeWith(level, ai, targetID, handler);
@@ -274,10 +361,16 @@ namespace MonsterAISystem {
         SleepWith(level, ai, handler);
     }
 
-    void Hurt(Level& level, ComponentMonsterAI& ai, const ID attackerID) {
-        if (!ai.isActive || !ai.ownerEnabled) return;
+    void Hurt(Level& level, ComponentMonsterAI& ai, const ID attackerID, const float damage) {
+        if (!ai.isActive || !ai.ownerEnabled || ai.state == MonsterAIState::DEAD) return;
 
         const NoticeHandler onNotice = CurrentHandler();
+
+        ai.health = std::max(0.0f, ai.health - std::max(damage, 0.0f));
+        if (ai.health <= 0.0f) {
+            Die(level, ai, attackerID, onNotice);
+            return;
+        }
 
         // Reaches its first attack at once.
         ai.reactionLeft = 0.0f;
@@ -374,6 +467,9 @@ namespace MonsterAISystem {
             ai.justAttacked = false;
             ai.justHit = false;
             ai.started = false;
+            ai.animation = MonsterAIAnimation::NONE;
+            ai.flipbookWasPlaying = false;
+            ai.beforeAttackFlipbook.clear();
         }
     }
 
@@ -410,6 +506,14 @@ namespace MonsterAISystem {
 
             const ComponentTransform* self = level.transforms.Get(ai.ownerID);
             if (self == nullptr) continue;
+
+            if (ai.state == MonsterAIState::DEAD) continue;
+
+            // Health set to 0 by a script or a Set Field, not through Hurt.
+            if (ai.health <= 0.0f) {
+                Die(level, ai, INVALID_ID, queue);
+                continue;
+            }
 
             ComponentPathfinder* pathfinder = DrivenPathfinder(level, ai);
 
@@ -494,6 +598,7 @@ namespace MonsterAISystem {
                 ai.attackLeft = ai.attackPause;
                 HoldAtLeast(pathfinder, ai.attackPause);
                 if (ai.faceTargetOnAttack) FaceTarget(level, ai, ai.targetID);
+                PlayAttackFlipbook(level, ai);
                 queue(ai.ownerID, kind, ai.targetID);
             };
 
@@ -516,6 +621,11 @@ namespace MonsterAISystem {
             }
 
             if (RollPercent(ai.activeChance)) queue(ai.ownerID, NoticeKind::ACTIVE, ai.targetID);
+        }
+
+        for (ComponentMonsterAI& ai : level.monsterAIs.components) {
+            if (!ai.ownerEnabled || !ai.isActive || ai.state == MonsterAIState::DEAD) continue;
+            if (level.monsterAIs.Get(ai.ownerID) == &ai) UpdateFlipbook(level, ai);
         }
 
         const NoticeHandler handler = noticeHandler;

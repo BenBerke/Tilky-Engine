@@ -253,6 +253,7 @@ namespace LevelSystem {
                 case MonsterAISystem::NoticeKind::MISSILE_READY: EventSystem::FireMonsterMissileReady(level, entityID, otherID); break;
                 case MonsterAISystem::NoticeKind::PAIN: EventSystem::FireMonsterPain(level, entityID, otherID); break;
                 case MonsterAISystem::NoticeKind::ACTIVE: EventSystem::FireMonsterActive(level, entityID, otherID); break;
+                case MonsterAISystem::NoticeKind::DIED: EventSystem::FireMonsterDied(level, entityID, otherID); break;
             }
         });
 

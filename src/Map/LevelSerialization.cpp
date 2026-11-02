@@ -1115,6 +1115,7 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMonsterAI>) {
             j["action"] = EnumName(kMonsterAIActionNames, payload.action);
             j["targetID"] = payload.targetID;
+            j["damage"] = payload.damage;
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>)
@@ -1393,6 +1394,7 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMonsterAI>) {
             ReadOptionalEnum(j, "action", kMonsterAIActionNames, payload.action);
             ReadOptional(j, "targetID", payload.targetID);
+            ReadOptional(j, "damage", payload.damage);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>)
@@ -3082,6 +3084,10 @@ namespace LevelSerialization {
         return {
             {"isActive", c.isActive},
             {"targetTags", c.targetTags},
+            {"health", c.health},
+            {"walkFlipbook", c.walkFlipbook},
+            {"attackFlipbook", c.attackFlipbook},
+            {"dieFlipbook", c.dieFlipbook},
             {"sightFov", c.sightFov},
             {"sightRange", c.sightRange},
             {"nearRange", c.nearRange},
@@ -3115,6 +3121,10 @@ namespace LevelSerialization {
         const ComponentMonsterAI d{};
         c.isActive = j.value("isActive", d.isActive);
         c.targetTags = j.value("targetTags", std::vector<TagId>{});
+        c.health = j.value("health", d.health);
+        c.walkFlipbook = j.value("walkFlipbook", d.walkFlipbook);
+        c.attackFlipbook = j.value("attackFlipbook", d.attackFlipbook);
+        c.dieFlipbook = j.value("dieFlipbook", d.dieFlipbook);
         c.sightFov = j.value("sightFov", d.sightFov);
         c.sightRange = j.value("sightRange", d.sightRange);
         c.nearRange = j.value("nearRange", d.nearRange);

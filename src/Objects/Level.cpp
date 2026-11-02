@@ -163,7 +163,9 @@ namespace {
         ai.state = MonsterAIState::IDLE;
         ai.targetID = INVALID_ID;
         ai.lookTimer = ai.chaseTimer = ai.reactionLeft = ai.lockLeft = ai.attackLeft = 0.0f;
-        ai.justAttacked = ai.justHit = ai.started = false;
+        ai.justAttacked = ai.justHit = ai.started = ai.flipbookWasPlaying = false;
+        ai.animation = MonsterAIAnimation::NONE;
+        ai.beforeAttackFlipbook.clear();
     }
 
     // The owner's component instance IDs (script instance IDs for scripts), in order.

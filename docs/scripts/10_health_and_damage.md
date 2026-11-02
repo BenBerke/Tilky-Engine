@@ -37,9 +37,9 @@ local function Die()
     dead = true
     Debug.Print(entity.name .. " died")
 
-    -- Tell the listener script about it, if it has an OnDeath function.
-    if deathListener ~= nil and deathListener.isValid and type(deathListener.OnDeath) == "function" then
-        deathListener:OnDeath(entity)
+    -- Tell the listener script about it, if it has an OnEnemyDied function.
+    if deathListener ~= nil and deathListener.isValid and type(deathListener.OnEnemyDied) == "function" then
+        deathListener:OnEnemyDied(entity)
     end
 
     if destroyOnDeath then

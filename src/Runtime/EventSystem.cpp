@@ -2610,7 +2610,7 @@ namespace {
                     {"missileDistanceOffset", &c->missileDistanceOffset}, {"missileDistanceScale", &c->missileDistanceScale},
                     {"missileDistanceCap", &c->missileDistanceCap}, {"attackPause", &c->attackPause},
                     {"painChance", &c->painChance}, {"painPause", &c->painPause}, {"targetLockTime", &c->targetLockTime},
-                    {"activeChance", &c->activeChance}
+                    {"activeChance", &c->activeChance}, {"health", &c->health}
                 };
                 for (const auto& [name, value] : floats) {
                     if (field != name) continue;
@@ -3368,7 +3368,7 @@ namespace EventSystem {
                     case MonsterAIAction::WAKE_ON_INSTIGATOR: MonsterAISystem::Wake(level, *ai, instigatorID); break;
                     case MonsterAIAction::WAKE_ON_ENTITY: MonsterAISystem::Wake(level, *ai, monsterDispatch.targetID); break;
                     case MonsterAIAction::SLEEP: MonsterAISystem::Sleep(level, *ai); break;
-                    case MonsterAIAction::HURT: MonsterAISystem::Hurt(level, *ai, instigatorID); break;
+                    case MonsterAIAction::HURT: MonsterAISystem::Hurt(level, *ai, instigatorID, monsterDispatch.damage); break;
                 }
             },
             [&](const PayloadDispatchNoiseAlert& noise) {
@@ -3666,6 +3666,7 @@ namespace EventSystem {
     void FireMonsterMissileReady(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterMissileReady>(level, entityID, otherID); }
     void FireMonsterPain(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterPain>(level, entityID, otherID); }
     void FireMonsterActive(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterActive>(level, entityID, otherID); }
+    void FireMonsterDied(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterDied>(level, entityID, otherID); }
 
     WalkerDoor CheckDoorForWalker(const Level& level, const ID sectorID, const int floorIndex, const ID walkerID) {
         using Door = PayloadDispatchSectorDoor;

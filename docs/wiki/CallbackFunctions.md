@@ -35,6 +35,7 @@ them for public fields.
 | [`OnMissileReady(target)`](#monster-ai-callbacks) | ✓ | | It decided on a ranged attack |
 | [`OnPain(attacker)`](#monster-ai-callbacks) | ✓ | | A `Hurt` passed its Pain Chance |
 | [`OnActive()`](#monster-ai-callbacks) | ✓ | | Now and then while chasing |
+| [`OnDeath(attacker)`](#monster-ai-callbacks) | ✓ | | Its health reached 0 |
 | [`OnEntityEnter(entity)`](#onentityenter--onentityexit) | | ✓ | An entity entered this sector |
 | [`OnEntityExit(entity)`](#onentityenter--onentityexit) | | ✓ | An entity left this sector |
 | [Flipbook frame events](#flipbook-frame-events) | ✓ | | A [Flipbook](Flipbook.md) reached a frame with an event function |
@@ -480,11 +481,12 @@ function OnMeleeReady(target) end
 function OnMissileReady(target) end
 function OnPain(attacker) end
 function OnActive() end
+function OnDeath(attacker) end
 ```
 
-Called by this entity's [Monster AI](MonsterAI.md). It decides, and these are where your attack,
-sounds and animations go: the AI does no attacking itself. `attacker` is `nil` when `Hurt` was
-called with nobody.
+Called by this entity's [Monster AI](MonsterAI.md). It decides, and these are where your attack and
+sounds go: the AI does no attacking itself. `attacker` is `nil` when `Hurt` was called with nobody.
+`OnDeath` also runs when a script or Set Field sets its health to 0, with `attacker` as `nil`.
 
 ## Flipbook frame events
 

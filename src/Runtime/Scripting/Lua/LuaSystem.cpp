@@ -193,6 +193,7 @@ namespace {
         sol::protected_function onMissileReadyFunction;
         sol::protected_function onPainFunction;
         sol::protected_function onActiveFunction;
+        sol::protected_function onDeathFunction;
         sol::protected_function onHoverExitFunction;
 
         bool started = false;   // Start() has run at least once
@@ -498,6 +499,8 @@ namespace {
                 "Monster AI: called when Hurt passes its Pain Chance roll. attacker is nil if nobody did it."}},
             {&ScriptInstance::onActiveFunction, {"OnActive", CallbackOwner::Entity, {},
                 "Monster AI: called now and then while chasing, Doom's active sound. See activeChance."}},
+            {&ScriptInstance::onDeathFunction, {"OnDeath", CallbackOwner::Entity, {Param("attacker", "Entity?")},
+                "Monster AI: called when its health reaches 0. attacker is nil if nobody did it."}},
         };
 
         return callbacks;
@@ -2128,6 +2131,7 @@ void LuaScriptSystem::DispatchMonsterNotice(Level& level, const ID entityID, con
         case MonsterAISystem::NoticeKind::MISSILE_READY: callback = &ScriptInstance::onMissileReadyFunction; name = "OnMissileReady"; passesEntity = true; break;
         case MonsterAISystem::NoticeKind::PAIN: callback = &ScriptInstance::onPainFunction; name = "OnPain"; passesEntity = true; break;
         case MonsterAISystem::NoticeKind::ACTIVE: callback = &ScriptInstance::onActiveFunction; name = "OnActive"; break;
+        case MonsterAISystem::NoticeKind::DIED: callback = &ScriptInstance::onDeathFunction; name = "OnDeath"; passesEntity = true; break;
     }
 
     // By index: a handler can attach a script, which can grow the vector.

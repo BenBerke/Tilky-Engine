@@ -110,6 +110,7 @@ inline constexpr EventFieldInfo EVENT_FIELDS[] = {
     {FieldComponent::PATHFINDER, "stuckTime", "component.pathfinder.stuck_time", FieldValueKind::FLOAT},
 
     {FieldComponent::MONSTER_AI, "isActive", "events.field.is_active", FieldValueKind::BOOL},
+    {FieldComponent::MONSTER_AI, "health", "component.monster_ai.health", FieldValueKind::FLOAT},
     {FieldComponent::MONSTER_AI, "sightFov", "component.monster_ai.sight_fov", FieldValueKind::FLOAT},
     {FieldComponent::MONSTER_AI, "sightRange", "component.monster_ai.sight_range", FieldValueKind::FLOAT},
     {FieldComponent::MONSTER_AI, "nearRange", "component.monster_ai.near_range", FieldValueKind::FLOAT},

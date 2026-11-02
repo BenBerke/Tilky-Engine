@@ -136,7 +136,7 @@ namespace EventSystem {
     void FirePathfinderStoppedMoving(Level& level, ID entityID);
 
     // Monster AI events. `otherID` is the instigator: the target (the
-    // attacker for Pain), INVALID_ID if none. From MonsterAISystem through
+    // attacker for Pain and Died), INVALID_ID if none. From MonsterAISystem through
     // LevelSystem.
     void FireMonsterTargetSpotted(Level& level, ID entityID, ID otherID);
     void FireMonsterTargetLost(Level& level, ID entityID);
@@ -144,6 +144,7 @@ namespace EventSystem {
     void FireMonsterMissileReady(Level& level, ID entityID, ID otherID);
     void FireMonsterPain(Level& level, ID entityID, ID otherID);
     void FireMonsterActive(Level& level, ID entityID, ID otherID);
+    void FireMonsterDied(Level& level, ID entityID, ID otherID);
 
     // What a Pathfinder with Opens Doors should do about a tight sector.
     enum class WalkerDoor {

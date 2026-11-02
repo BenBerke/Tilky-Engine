@@ -563,6 +563,16 @@ struct PayloadMonsterPain { // a Hurt passed the Pain Chance roll
     TagFilter filter{TagType::ALL, {}};
 };
 
+struct PayloadMonsterDied { // its health reached 0
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.died";
+    transKey saveName = "monster.died"; // level file name, never change
+    bool operator==(const PayloadMonsterDied&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
 struct PayloadMonsterActive { // Doom's active sound: a random chance per chase step
     static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
     static constexpr bool needsMonsterAI = true;
@@ -1248,7 +1258,7 @@ enum class MonsterAIAction : uint8_t {
     WAKE_ON_INSTIGATOR = 1, // chase the instigator
     WAKE_ON_ENTITY = 2,     // chase entity `targetID`
     SLEEP = 3,              // back to idle, target forgotten
-    HURT = 4                // what taking damage does in Doom, the instigator as the attacker
+    HURT = 4                // takes `damage` off its health, the instigator as the attacker
 };
 
 struct PayloadDispatchEntityMonsterAI {
@@ -1260,6 +1270,7 @@ struct PayloadDispatchEntityMonsterAI {
 
     MonsterAIAction action = MonsterAIAction::WAKE_ON_PLAYER;
     ID targetID = INVALID_ID; // WAKE_ON_ENTITY
+    float damage = 0.0f;      // HURT
 };
 
 // Who a Noise Alert's monsters go after.
@@ -1451,7 +1462,7 @@ using EventPayload = std::variant<
     PayloadKeyPress, PayloadKeyRelease, PayloadPathfinderArrived,
     PayloadPathfinderBlocked, PayloadPathfinderStuck, PayloadPathfinderStartedMoving, PayloadPathfinderStoppedMoving,
     PayloadMonsterTargetSpotted, PayloadMonsterTargetLost, PayloadMonsterMeleeReady, PayloadMonsterMissileReady,
-    PayloadMonsterPain, PayloadMonsterActive>;
+    PayloadMonsterPain, PayloadMonsterActive, PayloadMonsterDied>;
 
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,
